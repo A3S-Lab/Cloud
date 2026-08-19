@@ -71,6 +71,16 @@ The code on `main` separates implemented mechanics from released capability:
   one `Arc`, while dedicated Relay selects only Memberships, Notifications,
   and Outbox. A source gate rejects direct constructors, duplicate constructor
   rules, SQL, migration, or async behavior in that factory.
+- **Implemented / one-shot PostgreSQL schema authority** — the
+  `a3s-cloud-migrate` executable is the only Cloud process root
+  that invokes the A3S ORM migrator. API, Worker, Relay, and `all` only connect
+  through a read-only schema-admission path: every migration required by that
+  Cloud build must exist with its exact checksum, while later expansion
+  records remain admissible during a rolling upgrade. Empty, behind, or
+  altered schemas fail before any product capability is constructed. A real
+  PostgreSQL 17 gate concurrently starts two migrator processes and proves one
+  atomic apply plus one idempotent replay; the development launcher follows
+  the same migrate-then-serve order.
 - **Implemented / one deployment storage topology** — API and Worker construct
   one filesystem or S3-compatible immutable-object root and derive the
   `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
@@ -177,13 +187,20 @@ export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
 export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 
+cargo run -p a3s-cloud-control-plane --bin a3s-cloud-migrate -- config/cloud.acl
 cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
 
-Migrations run during startup. The development all-in-one profile listens on
-`127.0.0.1:8080` and may use the in-memory A3S Event provider. Production and
-split-process topologies fail configuration validation unless they use NATS
-JetStream, because an in-process bus cannot cross an API/worker/relay boundary.
+Serving processes never run migrations. Run the one-shot migrator after
+PostgreSQL becomes reachable and before starting or upgrading any API, Worker,
+Relay, or `all` process. A serving process fails closed if its required schema
+manifest is absent or altered. See the
+[PostgreSQL schema-management contract](docs/postgres-schema-management.md)
+for rolling-upgrade and failure rules. The development all-in-one profile
+listens on `127.0.0.1:8080` and may use the in-memory A3S Event provider.
+Production and split-process topologies fail configuration validation unless
+they use NATS JetStream, because an in-process bus cannot cross an
+API/worker/relay boundary.
 
 ```bash
 curl http://127.0.0.1:8080/api/v1/health/live
@@ -306,6 +323,12 @@ owns checkout, build staging, runtime registration, the Boot task queue, and
 the complete reconciler set. `all` composes those same typed capabilities; it
 does not introduce a third path.
 
+Schema migration is not a `server.role`. `a3s-cloud-migrate` is a terminating
+deployment step with no HTTP routes, worker, event transport, object client,
+or domain adapter. It delegates locking, transactional application, checksum
+recording, and concurrent replay to the single A3S ORM migrator. Every serving
+role performs only manifest admission and ordinary PostgreSQL health checks.
+
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.
 
@@ -359,6 +382,7 @@ CI.
 | --- | --- |
 | [Product roadmap](ROADMAP.md) | Gate status, dependencies, and delivery order |
 | [Technical architecture](docs/architecture.md) | Ownership, topology, consistency, and failure behavior |
+| [PostgreSQL schema management](docs/postgres-schema-management.md) | One-shot migration authority, rolling order, admission, and failure rules |
 | [Development plan](docs/development-plan.md) | Implementation slices and exit evidence |
 | [Domain model](docs/domain-model.md) | Aggregates, state machines, and invariants |
 | [Workflow and evolution](docs/workflow-evolution-plan.md) | `W0`, heterogeneous `A1`, and governed `EV0` contracts |

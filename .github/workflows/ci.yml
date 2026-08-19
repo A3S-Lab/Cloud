@@ -50,6 +50,13 @@ jobs:
         with:
           toolchain: 1.88.0
 
+      - name: Certify one-shot PostgreSQL schema authority
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_schema_migration_is_one_shot_and_service_startup_is_read_only
+          -- --exact --nocapture --test-threads=1
+
       - name: Migrate and verify stable replica sets
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

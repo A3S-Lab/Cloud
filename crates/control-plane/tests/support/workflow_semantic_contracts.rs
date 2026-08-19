@@ -1,4 +1,5 @@
-use a3s_cloud_control_plane::infrastructure::{connect_and_migrate, FlowInfrastructure};
+use crate::migrate_and_connect_for_test;
+use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId,
     WorkflowRevisionId,
@@ -44,7 +45,7 @@ use workflow_semantic_contract_descriptors::{descriptor_registry, workflow_step}
 pub(super) async fn exercise_workflow_semantic_contract_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let semantic_migration_state = database
         .fetch_one_as(

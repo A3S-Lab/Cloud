@@ -38,7 +38,7 @@ use std::sync::Mutex;
 pub(super) async fn exercise_connector_profile_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(
@@ -451,7 +451,7 @@ pub(super) async fn exercise_connector_profile_persistence(
 pub(super) async fn exercise_connector_application_and_materialization(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(
@@ -762,7 +762,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
 pub(super) async fn exercise_connector_execution_evidence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(

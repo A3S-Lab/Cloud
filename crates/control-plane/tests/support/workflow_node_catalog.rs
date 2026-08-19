@@ -16,7 +16,7 @@ pub(super) async fn exercise_workflow_node_catalog_reconnect(
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let (first, migration_count) = {
-        let executor = connect_and_migrate(&url, 4).await?;
+        let executor = migrate_and_connect_for_test(&url, 4).await?;
         let database = Database::new(PostgresDialect, executor.clone());
         let created_at = Utc::now();
         database
@@ -65,7 +65,7 @@ pub(super) async fn exercise_workflow_node_catalog_reconnect(
         )
     };
 
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     assert_eq!(
         database

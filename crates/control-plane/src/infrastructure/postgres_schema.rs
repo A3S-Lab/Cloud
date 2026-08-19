@@ -5,6 +5,7 @@ use uuid::Uuid;
 orm_table! {
     pub(crate) struct MigrationRecords => "a3s_orm_migrations" {
         version: String => "version",
+        checksum: String => "checksum",
     }
 }
 

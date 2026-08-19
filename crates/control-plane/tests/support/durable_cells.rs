@@ -114,7 +114,7 @@ struct DurableCellTenantFixture {
 pub(super) async fn exercise_durable_cell_application_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(
@@ -737,7 +737,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
 pub(super) async fn exercise_durable_cell_projection_process_death(
     postgres_url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&postgres_url, 8).await?;
+    let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let tenant = seed_durable_cell_tenant(&database).await?;
     let profile = DurableCellServiceProfile::parse_acl(DURABLE_CELL_SERVICE_PROFILE_ACL)?;

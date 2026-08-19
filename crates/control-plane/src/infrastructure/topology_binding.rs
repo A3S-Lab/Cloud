@@ -232,9 +232,12 @@ mod tests {
         let Ok(url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL") else {
             return;
         };
-        let executor = crate::infrastructure::connect_and_migrate(&url, 2)
+        crate::infrastructure::migrate_postgres(&url, 2)
             .await
-            .expect("PostgreSQL");
+            .expect("migrate PostgreSQL");
+        let executor = crate::infrastructure::connect_postgres(&url, 2)
+            .await
+            .expect("connect PostgreSQL");
         let name = format!("test-{}", uuid::Uuid::now_v7());
         let first = InfrastructureBinding::new(&name, "a3s.cloud.test-topology.v1", b"provider-a")
             .expect("first binding");

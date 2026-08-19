@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+default-run = "a3s-cloud-control-plane"
 
 [dependencies]
 a3s-acl.workspace = true

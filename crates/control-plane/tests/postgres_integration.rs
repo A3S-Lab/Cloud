@@ -10,7 +10,10 @@ use a3s_cloud_control_plane::config::{
     RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
     SourcesConfig,
 };
-use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
+use a3s_cloud_control_plane::infrastructure::{
+    connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
+    PostgresBootstrapError,
+};
 use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
@@ -35,9 +38,7 @@ use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
     SourceResolutionRequest,
 };
-use a3s_cloud_control_plane::{
-    build_application, infrastructure::connect_and_migrate, CloudConfig, ControlPlane,
-};
+use a3s_cloud_control_plane::{build_application, CloudConfig, ControlPlane};
 use a3s_event::{NatsConfig, StorageType};
 use a3s_flow::{
     FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation, WorkflowRunStatus,
@@ -54,6 +55,14 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+
+async fn migrate_and_connect_for_test(
+    url: &str,
+    max_connections: usize,
+) -> Result<PostgresExecutor, PostgresBootstrapError> {
+    migrate_postgres(url, max_connections).await?;
+    connect_postgres(url, max_connections).await
+}
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
@@ -426,6 +435,16 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_schema_migration_is_one_shot_and_service_startup_is_read_only() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_postgres_schema_authority)
+        .await
+        .expect("PostgreSQL one-shot schema authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_bound_execution_tasks_are_exact_node_scoped_and_fail_closed() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
@@ -524,7 +543,7 @@ async fn postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated() {
 }
 
 async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let repository = PostgresAuditRecordRepository::new(executor);
     let organization_id = OrganizationId::new();
@@ -652,7 +671,10 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
 async fn exercise_postgres_replica_set_foundation(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (left, right) = tokio::join!(connect_and_migrate(&url, 4), connect_and_migrate(&url, 4));
+    let (left, right) = tokio::join!(
+        migrate_and_connect_for_test(&url, 4),
+        migrate_and_connect_for_test(&url, 4)
+    );
     let executor = left?;
     right?;
     let database = Database::new(PostgresDialect, executor.clone());
@@ -872,6 +894,7 @@ where
 }
 
 async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    migrate_postgres(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
     let mut relay_config = config();
@@ -882,6 +905,7 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
 }
 
 async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    migrate_postgres(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
     let state = tempfile::tempdir()?;
@@ -974,6 +998,7 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
 }
 
 async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    migrate_postgres(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
     let mut worker_config = config();
@@ -1192,7 +1217,7 @@ impl FlowRuntime for ScheduledBootRuntime {
 }
 
 async fn exercise_boot_flow_task_manager(url: String) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let queue_options = QueueOptions::new()
         .with_poll_interval(Duration::from_millis(5))
         .with_lease_duration(Duration::from_millis(200));
@@ -1560,7 +1585,7 @@ async fn exercise_identity_migration_backfill(
 async fn exercise_postgres_hosted_draft_recovery(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let organization_id = OrganizationId::new();
     let created_at = Utc::now();
@@ -1595,6 +1620,154 @@ async fn exercise_postgres_hosted_draft_recovery(
         .await?;
 
     build_runs_support::exercise_hosted_build_run_persistence(&executor, &asset).await
+}
+
+async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let error = match connect_postgres(&url, 2).await {
+        Ok(_) => return Err("a serving process initialized an empty schema".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("run a3s-cloud-migrate before starting a serving process"),
+        "unexpected empty-schema admission error: {error}"
+    );
+
+    let admin = PostgresExecutor::connect_no_tls(&url, 2)?;
+    let admin_database = Database::new(PostgresDialect, admin);
+    let migration_table = admin_database
+        .fetch_one_as(sql_query::<Option<String>>(
+            "select to_regclass('public.a3s_orm_migrations')::text",
+        ))
+        .await?;
+    assert_eq!(
+        migration_table, None,
+        "a failed serving-process startup created the migration ledger"
+    );
+    let organization_table = admin_database
+        .fetch_one_as(sql_query::<Option<String>>(
+            "select to_regclass('public.organizations')::text",
+        ))
+        .await?;
+    assert_eq!(
+        organization_table, None,
+        "a failed serving-process startup changed the business schema"
+    );
+
+    let config_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/cloud.acl");
+    let mut left = tokio::process::Command::new(env!("CARGO_BIN_EXE_a3s-cloud-migrate"));
+    left.arg(&config_path).env("A3S_CLOUD_POSTGRES_URL", &url);
+    let mut right = tokio::process::Command::new(env!("CARGO_BIN_EXE_a3s-cloud-migrate"));
+    right.arg(&config_path).env("A3S_CLOUD_POSTGRES_URL", &url);
+    let (left, right) = tokio::join!(left.output(), right.output());
+    let mut outputs = Vec::new();
+    for migration in [left?, right?] {
+        if !migration.status.success() {
+            return Err(format!(
+                "one-shot migrator failed: {}",
+                String::from_utf8_lossy(&migration.stderr)
+            )
+            .into());
+        }
+        outputs.push(String::from_utf8(migration.stdout)?);
+    }
+    assert_eq!(
+        outputs
+            .iter()
+            .filter(|output| {
+                output.contains("A3S Cloud PostgreSQL migrations applied: 001")
+                    && output.contains("121")
+            })
+            .count(),
+        1,
+        "concurrent one-shot migrators returned unexpected apply evidence: {outputs:?}"
+    );
+    assert_eq!(
+        outputs
+            .iter()
+            .filter(|output| output.contains("schema is already up to date"))
+            .count(),
+        1,
+        "concurrent one-shot migrators did not converge to one replay: {outputs:?}"
+    );
+    let replay = migrate_postgres(&url, 4).await?;
+    assert!(
+        replay.is_up_to_date(),
+        "the A3S ORM migrator did not replay idempotently"
+    );
+
+    let executor = connect_postgres(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor);
+    let migration_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from a3s_orm_migrations where version <= '121'",
+        ))
+        .await?;
+    assert_eq!(migration_count, 121);
+    let required_checksum = database
+        .fetch_one_as(sql_query::<String>(
+            "select checksum from a3s_orm_migrations where version = '121'",
+        ))
+        .await?;
+
+    database
+        .execute(
+            sql_query::<()>("insert into a3s_orm_migrations (version, name, checksum) values (")
+                .bind("999")
+                .append(", ")
+                .bind("future compatible expansion")
+                .append(", ")
+                .bind("f".repeat(64))
+                .append(")"),
+        )
+        .await?;
+    connect_postgres(&url, 2)
+        .await
+        .expect("an old serving process must admit a compatible schema superset");
+
+    database
+        .execute(
+            sql_query::<()>("update a3s_orm_migrations set checksum = ")
+                .bind("0".repeat(64))
+                .append(" where version = '121'"),
+        )
+        .await?;
+    let error = match connect_postgres(&url, 2).await {
+        Ok(_) => return Err("a serving process admitted a changed required migration".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("required migration 121 has a checksum that does not match this Cloud build"),
+        "unexpected checksum admission error: {error}"
+    );
+
+    database
+        .execute(
+            sql_query::<()>("update a3s_orm_migrations set checksum = ")
+                .bind(required_checksum)
+                .append(" where version = '121'"),
+        )
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "delete from a3s_orm_migrations where version = '121'",
+        ))
+        .await?;
+    let error = match connect_postgres(&url, 2).await {
+        Ok(_) => return Err("a serving process admitted a missing required migration".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("required migration 121 is absent"),
+        "unexpected missing-migration admission error: {error}"
+    );
+    Ok(())
 }
 
 async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -1698,7 +1871,10 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .await?;
 
-    let (left, right) = tokio::join!(connect_and_migrate(&url, 4), connect_and_migrate(&url, 4));
+    let (left, right) = tokio::join!(
+        migrate_and_connect_for_test(&url, 4),
+        migrate_and_connect_for_test(&url, 4)
+    );
     let executor = left?;
     right?;
     let database = Database::new(PostgresDialect, executor.clone());
@@ -3828,7 +4004,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!((outbox_events, idempotency_records), (55, 41));
+    assert_eq!((outbox_events, idempotency_records), (57, 43));
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(

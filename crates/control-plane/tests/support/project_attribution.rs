@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 pub(super) async fn exercise_project_attribution_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(

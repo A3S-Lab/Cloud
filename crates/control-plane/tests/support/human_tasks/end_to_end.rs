@@ -1,7 +1,6 @@
 use super::SeedTransaction;
-use a3s_cloud_control_plane::infrastructure::{
-    connect_and_migrate, FlowInfrastructure, FlowOperationCoordinator,
-};
+use crate::migrate_and_connect_for_test;
+use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::forms::{
     AcceptedFormSubmission, CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged,
     FormPublicationRecord, FormRelease, FormReleaseContent, FormReleasePublished, FormSubmission,
@@ -69,7 +68,7 @@ struct Authorities {
 }
 
 pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResult<()> {
-    let executor = connect_and_migrate(&url, 8).await?;
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
     let authorities = Authorities {
         organization_id: OrganizationId::new(),
         project_id: ProjectId::new(),

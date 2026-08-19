@@ -5,12 +5,12 @@ mod fixture;
 #[path = "build_flow_process_death_runtime.rs"]
 mod runtime;
 
+use crate::migrate_and_connect_for_test;
 use a3s_cloud_contracts::{
     NodeBoxBuildCancelResult, NodeBoxBuildCancellation, NodeBoxBuildInspection,
     NodeBoxBuildOperationCancellation, NodeBoxBuildOperationRemoval, NodeBoxBuildPhase,
     NodeBoxBuildRemoveResult, NodeBoxBuildStartResult, NodeCommandResult,
 };
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::artifacts::{BuildRunStatus, IBuildRunRepository};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, NodeCommandId, OrganizationId,
@@ -69,7 +69,7 @@ impl ProbeMode {
 }
 
 pub async fn exercise_process_death_matrix(postgres_url: String) -> TestResult {
-    let executor = connect_and_migrate(&postgres_url, 8).await?;
+    let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
     let state = tempfile::tempdir()?;
     let fixture = setup_fixture(executor, postgres_url, state.path()).await?;
     runtime::postgres_flow_store(&fixture.postgres_url).await?;

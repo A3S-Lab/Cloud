@@ -1,9 +1,9 @@
+use crate::migrate_and_connect_for_test;
 use a3s_box_runtime::{BoxBuildPlan, BuildCachePolicy, BuildNetworkPolicy};
 use a3s_cloud_contracts::{
     NodeBoxBuildOutput, NodeBoxBuildRequest, NodeCommandEnvelope, NodeCommandPayload,
     RegistryCredentialMaterial, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
@@ -426,7 +426,7 @@ fn validate_public_evidence(
 }
 
 pub(super) async fn connect(url: &str) -> TestResult<PostgresExecutor> {
-    Ok(connect_and_migrate(url, 8).await?)
+    Ok(migrate_and_connect_for_test(url, 8).await?)
 }
 
 pub(super) async fn admit_artifact(

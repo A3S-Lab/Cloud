@@ -119,7 +119,7 @@ fn relay_composition_has_one_closed_dependency_set() {
         .expect("relay composition root");
 
     for required in [
-        "connect_and_migrate(",
+        "connect_postgres(",
         "event_publisher(",
         "build_outbox_relay(",
         "relay_readiness(",
@@ -269,6 +269,8 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
     }
     for forbidden in [
         "connect_and_migrate(",
+        "connect_postgres(",
+        "migrate_postgres(",
         "Database::new(",
         "sql_query!(",
         ".await",
@@ -279,6 +281,69 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
             "the adapter factory acquired I/O or persistence behavior: {forbidden}"
         );
     }
+}
+
+#[test]
+fn postgres_schema_mutation_has_one_non_serving_process_root() {
+    let application = include_str!("../../app.rs");
+    let server = include_str!("../../main.rs");
+    let migrator = include_str!("../../bin/a3s-cloud-migrate.rs");
+    let development = include_str!("../../../../../tools/dev/run_cloud.sh");
+    let persistence = include_str!("../../infrastructure/postgres.rs");
+
+    assert_eq!(
+        application.matches("connect_postgres(").count(),
+        2,
+        "API/Worker and Relay must share the read-only schema-admitting connection path"
+    );
+    for (name, source) in [
+        ("serving application", application),
+        ("HTTP server", server),
+    ] {
+        for forbidden in ["migrate_postgres(", "Migrator::new("] {
+            assert!(
+                !source.contains(forbidden),
+                "{name} acquired schema mutation authority through {forbidden}"
+            );
+        }
+    }
+
+    for required in [
+        "migrate_postgres(&postgres_url",
+        "report.is_up_to_date()",
+        "report.applied.join",
+    ] {
+        assert!(
+            migrator.contains(required),
+            "one-shot migrator lost required behavior {required}"
+        );
+    }
+    for forbidden in [
+        "build_application(",
+        "AxumAdapter",
+        ".serve",
+        "connect_postgres(",
+    ] {
+        assert!(
+            !migrator.contains(forbidden),
+            "one-shot migrator became a serving process through {forbidden}"
+        );
+    }
+    assert_eq!(
+        persistence.matches("Migrator::new(").count(),
+        1,
+        "Cloud must delegate schema execution to exactly one A3S ORM migrator"
+    );
+    let migration_position = development
+        .find("\"$migration_bin\" config/cloud.acl")
+        .expect("development launcher must run the one-shot migration");
+    let serving_position = development
+        .find("exec \"$api_bin\" config/cloud.acl")
+        .expect("development launcher must start the serving process");
+    assert!(
+        migration_position < serving_position,
+        "development startup must migrate before it starts serving"
+    );
 }
 
 #[test]

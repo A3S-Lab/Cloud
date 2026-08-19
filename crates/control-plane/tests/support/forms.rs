@@ -1,4 +1,4 @@
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use crate::migrate_and_connect_for_test;
 use a3s_cloud_control_plane::modules::forms::{
     CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged, FormPublicationRecord,
     FormRelease, FormReleaseContent, FormReleasePublished, IFormRepository, PostgresFormRepository,
@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub(super) async fn exercise_form_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let organization_id = OrganizationId::new();
     let other_organization_id = OrganizationId::new();

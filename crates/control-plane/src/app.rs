@@ -217,7 +217,7 @@ use crate::{
         SecurityProviderKind,
     },
     infrastructure::{
-        bind_infrastructure, connect_and_migrate, postgres_health, FlowReadInfrastructure,
+        bind_infrastructure, connect_postgres, postgres_health, FlowReadInfrastructure,
         FlowRuntimeRouter, InfrastructureBinding, PostgresBootstrapError,
     },
     CloudConfig,
@@ -365,7 +365,7 @@ async fn build_api_worker_application(
     let run_operations = config.server.role.runs_workers();
     let run_relay = config.server.role.runs_relay();
     let postgres_url = config.postgres_url()?;
-    let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
+    let executor = connect_postgres(&postgres_url, config.postgres.max_connections).await?;
     let object_storage = object_storage(&config)?;
     if !object_storage
         .health()
@@ -1402,7 +1402,7 @@ async fn build_relay_application(
     config: CloudConfig,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let postgres_url = config.postgres_url()?;
-    let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
+    let executor = connect_postgres(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
     let RelayPostgresAdapters {
         memberships,

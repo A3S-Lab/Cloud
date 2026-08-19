@@ -13,7 +13,7 @@ const REVOKED_INVITEE_TOKEN: &str =
 pub async fn exercise_membership_invitation_persistence(
     postgres_url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&postgres_url, 8).await?;
+    let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
     let database = Database::new(PostgresDialect, executor);
     let _postgres_url = EnvironmentOverride::set(POSTGRES_URL_ENV, &postgres_url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_TOKEN_ENV, BOOTSTRAP_TOKEN_VALUE);

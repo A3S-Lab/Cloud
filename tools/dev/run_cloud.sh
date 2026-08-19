@@ -68,7 +68,9 @@ if [[ $skip_prepare != true ]]; then
   (cd "$repository_root" && cargo build --locked -p a3s-cloud-control-plane)
 fi
 api_bin="${A3S_CLOUD_DEV_API_BIN:-$target_directory/debug/a3s-cloud-control-plane}"
+migration_bin="${A3S_CLOUD_DEV_MIGRATION_BIN:-$target_directory/debug/a3s-cloud-migrate}"
 cd "$repository_root"
+"$migration_bin" config/cloud.acl
 printf '%s\n' \
   'A3S Cloud control-plane API is starting:' \
   '  API: http://127.0.0.1:8080/api/v1'

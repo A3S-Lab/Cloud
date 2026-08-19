@@ -1,4 +1,6 @@
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use a3s_cloud_control_plane::infrastructure::{
+    connect_postgres, migrate_postgres, PostgresBootstrapError,
+};
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::search::{
@@ -10,6 +12,14 @@ use chrono::Utc;
 use uuid::Uuid;
 
 const POSTGRES_URL_ENV: &str = "A3S_CLOUD_TEST_POSTGRES_URL";
+
+async fn migrate_and_connect_for_test(
+    url: &str,
+    max_connections: usize,
+) -> Result<PostgresExecutor, PostgresBootstrapError> {
+    migrate_postgres(url, max_connections).await?;
+    connect_postgres(url, max_connections).await
+}
 
 #[tokio::test]
 async fn postgres_search_uses_registered_tenant_projections(
@@ -49,7 +59,7 @@ async fn postgres_search_uses_registered_tenant_projections(
 }
 
 async fn exercise_search(database_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(database_url, 4).await?;
+    let executor = migrate_and_connect_for_test(database_url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let allowed_organization = OrganizationId::new();
     let denied_organization = OrganizationId::new();

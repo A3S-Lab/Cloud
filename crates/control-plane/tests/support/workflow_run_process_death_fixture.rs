@@ -1,4 +1,4 @@
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use crate::migrate_and_connect_for_test;
 use a3s_cloud_control_plane::modules::executions::domain::events::ExecutionTemplatePublished;
 use a3s_cloud_control_plane::modules::executions::domain::{
     CreateExecutionTemplateRevision, ExecutionTemplateDefinition, ExecutionTemplateRevision,
@@ -75,7 +75,7 @@ pub(super) struct ProbeDocument {
 }
 
 pub(super) async fn setup_fixture(postgres_url: String, state_dir: &Path) -> TestResult<Fixture> {
-    let executor = connect_and_migrate(&postgres_url, 8).await?;
+    let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();

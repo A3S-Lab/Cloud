@@ -223,7 +223,7 @@ async fn exercise_oidc_repository_authority(
 pub async fn exercise_external_oidc_identity_foundation(
     postgres_url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&postgres_url, 4).await?;
+    let executor = migrate_and_connect_for_test(&postgres_url, 4).await?;
     exercise_oidc_repository_authority(&executor).await?;
     let database = Database::new(PostgresDialect, executor);
     let organization_id = Uuid::now_v7();

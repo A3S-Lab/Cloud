@@ -1,5 +1,5 @@
+use crate::migrate_and_connect_for_test;
 use a3s_cloud_contracts::{artifact_uri, CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::executions::domain::events::{
     ExecutionCancellationRequested, ExecutionRequested, ExecutionTemplatePublished,
 };
@@ -159,7 +159,7 @@ pub async fn exercise_execution_persistence(
 }
 
 pub async fn exercise_bound_execution_persistence(url: String) -> TestResult {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
         .fetch_one_as(sql_query::<(i64, String)>(

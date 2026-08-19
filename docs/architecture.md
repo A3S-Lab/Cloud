@@ -429,6 +429,12 @@ externally registered route set:
 | `worker` | Flow advancement, reconciliation, scheduling, and cleanup; HTTP exposes process identity and health only |
 | `relay` | Transactional Outbox delivery through A3S Event; initializes only PostgreSQL, NATS, the existing notification projector, and process-status HTTP |
 
+`a3s-cloud-migrate` is deliberately outside this role matrix. It is a
+terminating deployment process with exactly one capability: apply the compiled
+Cloud SQL manifest through the A3S ORM migrator. It cannot serve HTTP, advance
+Flow, publish events, construct repositories, or initialize providers. A
+serving role cannot acquire migration authority by changing `server.role`.
+
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
 versioned components. Cloud ships no management Web UI or static SPA server;
@@ -472,8 +478,11 @@ Outbox construction remain behind their existing role conditions. The factory
 contains no connection, migration, SQL, async task, cache, or domain behavior.
 A source architecture gate rejects direct repository constructors in the
 process root and requires exactly one constructor rule per concrete adapter.
-Production HA, migration jobs, installation, and dependency orchestration
-remain the substantive open `H0.4` boundaries.
+Production HA, migration-job packaging, installation, and dependency
+orchestration remain substantive `H0.4` boundaries. The one-shot migration
+executable and serving-process admission boundary are implemented; Box
+packaging, separate least-privilege PostgreSQL principals, upgrade/rollback
+choreography, and retained clean-Linux evidence remain open.
 
 Gateway certificate and managed-state paths describe the target Gateway
 runtime, not the control-plane host. ACL admission and snapshot compilation
@@ -790,6 +799,23 @@ relational reads, writes, joins, locks, and transactions use typed A3S ORM
 tables, builders, and expressions. Schema migrations evolve that authority;
 repositories preserve aggregate boundaries and never expose database records
 as domain entities.
+
+Schema execution has one process root and one mechanism. The terminating
+`a3s-cloud-migrate` executable passes the compiled Cloud manifest to A3S ORM;
+ORM alone validates versions, takes the PostgreSQL advisory transaction lock,
+applies pending SQL atomically, and writes version/checksum records. API,
+Worker, Relay, and `all` never invoke the migrator. Their PostgreSQL connection
+path reads the ledger and requires every migration compiled into that binary
+with the exact checksum before constructing product capabilities.
+
+The admission rule is intentionally subset-based: an older serving binary may
+observe additional later records while every release change remains
+expand-compatible, which permits old and new replicas to overlap. Missing or
+changed required records fail startup and readiness. A later contract phase
+may remove compatibility only after old replicas are drained; the presence of
+a future record is not itself proof that a breaking change is safe. The
+complete operator contract is maintained in
+[`postgres-schema-management.md`](postgres-schema-management.md).
 
 Commands use optimistic versions for aggregate conflicts and scoped locks only
 where a shared invariant requires serialization. Transactions are short and do
@@ -1450,6 +1476,11 @@ to call the highly available profile complete.
 Cloud's production installation is ACL-native and Box-hosted. It packages the
 same Cloud roles, migrations, Node Agent, Gateway, and required dependencies
 without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
+PostgreSQL must become healthy before the one-shot migrator runs; serving roles
+start only after that job exits successfully. A duplicate job is harmless
+because both instances converge through the A3S ORM lock and ledger. Production
+completion still requires distinct schema-owner and serving principals plus
+retained upgrade, rollback, failover, backup, and restore evidence.
 
 ### 15.2 Failure behavior
 
@@ -1477,6 +1508,8 @@ their worker futures own behavior while the process shell alone owns lifetime.
 | Workflow plan commit or child-dispatch ambiguity | Replay resolves the same plan digest and exact child identity; it never compiles a replacement plan or starts a second child |
 | Harness provider batch, cancellation, or checkpoint ambiguity | The shared Node Agent journal and provider receipt replay the same generation; one semantic sequence advances and unsupported recovery remains explicit |
 | Evolution evaluation or promotion ambiguity | The exact dataset, suite, candidate, decision, and owning-context Operation are adopted; no telemetry signal or retry starts another promotion |
+| Empty, behind, or altered PostgreSQL schema | Every serving role fails before constructing product capabilities; only the one-shot migrator may change the schema |
+| Duplicate migration jobs | A3S ORM serializes them; one applies each pending version and every other exact runner returns an idempotent up-to-date result |
 | PostgreSQL unavailability | New mutations and authoritative progress stop safely; no cache is promoted to authority |
 | Object backend unavailability | Metadata remains readable where safe; content-dependent work blocks explicitly and resumes |
 | Durable Cell storage probe or reachability failure | The provider fails readiness or self-fences writes; no mutation is acknowledged from uncertain ownership and Cloud does not substitute PostgreSQL state |

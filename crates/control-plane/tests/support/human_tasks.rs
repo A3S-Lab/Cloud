@@ -1,5 +1,5 @@
+use crate::migrate_and_connect_for_test;
 use a3s_cloud_contracts::DomainEventEnvelope;
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::forms::{
     AcceptedFormSubmission, FormSubmission, IFormSubmissionRepository,
     PostgresFormSubmissionRepository,
@@ -67,7 +67,7 @@ fn authority_fixture() -> Authorities {
 pub(super) async fn exercise_human_task_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let authorities = authority_fixture();
     seed_authorities(&executor, authorities).await?;
 
@@ -402,7 +402,7 @@ pub(super) async fn exercise_human_task_persistence(
 pub(super) async fn exercise_workflow_execution_persistence(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
     let authorities = authority_fixture();
     seed_authorities(&executor, authorities).await?;
     super::executions_support::exercise_workflow_execution_persistence(
