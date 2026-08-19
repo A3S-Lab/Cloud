@@ -248,7 +248,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "7.0.1"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=db0165c0b99fa3ad2b5b45852653d4bc93f26880#db0165c0b99fa3ad2b5b45852653d4bc93f26880"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=6b0fa2f9f2716817b93f42a23a3942be6634f1dc#6b0fa2f9f2716817b93f42a23a3942be6634f1dc"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -342,8 +342,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-flow"
-version = "1.0.0-rc.1"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=f6efdf777325dc407bea429674837d24bb77787a#f6efdf777325dc407bea429674837d24bb77787a"
+version = "1.0.0"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=9a4d41d6eb2d08074483ceac349b4727c5874edb#9a4d41d6eb2d08074483ceac349b4727c5874edb"
 dependencies = [
  "a3s-boot",
  "a3s-orm",
@@ -441,8 +441,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-orm"
-version = "0.3.0"
-source = "git+https://github.com/A3S-Lab/ORM.git?rev=f178da81872eeccb8aa62d3a86617b95b791aa32#f178da81872eeccb8aa62d3a86617b95b791aa32"
+version = "0.3.1"
+source = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5"
 dependencies = [
  "async-trait",
  "bytes",
@@ -526,7 +526,7 @@ dependencies = [
 [[package]]
 name = "a3s-use-core"
 version = "0.2.3"
-source = "git+https://github.com/A3S-Lab/Use.git?rev=5efbd038ab70deed9677e90ed5049e348197c761#5efbd038ab70deed9677e90ed5049e348197c761"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=8d45bd43cb19fe3813b559c8839051406830ce4b#8d45bd43cb19fe3813b559c8839051406830ce4b"
 dependencies = [
  "async-trait",
  "olpc-cjson",
@@ -544,7 +544,7 @@ dependencies = [
 [[package]]
 name = "a3s-use-extension"
 version = "0.3.2"
-source = "git+https://github.com/A3S-Lab/Use.git?rev=5efbd038ab70deed9677e90ed5049e348197c761#5efbd038ab70deed9677e90ed5049e348197c761"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=8d45bd43cb19fe3813b559c8839051406830ce4b#8d45bd43cb19fe3813b559c8839051406830ce4b"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-use-core",

@@ -43,7 +43,7 @@ existing infrastructure and Operations integration.
 
 The dependency target is one Flow revision per Cloud build. At acceptance,
 `a3s-code-core` still brought Flow `0.11.0` transitively while Cloud pinned
-Flow `0.13.1`. The Flow `1.0.0-rc.1` qualification closes that compatibility
+Flow `0.13.1`. The Flow `1.0.0` qualification closes that compatibility
 debt: Cloud and Code `7.0.1` now resolve the same exact Flow revision. The
 upgraded `F0` composition still requires re-certification; Cloud must not fork,
 patch, or copy Code to hide future mismatches.

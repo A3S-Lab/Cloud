@@ -1563,9 +1563,9 @@ resolve A3S ACL `0.3.0` from the exact ACL revision
 `5317e166222495585909d81f2caffdca90273c99`; resolving that same version from
 both crates.io and Git is rejected by a contract test. One upstream version
 debt remains explicit: A3S Use/Search still require ACL `0.2.2`. Cloud and Code
-now resolve the same exact Flow `1.0.0-rc.1` candidate, closing the former Flow
+now resolve the same exact Flow `1.0.0` release, closing the former Flow
 `0.11.0`/`0.13.1` split without copying or forking the implementation. The
-candidate still requires the complete `F0` re-certification before that gate
+upgraded lock still requires the complete `F0` re-certification before that gate
 can return to `Verified`.
 
 Evolution follows these rules:
