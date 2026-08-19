@@ -1,9 +1,9 @@
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
-    lookup_workflow_variable_path, materialize_workflow_variables, WorkflowRunInput,
-    WorkflowVariableReadMode, WORKFLOW_RUN_INPUT_MAX_BYTES,
+    materialize_workflow_variables, project_workflow_variable_reads, WorkflowRunInput,
+    WORKFLOW_RUN_INPUT_MAX_BYTES,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub(super) struct WorkflowStepVariableProjection {
@@ -24,53 +24,24 @@ pub(super) fn effective_input(
         });
     };
     let contract = contract.restore()?;
-    let reads = contract
+    if !contract
         .spec()
         .reads
         .iter()
-        .filter(|read| read.consumer_step_id == step_id)
-        .collect::<Vec<_>>();
-    if reads.is_empty() {
+        .any(|read| read.consumer_step_id == step_id)
+    {
         return Ok(WorkflowStepVariableProjection {
             input: legacy_input,
             authoritative: false,
         });
     }
-
     let values = materialize_workflow_variables(input, &contract, outputs)?;
-    let mut ports = Map::new();
-    for read in reads {
-        let Some(variable) = values.get(&read.variable) else {
-            if read.required {
-                return Err(format!(
-                    "required Workflow variable read {:?} is unavailable",
-                    read.id
-                ));
-            }
-            continue;
-        };
-        let value = if read.mode == WorkflowVariableReadMode::OpaqueReference {
-            variable
-        } else if let Some(value) = lookup_workflow_variable_path(variable, &read.path) {
-            value
-        } else if read.required {
-            return Err(format!(
-                "Workflow variable read {:?} path is unavailable",
-                read.id
-            ));
-        } else {
-            continue;
-        };
-        if !read.expected_type.matches_json_value(value) {
-            return Err(format!(
-                "Workflow variable read {:?} value does not match {}",
-                read.id,
-                read.expected_type.as_str()
-            ));
-        }
-        ports.insert(read.target_port.clone(), value.clone());
-    }
-    let projected = Value::Object(ports);
+    let Some(projected) = project_workflow_variable_reads(&contract, step_id, &values)? else {
+        return Ok(WorkflowStepVariableProjection {
+            input: legacy_input,
+            authoritative: false,
+        });
+    };
     canonical_json_bounded(
         &projected,
         WORKFLOW_RUN_INPUT_MAX_BYTES,
@@ -91,7 +62,7 @@ mod tests {
         WorkflowVariableAssignment, WorkflowVariableContract, WorkflowVariableContractSpec,
         WorkflowVariableDeclaration, WorkflowVariableDefault, WorkflowVariableDefaults,
         WorkflowVariableDefaultsSpec, WorkflowVariableMutationMode, WorkflowVariableRead,
-        WorkflowVariableScope, WorkflowVariableStorageClass,
+        WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
         WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
     };
 

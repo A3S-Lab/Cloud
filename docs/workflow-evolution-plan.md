@@ -257,9 +257,10 @@ distinguishes materialized from unavailable values, and redacts Secret
 references. Pre-Flow immutable inputs may appear at sequence zero; Plan v1
 conflicts.
 
-Composite policy and exact child identity are implemented, but region
-frames/exports, deterministic result materialization, and Flow-backed
-Iteration/Loop dispatch remain fail-closed. Applications-owned variables,
+Composite policy, exact child identity, and the component-only deterministic
+frame/export reducer are implemented, but Flow-backed Iteration/Loop dispatch,
+ordered region reconstruction, and child lifecycle remain fail-closed.
+Applications-owned variables,
 Answer/error semantics, business-service and remaining Agent/MCP/model/Tool
 capability dispatch, compensation, expanded cross-surface evidence, and public
 Workflow availability remain open. These foundations add no table, cache,
@@ -279,12 +280,13 @@ permits the optional exact default-material child, and migration `108` permits
 the optional exact composite-region child. `cloud.workflow.plan.v2` pins every
 exact descriptor plus the semantic, variable, and optional composite-region
 digests. Legacy Plan v1 remains byte-stable and executable. Plan v2 executes
-the first typed-variable subset plus digest-bound defaults, and authorized
-inspection reads that same materialization from immutable input and Flow
-history. Runtime fails closed for composite-local/export semantics,
-Iteration/Loop dispatch, and Applications-owned reads/writes. Typed error
-branches/fallback and ordered Answer frames also remain unimplemented parts of
-`W0.3`.
+the first typed-variable subset plus digest-bound defaults. The pure composite
+frame component materializes local inputs, assignments, Run updates, and
+explicit exports, while authorized inspection reads parent materialization
+from immutable input and Flow history. Runtime still fails closed for
+Flow-backed Iteration/Loop dispatch and Applications-owned reads/writes. Typed
+error branches/fallback and ordered Answer frames also remain unimplemented
+parts of `W0.3`.
 
 ### 4.3 Compiler rules
 

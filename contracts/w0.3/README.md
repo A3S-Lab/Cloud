@@ -48,7 +48,10 @@ only each default digest; the companion revision child supplies exact bounded
 canonical JSON, must cover the digest-backed declarations exactly, participates
 in the semantic-contract-set digest, and is copied into immutable Run v2 input.
 The shared execution/inspection materializer applies it only when the declared
-source value is absent. Composite frames/exports and Applications port dispatch remain open.
+source value is absent. The component-only deterministic composite frame now
+materializes region-local input and reduces child output through declared
+assignments, Run updates, and exports. Flow-backed dispatch and Applications
+port dispatch remain open.
 No mutable variable table, event log, scheduler, queue, Flow history shape, or
 existing Workflow replay behavior was added.
 
@@ -76,11 +79,18 @@ readable. The semantic-contract-set digest, Plan v2
 digest. REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP
 only transport that bounded material as optional `compositeRegionsAcl`.
 
-This slice is execution-policy and child-binding authority, not Iteration or
-Loop execution. Runtime still rejects `subworkflow` steps until Workflow
-compiles region frames and delegates their durable scheduling, replay,
-cancellation, and child linkage to A3S Flow. No mutable region store, scheduler,
-queue, worker, event history, or Flow change was added.
+The component-only `cloud.workflow.composite-frame.v1` and
+`cloud.workflow.composite-frame-result.v1` runtime values bind the exact Plan,
+variable/composite digests, zero-based bounded ordinal, and child
+WorkflowRevision. They deterministically project child input and reduce bounded
+child output through one pre-write assignment snapshot, Run updates, and
+explicit exports. These JSON values are runtime state, not product
+configuration; the authorizing contracts remain A3S ACL.
+
+This is still not Iteration or Loop execution. Runtime rejects `subworkflow`
+until Workflow delegates durable frame scheduling, replay, cancellation,
+ordered result reconstruction, and child linkage to A3S Flow. No mutable region
+store, scheduler, queue, worker, event history, or Flow change was added.
 
 ## Finite Execution
 

@@ -26,6 +26,3 @@ pub use workflow_run_variables::{
     WorkflowRunVariableInspection, WorkflowRunVariableState,
     WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
 };
-pub(crate) use workflow_run_variables::{
-    lookup_workflow_variable_path, materialize_workflow_variables,
-};

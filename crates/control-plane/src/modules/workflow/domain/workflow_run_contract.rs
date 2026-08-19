@@ -816,10 +816,7 @@ pub(crate) fn validate_runtime_variable_contract(
     plan: &WorkflowPlan,
 ) -> Result<(), String> {
     for declaration in &contract.spec().declarations {
-        if matches!(
-            declaration.scope,
-            WorkflowVariableScope::CompositeLocal | WorkflowVariableScope::Application
-        ) {
+        if declaration.scope == WorkflowVariableScope::Application {
             return Err(format!(
                 "WorkflowRun runtime v2 does not execute {} variable {:?}",
                 declaration.scope.as_str(),
@@ -885,9 +882,6 @@ pub(crate) fn validate_runtime_variable_contract(
                 read.consumer_step_id
             ));
         }
-    }
-    if !contract.spec().exports.is_empty() {
-        return Err("WorkflowRun runtime v2 does not execute composite variable exports".into());
     }
     Ok(())
 }
