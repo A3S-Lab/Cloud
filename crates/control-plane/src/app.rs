@@ -6,8 +6,7 @@ use crate::modules::agents::{
     AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
     CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionChangeSetHandler,
     GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository,
-    ListAgentConversationsHandler, ListAgentExecutionsHandler, PostgresAgentRepository,
-    StartAgentExecutionHandler,
+    ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -17,29 +16,24 @@ use crate::modules::artifacts::{
     IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver,
     INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
-    PostgresBuildRunRepository, RetryBuildRunHandler, SourceBuildInputPreparer,
-    VaultBuildEvidenceSigner,
+    RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 use crate::modules::assets::{
     AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, ArchiveAssetHandler,
     AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
     AssetsModule, BackupAssetGitRepositoryHandler, BindMcpServiceProfileHandler,
     CreateAssetHandler, CreateAssetReleaseHandler, GetAssetHandler, GetAssetReleaseHandler,
-    GetMcpServiceProfileHandler, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
-    IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
-    LocalAssetGitRepository, McpServiceProfileApplicationService, PostgresAssetRepository,
+    GetMcpServiceProfileHandler, IAssetGitRepository, IAssetRepository, ListAssetReleasesHandler,
+    ListAssetsHandler, LocalAssetGitRepository, McpServiceProfileApplicationService,
     ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
     UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
-use crate::modules::audit::{
-    AuditModule, IAuditRecordRepository, ListAuditRecordsHandler, PostgresAuditRecordRepository,
-};
+use crate::modules::audit::{AuditModule, IAuditRecordRepository, ListAuditRecordsHandler};
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer, ConnectorsModule,
     CreateConnectorProfileHandler, GetConnectorProfileHandler, GetConnectorRevisionHandler,
     IConnectorProfileRepository, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
-    PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
 };
 use crate::modules::data::{
@@ -51,12 +45,11 @@ use crate::modules::durable_cells::{
     GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
     ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
     PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
     StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
-    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
+    IEdgeRepository, IMcpCredentialLifecycleRepository,
 };
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -77,21 +70,19 @@ use crate::modules::edge::{
     McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
     McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    PostgresEdgeRepository, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
-    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    PublishRouteHandler, ReviseMcpRoutePolicyHandler, RevokeDomainClaimHandler,
+    RevokeMcpCredentialHandler, RotateMcpCredentialHandler, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
     ExecutionFlowRuntime, ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule,
     GetExecutionHandler, GetExecutionTemplateHandler, IExecutionRepository,
     IExecutionTemplateRepository, IWorkflowExecutionPort, ListExecutionTemplatesHandler,
-    ListExecutionsHandler, PostgresExecutionRepository, PostgresExecutionTemplateRepository,
-    WorkflowExecutionApplicationService,
+    ListExecutionsHandler, WorkflowExecutionApplicationService,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
-    INodeRepository, INodeSchedulingRepository,
+    INodeControlRepository, INodePoolRepository, INodeRepository,
 };
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
@@ -100,15 +91,14 @@ use crate::modules::fleet::{
     IGatewayAcknowledgementProjector, IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler,
     ListNodePoolsHandler, ListNodesHandler, LocalCertificateAuthority, LocalKeyEncryptionService,
     LogChunkObjectStore, LogCompactionWorker, LogRetentionWorker, ManageNodePoolHandler,
-    NodeControlApi, NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
+    NodeControlApi, NodeControlServer, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
     VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::forms::{
     CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
     IFormRepository, IFormSemanticCore, ListFormDraftsHandler, ListFormReleasesHandler,
-    NativeFormSemanticCore, PostgresFormRepository, PublishFormReleaseHandler,
-    ReviseFormDraftHandler,
+    NativeFormSemanticCore, PublishFormReleaseHandler, ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
@@ -126,25 +116,24 @@ use crate::modules::identity::{
     GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
     ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
     ListOrganizationsHandler, ListResourceGrantsHandler, OpenIdConnectProviderService,
-    PostgresIdentityRepository, RevokeApiTokenHandler, RevokeMembershipHandler,
-    RevokeMembershipInvitationHandler, RevokeResourceGrantHandler,
+    RevokeApiTokenHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
+    RevokeResourceGrantHandler,
 };
 use crate::modules::integration_events::{
-    A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
-    PostgresOutboxRepository,
+    A3sEventPublisher, EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay,
+    OutboxRelayConfig,
 };
 use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateOutboundNotificationSubscriptionHandler,
     GetNotificationHandler, GetOutboundNotificationSubscriptionHandler, INotificationRepository,
-    IOutboundNotificationDeliveryRepository, IOutboundNotificationDispatcher,
-    IOutboundNotificationRepository, ListNotificationsHandler,
+    IOutboundNotificationDispatcher, IOutboundNotificationRepository, ListNotificationsHandler,
     ListOutboundNotificationSubscriptionsHandler, MarkNotificationReadHandler, NotificationsModule,
-    OutboundNotificationDispatcher, OutboxNotificationProjector, PostgresNotificationRepository,
+    OutboundNotificationDispatcher, OutboxNotificationProjector,
     RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
-    OperationsModule, PostgresOperationRepository, ReconcileOperationsHandler,
+    OperationsModule, ReconcileOperationsHandler,
 };
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::domain::services::{
@@ -153,22 +142,19 @@ use crate::modules::plugins::domain::services::{
 use crate::modules::plugins::{
     A3sUsePluginRegistryCatalog, EnrollPluginRegistryHandler, GetPluginRegistryHandler,
     InspectCachedPluginCatalogHandler, InspectPluginCatalogHandler, ListPluginRegistriesHandler,
-    PluginTrustRootObjectStore, PluginsModule, PostgresPluginRegistryRepository,
-    SearchCachedPluginCatalogHandler, SearchPluginCatalogHandler,
+    PluginTrustRootObjectStore, PluginsModule, SearchCachedPluginCatalogHandler,
+    SearchPluginCatalogHandler,
 };
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, GetProjectAttributionHandler,
-    ListEnvironmentsHandler, ListProjectsHandler, PostgresProjectsRepository, ProjectsModule,
-    UpdateProjectAttributionHandler,
+    ListEnvironmentsHandler, ListProjectsHandler, ProjectsModule, UpdateProjectAttributionHandler,
 };
-use crate::modules::search::{
-    ISearchRepository, PostgresSearchRepository, SearchModule, SearchResourcesHandler,
-};
+use crate::modules::search::{ISearchRepository, SearchModule, SearchResourcesHandler};
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::secrets::{
-    CreateSecretHandler, GetSecretHandler, ListSecretsHandler, PostgresSecretRepository,
-    RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
+    CreateSecretHandler, GetSecretHandler, ListSecretsHandler, RevokeSecretVersionHandler,
+    RotateSecretHandler, SecretsModule,
 };
 use crate::modules::sources::domain::{
     IGithubAppAuthorizationService, IGithubConnectionAuthorityService, IGithubConnectionRepository,
@@ -182,10 +168,9 @@ use crate::modules::sources::{
     DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
     GithubAppClient, GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
     GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
-    ListSourceRevisionsHandler, PostgresGithubConnectionRepository,
-    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
-    PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
-    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
+    ListSourceRevisionsHandler, PrepareGithubConnectionOauthHandler,
+    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
+    RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
@@ -200,21 +185,12 @@ use crate::modules::workflow::{
     IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
     ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
     ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
-    ListWorkflowRunsHandler, PostgresHumanTaskRepository, PostgresOntologyRepository,
-    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
-    PostgresWorkflowRunRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
+    ListWorkflowRunsHandler, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
     StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler, WorkflowModule,
     WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
     WorkflowRunVariableReader,
 };
-use crate::modules::workloads::domain::repositories::IDeploymentFlowWorkloadRepository;
-use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
-use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
-use crate::modules::workloads::domain::repositories::IWorkloadReplicaDeploymentRepository;
-use crate::modules::workloads::domain::repositories::IWorkloadReplicaEvacuationRepository;
-use crate::modules::workloads::domain::repositories::IWorkloadReplicaRetirementRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
-use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{
     IDeploymentRouteUpdater, IOciArtifactResolver, IWorkloadPrestartGate,
 };
@@ -223,8 +199,7 @@ use crate::modules::workloads::{
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeControl, ListWorkloadsHandler, NodeDrainEvacuationReconciler,
-    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
@@ -257,6 +232,10 @@ use a3s_orm::PostgresExecutor;
 use a3s_use_extension::MAX_BOOTSTRAP_ROOT_BYTES;
 use std::sync::Arc;
 use std::time::Duration;
+
+mod postgres_adapters;
+
+use postgres_adapters::{ApiWorkerPostgresAdapters, PostgresAdapterFactory, RelayPostgresAdapters};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ControlPlaneStartupError {
@@ -445,48 +424,36 @@ async fn build_api_worker_application(
             .subnamespace("logs")
             .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
     ));
-    let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
-    let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
-    let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
-    let memberships: Arc<dyn IMembershipRepository> = identity.clone();
-    let membership_invitations: Arc<dyn IMembershipInvitationRepository> = identity.clone();
-    let resource_grants: Arc<dyn IResourceGrantRepository> = identity.clone();
-    let oidc_identity: Arc<dyn IOidcIdentityRepository> = identity.clone();
-    let resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository> =
-        identity;
-    let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
-    let ontologies: Arc<dyn IOntologyRepository> =
-        Arc::new(PostgresOntologyRepository::new(executor.clone()));
-    let workflow_definitions: Arc<dyn IWorkflowDefinitionRepository> =
-        Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
-    let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
-        Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
-    let workflow_runs: Arc<dyn IWorkflowRunRepository> =
-        Arc::new(PostgresWorkflowRunRepository::new(executor.clone()));
-    let forms: Arc<dyn IFormRepository> = Arc::new(PostgresFormRepository::new(executor.clone()));
-    let human_tasks: Arc<dyn IHumanTaskRepository> =
-        Arc::new(PostgresHumanTaskRepository::new(executor.clone()));
+    let postgres_adapters = PostgresAdapterFactory::new(executor.clone());
+    let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
+    let organizations = adapters.identity.organizations;
+    let api_tokens = adapters.identity.api_tokens;
+    let memberships = adapters.identity.memberships;
+    let membership_invitations = adapters.identity.membership_invitations;
+    let resource_grants = adapters.identity.resource_grants;
+    let oidc_identity = adapters.identity.oidc_identity;
+    let resource_authorization_decisions = adapters.identity.resource_authorization_decisions;
+    let projects = adapters.projects.projects;
+    let environments = adapters.projects.environments;
+    let ontologies = adapters.workflow.ontologies;
+    let workflow_definitions = adapters.workflow.workflow_definitions;
+    let workflow_goals = adapters.workflow.workflow_goals;
+    let workflow_runs = adapters.workflow.workflow_runs;
+    let forms = adapters.workflow.forms;
+    let human_tasks = adapters.workflow.human_tasks;
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
-    let search: Arc<dyn ISearchRepository> =
-        Arc::new(PostgresSearchRepository::new(executor.clone()));
-    let audit_records: Arc<dyn IAuditRecordRepository> =
-        Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
-    let notification_repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
-    let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
-    let outbound_notifications: Arc<dyn IOutboundNotificationRepository> =
-        notification_repository.clone();
-    let outbound_notification_deliveries: Arc<dyn IOutboundNotificationDeliveryRepository> =
-        notification_repository;
-    let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
-    let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
-    let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
-        plugin_repository;
-    let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let nodes: Arc<dyn INodeRepository> = node_repository.clone();
-    let scheduling_nodes: Arc<dyn INodeSchedulingRepository> = node_repository.clone();
-    let node_pools: Arc<dyn INodePoolRepository> = node_repository.clone();
-    let draining_nodes: Arc<dyn INodeDrainRepository> = node_repository.clone();
-    let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
+    let search = adapters.search;
+    let audit_records = adapters.audit_records;
+    let notifications = adapters.notifications.notifications;
+    let outbound_notifications = adapters.notifications.outbound_notifications;
+    let outbound_notification_deliveries = adapters.notifications.outbound_deliveries;
+    let plugin_registries = adapters.plugins.registries;
+    let plugin_enrollment_authorizer = adapters.plugins.enrollment_authorizer;
+    let nodes = adapters.fleet.nodes;
+    let scheduling_nodes = adapters.fleet.scheduling_nodes;
+    let node_pools = adapters.fleet.node_pools;
+    let draining_nodes = adapters.fleet.draining_nodes;
+    let node_control = adapters.fleet.node_control;
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
         NodeArtifactObjectStore::from_client(
             object_storage
@@ -496,51 +463,32 @@ async fn build_api_worker_application(
         )
         .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
-    let builds: Arc<dyn IBuildRunRepository> =
-        Arc::new(PostgresBuildRunRepository::new(executor.clone()));
-    let executions: Arc<dyn IExecutionRepository> =
-        Arc::new(PostgresExecutionRepository::new(executor.clone()));
-    let execution_templates: Arc<dyn IExecutionTemplateRepository> =
-        Arc::new(PostgresExecutionTemplateRepository::new(executor.clone()));
-    let agents: Arc<dyn IAgentRepository> =
-        Arc::new(PostgresAgentRepository::new(executor.clone()));
-    let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
-    let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
-    let resource_claims: Arc<dyn IResourceClaimRepository> =
-        Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
-    let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
-    let deployment_workloads: Arc<dyn IDeploymentFlowWorkloadRepository> =
-        workload_repository.clone();
-    let replica_deployments: Arc<dyn IWorkloadReplicaDeploymentRepository> =
-        workload_repository.clone();
-    let replica_evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository> =
-        workload_repository.clone();
-    let replica_retirements: Arc<dyn IWorkloadReplicaRetirementRepository> =
-        workload_repository.clone();
-    let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
-    let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> =
-        workload_repository.clone();
-    let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
-    let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
-    let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
-    let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge_repository.clone();
-    let mcp_route_policy_repository: Arc<dyn IMcpRoutePolicyRepository> = edge_repository.clone();
-    let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
-        edge_repository.clone();
-    let asset_repository = Arc::new(PostgresAssetRepository::new(executor.clone()));
-    let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
-    let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
-    let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
-    let secrets: Arc<dyn ISecretRepository> =
-        Arc::new(PostgresSecretRepository::new(executor.clone()));
-    let connector_profiles: Arc<dyn IConnectorProfileRepository> =
-        Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
-    let durable_cell_applications: Arc<dyn IDurableCellApplicationRepository> = Arc::new(
-        PostgresDurableCellApplicationRepository::new(executor.clone()),
-    );
-    let durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository> = Arc::new(
-        PostgresDurableCellDeploymentRepository::new(executor.clone()),
-    );
+    let builds = adapters.builds;
+    let executions = adapters.executions;
+    let execution_templates = adapters.execution_templates;
+    let agents = adapters.agents;
+    let log_retention_repository = adapters.fleet.log_retention;
+    let workload_runtime_control = adapters.fleet.workload_runtime_control;
+    let workloads = adapters.workloads.workloads;
+    let deployment_workloads = adapters.workloads.deployment_workloads;
+    let replica_deployments = adapters.workloads.replica_deployments;
+    let replica_evacuations = adapters.workloads.replica_evacuations;
+    let replica_retirements = adapters.workloads.replica_retirements;
+    let workload_targets = adapters.workloads.workload_targets;
+    let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
+    let resource_claims = adapters.workloads.resource_claims;
+    let routes = adapters.edge.routes;
+    let mcp_credentials = adapters.edge.mcp_credentials;
+    let mcp_credential_reader = adapters.edge.mcp_credential_reader;
+    let mcp_route_policy_repository = adapters.edge.mcp_route_policies;
+    let mcp_gateway_snapshots = adapters.edge.mcp_gateway_snapshots;
+    let assets = adapters.assets.assets;
+    let asset_controls = adapters.assets.controls;
+    let mcp_profiles = adapters.assets.mcp_profiles;
+    let secrets = adapters.secrets;
+    let connector_profiles = adapters.connector_profiles;
+    let durable_cell_applications = adapters.durable_cell_applications;
+    let durable_cell_deployments = adapters.durable_cell_deployments;
     let outbound_notification_consumer =
         if run_operations && config.events.provider == EventProviderKind::Nats {
             let event_publisher = event_publisher.as_ref().ok_or_else(|| {
@@ -548,9 +496,7 @@ async fn build_api_worker_application(
                     "worker process is missing its event publisher".into(),
                 ))
             })?;
-            let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
-                executor.clone(),
-            ));
+            let connector_attempts = postgres_adapters.connector_attempts();
             let connector_materializer = ConnectorHttpRevisionMaterializer::new(
                 Arc::clone(&secrets),
                 Arc::clone(&key_encryption),
@@ -586,13 +532,10 @@ async fn build_api_worker_application(
         } else {
             None
         };
-    let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
-    let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
-    let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
-    let source_subscriptions: Arc<dyn ISourceSubscriptionRepository> =
-        Arc::new(PostgresSourceSubscriptionRepository::new(executor.clone()));
-    let github_connections: Arc<dyn IGithubConnectionRepository> =
-        Arc::new(PostgresGithubConnectionRepository::new(executor.clone()));
+    let sources = adapters.sources.sources;
+    let source_webhooks = adapters.sources.webhooks;
+    let source_subscriptions = adapters.sources.subscriptions;
+    let github_connections = adapters.sources.github_connections;
     let github_installation_client = Arc::new(if config.sources.github_app_enabled {
         GithubInstallationTokenIssuer::new(
             Duration::from_millis(config.sources.github_request_timeout_ms),
@@ -644,7 +587,7 @@ async fn build_api_worker_application(
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
-        edge_repository.clone(),
+        Arc::clone(&mcp_route_policy_repository),
         Arc::clone(&routes),
         Arc::clone(&mcp_profiles),
         Arc::clone(&workloads),
@@ -655,7 +598,7 @@ async fn build_api_worker_application(
     );
     let mcp_projection_set_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
         mcp_projection_inputs,
-        McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
+        McpGatewayProjectionPlanner::new(mcp_route_planner, mcp_credential_reader),
         McpGatewayProjectionAssembler,
     ));
     let mcp_node_projection_planner: Arc<
@@ -780,7 +723,7 @@ async fn build_api_worker_application(
                 Arc::clone(&durable_cell_deployments),
                 Arc::clone(&builds),
                 Arc::clone(&workloads),
-                projects.clone(),
+                Arc::clone(&environments),
                 Arc::clone(&executions),
             ));
         let deployment_runtime = DeploymentFlowRuntime::new(
@@ -882,7 +825,7 @@ async fn build_api_worker_application(
             .as_ref()
             .map(|engine| Arc::new(WorkflowRunVariableReader::new(engine.clone())) as Arc<_>);
     let worker_workflow = if let Some(flow) = flow.as_ref() {
-        let workflow_execution_environments: Arc<dyn IEnvironmentRepository> = projects.clone();
+        let workflow_execution_environments = Arc::clone(&environments);
         let workflow_execution_port: Arc<dyn IWorkflowExecutionPort> =
             Arc::new(WorkflowExecutionApplicationService::new(
                 workflow_execution_environments,
@@ -1088,12 +1031,11 @@ async fn build_api_worker_application(
     } else {
         None
     };
-    let operation_repository: Arc<dyn IOperationRepository> =
-        Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let operation_repository = adapters.operations;
     let outbox_relay = if run_relay {
         Some(build_outbox_relay(
             &config,
-            executor.clone(),
+            postgres_adapters.outbox(),
             event_publisher.clone().ok_or_else(|| {
                 ControlPlaneStartupError::Framework(BootError::Internal(
                     "relay process is missing its event publisher".into(),
@@ -1386,7 +1328,7 @@ async fn build_api_worker_application(
                 oidc_identity,
                 resource_authorization_decisions,
                 projects: projects.clone(),
-                environments: projects,
+                environments,
                 ontologies,
                 workflow_definitions,
                 workflow_goals,
@@ -1462,13 +1404,14 @@ async fn build_relay_application(
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
-    let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
-    let memberships: Arc<dyn IMembershipRepository> = identity;
-    let notification_repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
-    let notifications: Arc<dyn INotificationRepository> = notification_repository;
+    let RelayPostgresAdapters {
+        memberships,
+        notifications,
+        outbox,
+    } = PostgresAdapterFactory::new(executor.clone()).relay();
     let outbox_relay = build_outbox_relay(
         &config,
-        executor.clone(),
+        outbox,
         event_publisher.clone(),
         notifications,
         memberships,
@@ -1483,13 +1426,13 @@ async fn build_relay_application(
 
 fn build_outbox_relay(
     config: &CloudConfig,
-    executor: PostgresExecutor,
+    outbox: Arc<dyn IOutboxRepository>,
     events: Arc<dyn IEventPublisher>,
     notifications: Arc<dyn INotificationRepository>,
     memberships: Arc<dyn IMembershipRepository>,
 ) -> std::result::Result<OutboxRelay, ControlPlaneStartupError> {
     let relay = OutboxRelay::new(
-        Arc::new(PostgresOutboxRepository::new(executor)),
+        outbox,
         events,
         OutboxRelayConfig {
             batch_size: config.events.batch_size,

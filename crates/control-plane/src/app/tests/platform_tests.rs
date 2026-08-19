@@ -160,6 +160,128 @@ fn relay_composition_has_one_closed_dependency_set() {
 }
 
 #[test]
+fn postgres_repositories_have_one_typed_composition_boundary() {
+    let composition = include_str!("../../app.rs");
+    let adapters = include_str!("../postgres_adapters.rs");
+    let repositories = [
+        "PostgresIdentityRepository",
+        "PostgresProjectsRepository",
+        "PostgresOntologyRepository",
+        "PostgresWorkflowDefinitionRepository",
+        "PostgresWorkflowGoalRepository",
+        "PostgresWorkflowRunRepository",
+        "PostgresFormRepository",
+        "PostgresHumanTaskRepository",
+        "PostgresSearchRepository",
+        "PostgresAuditRecordRepository",
+        "PostgresNotificationRepository",
+        "PostgresPluginRegistryRepository",
+        "PostgresNodeRepository",
+        "PostgresBuildRunRepository",
+        "PostgresExecutionRepository",
+        "PostgresExecutionTemplateRepository",
+        "PostgresAgentRepository",
+        "PostgresWorkloadRepository",
+        "PostgresResourceClaimRepository",
+        "PostgresEdgeRepository",
+        "PostgresAssetRepository",
+        "PostgresSecretRepository",
+        "PostgresConnectorProfileRepository",
+        "PostgresDurableCellApplicationRepository",
+        "PostgresDurableCellDeploymentRepository",
+        "PostgresConnectorExecutionAttemptRepository",
+        "PostgresSourceRevisionRepository",
+        "PostgresSourceSubscriptionRepository",
+        "PostgresGithubConnectionRepository",
+        "PostgresOperationRepository",
+        "PostgresOutboxRepository",
+    ];
+
+    for line in composition.lines() {
+        assert!(
+            !(line.contains("Postgres") && line.contains("Repository::new(")),
+            "the process composition root bypassed the typed PostgreSQL adapter factory: {line}"
+        );
+    }
+    assert_eq!(
+        composition.matches("PostgresAdapterFactory::new(").count(),
+        2,
+        "API/Worker and dedicated Relay must be the only PostgreSQL adapter selection roots"
+    );
+    assert_eq!(composition.matches(".api_worker()").count(), 1);
+    assert_eq!(composition.matches(".relay()").count(), 1);
+    assert_eq!(composition.matches(".connector_attempts()").count(), 1);
+    assert_eq!(composition.matches(".outbox()").count(), 1);
+
+    for repository in repositories {
+        assert_eq!(
+            adapters.matches(&format!("{repository}::new(")).count(),
+            1,
+            "{repository} must have one constructor rule in the sole adapter boundary"
+        );
+    }
+
+    fn collect_rust_sources(root: &std::path::Path, sources: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(root).expect("read Rust source directory") {
+            let path = entry.expect("read Rust source entry").path();
+            if path.is_dir() {
+                collect_rust_sources(&path, sources);
+            } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("rs") {
+                sources.push(path);
+            }
+        }
+    }
+
+    let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let adapter_path = source_root.join("app").join("postgres_adapters.rs");
+    let mut sources = Vec::new();
+    collect_rust_sources(&source_root, &mut sources);
+    for path in sources {
+        if path == adapter_path {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("read Rust source");
+        for repository in repositories {
+            assert!(
+                !source.contains(&format!("{repository}::new(")),
+                "{} bypassed the sole PostgreSQL adapter constructor boundary with {repository}",
+                path.display()
+            );
+        }
+    }
+
+    for family in [
+        "IdentityPostgresAdapters::new",
+        "ProjectPostgresAdapters::new",
+        "WorkflowPostgresAdapters::new",
+        "NotificationPostgresAdapters::new",
+        "PluginPostgresAdapters::new",
+        "FleetPostgresAdapters::new",
+        "WorkloadPostgresAdapters::new",
+        "EdgePostgresAdapters::new",
+        "AssetPostgresAdapters::new",
+        "SourcePostgresAdapters::new",
+    ] {
+        assert!(
+            adapters.contains(family),
+            "the bounded PostgreSQL adapter family {family} disappeared"
+        );
+    }
+    for forbidden in [
+        "connect_and_migrate(",
+        "Database::new(",
+        "sql_query!(",
+        ".await",
+        "tokio::",
+    ] {
+        assert!(
+            !adapters.contains(forbidden),
+            "the adapter factory acquired I/O or persistence behavior: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
     let application = include_str!("../../app.rs");
     let worker_flow = application

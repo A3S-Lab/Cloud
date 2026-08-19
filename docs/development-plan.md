@@ -3899,7 +3899,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. One deployment-level object client now owns all immutable-byte namespaces; production requires shared HTTPS S3, while migration `121` create-once binds its secret-free identity and the Hosted Git filesystem UUID in PostgreSQL so replica drift fails startup. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, storage-migration procedures, and smaller typed PostgreSQL adapter families remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; replicated object/Git storage plus process/node loss preserve topology identity, leadership fencing, and the configured Gateway readiness threshold without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. One I/O-free, role-selected PostgreSQL adapter factory owns every repository constructor and bounded-context families project each multi-port concrete repository from one instance. One deployment-level object client now owns all immutable-byte namespaces; production requires shared HTTPS S3, while migration `121` create-once binds its secret-free identity and the Hosted Git filesystem UUID in PostgreSQL so replica drift fails startup. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, and storage-migration procedures remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; replicated object/Git storage plus process/node loss preserve topology identity, leadership fencing, and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -4221,10 +4221,17 @@ certificate authority, key encryption, and shared object storage. API owns no ev
 transport, does not resolve NATS, and uses the sole A3S Flow PostgreSQL store
 through a query-only adapter with no Boot queue, task manager, or execution
 authority. Checkout, build staging, evidence signing, runtime registration,
-Flow coordination, and every reconciler are Worker-only constructions. The
-shared composition function still instantiates common PostgreSQL repository
-adapters for both roles; smaller typed adapter families may improve
-maintainability but must not duplicate a repository or domain mechanism.
+Flow coordination, and every reconciler are Worker-only constructions. One
+I/O-free `PostgresAdapterFactory` is now the sole production constructor
+boundary for PostgreSQL repositories. Smaller Identity, Projects, Workflow,
+Notifications, Plugins, Fleet, Workloads, Edge, Assets, and Sources families
+create one concrete `Arc` and project all implemented ports from it. Dedicated
+Relay selects only Memberships, Notifications, and Outbox; conditional Worker
+Connector-attempt and `all` Outbox adapters remain role-reachable only. The
+factory contains no connection, migration, query, cache, or domain mechanism,
+and a source gate prevents a direct process-root constructor or second
+constructor rule.
+
 PostgreSQL, NATS JetStream,
 S3-compatible storage, profile-conditional Redis, and the OpenTelemetry
 Collector remain replaceable dependencies with explicit health and recovery
@@ -4270,12 +4277,6 @@ task manager, or incompatible-history retirement writer.
 
 ### Work
 
-- Extract smaller typed PostgreSQL adapter families from the shared
-  composition function without duplicating any repository implementation.
-  Side-effectful API, Worker, and Relay infrastructure is already
-  role-reachable: API owns query-only Flow plus its node-control providers,
-  Worker owns executable Flow/build/reconciliation, and Relay owns Outbox
-  publication.
 - Extend the verified replica identity, capacity, anti-affinity, stateless
   evacuation, and generation-fenced Fleet member removal with operator-visible
   stateful drain blocking once `S0` supplies prior-writer fence evidence.

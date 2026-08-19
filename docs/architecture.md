@@ -269,6 +269,7 @@ second entry in an authority row must be redesigned before implementation.
 | Tenant plugin registry enrollment and desired assignment | Cloud Plugins context in PostgreSQL | Asset kinds, node-local receipts, catalog caches, or Use capability snapshots as tenant intent |
 | Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
+| PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; bounded-context families project one concrete repository instance to every implemented port | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or persistence behavior in composition |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Flow runtime dispatch | One startup-validated exact registry assembled from owner-provided workflow and step identities | Prefix routing, an implicit default runtime, duplicate step ownership, or discovering collisions only after work is dispatched |
 | Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility`, configured from one Cloud manifest with current `a3s-cloud-workflows@2` and explicitly retained generations | A static identity reused after replay code changes, caller-selected identities, or another build router/queue |
@@ -460,11 +461,19 @@ encryption, and shared object storage. A PostgreSQL-only gate uses an unresolved
 and proves both that readiness set and the absence of Worker staging state.
 
 `all` composes the same management, Worker, and Relay capabilities rather than
-building an alternate mechanism. Shared PostgreSQL repository implementations
-remain instantiated from the common composition function; extracting them
-into smaller typed adapter families is maintainability work, while production
-HA, migration jobs, installation, and dependency orchestration remain the
-substantive open `H0.4` boundaries.
+building an alternate mechanism. One I/O-free `PostgresAdapterFactory` is the
+only production constructor boundary for PostgreSQL repository adapters.
+Identity, Projects, Workflow, Notifications, Plugins, Fleet, Workloads, Edge,
+Assets, and Sources each have one bounded-context family: when one concrete
+repository implements several ports, that family creates one `Arc` and
+projects every port from it. The dedicated Relay selects only Memberships,
+Notifications, and Outbox; Worker-only Connector attempts and `all`-only
+Outbox construction remain behind their existing role conditions. The factory
+contains no connection, migration, SQL, async task, cache, or domain behavior.
+A source architecture gate rejects direct repository constructors in the
+process root and requires exactly one constructor rule per concrete adapter.
+Production HA, migration jobs, installation, and dependency orchestration
+remain the substantive open `H0.4` boundaries.
 
 Gateway certificate and managed-state paths describe the target Gateway
 runtime, not the control-plane host. ACL admission and snapshot compilation

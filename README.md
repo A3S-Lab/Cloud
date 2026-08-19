@@ -65,9 +65,12 @@ The code on `main` separates implemented mechanics from released capability:
   routes, node control, and a query-only A3S Flow history adapter; it does not
   connect NATS or construct Boot Flow queues, workflow runtimes, reconcilers,
   checkout, or build staging. Real PostgreSQL 17 API plus PostgreSQL/NATS
-  Worker and Relay gates retain all three boundaries. Extracting the remaining
-  shared PostgreSQL adapter factory is structural follow-up, not another
-  execution or persistence mechanism.
+  Worker and Relay gates retain all three boundaries. One I/O-free
+  `PostgresAdapterFactory` now owns every production repository constructor;
+  bounded-context families project each multi-port concrete repository from
+  one `Arc`, while dedicated Relay selects only Memberships, Notifications,
+  and Outbox. A source gate rejects direct constructors, duplicate constructor
+  rules, SQL, migration, or async behavior in that factory.
 - **Implemented / one deployment storage topology** — API and Worker construct
   one filesystem or S3-compatible immutable-object root and derive the
   `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
@@ -133,6 +136,7 @@ preservation register.
 | Concern | Sole authority | Duplicate mechanism deliberately absent |
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
+| PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; each bounded-context family projects one concrete repository instance to all of its ports | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or SQL/migrations in composition |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
 | Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
 | Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility` configured by one Cloud build manifest | Reusing one build ID across runtime generations, caller-selected build IDs, or a second build router |
