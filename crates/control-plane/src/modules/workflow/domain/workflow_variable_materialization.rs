@@ -1,6 +1,7 @@
 use super::{
-    WorkflowRunInput, WorkflowVariableAssignment, WorkflowVariableContract,
-    WorkflowVariableDeclaration, WorkflowVariableReadMode, WorkflowVariableScope,
+    WorkflowCompositeRegionResult, WorkflowRunInput, WorkflowVariableAssignment,
+    WorkflowVariableContract, WorkflowVariableDeclaration, WorkflowVariableReadMode,
+    WorkflowVariableScope,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -12,6 +13,15 @@ pub(crate) fn materialize_workflow_variables(
     input: &WorkflowRunInput,
     contract: &WorkflowVariableContract,
     outputs: &BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, Value>, String> {
+    materialize_workflow_variables_with_composites(input, contract, outputs, &BTreeMap::new())
+}
+
+pub(crate) fn materialize_workflow_variables_with_composites(
+    input: &WorkflowRunInput,
+    contract: &WorkflowVariableContract,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
 ) -> Result<BTreeMap<String, Value>, String> {
     let defaults = input
         .variable_defaults
@@ -34,13 +44,49 @@ pub(crate) fn materialize_workflow_variables(
         }
     }
     let mut values = BTreeMap::new();
+    if !composites.is_empty() {
+        let regions = input
+            .composite_regions
+            .as_ref()
+            .ok_or_else(|| "Workflow composite result has no immutable region contract".to_owned())?
+            .restore()?;
+        for (step_id, result) in composites {
+            if result.region_step_id != *step_id || outputs.get(step_id) != Some(&result.output) {
+                return Err(
+                    "Workflow composite result drifted from its observed step output".into(),
+                );
+            }
+            result.validate(&input.plan, &regions, contract)?;
+        }
+    }
     for declaration in &contract.spec().declarations {
+        let composite = declaration
+            .source_step_id
+            .as_ref()
+            .and_then(|step_id| composites.get(step_id));
+        if let Some(value) =
+            composite.and_then(|result| result.exported_variables.get(&declaration.name))
+        {
+            validate_materialized_value(declaration, value)?;
+            values.insert(declaration.name.clone(), value.clone());
+            continue;
+        }
+        if declaration.source_step_id.as_ref().is_some_and(|step_id| {
+            composites.contains_key(step_id)
+                && composite_frame_source(contract, step_id, &declaration.name)
+        }) {
+            continue;
+        }
         let source = match declaration.scope {
             WorkflowVariableScope::InvocationInput => Some(&input.goal_input),
-            WorkflowVariableScope::NodeOutput => declaration
-                .source_step_id
-                .as_ref()
-                .and_then(|step_id| outputs.get(step_id)),
+            WorkflowVariableScope::NodeOutput => {
+                declaration.source_step_id.as_ref().and_then(|step_id| {
+                    composites
+                        .get(step_id)
+                        .map(|result| &result.output)
+                        .or_else(|| outputs.get(step_id))
+                })
+            }
             WorkflowVariableScope::Run => None,
             WorkflowVariableScope::CompositeLocal => continue,
             WorkflowVariableScope::Application => {
@@ -66,6 +112,37 @@ pub(crate) fn materialize_workflow_variables(
             continue;
         }
         if step.kind == super::WorkflowStepKind::Subworkflow {
+            if let Some(result) = composites.get(&step.id) {
+                for (target, value) in &result.run_variable_updates {
+                    let declaration = contract
+                        .spec()
+                        .declarations
+                        .iter()
+                        .find(|declaration| declaration.name == *target)
+                        .ok_or_else(|| {
+                            format!("Workflow composite update target {target:?} disappeared")
+                        })?;
+                    if declaration.scope != WorkflowVariableScope::Run {
+                        return Err(format!(
+                            "Workflow composite update target {target:?} is not Run-scoped"
+                        ));
+                    }
+                    validate_materialized_value(declaration, value)?;
+                    values.insert(target.clone(), value.clone());
+                }
+                for (target, value) in &result.exported_variables {
+                    let declaration = contract
+                        .spec()
+                        .declarations
+                        .iter()
+                        .find(|declaration| declaration.name == *target)
+                        .ok_or_else(|| {
+                            format!("Workflow composite export target {target:?} disappeared")
+                        })?;
+                    validate_materialized_value(declaration, value)?;
+                    values.insert(target.clone(), value.clone());
+                }
+            }
             continue;
         }
         let updates = contract
@@ -85,6 +162,35 @@ pub(crate) fn materialize_workflow_variables(
         }
     }
     Ok(values)
+}
+
+fn composite_frame_source(
+    contract: &WorkflowVariableContract,
+    step_id: &str,
+    variable: &str,
+) -> bool {
+    contract.spec().assignments.iter().any(|assignment| {
+        assignment.writer_step_id == step_id && assignment.source_variable == variable
+    }) || contract
+        .spec()
+        .exports
+        .iter()
+        .any(|export| export.region_id == step_id && export.source_variable == variable)
+}
+
+fn validate_materialized_value(
+    declaration: &WorkflowVariableDeclaration,
+    value: &Value,
+) -> Result<(), String> {
+    if declaration.value_type.matches_json_value(value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Workflow variable {:?} value does not match {}",
+            declaration.name,
+            declaration.value_type.as_str()
+        ))
+    }
 }
 
 pub(crate) fn materialize_workflow_variable_declaration(

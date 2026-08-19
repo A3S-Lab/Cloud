@@ -1984,7 +1984,8 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   execution history. Immutable Plan, input, payload, branch, and replay drift
   fail closed.
 - The implemented executor admits Workflow-local `input`, `transform`,
-  `branch`, `human_decision`, finite `execution`, and `output` steps. Each result is
+  `branch`, `human_decision`, finite `execution`, composite `subworkflow`, and
+  `output` steps. Each result is
   digest-bound and projected from the correlated A3S Flow history; unselected
   branch steps become `skipped`. A human decision suspends the same Flow run on
   an authority-bound hook and resumes it only from the immutable decision.
@@ -2002,12 +2003,14 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   the exact Run/Plan/step/attempt authority, is adopted through the typed
   Executions port after coordinator restart, and reuses the existing
   Operation, Flow child reference, Runtime Task, and cleanup lifecycle.
-- Business-service, Agent, MCP, model, Tool, memory, and subworkflow dispatch
-  remain future gates. Composite `subworkflow` publication now binds bounded
-  Iteration/Loop policy and one exact child WorkflowRevision, but runtime still
-  rejects it. When execution is admitted, each child must retain the same exact
-  owning-context identity and adoption rule; no owner lifecycle may be copied
-  into Workflow.
+- Business-service, Agent, MCP, model, Tool, and memory dispatch remain future
+  gates. Composite `subworkflow` publication binds bounded Iteration/Loop
+  policy and one exact child WorkflowRevision. Runtime v3 creates one
+  authority-bound hook per ordinal, derives one deterministic ordinary child
+  Goal/Plan/WorkflowRun/Operation, links the exact child Flow, and resumes a
+  digest-bound frame result. Parent cancellation/timeout adopts, cancels, and
+  awaits every child. Iteration is initially sequential under its declared
+  concurrency ceiling; no owner lifecycle is copied into Workflow.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.
@@ -2026,8 +2029,8 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   `composite_region` descriptor. It freezes bounded Iteration/Loop scheduling,
   failure, and termination policy and requires `workflow.run` to bind one exact
   non-nil child WorkflowRevision. It is compilation authority, not a region
-  store or executor; frames, exports, result ordering, and Flow-backed dispatch
-  remain fail-closed.
+  store. Frames, exports, result ordering, and Flow-backed dispatch execute
+  through the existing WorkflowRun/Operation/Outbox/Flow lifecycle.
 
 ### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
 
@@ -2566,9 +2569,10 @@ child that exactly covers admitted Iteration/Loop descriptors and exact child
 WorkflowRevision bindings. Both optional digests participate in the
 contract-set identity. The resulting `cloud.workflow.plan.v2` pins exact
 descriptor semantics and contract-set, variable, and optional composite-region
-digests. Plan v1 remains byte-stable; composite execution and
-Applications-owned variable access remain fail-closed rather than inferring
-missing runtime or owner adapters.
+digests. Plan v1 remains byte-stable. Non-composite Plan v2 runs retain
+WorkflowRun runtime/Flow v2, while composite runs pin v3 and execute exact
+ordinary child WorkflowRuns. Applications-owned variable access remains
+fail-closed rather than inferring a missing owner adapter.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

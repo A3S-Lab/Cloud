@@ -7,6 +7,7 @@ pub mod repositories;
 pub mod services;
 mod validation;
 pub mod value_objects;
+mod workflow_composite_execution;
 mod workflow_composite_frame;
 mod workflow_composite_region_result;
 mod workflow_composite_regions;
@@ -59,7 +60,6 @@ pub use repositories::{
     IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite, ReviseWorkflowDefinitionWrite,
     WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowRunRecord,
 };
-pub(crate) use services::inspect_workflow_run_variables;
 pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
     CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskCancellationAuthority,
@@ -72,11 +72,19 @@ pub use services::{
     HUMAN_TASK_CANCELLATION_AUTHORITY_API_VERSION, HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
     WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
 };
+pub(crate) use services::{
+    inspect_workflow_run_variables, inspect_workflow_run_variables_with_composites,
+};
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_DIGEST,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_ID,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_REVISION,
+};
+pub use workflow_composite_execution::{
+    WorkflowCompositeChildReferenceMetadata, WorkflowCompositeHookMetadata,
+    WorkflowCompositeResumePayload, WORKFLOW_COMPOSITE_CHILD_REFERENCE_SCHEMA,
+    WORKFLOW_COMPOSITE_HOOK_SCHEMA, WORKFLOW_COMPOSITE_RESUME_SCHEMA,
 };
 pub use workflow_composite_frame::{
     WorkflowCompositeFrame, WorkflowCompositeFrameMode, WorkflowCompositeFrameRequest,
@@ -129,9 +137,11 @@ pub use workflow_run_contract::{
     WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
     WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_MAX_BYTES_V2, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
 };
 pub use workflow_step_descriptor::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
@@ -160,13 +170,16 @@ pub use workflow_variable_defaults::{
     WORKFLOW_VARIABLE_DEFAULT_MAX_VALUE_BYTES,
 };
 pub(crate) use workflow_variable_materialization::{
-    materialize_workflow_variables, project_workflow_variable_reads,
+    lookup_workflow_variable_path, materialize_workflow_variables_with_composites,
+    project_workflow_variable_reads,
 };
 
 #[cfg(test)]
 mod authority_tests;
 #[cfg(test)]
 mod human_task_contract_tests;
+#[cfg(test)]
+mod workflow_composite_execution_tests;
 #[cfg(test)]
 mod workflow_composite_frame_tests;
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
-    materialize_workflow_variables, project_workflow_variable_reads, WorkflowRunInput,
-    WORKFLOW_RUN_INPUT_MAX_BYTES,
+    materialize_workflow_variables_with_composites, project_workflow_variable_reads,
+    WorkflowCompositeRegionResult, WorkflowRunInput, WORKFLOW_RUN_INPUT_MAX_BYTES,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -16,6 +16,7 @@ pub(super) fn effective_input(
     step_id: &str,
     legacy_input: Value,
     outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
 ) -> Result<WorkflowStepVariableProjection, String> {
     let Some(contract) = input.variable_contract.as_ref() else {
         return Ok(WorkflowStepVariableProjection {
@@ -35,7 +36,8 @@ pub(super) fn effective_input(
             authoritative: false,
         });
     }
-    let values = materialize_workflow_variables(input, &contract, outputs)?;
+    let values =
+        materialize_workflow_variables_with_composites(input, &contract, outputs, composites)?;
     let Some(projected) = project_workflow_variable_reads(&contract, step_id, &values)? else {
         return Ok(WorkflowStepVariableProjection {
             input: legacy_input,
@@ -145,6 +147,7 @@ mod tests {
                 "normalize".into(),
                 serde_json::json!({"summary": "HIGH T-42"}),
             )]),
+            &BTreeMap::new(),
         )
         .expect("projected input");
         assert!(projected.authoritative);
@@ -200,8 +203,14 @@ mod tests {
         input.variable_contract = Some(ResolvedWorkflowVariableContract::from_contract(&contract));
         input.variable_defaults = Some(ResolvedWorkflowVariableDefaults::from_defaults(&defaults));
 
-        let projected = effective_input(&input, "output", Value::Null, &BTreeMap::new())
-            .expect("default projection");
+        let projected = effective_input(
+            &input,
+            "output",
+            Value::Null,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("default projection");
         assert!(projected.authoritative);
         assert_eq!(projected.input, serde_json::json!({"result": "normal"}));
     }
@@ -273,13 +282,14 @@ mod tests {
             exports: vec![],
         })
         .expect("atomic-writer contract");
-        let values = materialize_workflow_variables(
+        let values = materialize_workflow_variables_with_composites(
             &input,
             &contract,
             &BTreeMap::from([
                 ("normalize".into(), serde_json::json!({})),
                 ("high".into(), serde_json::json!({})),
             ]),
+            &BTreeMap::new(),
         )
         .expect("materialized assignments");
 

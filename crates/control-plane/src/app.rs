@@ -181,12 +181,13 @@ use crate::modules::workflow::{
     GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
     GetWorkflowRunVariablesHandler, HumanTaskCoordinator, HumanTaskResumeWorker,
     HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
-    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
-    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
-    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
-    ListWorkflowRunsHandler, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler, WorkflowModule,
+    IWorkflowCompositeExecutionPort, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    IWorkflowRunVariableReader, ListHumanTasksHandler, ListOntologiesHandler,
+    ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler,
+    ListWorkflowRevisionsHandler, ListWorkflowRunsHandler, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
+    WaitWorkflowRunHandler, WorkflowCompositeExecutionApplicationService, WorkflowModule,
     WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
     WorkflowRunVariableReader,
 };
@@ -832,9 +833,19 @@ async fn build_api_worker_application(
                 Arc::clone(&execution_templates),
                 Arc::clone(&executions),
             ));
-        let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> = Arc::new(
-            FlowWorkflowRunCoordinator::with_executions(flow.engine(), workflow_execution_port),
-        );
+        let workflow_composite_port: Arc<dyn IWorkflowCompositeExecutionPort> =
+            Arc::new(WorkflowCompositeExecutionApplicationService::new(
+                Arc::clone(&workflow_definitions),
+                Arc::clone(&ontologies),
+                Arc::clone(&workflow_goals),
+                Arc::clone(&workflow_runs),
+            ));
+        let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
+            Arc::new(FlowWorkflowRunCoordinator::with_ports(
+                flow.engine(),
+                workflow_execution_port,
+                workflow_composite_port,
+            ));
         let workflow_run_reconciler = WorkflowRunReconciler::new(
             Arc::clone(&workflow_runs),
             workflow_run_coordinator,

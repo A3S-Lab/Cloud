@@ -44,8 +44,9 @@ termination, Run updates, or explicit exports. The reducer is pure runtime
 JSON authorized by existing ACL contracts. It adds no variable or region
 table, scheduler, queue, worker, event log, child lifecycle, or Flow command.
 
-This decision still does not execute Iteration or Loop. The reducer is not
-registered in runtime build `a3s-cloud-workflows@2`. The first Flow-backed
-dispatch slice must introduce the next build generation under decision 0015
-and supply durable child creation, linkage, cancellation, and recovery without
-adding a Cloud-local orchestrator.
+This reducer decision alone did not execute Iteration or Loop and remained
+outside runtime build `a3s-cloud-workflows@2`. Decision
+[0018](0018-authority-bound-composite-child-workflow-runs.md) subsequently
+registers Flow-backed dispatch in build `a3s-cloud-workflows@3` and supplies
+durable child creation, linkage, cancellation, and recovery without adding a
+Cloud-local orchestrator.

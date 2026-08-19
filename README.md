@@ -48,8 +48,8 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@2`; the former
-  `@1` generation is admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@3`; the former
+  `@1` and `@2` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
@@ -301,9 +301,10 @@ creating their own control planes:
    Foundations exist; current Box/Gateway recertification remains.
 2. **Workflow Orchestration** compiles ontology-defined goals and typed graphs
    into recoverable execution. `W0.1` is implemented, `W0.2` is verified, and
-   `W0.3` includes deterministic component-only composite frame/export and
-   ordinal region reducers; Flow-backed Iteration/Loop dispatch and later `W0`
-   slices remain in progress and unavailable.
+   `W0.3` includes deterministic composite frame/export and ordinal reducers
+   plus Flow-backed sequential Iteration/Loop child WorkflowRun dispatch,
+   linkage, cancellation, and recovery; later `W0` slices remain in progress
+   and unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.

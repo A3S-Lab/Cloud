@@ -26,6 +26,9 @@ pub const WORKFLOW_RUN_INPUT_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V2: &str = "cloud.workflow-run.input.v2";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2: &str = "cloud.workflow-run-runtime.v2";
 pub const WORKFLOW_RUN_FLOW_VERSION_V2: &str = "2";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V3: &str = "cloud.workflow-run.input.v3";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3: &str = "cloud.workflow-run-runtime.v3";
+pub const WORKFLOW_RUN_FLOW_VERSION_V3: &str = "3";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -621,7 +624,10 @@ impl WorkflowExecutionResumePayload {
 
 impl WorkflowRunInput {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
-        let maximum_bytes = if self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V2 {
+        let maximum_bytes = if matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_INPUT_SCHEMA_V2 | WORKFLOW_RUN_INPUT_SCHEMA_V3
+        ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
             WORKFLOW_RUN_INPUT_MAX_BYTES
@@ -630,7 +636,7 @@ impl WorkflowRunInput {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let (variable_contract, variable_defaults, composite_regions) = match (
+        let (variable_contract, variable_defaults, composite_regions, composite_runtime) = match (
             self.schema.as_str(),
             self.runtime_contract_revision.as_str(),
             self.flow_workflow_version.as_str(),
@@ -647,7 +653,7 @@ impl WorkflowRunInput {
                 None,
                 None,
                 None,
-            ) => (None, None, None),
+            ) => (None, None, None, false),
             (
                 WORKFLOW_RUN_INPUT_SCHEMA_V2,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
@@ -683,7 +689,35 @@ impl WorkflowRunInput {
                         )
                     }
                 }
-                (Some(contract), defaults, regions)
+                (Some(contract), defaults, regions, false)
+            }
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V3,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+                WORKFLOW_RUN_FLOW_VERSION_V3,
+                WORKFLOW_PLAN_SCHEMA_V2,
+                Some(resolved),
+                defaults,
+                Some(resolved_regions),
+            ) => {
+                let contract = resolved.restore()?;
+                if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                    return Err(
+                        "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                    );
+                }
+                let defaults = defaults
+                    .map(ResolvedWorkflowVariableDefaults::restore)
+                    .transpose()?;
+                validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                let regions = resolved_regions.restore()?;
+                if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
+                    return Err(
+                        "WorkflowRun composite region material drifted from the PlanRevision"
+                            .into(),
+                    );
+                }
+                (Some(contract), defaults, Some(regions), true)
             }
             _ => {
                 return Err(
@@ -736,7 +770,7 @@ impl WorkflowRunInput {
         }
         for step in &resolved {
             validate_runtime_retry_policy(step)?;
-            if !matches!(
+            let supported = matches!(
                 step.plan.kind,
                 WorkflowStepKind::Input
                     | WorkflowStepKind::Transform
@@ -744,7 +778,9 @@ impl WorkflowRunInput {
                     | WorkflowStepKind::HumanDecision
                     | WorkflowStepKind::Execution
                     | WorkflowStepKind::Output
-            ) {
+            ) || (composite_runtime
+                && step.plan.kind == WorkflowStepKind::Subworkflow);
+            if !supported {
                 return Err(format!(
                     "WorkflowRun runtime does not execute {} step {:?}",
                     step.plan.kind.as_str(),

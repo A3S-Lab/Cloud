@@ -2,8 +2,15 @@ pub mod commands;
 pub(crate) mod human_task_access;
 pub mod queries;
 pub(crate) mod resource_access;
+mod workflow_composite_execution_port;
+#[cfg(test)]
+mod workflow_composite_execution_port_tests;
 mod workflow_run_reconciler;
 
+pub use workflow_composite_execution_port::{
+    IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionApplicationService,
+    WorkflowCompositeExecutionRequest,
+};
 pub use workflow_run_reconciler::{
     WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
 };

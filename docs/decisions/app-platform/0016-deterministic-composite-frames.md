@@ -47,11 +47,9 @@ Focused tests prove deterministic serialization, zero-based policy bounds,
 typed materialization, atomic assignments, explicit exports, digest drift, and
 `Send + Sync` behavior.
 
-This decision does not make Iteration or Loop executable. The deployed runtime
-continues to reject `subworkflow` until the existing A3S Flow path records and
-schedules frames, links exact child operations, reconstructs deterministic
-ordering, and applies cancellation/recovery semantics. That wiring must not
-introduce a Cloud-local orchestration mechanism and, because it will change
-deployed replay code, must introduce a new runtime build identity under
-[0015](0015-versioned-flow-runtime-builds.md). The component-only reducer does
-not change the current `a3s-cloud-workflows@2` build.
+This frame decision alone did not make Iteration or Loop executable and did
+not change runtime build `a3s-cloud-workflows@2`. Decision
+[0018](0018-authority-bound-composite-child-workflow-runs.md) subsequently
+registers the frame in build `a3s-cloud-workflows@3`, links deterministic
+ordinary child WorkflowRuns, and applies cancellation/recovery semantics
+without a Cloud-local orchestration mechanism.

@@ -2,10 +2,13 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, PlanRevisionId, Sha256Digest,
     WorkflowRunId,
 };
-use crate::modules::workflow::domain::workflow_variable_materialization::materialize_workflow_variables;
+use crate::modules::workflow::domain::workflow_variable_materialization::{
+    materialize_workflow_variables, materialize_workflow_variables_with_composites,
+};
 use crate::modules::workflow::domain::{
-    WorkflowDataType, WorkflowRunRecord, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
-    WorkflowVariableScope, WorkflowVariableStorageClass, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WorkflowCompositeRegionResult, WorkflowDataType, WorkflowRunRecord,
+    WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableScope,
+    WorkflowVariableStorageClass, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -76,6 +79,22 @@ pub fn inspect_workflow_run_variables(
     observed_at: DateTime<Utc>,
     outputs: &BTreeMap<String, Value>,
 ) -> Result<WorkflowRunVariableInspection, String> {
+    inspect_workflow_run_variables_with_composites(
+        record,
+        last_flow_sequence,
+        observed_at,
+        outputs,
+        &BTreeMap::new(),
+    )
+}
+
+pub(crate) fn inspect_workflow_run_variables_with_composites(
+    record: &WorkflowRunRecord,
+    last_flow_sequence: u64,
+    observed_at: DateTime<Utc>,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+) -> Result<WorkflowRunVariableInspection, String> {
     record.validate()?;
     if last_flow_sequence < record.run.last_flow_sequence {
         return Err("Workflow variable inspection precedes the persisted Flow projection".into());
@@ -91,7 +110,16 @@ pub fn inspect_workflow_run_variables(
         .as_ref()
         .ok_or_else(|| "WorkflowRun does not carry an exact typed variable contract".to_owned())?;
     let contract = resolved.restore()?;
-    let values = materialize_workflow_variables(&record.run.execution_input, &contract, outputs)?;
+    let values = if composites.is_empty() {
+        materialize_workflow_variables(&record.run.execution_input, &contract, outputs)?
+    } else {
+        materialize_workflow_variables_with_composites(
+            &record.run.execution_input,
+            &contract,
+            outputs,
+            composites,
+        )?
+    };
     let variables = contract
         .spec()
         .declarations

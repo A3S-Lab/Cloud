@@ -5,8 +5,9 @@ use crate::modules::workflow::domain::{
     ResolvedWorkflowVariableDefaults, WorkflowGoal, WorkflowRevision, WorkflowRun,
     WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -79,19 +80,34 @@ impl WorkflowRunCompiler {
                     contracts.variable_defaults(),
                     plan,
                 )?;
+                let composite_regions = contracts
+                    .composite_regions()
+                    .map(ResolvedWorkflowCompositeRegions::from_regions);
+                let (input_schema, runtime_revision, flow_version) = if composite_regions.is_some()
+                {
+                    (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V3,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+                        WORKFLOW_RUN_FLOW_VERSION_V3,
+                    )
+                } else {
+                    (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V2,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+                        WORKFLOW_RUN_FLOW_VERSION_V2,
+                    )
+                };
                 (
-                    WORKFLOW_RUN_INPUT_SCHEMA_V2,
-                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-                    WORKFLOW_RUN_FLOW_VERSION_V2,
+                    input_schema,
+                    runtime_revision,
+                    flow_version,
                     Some(ResolvedWorkflowVariableContract::from_contract(
                         contracts.variable_contract(),
                     )),
                     contracts
                         .variable_defaults()
                         .map(ResolvedWorkflowVariableDefaults::from_defaults),
-                    contracts
-                        .composite_regions()
-                        .map(ResolvedWorkflowCompositeRegions::from_regions),
+                    composite_regions,
                 )
             }
             _ => {

@@ -392,26 +392,30 @@ WorkflowRevision binding.
 
 Plan v2 can prove the owning descriptor and optionally pins
 `compositeRegionsDigest`. WorkflowRun input/runtime/Flow v2 reconstructs
-invocation, node-output, defaults, deterministic run-assignment, direct-read,
-and opaque-reference values from immutable input plus existing Flow history
-and preserves the exact composite ACL/digest for a future executor.
+non-composite invocation, node-output, defaults, deterministic run-assignment,
+direct-read, and opaque-reference values. Version 3 preserves exact composite
+ACL/digest material, executes authority-bound child WorkflowRuns, and restores
+reduced composite updates/exports from the same immutable input and Flow
+history.
 REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP accept
 optional default and composite ACL material; the inspection surface added in
 `1.33.0` exposes variable materialization through one authorized, bounded
 `cloud.workflow-run.variable-inspection.v1` read projection. It reports the
 observed Flow sequence and materialized/unavailable state, redacts Secret
 references, adds no variable store, and rejects Plan v1. Composite-region
-frames/exports, Iteration/Loop dispatch, and Applications dispatch remain open
-and therefore fail closed. Existing `cloud.workflow.plan.v1` histories are
-unchanged.
+frames/exports and sequential Iteration/Loop dispatch are implemented through
+exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
+parent cancellation/timeout propagation. Applications dispatch remains open
+and fail closed. Existing `cloud.workflow.plan.v1` histories are unchanged.
 
-The future `Iteration` executor must compile a bounded fan-out region with
-deterministic item IDs, result ordering, concurrency, failure, cancellation,
-and maximum-item policy. `Loop` must compile to a sequential region with a
-condition, maximum iteration count, time budget, stable iteration identity,
-and explicit exports. Cloud may schedule bounded waves only through existing
-Flow primitives. It must not create a parallel queue or expand unbounded state
-into Flow history.
+The initial `Iteration` executor dispatches deterministic item ordinals
+sequentially, preserving the declared maximum concurrency as a strict ceiling,
+and applies bounded result ordering, failure, cancellation, and maximum-item
+policy. `Loop` is sequential with a boolean condition, maximum iteration count,
+time budget, stable iteration identity, previous-output carry, and explicit
+exports. Any later bounded parallel waves must use existing Flow primitives;
+Cloud must not create a parallel queue or expand unbounded state into Flow
+history.
 
 `Answer` and `Output` have different semantics. `Answer` appends ordered
 interactive frames to an Applications session and may execute more than once.
@@ -688,13 +692,14 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All seventeen
+   reject inventory/schema drift and false public claims. All eighteen
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
    defaults, revision-bound composite policy, the single Flow DAG compiler,
    exact runtime registry, versioned runtime builds, deterministic composite
-   frames, and ordered composite-region reduction are accepted and versioned.
+   frames, ordered composite-region reduction, and authority-bound child
+   WorkflowRun coordination are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
@@ -702,10 +707,9 @@ The recommended sequence is:
    HumanTask surfaces, revision-owned exact descriptors and Plan v2 pins,
    typed-variable foundations, digest-bound defaults, Flow-derived inspection,
    built-in discovery, multi-output aggregation, bounded composite
-   policy/child bindings, and the component-only frame/export and ordered
-   region reducers; complete Flow-backed Iteration/Loop dispatch and child
-   lifecycle,
-   Applications-owned variables, the Answer event contract, node error
+   policy/child bindings, deterministic frame/export and ordered region
+   reducers, and Flow-backed sequential Iteration/Loop child lifecycle;
+   complete Applications-owned variables, the Answer event contract, node error
    branches/fallback, and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Implement `APP0.1`, `K0.1`, and

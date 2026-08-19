@@ -120,6 +120,12 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
+Composite Plan v2 runs pin WorkflowRun runtime/Flow v3. The server dispatches
+each Iteration or Loop ordinal through one authority-bound Flow hook and a
+deterministic ordinary child WorkflowRun, links exact child authority, reduces
+the digest-bound result, and cancels/awaits children before parent termination.
+The client adds no composite scheduler or child lifecycle.
+
 Workflow definition publication may also carry the complete revision semantic
 contract set: descriptor bindings, the exact recoverable descriptor registry
 snapshot, and the typed-variable contract. REST contract `1.29.0` introduced

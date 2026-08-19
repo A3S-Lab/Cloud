@@ -20,10 +20,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
+mod composite;
+
 #[derive(Clone)]
 pub struct FlowWorkflowRunCoordinator {
     engine: FlowEngine,
     executions: Option<Arc<dyn IWorkflowExecutionPort>>,
+    composites: Option<Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>>,
 }
 
 impl FlowWorkflowRunCoordinator {
@@ -31,6 +34,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: None,
+            composites: None,
         }
     }
 
@@ -41,6 +45,31 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: Some(executions),
+            composites: None,
+        }
+    }
+
+    pub fn with_ports(
+        engine: FlowEngine,
+        executions: Arc<dyn IWorkflowExecutionPort>,
+        composites: Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: Some(executions),
+            composites: Some(composites),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_composites(
+        engine: FlowEngine,
+        composites: Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: None,
+            composites: Some(composites),
         }
     }
 
@@ -294,10 +323,13 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
         let cancelling = record.run.status == WorkflowRunStatus::Cancelling;
         let timed_out = !cancelling && now >= record.run.execution_input.deadline_at;
         if cancelling || timed_out {
-            if !self
+            let execution_children_terminal = self
                 .cancel_execution_children(record, &snapshot, &history, now)
-                .await?
-            {
+                .await?;
+            let composite_children_terminal = self
+                .cancel_composite_children(record, &snapshot, &history)
+                .await?;
+            if !execution_children_terminal || !composite_children_terminal {
                 return Ok(None);
             }
             if !snapshot.status.is_terminal() {
@@ -322,6 +354,8 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
             }
         } else if !snapshot.status.is_terminal() {
             self.coordinate_active_execution(record, &snapshot, &history)
+                .await?;
+            self.coordinate_active_composite(record, &snapshot, &history)
                 .await?;
         }
         snapshot = self
@@ -414,7 +448,10 @@ fn execution_hooks(
             ..
         } = &matching[0].event
         else {
-            unreachable!("matching event was filtered to HookCreated")
+            return Err(WorkflowRunCoordinationError::Unavailable(format!(
+                "Workflow execution hook {:?} creation history is invalid",
+                metadata.flow_hook_id()
+            )));
         };
         if token != &metadata.flow_hook_token() || observed_metadata != &expected_metadata {
             return Err(WorkflowRunCoordinationError::Unavailable(format!(
@@ -518,497 +555,4 @@ fn unavailable_at(operation: &str, error: FlowError) -> WorkflowRunCoordinationE
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::modules::executions::{
-        ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
-        ExecutionTemplate, WorkflowExecutionBinding,
-    };
-    use crate::modules::shared_kernel::application::ApplicationResult;
-    use crate::modules::shared_kernel::domain::{ExecutionId, PrincipalId};
-    use crate::modules::workflow::domain::{
-        IWorkflowRunCoordinator, WorkflowRun, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
-        WORKFLOW_RUN_FLOW_VERSION,
-    };
-    use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
-    use crate::modules::workflow::test_support::{
-        execution_workflow_run_input, TEST_EXECUTION_STEP_ID,
-    };
-    use a3s_flow::{
-        FlowEvent, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId, RuntimeCommand,
-        StepInvocation, WorkflowInvocation, WorkflowSpec,
-    };
-    use async_trait::async_trait;
-    use std::collections::BTreeMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use tokio::sync::Mutex;
-
-    #[derive(Debug, Clone, Copy)]
-    struct TestFlowRuntime;
-
-    #[async_trait]
-    impl FlowRuntime for TestFlowRuntime {
-        async fn run_workflow(
-            &self,
-            invocation: WorkflowInvocation,
-        ) -> Result<RuntimeCommand, FlowError> {
-            if invocation.spec.name == EXECUTION_WORKFLOW_NAME
-                && invocation.spec.version == EXECUTION_WORKFLOW_VERSION
-            {
-                return Ok(invocation
-                    .context()
-                    .complete(serde_json::json!({"test": true})));
-            }
-            WorkflowRunFlowRuntime.run_workflow(invocation).await
-        }
-
-        async fn run_step(
-            &self,
-            invocation: StepInvocation,
-        ) -> Result<serde_json::Value, FlowError> {
-            WorkflowRunFlowRuntime.run_step(invocation).await
-        }
-    }
-
-    struct FakeWorkflowExecutionPort {
-        engine: FlowEngine,
-        execution: Mutex<Option<Execution>>,
-        creates: AtomicUsize,
-        terminal_on_start: bool,
-    }
-
-    impl FakeWorkflowExecutionPort {
-        fn queued(engine: FlowEngine) -> Self {
-            Self {
-                engine,
-                execution: Mutex::new(None),
-                creates: AtomicUsize::new(0),
-                terminal_on_start: false,
-            }
-        }
-
-        fn terminal(engine: FlowEngine) -> Self {
-            Self {
-                terminal_on_start: true,
-                ..Self::queued(engine)
-            }
-        }
-
-        async fn finish(&self, outcome: ExecutionOutcome, at: DateTime<Utc>) {
-            let mut stored = self.execution.lock().await;
-            let execution = stored.as_mut().expect("Workflow child Execution");
-            if execution.status.is_terminal() {
-                return;
-            }
-            execution
-                .begin_cleanup(outcome, at)
-                .expect("begin child cleanup");
-            execution
-                .complete_cleanup(at)
-                .expect("complete child cleanup");
-        }
-
-        async fn status(&self) -> ExecutionStatus {
-            self.execution
-                .lock()
-                .await
-                .as_ref()
-                .expect("Workflow child Execution")
-                .status
-        }
-
-        fn create_count(&self) -> usize {
-            self.creates.load(Ordering::SeqCst)
-        }
-    }
-
-    #[async_trait]
-    impl IWorkflowExecutionPort for FakeWorkflowExecutionPort {
-        async fn start_or_adopt(
-            &self,
-            request: &WorkflowExecutionRequest,
-        ) -> ApplicationResult<Execution> {
-            request.validate().map_err(ApplicationError::Invalid)?;
-            let mut stored = self.execution.lock().await;
-            if let Some(execution) = stored.as_ref() {
-                return Ok(execution.clone());
-            }
-            let mut execution = Execution::create_with_workflow(
-                request.organization_id,
-                request.project_id,
-                request.environment_id,
-                ExecutionId::new(),
-                execution_template(request.input.clone()),
-                Some(WorkflowExecutionBinding::from(request)),
-                request.requested_at,
-            )
-            .map_err(ApplicationError::Invalid)?;
-            self.creates.fetch_add(1, Ordering::SeqCst);
-            self.engine
-                .start_with_id(
-                    execution.operation_id.to_string(),
-                    WorkflowSpec::rust_embedded(
-                        EXECUTION_WORKFLOW_NAME,
-                        EXECUTION_WORKFLOW_VERSION,
-                        "a3s-cloud",
-                        "main",
-                    )
-                    .with_runtime_build(
-                        RuntimeBuildId::new("a3s-cloud-workflow-execution-test@1")
-                            .map_err(|error| ApplicationError::Internal(error.to_string()))?,
-                    ),
-                    serde_json::json!({
-                        "organizationId": execution.organization_id,
-                        "executionId": execution.id,
-                    }),
-                )
-                .await
-                .map_err(|error| ApplicationError::Internal(error.to_string()))?;
-            if self.terminal_on_start {
-                execution
-                    .begin_cleanup(
-                        ExecutionOutcome::Succeeded { exit_code: 0 },
-                        request.requested_at + chrono::Duration::milliseconds(1),
-                    )
-                    .map_err(ApplicationError::Invalid)?;
-                execution
-                    .complete_cleanup(request.requested_at + chrono::Duration::milliseconds(1))
-                    .map_err(ApplicationError::Invalid)?;
-            }
-            *stored = Some(execution.clone());
-            Ok(execution)
-        }
-
-        async fn adopt(
-            &self,
-            request: &WorkflowExecutionRequest,
-        ) -> ApplicationResult<Option<Execution>> {
-            request.validate().map_err(ApplicationError::Invalid)?;
-            Ok(self.execution.lock().await.clone())
-        }
-
-        async fn request_cancellation(
-            &self,
-            request: &WorkflowExecutionRequest,
-            requested_at: DateTime<Utc>,
-        ) -> ApplicationResult<Option<Execution>> {
-            request.validate().map_err(ApplicationError::Invalid)?;
-            let mut stored = self.execution.lock().await;
-            let Some(execution) = stored.as_mut() else {
-                return Ok(None);
-            };
-            if !execution.status.is_terminal()
-                && !matches!(
-                    execution.status,
-                    ExecutionStatus::Cancelling | ExecutionStatus::CleanupPending
-                )
-            {
-                execution
-                    .request_cancellation(requested_at)
-                    .map_err(ApplicationError::Conflict)?;
-            }
-            Ok(Some(execution.clone()))
-        }
-    }
-
-    struct RejectingWorkflowExecutionPort;
-
-    #[async_trait]
-    impl IWorkflowExecutionPort for RejectingWorkflowExecutionPort {
-        async fn start_or_adopt(
-            &self,
-            _request: &WorkflowExecutionRequest,
-        ) -> ApplicationResult<Execution> {
-            Err(ApplicationError::NotFound(
-                "exact ExecutionTemplate revision does not exist".into(),
-            ))
-        }
-
-        async fn adopt(
-            &self,
-            _request: &WorkflowExecutionRequest,
-        ) -> ApplicationResult<Option<Execution>> {
-            Ok(None)
-        }
-
-        async fn request_cancellation(
-            &self,
-            _request: &WorkflowExecutionRequest,
-            _requested_at: DateTime<Utc>,
-        ) -> ApplicationResult<Option<Execution>> {
-            Ok(None)
-        }
-    }
-
-    fn execution_template(input: serde_json::Value) -> ExecutionTemplate {
-        let artifact_digest = format!("sha256:{}", "a".repeat(64));
-        ExecutionTemplate {
-            artifact: ExecutionArtifact {
-                uri: format!("oci://registry.example/a3s/function@{artifact_digest}"),
-                digest: artifact_digest,
-                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
-            },
-            process: ExecutionProcess {
-                command: vec!["/usr/bin/function".into()],
-                args: vec!["invoke".into()],
-                working_directory: Some("/workspace".into()),
-                environment: BTreeMap::new(),
-            },
-            input,
-            resources: ExecutionResources {
-                cpu_millis: 500,
-                memory_bytes: 256 * 1024 * 1024,
-                pids: 128,
-                ephemeral_storage_bytes: None,
-                timeout_ms: 30_000,
-            },
-        }
-    }
-
-    async fn workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
-        let mut input = execution_workflow_run_input().expect("execution WorkflowRun input");
-        let now = canonical_timestamp(Utc::now());
-        input.requested_at = now;
-        input.deadline_at = now + chrono::Duration::hours(1);
-        input.validate().expect("valid execution WorkflowRun input");
-        let (run, steps) =
-            WorkflowRun::create(input.clone(), PrincipalId::new()).expect("WorkflowRun");
-        let record = WorkflowRunRecord { run, steps };
-        let runtime_build_id =
-            RuntimeBuildId::new("a3s-cloud-workflow-execution-test@1").expect("runtime build");
-        let spec = WorkflowSpec::rust_embedded(
-            WORKFLOW_RUN_FLOW_NAME,
-            WORKFLOW_RUN_FLOW_VERSION,
-            "a3s-cloud",
-            "main",
-        )
-        .with_runtime_build(runtime_build_id.clone());
-        let engine = FlowEngine::builder(Arc::new(TestFlowRuntime))
-            .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id))
-            .build();
-        engine
-            .start_with_id(
-                input.workflow_run_id.to_string(),
-                spec,
-                serde_json::to_value(input).expect("encoded WorkflowRun input"),
-            )
-            .await
-            .expect("start WorkflowRun Flow");
-        (engine, record, now)
-    }
-
-    #[tokio::test]
-    async fn terminal_child_is_linked_and_resumed_into_the_parent_flow() {
-        let (engine, record, now) = workflow_fixture().await;
-        let port = Arc::new(FakeWorkflowExecutionPort::terminal(engine.clone()));
-        let coordinator = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            port.clone() as Arc<dyn IWorkflowExecutionPort>,
-        );
-
-        let completed = coordinator
-            .reconcile(&record, now)
-            .await
-            .expect("coordinate execution")
-            .expect("completed projection");
-
-        assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
-        assert_eq!(port.create_count(), 1);
-        let step = completed
-            .steps
-            .iter()
-            .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
-            .expect("execution step projection");
-        assert_eq!(step.status, WorkflowStepProjectionStatus::Completed);
-        let snapshot = engine
-            .snapshot(&record.run.flow_run_id)
-            .await
-            .expect("Flow snapshot");
-        assert_eq!(snapshot.child_operations.len(), 1);
-        assert!(snapshot.status.is_terminal());
-    }
-
-    #[tokio::test]
-    async fn permanent_dispatch_rejection_fails_without_creating_a_child_reference() {
-        let (engine, record, now) = workflow_fixture().await;
-        let coordinator = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            Arc::new(RejectingWorkflowExecutionPort),
-        );
-
-        let failed = coordinator
-            .reconcile(&record, now)
-            .await
-            .expect("coordinate rejection")
-            .expect("failed projection");
-
-        assert_eq!(failed.run.status, WorkflowRunStatus::Failed);
-        assert!(failed
-            .run
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains("Execution dispatch rejected")));
-        assert!(engine
-            .snapshot(&record.run.flow_run_id)
-            .await
-            .expect("Flow snapshot")
-            .child_operations
-            .is_empty());
-        let step = failed
-            .steps
-            .iter()
-            .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
-            .expect("execution step projection");
-        assert_eq!(step.status, WorkflowStepProjectionStatus::Failed);
-    }
-
-    #[tokio::test]
-    async fn parent_cancellation_waits_for_child_cleanup_before_flow_cancellation() {
-        let (engine, record, now) = workflow_fixture().await;
-        let port = Arc::new(FakeWorkflowExecutionPort::queued(engine.clone()));
-        let coordinator = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            port.clone() as Arc<dyn IWorkflowExecutionPort>,
-        );
-        let mut waiting = coordinator
-            .reconcile(&record, now)
-            .await
-            .expect("coordinate execution")
-            .expect("waiting projection");
-        let cancellation_at = canonical_timestamp(
-            Utc::now().max(waiting.run.updated_at) + chrono::Duration::milliseconds(1),
-        );
-        waiting
-            .run
-            .request_cancellation(
-                Some("operator requested cancellation".into()),
-                PrincipalId::new(),
-                cancellation_at,
-            )
-            .expect("request parent cancellation");
-
-        assert!(coordinator
-            .reconcile(
-                &waiting,
-                cancellation_at + chrono::Duration::milliseconds(1)
-            )
-            .await
-            .expect("coordinate child cancellation")
-            .is_none());
-        assert_eq!(port.status().await, ExecutionStatus::Cancelling);
-        assert!(!engine
-            .history(&record.run.flow_run_id)
-            .await
-            .expect("Flow history")
-            .iter()
-            .any(|event| matches!(event.event, FlowEvent::RunCancellationRequested { .. })));
-
-        port.finish(
-            ExecutionOutcome::Cancelled,
-            canonical_timestamp(Utc::now() + chrono::Duration::milliseconds(1)),
-        )
-        .await;
-        let cancelled = coordinator
-            .reconcile(
-                &waiting,
-                cancellation_at + chrono::Duration::milliseconds(2),
-            )
-            .await
-            .expect("finish parent cancellation")
-            .expect("cancelled projection");
-        assert_eq!(cancelled.run.status, WorkflowRunStatus::Cancelled);
-        assert_eq!(port.create_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn parent_cancellation_before_dispatch_adopts_one_child_and_waits_for_cleanup() {
-        let (engine, mut record, _) = workflow_fixture().await;
-        let port = Arc::new(FakeWorkflowExecutionPort::queued(engine.clone()));
-        let coordinator = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            port.clone() as Arc<dyn IWorkflowExecutionPort>,
-        );
-        let cancellation_at = canonical_timestamp(
-            Utc::now().max(record.run.updated_at) + chrono::Duration::milliseconds(1),
-        );
-        record
-            .run
-            .request_cancellation(
-                Some("operator cancelled before dispatch".into()),
-                PrincipalId::new(),
-                cancellation_at,
-            )
-            .expect("request parent cancellation before child dispatch");
-
-        assert!(coordinator
-            .reconcile(&record, cancellation_at + chrono::Duration::milliseconds(1),)
-            .await
-            .expect("coordinate pre-dispatch cancellation")
-            .is_none());
-        assert_eq!(port.create_count(), 1);
-        assert_eq!(port.status().await, ExecutionStatus::Cancelling);
-        assert!(!engine
-            .history(&record.run.flow_run_id)
-            .await
-            .expect("Flow history")
-            .iter()
-            .any(|event| matches!(event.event, FlowEvent::RunCancellationRequested { .. })));
-
-        port.finish(
-            ExecutionOutcome::Cancelled,
-            cancellation_at + chrono::Duration::milliseconds(2),
-        )
-        .await;
-        let cancelled = coordinator
-            .reconcile(&record, cancellation_at + chrono::Duration::milliseconds(3))
-            .await
-            .expect("finish pre-dispatch parent cancellation")
-            .expect("cancelled projection");
-
-        assert_eq!(cancelled.run.status, WorkflowRunStatus::Cancelled);
-        assert_eq!(port.create_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn replacement_coordinator_adopts_the_same_child_after_process_death() {
-        let (engine, record, now) = workflow_fixture().await;
-        let port = Arc::new(FakeWorkflowExecutionPort::queued(engine.clone()));
-        let first = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            port.clone() as Arc<dyn IWorkflowExecutionPort>,
-        );
-        let waiting = first
-            .reconcile(&record, now)
-            .await
-            .expect("initial coordination")
-            .expect("waiting projection");
-        drop(first);
-        port.finish(
-            ExecutionOutcome::Succeeded { exit_code: 0 },
-            canonical_timestamp(Utc::now() + chrono::Duration::milliseconds(1)),
-        )
-        .await;
-
-        let replacement = FlowWorkflowRunCoordinator::with_executions(
-            engine.clone(),
-            port.clone() as Arc<dyn IWorkflowExecutionPort>,
-        );
-        let completed = replacement
-            .reconcile(&waiting, now + chrono::Duration::milliseconds(3))
-            .await
-            .expect("replacement coordination")
-            .expect("completed projection");
-
-        assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
-        assert_eq!(port.create_count(), 1);
-        assert_eq!(
-            engine
-                .snapshot(&record.run.flow_run_id)
-                .await
-                .expect("Flow snapshot")
-                .child_operations
-                .len(),
-            1
-        );
-    }
-}
+mod tests;

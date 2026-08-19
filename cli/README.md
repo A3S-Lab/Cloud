@@ -454,9 +454,11 @@ v2 contract, immutable run input, and correlated Flow history; Secret references
 are redacted, unavailable declarations stay explicit, and Plan v1 conflicts.
 The CLI does not reconstruct or retain variable state. The
 runtime supports Workflow-local `input`, `transform`, `branch`,
-`human_decision`, `execution`, and `output`. Business-service and remaining
-provider capability steps, Iteration/Loop execution, and compensation remain
-unavailable. The CLI does not retain a graph, compile or run a plan locally,
+`human_decision`, `execution`, composite `subworkflow` Iteration/Loop, and
+`output`. Composite runtime v3 uses deterministic ordinary child WorkflowRuns
+and propagates parent cancellation/timeout; the CLI remains only a transport.
+Business-service and remaining provider capability steps and compensation
+remain unavailable. The CLI does not retain a graph, compile or run a plan locally,
 start a provider, or recreate the retired standalone Workflow control plane.
 
 `execution-templates` publishes and reads the Executions-owned immutable

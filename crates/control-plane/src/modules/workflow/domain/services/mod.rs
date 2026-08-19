@@ -21,6 +21,7 @@ pub use workflow_run_coordinator::{IWorkflowRunCoordinator, WorkflowRunCoordinat
 pub use workflow_run_history::{
     IWorkflowRunHistoryReader, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
 };
+pub(crate) use workflow_run_variables::inspect_workflow_run_variables_with_composites;
 pub use workflow_run_variables::{
     inspect_workflow_run_variables, IWorkflowRunVariableReader, WorkflowRunVariable,
     WorkflowRunVariableInspection, WorkflowRunVariableState,

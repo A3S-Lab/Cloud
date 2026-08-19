@@ -70,7 +70,7 @@ impl WorkflowCompositeFrameResolution {
         }
     }
 
-    fn validate(
+    pub(super) fn validate(
         &self,
         request: &WorkflowCompositeRegionResultRequest,
         plan: &WorkflowPlan,

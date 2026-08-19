@@ -34,7 +34,7 @@ Runtime lookup is exact. Unknown workflow identities and step names return a
 closed error without prefix inference or a default product runtime.
 
 Historic identities required for deterministic replay remain explicit:
-Deployment v1-v4, placement-group Deployment v1-v2, and WorkflowRun v1-v2.
+Deployment v1-v4, placement-group Deployment v1-v2, and WorkflowRun v1-v3.
 Retired Build v1-v4 remain deliberately absent and are cancelled by the
 existing startup retirement policy; only the Box-native Build v5 runtime is
 registered.

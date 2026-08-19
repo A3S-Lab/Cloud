@@ -33,8 +33,8 @@ non-nil child WorkflowRevision. The contract admits at most 512 regions and
 512 KiB.
 
 The optional child participates in the semantic-contract-set digest.
-`cloud.workflow.plan.v2` pins its `compositeRegionsDigest`, and WorkflowRun
-compilation copies the exact ACL and digest into immutable Run v2 input.
+`cloud.workflow.plan.v2` pins its `compositeRegionsDigest`, and composite
+WorkflowRun compilation copies the exact ACL and digest into immutable Run v3 input.
 Historical compiler-schema-2 revisions without the child remain restorable,
 but cannot gain or infer composite execution semantics.
 
@@ -49,10 +49,9 @@ REST/OpenAPI `1.35.0`, the maintained client, CLI publication file, and
 Workflow Management MCP inputs accept optional `compositeRegionsAcl`. Existing
 Plan v1 and Run v2 bytes without composite material remain unchanged.
 
-This decision does not claim Iteration or Loop execution. Runtime remains
-fail-closed for `subworkflow` until Workflow implements frames, exports,
-deterministic result ordering, and Flow-backed region dispatch. That future
-executor must use A3S Flow's existing durable primitives and child-operation
-links; it cannot add a Cloud-local scheduler, queue, retry engine, worker,
-event history, or a second child lifecycle. No A3S Flow change is introduced
-by this contract slice.
+This policy decision alone did not claim Iteration or Loop execution and
+introduced no A3S Flow change. Decisions 0016 through 0018 subsequently add
+frames, exports, deterministic result ordering, and Flow-backed region
+dispatch through existing hooks, child-operation links, and ordinary
+WorkflowRuns. They add no Cloud-local scheduler, queue, retry engine, worker,
+event history, or second child lifecycle.

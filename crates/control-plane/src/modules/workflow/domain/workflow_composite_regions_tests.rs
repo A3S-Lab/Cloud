@@ -116,7 +116,7 @@ fn composite_regions_reject_duplicates_bounds_and_noncanonical_acl() {
 }
 
 #[test]
-fn compiler_pins_composite_regions_before_runtime_rejects_execution() {
+fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition_id = WorkflowDefinitionId::new();
@@ -259,7 +259,7 @@ fn compiler_pins_composite_regions_before_runtime_rejects_execution() {
         Some(regions.digest())
     );
 
-    let error = WorkflowRunCompiler::compile(
+    let compiled_run = WorkflowRunCompiler::compile(
         WorkflowRunId::new(),
         &compiled.goal,
         &compiled.plan_revision,
@@ -268,7 +268,27 @@ fn compiler_pins_composite_regions_before_runtime_rejects_execution() {
         principal_id,
         now,
     )
-    .expect_err("composite execution remains fail closed");
+    .expect("runtime v3 composite execution input");
+    assert_eq!(
+        compiled_run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V3
+    );
+    assert_eq!(
+        compiled_run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+    );
+    assert_eq!(
+        compiled_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V3
+    );
+
+    let mut downgraded = compiled_run.run.execution_input;
+    downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V2.into();
+    downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2.into();
+    downgraded.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V2.into();
+    let error = downgraded
+        .validate()
+        .expect_err("runtime v2 must keep composite execution fail closed");
     assert!(
         error.contains("does not execute subworkflow step \"iteration\""),
         "unexpected runtime error: {error}"

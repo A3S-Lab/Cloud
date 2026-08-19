@@ -2,16 +2,42 @@ use super::{WorkflowLocalStepInput, WorkflowLocalStepResult};
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
     WorkflowDataSchema, WorkflowDataType, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
 };
 use serde_json::Value;
 
 pub(super) fn execute_local_step(
     input: &WorkflowLocalStepInput,
 ) -> Result<WorkflowLocalStepResult, String> {
-    let allow_current_template =
-        input.runtime_contract_revision == WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2;
+    let allow_current_template = matches!(
+        input.runtime_contract_revision.as_str(),
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+    );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
+    if input.step.plan.kind == WorkflowStepKind::Subworkflow {
+        let region = input
+            .composite_region_result
+            .clone()
+            .ok_or_else(|| "Workflow composite local step lost its region result".to_owned())?;
+        let result = WorkflowLocalStepResult {
+            step_id: input.step.plan.id.clone(),
+            kind: input.step.plan.kind,
+            output: region.output.clone(),
+            output_digest: region.output_digest.clone(),
+            selected_handle: None,
+            composite_region_result: Some(region),
+        };
+        result.validate(&input.step)?;
+        validate_data_schema(
+            &input.step.output_schema,
+            &result.output,
+            "Workflow composite step output",
+        )?;
+        return Ok(result);
+    }
+    if input.composite_region_result.is_some() {
+        return Err("non-composite Workflow local step retained region evidence".into());
+    }
     validate_data_schema(
         &input.step.input_schema,
         &input.effective_input,
@@ -93,6 +119,7 @@ pub(super) fn execute_local_step(
         output,
         output_digest,
         selected_handle,
+        composite_region_result: None,
     };
     result.validate(&input.step)?;
     Ok(result)
@@ -396,6 +423,7 @@ mod tests {
                 effective_input: json!({"result": input.goal_input}),
                 dependencies: std::collections::BTreeMap::new(),
                 steps: std::collections::BTreeMap::new(),
+                composite_region_result: None,
             };
 
         let result =
@@ -439,6 +467,7 @@ mod tests {
                 effective_input,
                 dependencies,
                 steps,
+                composite_region_result: None,
             })
         };
 
@@ -517,6 +546,7 @@ mod tests {
             effective_input: input.goal_input,
             dependencies: std::collections::BTreeMap::new(),
             steps: std::collections::BTreeMap::new(),
+            composite_region_result: None,
         })
         .expect("legacy step input JSON");
         assert!(encoded.get("typedProjectionAuthoritative").is_none());

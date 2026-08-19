@@ -22,7 +22,8 @@ AI application platform parity manifest.
 | [0015](0015-versioned-flow-runtime-builds.md) | Give each deployed Flow replay-code generation one explicit build identity and admit older generations only by declaration |
 | [0016](0016-deterministic-composite-frames.md) | Reduce exact child Workflow inputs and outputs through one deterministic composite frame without adding another orchestrator |
 | [0017](0017-ordered-composite-region-results.md) | Reconstruct arbitrary composite child observations by stable ordinal before reducing output, failure policy, updates, and exports |
+| [0018](0018-authority-bound-composite-child-workflow-runs.md) | Execute composite frames as deterministic ordinary child WorkflowRuns through existing Operation, Outbox, Flow, cancellation, and recovery authority |
 
-All seventeen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All eighteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

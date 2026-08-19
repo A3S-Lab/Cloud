@@ -48,11 +48,12 @@ only each default digest; the companion revision child supplies exact bounded
 canonical JSON, must cover the digest-backed declarations exactly, participates
 in the semantic-contract-set digest, and is copied into immutable Run v2 input.
 The shared execution/inspection materializer applies it only when the declared
-source value is absent. The component-only deterministic composite frame now
+source value is absent. The deterministic composite frame
 materializes region-local input and reduces child output through declared
 assignments, Run updates, and exports. The region reducer folds those results
-in stable ordinal order. Flow-backed dispatch and Applications port dispatch
-remain open.
+in stable ordinal order. Runtime v3 dispatches those frames through exact Flow
+hooks and deterministic ordinary child WorkflowRuns; Applications-owned
+variable access remains open.
 No mutable variable table, event log, scheduler, queue, Flow history shape, or
 existing Workflow replay behavior was added.
 
@@ -76,11 +77,12 @@ Migration `108` permits this optional fifth immutable WorkflowRevision child
 without adding a table. New publication fails closed when a composite
 descriptor has no exact region contract, while pre-migration revisions remain
 readable. The semantic-contract-set digest, Plan v2
-`compositeRegionsDigest`, and immutable Run v2 input pin the exact ACL and
-digest. REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP
+`compositeRegionsDigest`, and immutable Run v3 input pin the exact ACL and
+digest for composite execution; non-composite Plan v2 runs retain Run v2.
+REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP
 only transport that bounded material as optional `compositeRegionsAcl`.
 
-The component-only `cloud.workflow.composite-frame.v1`,
+The `cloud.workflow.composite-frame.v1`,
 `cloud.workflow.composite-frame-result.v1`, and
 `cloud.workflow.composite-region-result.v1` runtime values bind the exact Plan,
 variable/composite digests, zero-based bounded ordinal, and child
@@ -91,10 +93,17 @@ Iteration failure mode, require Loop's boolean termination path, and fold Run
 updates and explicit exports in ordinal order. These JSON values are runtime
 state, not product configuration; the authorizing contracts remain A3S ACL.
 
-This is still not Iteration or Loop execution. Runtime rejects `subworkflow`
-until Workflow delegates durable frame scheduling, replay, cancellation, and
-child linkage to A3S Flow. No mutable region
-store, scheduler, queue, worker, event history, or Flow change was added.
+WorkflowRun runtime/Flow v3 executes these regions through authority-bound
+`workflow-composite:<step>:<ordinal>` hooks. A Workflow-owned port derives one
+deterministic ordinary child Goal, Plan, WorkflowRun, and Operation from each
+frame, uses the existing Outbox/Flow start path, records an exact
+`workflow_run` child reference, and resumes the parent with a digest-bound
+frame resolution. Iteration dispatch is sequential in ordinal order, so the
+declared concurrency remains an enforced upper bound. Loop also enforces its
+iteration/time bounds and passes terminal output into the next frame. Parent
+cancellation and timeout adopt, cancel, and await children before the parent
+terminates. No mutable region store, scheduler, queue, worker, event history,
+or second Flow mechanism was added.
 
 ## Finite Execution
 

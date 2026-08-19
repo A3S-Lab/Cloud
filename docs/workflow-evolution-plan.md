@@ -238,11 +238,13 @@ the variable contract, and exact Plan v2 pinning now persist through migration
 without a new table. New publication requires it to exactly cover admitted
 Iteration/Loop descriptors, their bounded scheduling/failure/termination
 policy, and one exact non-nil child WorkflowRevision binding. The semantic-set,
-Plan v2 `compositeRegionsDigest`, and immutable Run v2 input pin its exact ACL
-and digest while historical revisions remain readable.
+Plan v2 `compositeRegionsDigest`, and immutable Run v3 input pin its exact ACL
+and digest for composite execution while historical and non-composite v2 runs
+remain readable.
 
-WorkflowRun input/runtime/Flow v2 freezes exact variable/default/composite
-material and projects invocation, node-output, defaults, deterministic
+WorkflowRun input/runtime/Flow v2 freezes exact non-composite variable/default
+material. Version 3 adds exact composite material and projects invocation,
+node-output, defaults, deterministic
 run-assignment, typed-read, and opaque-reference values from immutable input
 plus existing Flow history; migrations `105`, `107`, and `108` only widen
 that immutable input. Explicit reads are authoritative for their step and are
@@ -257,10 +259,12 @@ distinguishes materialized from unavailable values, and redacts Secret
 references. Pre-Flow immutable inputs may appear at sequence zero; Plan v1
 conflicts.
 
-Composite policy, exact child identity, and the component-only deterministic
-frame/export and ordinal region reducers are implemented, but Flow-backed
-Iteration/Loop dispatch and child lifecycle remain fail-closed.
-Applications-owned variables,
+Composite policy, exact child identity, deterministic frame/export and ordinal
+region reducers, and Flow-backed child lifecycle are implemented. Runtime v3
+uses one exact hook per ordinal and deterministic ordinary child WorkflowRun,
+links its Flow identity, resumes digest-bound results, and propagates parent
+cancellation/timeout before termination. Iteration is initially sequential
+under its declared concurrency ceiling. Applications-owned variables,
 Answer/error semantics, business-service and remaining Agent/MCP/model/Tool
 capability dispatch, compensation, expanded cross-surface evidence, and public
 Workflow availability remain open. These foundations add no table, cache,
@@ -285,8 +289,8 @@ frame component materializes local inputs, assignments, Run updates, and
 explicit exports; the region reducer restores observations to contiguous
 ordinal order, applies Iteration failure policy, requires Loop termination,
 and folds updates and exports in ordinal order. Authorized inspection reads
-parent materialization from immutable input and Flow history. Runtime still fails closed for
-Flow-backed Iteration/Loop dispatch and Applications-owned reads/writes. Typed
+parent and reduced composite materialization from immutable input and Flow
+history. Runtime still fails closed for Applications-owned reads/writes. Typed
 error branches/fallback and ordered Answer frames also remain unimplemented
 parts of `W0.3`.
 

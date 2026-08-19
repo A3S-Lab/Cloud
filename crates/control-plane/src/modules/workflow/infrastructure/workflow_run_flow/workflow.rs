@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 enum ResolvedState {
-    Active(WorkflowLocalStepResult),
+    Active(Box<WorkflowLocalStepResult>),
     Inactive,
 }
 
@@ -74,10 +74,108 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 ResolvedState::Inactive => None,
             })
             .collect::<BTreeMap<_, _>>();
-        let variable_projection =
-            super::variables::effective_input(&input, &step.plan.id, legacy_input, &all_steps)
+        let composite_results = resolved
+            .iter()
+            .filter_map(|(id, state)| match state {
+                ResolvedState::Active(result) => result
+                    .composite_region_result
+                    .clone()
+                    .map(|region| (id.clone(), region)),
+                ResolvedState::Inactive => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let (effective_input, typed_projection_authoritative) =
+            if step.plan.kind == WorkflowStepKind::Subworkflow {
+                (legacy_input, false)
+            } else {
+                let projection = super::variables::effective_input(
+                    &input,
+                    &step.plan.id,
+                    legacy_input,
+                    &all_steps,
+                    &composite_results,
+                )
                 .map_err(FlowError::InvalidWorkflow)?;
-        let effective_input = variable_projection.input;
+                (projection.input, projection.authoritative)
+            };
+        if step.plan.kind == WorkflowStepKind::Subworkflow {
+            let durable_step_id = flow_step_id(&step.plan.id);
+            if let Some(error) = context.step_failed(&durable_step_id) {
+                return Ok(context.fail(format!(
+                    "Workflow composite step {:?} failed: {error}",
+                    step.plan.id
+                )));
+            }
+            if let Some(value) = context.step_output(&durable_step_id) {
+                let result = serde_json::from_value::<WorkflowLocalStepResult>(value.clone())?;
+                super::composite::validate_result_authority(&input, step, &result).map_err(
+                    |error| FlowError::NonDeterministic {
+                        run_id: invocation.run_id.clone(),
+                        reason: format!(
+                            "Workflow composite step {:?} replay result drifted: {error}",
+                            step.plan.id
+                        ),
+                    },
+                )?;
+                resolved.insert(
+                    step.plan.id.clone(),
+                    ResolvedState::Active(Box::new(result)),
+                );
+                continue;
+            }
+            let resolution = match super::composite::resolve_step(
+                &input,
+                step,
+                effective_input.clone(),
+                &all_steps,
+                &composite_results,
+                &context,
+            ) {
+                Ok(resolution) => resolution,
+                Err(super::composite::CompositeStepError::Invalid(error)) => {
+                    return Err(FlowError::InvalidWorkflow(error))
+                }
+                Err(super::composite::CompositeStepError::NonDeterministic(reason)) => {
+                    return Err(FlowError::NonDeterministic {
+                        run_id: invocation.run_id.clone(),
+                        reason,
+                    })
+                }
+            };
+            match resolution {
+                super::composite::CompositeStepResolution::Await(metadata) => {
+                    return Ok(context.create_hook(
+                        metadata.flow_hook_id(),
+                        metadata.flow_hook_token(),
+                        serde_json::to_value(metadata)?,
+                    ));
+                }
+                super::composite::CompositeStepResolution::Complete(region) => {
+                    let step_input = WorkflowLocalStepInput {
+                        runtime_contract_revision: input.runtime_contract_revision.clone(),
+                        typed_projection_authoritative: false,
+                        step: (*step).clone(),
+                        workflow_input: input.goal_input.clone(),
+                        effective_input,
+                        dependencies,
+                        steps: all_steps,
+                        composite_region_result: Some(region),
+                    };
+                    ready.push(context.step(
+                        durable_step_id,
+                        WORKFLOW_RUN_STEP_NAME,
+                        serde_json::to_value(step_input)?,
+                    ));
+                    continue;
+                }
+                super::composite::CompositeStepResolution::Failed(error) => {
+                    return Ok(context.fail(format!(
+                        "Workflow composite step {:?} failed: {error}",
+                        step.plan.id
+                    )));
+                }
+            }
+        }
         if step.plan.kind == WorkflowStepKind::HumanDecision {
             let metadata = WorkflowHumanDecisionHookMetadata::from_run_step(&input, step)
                 .map_err(FlowError::InvalidWorkflow)?;
@@ -90,7 +188,10 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             }
             if let Some(payload) = context.hook_payload(&hook_id) {
                 let result = human_decision_result(&invocation.run_id, &hook_id, step, payload)?;
-                resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                resolved.insert(
+                    step.plan.id.clone(),
+                    ResolvedState::Active(Box::new(result)),
+                );
                 continue;
             }
             return Ok(context.create_hook(
@@ -151,17 +252,30 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         step.plan.id
                     ),
                 })?;
-            resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+            super::composite::validate_result_authority(&input, step, &result).map_err(
+                |error| FlowError::NonDeterministic {
+                    run_id: invocation.run_id.clone(),
+                    reason: format!(
+                        "Workflow step {:?} composite result drifted: {error}",
+                        step.plan.id
+                    ),
+                },
+            )?;
+            resolved.insert(
+                step.plan.id.clone(),
+                ResolvedState::Active(Box::new(result)),
+            );
             continue;
         }
         let step_input = WorkflowLocalStepInput {
             runtime_contract_revision: input.runtime_contract_revision.clone(),
-            typed_projection_authoritative: variable_projection.authoritative,
+            typed_projection_authoritative,
             step: (*step).clone(),
             workflow_input: input.goal_input.clone(),
             effective_input,
             dependencies,
             steps: all_steps,
+            composite_region_result: None,
         };
         ready.push(context.step(
             durable_step_id,
@@ -183,7 +297,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
 }
 
 pub(super) enum ExecutionResolution {
-    Succeeded(WorkflowLocalStepResult),
+    Succeeded(Box<WorkflowLocalStepResult>),
     Failed(String),
 }
 
@@ -224,11 +338,12 @@ pub(super) fn execution_result(
         output,
         output_digest,
         selected_handle: None,
+        composite_region_result: None,
     };
     result
         .validate(step)
         .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
-    Ok(ExecutionResolution::Succeeded(result))
+    Ok(ExecutionResolution::Succeeded(Box::new(result)))
 }
 
 fn execution_payload_drift(run_id: &str, step_id: &str) -> FlowError {
@@ -265,6 +380,7 @@ pub(super) fn human_decision_result(
         output,
         output_digest: payload.output_digest,
         selected_handle: None,
+        composite_region_result: None,
     };
     result
         .validate(step)
@@ -410,7 +526,10 @@ pub(super) fn inactive_step_ids(
             Some(Some(_)) => {
                 if let Some(result) = completed.get(&planned.id) {
                     result.validate(step)?;
-                    resolved.insert(planned.id.clone(), ResolvedState::Active(result.clone()));
+                    resolved.insert(
+                        planned.id.clone(),
+                        ResolvedState::Active(Box::new(result.clone())),
+                    );
                 }
             }
             None => {}
@@ -510,6 +629,7 @@ mod tests {
             output: input.goal_input.clone(),
             output_digest: Sha256Digest::parse(digest('f')).expect("digest"),
             selected_handle: None,
+            composite_region_result: None,
         };
         let replay_drift = invocation(
             &input,
@@ -536,23 +656,25 @@ mod tests {
         let resolved = BTreeMap::from([
             (
                 "output-a".into(),
-                ResolvedState::Active(WorkflowLocalStepResult {
+                ResolvedState::Active(Box::new(WorkflowLocalStepResult {
                     step_id: "output-a".into(),
                     kind: WorkflowStepKind::Output,
                     output: value.clone(),
                     output_digest: Sha256Digest::parse(digest('a')).expect("digest"),
                     selected_handle: None,
-                }),
+                    composite_region_result: None,
+                })),
             ),
             (
                 "output-b".into(),
-                ResolvedState::Active(WorkflowLocalStepResult {
+                ResolvedState::Active(Box::new(WorkflowLocalStepResult {
                     step_id: "output-b".into(),
                     kind: WorkflowStepKind::Output,
                     output: value,
                     output_digest: Sha256Digest::parse(digest('b')).expect("digest"),
                     selected_handle: None,
-                }),
+                    composite_region_result: None,
+                })),
             ),
         ]);
 

@@ -19,12 +19,14 @@ Flow's admission fence.
 ## Decision
 
 The exact runtime registry and its linked replay code are deployed as
-`a3s-cloud-workflows@2`. Every newly created Cloud Operation obtains that
+`a3s-cloud-workflows@3`. Every newly created Cloud Operation obtains that
 identity from the configured `FlowEngine`; no product context, interface, or
 caller may supply a different current build identity.
 
-`a3s-cloud-workflows@1` is an explicit replay-compatible migration generation,
-not an alias for current work. The current binary retains the registered
+`a3s-cloud-workflows@1` and `a3s-cloud-workflows@2` are explicit
+replay-compatible migration generations, not aliases for current work. The
+`@3` generation introduces WorkflowRun runtime v3 composite-hook decisions;
+the current binary retains the registered
 historic workflow versions and exact step identities needed by those runs.
 Unknown pinned generations fail closed through A3S Flow. Histories created
 before build pinning remain admitted only as bounded migration debt, and Cloud
@@ -45,11 +47,11 @@ set, and whether unpinned migration remains enabled.
 
 ## Consequences
 
-Rolling workers cannot mistake newly pinned work for the former `@1` code
-generation. Known `@1` and unpinned migration histories remain recoverable,
+Rolling workers cannot mistake newly pinned work for the former `@1` or `@2`
+code generations. Known `@1`, `@2`, and unpinned migration histories remain recoverable,
 while an undeclared build cannot mutate history. Tests prove the current,
 explicitly compatible, unpinned-migration, and unknown-build cases separately.
 
-The unpinned switch and `@1` entry are visible migration debt. They must be
+The unpinned switch plus the `@1` and `@2` entries are visible migration debt. They must be
 removed after retained PostgreSQL evidence proves no active history requires
 them; they are not permanent compatibility defaults.
