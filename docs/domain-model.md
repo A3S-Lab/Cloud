@@ -25,7 +25,7 @@ contract foundation; later gates compile semantic intent to the existing
 Operations and A3S Flow path. W0 does not add another workflow engine,
 scheduler, graph database authority, or task queue.
 
-Planned APP0, K0, and AUT0 add application release/session semantics, RAG
+In-progress APP0 and planned K0/AUT0 add application release/session semantics, RAG
 Knowledge and user-file metadata, and definitions that create exact-release
 invocations. Every ApplicationRelease and KnowledgePipelineRelease binds an
 exact Workflow revision; every durable run still uses Operations and Flow.
@@ -639,12 +639,21 @@ target ACL. Idempotency stores only the organization/Ontology/revision
 identity, and replay reconstructs the aggregate snapshot at that revision.
 Search reads one disposable current-head view and cannot revise an Ontology.
 
-### 3.15 AI applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
+### 3.15 AI applications, Knowledge, Files, Automations, and Connectors
 
 `Applications` owns product identity, immutable release, six authoring and
 delivery projections, session/message state, conversation variables, feedback,
 annotations, and publication policy. Every release binds one exact
 `WorkflowRevision`; the six experiences do not own separate runtimes.
+
+Component-only `APP0.1-C1` implements the first two primary records. One
+canonical `cloud.application.release.v1` ACL freezes the experience,
+interaction/response modes, audience, presentation digest, and exact Workflow
+definition/revision plus contract, payload-set, semantic-contract-set, input,
+and output digests. `Application` keeps a sequence-fenced immutable release
+head, and its experience cannot change. No Applications table or public
+surface is claimed by C1; the following APP0.1 slices add those through the
+shared platform mechanisms.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and
@@ -2091,7 +2100,7 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   store. Frames, exports, result ordering, and Flow-backed dispatch execute
   through the existing WorkflowRun/Operation/Outbox/Flow lifecycle.
 
-### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
+### Applications, Knowledge, Files, Automations, and Connectors
 
 - An ApplicationRelease is immutable and binds one exact WorkflowRevision,
   input/output schema digests, delivery policy, authorization policy, and

@@ -50,6 +50,8 @@ identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
 identifier!(NotificationId);
 identifier!(NotificationSubscriptionId);
+identifier!(ApplicationId);
+identifier!(ApplicationReleaseId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);

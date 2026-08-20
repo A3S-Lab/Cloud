@@ -1,0 +1,19 @@
+application_release {
+  audience = "project_members"
+  experience = "chatflow"
+  presentation_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  schema = "cloud.application.release.v1"
+  delivery {
+    interaction_mode = "conversation"
+    response_modes = ["blocking", "streaming"]
+  }
+  workflow {
+    input_schema_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    output_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    workflow_contract_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    workflow_definition_id = "018f0000-0000-7000-8000-000000000101"
+    workflow_payload_set_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    workflow_revision_id = "018f0000-0000-7000-8000-000000000102"
+    workflow_semantic_contract_set_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

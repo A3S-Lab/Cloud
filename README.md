@@ -124,9 +124,11 @@ The code on `main` separates implemented mechanics from released capability:
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint
   behavior/Gateway, and lifecycle gates remain; the service is unavailable.
-- **Planned / future platform families** — Applications, Knowledge,
-  Automations, Inference, and Evolution have frozen ownership contracts, but
-  `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain unavailable.
+- **In-progress / future platform families** — Applications now has the
+  component-only `APP0.1-C1` immutable release contract and exact Workflow
+  evidence boundary. Knowledge, Automations, Inference, and Evolution retain
+  their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain
+  unavailable.
 
 Gate-by-gate evidence, dependencies, and remaining work live in the
 [product roadmap](ROADMAP.md) and detailed plans.
@@ -331,10 +333,13 @@ creating their own control planes:
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.
-4. **AI Application Platform** will compose Applications, Knowledge, plugins,
+4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
-   `APP0` and `K0` are planned; `AUT0` has component-only Connector foundations
-   in progress. All three product surfaces remain unavailable.
+   `APP0.1-C1` now freezes one canonical immutable release across all six
+   experiences, including distinct classic/New Agent identities, and pins the
+   exact Workflow revision evidence without copying its graph or runtime.
+   `K0` remains planned and `AUT0` has component-only Connector foundations in
+   progress. All three product surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with
    alarms, WebSockets, idle eviction, and fenced recovery. Backend contracts,
    composition, and interfaces exist; provider and lifecycle gates remain, so

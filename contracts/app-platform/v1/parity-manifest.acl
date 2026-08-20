@@ -48,8 +48,8 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     state = "planned"
   }
   gate "APP0.1" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/decisions/app-platform/0002-application-delivery.md"]
-    state = "planned"
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "contract:contracts/app0.1/application-release.acl", "doc:docs/decisions/app-platform/0002-application-delivery.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md"]
+    state = "in_progress"
   }
   gate "APP0.2" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]

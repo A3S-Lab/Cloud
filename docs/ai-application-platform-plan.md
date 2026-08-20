@@ -676,7 +676,8 @@ implementing a Cloud substitute is prohibited by this plan.
 
 | Sub-gate | Outcome | Dependencies |
 | --- | --- | --- |
-| `APP0.1` | Freeze Application, immutable ApplicationRelease, six authoring projections including classic/New Agent distinction, exact WorkflowRevision binding, canonical ACL, authorization, idempotency, audit, Outbox, REST/OpenAPI, client, CLI, and Management MCP contracts | `F0`, `C0.1`, `W0.3` definition/revision foundation |
+| `APP0.1-C1` | Implemented; component-only | Strong Application/Release identities, one canonical `cloud.application.release.v1` A3S ACL, six closed experiences with immutable classic/New Agent distinction, bounded delivery/audience policy, exact Workflow definition/revision plus contract/payload/semantic/input/output digests, evidence matching, and immutable release/head lineage | `F0`, `W0.3` definition/revision foundation |
+| `APP0.1` | In progress | Add PostgreSQL/A3S ORM persistence, authorization, idempotency, audit, Outbox, REST/OpenAPI, client, CLI, and Management MCP contracts over the C1 authority | `APP0.1-C1`, `C0.1` |
 | `APP0.2` | Add deterministic preset compilers, application end users, invocation/session/message/variant state, conversation variables, file references, Answer frames, citations, final outputs, feedback, annotations, cancellation, replay, and blocking/streaming parity | `APP0.1`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
@@ -735,7 +736,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twenty-five
+   reject inventory/schema drift and false public claims. All twenty-six
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable

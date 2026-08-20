@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod applications;
 pub mod artifacts;
 pub mod assets;
 pub mod audit;
