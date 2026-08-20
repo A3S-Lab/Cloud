@@ -4,6 +4,7 @@ mod evidence_queries;
 mod execution_service;
 mod queries;
 mod resource_access;
+mod response_object_reader;
 mod result;
 mod secret_references;
 mod workflow_port;
@@ -26,6 +27,9 @@ pub use queries::{
     ListConnectorRevisions, ListConnectorRevisionsHandler, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+pub use response_object_reader::{
+    ConnectorResponseObjectContent, IConnectorResponseObjectPort, ReadConnectorResponseObject,
+};
 pub use result::ConnectorProfileMutationResult;
 pub use workflow_port::{
     IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptAuthority,
@@ -33,6 +37,8 @@ pub use workflow_port::{
     WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
+#[cfg(test)]
+mod response_object_reader_tests;
 #[cfg(test)]
 mod tests;
 pub use attempt_queries::{

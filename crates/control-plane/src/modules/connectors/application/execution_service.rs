@@ -1,13 +1,13 @@
 use super::resource_access::{attempt_not_found, environment, revision_not_found};
+use super::response_object_reader::map_response_object_error;
 use crate::modules::connectors::domain::{
     BeginConnectorExecutionDispatch, ConnectorExecutionAttemptBinding,
     ConnectorExecutionAttemptRecord, ConnectorExecutionEvidence, ConnectorExecutionFence,
     ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorExecutionReservation,
-    ConnectorResponseObjectError, ConnectorResponseObjectReference,
-    IConnectorExecutionAttemptRepository, IConnectorExecutionPreparationPort,
-    IConnectorProfileRepository, IConnectorResponseObjectStore, ReserveConnectorExecutionAttempt,
-    SettleConnectorExecutionAttempt, MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS,
-    MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
+    ConnectorResponseObjectReference, IConnectorExecutionAttemptRepository,
+    IConnectorExecutionPreparationPort, IConnectorProfileRepository, IConnectorResponseObjectStore,
+    ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
+    MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS, MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -119,9 +119,9 @@ pub enum ConnectorExecutionAttemptResult {
 
 pub struct ConnectorExecutionApplicationService {
     profiles: Arc<dyn IConnectorProfileRepository>,
-    attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
+    pub(super) attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
     preparation: Arc<dyn IConnectorExecutionPreparationPort>,
-    response_objects: Option<Arc<dyn IConnectorResponseObjectStore>>,
+    pub(super) response_objects: Option<Arc<dyn IConnectorResponseObjectStore>>,
     options: ConnectorExecutionServiceOptions,
 }
 
@@ -536,20 +536,6 @@ fn in_flight_result(
     })
 }
 
-fn map_response_object_error(error: ConnectorResponseObjectError) -> ApplicationError {
-    match error {
-        ConnectorResponseObjectError::Unavailable(message) => {
-            ApplicationError::Unavailable(message)
-        }
-        ConnectorResponseObjectError::Invalid(message)
-        | ConnectorResponseObjectError::Conflict(message)
-        | ConnectorResponseObjectError::Integrity(message) => ApplicationError::Internal(message),
-        ConnectorResponseObjectError::NotFound => ApplicationError::Internal(
-            "accepted Connector evidence references a missing response object".into(),
-        ),
-    }
-}
-
 fn indeterminate_result(
     record: &ConnectorExecutionAttemptRecord,
 ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
@@ -599,8 +585,8 @@ mod tests {
         ConnectorDefinition, ConnectorExecutionAttemptCursor, ConnectorExecutionOutcome,
         ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
         ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile,
-        ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished,
-        CreateConnectorProfileWrite, IPreparedConnectorExecution,
+        ConnectorRecord, ConnectorResponseObjectError, ConnectorRevision,
+        ConnectorRevisionPublished, CreateConnectorProfileWrite, IPreparedConnectorExecution,
     };
     use crate::modules::connectors::infrastructure::{
         ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,

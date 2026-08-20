@@ -311,9 +311,12 @@ creating their own control planes:
    the sole C6 execution/evidence authority. New v6 composes accepted responses
    through the Connectors-owned typed child of the shared immutable-object
    client and retains only an exact opaque reference, digest, and byte count in
-   Flow. Historic v5 remains body-free and replay-compatible. Response
-   consumption, default fallback, Answer, remaining providers, and later `W0`
-   gates remain unavailable.
+   Flow. The internal Connector read port now requires exact environment
+   authorization and accepted terminal C6 evidence before returning transient,
+   integrity-checked, Debug-redacted bytes to a typed owner. Flow and public
+   interfaces remain body-free, and historic v5 stays replay-compatible. Typed
+   node consumption, default fallback, Answer, remaining providers, and later
+   `W0` gates remain unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.

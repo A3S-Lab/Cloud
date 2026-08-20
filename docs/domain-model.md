@@ -831,6 +831,15 @@ also fails closed on terminal replay. Projection reconstructs either the v5
 body-free result or the v6 reference from immutable Run input and the sole Flow
 history, including exact hook-creation and completed-wait evidence.
 
+Component-only `AUT0.5-C11` makes the existing Connector execution application
+service the internal response-object read port. It authorizes the exact
+environment before loading the exact attempt, requires accepted terminal C6
+evidence, proves the reference against that evidence, and revalidates the
+immutable digest and bounded length before returning transient content. The
+content cannot be serialized or cloned and its Debug projection is redacted.
+An orphaned object without terminal evidence grants no authority; Flow,
+Connector rows, and public interfaces remain body-free.
+
 The component-only `AUT0.5-C9` prerequisite freezes that missing retry budget
 without adding another policy authority. `cloud.workflow.policy.v2` extends the
 existing per-step Workflow policy payload with `maximum_attempts` and an
@@ -844,7 +853,8 @@ profile. Policy v1 bytes remain unchanged, and no policy table, semantic
 child, retry counter, timer worker, queue, scheduler, or second configuration
 language is introduced. Historic v5 consumes the policy for deterministic
 attempt/wait decisions, while v6 composes the immutable response reference.
-W0.4 response consumption and its remaining typed capability steps stay open.
+W0.4 typed-node adoption of the C11 read port and its remaining capability
+steps stay open.
 
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
@@ -1007,13 +1017,13 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C10` profile/revision, authorized application,
+`AUT0.5-C2` through `C11` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
 provider wiring, revocation/recovery operations, retained integration evidence,
-and W0.4 response consumption over those same authorities. WorkflowRun v6 now
+and W0.4 typed node consumption over those same authorities. WorkflowRun v6 now
 supplies Flow-owned Connector observation, durable wait, bounded retry,
 fail-closed indeterminate handling, and an exact immutable response reference
 without another scheduler or provider authority; historic v5 projection stays

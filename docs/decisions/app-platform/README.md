@@ -25,7 +25,9 @@ AI application platform parity manifest.
 | [0018](0018-authority-bound-composite-child-workflow-runs.md) | Execute composite frames as deterministic ordinary child WorkflowRuns through existing Operation, Outbox, Flow, cancellation, and recovery authority |
 | [0019](0019-descriptor-bound-execution-failure-routes.md) | Route finite Execution failures through descriptor-bound ordinary DAG edges without another retry or orchestration mechanism |
 | [0020](0020-flow-owned-connector-attempt-waits.md) | Keep deterministic Connector observation, retry, and wait decisions in Flow while C6 remains the sole provider-attempt authority |
+| [0021](0021-connector-immutable-response-objects.md) | Store accepted Connector response bytes before terminal evidence and retain only their exact immutable reference in Flow |
+| [0022](0022-terminal-evidence-authorized-connector-response-reads.md) | Resolve Connector response bytes only through environment authorization, accepted terminal evidence, and the shared immutable-object authority |
 
-All twenty decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twenty-two decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.
