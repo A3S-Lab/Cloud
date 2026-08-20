@@ -6,7 +6,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, WorkflowDefinitionId, WorkflowRevisionId,
 };
-use crate::modules::workflow::domain::{IWorkflowDefinitionRepository, WorkflowStepKind};
+use crate::modules::workflow::domain::{
+    IWorkflowDefinitionRepository, WorkflowRevision, WorkflowStepKind,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -40,52 +42,58 @@ impl IApplicationWorkflowRevisionPort for WorkflowApplicationReleaseEvidenceRead
             .await?
             .filter(|revision| revision.project_id == project_id)
             .ok_or_else(|| ApplicationError::NotFound("Workflow revision not found".into()))?;
-        revision.validate().map_err(|error| {
-            ApplicationError::Internal(format!("stored Workflow revision is invalid: {error}"))
-        })?;
-        let semantic_contract_set_digest = revision
-            .semantic_contract_set_digest()
-            .cloned()
-            .ok_or_else(|| {
-                ApplicationError::Invalid(
-                    "Application publication requires Workflow semantic-contract authority".into(),
-                )
-            })?;
-        let input = revision
-            .contract
-            .spec()
-            .steps
-            .iter()
-            .find(|step| step.kind == WorkflowStepKind::Input)
-            .ok_or_else(|| {
-                ApplicationError::Internal("stored Workflow input step is missing".into())
-            })?;
-        let outputs = revision
-            .contract
-            .spec()
-            .steps
-            .iter()
-            .filter(|step| step.kind == WorkflowStepKind::Output)
-            .collect::<Vec<_>>();
-        let [output] = outputs.as_slice() else {
-            return Err(ApplicationError::Invalid(
-                "Application publication requires exactly one Workflow Output step".into(),
-            ));
-        };
-        let evidence = ApplicationWorkflowRevisionEvidence {
-            organization_id,
-            project_id,
-            binding: ApplicationWorkflowBinding {
-                workflow_definition_id,
-                workflow_revision_id,
-                workflow_contract_digest: revision.contract.digest().clone(),
-                workflow_payload_set_digest: revision.payload_set_digest.clone(),
-                workflow_semantic_contract_set_digest: semantic_contract_set_digest,
-                input_schema_digest: input.output_schema_digest.clone(),
-                output_schema_digest: output.output_schema_digest.clone(),
-            },
-        };
-        evidence.validate().map_err(ApplicationError::Internal)?;
-        Ok(evidence)
+        application_workflow_revision_evidence(&revision)
     }
+}
+
+pub(super) fn application_workflow_revision_evidence(
+    revision: &WorkflowRevision,
+) -> ApplicationResult<ApplicationWorkflowRevisionEvidence> {
+    revision.validate().map_err(|error| {
+        ApplicationError::Internal(format!("stored Workflow revision is invalid: {error}"))
+    })?;
+    let semantic_contract_set_digest = revision
+        .semantic_contract_set_digest()
+        .cloned()
+        .ok_or_else(|| {
+            ApplicationError::Invalid(
+                "Application publication requires Workflow semantic-contract authority".into(),
+            )
+        })?;
+    let input = revision
+        .contract
+        .spec()
+        .steps
+        .iter()
+        .find(|step| step.kind == WorkflowStepKind::Input)
+        .ok_or_else(|| {
+            ApplicationError::Internal("stored Workflow input step is missing".into())
+        })?;
+    let outputs = revision
+        .contract
+        .spec()
+        .steps
+        .iter()
+        .filter(|step| step.kind == WorkflowStepKind::Output)
+        .collect::<Vec<_>>();
+    let [output] = outputs.as_slice() else {
+        return Err(ApplicationError::Invalid(
+            "Application publication requires exactly one Workflow Output step".into(),
+        ));
+    };
+    let evidence = ApplicationWorkflowRevisionEvidence {
+        organization_id: revision.organization_id,
+        project_id: revision.project_id,
+        binding: ApplicationWorkflowBinding {
+            workflow_definition_id: revision.workflow_definition_id,
+            workflow_revision_id: revision.id,
+            workflow_contract_digest: revision.contract.digest().clone(),
+            workflow_payload_set_digest: revision.payload_set_digest.clone(),
+            workflow_semantic_contract_set_digest: semantic_contract_set_digest,
+            input_schema_digest: input.output_schema_digest.clone(),
+            output_schema_digest: output.output_schema_digest.clone(),
+        },
+    };
+    evidence.validate().map_err(ApplicationError::Internal)?;
+    Ok(evidence)
 }

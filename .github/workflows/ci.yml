@@ -237,6 +237,13 @@ jobs:
           postgres_application_sessions_are_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Application WorkflowRun composition
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_application_invocations_compose_exact_workflow_runs_after_restart
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify immutable Connector profile persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

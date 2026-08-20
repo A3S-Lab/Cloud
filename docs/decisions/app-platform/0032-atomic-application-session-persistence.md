@@ -60,7 +60,8 @@ mutation.
 - A3S Flow remains the sole durable execution, attempt, scheduling,
   cancellation, and history authority; Workflow remains the sole graph and
   `WorkflowRun` authority.
-- `APP0.2-C2` is component-only. Typed production WorkflowRun composition,
-  delivery commands and authorization, public blocking/streaming interfaces,
-  remaining records, and retained recovery evidence are still required before
-  `APP0.2` or any Application delivery capability is available.
+- `APP0.2-C2` is component-only. Decision 0033 supplies typed production
+  WorkflowRun composition, but delivery commands and authorization, public
+  blocking/streaming interfaces, remaining records, and retained delivery
+  recovery evidence are still required before `APP0.2` or any Application
+  delivery capability is available.

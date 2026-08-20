@@ -740,7 +740,7 @@ pub(super) fn release_contract(
     })
 }
 
-fn cqrs_contract(
+pub(super) fn cqrs_contract(
     evidence: &ApplicationWorkflowRevisionEvidence,
     presentation_marker: char,
 ) -> ApplicationReleaseContract {

@@ -51,7 +51,7 @@ That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The thirty-two authority decisions are
+implementation is not a public capability. The thirty-three authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -682,7 +682,8 @@ implementing a Cloud substitute is prohibited by this plan.
 | `APP0.1` | Implemented; later APP0 availability gates remain | Production composition, REST/OpenAPI `1.42.0`, typed client, CLI, and six Management MCP create/publish/list/current/exact-history tools all reuse the C1/C2/C3 authority. Focused domain, HTTP, MCP, client, CLI, OpenAPI, and PostgreSQL persistence evidence passes without adding graph, Flow, provider, session, Secret, or Gateway authority | `APP0.1-C3`, `C0.1` |
 | `APP0.2-C1` | Implemented; component-only | Freeze Application-scoped end users, exact-release sessions, invocation-to-WorkflowRun correlation, monotonic input/Answer/final-output messages, optimistic immutable conversation-variable revisions, cancellation/terminal correlation, and stable `WorkflowRun + step + attempt + ordinal` effect identities. One atomic in-memory conformance repository proves exact replay, cross-kind effect exclusion, one final output, stale-write rejection, and no duplicate Flow or Identity authority. No PostgreSQL, production composition, interface, or availability is claimed | `APP0.1`, protected `W0.3` WorkflowRun identity |
 | `APP0.2-C2` | Implemented; component-only | Migration `125`, one A3S ORM repository, and the production adapter factory persist the C1 end-user/session/invocation/message/variable/effect authority atomically. Advisory and row locks, optimistic versions, deferred head/claim checks, immutable children, and deterministic identities preserve exact replay across reconnect while an ordinary WorkflowRun foreign key retains Flow and Workflow ownership. The PostgreSQL 17 gate rejects partial, cross-kind, late-message, and direct-mutation drift. No WorkflowRun creator, delivery command, public interface, or availability is claimed | `APP0.2-C1`, `APP0.1-C2`, protected `W0.3` WorkflowRun persistence |
-| `APP0.2` | Complete deterministic preset compilers, typed production WorkflowRun composition, message variants, file references, citations, feedback, annotations, public cancellation/replay, blocking/streaming parity, and retained recovery evidence over the C1/C2 contract | `APP0.2-C2`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
+| `APP0.2-C3` | Implemented; component-only | One typed request/evidence port and internal CQRS handler derive stable Workflow Goal, Plan, and Run identities from the exact persisted invocation. The production adapter validates immutable release, Workflow revision, Ontology revision, input, Principal, Environment, and timeout authority before using the existing Workflow compilers and repositories. Exact retries adopt after restart, drift conflicts, and a cancellation race compensates through the existing WorkflowRun state machine. The production process registers the handler; no Flow/provider/queue or public delivery path is added | `APP0.2-C2`, protected `W0.3` Goal/Plan/WorkflowRun compilers and persistence |
+| `APP0.2` | Complete deterministic preset compilers, authorized public session/invocation and cancellation/replay commands, message variants, file references, citations, feedback, annotations, blocking/streaming parity, and retained delivery recovery evidence over the C1/C2/C3 contract | `APP0.2-C3`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
 | `APP0.5` | Add run-history and monitor projections, token/usage/cost correlation, latency and failure diagnostics, feedback/annotation review, retention/redaction, external telemetry export, and operator alerts without a second run log | `APP0.3`, `I0.2c`, Operations and telemetry foundations |
@@ -744,7 +745,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All thirty-two
+   reject inventory/schema drift and false public claims. All thirty-three
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -757,8 +758,10 @@ The recommended sequence is:
    default-output folding, schema-bound typed JSON response projection,
    descriptor-bound Connector failure routing, the single Application release
    authority, its atomic persistence boundary, authorization-before-replay
-   CQRS, one management interface over that same authority, and canonical
-   UserFile admission through the shared immutable-object authority are
+   CQRS, one management interface over that same authority, canonical UserFile
+   admission through the shared immutable-object authority, the single
+   Application session authority and its atomic persistence, and typed exact
+   invocation-to-ordinary-WorkflowRun composition are
    accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
@@ -771,12 +774,12 @@ The recommended sequence is:
    reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
    folding/evidence, and Plan v5 Connector failure routing; retain the
-   `APP0.2-C1/C2` Applications-owned variable and Answer projection contract, then
-   complete its typed Workflow ports, remaining non-Execution error branches,
+    `APP0.2-C1/C2/C3` Applications-owned variable, Answer, and typed WorkflowRun
+    composition contract, then complete remaining non-Execution error branches,
    and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Retain the implemented `APP0.1`
-   vertical slice and component-only `APP0.2-C1/C2`, and implement `K0.1` and
+    vertical slice and component-only `APP0.2-C1/C2/C3`, and implement `K0.1` and
    `AUT0.1` independently. Do not add provider behavior to these contract
    slices.
 4. **Complete the provider spine.** Advance `I0.2`, the required certified

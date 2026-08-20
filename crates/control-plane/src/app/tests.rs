@@ -1804,6 +1804,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             applications: Arc::new(
                 crate::modules::applications::InMemoryApplicationRepository::new(),
             ),
+            application_sessions: Arc::new(
+                crate::modules::applications::InMemoryApplicationSessionRepository::new(),
+            ),
             durable_cell_applications: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
             ),

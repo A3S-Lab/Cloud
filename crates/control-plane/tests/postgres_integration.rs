@@ -81,6 +81,8 @@ mod activation_retirement_crash_support;
 mod application_session_fixtures_support;
 #[path = "support/application_sessions.rs"]
 mod application_sessions_support;
+#[path = "support/application_workflow_runs.rs"]
+mod application_workflow_runs_support;
 #[path = "support/applications.rs"]
 mod applications_support;
 #[path = "support/assets.rs"]
@@ -377,6 +379,19 @@ async fn postgres_application_sessions_are_atomic_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL Application session and semantic-effect authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_application_invocations_compose_exact_workflow_runs_after_restart() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        application_workflow_runs_support::exercise_application_workflow_run_composition,
+    )
+    .await
+    .expect("PostgreSQL Application WorkflowRun composition gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

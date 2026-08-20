@@ -37,7 +37,8 @@ AI application platform parity manifest.
 | [0030](0030-canonical-user-file-admission.md) | Admit scoped user files through one canonical Files lifecycle and the shared immutable-object authority |
 | [0031](0031-single-application-session-authority.md) | Keep release-pinned sessions and exactly-once Workflow semantic effects in one Applications authority |
 | [0032](0032-atomic-application-session-persistence.md) | Persist the single Application session and semantic-effect authority atomically without copying WorkflowRun or Flow state |
+| [0033](0033-typed-application-workflow-run-composition.md) | Compose exact Application invocations into ordinary deterministic Workflow Goals, Plans, and Runs without bypassing Workflow or Flow |
 
-All thirty-two decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All thirty-three decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

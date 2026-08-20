@@ -9,10 +9,11 @@ use crate::modules::agents::{
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
 use crate::modules::applications::{
-    ApplicationsModule, CreateApplicationHandler, GetApplicationHandler,
-    GetApplicationReleaseHandler, IApplicationRepository, IApplicationWorkflowRevisionPort,
+    ApplicationsModule, ComposeApplicationInvocationWorkflowRunHandler, CreateApplicationHandler,
+    GetApplicationHandler, GetApplicationReleaseHandler, IApplicationRepository,
+    IApplicationSessionRepository, IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort,
     ListApplicationReleasesHandler, ListApplicationsHandler, PublishApplicationReleaseHandler,
-    WorkflowApplicationReleaseEvidenceReader,
+    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -497,7 +498,7 @@ async fn build_api_worker_application(
     let secrets = adapters.secrets;
     let connector_profiles = adapters.connector_profiles;
     let applications = adapters.applications;
-    let _application_sessions = adapters.application_sessions;
+    let application_sessions = adapters.application_sessions;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
@@ -1406,6 +1407,7 @@ async fn build_api_worker_application(
                 outbound_notifications,
                 connector_profiles,
                 applications,
+                application_sessions,
                 durable_cell_applications,
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
@@ -1559,6 +1561,7 @@ struct ManagementApplicationDependencies {
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
     applications: Arc<dyn IApplicationRepository>,
+    application_sessions: Arc<dyn IApplicationSessionRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
@@ -1627,6 +1630,7 @@ fn build_management_application_with_health(
         outbound_notifications,
         connector_profiles,
         applications,
+        application_sessions,
         durable_cell_applications,
         durable_cell_deployments,
         oci_artifacts,
@@ -1699,8 +1703,17 @@ fn build_management_application_with_health(
     let application_workflow_evidence: Arc<dyn IApplicationWorkflowRevisionPort> = Arc::new(
         WorkflowApplicationReleaseEvidenceReader::new(Arc::clone(&workflow_definitions)),
     );
+    let application_workflow_runs: Arc<dyn IApplicationWorkflowRunPort> =
+        Arc::new(WorkflowApplicationRunService::new(
+            Arc::clone(&workflow_definitions),
+            Arc::clone(&ontologies),
+            Arc::clone(&workflow_goals),
+            Arc::clone(&workflow_runs),
+        ));
     let create_applications = Arc::clone(&applications);
     let publish_applications = Arc::clone(&applications);
+    let compose_application_invocations = Arc::clone(&applications);
+    let compose_application_sessions = application_sessions;
     let list_applications = Arc::clone(&applications);
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
@@ -2151,6 +2164,14 @@ fn build_management_application_with_health(
                         application_workflow_evidence,
                     ),
                 )
+                .command_handler::<
+                    crate::modules::applications::ComposeApplicationInvocationWorkflowRun,
+                    _,
+                >(ComposeApplicationInvocationWorkflowRunHandler::new(
+                    compose_application_invocations,
+                    compose_application_sessions,
+                    application_workflow_runs,
+                ))
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
                         create_durable_cell_environments,
