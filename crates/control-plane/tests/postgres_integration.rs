@@ -56,6 +56,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+const CLOUD_MIGRATION_COUNT: i64 = 122;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "122";
+
 async fn migrate_and_connect_for_test(
     url: &str,
     max_connections: usize,
@@ -691,7 +694,10 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (121, "121".into()));
+    assert_eq!(
+        migration_state,
+        (CLOUD_MIGRATION_COUNT, LATEST_CLOUD_MIGRATION_VERSION.into())
+    );
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1779,7 +1785,7 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     let combined_output = outputs.join("\n");
     for required in [
         "001",
-        "121",
+        LATEST_CLOUD_MIGRATION_VERSION,
         "a3s_flow/a3s-flow-0001-events",
         "a3s_flow/a3s-flow-0006-continue-as-new",
         "a3s_boot/a3s-boot-0001-queue",
@@ -1862,11 +1868,12 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
 
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_count = database
-        .fetch_one_as(sql_query::<i64>(
-            "select count(*) from a3s_orm_migrations where version <= '121'",
-        ))
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from a3s_orm_migrations where version <= ")
+                .bind(LATEST_CLOUD_MIGRATION_VERSION),
+        )
         .await?;
-    assert_eq!(migration_count, 121);
+    assert_eq!(migration_count, CLOUD_MIGRATION_COUNT);
     let flow_migration_count = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from a3s_flow.a3s_orm_migrations",
@@ -1880,9 +1887,10 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         .await?;
     assert_eq!(boot_migration_count, 1);
     let required_checksum = database
-        .fetch_one_as(sql_query::<String>(
-            "select checksum from a3s_orm_migrations where version = '121'",
-        ))
+        .fetch_one_as(
+            sql_query::<String>("select checksum from a3s_orm_migrations where version = ")
+                .bind(LATEST_CLOUD_MIGRATION_VERSION),
+        )
         .await?;
 
     database
@@ -1904,7 +1912,8 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         .execute(
             sql_query::<()>("update a3s_orm_migrations set checksum = ")
                 .bind("0".repeat(64))
-                .append(" where version = '121'"),
+                .append(" where version = ")
+                .bind(LATEST_CLOUD_MIGRATION_VERSION),
         )
         .await?;
     let error = match connect_postgres(&url, 2).await {
@@ -1912,9 +1921,9 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         Err(error) => error,
     };
     assert!(
-        error
-            .to_string()
-            .contains("migration \"121\" changed after it was applied"),
+        error.to_string().contains(&format!(
+            "migration \"{LATEST_CLOUD_MIGRATION_VERSION}\" changed after it was applied"
+        )),
         "unexpected checksum admission error: {error}"
     );
 
@@ -1922,22 +1931,24 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         .execute(
             sql_query::<()>("update a3s_orm_migrations set checksum = ")
                 .bind(required_checksum)
-                .append(" where version = '121'"),
+                .append(" where version = ")
+                .bind(LATEST_CLOUD_MIGRATION_VERSION),
         )
         .await?;
     database
-        .execute(sql_query::<()>(
-            "delete from a3s_orm_migrations where version = '121'",
-        ))
+        .execute(
+            sql_query::<()>("delete from a3s_orm_migrations where version = ")
+                .bind(LATEST_CLOUD_MIGRATION_VERSION),
+        )
         .await?;
     let error = match connect_postgres(&url, 2).await {
         Ok(_) => return Err("a serving process admitted a missing required migration".into()),
         Err(error) => error,
     };
     assert!(
-        error
-            .to_string()
-            .contains("required migration \"121\" has not been applied"),
+        error.to_string().contains(&format!(
+            "required migration \"{LATEST_CLOUD_MIGRATION_VERSION}\" has not been applied"
+        )),
         "unexpected missing-migration admission error: {error}"
     );
     Ok(())
@@ -2151,7 +2162,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 121);
+    assert_eq!(applied, CLOUD_MIGRATION_COUNT);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",

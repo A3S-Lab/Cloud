@@ -1,4 +1,4 @@
-use crate::migrate_and_connect_for_test;
+use crate::{migrate_and_connect_for_test, CLOUD_MIGRATION_COUNT, LATEST_CLOUD_MIGRATION_VERSION};
 use a3s_cloud_contracts::{artifact_uri, CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
 use a3s_cloud_control_plane::modules::executions::domain::events::{
     ExecutionCancellationRequested, ExecutionRequested, ExecutionTemplatePublished,
@@ -166,7 +166,10 @@ pub async fn exercise_bound_execution_persistence(url: String) -> TestResult {
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (121, "121".into()));
+    assert_eq!(
+        migration_state,
+        (CLOUD_MIGRATION_COUNT, LATEST_CLOUD_MIGRATION_VERSION.into())
+    );
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
