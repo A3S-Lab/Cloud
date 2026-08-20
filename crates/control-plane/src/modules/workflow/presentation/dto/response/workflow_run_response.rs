@@ -1,6 +1,7 @@
 use crate::modules::workflow::application::WorkflowRunMutationResult;
 use crate::modules::workflow::domain::{
-    WorkflowRunRecord, WorkflowRunVariable, WorkflowRunVariableInspection, WorkflowStepProjection,
+    WorkflowRunRecord, WorkflowRunVariable, WorkflowRunVariableInspection,
+    WorkflowStepDefaultOutputEvidence, WorkflowStepProjection,
 };
 use crate::modules::workflow::WorkflowRunOutput;
 use chrono::{DateTime, Utc};
@@ -19,6 +20,7 @@ pub struct WorkflowStepProjectionResponse {
     pub result: Option<serde_json::Value>,
     pub result_digest: Option<String>,
     pub error: Option<String>,
+    pub default_output_evidence: Option<WorkflowStepDefaultOutputEvidence>,
     pub evidence_references: Vec<String>,
     pub last_flow_sequence: u64,
     pub updated_at: DateTime<Utc>,
@@ -36,6 +38,7 @@ impl From<WorkflowStepProjection> for WorkflowStepProjectionResponse {
             result: value.result,
             result_digest: value.result_digest.map(|digest| digest.to_string()),
             error: value.error,
+            default_output_evidence: value.default_output_evidence,
             evidence_references: value.evidence_references,
             last_flow_sequence: value.last_flow_sequence,
             updated_at: value.updated_at,

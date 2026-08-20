@@ -5,8 +5,8 @@ use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
     WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
     WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
-    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepFailureOutput,
-    WorkflowStepKind,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
+    WorkflowStepFailureOutput, WorkflowStepKind,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -399,6 +399,7 @@ pub(super) fn execution_result(
         output_digest,
         selected_handle: None,
         composite_region_result: None,
+        default_output_evidence: None,
     };
     result
         .validate(step)
@@ -413,6 +414,33 @@ fn execution_failure_resolution(
     error: String,
     detail: Option<WorkflowExecutionStepOutput>,
 ) -> Result<ExecutionResolution, FlowError> {
+    if step.plan.default_output.is_some() {
+        let failure = match detail {
+            Some(output) => WorkflowStepFailureOutput::observe_execution(step, output),
+            None => WorkflowStepFailureOutput::observe_dispatch_rejected(step, error),
+        }
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+        let evidence = WorkflowStepDefaultOutputEvidence::new(step, failure)
+            .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+        let material = step
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.default_output.as_ref())
+            .ok_or_else(|| execution_payload_drift(run_id, &step.plan.id))?;
+        let result = WorkflowLocalStepResult {
+            step_id: step.plan.id.clone(),
+            kind: WorkflowStepKind::Execution,
+            output: material.value.clone(),
+            output_digest: material.digest.clone(),
+            selected_handle: None,
+            composite_region_result: None,
+            default_output_evidence: Some(evidence),
+        };
+        result
+            .validate(step)
+            .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+        return Ok(ExecutionResolution::Succeeded(Box::new(result)));
+    }
     let Some(handle) = execution_failure_handle(input, step)? else {
         return Ok(ExecutionResolution::Failed {
             error,
@@ -435,6 +463,7 @@ fn execution_failure_resolution(
         output_digest,
         selected_handle: Some(handle),
         composite_region_result: None,
+        default_output_evidence: None,
     };
     result
         .validate(step)
@@ -501,6 +530,7 @@ pub(super) fn human_decision_result(
         output_digest: payload.output_digest,
         selected_handle: None,
         composite_region_result: None,
+        default_output_evidence: None,
     };
     result
         .validate(step)
@@ -661,7 +691,8 @@ mod tests {
     use crate::modules::workflow::domain::WORKFLOW_RUN_OUTPUT_MAX_BYTES;
     use crate::modules::workflow::domain::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
     use crate::modules::workflow::test_support::{
-        digest, multi_output_workflow_run_input, timestamp, workflow_run_input,
+        default_output_execution_workflow_run_input, digest, multi_output_workflow_run_input,
+        timestamp, workflow_run_input, TEST_EXECUTION_STEP_ID,
     };
     use a3s_flow::{CancellationRequest, FlowEvent, FlowEventEnvelope, WorkflowSpec};
     use uuid::Uuid;
@@ -690,6 +721,53 @@ mod tests {
             ),
             serde_json::json!({"a": 1, "b": 2})
         );
+    }
+
+    #[test]
+    fn terminal_execution_dispatch_failure_folds_into_exact_default_output() {
+        let input = default_output_execution_workflow_run_input().expect("default-output input");
+        let steps = input.resolved_steps().expect("resolved steps");
+        let step = steps
+            .iter()
+            .find(|step| step.plan.id == TEST_EXECUTION_STEP_ID)
+            .expect("Execution step");
+        let metadata = WorkflowExecutionHookMetadata::from_run_step(
+            &input,
+            step,
+            serde_json::json!({"command": "verify"}),
+        )
+        .expect("hook metadata");
+        let payload =
+            WorkflowExecutionResumePayload::rejected(&metadata, "provider capacity exhausted")
+                .expect("rejected payload");
+        let observed = serde_json::to_value(payload).expect("encoded payload");
+        let result = execution_result(
+            &input.workflow_run_id.to_string(),
+            &metadata.flow_hook_id(),
+            &input,
+            step,
+            &metadata,
+            &observed,
+        )
+        .expect("default-output resolution");
+        let ExecutionResolution::Succeeded(result) = result else {
+            panic!("default-output fallback must remain a successful graph value");
+        };
+        assert_eq!(
+            result.output,
+            serde_json::json!({"status": "temporarily_unavailable"})
+        );
+        assert!(result.selected_handle.is_none());
+        let evidence = result
+            .default_output_evidence
+            .as_ref()
+            .expect("terminal failure evidence");
+        assert_eq!(
+            evidence.failure.classification,
+            crate::modules::workflow::domain::WorkflowStepFailureClassification::DispatchRejected
+        );
+        evidence.validate(step).expect("authority-bound evidence");
+        result.validate(step).expect("validated folded output");
     }
 
     #[test]
@@ -746,6 +824,7 @@ mod tests {
             output_digest: Sha256Digest::parse(digest('f')).expect("digest"),
             selected_handle: None,
             composite_region_result: None,
+            default_output_evidence: None,
         };
         let replay_drift = invocation(
             &input,
@@ -779,6 +858,7 @@ mod tests {
                     output_digest: Sha256Digest::parse(digest('a')).expect("digest"),
                     selected_handle: None,
                     composite_region_result: None,
+                    default_output_evidence: None,
                 })),
             ),
             (
@@ -790,6 +870,7 @@ mod tests {
                     output_digest: Sha256Digest::parse(digest('b')).expect("digest"),
                     selected_handle: None,
                     composite_region_result: None,
+                    default_output_evidence: None,
                 })),
             ),
         ]);

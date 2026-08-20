@@ -1,10 +1,10 @@
 use super::{WorkflowLocalStepInput, WorkflowLocalStepResult};
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
-    WorkflowDataSchema, WorkflowDataType, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WorkflowDataSchema, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
 };
 use serde_json::Value;
 
@@ -18,6 +18,7 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
     if input.step.plan.kind == WorkflowStepKind::Subworkflow {
@@ -32,6 +33,7 @@ pub(super) fn execute_local_step(
             output_digest: region.output_digest.clone(),
             selected_handle: None,
             composite_region_result: Some(region),
+            default_output_evidence: None,
         };
         result.validate(&input.step)?;
         validate_data_schema(
@@ -126,6 +128,7 @@ pub(super) fn execute_local_step(
         output_digest,
         selected_handle,
         composite_region_result: None,
+        default_output_evidence: None,
     };
     result.validate(&input.step)?;
     Ok(result)
@@ -136,57 +139,12 @@ pub(super) fn validate_data_schema(
     value: &Value,
     label: &str,
 ) -> Result<(), String> {
-    schema.validate()?;
-    if !schema.value_type.matches_json_value(value) {
-        return Err(format!(
-            "{label} must be {}, not {}",
-            schema.value_type.as_str(),
-            json_type(value)
-        ));
-    }
-    if schema.value_type != WorkflowDataType::Object {
-        return Ok(());
-    }
-    let object = value
-        .as_object()
-        .ok_or_else(|| format!("{label} must be an object"))?;
-    for field in &schema.fields {
-        match object.get(&field.name) {
-            Some(value) if field.value_type.matches_json_value(value) => {}
-            Some(value) => {
-                return Err(format!(
-                    "{label} field {:?} must be {}, not {}",
-                    field.name,
-                    field.value_type.as_str(),
-                    json_type(value)
-                ))
-            }
-            None if field.required => {
-                return Err(format!(
-                    "{label} is missing required field {:?}",
-                    field.name
-                ))
-            }
-            None => {}
-        }
-    }
-    Ok(())
+    schema.validate_value(value, label)
 }
 
 pub(super) fn value_digest(value: &Value, label: &str) -> Result<Sha256Digest, String> {
     let canonical = canonical_json_bounded(value, WORKFLOW_RUN_OUTPUT_MAX_BYTES, label)?;
     Sha256Digest::parse(sha256_digest(&canonical))
-}
-
-fn json_type(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
 }
 
 fn render_template(

@@ -11,24 +11,27 @@ use crate::modules::workflow::domain::{
     AssignmentPolicyRef, CapabilityOwner, CapabilityReference, CapabilityType, HumanTask,
     NewHumanTask, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, WorkflowBranchRoute,
     WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
-    WorkflowDataSchema, WorkflowDataType, WorkflowEdgeSpec, WorkflowPayload,
+    WorkflowDataSchema, WorkflowDataType, WorkflowDefaultOutput, WorkflowEdgeSpec, WorkflowPayload,
     WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
     WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepConfiguration,
-    WorkflowStepDescriptorBinding, WorkflowStepFailureContract, WorkflowStepFallbackMode,
-    WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
     WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableContractSpec,
     WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableRead,
     WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
     WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
-    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_COMPILER_REVISION_V4,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
     WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
     WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6,
+    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
+    WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -580,6 +583,7 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
             maximum_attempts: 3,
             default_delay_seconds: 5,
         }),
+        default_output: None,
     };
     let retry_payload =
         WorkflowPayload::from_content(WorkflowPayloadContent::Policy(retry_policy))?;
@@ -1098,6 +1102,10 @@ pub(crate) fn routed_execution_workflow_run_input() -> Result<WorkflowRunInput, 
     Ok(input)
 }
 
+mod default_output;
+
+pub(crate) use default_output::default_output_execution_workflow_run_input;
+
 pub(crate) fn human_decision_form_release(
     input: &WorkflowRunInput,
 ) -> Result<FormReleaseRef, String> {
@@ -1150,6 +1158,7 @@ fn plan_step(
         capability: None,
         descriptor: None,
         failure: None,
+        default_output: None,
     }
 }
 

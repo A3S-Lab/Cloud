@@ -6,7 +6,8 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::{
     validate_execution_failure_routes, CapabilityReference, WorkflowContractQuotas,
     WorkflowEdgeSpec, WorkflowSpec, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
-    WorkflowStepKind, WorkflowStepSpec,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepSpec,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,33 @@ pub const WORKFLOW_PLAN_SCHEMA_V2: &str = "cloud.workflow.plan.v2";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V2: &str = "cloud.workflow.plan-compiler.v2";
 pub const WORKFLOW_PLAN_SCHEMA_V3: &str = "cloud.workflow.plan.v3";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V3: &str = "cloud.workflow.plan-compiler.v3";
+pub const WORKFLOW_PLAN_SCHEMA_V4: &str = "cloud.workflow.plan.v4";
+pub const WORKFLOW_PLAN_COMPILER_REVISION_V4: &str = "cloud.workflow.plan-compiler.v4";
 pub const WORKFLOW_PLAN_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowStepDefaultOutputContract {
+    pub output_port: WorkflowStepPort,
+}
+
+impl WorkflowStepDefaultOutputContract {
+    pub fn validate(&self) -> Result<(), String> {
+        super::super::validation::validate_identifier(
+            "Workflow default-output port",
+            &self.output_port.name,
+        )?;
+        if self.output_port.cardinality != WorkflowStepPortCardinality::Single
+            || !self.output_port.required
+            || self.output_port.dynamic
+        {
+            return Err(
+                "Workflow default output must use one required static descriptor port".into(),
+            );
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,6 +61,8 @@ pub struct WorkflowPlanStep {
     pub descriptor: Option<WorkflowStepDescriptorBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<WorkflowStepFailureContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_output: Option<WorkflowStepDefaultOutputContract>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,10 +99,14 @@ impl WorkflowPlan {
             (WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_COMPILER_REVISION_V3) => {
                 WorkflowPlanVersion::V3
             }
+            (WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_COMPILER_REVISION_V4) => {
+                WorkflowPlanVersion::V4
+            }
             _ => return Err("Workflow plan schema and compiler revision are incompatible".into()),
         };
         let semantic_version = version != WorkflowPlanVersion::V1;
-        let failure_version = version == WorkflowPlanVersion::V3;
+        let failure_version = matches!(version, WorkflowPlanVersion::V3 | WorkflowPlanVersion::V4);
+        let default_output_version = version == WorkflowPlanVersion::V4;
         if self.workflow_definition_id.as_uuid().is_nil()
             || self.workflow_revision_id.as_uuid().is_nil()
             || self.ontology_id.as_uuid().is_nil()
@@ -118,6 +151,9 @@ impl WorkflowPlan {
         {
             return Err("Workflow plan step failure contracts are incomplete".into());
         }
+        if !default_output_version && self.steps.iter().any(|step| step.default_output.is_some()) {
+            return Err("Workflow plan default-output contracts require Plan v4".into());
+        }
         let failures = self
             .steps
             .iter()
@@ -132,8 +168,20 @@ impl WorkflowPlan {
         } else {
             workflow.has_non_branch_source_handles()
         };
-        if has_failure_routes != failure_version {
-            return Err("Workflow plan failure-route version is invalid".into());
+        let has_default_outputs = validate_default_output_contracts(self)?;
+        match version {
+            WorkflowPlanVersion::V1 | WorkflowPlanVersion::V2
+                if has_failure_routes || has_default_outputs =>
+            {
+                return Err("Workflow plan failure semantics require a newer version".into())
+            }
+            WorkflowPlanVersion::V3 if !has_failure_routes || has_default_outputs => {
+                return Err("Workflow Plan v3 must contain only routed failure semantics".into())
+            }
+            WorkflowPlanVersion::V4 if !has_default_outputs => {
+                return Err("Workflow Plan v4 requires at least one default-output fallback".into())
+            }
+            _ => {}
         }
         if self.environment_id.is_none()
             && self
@@ -191,6 +239,48 @@ enum WorkflowPlanVersion {
     V1,
     V2,
     V3,
+    V4,
+}
+
+fn validate_default_output_contracts(plan: &WorkflowPlan) -> Result<bool, String> {
+    let handled_sources = plan
+        .edges
+        .iter()
+        .filter_map(|edge| edge.source_handle.as_ref().map(|_| edge.source.as_str()))
+        .collect::<BTreeSet<_>>();
+    let mut found = false;
+    for step in &plan.steps {
+        let fallback = step.failure.as_ref().map(|failure| failure.fallback);
+        match (fallback, step.default_output.as_ref()) {
+            (Some(WorkflowStepFallbackMode::DefaultOutput), Some(contract)) => {
+                found = true;
+                contract.validate()?;
+                if step.kind != WorkflowStepKind::Execution
+                    || step.policy_digest.is_none()
+                    || handled_sources.contains(step.id.as_str())
+                {
+                    return Err(format!(
+                        "Workflow step {:?} has an invalid default-output fallback binding",
+                        step.id
+                    ));
+                }
+            }
+            (Some(WorkflowStepFallbackMode::DefaultOutput), None) => {
+                return Err(format!(
+                    "Workflow step {:?} lost its default-output contract",
+                    step.id
+                ))
+            }
+            (_, Some(_)) => {
+                return Err(format!(
+                    "Workflow step {:?} has default-output material without descriptor fallback",
+                    step.id
+                ))
+            }
+            _ => {}
+        }
+    }
+    Ok(found)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

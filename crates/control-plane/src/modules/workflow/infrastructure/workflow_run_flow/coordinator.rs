@@ -570,6 +570,7 @@ fn project_drift(
             selected_handle: None,
             result: None,
             error: None,
+            default_output_evidence: None,
             last_flow_sequence: snapshot.last_sequence.max(1),
             observed_at,
         })

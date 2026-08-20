@@ -4,13 +4,14 @@ use crate::modules::workflow::domain::{
     ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, ResolvedWorkflowVariableContract,
     ResolvedWorkflowVariableDefaults, WorkflowGoal, WorkflowRevision, WorkflowRun,
     WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
-    WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
-    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V6,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -113,6 +114,28 @@ impl WorkflowRunCompiler {
                     input_schema,
                     runtime_revision,
                     flow_version,
+                    Some(ResolvedWorkflowVariableContract::from_contract(
+                        contracts.variable_contract(),
+                    )),
+                    contracts
+                        .variable_defaults()
+                        .map(ResolvedWorkflowVariableDefaults::from_defaults),
+                    contracts
+                        .composite_regions()
+                        .map(ResolvedWorkflowCompositeRegions::from_regions),
+                )
+            }
+            (WORKFLOW_PLAN_SCHEMA_V4, Some(contracts)) => {
+                contracts.validate_plan_bindings(plan)?;
+                validate_runtime_variable_contract(
+                    contracts.variable_contract(),
+                    contracts.variable_defaults(),
+                    plan,
+                )?;
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V7,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+                    WORKFLOW_RUN_FLOW_VERSION_V7,
                     Some(ResolvedWorkflowVariableContract::from_contract(
                         contracts.variable_contract(),
                     )),

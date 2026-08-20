@@ -37,10 +37,20 @@ failed while the reachable error path may complete its parent. Without the
 edge, historical fail-fast behavior remains. Plan v1-v2 and Run input v1-v3
 retain their byte and replay shape.
 
+The same finite Execution descriptor may instead select mutually exclusive
+default-output fallback: no error port or handled edge is then permitted. Its
+exact `default_policy_digest` must equal the Workflow step policy digest, and
+policy v3 contains one canonical value for the descriptor's required static
+single output port. That graph emits Plan v4 and immutable WorkflowRun
+input/runtime/Flow v7. Dispatch rejection, terminal failure, or cancellation
+returns the exact policy value and retains bounded
+`cloud.workflow.step-default-output.v1` evidence in the completed projection.
+Plan v1-v3 and Run inputs v1-v6 retain their exact bytes and replay behavior.
+
 This is conformance for the existing finite Execution port only. It adds no
 retry engine, error queue, node-run table, provider lifecycle, or Flow history.
-Default-output fallback, Answer frames, compensation, and other provider error
-branches remain unavailable.
+Answer frames, compensation, and other provider error branches remain
+unavailable.
 
 ## Typed variable scopes
 

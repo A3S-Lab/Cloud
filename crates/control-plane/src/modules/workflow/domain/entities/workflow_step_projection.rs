@@ -2,7 +2,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, OrganizationId, ProjectId,
     Sha256Digest, WorkflowRunId,
 };
-use crate::modules::workflow::domain::WorkflowStepKind;
+use crate::modules::workflow::domain::{WorkflowStepDefaultOutputEvidence, WorkflowStepKind};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -69,6 +69,8 @@ pub struct WorkflowStepProjection {
     pub result: Option<serde_json::Value>,
     pub result_digest: Option<Sha256Digest>,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_output_evidence: Option<WorkflowStepDefaultOutputEvidence>,
     pub evidence_references: Vec<String>,
     pub last_flow_sequence: u64,
     pub updated_at: DateTime<Utc>,
@@ -81,6 +83,7 @@ pub struct WorkflowStepFlowState {
     pub selected_handle: Option<String>,
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
+    pub default_output_evidence: Option<WorkflowStepDefaultOutputEvidence>,
     pub last_flow_sequence: u64,
     pub observed_at: DateTime<Utc>,
 }
@@ -107,6 +110,7 @@ impl WorkflowStepProjection {
             result: None,
             result_digest: None,
             error: None,
+            default_output_evidence: None,
             evidence_references: Vec::new(),
             last_flow_sequence: 0,
             updated_at: canonical_timestamp(requested_at),
@@ -144,7 +148,8 @@ impl WorkflowStepProjection {
                 && self.selected_handle == state.selected_handle
                 && self.result == state.result
                 && self.result_digest == result_digest
-                && self.error == state.error;
+                && self.error == state.error
+                && self.default_output_evidence == state.default_output_evidence;
             return if identical {
                 Ok(false)
             } else {
@@ -163,6 +168,7 @@ impl WorkflowStepProjection {
         self.result = state.result;
         self.result_digest = result_digest;
         self.error = state.error;
+        self.default_output_evidence = state.default_output_evidence;
         self.last_flow_sequence = state.last_flow_sequence;
         self.updated_at = observed_at;
         self.validate()?;
@@ -218,6 +224,17 @@ impl WorkflowStepProjection {
         if self.status != WorkflowStepProjectionStatus::Failed && self.error.is_some() {
             return Err("non-failed Workflow step projection contains an error".into());
         }
+        if let Some(evidence) = self.default_output_evidence.as_ref() {
+            if self.kind != WorkflowStepKind::Execution
+                || self.status != WorkflowStepProjectionStatus::Completed
+                || self.result.is_none()
+                || self.selected_handle.is_some()
+                || self.error.is_some()
+            {
+                return Err("Workflow default-output projection state is invalid".into());
+            }
+            evidence.validate_projection_shape(&self.step_id)?;
+        }
         if self.selected_handle.is_some()
             && self.kind != WorkflowStepKind::Branch
             && !(self.kind == WorkflowStepKind::Execution
@@ -249,7 +266,10 @@ fn valid_error(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::workflow::test_support::timestamp;
+    use crate::modules::workflow::domain::WorkflowStepFailureOutput;
+    use crate::modules::workflow::test_support::{
+        default_output_execution_workflow_run_input, timestamp, TEST_EXECUTION_STEP_ID,
+    };
     use serde_json::json;
 
     #[test]
@@ -269,6 +289,7 @@ mod tests {
             selected_handle: Some("high".into()),
             result: Some(json!({"priority": "high"})),
             error: None,
+            default_output_evidence: None,
             last_flow_sequence: 4,
             observed_at: timestamp(8, 2),
         };
@@ -282,9 +303,54 @@ mod tests {
                 selected_handle: Some("high".into()),
                 result: Some(json!({"priority": "high"})),
                 error: None,
+                default_output_evidence: None,
                 last_flow_sequence: 5,
                 observed_at: timestamp(8, 3),
             })
             .is_err());
+    }
+
+    #[test]
+    fn completed_execution_projection_preserves_default_output_evidence() {
+        let input = default_output_execution_workflow_run_input().expect("default-output input");
+        let resolved = input.resolved_steps().expect("resolved steps");
+        let step = resolved
+            .iter()
+            .find(|step| step.plan.id == TEST_EXECUTION_STEP_ID)
+            .expect("Execution step");
+        let failure = WorkflowStepFailureOutput::observe_dispatch_rejected(
+            step,
+            "provider unavailable".into(),
+        )
+        .expect("failure observation");
+        let evidence = WorkflowStepDefaultOutputEvidence::new(step, failure).expect("evidence");
+        let material = step
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.default_output.as_ref())
+            .expect("default material");
+        let mut projection = WorkflowStepProjection::pending(
+            input.organization_id,
+            input.project_id,
+            input.workflow_run_id,
+            TEST_EXECUTION_STEP_ID.into(),
+            WorkflowStepKind::Execution,
+            input.requested_at,
+        )
+        .expect("pending projection");
+        projection
+            .project_flow(WorkflowStepFlowState {
+                status: WorkflowStepProjectionStatus::Completed,
+                attempt_generation: 1,
+                selected_handle: None,
+                result: Some(material.value.clone()),
+                error: None,
+                default_output_evidence: Some(evidence.clone()),
+                last_flow_sequence: 4,
+                observed_at: timestamp(8, 2),
+            })
+            .expect("fallback projection");
+        assert_eq!(projection.default_output_evidence, Some(evidence));
+        projection.validate().expect("valid stored projection");
     }
 }

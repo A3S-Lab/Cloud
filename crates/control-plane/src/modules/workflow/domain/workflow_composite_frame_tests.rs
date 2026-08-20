@@ -219,6 +219,7 @@ pub(super) fn fixture() -> Fixture {
                 capability: None,
                 descriptor: Some(descriptor("input", "workflow.input")),
                 failure: None,
+                default_output: None,
             },
             WorkflowPlanStep {
                 id: "iteration".into(),
@@ -237,6 +238,7 @@ pub(super) fn fixture() -> Fixture {
                 }),
                 descriptor: Some(descriptor("iteration", "workflow.iteration")),
                 failure: None,
+                default_output: None,
             },
             WorkflowPlanStep {
                 id: "output".into(),
@@ -248,6 +250,7 @@ pub(super) fn fixture() -> Fixture {
                 capability: None,
                 descriptor: Some(descriptor("output", "workflow.output")),
                 failure: None,
+                default_output: None,
             },
         ],
         edges: vec![

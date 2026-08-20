@@ -4,7 +4,8 @@ use crate::modules::workflow::application::{
 use crate::modules::workflow::domain::{
     CapabilityReference, PlanRevision, WorkflowDefinition, WorkflowEdgeSpec, WorkflowGoalRecord,
     WorkflowPayload, WorkflowPlan, WorkflowPlanStep, WorkflowRevision,
-    WorkflowStepDescriptorBinding, WorkflowStepFailureContract, WorkflowStepPort,
+    WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepPort,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -104,6 +105,22 @@ pub struct WorkflowPlanStepResponse {
     pub descriptor: Option<WorkflowStepDescriptorBindingResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<WorkflowStepFailureContractResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_output: Option<WorkflowStepDefaultOutputContractResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowStepDefaultOutputContractResponse {
+    pub output_port: WorkflowStepPortResponse,
+}
+
+impl From<WorkflowStepDefaultOutputContract> for WorkflowStepDefaultOutputContractResponse {
+    fn from(value: WorkflowStepDefaultOutputContract) -> Self {
+        Self {
+            output_port: WorkflowStepPortResponse::from(value.output_port),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -184,6 +201,9 @@ impl From<WorkflowPlanStep> for WorkflowPlanStepResponse {
                 .descriptor
                 .map(WorkflowStepDescriptorBindingResponse::from),
             failure: value.failure.map(WorkflowStepFailureContractResponse::from),
+            default_output: value
+                .default_output
+                .map(WorkflowStepDefaultOutputContractResponse::from),
         }
     }
 }

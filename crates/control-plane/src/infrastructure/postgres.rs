@@ -1149,6 +1149,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/121_infrastructure_bindings.sql"
             )),
         ),
+        Migration::new(
+            "122",
+            "Workflow step default-output evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/122_workflow_step_default_output_evidence.sql"
+            )),
+        ),
     ]
 }
 
@@ -2102,6 +2110,34 @@ mod infrastructure_binding_migration_tests {
                 "migration 121 added mutable or duplicated authority: {forbidden}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod workflow_default_output_evidence_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/122_workflow_step_default_output_evidence.sql"
+    ));
+
+    #[test]
+    fn migration_122_adds_nullable_authority_bound_fallback_evidence() {
+        for expected in [
+            "pg_get_constraintdef(constraint_record.oid) like '%kind%branch%selected_handle%'",
+            "workflow_step_projections_selected_handle_check",
+            "kind = 'execution'",
+            "status = 'failed'",
+            "add column default_output_evidence jsonb",
+            "cloud.workflow.step-default-output.v1",
+            "default_output_evidence #>> '{failure,stepId}' = step_id",
+            "status = 'completed'",
+            "selected_handle is null",
+            "error is null",
+            ") is true",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        assert!(!MIGRATION.contains("create table"));
     }
 }
 

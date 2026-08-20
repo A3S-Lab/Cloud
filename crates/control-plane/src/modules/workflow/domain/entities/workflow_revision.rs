@@ -258,7 +258,6 @@ impl WorkflowRevision {
                 if self.revision_number > 1 && !parent_id.as_uuid().is_nil() => {}
             _ => return Err("Workflow revision lineage is invalid".into()),
         }
-        validate_payload_bindings(&self.contract, &self.payloads)?;
         if let Some(contracts) = &self.semantic_contracts {
             contracts.validate(self.contract.spec())?;
         } else if self.contract.spec().has_non_branch_source_handles() {
@@ -266,6 +265,11 @@ impl WorkflowRevision {
                 "Workflow failure routes require immutable descriptor semantic contracts".into(),
             );
         }
+        validate_payload_bindings(
+            &self.contract,
+            &self.payloads,
+            self.semantic_contracts.as_ref(),
+        )?;
         if digest_payload_set(&self.payloads)? != self.payload_set_digest {
             return Err("Workflow revision payload-set digest is invalid".into());
         }
@@ -293,6 +297,7 @@ impl WorkflowRevision {
 fn validate_payload_bindings(
     contract: &WorkflowContract,
     payloads: &[WorkflowPayload],
+    semantic_contracts: Option<&WorkflowRevisionSemanticContracts>,
 ) -> Result<(), String> {
     if payloads.is_empty() || payloads.len() > WORKFLOW_REVISION_MAX_PAYLOADS {
         return Err(format!(
@@ -337,15 +342,23 @@ fn validate_payload_bindings(
             ));
         }
         referenced.insert(step.configuration_digest.clone());
-        for digest in [&step.input_schema_digest, &step.output_schema_digest] {
-            require_payload(
-                &by_digest,
-                digest,
-                WorkflowPayloadKind::DataSchema,
-                &step.id,
-            )?;
-            referenced.insert(digest.clone());
-        }
+        require_payload(
+            &by_digest,
+            &step.input_schema_digest,
+            WorkflowPayloadKind::DataSchema,
+            &step.id,
+        )?;
+        referenced.insert(step.input_schema_digest.clone());
+        let output_payload = require_payload(
+            &by_digest,
+            &step.output_schema_digest,
+            WorkflowPayloadKind::DataSchema,
+            &step.id,
+        )?;
+        let WorkflowPayloadContent::DataSchema(output_schema) = output_payload.content() else {
+            return Err("Workflow output schema payload content has the wrong kind".into());
+        };
+        referenced.insert(step.output_schema_digest.clone());
         let policy = step
             .policy_digest
             .as_ref()
@@ -360,6 +373,7 @@ fn validate_payload_bindings(
             })
             .transpose()?;
         validate_retry_policy_binding(step, policy)?;
+        validate_default_output_policy_binding(step, policy, output_schema, semantic_contracts)?;
         if step.kind == WorkflowStepKind::Branch {
             validate_branch_handles(contract, &step.id, configuration)?;
         }
@@ -374,6 +388,53 @@ fn validate_payload_bindings(
         );
     }
     Ok(())
+}
+
+fn validate_default_output_policy_binding(
+    step: &WorkflowStepSpec,
+    policy: Option<&WorkflowPolicy>,
+    output_schema: &crate::modules::workflow::domain::WorkflowDataSchema,
+    semantic_contracts: Option<&WorkflowRevisionSemanticContracts>,
+) -> Result<(), String> {
+    let expected = semantic_contracts
+        .map(|contracts| contracts.default_output_contract(&step.id))
+        .transpose()?
+        .flatten();
+    let material = policy.and_then(|policy| policy.default_output.as_ref());
+    match (expected, material) {
+        (None, None) => Ok(()),
+        (None, Some(_)) => Err(format!(
+            "Workflow step {:?} has default-output policy material without descriptor authority",
+            step.id
+        )),
+        (Some(_), None) => Err(format!(
+            "Workflow step {:?} requires exact default-output policy material",
+            step.id
+        )),
+        (Some(expected), Some(material)) => {
+            if material.port != expected.output_port.name {
+                return Err(format!(
+                    "Workflow step {:?} default-output port {:?} does not match descriptor port {:?}",
+                    step.id, material.port, expected.output_port.name
+                ));
+            }
+            if !expected
+                .output_port
+                .value_type
+                .matches_json_value(&material.value)
+            {
+                return Err(format!(
+                    "Workflow step {:?} default output does not match descriptor type {}",
+                    step.id,
+                    expected.output_port.value_type.as_str()
+                ));
+            }
+            output_schema.validate_value(
+                &material.value,
+                &format!("Workflow step {:?} default output", step.id),
+            )
+        }
+    }
 }
 
 fn validate_retry_policy_binding(
@@ -514,6 +575,7 @@ mod retry_policy_tests {
             expression: None,
             candidates: Vec::new(),
             retry,
+            default_output: None,
         }
     }
 

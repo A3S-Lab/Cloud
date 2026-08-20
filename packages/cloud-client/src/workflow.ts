@@ -38,7 +38,12 @@ export interface WorkflowDefinition {
 
 export interface WorkflowPayload {
   kind: WorkflowPayloadKind;
-  schema: 'cloud.workflow.configuration.v1' | 'cloud.workflow.data-schema.v1' | 'cloud.workflow.policy.v1';
+  schema:
+    | 'cloud.workflow.configuration.v1'
+    | 'cloud.workflow.data-schema.v1'
+    | 'cloud.workflow.policy.v1'
+    | 'cloud.workflow.policy.v2'
+    | 'cloud.workflow.policy.v3';
   digest: string;
   canonicalAcl: string;
 }
@@ -190,6 +195,11 @@ export interface WorkflowPlanStep {
   capability: WorkflowCapabilityReference | null;
   descriptor: WorkflowStepDescriptorBinding | null;
   failure?: WorkflowStepFailureContract;
+  defaultOutput?: WorkflowStepDefaultOutputContract;
+}
+
+export interface WorkflowStepDefaultOutputContract {
+  outputPort: WorkflowStepPort;
 }
 
 export type WorkflowStepPortCardinality = 'single' | 'many';
@@ -248,6 +258,13 @@ export interface WorkflowStepFailureOutput {
   details?: WorkflowExecutionFailureDetails;
 }
 
+export interface WorkflowStepDefaultOutputEvidence {
+  schema: 'cloud.workflow.step-default-output.v1';
+  policyDigest: string;
+  port: string;
+  failure: WorkflowStepFailureOutput;
+}
+
 export interface WorkflowStepDescriptorBinding {
   stepId: string;
   descriptorId: string;
@@ -263,11 +280,16 @@ export interface WorkflowPlanEdge {
 }
 
 export interface WorkflowPlan {
-  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2' | 'cloud.workflow.plan.v3';
+  schema:
+    | 'cloud.workflow.plan.v1'
+    | 'cloud.workflow.plan.v2'
+    | 'cloud.workflow.plan.v3'
+    | 'cloud.workflow.plan.v4';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
-    | 'cloud.workflow.plan-compiler.v3';
+    | 'cloud.workflow.plan-compiler.v3'
+    | 'cloud.workflow.plan-compiler.v4';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
@@ -289,11 +311,16 @@ export interface WorkflowPlanRevision {
   projectId: string;
   workflowGoalId: string;
   id: string;
-  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2' | 'cloud.workflow.plan.v3';
+  schema:
+    | 'cloud.workflow.plan.v1'
+    | 'cloud.workflow.plan.v2'
+    | 'cloud.workflow.plan.v3'
+    | 'cloud.workflow.plan.v4';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
-    | 'cloud.workflow.plan-compiler.v3';
+    | 'cloud.workflow.plan-compiler.v3'
+    | 'cloud.workflow.plan-compiler.v4';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;
@@ -381,6 +408,7 @@ export interface WorkflowStepProjection {
   result: unknown | null;
   resultDigest: string | null;
   error: string | null;
+  defaultOutputEvidence: WorkflowStepDefaultOutputEvidence | null;
   evidenceReferences: string[];
   lastFlowSequence: number;
   updatedAt: string;

@@ -2053,7 +2053,10 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   The implemented finite Execution slice permits one exact handled error edge
   beside its success path. Plan v3 pins every descriptor failure contract and
   Run v4 derives `cloud.workflow.step-failure.v1` from the same authority-bound
-  hook; retry and child lifecycle remain Executions-owned.
+  hook. The mutually exclusive exact default fallback emits Plan v4/Run v7,
+  binds one policy v3 value through the existing step policy digest, and keeps
+  typed terminal evidence beside the completed projection. Retry and child
+  lifecycle remain Executions-owned.
 - An immutable Workflow variable contract declares invocation, node-output,
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
@@ -2611,8 +2614,13 @@ WorkflowRun runtime/Flow v2, while composite runs pin v3 and execute exact
 ordinary child WorkflowRuns. A finite Execution graph with the exact descriptor
 error edge emits `cloud.workflow.plan.v3`; immutable Run v4 selects that edge
 with one typed bounded failure value while preserving Plan v1-v2 and Run v1-v3
-bytes and replay. Applications-owned variable access remains fail-closed rather
-than inferring a missing owner adapter.
+bytes and replay. A finite Execution graph selecting the descriptor's mutually
+exclusive exact default emits `cloud.workflow.plan.v4`; immutable Run v7 folds
+the same terminal observation into one canonical policy v3 value and retains
+`cloud.workflow.step-default-output.v1` evidence. Plans v1-v3 and Run inputs
+v1-v6 remain byte-stable. Migration `122` extends only the existing step
+projection. Applications-owned variable access remains fail-closed rather than
+inferring a missing owner adapter.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

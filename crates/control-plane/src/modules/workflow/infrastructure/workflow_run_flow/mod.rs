@@ -13,11 +13,12 @@ pub use readers::{WorkflowRunHistoryReader, WorkflowRunVariableReader};
 
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workflow::domain::{
-    execution_failure_output, ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepFailureOutput,
-    WorkflowStepKind, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    execution_failure_output, ResolvedWorkflowRunStep, WorkflowRunInput,
+    WorkflowStepDefaultOutputEvidence, WorkflowStepFailureOutput, WorkflowStepKind,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V6,
         ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V7,
+        ),
     ]
     .into_iter()
 }
@@ -91,6 +96,8 @@ pub struct WorkflowLocalStepResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub composite_region_result:
         Option<crate::modules::workflow::domain::WorkflowCompositeRegionResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_output_evidence: Option<WorkflowStepDefaultOutputEvidence>,
 }
 
 impl WorkflowLocalStepResult {
@@ -100,7 +107,27 @@ impl WorkflowLocalStepResult {
         }
         let routed_failure =
             self.kind == WorkflowStepKind::Execution && self.selected_handle.is_some();
-        if routed_failure {
+        if let Some(evidence) = self.default_output_evidence.as_ref() {
+            if routed_failure || self.kind != WorkflowStepKind::Execution {
+                return Err("Workflow default-output result has invalid control flow".into());
+            }
+            evidence.validate(expected)?;
+            let material = expected
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.default_output.as_ref())
+                .ok_or_else(|| {
+                    "Workflow default-output result lost its immutable material".to_owned()
+                })?;
+            if self.output != material.value || self.output_digest != material.digest {
+                return Err("Workflow default-output result drifted from its exact policy".into());
+            }
+            execution::validate_data_schema(
+                &expected.output_schema,
+                &self.output,
+                "Workflow default output",
+            )?;
+        } else if routed_failure {
             let failure = serde_json::from_value::<WorkflowStepFailureOutput>(self.output.clone())
                 .map_err(|error| format!("Workflow step failure output is invalid: {error}"))?;
             failure.validate(expected)?;
@@ -187,6 +214,7 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
                 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
                 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
                 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
+                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
         ) {
             return Err(FlowError::Runtime(
                 "WorkflowRun step runtime contract revision is unsupported".into(),

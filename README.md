@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.40.0" src="https://img.shields.io/badge/REST_contract-1.40.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.41.0" src="https://img.shields.io/badge/REST_contract-1.41.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -49,15 +49,15 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@6`; the former
-  `@1`, `@2`, `@3`, `@4`, and `@5` generations are admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@7`; the former
+  `@1` through `@6` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.40.0`](openapi/v1.json), maintained
+  [OpenAPI `1.41.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. Broader enterprise `C0` gates remain.
@@ -315,8 +315,11 @@ creating their own control planes:
    authorization and accepted terminal C6 evidence before returning transient,
    integrity-checked, Debug-redacted bytes to a typed owner. Flow and public
    interfaces remain body-free, and historic v5 stays replay-compatible. Typed
-   node consumption, default fallback, Answer, remaining providers, and later
-   `W0` gates remain unavailable.
+   node consumption remains unavailable. Plan v4/Run v7 can instead fold those
+   same terminal finite-Execution observations into one exact policy-owned default
+   output while preserving typed projection evidence. Answer, non-Execution
+   error semantics, remaining providers, and later `W0` slices remain in
+   progress and unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.

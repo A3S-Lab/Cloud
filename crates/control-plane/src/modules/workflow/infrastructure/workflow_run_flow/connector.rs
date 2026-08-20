@@ -468,6 +468,7 @@ fn accepted_result(
         output,
         selected_handle: None,
         composite_region_result: None,
+        default_output_evidence: None,
     };
     result.validate(step)?;
     Ok(Box::new(result))

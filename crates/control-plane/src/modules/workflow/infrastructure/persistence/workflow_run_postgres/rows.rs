@@ -5,8 +5,8 @@ use crate::modules::shared_kernel::domain::{
     WorkflowGoalId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    WorkflowRun, WorkflowRunInput, WorkflowRunStatus, WorkflowStepKind, WorkflowStepProjection,
-    WorkflowStepProjectionStatus,
+    WorkflowRun, WorkflowRunInput, WorkflowRunStatus, WorkflowStepDefaultOutputEvidence,
+    WorkflowStepKind, WorkflowStepProjection, WorkflowStepProjectionStatus,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -175,6 +175,7 @@ pub(super) struct WorkflowStepRow {
     result: Option<Value>,
     result_digest: Option<String>,
     error: Option<String>,
+    default_output_evidence: Option<Value>,
     evidence_references: Value,
     last_flow_sequence: u64,
     updated_at: DateTime<Utc>,
@@ -199,6 +200,7 @@ impl Selection for WorkflowStepSelection {
             WorkflowStepProjections::result().expression(),
             WorkflowStepProjections::result_digest().expression(),
             WorkflowStepProjections::error().expression(),
+            WorkflowStepProjections::default_output_evidence().expression(),
             WorkflowStepProjections::evidence_references().expression(),
             WorkflowStepProjections::last_flow_sequence().expression(),
             WorkflowStepProjections::updated_at().expression(),
@@ -221,9 +223,10 @@ impl FromRow for WorkflowStepRow {
             result: decode(row, 9)?,
             result_digest: decode(row, 10)?,
             error: decode(row, 11)?,
-            evidence_references: decode(row, 12)?,
-            last_flow_sequence: decode(row, 13)?,
-            updated_at: decode(row, 14)?,
+            default_output_evidence: decode(row, 12)?,
+            evidence_references: decode(row, 13)?,
+            last_flow_sequence: decode(row, 14)?,
+            updated_at: decode(row, 15)?,
         })
     }
 }
@@ -232,6 +235,10 @@ pub(super) fn decode_step(
     row: WorkflowStepRow,
 ) -> Result<WorkflowStepProjection, PostgresPersistenceError> {
     let evidence_references = serde_json::from_value::<Vec<String>>(row.evidence_references)?;
+    let default_output_evidence = row
+        .default_output_evidence
+        .map(serde_json::from_value::<WorkflowStepDefaultOutputEvidence>)
+        .transpose()?;
     WorkflowStepProjection {
         organization_id: OrganizationId::from_uuid(row.organization_id),
         project_id: ProjectId::from_uuid(row.project_id),
@@ -249,6 +256,7 @@ pub(super) fn decode_step(
             .map(|value| parse_digest(value, "step result"))
             .transpose()?,
         error: row.error,
+        default_output_evidence,
         evidence_references,
         last_flow_sequence: row.last_flow_sequence,
         updated_at: row.updated_at,

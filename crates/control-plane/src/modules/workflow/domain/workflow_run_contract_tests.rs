@@ -77,6 +77,7 @@ fn run_input_retry_budget_remains_bound_to_an_exact_connector_revision() {
             maximum_attempts: 3,
             default_delay_seconds: 5,
         }),
+        default_output: None,
     });
     assert!(super::workflow_run_contract::validate_runtime_retry_policy(&step).is_err());
 

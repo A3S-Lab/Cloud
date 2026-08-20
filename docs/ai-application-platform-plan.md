@@ -401,9 +401,14 @@ emits Plan v3 and immutable WorkflowRun input/runtime/Flow v4. Dispatch
 rejection, terminal failure, and terminal cancellation become one bounded
 `cloud.workflow.step-failure.v1` result selected through the ordinary DAG; the
 Execution projection remains failed while its reachable error branch may
-complete the parent. Plan v1-v2 and Run v1-v3 retain their byte and replay
-shape, and no retry/provider mechanism moves into Workflow.
-REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP accept
+complete the parent. The mutually exclusive exact default fallback emits Plan
+v4 and immutable WorkflowRun input/runtime/Flow v7. Policy v3 freezes one
+canonical output, and the same terminal observation becomes that exact graph
+value with bounded `cloud.workflow.step-default-output.v1` projection evidence.
+Plan v1-v3 and Run v1-v6 retain their byte and replay shape, and no
+retry/provider mechanism moves into Workflow. REST/OpenAPI `1.41.0` and the
+maintained client expose both finite-Execution failure interpretations and
+their typed evidence. REST/OpenAPI `1.35.0`, the client, CLI, and Management MCP accept
 optional default and composite ACL material; the inspection surface added in
 `1.33.0` exposes variable materialization through one authorized, bounded
 `cloud.workflow-run.variable-inspection.v1` read projection. It reports the
@@ -412,8 +417,8 @@ references, adds no variable store, and rejects Plan v1. Composite-region
 frames/exports and sequential Iteration/Loop dispatch are implemented through
 exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
 parent cancellation/timeout propagation. Applications dispatch remains open
-and fail closed. Default-output fallback, Answer, and non-Execution error
-semantics remain open. Existing `cloud.workflow.plan.v1` histories are
+and fail closed. Answer and non-Execution error semantics remain open.
+Existing `cloud.workflow.plan.v1` histories are
 unchanged.
 
 The component-only Connector response path now also has one internal read
@@ -710,7 +715,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twenty-two
+   reject inventory/schema drift and false public claims. All twenty-three
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -718,7 +723,9 @@ The recommended sequence is:
    exact runtime registry, versioned runtime builds, deterministic composite
    frames, ordered composite-region reduction, authority-bound child
    WorkflowRun coordination, descriptor-bound finite-Execution failure routing,
-   and Flow-owned Connector attempt/wait decisions are accepted and versioned.
+   Flow-owned Connector attempt/wait decisions, immutable Connector response
+   objects, terminal-evidence-authorized Connector response reads, and exact
+   default-output folding are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
@@ -727,9 +734,10 @@ The recommended sequence is:
    typed-variable foundations, digest-bound defaults, Flow-derived inspection,
    built-in discovery, multi-output aggregation, bounded composite
    policy/child bindings, deterministic frame/export and ordered region
-   reducers, and Flow-backed sequential Iteration/Loop child lifecycle;
-   complete Applications-owned variables, the Answer event contract, node error
-   branches/fallback, and retained Flow replay tests. Prove any proposed Flow
+   reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
+   failure routing, and Plan v4 exact default-output folding/evidence; complete
+   Applications-owned variables, the Answer event contract, non-Execution
+   error branches, and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Implement `APP0.1`, `K0.1`, and
    `AUT0.1` as independent vertical slices. Do not add provider behavior to

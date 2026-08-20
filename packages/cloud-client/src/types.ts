@@ -1034,6 +1034,8 @@ export type {
   WorkflowPlanEdge,
   WorkflowPlanRevision,
   WorkflowPlanStep,
+  WorkflowStepDefaultOutputContract,
+  WorkflowStepDefaultOutputEvidence,
   WorkflowStepFailureContract,
   WorkflowStepFailureClassification,
   WorkflowStepFailureOutput,

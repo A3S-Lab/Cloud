@@ -425,6 +425,9 @@ pub fn project_workflow_run_record(
             selected_handle,
             result,
             error: step_error,
+            default_output_evidence: completed
+                .get(&projection.step_id)
+                .and_then(|result| result.default_output_evidence.clone()),
             last_flow_sequence: sequence,
             observed_at: at,
         };
@@ -434,6 +437,7 @@ pub fn project_workflow_run_record(
             && projection.selected_handle == desired.selected_handle
             && projection.result == desired.result
             && projection.error == desired.error
+            && projection.default_output_evidence == desired.default_output_evidence
         {
             continue;
         }

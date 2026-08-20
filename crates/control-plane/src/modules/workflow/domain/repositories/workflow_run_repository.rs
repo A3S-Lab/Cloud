@@ -23,6 +23,7 @@ impl WorkflowRunRecord {
         if self.steps.len() != self.run.execution_input.plan.steps.len() {
             return Err("WorkflowRun step projection count does not match its plan".into());
         }
+        let resolved_steps = self.run.execution_input.resolved_steps()?;
         for planned in &self.run.execution_input.plan.steps {
             let projected = self
                 .steps
@@ -45,6 +46,36 @@ impl WorkflowRunRecord {
                     "WorkflowRun step {:?} projection drifted from its run",
                     planned.id
                 ));
+            }
+            if let Some(evidence) = projected.default_output_evidence.as_ref() {
+                let resolved = resolved_steps
+                    .iter()
+                    .find(|step| step.plan.id == planned.id)
+                    .ok_or_else(|| {
+                        format!(
+                            "WorkflowRun step {:?} lost its resolved default-output authority",
+                            planned.id
+                        )
+                    })?;
+                evidence.validate(resolved)?;
+                let material = resolved
+                    .policy
+                    .as_ref()
+                    .and_then(|policy| policy.default_output.as_ref())
+                    .ok_or_else(|| {
+                        format!(
+                            "WorkflowRun step {:?} default-output projection lost policy material",
+                            planned.id
+                        )
+                    })?;
+                if projected.result.as_ref() != Some(&material.value)
+                    || projected.result_digest.as_ref() != Some(&material.digest)
+                {
+                    return Err(format!(
+                        "WorkflowRun step {:?} default-output projection drifted from its exact policy",
+                        planned.id
+                    ));
+                }
             }
             if let Some(handle) = projected.selected_handle.as_deref() {
                 let declared = self.run.execution_input.plan.edges.iter().any(|edge| {

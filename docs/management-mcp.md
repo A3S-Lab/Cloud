@@ -413,7 +413,11 @@ one immutable Plan revision. Legacy inputs retain
 digests plus an optional `compositeRegionsDigest`. A graph that selects the
 exact finite-Execution descriptor error port compiles Plan v3 and returns each
 step's immutable failure contract; execution still uses the same Flow and
-Executions authorities. Goal list/get and Plan get return the same DTOs as
+Executions authorities. A graph that selects the mutually exclusive exact
+default fallback compiles Plan v4 and returns its typed output-port contract;
+the existing step `policyDigest` remains the sole exact policy authority.
+WorkflowRun v7 folds the same terminal observation into that value and run
+queries expose typed projection evidence. Goal list/get and Plan get return the same DTOs as
 REST. Identical semantic inputs produce identical canonical Plan bytes and
 digest; Goal and Plan identities remain distinct records.
 

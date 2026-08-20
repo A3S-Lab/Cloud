@@ -481,6 +481,13 @@ async fn insert_step(
                 )
                 .value(WorkflowStepProjections::error(), step.error.clone())
                 .value(
+                    WorkflowStepProjections::default_output_evidence(),
+                    step.default_output_evidence
+                        .as_ref()
+                        .map(serde_json::to_value)
+                        .transpose()?,
+                )
+                .value(
                     WorkflowStepProjections::evidence_references(),
                     serde_json::to_value(&step.evidence_references)?,
                 )
@@ -571,6 +578,13 @@ async fn persist_step(
                     .map(|digest| digest.as_str().to_owned()),
             )
             .set(WorkflowStepProjections::error(), step.error.clone())
+            .set(
+                WorkflowStepProjections::default_output_evidence(),
+                step.default_output_evidence
+                    .as_ref()
+                    .map(serde_json::to_value)
+                    .transpose()?,
+            )
             .set(
                 WorkflowStepProjections::evidence_references(),
                 serde_json::to_value(&step.evidence_references)?,

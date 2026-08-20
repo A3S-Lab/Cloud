@@ -60,6 +60,7 @@ orm_table! {
         result: Option<Value> => "result",
         result_digest: Option<String> => "result_digest",
         error: Option<String> => "error",
+        default_output_evidence: Option<Value> => "default_output_evidence",
         evidence_references: Value => "evidence_references",
         last_flow_sequence: u64 => "last_flow_sequence",
         updated_at: DateTime<Utc> => "updated_at",

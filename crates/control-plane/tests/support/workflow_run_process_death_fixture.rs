@@ -403,6 +403,7 @@ fn plan_step(
         capability: None,
         descriptor: None,
         failure: None,
+        default_output: None,
     }
 }
 

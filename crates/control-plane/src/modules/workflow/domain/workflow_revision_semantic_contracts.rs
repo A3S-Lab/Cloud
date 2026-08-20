@@ -1,8 +1,9 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
     validate_execution_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowPlan,
-    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
-    WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass, WorkflowStepOwner,
+    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
     WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableDefaults,
     WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
@@ -282,6 +283,7 @@ impl WorkflowRevisionSemanticContracts {
             validate_supported_bindings(step, descriptor.spec())?;
             validate_capability_binding(step, descriptor.spec())?;
             validate_connector_retry_authority(step, descriptor.spec())?;
+            validate_default_output_authority(step, descriptor.spec())?;
             descriptors_by_step.insert(step.id.as_str(), descriptor.spec());
             failures_by_step.insert(step.id.as_str(), &descriptor.spec().failure);
             referenced_descriptors.insert((descriptor.id(), descriptor.revision()));
@@ -320,6 +322,13 @@ impl WorkflowRevisionSemanticContracts {
         &self,
         step_id: &str,
     ) -> Result<&super::WorkflowStepFailureContract, String> {
+        Ok(&self.descriptor_for_step(step_id)?.spec().failure)
+    }
+
+    fn descriptor_for_step(
+        &self,
+        step_id: &str,
+    ) -> Result<&super::WorkflowStepDescriptorRevision, String> {
         let binding = self
             .descriptor_bindings
             .resolve(step_id)
@@ -333,7 +342,38 @@ impl WorkflowRevisionSemanticContracts {
                 "Workflow step {step_id:?} descriptor semantic authority drifted"
             ));
         }
-        Ok(&descriptor.spec().failure)
+        Ok(descriptor)
+    }
+
+    pub(crate) fn has_default_output_fallback(&self) -> bool {
+        self.descriptor_bindings.bindings().iter().any(|binding| {
+            self.descriptor_registry
+                .resolve(&binding.descriptor_id, &binding.descriptor_revision)
+                .is_some_and(|descriptor| {
+                    descriptor.spec().failure.fallback == WorkflowStepFallbackMode::DefaultOutput
+                })
+        })
+    }
+
+    pub(crate) fn default_output_contract(
+        &self,
+        step_id: &str,
+    ) -> Result<Option<WorkflowStepDefaultOutputContract>, String> {
+        let descriptor = self.descriptor_for_step(step_id)?;
+        let spec = descriptor.spec();
+        if spec.failure.fallback != WorkflowStepFallbackMode::DefaultOutput {
+            return Ok(None);
+        }
+        let [output_port] = spec.output_ports.as_slice() else {
+            return Err(format!(
+                "Workflow default-output step {step_id:?} must expose exactly one output port"
+            ));
+        };
+        let contract = WorkflowStepDefaultOutputContract {
+            output_port: output_port.clone(),
+        };
+        contract.validate()?;
+        Ok(Some(contract))
     }
 
     pub const fn variable_contract(&self) -> &WorkflowVariableContract {
@@ -376,10 +416,25 @@ impl WorkflowRevisionSemanticContracts {
                 ));
             }
             let expected_failure = self.failure_contract(&step.id)?;
+            let expected_default_output = self.default_output_contract(&step.id)?;
+            let descriptor = self.descriptor_for_step(&step.id)?;
+            if expected_default_output.is_some()
+                && step.policy_digest.as_ref() != descriptor.spec().default_policy_digest.as_ref()
+            {
+                return Err(format!(
+                    "Workflow plan step {:?} default policy authority drifted",
+                    step.id
+                ));
+            }
             match plan.schema.as_str() {
-                super::WORKFLOW_PLAN_SCHEMA_V2 if step.failure.is_none() => {}
+                super::WORKFLOW_PLAN_SCHEMA_V2
+                    if step.failure.is_none() && step.default_output.is_none() => {}
                 super::WORKFLOW_PLAN_SCHEMA_V3
-                    if step.failure.as_ref() == Some(expected_failure) => {}
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output.is_none() => {}
+                super::WORKFLOW_PLAN_SCHEMA_V4
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
                 _ => {
                     return Err(format!(
                         "Workflow plan step {:?} failure semantics drifted",
@@ -531,6 +586,44 @@ fn validate_connector_retry_authority(
     {
         return Err(format!(
             "Workflow Connector step {:?} lacks Connectors-owned retry classification",
+            step.id
+        ));
+    }
+    Ok(())
+}
+
+fn validate_default_output_authority(
+    step: &super::WorkflowStepSpec,
+    descriptor: &super::WorkflowStepDescriptorSpec,
+) -> Result<(), String> {
+    if descriptor.failure.fallback != WorkflowStepFallbackMode::DefaultOutput {
+        return Ok(());
+    }
+    if step.kind != WorkflowStepKind::Execution
+        || descriptor.owner != WorkflowStepOwner::Executions
+        || descriptor.execution_class != WorkflowStepExecutionClass::OwningApplicationPort
+        || step.policy_digest.as_ref() != descriptor.default_policy_digest.as_ref()
+        || descriptor.failure.error_output.is_some()
+        || descriptor.failure.retry_classification
+            != WorkflowStepRetryClassification::OwnerClassified
+        || !step.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::ExecutionTemplate
+        })
+    {
+        return Err(format!(
+            "Workflow step {:?} default-output fallback requires the Executions-owned finite Execution port and its exact descriptor policy",
+            step.id
+        ));
+    }
+    let [port] = descriptor.output_ports.as_slice() else {
+        return Err(format!(
+            "Workflow default-output step {:?} must expose exactly one output port",
+            step.id
+        ));
+    };
+    if port.cardinality != WorkflowStepPortCardinality::Single || !port.required || port.dynamic {
+        return Err(format!(
+            "Workflow default-output step {:?} must expose one required static output port",
             step.id
         ));
     }

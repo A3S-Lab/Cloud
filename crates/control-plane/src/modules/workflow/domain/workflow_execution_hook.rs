@@ -16,6 +16,8 @@ pub const WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA: &str =
 pub const WORKFLOW_EXECUTION_RESUME_SCHEMA: &str = "cloud.workflow.execution-resume.v1";
 pub const WORKFLOW_EXECUTION_RESULT_SCHEMA: &str = "cloud.workflow.execution-result.v1";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA: &str = "cloud.workflow.step-failure.v1";
+pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
+    "cloud.workflow.step-default-output.v1";
 pub const WORKFLOW_EXECUTION_STEP_ATTEMPT: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -316,6 +318,15 @@ impl WorkflowStepFailureOutput {
         step: &ResolvedWorkflowRunStep,
         message: String,
     ) -> Result<Self, String> {
+        let value = Self::observe_dispatch_rejected(step, message)?;
+        value.validate(step)?;
+        Ok(value)
+    }
+
+    pub(crate) fn observe_dispatch_rejected(
+        step: &ResolvedWorkflowRunStep,
+        message: String,
+    ) -> Result<Self, String> {
         let value = Self {
             schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA.into(),
             step_id: step.plan.id.clone(),
@@ -323,11 +334,20 @@ impl WorkflowStepFailureOutput {
             message,
             details: None,
         };
-        value.validate(step)?;
+        value.validate_observation(step)?;
         Ok(value)
     }
 
     pub fn from_execution(
+        step: &ResolvedWorkflowRunStep,
+        output: WorkflowExecutionStepOutput,
+    ) -> Result<Self, String> {
+        let value = Self::observe_execution(step, output)?;
+        value.validate(step)?;
+        Ok(value)
+    }
+
+    pub(crate) fn observe_execution(
         step: &ResolvedWorkflowRunStep,
         output: WorkflowExecutionStepOutput,
     ) -> Result<Self, String> {
@@ -351,20 +371,12 @@ impl WorkflowStepFailureOutput {
             message,
             details: Some(WorkflowStepFailureDetails::Execution { output }),
         };
-        value.validate(step)?;
+        value.validate_observation(step)?;
         Ok(value)
     }
 
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
-        if self.schema != WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA
-            || self.step_id != step.plan.id
-            || step.plan.kind != WorkflowStepKind::Execution
-            || self.message.is_empty()
-            || self.message.len() > 16 * 1024
-            || self.message.contains(['\0', '\r', '\n'])
-        {
-            return Err("Workflow step failure output identity or message is invalid".into());
-        }
+        self.validate_observation(step)?;
         let failure =
             step.plan.failure.as_ref().ok_or_else(|| {
                 "Workflow step failure output has no immutable contract".to_owned()
@@ -374,6 +386,33 @@ impl WorkflowStepFailureOutput {
             .map_err(|error| format!("Workflow step failure output is invalid: {error}"))?;
         if !error_output.value_type.matches_json_value(&encoded) {
             return Err("Workflow step failure output does not match its descriptor type".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_observation(
+        &self,
+        step: &ResolvedWorkflowRunStep,
+    ) -> Result<(), String> {
+        if self.step_id != step.plan.id || step.plan.kind != WorkflowStepKind::Execution {
+            return Err("Workflow step failure output identity or message is invalid".into());
+        }
+        self.validate_shape()?;
+        if let Some(WorkflowStepFailureDetails::Execution { output }) = self.details.as_ref() {
+            validate_failure_execution_authority(output, step)?;
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
+        if self.schema != WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA
+            || super::validation::validate_identifier("Workflow failure step", &self.step_id)
+                .is_err()
+            || self.message.is_empty()
+            || self.message.len() > 16 * 1024
+            || self.message.contains(['\0', '\r', '\n'])
+        {
+            return Err("Workflow step failure output identity or message is invalid".into());
         }
         canonical_json_bounded(
             self,
@@ -386,7 +425,7 @@ impl WorkflowStepFailureOutput {
                 WorkflowStepFailureClassification::ExecutionFailed,
                 Some(WorkflowStepFailureDetails::Execution { output }),
             ) => {
-                validate_failure_execution_authority(output, step)?;
+                output.validate_shape()?;
                 match &output.outcome {
                     WorkflowExecutionOutcome::Failed { reason, .. } if reason == &self.message => {
                         Ok(())
@@ -398,7 +437,7 @@ impl WorkflowStepFailureOutput {
                 WorkflowStepFailureClassification::ExecutionCancelled,
                 Some(WorkflowStepFailureDetails::Execution { output }),
             ) => {
-                validate_failure_execution_authority(output, step)?;
+                output.validate_shape()?;
                 if output.outcome == WorkflowExecutionOutcome::Cancelled
                     && self.message == "child Execution was cancelled"
                 {
@@ -409,6 +448,87 @@ impl WorkflowStepFailureOutput {
             }
             _ => Err("Workflow step failure details do not match their classification".into()),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowStepDefaultOutputEvidence {
+    pub schema: String,
+    pub policy_digest: Sha256Digest,
+    pub port: String,
+    pub failure: WorkflowStepFailureOutput,
+}
+
+impl WorkflowStepDefaultOutputEvidence {
+    pub(crate) fn new(
+        step: &ResolvedWorkflowRunStep,
+        failure: WorkflowStepFailureOutput,
+    ) -> Result<Self, String> {
+        let policy_digest = step.plan.policy_digest.clone().ok_or_else(|| {
+            "Workflow default-output evidence lost its exact policy digest".to_owned()
+        })?;
+        let port = step
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.default_output.as_ref())
+            .map(|output| output.port.clone())
+            .ok_or_else(|| {
+                "Workflow default-output evidence lost its immutable material".to_owned()
+            })?;
+        let value = Self {
+            schema: WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA.into(),
+            policy_digest,
+            port,
+            failure,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
+    pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
+        let contract = step.plan.default_output.as_ref().ok_or_else(|| {
+            "Workflow default-output evidence has no immutable Plan contract".to_owned()
+        })?;
+        let policy_digest = step.plan.policy_digest.as_ref().ok_or_else(|| {
+            "Workflow default-output evidence has no exact policy digest".to_owned()
+        })?;
+        let material = step
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.default_output.as_ref())
+            .ok_or_else(|| "Workflow default-output evidence has no policy material".to_owned())?;
+        if self.schema != WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA
+            || step.plan.kind != WorkflowStepKind::Execution
+            || &self.policy_digest != policy_digest
+            || self.port != contract.output_port.name
+            || self.port != material.port
+        {
+            return Err("Workflow default-output evidence authority drifted".into());
+        }
+        self.failure.validate_observation(step)?;
+        canonical_json_bounded(
+            self,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow default-output evidence",
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_projection_shape(&self, step_id: &str) -> Result<(), String> {
+        if self.schema != WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA
+            || self.failure.step_id != step_id
+        {
+            return Err("Workflow default-output projection evidence identity drifted".into());
+        }
+        super::validation::validate_identifier("Workflow default-output port", &self.port)?;
+        self.failure.validate_shape()?;
+        canonical_json_bounded(
+            self,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow default-output projection evidence",
+        )?;
+        Ok(())
     }
 }
 

@@ -6,8 +6,9 @@ use super::{
     WorkflowVariableContract, WorkflowVariableDefaults, WorkflowVariableMutationMode,
     WorkflowVariableReadMode, WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
-    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
+    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
+    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, OrganizationId, PlanRevisionId, ProjectId, Sha256Digest,
@@ -37,6 +38,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V5: &str = "5";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V6: &str = "cloud.workflow-run.input.v6";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6: &str = "cloud.workflow-run-runtime.v6";
 pub const WORKFLOW_RUN_FLOW_VERSION_V6: &str = "6";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V7: &str = "cloud.workflow-run.input.v7";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7: &str = "cloud.workflow-run-runtime.v7";
+pub const WORKFLOW_RUN_FLOW_VERSION_V7: &str = "7";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -175,6 +179,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V4
                 | WORKFLOW_RUN_INPUT_SCHEMA_V5
                 | WORKFLOW_RUN_INPUT_SCHEMA_V6
+                | WORKFLOW_RUN_INPUT_SCHEMA_V7
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -189,7 +194,7 @@ impl WorkflowRunInput {
             variable_defaults,
             composite_regions,
             composite_runtime,
-            connector_runtime,
+            connector_runtime_capable,
         ) =
             match (
                 self.schema.as_str(),
@@ -308,11 +313,18 @@ impl WorkflowRunInput {
                     (Some(contract), defaults, regions, composite_runtime, false)
                 }
                 (
-                    schema @ (WORKFLOW_RUN_INPUT_SCHEMA_V5 | WORKFLOW_RUN_INPUT_SCHEMA_V6),
+                    schema @ (WORKFLOW_RUN_INPUT_SCHEMA_V5
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V6
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V7),
                     runtime @ (WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
-                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6),
-                    flow @ (WORKFLOW_RUN_FLOW_VERSION_V5 | WORKFLOW_RUN_FLOW_VERSION_V6),
-                    WORKFLOW_PLAN_SCHEMA_V2 | WORKFLOW_PLAN_SCHEMA_V3,
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7),
+                    flow @ (WORKFLOW_RUN_FLOW_VERSION_V5
+                    | WORKFLOW_RUN_FLOW_VERSION_V6
+                    | WORKFLOW_RUN_FLOW_VERSION_V7),
+                    plan_schema @ (WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4),
                     Some(resolved),
                     defaults,
                     regions,
@@ -326,8 +338,19 @@ impl WorkflowRunInput {
                         WORKFLOW_RUN_INPUT_SCHEMA_V6,
                         WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
                         WORKFLOW_RUN_FLOW_VERSION_V6
+                    ) | (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V7,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+                        WORKFLOW_RUN_FLOW_VERSION_V7
                     )
-                ) =>
+                ) && ((matches!(
+                    plan_schema,
+                    WORKFLOW_PLAN_SCHEMA_V2 | WORKFLOW_PLAN_SCHEMA_V3
+                ) && matches!(
+                    flow,
+                    WORKFLOW_RUN_FLOW_VERSION_V5 | WORKFLOW_RUN_FLOW_VERSION_V6
+                )) || (plan_schema == WORKFLOW_PLAN_SCHEMA_V4
+                    && flow == WORKFLOW_RUN_FLOW_VERSION_V7)) =>
                 {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -407,7 +430,13 @@ impl WorkflowRunInput {
                 capability.capability_type == CapabilityType::ConnectorRevision
             })
         });
-        if connector_runtime != has_connector {
+        let connector_runtime_required = matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_INPUT_SCHEMA_V5 | WORKFLOW_RUN_INPUT_SCHEMA_V6
+        );
+        if (has_connector && !connector_runtime_capable)
+            || (!has_connector && connector_runtime_required)
+        {
             return Err(
                 "WorkflowRun Connector runtime generation does not match its exact plan".into(),
             );
@@ -417,6 +446,7 @@ impl WorkflowRunInput {
         }
         for step in &resolved {
             validate_runtime_retry_policy(step)?;
+            validate_runtime_default_output(step)?;
             let connector_step = step.plan.capability.as_ref().is_some_and(|capability| {
                 capability.capability_type == CapabilityType::ConnectorRevision
             });
@@ -439,7 +469,7 @@ impl WorkflowRunInput {
                     | WorkflowStepKind::Output
             ) || (composite_runtime
                 && step.plan.kind == WorkflowStepKind::Subworkflow)
-                || (connector_runtime
+                || (connector_runtime_capable
                     && step.plan.kind == WorkflowStepKind::Service
                     && connector_step);
             if !supported {
@@ -483,6 +513,43 @@ impl WorkflowRunInput {
             restored.push(payload.restore()?);
         }
         Ok(restored)
+    }
+}
+
+fn validate_runtime_default_output(step: &ResolvedWorkflowRunStep) -> Result<(), String> {
+    let contract = step.plan.default_output.as_ref();
+    let material = step
+        .policy
+        .as_ref()
+        .and_then(|policy| policy.default_output.as_ref());
+    match (contract, material) {
+        (None, None) => Ok(()),
+        (None, Some(_)) => Err(format!(
+            "WorkflowRun step {:?} has default-output material without Plan authority",
+            step.plan.id
+        )),
+        (Some(_), None) => Err(format!(
+            "WorkflowRun step {:?} lost its immutable default-output material",
+            step.plan.id
+        )),
+        (Some(contract), Some(material)) => {
+            if step.plan.kind != WorkflowStepKind::Execution
+                || material.port != contract.output_port.name
+                || !contract
+                    .output_port
+                    .value_type
+                    .matches_json_value(&material.value)
+            {
+                return Err(format!(
+                    "WorkflowRun step {:?} default-output authority drifted",
+                    step.plan.id
+                ));
+            }
+            step.output_schema.validate_value(
+                &material.value,
+                &format!("WorkflowRun step {:?} default output", step.plan.id),
+            )
+        }
     }
 }
 
