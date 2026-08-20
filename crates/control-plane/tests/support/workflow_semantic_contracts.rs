@@ -554,7 +554,8 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         "main",
     );
     let flow_input = serde_json::to_value(&run_record.run.execution_input)?;
-    let flow = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
+    let flow =
+        FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime::default())).await?;
     flow.engine()
         .start_with_id(&flow_run_id, flow_spec.clone(), flow_input.clone())
         .await?;
@@ -590,7 +591,8 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
     );
     drop(flow);
 
-    let restarted = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
+    let restarted =
+        FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime::default())).await?;
     assert_eq!(
         restarted.engine().history(&flow_run_id).await?,
         durable_history

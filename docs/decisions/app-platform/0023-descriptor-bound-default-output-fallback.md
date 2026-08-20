@@ -34,9 +34,9 @@ Plan does not copy that digest into another field.
 The compiler emits `cloud.workflow.plan.v4` only when at least one step uses
 this fallback. Plan v4 retains every descriptor failure contract from Plan v3
 and adds only the typed output-port contract required to interpret the pinned
-policy. It compiles to WorkflowRun input/runtime/Flow version 7 and runtime
-build `a3s-cloud-workflows@7`; runtime generations 1 through 6 remain explicit
-replay entries.
+policy. It compiles to WorkflowRun input/runtime/Flow version 7. That generation
+was introduced under runtime build `a3s-cloud-workflows@7`; newer builds retain
+`@7` as an explicit replay entry instead of reinterpreting its history.
 
 The existing Execution hook remains the sole failure observation path. A
 dispatch rejection, terminal failure, or terminal cancellation is classified

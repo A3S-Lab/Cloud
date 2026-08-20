@@ -49,8 +49,8 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@7`; the former
-  `@1` through `@6` generations are admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@8`; the former
+  `@1` through `@7` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
@@ -308,18 +308,20 @@ creating their own control planes:
    ports in Plan v3 and routes typed dispatch/terminal failures through the
    same DAG and Flow history. Component-only WorkflowRun v5 interprets exact
    Connector attempts, observations, durable waits, and bounded retries through
-   the sole C6 execution/evidence authority. New v6 composes accepted responses
+   the sole C6 execution/evidence authority. Version 6 composes accepted responses
    through the Connectors-owned typed child of the shared immutable-object
    client and retains only an exact opaque reference, digest, and byte count in
    Flow. The internal Connector read port now requires exact environment
    authorization and accepted terminal C6 evidence before returning transient,
-   integrity-checked, Debug-redacted bytes to a typed owner. Flow and public
-   interfaces remain body-free, and historic v5 stays replay-compatible. Typed
-   node consumption remains unavailable. Plan v4/Run v7 can instead fold those
-   same terminal finite-Execution observations into one exact policy-owned default
-   output while preserving typed projection evidence. Answer, non-Execution
-   error semantics, remaining providers, and later `W0` slices remain in
-   progress and unavailable.
+   integrity-checked, Debug-redacted bytes to a typed owner. New v8 consumes
+   that port in one no-retry Flow step, accepts exactly one duplicate-key-free
+   JSON value, enforces the immutable output schema and Workflow output bound,
+   and records only the validated typed node output. Historic v5 remains
+   digest-only and v6 remains reference-only, while Plan v4/Run v7 folds finite
+   Execution failure observations into one exact policy-owned default output
+   with typed projection evidence. This is a component execution path, not
+   public HTTP Request availability; Answer, non-Execution error semantics,
+   remaining providers, recovery evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.

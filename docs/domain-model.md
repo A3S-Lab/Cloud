@@ -837,8 +837,19 @@ environment before loading the exact attempt, requires accepted terminal C6
 evidence, proves the reference against that evidence, and revalidates the
 immutable digest and bounded length before returning transient content. The
 content cannot be serialized or cloned and its Debug projection is redacted.
-An orphaned object without terminal evidence grants no authority; Flow,
-Connector rows, and public interfaces remain body-free.
+An orphaned object without terminal evidence grants no authority; Connector
+rows and public interfaces expose no response-object read or raw bytes.
+
+WorkflowRun input/runtime/Flow v8 is the first typed consumer of that port.
+After exact accepted version-3 hook evidence, it creates one dedicated
+`workflow_connector_response` step whose serialized authority and no-retry
+policy are verified from Flow history. The step reads through C11, parses
+exactly one duplicate-key-free JSON value, validates the immutable step output
+schema and aggregate output bound, and records only the resulting typed value
+and digest as the ordinary Workflow node result. Read, parse, schema, size, or
+history drift fails closed without another provider attempt or response-body
+disclosure. Completed replay reuses the Flow result; v7 retains default-output
+behavior, v6 remains reference-only, and v5 remains digest-only.
 
 The component-only `AUT0.5-C9` prerequisite freezes that missing retry budget
 without adding another policy authority. `cloud.workflow.policy.v2` extends the
@@ -852,9 +863,9 @@ the classification with the Connectors-owned `connector.http` semantic
 profile. Policy v1 bytes remain unchanged, and no policy table, semantic
 child, retry counter, timer worker, queue, scheduler, or second configuration
 language is introduced. Historic v5 consumes the policy for deterministic
-attempt/wait decisions, while v6 composes the immutable response reference.
-W0.4 typed-node adoption of the C11 read port and its remaining capability
-steps stay open.
+attempt/wait decisions, v6 composes the immutable response reference, and v7
+adds its strict typed JSON projection. The other W0.4 capability steps stay
+open.
 
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
@@ -1022,12 +1033,12 @@ just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
-provider wiring, revocation/recovery operations, retained integration evidence,
-and W0.4 typed node consumption over those same authorities. WorkflowRun v6 now
-supplies Flow-owned Connector observation, durable wait, bounded retry,
-fail-closed indeterminate handling, and an exact immutable response reference
-without another scheduler or provider authority; historic v5 projection stays
-body-free. Notifications now retains PostgreSQL 17 plus
+provider wiring, revocation/recovery operations, and retained integration
+evidence over those same authorities. WorkflowRun v8 now supplies Flow-owned
+Connector observation, durable wait, bounded retry, fail-closed indeterminate
+handling, and strict schema-bound JSON projection through C11 without another
+scheduler or provider authority; historic v6 stays reference-only and v5 stays
+digest-only. Notifications now retains PostgreSQL 17 plus
 real NATS evidence for its first Event-consumer-to-C6 composition, but still
 needs separate versioned semantics before any user-configured suppression or
 delivery budget is admitted. Provider outage

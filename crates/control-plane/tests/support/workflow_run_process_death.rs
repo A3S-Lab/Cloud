@@ -59,11 +59,13 @@ impl FlowRuntime for ProcessDeathFlowRuntime {
                 "processDeathProbe": true
             })));
         }
-        WorkflowRunFlowRuntime.run_workflow(invocation).await
+        WorkflowRunFlowRuntime::default()
+            .run_workflow(invocation)
+            .await
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
-        WorkflowRunFlowRuntime.run_step(invocation).await
+        WorkflowRunFlowRuntime::default().run_step(invocation).await
     }
 }
 

@@ -8,7 +8,7 @@ use crate::modules::workflow::domain::{
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
     WorkflowStepFailureOutput, WorkflowStepKind,
 };
-use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
+use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -284,6 +284,39 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 super::connector::ConnectorStepResolution::Complete(result) => {
                     resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
                     continue;
+                }
+                super::connector::ConnectorStepResolution::Consume(response) => {
+                    let durable_step_id = flow_step_id(&step.plan.id);
+                    if let Some(error) = context.step_failed(&durable_step_id) {
+                        return Ok(context.fail(format!(
+                            "Workflow Connector response step {:?} failed: {error}",
+                            step.plan.id
+                        )));
+                    }
+                    if let Some(value) = context.step_output(&durable_step_id) {
+                        let result =
+                            serde_json::from_value::<WorkflowLocalStepResult>(value.clone())?;
+                        response.validate_result(&result).map_err(|reason| {
+                            FlowError::NonDeterministic {
+                                run_id: invocation.run_id.clone(),
+                                reason: format!(
+                                    "Workflow Connector response step {:?} replay result drifted: {reason}",
+                                    step.plan.id
+                                ),
+                            }
+                        })?;
+                        resolved.insert(
+                            step.plan.id.clone(),
+                            ResolvedState::Active(Box::new(result)),
+                        );
+                        continue;
+                    }
+                    return Ok(context.schedule_steps(vec![context.step_with_retry(
+                        durable_step_id,
+                        super::connector_response::WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME,
+                        serde_json::to_value(*response)?,
+                        RetryPolicy::none(),
+                    )]));
                 }
                 super::connector::ConnectorStepResolution::Failed(error) => {
                     return Ok(context.fail(format!(

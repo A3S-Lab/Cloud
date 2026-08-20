@@ -6,12 +6,12 @@ use crate::modules::workflow::domain::{
     WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
     WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8,
     WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
+    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -132,10 +132,11 @@ impl WorkflowRunCompiler {
                     contracts.variable_defaults(),
                     plan,
                 )?;
+                let (input_schema, runtime_revision, flow_version) = plan_v4_runtime_contract(plan);
                 (
-                    WORKFLOW_RUN_INPUT_SCHEMA_V7,
-                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-                    WORKFLOW_RUN_FLOW_VERSION_V7,
+                    input_schema,
+                    runtime_revision,
+                    flow_version,
                     Some(ResolvedWorkflowVariableContract::from_contract(
                         contracts.variable_contract(),
                     )),
@@ -198,9 +199,9 @@ fn plan_v2_runtime_contract(
 ) -> (&'static str, &'static str, &'static str) {
     if plan_has_connector(plan) {
         (
-            WORKFLOW_RUN_INPUT_SCHEMA_V6,
-            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-            WORKFLOW_RUN_FLOW_VERSION_V6,
+            WORKFLOW_RUN_INPUT_SCHEMA_V8,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+            WORKFLOW_RUN_FLOW_VERSION_V8,
         )
     } else if has_composite_regions {
         (
@@ -222,15 +223,33 @@ fn plan_v3_runtime_contract(
 ) -> (&'static str, &'static str, &'static str) {
     if plan_has_connector(plan) {
         (
-            WORKFLOW_RUN_INPUT_SCHEMA_V6,
-            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-            WORKFLOW_RUN_FLOW_VERSION_V6,
+            WORKFLOW_RUN_INPUT_SCHEMA_V8,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+            WORKFLOW_RUN_FLOW_VERSION_V8,
         )
     } else {
         (
             WORKFLOW_RUN_INPUT_SCHEMA_V4,
             WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
             WORKFLOW_RUN_FLOW_VERSION_V4,
+        )
+    }
+}
+
+fn plan_v4_runtime_contract(
+    plan: &crate::modules::workflow::domain::WorkflowPlan,
+) -> (&'static str, &'static str, &'static str) {
+    if plan_has_connector(plan) {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V8,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+            WORKFLOW_RUN_FLOW_VERSION_V8,
+        )
+    } else {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V7,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+            WORKFLOW_RUN_FLOW_VERSION_V7,
         )
     }
 }
@@ -249,31 +268,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exact_connector_binding_selects_v6_even_with_composite_regions() {
+    fn exact_connector_binding_selects_v8_even_with_composite_regions() {
         let input = crate::modules::workflow::test_support::connector_workflow_run_input()
             .expect("Connector WorkflowRun input");
         assert_eq!(
             plan_v2_runtime_contract(&input.plan, false),
             (
-                WORKFLOW_RUN_INPUT_SCHEMA_V6,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-                WORKFLOW_RUN_FLOW_VERSION_V6,
+                WORKFLOW_RUN_INPUT_SCHEMA_V8,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+                WORKFLOW_RUN_FLOW_VERSION_V8,
             )
         );
         assert_eq!(
             plan_v2_runtime_contract(&input.plan, true),
             (
-                WORKFLOW_RUN_INPUT_SCHEMA_V6,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-                WORKFLOW_RUN_FLOW_VERSION_V6,
+                WORKFLOW_RUN_INPUT_SCHEMA_V8,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+                WORKFLOW_RUN_FLOW_VERSION_V8,
             )
         );
         assert_eq!(
             plan_v3_runtime_contract(&input.plan),
             (
-                WORKFLOW_RUN_INPUT_SCHEMA_V6,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-                WORKFLOW_RUN_FLOW_VERSION_V6,
+                WORKFLOW_RUN_INPUT_SCHEMA_V8,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+                WORKFLOW_RUN_FLOW_VERSION_V8,
+            )
+        );
+        assert_eq!(
+            plan_v4_runtime_contract(&input.plan),
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V8,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+                WORKFLOW_RUN_FLOW_VERSION_V8,
             )
         );
     }

@@ -72,6 +72,14 @@ impl ConnectorResponseObjectContent {
     pub fn into_body(self) -> Vec<u8> {
         self.body
     }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        reference: ConnectorResponseObjectReference,
+        body: Vec<u8>,
+    ) -> ApplicationResult<Self> {
+        Self::new(reference, body)
+    }
 }
 
 impl fmt::Debug for ConnectorResponseObjectContent {

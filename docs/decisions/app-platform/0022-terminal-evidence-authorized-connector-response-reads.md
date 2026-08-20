@@ -50,6 +50,7 @@ attempt.
 
 This component-only `AUT0.5-C11` foundation adds no table, migration, public
 route, object namespace, client, queue, worker, scheduler, retry counter,
-provider call, or Flow schema. It does not make HTTP Request or `AUT0.5`
-available: a typed owning node still has to consume the port, define its exact
-body interpretation, and pass the remaining recovery and integration gates.
+provider call, or Flow schema. Decision 0024 composes this port inside a
+history-verified typed Flow step without granting Flow direct object access.
+HTTP Request and `AUT0.5` remain publicly unavailable until the remaining
+provider, recovery, integration, and interface gates pass.

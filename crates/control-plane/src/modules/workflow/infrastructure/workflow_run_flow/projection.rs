@@ -220,7 +220,19 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some(observed) = connector_hook {
                 let hook = observed.hook;
-                let sequence = if hook.status == HookStatus::Cancelled {
+                let typed_response_sequence =
+                    if observed.metadata.requires_typed_response() && flow_step.is_some() {
+                        Some(
+                            last_step_sequence(history, &durable_step_id).ok_or_else(|| {
+                                format!("Flow step {durable_step_id:?} has no history")
+                            })?,
+                        )
+                    } else {
+                        None
+                    };
+                let sequence = if let Some(sequence) = typed_response_sequence {
+                    sequence
+                } else if hook.status == HookStatus::Cancelled {
                     snapshot.last_sequence
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
@@ -675,6 +687,13 @@ pub(super) fn verify_flow_authority(
                     &record.run.execution_input,
                     snapshot,
                     &observed,
+                )?;
+                super::connector_response::verify_step_history(
+                    &record.run.execution_input,
+                    resolved,
+                    &observed,
+                    snapshot,
+                    history,
                 )?;
                 for hook in observed {
                     expected_hooks.insert(hook.metadata.flow_hook_id());

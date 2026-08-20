@@ -108,7 +108,8 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
         })
         .await?;
 
-    let flow = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
+    let flow =
+        FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime::default())).await?;
     let engine = flow.engine();
     let operation_repository: Arc<dyn IOperationRepository> =
         Arc::new(PostgresOperationRepository::new(executor.clone()));

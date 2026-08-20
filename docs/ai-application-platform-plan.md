@@ -421,13 +421,21 @@ and fail closed. Answer and non-Execution error semantics remain open.
 Existing `cloud.workflow.plan.v1` histories are
 unchanged.
 
-The component-only Connector response path now also has one internal read
-boundary. `IConnectorResponseObjectPort` authorizes the exact environment,
-requires accepted terminal C6 evidence for the exact attempt-scoped reference,
-and revalidates the immutable bytes before returning transient Debug-redacted
-content. Flow and public interfaces remain body-free. No typed node consumes
-the port yet, so HTTP Request and complete W0.4 response consumption remain
-unavailable.
+The component-only Connector response path now has one internal read boundary
+and one typed consumer. `IConnectorResponseObjectPort` authorizes the exact
+environment, requires accepted terminal C6 evidence for the exact
+attempt-scoped reference, and revalidates the immutable bytes before returning
+transient Debug-redacted content. WorkflowRun input/runtime/Flow v8 invokes
+that port only after verified accepted hook evidence in a dedicated no-retry
+step. It parses exactly one duplicate-key-free JSON value, validates the
+immutable node output schema and Workflow output bound, and records only that
+typed value as ordinary Flow output. Raw response bytes and the object-read
+capability never enter Flow or a public body-download surface. Historic v7
+retains default-output behavior, v6 remains reference-only, and v5 remains
+digest-only. This implements the
+component HTTP Request response-consumption path, but the node remains publicly
+unavailable until the remaining AUT0.5 provider, recovery, integration, and
+interface gates pass.
 
 The initial `Iteration` executor dispatches deterministic item ordinals
 sequentially, preserving the declared maximum concurrency as a strict ceiling,
@@ -693,7 +701,7 @@ implementing a Cloud substitute is prohibited by this plan.
 | `AUT0.5-C9` | Implemented component foundation: add bounded provider-attempt and fallback-delay semantics as `cloud.workflow.policy.v2` through the existing per-step policy payload/digest channel. Require exact v2 material for ConnectorRevision steps in WorkflowRevision and immutable WorkflowRun admission; reject retry material for provider runtimes not yet admitted; bind Connector retry classification to the Connectors-owned `connector.http` descriptor. Preserve policy v1 bytes and add no policy table/semantic child, Plan/Run version, scheduler, wait worker, queue, or configuration language. | `AUT0.5-C8`, `W0.3` |
 | `AUT0.5-C10` | Implemented component foundation: own `cloud.connector.response-object.v1` in Connectors over the shared immutable-object client's `connector-responses` child namespace. WorkflowRun v6 requests idempotent storage of an accepted bounded body by exact tenant/profile/revision/attempt/digest path before C6 terminal evidence, and records only an exact `cloud.workflow.connector-response-object.v1` reference, digest, and length in versioned Flow evidence/results. Fail closed on missing, corrupt, conflicting, or unavailable content; preserve digest-only callers and historic body-free v5 bytes. Add no table, migration, second object client, queue, scheduler, retry counter, provider client, or configuration language. | `AUT0.5-C9`, shared immutable-object authority, `W0.4` |
 | `AUT0.5-C11` | Implemented component foundation: make the existing Connector execution application service the sole internal response-object read port. Authorize the exact environment, require the exact accepted terminal C6 attempt/evidence, prove the derived reference against that evidence, and revalidate the shared immutable object before returning transient non-serializable, non-cloneable, Debug-redacted content. An orphaned object grants no authority. Add no public download surface, Flow body, table, migration, second object client, queue, scheduler, retry counter, or provider call. | `AUT0.5-C10`; typed `W0.4` consumers |
-| `AUT0.5` | WorkflowRun input/runtime/Flow v6 implements exact Connector hook history, bounded durable observation/retry waits, `Retry-After` or C9 fallback pacing, deterministic next-attempt identity, deferred same-attempt observation, fail-closed indeterminate handling, and C10's exact immutable response-object reference without putting raw bodies in Flow. C11 adds the terminal-evidence-authorized internal read boundary, and historic v5 remains body-free and byte-compatible. Complete typed-node consumption, remaining provider/consumer wiring beyond the first Notification NATS-to-C6 composition, revocation/recovery operations, and retained PostgreSQL/integration evidence before availability. | `AUT0.5-C11`; remaining `W0.4` for node availability |
+| `AUT0.5` | WorkflowRun input/runtime/Flow v8 retains v6's exact Connector hook history, bounded durable observation/retry waits, `Retry-After` or C9 fallback pacing, deterministic next-attempt identity, deferred same-attempt observation, fail-closed indeterminate handling, and C10's exact immutable response-object reference. After accepted evidence, a no-retry step uses C11 to read the exact object, accepts one duplicate-key-free JSON value, enforces the immutable output schema and bound, and records only the typed node output. Historic v7 retains default-output behavior, v6 remains reference-only, and v5 remains digest-only. Remaining provider/consumer wiring beyond the first Notification NATS-to-C6 composition, revocation/recovery operations, and retained PostgreSQL/integration evidence still block availability. | `AUT0.5-C11`; remaining `AUT0.5` and `W0.4` availability gates |
 | `AUT0.6` | Pass duplicate delivery, out-of-order event, clock shift, lease loss, process death, provider outage, revoke, quota, multi-node HA, replay, disaster-recovery, and interface gates | `AUT0.2` through `AUT0.5`, `H0.5` |
 
 The sub-gates are dependency gates, not calendar promises. `K0.1`, `AUT0.1`,
@@ -715,7 +723,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twenty-three
+   reject inventory/schema drift and false public claims. All twenty-four
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -724,8 +732,9 @@ The recommended sequence is:
    frames, ordered composite-region reduction, authority-bound child
    WorkflowRun coordination, descriptor-bound finite-Execution failure routing,
    Flow-owned Connector attempt/wait decisions, immutable Connector response
-   objects, terminal-evidence-authorized Connector response reads, and exact
-   default-output folding are accepted and versioned.
+   objects, terminal-evidence-authorized Connector response reads, exact
+   default-output folding, and schema-bound typed JSON response projection are
+   accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.

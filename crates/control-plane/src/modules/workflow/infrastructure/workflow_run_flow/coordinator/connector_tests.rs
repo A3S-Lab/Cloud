@@ -1,22 +1,23 @@
 use super::super::FlowWorkflowRunCoordinator;
 use crate::modules::connectors::{
-    ConnectorExecutionEvidence, ConnectorExecutionOutcome, ConnectorResponseObjectReference,
-    IWorkflowConnectorPort, WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
+    ConnectorExecutionEvidence, ConnectorExecutionOutcome, ConnectorResponseObjectContent,
+    ConnectorResponseObjectReference, IConnectorResponseObjectPort, IWorkflowConnectorPort,
+    ReadConnectorResponseObject, WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
     WorkflowConnectorResponseMode,
 };
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Sha256Digest};
 use crate::modules::workflow::domain::{
-    IWorkflowRunCoordinator, WorkflowRun, WorkflowRunRecord, WorkflowRunStatus,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V6,
+    flow_step_id, IWorkflowRunCoordinator, WorkflowRun, WorkflowRunRecord, WorkflowRunStatus,
+    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V8,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
     connector_workflow_run_input, digest, TEST_CONNECTOR_STEP_ID,
 };
 use a3s_flow::{
-    FlowEngine, FlowError, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId, RuntimeCommand,
-    StepInvocation, WorkflowInvocation, WorkflowSpec,
+    FlowEngine, FlowError, FlowEvent, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId,
+    RuntimeCommand, StepInvocation, WorkflowInvocation, WorkflowSpec,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -24,8 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Copy)]
-struct ConnectorTestRuntime;
+struct ConnectorTestRuntime(WorkflowRunFlowRuntime);
 
 #[async_trait]
 impl FlowRuntime for ConnectorTestRuntime {
@@ -33,11 +33,26 @@ impl FlowRuntime for ConnectorTestRuntime {
         &self,
         invocation: WorkflowInvocation,
     ) -> Result<RuntimeCommand, FlowError> {
-        WorkflowRunFlowRuntime.run_workflow(invocation).await
+        self.0.run_workflow(invocation).await
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
-        WorkflowRunFlowRuntime.run_step(invocation).await
+        self.0.run_step(invocation).await
+    }
+}
+
+struct FakeConnectorResponses;
+
+#[async_trait]
+impl IConnectorResponseObjectPort for FakeConnectorResponses {
+    async fn read_response_object(
+        &self,
+        request: &ReadConnectorResponseObject,
+    ) -> ApplicationResult<ConnectorResponseObjectContent> {
+        ConnectorResponseObjectContent::for_test(
+            request.reference.clone(),
+            br#"{"accepted":true}"#.to_vec(),
+        )
     }
 }
 
@@ -146,6 +161,22 @@ async fn coordinator_resumes_exact_connector_evidence_without_a_child_reference(
         .snapshot(&record.run.flow_run_id)
         .await
         .expect("snapshot");
+    let response_step_sequence = engine
+        .history(&record.run.flow_run_id)
+        .await
+        .expect("history")
+        .into_iter()
+        .rev()
+        .find_map(|event| match event.event {
+            FlowEvent::StepCompleted { step_id, .. }
+                if step_id == flow_step_id(TEST_CONNECTOR_STEP_ID) =>
+            {
+                Some(event.sequence)
+            }
+            _ => None,
+        })
+        .expect("typed Connector response completion");
+    assert_eq!(step.last_flow_sequence, response_step_sequence);
     assert!(snapshot.child_operations.is_empty());
 }
 
@@ -215,6 +246,22 @@ async fn connector_projection_rejects_payload_and_creation_history_drift() {
         .expect("Connector payload")["digest"] = serde_json::json!(digest('f'));
     assert!(super::super::project_workflow_run_record(&record, &payload_drift, &history).is_err());
 
+    let mut response_step_drift = history.clone();
+    let step_name = response_step_drift
+        .iter_mut()
+        .find_map(|event| match &mut event.event {
+            a3s_flow::FlowEvent::StepCreated {
+                step_id, step_name, ..
+            } if step_id == "workflow:invoke" => Some(step_name),
+            _ => None,
+        })
+        .expect("Connector response step creation event");
+    *step_name = "workflow_run_local".into();
+    assert!(
+        super::super::project_workflow_run_record(&record, &snapshot, &response_step_drift)
+            .is_err()
+    );
+
     let mut history_drift = history;
     let created = history_drift
         .iter_mut()
@@ -239,7 +286,9 @@ async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     let record = WorkflowRunRecord { run, steps };
     let runtime_build_id =
         RuntimeBuildId::new("a3s-cloud-workflow-connector-test@1").expect("runtime build");
-    let engine = FlowEngine::builder(Arc::new(ConnectorTestRuntime))
+    let response_runtime =
+        WorkflowRunFlowRuntime::with_connector_responses(Arc::new(FakeConnectorResponses));
+    let engine = FlowEngine::builder(Arc::new(ConnectorTestRuntime(response_runtime)))
         .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
         .build();
     engine
@@ -247,7 +296,7 @@ async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
             input.workflow_run_id.to_string(),
             WorkflowSpec::rust_embedded(
                 WORKFLOW_RUN_FLOW_NAME,
-                WORKFLOW_RUN_FLOW_VERSION_V6,
+                WORKFLOW_RUN_FLOW_VERSION_V8,
                 "a3s-cloud",
                 "main",
             )

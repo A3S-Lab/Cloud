@@ -1,7 +1,8 @@
 use super::{
     CapabilityType, ResolvedWorkflowRunStep, WorkflowPolicyMode, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepKind, WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, ConnectorProfileId,
@@ -14,6 +15,7 @@ use uuid::Uuid;
 
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA: &str = "cloud.workflow.connector-hook.v1";
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2: &str = "cloud.workflow.connector-hook.v2";
+pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3: &str = "cloud.workflow.connector-hook.v3";
 pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA: &str = "cloud.workflow.connector-resume.v1";
 pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA_V2: &str = "cloud.workflow.connector-resume.v2";
 pub const WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA: &str = "cloud.workflow.connector-evidence.v1";
@@ -91,10 +93,10 @@ impl WorkflowConnectorHookMetadata {
             "Workflow Connector effective input",
         )?;
         let value = Self {
-            schema: if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V6 {
-                WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into()
-            } else {
-                WORKFLOW_CONNECTOR_HOOK_SCHEMA.into()
+            schema: match input.schema.as_str() {
+                WORKFLOW_RUN_INPUT_SCHEMA_V8 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V6 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into(),
+                _ => WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
             },
             organization_id: input.organization_id,
             project_id: input.project_id,
@@ -122,7 +124,9 @@ impl WorkflowConnectorHookMetadata {
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(
             self.schema.as_str(),
-            WORKFLOW_CONNECTOR_HOOK_SCHEMA | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
+            WORKFLOW_CONNECTOR_HOOK_SCHEMA
+                | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
+                | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
         ) || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()
@@ -155,7 +159,14 @@ impl WorkflowConnectorHookMetadata {
     }
 
     pub fn requires_response_object(&self) -> bool {
-        self.schema == WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2 | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
+        )
+    }
+
+    pub fn requires_typed_response(&self) -> bool {
+        self.schema == WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
     }
 
     pub fn flow_hook_id(&self) -> String {

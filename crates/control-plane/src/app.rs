@@ -34,7 +34,7 @@ use crate::modules::connectors::{
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
     ConnectorResponseObjectStore, ConnectorsModule, CreateConnectorProfileHandler,
     GetConnectorProfileHandler, GetConnectorRevisionHandler, IConnectorProfileRepository,
-    ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
+    IConnectorResponseObjectPort, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
     WorkflowConnectorApplicationService,
 };
@@ -799,12 +799,20 @@ async fn build_api_worker_application(
                 Arc::clone(&key_encryption),
             ))
             .map_err(ControlPlaneStartupError::ObjectNamespaceRecovery)?;
+        let workflow_connector_responses: Arc<dyn IConnectorResponseObjectPort> =
+            connector_execution.as_ref().cloned().ok_or_else(|| {
+                ControlPlaneStartupError::Connector(
+                    "Flow worker is missing Connector response-object access".into(),
+                )
+            })?;
         let flow_runtime = FlowRuntimeRouter::new(
             Arc::new(deployment_runtime),
             Arc::new(build_runtime),
             Arc::new(execution_runtime),
             Arc::new(agent_execution_runtime),
-            Arc::new(WorkflowRunFlowRuntime),
+            Arc::new(WorkflowRunFlowRuntime::with_connector_responses(
+                workflow_connector_responses,
+            )),
             Arc::new(object_namespace_recovery_runtime),
         )?;
         Some(

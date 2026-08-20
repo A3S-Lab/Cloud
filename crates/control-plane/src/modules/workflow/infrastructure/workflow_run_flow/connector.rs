@@ -10,7 +10,7 @@ use crate::modules::workflow::domain::{
     WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepKind,
     WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT,
 };
-use a3s_flow::{FlowError, HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
+use a3s_flow::{FlowError, HookSnapshot, HookStatus, WorkflowContext, WorkflowRunSnapshot};
 use chrono::{DateTime, Duration, Utc};
 
 pub(super) enum ConnectorStepResolution {
@@ -20,6 +20,7 @@ pub(super) enum ConnectorStepResolution {
         resume_at: DateTime<Utc>,
     },
     Complete(Box<WorkflowLocalStepResult>),
+    Consume(Box<super::connector_response::WorkflowConnectorResponseStepInput>),
     Failed(String),
 }
 
@@ -74,9 +75,10 @@ pub(super) fn resolve_step(
                 WorkflowConnectorResumeResolution::Completed { evidence } => {
                     match evidence.outcome {
                         WorkflowConnectorAttemptOutcome::Accepted => {
-                            return accepted_result(step, &metadata, &evidence, &authority)
-                                .map(ConnectorStepResolution::Complete)
-                                .map_err(ConnectorStepError::Invalid);
+                            return accepted_resolution(
+                                input, step, &metadata, &evidence, &authority,
+                            )
+                            .map_err(ConnectorStepError::Invalid);
                         }
                         WorkflowConnectorAttemptOutcome::Rejected => {
                             return Ok(ConnectorStepResolution::Failed(format!(
@@ -194,6 +196,15 @@ pub(super) fn project_received_hook(
         .ok_or_else(|| "received Workflow Connector hook has no payload".to_owned())?;
     match payload.resolution {
         WorkflowConnectorResumeResolution::Completed { evidence } => match evidence.outcome {
+            WorkflowConnectorAttemptOutcome::Accepted
+                if observed.metadata.requires_typed_response() => {
+                    validate_accepted_evidence(
+                        &observed.metadata,
+                        &evidence,
+                        &authority,
+                    )?;
+                    Ok(ConnectorProjectionResolution::Running)
+                }
             WorkflowConnectorAttemptOutcome::Accepted => accepted_result(
                 step,
                 &observed.metadata,
@@ -237,6 +248,34 @@ pub(super) fn project_received_hook(
             Ok(ConnectorProjectionResolution::Failed(reason))
         }
     }
+}
+
+pub(super) fn accepted_response_step_input(
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    observed: &ObservedConnectorHook<'_>,
+) -> Result<Option<super::connector_response::WorkflowConnectorResponseStepInput>, String> {
+    if !observed.metadata.requires_typed_response() || observed.hook.status != HookStatus::Received
+    {
+        return Ok(None);
+    }
+    let authority = attempt_authority(&observed.metadata)?;
+    let Some(payload) = received_payload(observed, &authority)? else {
+        return Ok(None);
+    };
+    let WorkflowConnectorResumeResolution::Completed { evidence } = payload.resolution else {
+        return Ok(None);
+    };
+    if evidence.outcome != WorkflowConnectorAttemptOutcome::Accepted {
+        return Ok(None);
+    }
+    super::connector_response::WorkflowConnectorResponseStepInput::new(
+        &input.runtime_contract_revision,
+        step,
+        &observed.metadata,
+        &evidence,
+    )
+    .map(Some)
 }
 
 pub(super) fn observed_connector_hooks<'a>(
@@ -452,13 +491,7 @@ fn accepted_result(
     evidence: &crate::modules::workflow::domain::WorkflowConnectorAttemptEvidence,
     authority: &WorkflowConnectorAttemptAuthority,
 ) -> Result<Box<WorkflowLocalStepResult>, String> {
-    let output = WorkflowConnectorStepOutput::from_evidence(
-        metadata,
-        evidence,
-        authority.attempt_id,
-        &authority.request_digest,
-        authority.request_body_bytes,
-    )?;
+    let output = validate_accepted_evidence(metadata, evidence, authority)?;
     let output = serde_json::to_value(output)
         .map_err(|error| format!("could not encode Workflow Connector output: {error}"))?;
     let result = WorkflowLocalStepResult {
@@ -472,6 +505,41 @@ fn accepted_result(
     };
     result.validate(step)?;
     Ok(Box::new(result))
+}
+
+fn accepted_resolution(
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowConnectorHookMetadata,
+    evidence: &crate::modules::workflow::domain::WorkflowConnectorAttemptEvidence,
+    authority: &WorkflowConnectorAttemptAuthority,
+) -> Result<ConnectorStepResolution, String> {
+    validate_accepted_evidence(metadata, evidence, authority)?;
+    if metadata.requires_typed_response() {
+        return super::connector_response::WorkflowConnectorResponseStepInput::new(
+            &input.runtime_contract_revision,
+            step,
+            metadata,
+            evidence,
+        )
+        .map(Box::new)
+        .map(ConnectorStepResolution::Consume);
+    }
+    accepted_result(step, metadata, evidence, authority).map(ConnectorStepResolution::Complete)
+}
+
+fn validate_accepted_evidence(
+    metadata: &WorkflowConnectorHookMetadata,
+    evidence: &crate::modules::workflow::domain::WorkflowConnectorAttemptEvidence,
+    authority: &WorkflowConnectorAttemptAuthority,
+) -> Result<WorkflowConnectorStepOutput, String> {
+    WorkflowConnectorStepOutput::from_evidence(
+        metadata,
+        evidence,
+        authority.attempt_id,
+        &authority.request_digest,
+        authority.request_body_bytes,
+    )
 }
 
 fn bounded_resume_at(value: DateTime<Utc>, deadline_at: DateTime<Utc>) -> DateTime<Utc> {

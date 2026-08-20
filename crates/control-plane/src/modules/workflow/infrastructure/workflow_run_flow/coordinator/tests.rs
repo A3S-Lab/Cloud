@@ -47,11 +47,13 @@ impl FlowRuntime for TestFlowRuntime {
                 .context()
                 .complete(serde_json::json!({"test": true})));
         }
-        WorkflowRunFlowRuntime.run_workflow(invocation).await
+        WorkflowRunFlowRuntime::default()
+            .run_workflow(invocation)
+            .await
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
-        WorkflowRunFlowRuntime.run_step(invocation).await
+        WorkflowRunFlowRuntime::default().run_step(invocation).await
     }
 }
 

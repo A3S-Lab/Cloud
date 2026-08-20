@@ -41,6 +41,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V6: &str = "6";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V7: &str = "cloud.workflow-run.input.v7";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7: &str = "cloud.workflow-run-runtime.v7";
 pub const WORKFLOW_RUN_FLOW_VERSION_V7: &str = "7";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V8: &str = "cloud.workflow-run.input.v8";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8: &str = "cloud.workflow-run-runtime.v8";
+pub const WORKFLOW_RUN_FLOW_VERSION_V8: &str = "8";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -180,6 +183,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V5
                 | WORKFLOW_RUN_INPUT_SCHEMA_V6
                 | WORKFLOW_RUN_INPUT_SCHEMA_V7
+                | WORKFLOW_RUN_INPUT_SCHEMA_V8
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -315,13 +319,16 @@ impl WorkflowRunInput {
                 (
                     schema @ (WORKFLOW_RUN_INPUT_SCHEMA_V5
                     | WORKFLOW_RUN_INPUT_SCHEMA_V6
-                    | WORKFLOW_RUN_INPUT_SCHEMA_V7),
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V7
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V8),
                     runtime @ (WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
-                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7),
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8),
                     flow @ (WORKFLOW_RUN_FLOW_VERSION_V5
                     | WORKFLOW_RUN_FLOW_VERSION_V6
-                    | WORKFLOW_RUN_FLOW_VERSION_V7),
+                    | WORKFLOW_RUN_FLOW_VERSION_V7
+                    | WORKFLOW_RUN_FLOW_VERSION_V8),
                     plan_schema @ (WORKFLOW_PLAN_SCHEMA_V2
                     | WORKFLOW_PLAN_SCHEMA_V3
                     | WORKFLOW_PLAN_SCHEMA_V4),
@@ -342,15 +349,24 @@ impl WorkflowRunInput {
                         WORKFLOW_RUN_INPUT_SCHEMA_V7,
                         WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
                         WORKFLOW_RUN_FLOW_VERSION_V7
+                    ) | (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V8,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+                        WORKFLOW_RUN_FLOW_VERSION_V8
                     )
                 ) && ((matches!(
                     plan_schema,
                     WORKFLOW_PLAN_SCHEMA_V2 | WORKFLOW_PLAN_SCHEMA_V3
                 ) && matches!(
                     flow,
-                    WORKFLOW_RUN_FLOW_VERSION_V5 | WORKFLOW_RUN_FLOW_VERSION_V6
+                    WORKFLOW_RUN_FLOW_VERSION_V5
+                        | WORKFLOW_RUN_FLOW_VERSION_V6
+                        | WORKFLOW_RUN_FLOW_VERSION_V8
                 )) || (plan_schema == WORKFLOW_PLAN_SCHEMA_V4
-                    && flow == WORKFLOW_RUN_FLOW_VERSION_V7)) =>
+                    && matches!(
+                        flow,
+                        WORKFLOW_RUN_FLOW_VERSION_V7 | WORKFLOW_RUN_FLOW_VERSION_V8
+                    ))) =>
                 {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -432,7 +448,9 @@ impl WorkflowRunInput {
         });
         let connector_runtime_required = matches!(
             self.schema.as_str(),
-            WORKFLOW_RUN_INPUT_SCHEMA_V5 | WORKFLOW_RUN_INPUT_SCHEMA_V6
+            WORKFLOW_RUN_INPUT_SCHEMA_V5
+                | WORKFLOW_RUN_INPUT_SCHEMA_V6
+                | WORKFLOW_RUN_INPUT_SCHEMA_V8
         );
         if (has_connector && !connector_runtime_capable)
             || (!has_connector && connector_runtime_required)

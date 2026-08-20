@@ -25,13 +25,14 @@ use crate::modules::workflow::domain::{
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
     WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
     WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
-    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
-    WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
+    WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
+    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -685,10 +686,10 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
         "WorkflowRun Connector test plan",
     )?))?;
     let input = WorkflowRunInput {
-        schema: WORKFLOW_RUN_INPUT_SCHEMA_V6.into(),
-        runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6.into(),
+        schema: WORKFLOW_RUN_INPUT_SCHEMA_V8.into(),
+        runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8.into(),
         flow_workflow_name: WORKFLOW_RUN_FLOW_NAME.into(),
-        flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION_V6.into(),
+        flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION_V8.into(),
         organization_id: OrganizationId::new(),
         project_id: ProjectId::new(),
         workflow_run_id: WorkflowRunId::new(),
@@ -713,8 +714,17 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
     Ok(input)
 }
 
-pub(crate) fn connector_workflow_run_input_v5() -> Result<WorkflowRunInput, String> {
+pub(crate) fn connector_workflow_run_input_v6() -> Result<WorkflowRunInput, String> {
     let mut input = connector_workflow_run_input()?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V6.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V6.into();
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn connector_workflow_run_input_v5() -> Result<WorkflowRunInput, String> {
+    let mut input = connector_workflow_run_input_v6()?;
     input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V5.into();
     input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5.into();
     input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V5.into();

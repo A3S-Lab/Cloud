@@ -1,11 +1,15 @@
 mod composite;
 mod connector;
+mod connector_response;
 mod coordinator;
 mod execution;
 mod projection;
 mod readers;
 mod variables;
 mod workflow;
+
+#[cfg(test)]
+mod connector_response_tests;
 
 pub use coordinator::FlowWorkflowRunCoordinator;
 pub use projection::project_workflow_run_record;
@@ -18,7 +22,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -27,7 +31,11 @@ use std::collections::BTreeMap;
 pub const WORKFLOW_RUN_STEP_NAME: &str = "workflow_run_local";
 
 pub(crate) fn flow_step_names() -> impl Iterator<Item = &'static str> {
-    std::iter::once(WORKFLOW_RUN_STEP_NAME)
+    [
+        WORKFLOW_RUN_STEP_NAME,
+        connector_response::WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME,
+    ]
+    .into_iter()
 }
 
 pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, &'static str)> {
@@ -59,6 +67,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
         (
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V7,
+        ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V8,
         ),
     ]
     .into_iter()
@@ -186,8 +198,35 @@ impl WorkflowLocalStepResult {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct WorkflowRunFlowRuntime;
+#[derive(Clone, Default)]
+pub struct WorkflowRunFlowRuntime {
+    connector_responses:
+        Option<std::sync::Arc<dyn crate::modules::connectors::IConnectorResponseObjectPort>>,
+}
+
+impl WorkflowRunFlowRuntime {
+    pub fn with_connector_responses(
+        connector_responses: std::sync::Arc<
+            dyn crate::modules::connectors::IConnectorResponseObjectPort,
+        >,
+    ) -> Self {
+        Self {
+            connector_responses: Some(connector_responses),
+        }
+    }
+}
+
+impl std::fmt::Debug for WorkflowRunFlowRuntime {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WorkflowRunFlowRuntime")
+            .field(
+                "connector_responses_configured",
+                &self.connector_responses.is_some(),
+            )
+            .finish()
+    }
+}
 
 #[async_trait::async_trait]
 impl FlowRuntime for WorkflowRunFlowRuntime {
@@ -199,29 +238,45 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
-        if invocation.step_name != WORKFLOW_RUN_STEP_NAME {
-            return Err(FlowError::Runtime(format!(
+        match invocation.step_name.as_str() {
+            WORKFLOW_RUN_STEP_NAME => {
+                let input: WorkflowLocalStepInput = invocation.input_as()?;
+                if !matches!(
+                    input.runtime_contract_revision.as_str(),
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
+                ) {
+                    return Err(FlowError::Runtime(
+                        "WorkflowRun step runtime contract revision is unsupported".into(),
+                    ));
+                }
+                let result = execution::execute_local_step(&input).map_err(FlowError::Runtime)?;
+                serde_json::to_value(result).map_err(FlowError::from)
+            }
+            connector_response::WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME => {
+                let input: connector_response::WorkflowConnectorResponseStepInput =
+                    invocation.input_as()?;
+                let responses = self.connector_responses.as_deref().ok_or_else(|| {
+                    FlowError::Runtime(
+                        "Workflow Connector response consumption is not configured".into(),
+                    )
+                })?;
+                let result = connector_response::consume_response(&input, responses)
+                    .await
+                    .map_err(FlowError::Runtime)?;
+                serde_json::to_value(result).map_err(FlowError::from)
+            }
+            _ => Err(FlowError::Runtime(format!(
                 "WorkflowRun runtime cannot execute step name {:?}",
                 invocation.step_name
-            )));
+            ))),
         }
-        let input: WorkflowLocalStepInput = invocation.input_as()?;
-        if !matches!(
-            input.runtime_contract_revision.as_str(),
-            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
-                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
-        ) {
-            return Err(FlowError::Runtime(
-                "WorkflowRun step runtime contract revision is unsupported".into(),
-            ));
-        }
-        let result = execution::execute_local_step(&input).map_err(FlowError::Runtime)?;
-        serde_json::to_value(result).map_err(FlowError::from)
     }
 }
 
@@ -275,7 +330,7 @@ mod tests {
             "workflow_run",
         );
         let encoded = serde_json::to_value(&input)?;
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
             .await?;
@@ -319,7 +374,7 @@ mod tests {
             "workflow_run",
         );
         let encoded = serde_json::to_value(&input)?;
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
             .await?;
@@ -348,7 +403,7 @@ mod tests {
             WorkflowRun::create(input.clone(), PrincipalId::new()).map_err(FlowError::Runtime)?;
         let record = WorkflowRunRecord { run, steps };
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -389,7 +444,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::hours(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -430,7 +485,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::hours(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -476,7 +531,7 @@ mod tests {
             "main",
         )
         .with_runtime_build(runtime_build_id.clone());
-        let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime))
+        let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
             .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id))
             .build();
         engine
@@ -643,7 +698,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::seconds(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -762,7 +817,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::hours(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -821,7 +876,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::hours(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         engine
             .start_with_id(
                 &run_id,
@@ -883,7 +938,7 @@ mod tests {
         input.deadline_at = input.requested_at + chrono::Duration::hours(1);
         input.validate().map_err(FlowError::Runtime)?;
         let run_id = input.workflow_run_id.to_string();
-        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
         let spec = WorkflowSpec::rust_embedded(
             WORKFLOW_RUN_FLOW_NAME,
             WORKFLOW_RUN_FLOW_VERSION_V3,
