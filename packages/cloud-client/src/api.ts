@@ -1,3 +1,16 @@
+import {
+  type Application,
+  type ApplicationMutationResult,
+  type ApplicationRelease,
+  type CreateApplicationInput,
+  DEFAULT_APPLICATION_LIST_LIMIT,
+  type PublishApplicationReleaseInput,
+  validateApplicationDescription,
+  validateApplicationExpectedVersion,
+  validateApplicationListLimit,
+  validateApplicationName,
+  validateApplicationReleaseAcl,
+} from './applications';
 import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
 import {
   type ConnectorProfile,
@@ -240,7 +253,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.41.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.42.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1858,6 +1871,89 @@ export class CloudApi {
     );
   }
 
+  listApplications(
+    organizationId: string,
+    projectId: string,
+    limit = DEFAULT_APPLICATION_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<Application[]> {
+    validateApplicationListLimit(limit);
+    return this.get(`${this.applicationsPath(organizationId, projectId)}?limit=${limit}`, signal);
+  }
+
+  getApplication(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    signal?: AbortSignal
+  ): Promise<Application> {
+    return this.get(this.applicationPath(organizationId, projectId, applicationId), signal);
+  }
+
+  listApplicationReleases(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    limit = DEFAULT_APPLICATION_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<ApplicationRelease[]> {
+    validateApplicationListLimit(limit);
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}/releases?limit=${limit}`,
+      signal
+    );
+  }
+
+  getApplicationRelease(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    releaseId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationRelease> {
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/releases/${encodeURIComponent(releaseId)}`,
+      signal
+    );
+  }
+
+  createApplication(
+    organizationId: string,
+    projectId: string,
+    input: CreateApplicationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMutationResult> {
+    validateApplicationName(input.name);
+    validateApplicationDescription(input.description ?? '');
+    validateApplicationReleaseAcl(input.releaseAcl);
+    return this.postJson(
+      this.applicationsPath(organizationId, projectId),
+      idempotencyKey,
+      { ...input, description: input.description ?? '' },
+      signal
+    );
+  }
+
+  publishApplicationRelease(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    input: PublishApplicationReleaseInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMutationResult> {
+    validateApplicationExpectedVersion(input.expectedVersion);
+    validateApplicationReleaseAcl(input.releaseAcl);
+    return this.postJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}/releases`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
   listConnectorProfiles(
     organizationId: string,
     projectId: string,
@@ -3117,6 +3213,17 @@ export class CloudApi {
       `/environments/${encodeURIComponent(environmentId)}` +
       `/connector-profiles/${encodeURIComponent(profileId)}`
     );
+  }
+
+  private applicationsPath(organizationId: string, projectId: string): string {
+    return (
+      `/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}/applications`
+    );
+  }
+
+  private applicationPath(organizationId: string, projectId: string, applicationId: string): string {
+    return `${this.applicationsPath(organizationId, projectId)}/${encodeURIComponent(applicationId)}`;
   }
 
   private durableCellApplicationsPath(

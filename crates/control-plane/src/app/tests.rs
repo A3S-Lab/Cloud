@@ -76,6 +76,7 @@ use uuid::Uuid;
 
 mod agent_execution_tests;
 mod api_contract_tests;
+mod application_tests;
 mod asset_catalog_tests;
 mod asset_git_support;
 mod asset_git_tests;
@@ -1800,6 +1801,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             notifications,
             outbound_notifications,
             connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
+            applications: Arc::new(
+                crate::modules::applications::InMemoryApplicationRepository::new(),
+            ),
             durable_cell_applications: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
             ),

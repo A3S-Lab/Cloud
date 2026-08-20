@@ -646,21 +646,20 @@ delivery projections, session/message state, conversation variables, feedback,
 annotations, and publication policy. Every release binds one exact
 `WorkflowRevision`; the six experiences do not own separate runtimes.
 
-Component-only `APP0.1-C1/C2/C3` implements and persists the first two primary
-records. One canonical `cloud.application.release.v1` ACL freezes the experience,
+`APP0.1` implements and persists the first two primary records. One
+canonical `cloud.application.release.v1` ACL freezes the experience,
 interaction/response modes, audience, presentation digest, and exact Workflow
 definition/revision plus contract, payload-set, semantic-contract-set, input,
 and output digests. `Application` keeps a sequence-fenced immutable release
 head, and its experience cannot change. Migration `124` stores that head and
 canonical release lineage, verifies exact Workflow content/payload evidence,
 and rejects mutation or forks. The Applications repository uses the shared A3S
-ORM transaction, idempotency, audit, and Outbox mechanisms. C3 authorizes the
-canonical project before replay, reconstructs the exact historical release for
-a matching receipt, and resolves only immutable semantic metadata through the
-existing Workflow repository for a new publication. It adds no graph, run,
-queue, session, route, provider, credential, or runtime authority. No public
-surface is claimed by C1/C2/C3; production composition and maintained
-interfaces remain in the following APP0.1 slice.
+ORM transaction, idempotency, audit, and Outbox mechanisms. Project
+authorization runs before idempotency replay, and REST/OpenAPI `1.42.0`, the
+maintained client, CLI, and six Management MCP tools reuse the same create,
+publish, current, and exact-history CQRS. This management surface adds no
+session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
+those capabilities remain gated by `APP0.2` through `APP0.6`.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and

@@ -139,6 +139,64 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
 }
 
 #[test]
+fn application_contract_is_project_scoped_acl_native_bounded_and_release_versioned() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let base = "/organizations/{organization_id}/projects/{project_id}/applications";
+    let collection = &document["paths"][base];
+    assert_eq!(collection["get"]["tags"], json!(["Applications"]));
+    assert_eq!(collection["post"]["tags"], json!(["Applications"]));
+    let create_schema = &collection["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(create_schema["additionalProperties"], false);
+    assert_eq!(create_schema["required"], json!(["name", "releaseAcl"]));
+    assert_eq!(
+        create_schema["properties"]["description"]["maxLength"],
+        crate::modules::applications::APPLICATION_DESCRIPTION_MAX_CHARS
+    );
+    assert_eq!(
+        create_schema["properties"]["releaseAcl"]["maxLength"],
+        crate::modules::applications::APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+    );
+    assert!(collection["post"]["responses"]["200"].is_object());
+    assert!(collection["post"]["responses"]["201"].is_object());
+    assert!(collection["post"]["responses"]["413"].is_object());
+    assert!(collection["post"]["responses"]["415"].is_object());
+    let list_limit = collection["get"]["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("Application list limit is missing".into()))?;
+    assert_eq!(list_limit["schema"]["default"], 50);
+    assert_eq!(list_limit["schema"]["maximum"], 200);
+
+    let releases = &document["paths"][format!("{base}/{{application_id}}/releases")];
+    assert_eq!(releases["get"]["tags"], json!(["Applications"]));
+    assert_eq!(releases["post"]["tags"], json!(["Applications"]));
+    let publish_schema = &releases["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        publish_schema["required"],
+        json!(["expectedVersion", "releaseAcl"])
+    );
+    assert_eq!(
+        publish_schema["properties"]["expectedVersion"]["minimum"],
+        1
+    );
+    assert_eq!(
+        publish_schema["properties"]["releaseAcl"]["maxLength"],
+        crate::modules::applications::APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+    );
+    assert!(releases["post"]["responses"]["201"].is_object());
+    assert!(
+        document["paths"][format!("{base}/{{application_id}}/releases/{{release_id}}")]["get"]
+            .is_object()
+    );
+    Ok(())
+}
+
+#[test]
 fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounded() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

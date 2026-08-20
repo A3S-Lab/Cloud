@@ -1,5 +1,9 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::applications::{
+    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
+    DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+};
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -305,10 +309,21 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || path.ends_with("/human-tasks")
             || is_connector_profile_collection_path(path)
             || is_connector_revision_collection_path(path)
+            || is_application_collection_path(path)
+            || is_application_release_collection_path(path)
             || is_durable_cell_application_collection_path(path)
             || is_durable_cell_revision_collection_path(path))
     {
-        let schema = if is_durable_cell_application_collection_path(path)
+        let schema = if is_application_collection_path(path)
+            || is_application_release_collection_path(path)
+        {
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_APPLICATION_LIST_LIMIT
+            })
+        } else if is_durable_cell_application_collection_path(path)
             || is_durable_cell_revision_collection_path(path)
         {
             json!({
@@ -693,6 +708,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
+    } else if is_application_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({"schema": application_request_schema(path)}),
+        );
     } else if is_durable_cell_mutation_path(path) {
         content.insert(
             "application/json".into(),
@@ -991,6 +1011,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)
+                || is_application_mutation_path(path)
                 || is_durable_cell_mutation_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
     {
@@ -1028,7 +1049,8 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
         return vec![200];
     }
     if method == "post"
-        && (is_durable_cell_application_collection_path(path)
+        && (is_application_mutation_path(path)
+            || is_durable_cell_application_collection_path(path)
             || is_durable_cell_revision_collection_path(path)
             || is_durable_cell_deployment_path(path)
             || is_durable_cell_route_path(path))
@@ -1139,6 +1161,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Forms"
     } else if path.contains("connector-profiles") {
         "Connectors"
+    } else if path.contains("/applications") {
+        "Applications"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
     } else if path.contains("operations") {
@@ -1283,6 +1307,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/mcp-route-policies")
         || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || is_connector_profile_mutation_path(path)
+        || is_application_mutation_path(path)
         || is_durable_cell_application_collection_path(path)
         || is_durable_cell_revision_collection_path(path)
         || is_notification_outbound_subscription_collection_path(path)
@@ -1336,6 +1361,51 @@ fn is_connector_profile_collection_path(path: &str) -> bool {
 
 fn is_connector_revision_collection_path(path: &str) -> bool {
     path.contains("/connector-profiles/{profile_id}/") && path.ends_with("/revisions")
+}
+
+fn is_application_mutation_path(path: &str) -> bool {
+    is_application_collection_path(path) || is_application_release_collection_path(path)
+}
+
+fn is_application_collection_path(path: &str) -> bool {
+    path.ends_with("/applications")
+}
+
+fn is_application_release_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/") && path.ends_with("/releases")
+}
+
+fn application_request_schema(path: &str) -> Value {
+    let release_acl = json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+    });
+    if is_application_release_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "releaseAcl"],
+            "properties": {
+                "expectedVersion": {"type": "integer", "minimum": 1},
+                "releaseAcl": release_acl
+            }
+        });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "releaseAcl"],
+        "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": 63},
+            "description": {
+                "type": "string",
+                "maxLength": APPLICATION_DESCRIPTION_MAX_CHARS,
+                "default": ""
+            },
+            "releaseAcl": release_acl
+        }
+    })
 }
 
 fn is_durable_cell_mutation_path(path: &str) -> bool {

@@ -8,6 +8,12 @@ use crate::modules::agents::{
     GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository,
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
+use crate::modules::applications::{
+    ApplicationsModule, CreateApplicationHandler, GetApplicationHandler,
+    GetApplicationReleaseHandler, IApplicationRepository, IApplicationWorkflowRevisionPort,
+    ListApplicationReleasesHandler, ListApplicationsHandler, PublishApplicationReleaseHandler,
+    WorkflowApplicationReleaseEvidenceReader,
+};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
@@ -490,6 +496,7 @@ async fn build_api_worker_application(
     let mcp_profiles = adapters.assets.mcp_profiles;
     let secrets = adapters.secrets;
     let connector_profiles = adapters.connector_profiles;
+    let applications = adapters.applications;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
@@ -1397,6 +1404,7 @@ async fn build_api_worker_application(
                 notifications,
                 outbound_notifications,
                 connector_profiles,
+                applications,
                 durable_cell_applications,
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
@@ -1549,6 +1557,7 @@ struct ManagementApplicationDependencies {
     notifications: Arc<dyn INotificationRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
+    applications: Arc<dyn IApplicationRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
@@ -1616,6 +1625,7 @@ fn build_management_application_with_health(
         notifications,
         outbound_notifications,
         connector_profiles,
+        applications,
         durable_cell_applications,
         durable_cell_deployments,
         oci_artifacts,
@@ -1685,6 +1695,15 @@ fn build_management_application_with_health(
     let get_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_revisions = Arc::clone(&connector_profiles);
     let get_connector_revisions = connector_profiles;
+    let application_workflow_evidence: Arc<dyn IApplicationWorkflowRevisionPort> = Arc::new(
+        WorkflowApplicationReleaseEvidenceReader::new(Arc::clone(&workflow_definitions)),
+    );
+    let create_applications = Arc::clone(&applications);
+    let publish_applications = Arc::clone(&applications);
+    let list_applications = Arc::clone(&applications);
+    let get_applications = Arc::clone(&applications);
+    let list_application_releases = Arc::clone(&applications);
+    let get_application_releases = applications;
     let create_connector_secrets = Arc::clone(&secrets);
     let revise_connector_secrets = Arc::clone(&secrets);
     let create_durable_cell_environments = Arc::clone(&environments);
@@ -2117,6 +2136,18 @@ fn build_management_application_with_health(
                     ReviseConnectorProfileHandler::new(
                         revise_connector_profiles,
                         revise_connector_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CreateApplication, _>(
+                    CreateApplicationHandler::new(
+                        create_applications,
+                        Arc::clone(&application_workflow_evidence),
+                    ),
+                )
+                .command_handler::<crate::modules::applications::PublishApplicationRelease, _>(
+                    PublishApplicationReleaseHandler::new(
+                        publish_applications,
+                        application_workflow_evidence,
                     ),
                 )
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
@@ -2657,6 +2688,18 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::connectors::GetConnectorRevision, _>(
                     GetConnectorRevisionHandler::new(get_connector_revisions),
                 )
+                .query_handler::<crate::modules::applications::ListApplications, _>(
+                    ListApplicationsHandler::new(list_applications),
+                )
+                .query_handler::<crate::modules::applications::GetApplication, _>(
+                    GetApplicationHandler::new(get_applications),
+                )
+                .query_handler::<crate::modules::applications::ListApplicationReleases, _>(
+                    ListApplicationReleasesHandler::new(list_application_releases),
+                )
+                .query_handler::<crate::modules::applications::GetApplicationRelease, _>(
+                    GetApplicationReleaseHandler::new(get_application_releases),
+                )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),
                 )
@@ -2878,6 +2921,7 @@ fn build_management_application_with_health(
         .import(AuditModule)
         .import(NotificationsModule)
         .import(ConnectorsModule)
+        .import(ApplicationsModule)
         .import(DurableCellsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

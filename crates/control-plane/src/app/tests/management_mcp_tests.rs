@@ -360,6 +360,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         tool_names(&read_only_tools),
         vec![
             "a3s_cloud_environments_list",
+            "a3s_cloud_applications_list",
+            "a3s_cloud_applications_get",
+            "a3s_cloud_application_releases_list",
+            "a3s_cloud_application_releases_get",
             "a3s_cloud_connector_profiles_list",
             "a3s_cloud_connector_profiles_get",
             "a3s_cloud_connector_revisions_list",
@@ -477,6 +481,12 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_create",
             "a3s_cloud_environments_list",
+            "a3s_cloud_applications_create",
+            "a3s_cloud_applications_list",
+            "a3s_cloud_applications_get",
+            "a3s_cloud_application_releases_publish",
+            "a3s_cloud_application_releases_list",
+            "a3s_cloud_application_releases_get",
             "a3s_cloud_connector_profiles_create",
             "a3s_cloud_connector_profiles_revise",
             "a3s_cloud_connector_profiles_list",
@@ -631,6 +641,44 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     );
     assert_eq!(
         create_execution_template["annotations"]["readOnlyHint"],
+        false
+    );
+    let create_application = listed_tool(&administrator_tools, "a3s_cloud_applications_create")?;
+    assert_eq!(
+        create_application["inputSchema"]["required"],
+        json!(["projectId", "name", "releaseAcl", "idempotencyKey"])
+    );
+    assert_eq!(
+        create_application["inputSchema"]["properties"]["releaseAcl"]["maxLength"],
+        crate::modules::applications::APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        create_application["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(create_application["annotations"]["readOnlyHint"], false);
+    let list_applications = listed_tool(&administrator_tools, "a3s_cloud_applications_list")?;
+    assert_eq!(
+        list_applications["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(list_applications["annotations"]["readOnlyHint"], true);
+    let publish_application_release = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_application_releases_publish",
+    )?;
+    assert_eq!(
+        publish_application_release["inputSchema"]["required"],
+        json!([
+            "projectId",
+            "applicationId",
+            "expectedVersion",
+            "releaseAcl",
+            "idempotencyKey"
+        ])
+    );
+    assert_eq!(
+        publish_application_release["inputSchema"]["additionalProperties"],
         false
     );
     let create_connector_profile =

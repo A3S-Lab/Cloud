@@ -243,6 +243,12 @@ notification-subscriptions create --file=<subscription.acl>
 notification-subscriptions revoke <subscription-id> --expected-version=<version>
 environments list
 environments create <name>
+applications list
+applications get <application-id>
+applications create <name> --file=<application-release.acl>
+applications publish <application-id> --file=<application-release.acl> --expected-version=<version>
+application-releases list <application-id>
+application-releases get <application-id> <release-id>
 connector-profiles list
 connector-profiles get <profile-id>
 connector-profiles create <name> --file=<connector.acl>
@@ -467,6 +473,16 @@ bounded `.acl` file and requires the normal caller-owned idempotency key; list
 and get return canonical ACL and exact template/revision/digest identity. The
 CLI does not parse the ACL, materialize invocation input, schedule a Task, or
 store template state.
+
+`applications` creates, lists, and reads project-scoped Application heads;
+`application-releases` lists or reads their immutable digest-linked history.
+Create and publish read one canonical release `.acl` file of at most 64 KiB,
+use the normal caller-owned idempotency key, and publish requires the current
+positive aggregate version. Cloud alone authorizes the project and matches the
+exact Workflow definition/revision plus contract, payload-set,
+semantic-contract-set, input-schema, and output-schema evidence. The CLI does
+not parse the ACL, follow a mutable Workflow head, or create graph, Flow,
+provider, session, Secret, or Gateway state.
 
 `connector-profiles` creates, revises, lists, and reads environment-scoped
 Connector profile heads; `connector-revisions` lists or reads their immutable

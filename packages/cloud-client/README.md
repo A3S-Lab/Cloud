@@ -245,6 +245,18 @@ canonicalizes, digest-binds, persists, and materializes the template; the
 client retains no parser, revision store, Workflow dispatcher, scheduler, or
 Runtime provider.
 
+`listApplications`, `getApplication`, `createApplication`,
+`publishApplicationRelease`, `listApplicationReleases`, and
+`getApplicationRelease` expose the project-scoped `APP0.1` lifecycle added by
+REST contract `1.42.0`. Writes carry one bounded canonical Application release
+A3S ACL; publication also requires the current positive aggregate version.
+Lists default to 50 and accept at most 200 records. Cloud alone authorizes the
+project, validates the exact Workflow definition/revision plus contract,
+payload-set, semantic-contract-set, input-schema, and output-schema evidence,
+and commits immutable lineage, idempotency, audit, and Outbox facts. The client
+does not parse release ACL, resolve a mutable Workflow head, or create graph,
+Flow, provider, session, Secret, or Gateway state.
+
 `listConnectorProfiles`, `getConnectorProfile`, `createConnectorProfile`,
 `reviseConnectorProfile`, `listConnectorRevisions`, and
 `getConnectorRevision` expose the environment-scoped immutable Connector

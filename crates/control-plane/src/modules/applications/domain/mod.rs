@@ -4,7 +4,7 @@ mod events;
 mod repository;
 mod workflow_binding;
 
-pub use application::{Application, ApplicationRelease};
+pub use application::{Application, ApplicationRelease, APPLICATION_DESCRIPTION_MAX_CHARS};
 pub use application_release_contract::{
     ApplicationAudience, ApplicationDeliveryPolicy, ApplicationExperience,
     ApplicationInteractionMode, ApplicationReleaseContract, ApplicationReleaseContractSpec,

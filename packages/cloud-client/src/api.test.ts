@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.41.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.42.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1236,6 +1236,108 @@ describe('CloudApi', () => {
     expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
     expect(calls[5]?.[1]?.body).toBe(JSON.stringify(input));
     expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
+  });
+
+  it('exposes bounded project-scoped Application release management', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const releaseAcl = 'application_release { schema = "cloud.application.release.v1" }\n';
+
+    await api.listApplications('organization / one', 'project / one', 25);
+    await api.getApplication('organization / one', 'project / one', 'application / one');
+    await api.listApplicationReleases('organization / one', 'project / one', 'application / one', 30);
+    await api.getApplicationRelease(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'release / one'
+    );
+    await api.createApplication(
+      'organization / one',
+      'project / one',
+      { name: 'Support assistant', releaseAcl },
+      'application:create'
+    );
+    await api.publishApplicationRelease(
+      'organization / one',
+      'project / one',
+      'application / one',
+      { expectedVersion: 2, releaseAcl },
+      'application:publish'
+    );
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications?limit=25',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases?limit=30',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases/release%20%2F%20one',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications', 'POST'],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases',
+        'POST',
+      ],
+    ]);
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:create' }),
+        body: JSON.stringify({
+          name: 'Support assistant',
+          releaseAcl,
+          description: '',
+        }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:publish' }),
+        body: JSON.stringify({ expectedVersion: 2, releaseAcl }),
+      })
+    );
+
+    expect(() =>
+      api.createApplication(
+        'organization',
+        'project',
+        { name: '   ', releaseAcl },
+        'application:invalid-name'
+      )
+    ).toThrow('Application name must contain');
+    expect(() =>
+      api.createApplication(
+        'organization',
+        'project',
+        { name: 'Assistant', releaseAcl: '' },
+        'application:invalid-acl'
+      )
+    ).toThrow('Application release ACL must contain between');
+    expect(() =>
+      api.publishApplicationRelease(
+        'organization',
+        'project',
+        'application',
+        { expectedVersion: 0, releaseAcl },
+        'application:invalid-version'
+      )
+    ).toThrow('expected Application version');
+    expect(() => api.listApplications('organization', 'project', 201)).toThrow(
+      'Application list limit must be between'
+    );
   });
 
   it('exposes bounded ACL-native Connector profile and revision management', async () => {

@@ -1,4 +1,8 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
+use crate::modules::applications::{
+    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
+    DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+};
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -43,6 +47,12 @@ pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
+pub const APPLICATIONS_CREATE: &str = "a3s_cloud_applications_create";
+pub const APPLICATIONS_LIST: &str = "a3s_cloud_applications_list";
+pub const APPLICATIONS_GET: &str = "a3s_cloud_applications_get";
+pub const APPLICATION_RELEASES_PUBLISH: &str = "a3s_cloud_application_releases_publish";
+pub const APPLICATION_RELEASES_LIST: &str = "a3s_cloud_application_releases_list";
+pub const APPLICATION_RELEASES_GET: &str = "a3s_cloud_application_releases_get";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -153,6 +163,12 @@ pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 pub enum ManagementTool {
     EnvironmentsCreate,
     EnvironmentsList,
+    ApplicationsCreate,
+    ApplicationsList,
+    ApplicationsGet,
+    ApplicationReleasesPublish,
+    ApplicationReleasesList,
+    ApplicationReleasesGet,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -279,9 +295,15 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 111] = [
+    const ALL: [Self; 117] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
+        Self::ApplicationsCreate,
+        Self::ApplicationsList,
+        Self::ApplicationsGet,
+        Self::ApplicationReleasesPublish,
+        Self::ApplicationReleasesList,
+        Self::ApplicationReleasesGet,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -421,6 +443,12 @@ impl ManagementTool {
         match self {
             Self::EnvironmentsCreate => ENVIRONMENTS_CREATE,
             Self::EnvironmentsList => ENVIRONMENTS_LIST,
+            Self::ApplicationsCreate => APPLICATIONS_CREATE,
+            Self::ApplicationsList => APPLICATIONS_LIST,
+            Self::ApplicationsGet => APPLICATIONS_GET,
+            Self::ApplicationReleasesPublish => APPLICATION_RELEASES_PUBLISH,
+            Self::ApplicationReleasesList => APPLICATION_RELEASES_LIST,
+            Self::ApplicationReleasesGet => APPLICATION_RELEASES_GET,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -540,6 +568,9 @@ impl ManagementTool {
     const fn required_scope(self) -> Option<&'static str> {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
+            Self::ApplicationsCreate | Self::ApplicationReleasesPublish => {
+                Some(ApiTokenScope::APPLICATION_WRITE)
+            }
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -588,6 +619,10 @@ impl ManagementTool {
             | Self::NotificationsGet
             | Self::NotificationOutboundSubscriptionsList
             | Self::NotificationOutboundSubscriptionsGet
+            | Self::ApplicationsList
+            | Self::ApplicationsGet
+            | Self::ApplicationReleasesList
+            | Self::ApplicationReleasesGet
             | Self::ConnectorProfilesList
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
@@ -680,6 +715,8 @@ impl ManagementTool {
             Self::EnvironmentsCreate
             | Self::ProjectAttributionGet
             | Self::ProjectAttributionUpdate
+            | Self::ApplicationsCreate
+            | Self::ApplicationsList
             | Self::ExecutionTemplatesCreate
             | Self::ExecutionTemplatesGet
             | Self::ExecutionTemplatesList
@@ -716,6 +753,10 @@ impl ManagementTool {
             | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
+            | Self::ApplicationsGet
+            | Self::ApplicationReleasesPublish
+            | Self::ApplicationReleasesList
+            | Self::ApplicationReleasesGet
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -815,6 +856,42 @@ impl ManagementTool {
                 "List environments",
                 "List environments in one tenant-authorized project.",
                 project_id_schema(),
+                true,
+            ),
+            Self::ApplicationsCreate => (
+                "Create Application",
+                "Create one project-scoped Application and immutable release from canonical A3S ACL with explicit idempotency.",
+                create_application_schema(),
+                false,
+            ),
+            Self::ApplicationsList => (
+                "List Applications",
+                "List a bounded set of Applications in one tenant-authorized project.",
+                list_applications_schema(),
+                true,
+            ),
+            Self::ApplicationsGet => (
+                "Get Application",
+                "Get one exact Application and its current immutable release.",
+                application_schema(),
+                true,
+            ),
+            Self::ApplicationReleasesPublish => (
+                "Publish Application release",
+                "Publish one immutable Application release from canonical A3S ACL using optimistic concurrency and explicit idempotency.",
+                publish_application_release_schema(),
+                false,
+            ),
+            Self::ApplicationReleasesList => (
+                "List Application releases",
+                "List a bounded set of immutable releases for one tenant-authorized Application.",
+                list_application_releases_schema(),
+                true,
+            ),
+            Self::ApplicationReleasesGet => (
+                "Get Application release",
+                "Get one exact immutable Application release and its Workflow revision evidence.",
+                application_release_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -1863,6 +1940,114 @@ fn create_environment_schema() -> Value {
     })
 }
 
+fn create_application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "name": {"type": "string", "minLength": 1, "maxLength": 63},
+            "description": {
+                "type": "string",
+                "maxLength": APPLICATION_DESCRIPTION_MAX_CHARS,
+                "default": ""
+            },
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "name", "releaseAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn publish_application_release_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "expectedVersion",
+            "releaseAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn list_applications_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_APPLICATION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_application_releases_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_APPLICATION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "applicationId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_release_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "releaseId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "releaseId"],
+        "additionalProperties": false
+    })
+}
+
 fn create_connector_profile_schema() -> Value {
     json!({
         "type": "object",
@@ -2746,6 +2931,7 @@ mod tests {
             .with_scope(ApiTokenScope::WORKFLOW_WRITE)
             .with_scope(ApiTokenScope::EXECUTION_WRITE)
             .with_scope(ApiTokenScope::CONNECTOR_WRITE)
+            .with_scope(ApiTokenScope::APPLICATION_WRITE)
             .with_scope(ApiTokenScope::CLOUD_READ)
             .with_claim("organization_role", "restricted")
             .expect("role")
@@ -2762,6 +2948,12 @@ mod tests {
         assert!(ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
         assert!(ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
         assert!(ManagementTool::ExecutionTemplatesList.visible_to(&principal));
+        assert!(ManagementTool::ApplicationsCreate.visible_to(&principal));
+        assert!(ManagementTool::ApplicationsList.visible_to(&principal));
+        assert!(ManagementTool::ApplicationsGet.visible_to(&principal));
+        assert!(ManagementTool::ApplicationReleasesPublish.visible_to(&principal));
+        assert!(ManagementTool::ApplicationReleasesList.visible_to(&principal));
+        assert!(ManagementTool::ApplicationReleasesGet.visible_to(&principal));
         assert!(ManagementTool::ConnectorProfilesCreate.visible_to(&principal));
         assert!(ManagementTool::ConnectorProfilesRevise.visible_to(&principal));
         assert!(ManagementTool::ConnectorProfilesList.visible_to(&principal));
@@ -2838,6 +3030,12 @@ mod tests {
         assert!(!ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
         assert!(!ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
         assert!(!ManagementTool::ExecutionTemplatesList.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationsCreate.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationsList.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationsGet.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationReleasesPublish.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationReleasesList.visible_to(&principal));
+        assert!(!ManagementTool::ApplicationReleasesGet.visible_to(&principal));
         assert!(!ManagementTool::ConnectorProfilesCreate.visible_to(&principal));
         assert!(!ManagementTool::ConnectorProfilesRevise.visible_to(&principal));
         assert!(!ManagementTool::ConnectorProfilesList.visible_to(&principal));

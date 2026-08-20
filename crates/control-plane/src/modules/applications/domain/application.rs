@@ -6,6 +6,8 @@ use crate::modules::shared_kernel::domain::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub const APPLICATION_DESCRIPTION_MAX_CHARS: usize = 4_096;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplicationRelease {
@@ -296,7 +298,7 @@ impl Application {
 }
 
 fn validate_description(value: &str) -> Result<(), String> {
-    if value.chars().count() > 4_096 || value.contains(['\0', '\r']) {
+    if value.chars().count() > APPLICATION_DESCRIPTION_MAX_CHARS || value.contains(['\0', '\r']) {
         return Err("Application description exceeds its text bound".into());
     }
     Ok(())

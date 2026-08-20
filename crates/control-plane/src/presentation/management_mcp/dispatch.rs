@@ -1,3 +1,8 @@
+use super::applications::{
+    ApplicationArguments, ApplicationReleaseArguments, CreateApplicationArguments,
+    ListApplicationReleasesArguments, ListApplicationsArguments,
+    PublishApplicationReleaseArguments,
+};
 use super::arguments::{
     self, BuildRunArguments, BuildRunListArguments, BuildRunLogArguments, DeploymentArguments,
     EmptyArguments, EnvironmentScopeArguments, NodeArguments, OperationListArguments,
@@ -61,8 +66,9 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, audit, connectors, durable_cells, edge, execution_templates, forms, identity, nodes,
-    notifications, ontology, operations, plugins, projects, search, workflow, workloads,
+    applications, artifacts, audit, connectors, durable_cells, edge, execution_templates, forms,
+    identity, nodes, notifications, ontology, operations, plugins, projects, search, workflow,
+    workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -125,6 +131,75 @@ pub async fn execute(
         ManagementTool::EnvironmentsList => {
             let arguments = arguments::parse::<ProjectArguments>(arguments).ok()?;
             projects::list_environments(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationsCreate => {
+            let arguments = arguments::parse::<CreateApplicationArguments>(arguments).ok()?;
+            applications::create(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationReleasesPublish => {
+            let arguments =
+                arguments::parse::<PublishApplicationReleaseArguments>(arguments).ok()?;
+            applications::publish_release(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationsList => {
+            let arguments = arguments::parse::<ListApplicationsArguments>(arguments).ok()?;
+            applications::list(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationsGet => {
+            let arguments = arguments::parse::<ApplicationArguments>(arguments).ok()?;
+            applications::get(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationReleasesList => {
+            let arguments = arguments::parse::<ListApplicationReleasesArguments>(arguments).ok()?;
+            applications::list_releases(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationReleasesGet => {
+            let arguments = arguments::parse::<ApplicationReleaseArguments>(arguments).ok()?;
+            applications::get_release(
                 query_bus,
                 organization_id,
                 arguments,

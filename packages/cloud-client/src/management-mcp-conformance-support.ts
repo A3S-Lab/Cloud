@@ -6,6 +6,12 @@ export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const ADMIN_TOOLS = [
   'a3s_cloud_environments_create',
   'a3s_cloud_environments_list',
+  'a3s_cloud_applications_create',
+  'a3s_cloud_applications_list',
+  'a3s_cloud_applications_get',
+  'a3s_cloud_application_releases_publish',
+  'a3s_cloud_application_releases_list',
+  'a3s_cloud_application_releases_get',
   'a3s_cloud_connector_profiles_create',
   'a3s_cloud_connector_profiles_revise',
   'a3s_cloud_connector_profiles_list',
@@ -119,6 +125,10 @@ export const ADMIN_TOOLS = [
 
 export const READ_ONLY_TOOLS = [
   'a3s_cloud_environments_list',
+  'a3s_cloud_applications_list',
+  'a3s_cloud_applications_get',
+  'a3s_cloud_application_releases_list',
+  'a3s_cloud_application_releases_get',
   'a3s_cloud_connector_profiles_list',
   'a3s_cloud_connector_profiles_get',
   'a3s_cloud_connector_revisions_list',

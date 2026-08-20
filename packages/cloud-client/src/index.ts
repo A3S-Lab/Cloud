@@ -39,6 +39,7 @@ export {
   validateFormDraftInput,
   validateFormVersionControl,
 } from './api';
+export * from './applications';
 export * from './audit';
 export * from './connectors';
 export * from './diagnostics';

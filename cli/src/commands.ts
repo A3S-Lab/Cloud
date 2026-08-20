@@ -1,6 +1,7 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import { executeAgentCommand } from './agent-commands';
+import { executeApplicationCommand } from './application-commands';
 import type { ParsedArguments } from './arguments';
 import { executeAssetCommand } from './asset-commands';
 import { executeAuditCommand, rejectMisplacedAuditOptions } from './audit-commands';
@@ -172,6 +173,12 @@ export async function executeCommand(
   );
   if (executionTemplateResult !== undefined) {
     return executionTemplateResult;
+  }
+  const applicationResult = await executeApplicationCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (applicationResult !== undefined) {
+    return applicationResult;
   }
   const connectorResult = await executeConnectorCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

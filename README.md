@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.41.0" src="https://img.shields.io/badge/REST_contract-1.41.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.42.0" src="https://img.shields.io/badge/REST_contract-1.42.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -57,7 +57,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.41.0`](openapi/v1.json), maintained
+  [OpenAPI `1.42.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. Broader enterprise `C0` gates remain.
@@ -124,14 +124,14 @@ The code on `main` separates implemented mechanics from released capability:
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint
   behavior/Gateway, and lifecycle gates remain; the service is unavailable.
-- **In-progress / future platform families** — Applications now has
-  component-only `APP0.1-C1/C2/C3`: the immutable release contract, migration
-  `124` PostgreSQL/A3S ORM authority, project-authorized CQRS, exact Workflow
-  semantic evidence, and atomic idempotency, audit, and Outbox writes.
-  Production composition and maintained REST/OpenAPI, client, CLI, and
-  Management MCP interfaces remain open. Knowledge, Automations, Inference,
-  and Evolution retain their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`,
-  and `EV0` remain unavailable.
+- **In-progress / future platform families** — `APP0.1` now implements one
+  project-authorized Application and immutable release authority over migration
+  `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
+  REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
+  tools. Sessions, invocation, delivery, monitoring, and the `APP0.6` parity
+  gate remain open. Knowledge, Automations, Inference, and Evolution retain
+  their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain
+  unavailable.
 
 Gate-by-gate evidence, dependencies, and remaining work live in the
 [product roadmap](ROADMAP.md) and detailed plans.
@@ -338,13 +338,13 @@ creating their own control planes:
    `A1.1` is implemented; native Code integration verification remains.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
-   `APP0.1-C1/C2/C3` freezes one canonical immutable release across all six
+   `APP0.1` freezes one canonical immutable release across all six
    experiences, including distinct classic/New Agent identities, pins the
    exact Workflow revision evidence without copying its graph or runtime, and
    persists sequence-fenced releases with atomic idempotency, audit, and
-   Outbox facts through PostgreSQL/A3S ORM. Project-authorized commands and
-   queries replay exact historical releases before resolving new Workflow
-   evidence; maintained public interfaces remain open.
+   Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
+   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
+   tools all reuse that authority.
    `K0` remains planned and `AUT0` has component-only Connector foundations in
    progress. All three product surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with

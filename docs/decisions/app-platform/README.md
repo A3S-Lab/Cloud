@@ -32,8 +32,9 @@ AI application platform parity manifest.
 | [0025](0025-descriptor-bound-connector-failure-routes.md) | Route Connector failures through descriptor-bound ordinary DAG edges without another error or retry mechanism |
 | [0026](0026-single-application-release-authority.md) | Bind all six application experiences to one immutable Applications-owned release and exact Workflow revision |
 | [0027](0027-atomic-application-release-persistence.md) | Persist immutable Application releases, exact Workflow evidence, idempotency, audit, and Outbox facts in one Applications-owned transaction |
-| [0028](0028-authorized-application-release-cqrs.md) | Authorize Application commands and queries before replay and resolve new publications through one metadata-only exact-Workflow port |
+| [0028](0028-authorized-application-release-cqrs.md) | Authorize Application release CQRS before replay and resolve only exact immutable Workflow evidence |
+| [0029](0029-single-application-management-interface.md) | Expose authorization-first Application management through one CQRS and persistence authority |
 
-All twenty-eight decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twenty-nine decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

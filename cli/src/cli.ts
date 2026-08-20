@@ -77,6 +77,12 @@ Commands:
   execution-templates list List immutable finite-task templates in the selected project
   execution-templates get ID REV Get one exact immutable ExecutionTemplate revision
   execution-templates create Publish an ACL-native ExecutionTemplate revision
+  applications list     List Applications in the selected project
+  applications get ID   Get one Application and its current immutable release
+  applications create NAME Create an Application from release A3S ACL
+  applications publish ID Publish a version-checked immutable Application release
+  application-releases list APP List immutable releases for one Application
+  application-releases get APP RELEASE Get one exact immutable Application release
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision
   connector-profiles create NAME Create a Connector profile from A3S ACL

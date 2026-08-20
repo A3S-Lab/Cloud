@@ -2124,13 +2124,16 @@ pub(super) struct WorkflowFixture {
     pub(super) transport: Value,
     pub(super) payload_set_digest: String,
     pub(super) semantic_contract_set_digest: Option<String>,
+    pub(super) schema_digest: String,
 }
 
 pub(super) fn workflow_fixture(description: &str) -> std::result::Result<WorkflowFixture, String> {
     workflow_fixture_with_semantics(description, false)
 }
 
-fn semantic_workflow_fixture(description: &str) -> std::result::Result<WorkflowFixture, String> {
+pub(super) fn semantic_workflow_fixture(
+    description: &str,
+) -> std::result::Result<WorkflowFixture, String> {
     workflow_fixture_with_semantics(description, true)
 }
 
@@ -2246,6 +2249,7 @@ fn workflow_fixture_with_semantics(
         transport,
         payload_set_digest: revision.payload_set_digest.to_string(),
         semantic_contract_set_digest,
+        schema_digest: schema_digest.to_string(),
     })
 }
 
