@@ -22,12 +22,12 @@ The Rust domain implementation parses and generates this fixture only through
 `a3s-acl`, rejects unknown or noncanonical fields, binds exact Workflow
 admission evidence, preserves immutable release lineage, and prevents an
 Application identity from changing between classic Agent, New Agent, or any
-other experience. The C2 application layer authorizes the project before
-idempotency replay, resolves only immutable Workflow metadata for new writes,
-and reconstructs an exact historical release for replays. Migration `124` and
-the PostgreSQL repository use A3S ORM and the shared idempotency, Outbox, and
-audit transaction boundary; they add no second execution or delivery system.
+other experience. Migration `124` and the Applications PostgreSQL repository
+persist the aggregate head and canonical releases through A3S ORM. They verify
+the exact Workflow revision's content and payload-set digests, reject mutable
+or forked release history, and commit the release, head advance, idempotency
+receipt, audit record, and Outbox event in one transaction.
 
-`APP0.1-C1/C2` is not a public availability claim. Production composition and
-maintained REST/OpenAPI, client, CLI, and Management MCP surfaces remain in the
-following `APP0.1` slice.
+`APP0.1-C1/C2` is not a public availability claim. Authorization and maintained
+CQRS, REST/OpenAPI, client, CLI, and Management MCP surfaces remain in the
+following `APP0.1` slices.

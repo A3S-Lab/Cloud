@@ -4,10 +4,7 @@ create table applications (
     id uuid not null,
     name text not null check (char_length(name) between 1 and 63),
     name_key text not null check (char_length(name_key) between 1 and 63),
-    description text not null check (
-        char_length(description) <= 4096
-        and position(E'\r' in description) = 0
-    ),
+    description text not null check (char_length(description) <= 4096),
     experience text not null check (
         experience in (
             'chatbot',
@@ -32,6 +29,7 @@ create table applications (
     foreign key (organization_id, project_id)
         references projects (organization_id, id),
     check (current_release_number = aggregate_version),
+    check (aggregate_version > 1 or created_at = updated_at),
     check (updated_at >= created_at)
 );
 
@@ -43,12 +41,6 @@ create table application_releases (
     release_number bigint not null check (release_number > 0),
     parent_release_id uuid,
     parent_digest text check (parent_digest ~ '^sha256:[0-9a-f]{64}$'),
-    contract_schema text not null
-        check (contract_schema = 'cloud.application.release.v1'),
-    canonical_acl text not null
-        check (octet_length(canonical_acl) between 1 and 65536),
-    contract_digest text not null
-        check (contract_digest ~ '^sha256:[0-9a-f]{64}$'),
     experience text not null check (
         experience in (
             'chatbot',
@@ -59,6 +51,12 @@ create table application_releases (
             'workflow'
         )
     ),
+    contract_schema text not null
+        check (contract_schema = 'cloud.application.release.v1'),
+    canonical_acl text not null
+        check (octet_length(canonical_acl) between 1 and 65536),
+    contract_digest text not null
+        check (contract_digest ~ '^sha256:[0-9a-f]{64}$'),
     workflow_definition_id uuid not null,
     workflow_revision_id uuid not null,
     workflow_contract_digest text not null
@@ -78,13 +76,7 @@ create table application_releases (
     primary key (organization_id, application_id, id),
     unique (organization_id, application_id, release_number),
     unique (organization_id, project_id, application_id, id),
-    unique (
-        organization_id,
-        project_id,
-        application_id,
-        id,
-        contract_digest
-    ),
+    unique (organization_id, application_id, id, contract_digest),
     foreign key (organization_id, project_id, application_id)
         references applications (organization_id, project_id, id),
     foreign key (organization_id, application_id, parent_release_id)
@@ -116,14 +108,12 @@ alter table applications
         organization_id,
         project_id,
         id,
-        current_release_id,
-        current_release_digest
+        current_release_id
     ) references application_releases (
         organization_id,
         project_id,
         application_id,
-        id,
-        contract_digest
+        id
     )
     deferrable initially deferred;
 
@@ -133,12 +123,13 @@ create index applications_project_name_idx
 create index application_releases_lineage_idx
     on application_releases (
         organization_id,
+        project_id,
         application_id,
         release_number desc,
         id
     );
 
-create index application_releases_workflow_revision_idx
+create index application_releases_workflow_idx
     on application_releases (
         organization_id,
         project_id,
@@ -158,8 +149,7 @@ declare
     stored_parent_created_at timestamptz;
 begin
     if new.release_number = 1 then
-        if new.parent_release_id is not null
-           or new.parent_digest is not null then
+        if new.parent_release_id is not null or new.parent_digest is not null then
             raise exception 'initial Application release cannot have a parent';
         end if;
         return new;
@@ -192,6 +182,35 @@ create trigger application_releases_validate_lineage
 before insert on application_releases
 for each row execute function validate_application_release_lineage();
 
+create function validate_application_release_workflow_binding()
+returns trigger
+language plpgsql
+as $$
+declare
+    stored_contract_digest text;
+    stored_payload_set_digest text;
+begin
+    select content_digest, payload_set_digest
+      into stored_contract_digest, stored_payload_set_digest
+      from workflow_revisions
+     where organization_id = new.organization_id
+       and project_id = new.project_id
+       and workflow_definition_id = new.workflow_definition_id
+       and id = new.workflow_revision_id;
+
+    if not found
+       or new.workflow_contract_digest <> stored_contract_digest
+       or new.workflow_payload_set_digest <> stored_payload_set_digest then
+        raise exception 'Application release does not match its exact Workflow revision';
+    end if;
+    return new;
+end
+$$;
+
+create trigger application_releases_validate_workflow_binding
+before insert on application_releases
+for each row execute function validate_application_release_workflow_binding();
+
 create function reject_application_release_mutation()
 returns trigger
 language plpgsql
@@ -205,7 +224,11 @@ create trigger application_releases_immutable
 before update or delete on application_releases
 for each row execute function reject_application_release_mutation();
 
-create function validate_application_head_update()
+create trigger applications_no_delete
+before delete on applications
+for each row execute function reject_application_release_mutation();
+
+create function validate_application_update()
 returns trigger
 language plpgsql
 as $$
@@ -219,12 +242,12 @@ begin
        or new.experience <> old.experience
        or new.created_by <> old.created_by
        or new.created_at <> old.created_at
-       or new.current_release_id = old.current_release_id
-       or new.current_release_number <> old.current_release_number + 1
-       or new.current_release_digest = old.current_release_digest
        or new.aggregate_version <> old.aggregate_version + 1
+       or new.current_release_number <> old.current_release_number + 1
+       or new.current_release_id = old.current_release_id
+       or new.current_release_digest = old.current_release_digest
        or new.updated_at < old.updated_at then
-        raise exception 'Application head update changed immutable or non-sequential state';
+        raise exception 'Application update is not a sequential release advance';
     end if;
     return new;
 end
@@ -232,9 +255,9 @@ $$;
 
 create trigger applications_validate_update
 before update on applications
-for each row execute function validate_application_head_update();
+for each row execute function validate_application_update();
 
-create function validate_application_current_release()
+create function validate_application_head()
 returns trigger
 language plpgsql
 as $$
@@ -250,28 +273,27 @@ begin
        and release.experience = new.experience
        and release.created_at = new.updated_at
        and (
-           new.aggregate_version > 1
-           or release.release_number = 1
+           new.current_release_number > 1
+           or release.created_at = new.created_at
            and release.created_by = new.created_by
-           and release.created_at = new.created_at
        );
     if not found then
-        raise exception 'Application head does not match its immutable current release';
+        raise exception 'Application head does not match its current release';
     end if;
     return new;
 end
 $$;
 
-create constraint trigger applications_validate_current_release
+create constraint trigger applications_validate_head
 after insert or update on applications
 deferrable initially deferred
-for each row execute function validate_application_current_release();
+for each row execute function validate_application_head();
 
 comment on table applications is
-    'Applications-owned project identity and immutable-release head; not a Workflow graph, session, route, provider, or runtime authority';
+    'Applications-owned project-scoped heads for immutable release contracts';
 
 comment on table application_releases is
-    'Immutable canonical A3S ACL publication evidence bound to one exact Workflow revision; Workflow and Flow retain semantic and execution authority';
+    'Immutable canonical A3S ACL release policy and exact Workflow revision evidence; Workflow and Flow retain execution authority';
 
 comment on constraint applications_current_release_fk on applications is
-    'Exact current immutable release fence; not a mutable Workflow head or delivery route';
+    'Exact immutable Application release fence; not a mutable Workflow head';

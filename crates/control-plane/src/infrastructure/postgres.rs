@@ -2200,40 +2200,39 @@ mod application_release_migration_tests {
     ));
 
     #[test]
-    fn migration_124_persists_only_application_heads_and_immutable_release_evidence() {
+    fn migration_124_adds_one_immutable_application_release_authority() {
         for expected in [
             "create table applications",
             "create table application_releases",
-            "cloud.application.release.v1",
-            "references workflow_revisions",
+            "applications_current_release_fk",
             "deferrable initially deferred",
+            "references workflow_revisions",
             "validate_application_release_lineage",
+            "validate_application_release_workflow_binding",
             "reject_application_release_mutation",
-            "validate_application_head_update",
-            "Application releases are immutable",
-            "Workflow and Flow retain semantic and execution authority",
+            "validate_application_update",
+            "validate_application_head",
+            "cloud.application.release.v1",
+            "application releases are immutable",
         ] {
             assert!(
-                MIGRATION.contains(expected),
-                "migration 124 is missing {expected}"
+                MIGRATION
+                    .to_ascii_lowercase()
+                    .contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
             );
         }
-        let lower = MIGRATION.to_ascii_lowercase();
         for forbidden in [
-            "create table application_sessions",
-            "create table application_messages",
-            "create table application_runs",
-            "create table application_routes",
-            "create table application_credentials",
-            "create table application_queue",
-            "create table application_workflows",
-            "create table application_graphs",
+            "session_state",
+            "flow_history",
             "provider_endpoint",
-            "retry_count",
+            "secret_material",
+            "gateway_route",
+            "create queue",
         ] {
             assert!(
-                !lower.contains(forbidden),
-                "migration 124 added duplicate session, Workflow, runtime, route, credential, or retry authority: {forbidden}"
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 124 duplicated non-Applications authority through {forbidden}"
             );
         }
     }

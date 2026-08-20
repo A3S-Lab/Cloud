@@ -350,13 +350,13 @@ async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_applications_are_exact_replay_safe_and_immutable() {
+async fn postgres_application_releases_are_atomic_replay_safe_and_immutable() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
     run_isolated_postgres(
         &admin_url,
-        applications_support::exercise_application_persistence,
+        applications_support::exercise_application_release_persistence,
     )
     .await
     .expect("PostgreSQL Application release authority gate");
@@ -2188,6 +2188,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "agent_conversations",
         "agent_executions",
         "agent_execution_events",
+        "application_releases",
+        "applications",
         "form_drafts",
         "form_releases",
         "form_submissions",

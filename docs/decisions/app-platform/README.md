@@ -31,7 +31,8 @@ AI application platform parity manifest.
 | [0024](0024-schema-bound-connector-json-response-projection.md) | Project an authorized Connector response into typed Workflow JSON through one history-verified no-retry Flow step |
 | [0025](0025-descriptor-bound-connector-failure-routes.md) | Route Connector failures through descriptor-bound ordinary DAG edges without another error or retry mechanism |
 | [0026](0026-single-application-release-authority.md) | Bind all six application experiences to one immutable Applications-owned release and exact Workflow revision |
+| [0027](0027-atomic-application-release-persistence.md) | Persist immutable Application releases, exact Workflow evidence, idempotency, audit, and Outbox facts in one Applications-owned transaction |
 
-All twenty-six decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twenty-seven decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

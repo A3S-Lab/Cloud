@@ -20,4 +20,6 @@ pub use repository::{
 pub use workflow_binding::{ApplicationWorkflowBinding, ApplicationWorkflowRevisionEvidence};
 
 #[cfg(test)]
+mod repository_tests;
+#[cfg(test)]
 mod tests;
