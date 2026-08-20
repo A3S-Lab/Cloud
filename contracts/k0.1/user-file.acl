@@ -1,0 +1,17 @@
+user_file {
+  original_name = "report.pdf"
+  retention_until = "2027-08-21T00:00:00.000000Z"
+  scan_policy = "required"
+  schema = "cloud.user-file.v1"
+  upload_expires_at = "2026-08-21T01:00:00.000000Z"
+  content {
+    content_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    media_type = "application/pdf"
+    object_ref = "organizations/018f0000-0000-7000-8000-000000000201/projects/018f0000-0000-7000-8000-000000000202/files/018f0000-0000-7000-8000-000000000203/uploads/018f0000-0000-7000-8000-000000000204/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/content"
+    organization_id = "018f0000-0000-7000-8000-000000000201"
+    project_id = "018f0000-0000-7000-8000-000000000202"
+    size_bytes = 4096
+    upload_id = "018f0000-0000-7000-8000-000000000204"
+    user_file_id = "018f0000-0000-7000-8000-000000000203"
+  }
+}

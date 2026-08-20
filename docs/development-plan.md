@@ -3620,7 +3620,7 @@ Follow the detailed gates in
 [`ai-application-platform-plan.md`](ai-application-platform-plan.md):
 
 1. retain the frozen versioned ACL parity manifest, its exact digest-bound
-   23-node profile contract, twenty-nine accepted authority decisions, the immutable
+   23-node profile contract, thirty accepted authority decisions, the immutable
    step-descriptor domain contract, the read-only discovery projection, Plan
    v2 exact semantic pins, Plan v3 descriptor-bound finite-Execution failure
    routing, Run v5 Connector attempt/wait replay, Run v6 immutable

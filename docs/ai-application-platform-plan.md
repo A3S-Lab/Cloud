@@ -690,6 +690,10 @@ implementing a Cloud substitute is prohibited by this plan.
 
 | Sub-gate | Outcome | Dependencies |
 | --- | --- | --- |
+| `K0.1-C1` | Implemented component foundation: freeze strong Files/Knowledge/KnowledgePipeline identities and one canonical `cloud.user-file.v1` Files admission ACL with exact tenant/file/upload identities, derived typed immutable-object reference, distinct bounded upload expiry and retention, mandatory scan policy, optimistic upload/scan/reject/expire/tombstone lifecycle, metadata-only event, and one thin `user-files` streaming adapter over the shared immutable-object client's verified multipart path. Only an admitted aggregate exposes its reference. Add no whole-file buffer, table, quota counter, provider/scanner client, uploader, queue, Knowledge lineage, application state, or public interface. | `F0`, shared immutable-object client |
+| `K0.1-C2` | Persist Files metadata and lifecycle through one PostgreSQL/A3S ORM authority with atomic tenant quota reservation/release, optimistic transitions, authorization-before-replay, idempotency, audit, Outbox, retention/cleanup intent, and corruption checks. Expose the same CQRS through REST/OpenAPI, maintained client, CLI, and applicable Management MCP without a second upload or object authority. | `K0.1-C1`, `C0.1` |
+| `K0.1-C3` | Freeze canonical KnowledgeBase/immutable revision, KnowledgeDocument, KnowledgeChunk, index/retrieval revision, external binding, and KnowledgePipeline/immutable release contracts. Bind exact admitted Files or shared immutable-object references, metadata/tags, provenance, retention, chunk structure, and exact Workflow revision without a corpus index, provider client, DAG engine, or worker queue. | `K0.1-C1`, `W0.3` |
+| `K0.1-C4` | Persist and expose Knowledge/KnowledgePipeline lifecycle through one PostgreSQL/A3S ORM, authorization, idempotency, audit, Outbox, REST/OpenAPI, maintained client, CLI, and applicable Management MCP authority. Search remains a rebuildable projection and pipeline execution remains unavailable until later K0 gates. | `K0.1-C2`, `K0.1-C3`, `C0.1` |
 | `K0.1` | Freeze Files, Knowledge, and KnowledgePipeline identities/revisions, canonical ACL, typed object references, upload/scan/quota/retention state, authorization, idempotency, audit, document/chunk/metadata/tag lifecycle, and maintained interfaces | `F0`, `C0.1`, shared immutable-object client |
 | `K0.2` | Add file/text, online-document/drive, web-crawler, and admitted Datasource ingestion; built-in and Tool document processors; OCR/layout and multimodal attachments; provenance; incremental update; cancellation; failure cleanup; and exact source tombstones | `K0.1`, Executions/Runtime/Box; `AUT0.5` for web/HTTP; applicable `U0.4` Datasource/Tool capability and Sources connection contract |
 | `K0.3` | Add deterministic General, Parent-child, and Q&A chunk profiles; immutable published chunk structure; metadata/tags; high-quality and economical indexes; vector/full-text/hybrid/inverted retrieval; text/multimodal embedding and reranking; retrieval test/citations; index rebuild; and model-revision migration | `K0.1`, `I0.2`, `S0` immutable-object production contract; certified `I0.6` rerank/media profiles are required to close the full gate |
@@ -738,7 +742,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twenty-nine
+   reject inventory/schema drift and false public claims. All thirty
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -751,8 +755,9 @@ The recommended sequence is:
    default-output folding, schema-bound typed JSON response projection,
    descriptor-bound Connector failure routing, the single Application release
    authority, its atomic persistence boundary, authorization-before-replay
-   CQRS, and one management interface over that same authority are accepted
-   and versioned.
+   CQRS, one management interface over that same authority, and canonical
+   UserFile admission through the shared immutable-object authority are
+   accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.

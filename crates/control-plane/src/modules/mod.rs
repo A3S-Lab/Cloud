@@ -8,6 +8,7 @@ pub mod data;
 pub mod durable_cells;
 pub mod edge;
 pub mod executions;
+pub mod files;
 pub mod fleet;
 pub mod forms;
 pub mod identity;

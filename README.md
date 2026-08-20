@@ -129,9 +129,13 @@ The code on `main` separates implemented mechanics from released capability:
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
   tools. Sessions, invocation, delivery, monitoring, and the `APP0.6` parity
-  gate remain open. Knowledge, Automations, Inference, and Evolution retain
-  their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain
-  unavailable.
+  gate remain open. `K0.1-C1` now has a component-only Files admission
+  foundation: one canonical UserFile ACL, bounded upload/scan/retention
+  lifecycle, typed immutable reference, and streaming adapter over the shared
+  immutable-object client's verified multipart path. Quota, persistence,
+  interfaces, and all Knowledge/KnowledgePipeline lifecycle remain open.
+  Automations, Inference, and Evolution retain their gate-driven plans;
+  `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain unavailable.
 
 Gate-by-gate evidence, dependencies, and remaining work live in the
 [product roadmap](ROADMAP.md) and detailed plans.
@@ -345,7 +349,10 @@ creating their own control planes:
    Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
    REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
    tools all reuse that authority.
-   `K0` remains planned and `AUT0` has component-only Connector foundations in
+   `K0.1-C1` now freezes the Files-owned canonical upload reference and
+   admission state machine while reusing the shared immutable-object client;
+   quota transactions, persistence, maintained interfaces, and the Knowledge
+   aggregates remain open. `AUT0` has component-only Connector foundations in
    progress. All three product surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with
    alarms, WebSockets, idle eviction, and fenced recovery. Backend contracts,

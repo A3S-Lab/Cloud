@@ -348,6 +348,35 @@ fn connector_response_adapter_cannot_reimplement_low_level_object_storage() {
 }
 
 #[test]
+fn user_file_adapter_reuses_verified_streams_without_owning_storage_or_cleanup() {
+    let source = include_str!("../../modules/files/infrastructure/user_file_object_store.rs");
+    let production = source
+        .split("#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(source);
+
+    assert!(production.contains(".put_stream("));
+    assert!(production.contains("ImmutableObjectVerification"));
+    for forbidden in [
+        "object_store::",
+        "std::fs::",
+        "tokio::fs::",
+        "spawn_blocking",
+        "AmazonS3Builder",
+        "MultipartUpload",
+        "PutMode::Create",
+        "Sha256",
+        "Vec<u8>",
+        ".remove(",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "the typed UserFile adapter must reuse verified ImmutableObjectClient streams and lifecycle-qualified cleanup; found {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn real_s3_consumer_gates_share_the_one_test_fixture_and_production_client() {
     let consumers = [
         include_str!("../../modules/fleet/infrastructure/s3_log_chunk_store_tests.rs"),
