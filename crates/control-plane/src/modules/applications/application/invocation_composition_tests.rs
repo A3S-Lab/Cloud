@@ -278,6 +278,7 @@ async fn fixture() -> Fixture {
         .await
         .expect("request invocation");
 
+    let invocation_id = invocation.id;
     Fixture {
         applications,
         sessions,
@@ -290,7 +291,7 @@ async fn fixture() -> Fixture {
             project_id,
             application_id,
             session_id,
-            invocation_id: invocation.id,
+            invocation_id,
             ontology_id: OntologyId::new(),
             ontology_revision_id: OntologyRevisionId::new(),
             ontology_digest: digest('1'),

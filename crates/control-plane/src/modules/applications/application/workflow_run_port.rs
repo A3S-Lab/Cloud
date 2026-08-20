@@ -146,10 +146,7 @@ impl ApplicationWorkflowRunRequest {
         identity.push(0);
         identity.extend_from_slice(self.application_id.as_uuid().as_bytes());
         identity.extend_from_slice(self.invocation_id.as_uuid().as_bytes());
-        WorkflowRunId::from_uuid(Uuid::new_v5(
-            &self.organization_id.as_uuid(),
-            &identity,
-        ))
+        WorkflowRunId::from_uuid(Uuid::new_v5(&self.organization_id.as_uuid(), &identity))
     }
 
     pub fn workflow_goal_id(&self) -> WorkflowGoalId {
