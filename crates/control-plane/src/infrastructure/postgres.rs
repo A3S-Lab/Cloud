@@ -1165,6 +1165,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/123_workflow_connector_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "124",
+            "immutable Application releases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/124_application_releases.sql"
+            )),
+        ),
     ]
 }
 
@@ -2179,6 +2187,52 @@ mod workflow_connector_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 123 added duplicate state or policy: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_release_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/124_application_releases.sql"
+    ));
+
+    #[test]
+    fn migration_124_adds_one_immutable_application_release_authority() {
+        for expected in [
+            "create table applications",
+            "create table application_releases",
+            "applications_current_release_fk",
+            "deferrable initially deferred",
+            "references workflow_revisions",
+            "validate_application_release_lineage",
+            "validate_application_release_workflow_binding",
+            "reject_application_release_mutation",
+            "validate_application_update",
+            "validate_application_head",
+            "cloud.application.release.v1",
+            "application releases are immutable",
+        ] {
+            assert!(
+                MIGRATION
+                    .to_ascii_lowercase()
+                    .contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
+            );
+        }
+        for forbidden in [
+            "session_state",
+            "flow_history",
+            "provider_endpoint",
+            "secret_material",
+            "gateway_route",
+            "create queue",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 124 duplicated non-Applications authority through {forbidden}"
             );
         }
     }

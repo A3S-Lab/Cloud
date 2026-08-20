@@ -646,14 +646,18 @@ delivery projections, session/message state, conversation variables, feedback,
 annotations, and publication policy. Every release binds one exact
 `WorkflowRevision`; the six experiences do not own separate runtimes.
 
-Component-only `APP0.1-C1` implements the first two primary records. One
+Component-only `APP0.1-C1/C2` implements and persists the first two primary
+records. One
 canonical `cloud.application.release.v1` ACL freezes the experience,
 interaction/response modes, audience, presentation digest, and exact Workflow
 definition/revision plus contract, payload-set, semantic-contract-set, input,
 and output digests. `Application` keeps a sequence-fenced immutable release
-head, and its experience cannot change. No Applications table or public
-surface is claimed by C1; the following APP0.1 slices add those through the
-shared platform mechanisms.
+head, and its experience cannot change. Migration `124` stores that head and
+canonical release lineage, verifies exact Workflow content/payload evidence,
+and rejects mutation or forks. The Applications repository uses the shared A3S
+ORM transaction, idempotency, audit, and Outbox mechanisms. No public surface
+is claimed by C1/C2; the following APP0.1 slices add authorization and
+maintained interfaces through shared platform mechanisms.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and

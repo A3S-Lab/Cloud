@@ -110,7 +110,7 @@
       "code": "APP0",
       "name": "AI application lifecycle and delivery",
       "outcome": "Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance",
-      "status": "In progress and unavailable; component-only `APP0.1-C1` freezes the release authority and exact Workflow evidence, and no public parity claim exists before `APP0.6`",
+      "status": "In progress and unavailable; component-only `APP0.1-C1/C2` freezes and persists the release authority, exact Workflow evidence, and atomic idempotency/audit/Outbox facts, and no public parity claim exists before `APP0.6`",
       "statusKind": "in-progress"
     },
     {
