@@ -72,7 +72,7 @@ impl ApplicationInteractionMode {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "conversation" => Ok(Self::Conversation),
             "invocation" => Ok(Self::Invocation),
@@ -98,7 +98,7 @@ impl ApplicationResponseMode {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "asynchronous" => Ok(Self::Asynchronous),
             "blocking" => Ok(Self::Blocking),
@@ -151,7 +151,7 @@ impl ApplicationAudience {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "project_members" => Ok(Self::ProjectMembers),
             "authenticated_end_users" => Ok(Self::AuthenticatedEndUsers),

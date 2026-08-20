@@ -51,9 +51,9 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
                         "Application session replay end user is missing".into(),
                     )
                 })?;
-            if !matches_session_open(&write, current)?
-                || variables != &write.initial_variables
-                || end_user != &write.end_user
+            if !write
+                .matches_replay(current, end_user, variables)
+                .map_err(RepositoryError::Storage)?
             {
                 return Err(RepositoryError::Conflict(
                     "Application session identity was reused with different initial state".into(),
@@ -112,8 +112,9 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
                         "Application invocation replay input message is missing".into(),
                     )
                 })?;
-            if !matches_invocation_request(&write, current)?
-                || existing_message != &write.input_message
+            if !write
+                .matches_replay(current, existing_message)
+                .map_err(RepositoryError::Storage)?
             {
                 return Err(RepositoryError::Conflict(
                     "Application invocation identity was reused with different input".into(),

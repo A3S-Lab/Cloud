@@ -230,6 +230,13 @@ jobs:
           postgres_application_releases_are_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Application session semantic persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_application_sessions_are_atomic_replay_safe_and_immutable
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify immutable Connector profile persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

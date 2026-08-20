@@ -52,7 +52,7 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     state = "verified"
   }
   gate "APP0.2" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0031-single-application-session-authority.md", "implementation:crates/control-plane/src/modules/applications/domain/application_invocation.rs", "implementation:crates/control-plane/src/modules/applications/domain/session_repository.rs", "test:crates/control-plane/src/modules/applications/domain/session_repository_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_tests.rs"]
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0031-single-application-session-authority.md", "doc:docs/decisions/app-platform/0032-atomic-application-session-persistence.md", "implementation:crates/control-plane/src/modules/applications/domain/application_invocation.rs", "implementation:crates/control-plane/src/modules/applications/domain/session_repository.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/persistence/session_postgres.rs", "implementation:migrations/125_application_sessions.sql", "test:crates/control-plane/src/modules/applications/domain/session_repository_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_tests.rs", "test:crates/control-plane/tests/support/application_sessions.rs"]
     state = "in_progress"
   }
   gate "APP0.3" {

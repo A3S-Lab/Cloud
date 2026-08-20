@@ -1,7 +1,6 @@
 use crate::modules::applications::domain::{
     ApplicationEndUser, ApplicationInvocation, ApplicationMessage, ApplicationSession,
-    ApplicationWorkflowEffect, ConversationVariableRevision, OpenApplicationSessionWrite,
-    RequestApplicationInvocationWrite,
+    ApplicationWorkflowEffect, ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
@@ -109,41 +108,6 @@ pub(super) fn ensure_message_identity_available(
         ));
     }
     Ok(())
-}
-
-pub(super) fn matches_invocation_request(
-    write: &RequestApplicationInvocationWrite,
-    current: &ApplicationInvocation,
-) -> Result<bool, RepositoryError> {
-    current.validate().map_err(RepositoryError::Storage)?;
-    Ok(current.organization_id == write.invocation.organization_id
-        && current.project_id == write.invocation.project_id
-        && current.application_id == write.invocation.application_id
-        && current.application_release_id == write.invocation.application_release_id
-        && current.application_release_digest == write.invocation.application_release_digest
-        && current.session_id == write.invocation.session_id
-        && current.id == write.invocation.id
-        && current.response_mode == write.invocation.response_mode
-        && current.input == write.invocation.input
-        && current.input_digest == write.invocation.input_digest
-        && current.requested_at == write.invocation.requested_at)
-}
-
-pub(super) fn matches_session_open(
-    write: &OpenApplicationSessionWrite,
-    current: &ApplicationSession,
-) -> Result<bool, RepositoryError> {
-    current.validate().map_err(RepositoryError::Storage)?;
-    Ok(current.organization_id == write.session.organization_id
-        && current.project_id == write.session.project_id
-        && current.application_id == write.session.application_id
-        && current.application_release_id == write.session.application_release_id
-        && current.application_release_number == write.session.application_release_number
-        && current.application_release_digest == write.session.application_release_digest
-        && current.end_user_id == write.session.end_user_id
-        && current.id == write.session.id
-        && current.interaction_mode == write.session.interaction_mode
-        && current.created_at == write.session.created_at)
 }
 
 pub(super) fn ensure_run_owner(

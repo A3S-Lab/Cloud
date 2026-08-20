@@ -24,7 +24,10 @@ pub use domain::{
 pub use infrastructure::InMemoryApplicationRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationSessionRepository;
-pub use infrastructure::{PostgresApplicationRepository, WorkflowApplicationReleaseEvidenceReader};
+pub use infrastructure::{
+    PostgresApplicationRepository, PostgresApplicationSessionRepository,
+    WorkflowApplicationReleaseEvidenceReader,
+};
 pub use presentation::{
     ApplicationMutationResponse, ApplicationRecordResponse, ApplicationReleaseResponse,
     ApplicationResponse, ApplicationsModule, CreateApplicationRequest,

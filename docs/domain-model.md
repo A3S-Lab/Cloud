@@ -661,8 +661,8 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-Component-only `APP0.2-C1` freezes the next Applications-owned records without
-making them available. `ApplicationEndUser` is scoped to one Application and
+Component-only `APP0.2-C1/C2` freezes and persists the next Applications-owned
+records without making them available. `ApplicationEndUser` is scoped to one Application and
 may link explicitly to an Identity Principal without creating Membership or
 grant authority. `ApplicationSession` pins one exact release and owns only a
 monotonic channel-message sequence plus an optimistic immutable conversation-
@@ -670,10 +670,11 @@ variable head. `ApplicationInvocation` correlates one request to at most one
 exact `WorkflowRun`; it stores no graph, scheduler, attempt history, or
 provider state. Each Workflow-derived Answer, final output, or variable
 assignment binds the exact run, step, attempt, and ordinal and derives a stable
-identity. An atomic repository contract replays the exact semantic effect and
-rejects changed or cross-kind reuse. PostgreSQL persistence, the production
-WorkflowRun port, remaining APP0.2 records, and every delivery interface remain
-open.
+identity. Migration `125` and one production A3S ORM repository atomically
+persist these records, immutable lineage, optimistic heads, and cross-kind
+effect claims; exact retries replay after reconnect while changed reuse fails
+closed. The typed production WorkflowRun port, remaining APP0.2 records, and
+every delivery interface remain open.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and

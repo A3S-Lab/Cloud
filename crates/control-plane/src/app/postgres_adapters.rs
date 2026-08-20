@@ -1,5 +1,8 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
-use crate::modules::applications::{IApplicationRepository, PostgresApplicationRepository};
+use crate::modules::applications::{
+    IApplicationRepository, IApplicationSessionRepository, PostgresApplicationRepository,
+    PostgresApplicationSessionRepository,
+};
 use crate::modules::artifacts::{IBuildRunRepository, PostgresBuildRunRepository};
 use crate::modules::assets::{
     IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
@@ -110,6 +113,9 @@ impl PostgresAdapterFactory {
                 self.executor.clone(),
             )),
             applications: Arc::new(PostgresApplicationRepository::new(self.executor.clone())),
+            application_sessions: Arc::new(PostgresApplicationSessionRepository::new(
+                self.executor.clone(),
+            )),
             durable_cell_applications: Arc::new(PostgresDurableCellApplicationRepository::new(
                 self.executor.clone(),
             )),
@@ -161,6 +167,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) secrets: Arc<dyn ISecretRepository>,
     pub(super) connector_profiles: Arc<dyn IConnectorProfileRepository>,
     pub(super) applications: Arc<dyn IApplicationRepository>,
+    pub(super) application_sessions: Arc<dyn IApplicationSessionRepository>,
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     pub(super) operations: Arc<dyn IOperationRepository>,

@@ -37,6 +37,29 @@ impl OpenApplicationSessionWrite {
         }
         Ok(())
     }
+
+    pub fn matches_replay(
+        &self,
+        current: &ApplicationSession,
+        end_user: &ApplicationEndUser,
+        initial_variables: &ConversationVariableRevision,
+    ) -> Result<bool, String> {
+        current.validate()?;
+        end_user.validate()?;
+        initial_variables.validate()?;
+        Ok(current.organization_id == self.session.organization_id
+            && current.project_id == self.session.project_id
+            && current.application_id == self.session.application_id
+            && current.application_release_id == self.session.application_release_id
+            && current.application_release_number == self.session.application_release_number
+            && current.application_release_digest == self.session.application_release_digest
+            && current.end_user_id == self.session.end_user_id
+            && current.id == self.session.id
+            && current.interaction_mode == self.session.interaction_mode
+            && current.created_at == self.session.created_at
+            && end_user == &self.end_user
+            && initial_variables == &self.initial_variables)
+    }
 }
 
 /// Atomic creation of one invocation request and its first channel message.
@@ -72,6 +95,27 @@ impl RequestApplicationInvocationWrite {
             .validate_against(session, &self.invocation)?;
         session.append_message(self.expected_session_version, &self.input_message)?;
         Ok(())
+    }
+
+    pub fn matches_replay(
+        &self,
+        current: &ApplicationInvocation,
+        input_message: &ApplicationMessage,
+    ) -> Result<bool, String> {
+        current.validate()?;
+        input_message.validate()?;
+        Ok(current.organization_id == self.invocation.organization_id
+            && current.project_id == self.invocation.project_id
+            && current.application_id == self.invocation.application_id
+            && current.application_release_id == self.invocation.application_release_id
+            && current.application_release_digest == self.invocation.application_release_digest
+            && current.session_id == self.invocation.session_id
+            && current.id == self.invocation.id
+            && current.response_mode == self.invocation.response_mode
+            && current.input == self.invocation.input
+            && current.input_digest == self.invocation.input_digest
+            && current.requested_at == self.invocation.requested_at
+            && input_message == &self.input_message)
     }
 }
 

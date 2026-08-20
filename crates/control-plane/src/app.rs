@@ -497,6 +497,7 @@ async fn build_api_worker_application(
     let secrets = adapters.secrets;
     let connector_profiles = adapters.connector_profiles;
     let applications = adapters.applications;
+    let _application_sessions = adapters.application_sessions;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {

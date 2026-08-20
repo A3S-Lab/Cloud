@@ -1173,6 +1173,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/124_application_releases.sql"
             )),
         ),
+        Migration::new(
+            "125",
+            "Application sessions and semantic effects",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/125_application_sessions.sql"
+            )),
+        ),
     ]
 }
 
@@ -2233,6 +2241,55 @@ mod application_release_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 124 duplicated non-Applications authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_session_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/125_application_sessions.sql"
+    ));
+
+    #[test]
+    fn migration_125_adds_one_release_pinned_session_authority() {
+        for expected in [
+            "create table application_end_users",
+            "create table application_sessions",
+            "create table application_invocations",
+            "create table application_messages",
+            "create table application_conversation_variable_revisions",
+            "create table application_workflow_effect_claims",
+            "references workflow_runs",
+            "application_sessions_variable_head_fk",
+            "deferrable initially deferred",
+            "validate_application_session_update",
+            "validate_application_invocation_update",
+            "validate_application_effect_claim",
+            "Application session semantic children are immutable",
+            "not a Flow event log",
+        ] {
+            assert!(
+                MIGRATION
+                    .to_ascii_lowercase()
+                    .contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
+            );
+        }
+        for forbidden in [
+            "flow_history",
+            "provider_output",
+            "provider_state",
+            "create queue",
+            "retry_count",
+            "secret_material",
+            "membership_role",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 125 duplicated another authority through {forbidden}"
             );
         }
     }

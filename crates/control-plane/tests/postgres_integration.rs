@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 124;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "124";
+const CLOUD_MIGRATION_COUNT: i64 = 125;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "125";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -77,6 +77,10 @@ async fn migrate_for_test(
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/application_session_fixtures.rs"]
+mod application_session_fixtures_support;
+#[path = "support/application_sessions.rs"]
+mod application_sessions_support;
 #[path = "support/applications.rs"]
 mod applications_support;
 #[path = "support/assets.rs"]
@@ -360,6 +364,19 @@ async fn postgres_application_releases_are_atomic_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL Application release authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_application_sessions_are_atomic_replay_safe_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        application_sessions_support::exercise_application_session_persistence,
+    )
+    .await
+    .expect("PostgreSQL Application session and semantic-effect authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2188,7 +2205,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "agent_conversations",
         "agent_executions",
         "agent_execution_events",
+        "application_conversation_variable_revisions",
+        "application_end_users",
+        "application_invocations",
+        "application_messages",
         "application_releases",
+        "application_sessions",
+        "application_workflow_effect_claims",
         "applications",
         "form_drafts",
         "form_releases",

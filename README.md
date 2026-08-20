@@ -130,11 +130,12 @@ The code on `main` separates implemented mechanics from released capability:
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-  tools. Component-only `APP0.2-C1` freezes release-pinned end users, sessions,
-  invocation correlation, ordered messages, optimistic conversation variables,
-  and exactly-once Workflow semantic effects. Production persistence,
-  WorkflowRun composition, delivery, monitoring, and the `APP0.6` parity gate
-  remain open. `K0.1-C1` now has a component-only Files admission
+  tools. Component-only `APP0.2-C1/C2` freezes and persists release-pinned end
+  users, sessions, invocation correlation, ordered messages, optimistic
+  conversation variables, and exactly-once Workflow semantic effects through
+  migration `125` and one production A3S ORM repository. Typed WorkflowRun
+  composition, delivery, monitoring, and the `APP0.6` parity gate remain open.
+  `K0.1-C1` now has a component-only Files admission
   foundation: one canonical UserFile ACL, bounded upload/scan/retention
   lifecycle, typed immutable reference, and streaming adapter over the shared
   immutable-object client's verified multipart path. Quota, persistence,
@@ -353,9 +354,10 @@ creating their own control planes:
    persists sequence-fenced releases with atomic idempotency, audit, and
    Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
    REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-   tools all reuse that authority. Component-only `APP0.2-C1` adds the single
-   release-pinned session/message/variable contract and deterministic
-   Workflow-effect replay boundary without adding another Flow history.
+   tools all reuse that authority. Component-only `APP0.2-C1/C2` adds and
+   persists the single release-pinned session/message/variable contract and
+   deterministic Workflow-effect replay boundary through migration `125`
+   without adding another Flow history.
    `K0.1-C1` now freezes the Files-owned canonical upload reference and
    admission state machine while reusing the shared immutable-object client;
    quota transactions, persistence, maintained interfaces, and the Knowledge

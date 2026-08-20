@@ -598,7 +598,7 @@ async fn exercise_authorized_application_cqrs(
     Ok(())
 }
 
-async fn seed_scope(
+pub(super) async fn seed_scope(
     database: &Database<PostgresDialect, a3s_orm::PostgresExecutor>,
     organization_id: OrganizationId,
     project_id: ProjectId,
@@ -644,7 +644,7 @@ async fn seed_scope(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn seed_workflow_revision(
+pub(super) async fn seed_workflow_revision(
     executor: &a3s_orm::PostgresExecutor,
     organization_id: OrganizationId,
     project_id: ProjectId,
@@ -710,7 +710,7 @@ async fn seed_workflow_revision(
     Ok(())
 }
 
-fn release_contract(
+pub(super) fn release_contract(
     workflow_definition_id: WorkflowDefinitionId,
     workflow_revision_id: WorkflowRevisionId,
     workflow_contract_digest: Sha256Digest,
@@ -764,7 +764,7 @@ fn cqrs_context() -> CqrsContext {
     CqrsContext::new(ModuleRef::new())
 }
 
-fn digest(marker: char) -> Sha256Digest {
+pub(super) fn digest(marker: char) -> Sha256Digest {
     Sha256Digest::parse(format!("sha256:{}", marker.to_string().repeat(64))).expect("digest")
 }
 
