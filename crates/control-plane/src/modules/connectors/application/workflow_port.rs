@@ -40,6 +40,13 @@ pub struct WorkflowConnectorAttemptRequest {
     pub input: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowConnectorAttemptAuthority {
+    pub attempt_id: Uuid,
+    pub request_digest: Sha256Digest,
+    pub request_body_bytes: u64,
+}
+
 impl WorkflowConnectorAttemptRequest {
     pub fn validate(&self) -> Result<(), String> {
         if self.organization_id.as_uuid().is_nil()
@@ -88,6 +95,30 @@ impl WorkflowConnectorAttemptRequest {
             &self.workflow_run_id.as_uuid(),
             identity.as_bytes(),
         ))
+    }
+
+    pub fn connector_attempt_authority(&self) -> Result<WorkflowConnectorAttemptAuthority, String> {
+        let request = self.connector_request()?;
+        Ok(WorkflowConnectorAttemptAuthority {
+            attempt_id: request.attempt_id(),
+            request_digest: request.evidence_digest(),
+            request_body_bytes: request.body().len() as u64,
+        })
+    }
+
+    fn connector_request(&self) -> Result<ConnectorExecutionRequest, String> {
+        self.validate()?;
+        let body = canonical_json_bounded(
+            &self.input,
+            MAXIMUM_CONNECTOR_BODY_BYTES,
+            "Workflow Connector effective input",
+        )?;
+        ConnectorExecutionRequest::new(
+            self.connector_revision_id,
+            self.connector_attempt_id()?,
+            "application/json",
+            body,
+        )
     }
 }
 
@@ -209,21 +240,9 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
         request: &WorkflowConnectorAttemptRequest,
     ) -> ApplicationResult<WorkflowConnectorAttemptResult> {
         request.validate().map_err(ApplicationError::Invalid)?;
-        let body = canonical_json_bounded(
-            &request.input,
-            MAXIMUM_CONNECTOR_BODY_BYTES,
-            "Workflow Connector effective input",
-        )
-        .map_err(ApplicationError::Invalid)?;
-        let connector_request = ConnectorExecutionRequest::new(
-            request.connector_revision_id,
-            request
-                .connector_attempt_id()
-                .map_err(ApplicationError::Invalid)?,
-            "application/json",
-            body,
-        )
-        .map_err(ApplicationError::Invalid)?;
+        let connector_request = request
+            .connector_request()
+            .map_err(ApplicationError::Invalid)?;
         let resource_access =
             ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
                 project_id: request.project_id,

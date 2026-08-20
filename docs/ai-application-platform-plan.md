@@ -678,7 +678,7 @@ implementing a Cloud substitute is prohibited by this plan.
 | `AUT0.5-C7` | Implemented presentation foundation: expose the same environment-authorized Connector profile/revision CQRS through REST/OpenAPI `1.36.0`, the maintained TypeScript client, CLI, and six Management MCP tools. Reuse one PostgreSQL repository, canonical A3S ACL admission, optimistic concurrency, idempotency, Resource Grants, Outbox, audit, and response DTOs; expose no resolved Secret, endpoint, provider body, attempt/evidence, retry, or second management authority. | `AUT0.5-C3`, `C0.2m` |
 | `AUT0.5-C8` | Implemented component foundation: add one Connectors-owned Workflow exact-attempt port over C6. It binds immutable WorkflowRun/plan/step-attempt and profile/revision/digest authority to a stable UUIDv5 attempt, canonical bounded JSON, exact-environment authorization, digest verification during C6's sole revision load, body-free terminal evidence, and typed deferred/indeterminate observations. Correct `ConnectorRevision` ownership to `connectors` and require an exact revision UUID plus `connector.http`. Add no response-body store, retry/wait policy, queue, scheduler, credential authority, or HTTP client. | `AUT0.5-C6`, `W0.3` |
 | `AUT0.5-C9` | Implemented component foundation: add bounded provider-attempt and fallback-delay semantics as `cloud.workflow.policy.v2` through the existing per-step policy payload/digest channel. Require exact v2 material for ConnectorRevision steps in WorkflowRevision and immutable WorkflowRun admission; reject retry material for provider runtimes not yet admitted; bind Connector retry classification to the Connectors-owned `connector.http` descriptor. Preserve policy v1 bytes and add no policy table/semantic child, Plan/Run version, scheduler, wait worker, queue, or configuration language. | `AUT0.5-C8`, `W0.3` |
-| `AUT0.5` | Complete Workflow Flow scheduling, retry/wait interpretation, and immutable response-object composition over C8/C9; finish remaining provider/consumer wiring beyond the first Notification NATS-to-C6 composition, revocation/recovery operations, and retained PostgreSQL/integration evidence. Flow or the owning A3S Event consumer remains the retry/backoff authority. | `AUT0.5-C9`; `W0.4` for node availability |
+| `AUT0.5` | WorkflowRun input/runtime/Flow v5 now implements exact Connector hook history, body-free C6 evidence interpretation, bounded durable observation/retry waits, `Retry-After` or C9 fallback pacing, deterministic next-attempt identity, deferred same-attempt observation, and fail-closed indeterminate handling without another table, queue, worker, scheduler, child Operation, response store, credential authority, or HTTP client. Complete W0.4 immutable response-object composition, remaining provider/consumer wiring beyond the first Notification NATS-to-C6 composition, revocation/recovery operations, and retained PostgreSQL/integration evidence before availability. | `AUT0.5-C9`; `W0.4` for node availability |
 | `AUT0.6` | Pass duplicate delivery, out-of-order event, clock shift, lease loss, process death, provider outage, revoke, quota, multi-node HA, replay, disaster-recovery, and interface gates | `AUT0.2` through `AUT0.5`, `H0.5` |
 
 The sub-gates are dependency gates, not calendar promises. `K0.1`, `AUT0.1`,
@@ -700,15 +700,15 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All nineteen
+   reject inventory/schema drift and false public claims. All twenty
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
    defaults, revision-bound composite policy, the single Flow DAG compiler,
    exact runtime registry, versioned runtime builds, deterministic composite
    frames, ordered composite-region reduction, authority-bound child
-   WorkflowRun coordination, and descriptor-bound finite-Execution failure
-   routing are accepted and versioned.
+   WorkflowRun coordination, descriptor-bound finite-Execution failure routing,
+   and Flow-owned Connector attempt/wait decisions are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.

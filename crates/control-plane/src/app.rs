@@ -35,6 +35,7 @@ use crate::modules::connectors::{
     CreateConnectorProfileHandler, GetConnectorProfileHandler, GetConnectorRevisionHandler,
     IConnectorProfileRepository, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
+    WorkflowConnectorApplicationService,
 };
 use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
@@ -490,6 +491,32 @@ async fn build_api_worker_application(
     let connector_profiles = adapters.connector_profiles;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
+    let connector_execution = if run_operations {
+        let connector_attempts = postgres_adapters.connector_attempts();
+        let connector_materializer = ConnectorHttpRevisionMaterializer::new(
+            Arc::clone(&secrets),
+            Arc::clone(&key_encryption),
+        );
+        let connector_egress = Arc::new(
+            PublicInternetConnectorEgressAuthorizer::from_system_config(Duration::from_secs(5))
+                .map_err(ControlPlaneStartupError::Connector)?,
+        );
+        let connector_preparation = Arc::new(ConnectorHttpExecutionPreparationPort::new(
+            connector_materializer,
+            connector_egress,
+        ));
+        Some(Arc::new(
+            ConnectorExecutionApplicationService::new(
+                Arc::clone(&connector_profiles),
+                connector_attempts,
+                connector_preparation,
+                ConnectorExecutionServiceOptions::default(),
+            )
+            .map_err(ControlPlaneStartupError::Connector)?,
+        ))
+    } else {
+        None
+    };
     let outbound_notification_consumer =
         if run_operations && config.events.provider == EventProviderKind::Nats {
             let event_publisher = event_publisher.as_ref().ok_or_else(|| {
@@ -497,30 +524,14 @@ async fn build_api_worker_application(
                     "worker process is missing its event publisher".into(),
                 ))
             })?;
-            let connector_attempts = postgres_adapters.connector_attempts();
-            let connector_materializer = ConnectorHttpRevisionMaterializer::new(
-                Arc::clone(&secrets),
-                Arc::clone(&key_encryption),
-            );
-            let connector_egress = Arc::new(
-                PublicInternetConnectorEgressAuthorizer::from_system_config(Duration::from_secs(5))
-                    .map_err(ControlPlaneStartupError::Connector)?,
-            );
-            let connector_preparation = Arc::new(ConnectorHttpExecutionPreparationPort::new(
-                connector_materializer,
-                connector_egress,
-            ));
-            let connector_execution = Arc::new(
-                ConnectorExecutionApplicationService::new(
-                    Arc::clone(&connector_profiles),
-                    connector_attempts,
-                    connector_preparation,
-                    ConnectorExecutionServiceOptions::default(),
+            let connector_execution = connector_execution.as_ref().ok_or_else(|| {
+                ControlPlaneStartupError::Connector(
+                    "worker process is missing Connector execution".into(),
                 )
-                .map_err(ControlPlaneStartupError::Connector)?,
+            })?;
+            let dispatcher: Arc<dyn IOutboundNotificationDispatcher> = Arc::new(
+                OutboundNotificationDispatcher::new(Arc::clone(connector_execution)),
             );
-            let dispatcher: Arc<dyn IOutboundNotificationDispatcher> =
-                Arc::new(OutboundNotificationDispatcher::new(connector_execution));
             Some(
                 A3sEventOutboundNotificationConsumer::new(
                     event_publisher.bus(),
@@ -840,11 +851,20 @@ async fn build_api_worker_application(
                 Arc::clone(&workflow_goals),
                 Arc::clone(&workflow_runs),
             ));
+        let workflow_connector_port: Arc<dyn crate::modules::connectors::IWorkflowConnectorPort> =
+            Arc::new(WorkflowConnectorApplicationService::new(Arc::clone(
+                connector_execution.as_ref().ok_or_else(|| {
+                    ControlPlaneStartupError::Connector(
+                        "Flow worker is missing Connector execution".into(),
+                    )
+                })?,
+            )));
         let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
-            Arc::new(FlowWorkflowRunCoordinator::with_ports(
+            Arc::new(FlowWorkflowRunCoordinator::with_all_ports(
                 flow.engine(),
                 workflow_execution_port,
                 workflow_composite_port,
+                workflow_connector_port,
             ));
         let workflow_run_reconciler = WorkflowRunReconciler::new(
             Arc::clone(&workflow_runs),

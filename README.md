@@ -40,16 +40,17 @@ converges through one PostgreSQL authority and one durable execution path.
 
 The code on `main` separates implemented mechanics from released capability:
 
-- **Implemented / durable foundation update** — `main` pins the exact A3S Flow
-  `1.0.0` release so Workflow ACL graphs reuse Flow's portable DAG
+- **Implemented / durable foundation update** — `main` pins A3S Flow `1.0.0`
+  at exact latest-main revision `006e988b`, including its bounded child
+  Workflow batch primitive, so Workflow ACL graphs reuse Flow's portable DAG
   compiler, while Boot
   `0.2.0`, ORM `0.3.1`, the PostgreSQL queue, Operations, Outbox, audit, and
   replay remain the only durable path. One process-level supervisor observes
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@4`; the former
-  `@1`, `@2`, and `@3` generations are admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@5`; the former
+  `@1`, `@2`, `@3`, and `@4` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
@@ -305,14 +306,18 @@ creating their own control planes:
    plus Flow-backed sequential Iteration/Loop child WorkflowRun dispatch,
    linkage, cancellation, and recovery. It also pins finite Execution error
    ports in Plan v3 and routes typed dispatch/terminal failures through the
-   same DAG and Flow history; default fallback, Answer, remaining providers,
-   and later `W0` slices remain in progress and unavailable.
+   same DAG and Flow history. Component-only WorkflowRun v5 also
+   interprets exact Connector attempts, observations, durable waits, and
+   bounded retries through the sole C6 execution/evidence authority; immutable
+   response-object composition, default fallback, Answer, remaining providers,
+   and later `W0` gates remain unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.
 4. **AI Application Platform** will compose Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
-   `APP0`, `K0`, and `AUT0` are planned and unavailable.
+   `APP0` and `K0` are planned; `AUT0` has component-only Connector foundations
+   in progress. All three product surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with
    alarms, WebSockets, idle eviction, and fenced recovery. Backend contracts,
    composition, and interfaces exist; provider and lifecycle gates remain, so

@@ -24,7 +24,8 @@ AI application platform parity manifest.
 | [0017](0017-ordered-composite-region-results.md) | Reconstruct arbitrary composite child observations by stable ordinal before reducing output, failure policy, updates, and exports |
 | [0018](0018-authority-bound-composite-child-workflow-runs.md) | Execute composite frames as deterministic ordinary child WorkflowRuns through existing Operation, Outbox, Flow, cancellation, and recovery authority |
 | [0019](0019-descriptor-bound-execution-failure-routes.md) | Route finite Execution failures through descriptor-bound ordinary DAG edges without another retry or orchestration mechanism |
+| [0020](0020-flow-owned-connector-attempt-waits.md) | Keep deterministic Connector observation, retry, and wait decisions in Flow while C6 remains the sole provider-attempt authority |
 
-All nineteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twenty decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

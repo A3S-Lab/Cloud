@@ -809,8 +809,16 @@ fences, transient response bodies, credentials, or provider configuration and
 does not own retry, waiting, a queue, or a scheduler. Workflow capability
 admission correspondingly maps `ConnectorRevision` only to the `connectors`
 owner and requires an exact non-nil revision UUID plus `connector.http`.
-Flow scheduling, retry/wait interpretation, and a shared immutable response-
-object authority remain required before the HTTP Request node is available.
+
+WorkflowRun input/runtime/Flow v5 now supplies the scheduling boundary over
+that port. Each deterministic hook binds the exact run, Plan, step, Connector,
+request, policy, provider-attempt, and observation authority. A retryable
+terminal result schedules one durable Flow wait and then the next provider
+attempt; a deferred result waits before observing the same provider attempt;
+an indeterminate result fails closed without a blind retry. Accepted output is
+body-free and contains only its response digest and byte count. Projection
+reconstructs the Connector step from immutable Run input and the sole Flow
+history, including exact hook-creation and completed-wait evidence.
 
 The component-only `AUT0.5-C9` prerequisite freezes that missing retry budget
 without adding another policy authority. `cloud.workflow.policy.v2` extends the
@@ -824,7 +832,9 @@ the classification with the Connectors-owned `connector.http` semantic
 profile. Policy v1 bytes remain unchanged, and no policy table, semantic
 child, retry counter, timer worker, queue, scheduler, or second configuration
 language is introduced. Flow interpretation and immutable response-object
-composition remain open.
+composition were separate gates: v4 now consumes the policy for deterministic
+attempt/wait decisions, while W0.4 immutable response-object composition
+remains open.
 
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
@@ -993,8 +1003,10 @@ fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
 provider wiring, revocation/recovery operations, retained integration evidence,
-and Workflow Flow scheduling plus immutable response-object composition over
-those same authorities. Notifications now retains PostgreSQL 17 plus
+and W0.4 immutable response-object composition over those same authorities.
+WorkflowRun v5 already supplies Flow-owned Connector observation, durable wait,
+bounded retry, fail-closed indeterminate handling, and body-free projection
+without another scheduler or provider authority. Notifications now retains PostgreSQL 17 plus
 real NATS evidence for its first Event-consumer-to-C6 composition, but still
 needs separate versioned semantics before any user-configured suppression or
 delivery budget is admitted. Provider outage

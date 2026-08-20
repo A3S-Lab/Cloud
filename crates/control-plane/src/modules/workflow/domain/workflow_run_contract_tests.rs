@@ -1,9 +1,51 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    human_decision_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
-    TEST_HUMAN_STEP_ID,
+    connector_workflow_run_input, human_decision_workflow_run_input,
+    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
+    TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v5_run_input_admits_only_exact_connector_service_authority() {
+    let input = connector_workflow_run_input().expect("valid Connector WorkflowRun input");
+    input.validate().expect("valid v5 input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V5);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V5);
+
+    let mut missing_environment = input.clone();
+    missing_environment.plan.environment_id = None;
+    refresh_plan_digest(&mut missing_environment);
+    assert!(missing_environment.validate().is_err());
+
+    let mut wrong_kind = input;
+    wrong_kind
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == TEST_CONNECTOR_STEP_ID)
+        .expect("Connector step")
+        .kind = WorkflowStepKind::Transform;
+    refresh_plan_digest(&mut wrong_kind);
+    assert!(wrong_kind.validate().is_err());
+}
+
+#[test]
+fn connector_generation_does_not_alias_failure_routing_v4() {
+    let routed = routed_execution_workflow_run_input().expect("valid v4 failure-routing input");
+    assert_eq!(routed.schema, WORKFLOW_RUN_INPUT_SCHEMA_V4);
+    routed.validate().expect("v4 failure-routing input");
+
+    let mut connector = connector_workflow_run_input().expect("valid v5 Connector input");
+    connector.schema = WORKFLOW_RUN_INPUT_SCHEMA_V4.into();
+    connector.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4.into();
+    connector.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V4.into();
+    assert!(connector.validate().is_err());
+}
 
 #[test]
 fn run_input_retry_budget_remains_bound_to_an_exact_connector_revision() {

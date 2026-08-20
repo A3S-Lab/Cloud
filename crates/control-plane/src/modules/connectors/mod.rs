@@ -14,9 +14,9 @@ pub use application::{
     ListConnectorProfilesHandler, ListConnectorRevisions, ListConnectorRevisionsHandler,
     ListUnresolvedConnectorExecutionAttempts, ListUnresolvedConnectorExecutionAttemptsHandler,
     ReviseConnectorProfile, ReviseConnectorProfileHandler, WorkflowConnectorApplicationService,
-    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
-    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
-    WORKFLOW_CONNECTOR_CAPABILITY,
+    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptRequest,
+    WorkflowConnectorAttemptResult, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT, WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
 pub use domain::{

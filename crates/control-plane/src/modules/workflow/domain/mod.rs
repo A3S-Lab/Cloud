@@ -11,10 +11,13 @@ mod workflow_composite_execution;
 mod workflow_composite_frame;
 mod workflow_composite_region_result;
 mod workflow_composite_regions;
+mod workflow_connector_execution;
 mod workflow_contract;
+mod workflow_execution_hook;
 mod workflow_failure_routing;
 mod workflow_goal_contract;
 mod workflow_graph;
+mod workflow_human_decision_hook;
 mod workflow_node_catalog;
 mod workflow_payload;
 mod workflow_revision_semantic_contracts;
@@ -108,13 +111,34 @@ pub use workflow_composite_regions::{
     WORKFLOW_COMPOSITE_REGION_MAX_COUNT, WORKFLOW_COMPOSITE_REGION_MAX_TIME_BUDGET_SECONDS,
     WORKFLOW_ITERATION_MAX_CONCURRENCY, WORKFLOW_ITERATION_MAX_ITEMS, WORKFLOW_LOOP_MAX_ITERATIONS,
 };
+pub use workflow_connector_execution::{
+    WorkflowConnectorAttemptEvidence, WorkflowConnectorAttemptOutcome,
+    WorkflowConnectorHookMetadata, WorkflowConnectorResumePayload,
+    WorkflowConnectorResumeResolution, WorkflowConnectorStepOutput,
+    WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA, WORKFLOW_CONNECTOR_HOOK_SCHEMA,
+    WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT, WORKFLOW_CONNECTOR_RESULT_SCHEMA,
+    WORKFLOW_CONNECTOR_RESUME_SCHEMA,
+};
 pub use workflow_contract::{
     WorkflowContract, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind,
     WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
 };
+pub use workflow_execution_hook::{
+    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
+    WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
+    WorkflowExecutionStepOutput, WorkflowStepFailureClassification, WorkflowStepFailureDetails,
+    WorkflowStepFailureOutput, WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA,
+    WORKFLOW_EXECUTION_HOOK_SCHEMA, WORKFLOW_EXECUTION_RESULT_SCHEMA,
+    WORKFLOW_EXECUTION_RESUME_SCHEMA, WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA,
+};
 pub use workflow_goal_contract::{
     WorkflowGoalContract, WorkflowGoalSpec, WORKFLOW_GOAL_MAX_ACL_BYTES,
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_GOAL_SCHEMA,
+};
+pub use workflow_human_decision_hook::{
+    WorkflowHumanDecisionHookMetadata, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
+    WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT,
 };
 pub use workflow_node_catalog::{
     WorkflowNodeCatalog, WorkflowNodeCatalogAvailability, WorkflowNodeCatalogEntry,
@@ -134,21 +158,15 @@ pub use workflow_revision_semantic_contracts::{
 pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
     ResolvedWorkflowRunStep, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
-    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
-    WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
-    WorkflowExecutionStepOutput, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
-    WorkflowStepFailureClassification, WorkflowStepFailureDetails, WorkflowStepFailureOutput,
-    WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA, WORKFLOW_EXECUTION_HOOK_SCHEMA,
-    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_EXECUTION_RESUME_SCHEMA,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
-    WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_INPUT_MAX_BYTES,
+    WorkflowRunInput, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_INPUT_MAX_BYTES,
     WORKFLOW_RUN_INPUT_MAX_BYTES_V2, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
-    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
-    WORKFLOW_RUN_OUTPUT_MAX_BYTES, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
+    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
 };
 pub use workflow_step_descriptor::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,

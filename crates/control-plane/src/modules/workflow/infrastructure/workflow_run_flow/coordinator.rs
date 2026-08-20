@@ -21,12 +21,14 @@ use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 mod composite;
+mod connector;
 
 #[derive(Clone)]
 pub struct FlowWorkflowRunCoordinator {
     engine: FlowEngine,
     executions: Option<Arc<dyn IWorkflowExecutionPort>>,
     composites: Option<Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>>,
+    connectors: Option<Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>>,
 }
 
 impl FlowWorkflowRunCoordinator {
@@ -35,6 +37,7 @@ impl FlowWorkflowRunCoordinator {
             engine,
             executions: None,
             composites: None,
+            connectors: None,
         }
     }
 
@@ -46,6 +49,7 @@ impl FlowWorkflowRunCoordinator {
             engine,
             executions: Some(executions),
             composites: None,
+            connectors: None,
         }
     }
 
@@ -58,6 +62,21 @@ impl FlowWorkflowRunCoordinator {
             engine,
             executions: Some(executions),
             composites: Some(composites),
+            connectors: None,
+        }
+    }
+
+    pub fn with_all_ports(
+        engine: FlowEngine,
+        executions: Arc<dyn IWorkflowExecutionPort>,
+        composites: Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>,
+        connectors: Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: Some(executions),
+            composites: Some(composites),
+            connectors: Some(connectors),
         }
     }
 
@@ -70,6 +89,20 @@ impl FlowWorkflowRunCoordinator {
             engine,
             executions: None,
             composites: Some(composites),
+            connectors: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_connectors(
+        engine: FlowEngine,
+        connectors: Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: None,
+            composites: None,
+            connectors: Some(connectors),
         }
     }
 
@@ -357,6 +390,8 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
                 .await?;
             self.coordinate_active_composite(record, &snapshot, &history)
                 .await?;
+            self.coordinate_active_connector(record, &snapshot, &history)
+                .await?;
         }
         snapshot = self
             .engine
@@ -554,5 +589,7 @@ fn unavailable_at(operation: &str, error: FlowError) -> WorkflowRunCoordinationE
     WorkflowRunCoordinationError::Unavailable(format!("could not {operation}: {error}"))
 }
 
+#[cfg(test)]
+mod connector_tests;
 #[cfg(test)]
 mod tests;

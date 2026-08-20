@@ -6,10 +6,11 @@ use crate::modules::workflow::domain::{
     WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
     WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -85,20 +86,8 @@ impl WorkflowRunCompiler {
                 let composite_regions = contracts
                     .composite_regions()
                     .map(ResolvedWorkflowCompositeRegions::from_regions);
-                let (input_schema, runtime_revision, flow_version) = if composite_regions.is_some()
-                {
-                    (
-                        WORKFLOW_RUN_INPUT_SCHEMA_V3,
-                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-                        WORKFLOW_RUN_FLOW_VERSION_V3,
-                    )
-                } else {
-                    (
-                        WORKFLOW_RUN_INPUT_SCHEMA_V2,
-                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-                        WORKFLOW_RUN_FLOW_VERSION_V2,
-                    )
-                };
+                let (input_schema, runtime_revision, flow_version) =
+                    plan_v2_runtime_contract(plan, composite_regions.is_some());
                 (
                     input_schema,
                     runtime_revision,
@@ -119,10 +108,11 @@ impl WorkflowRunCompiler {
                     contracts.variable_defaults(),
                     plan,
                 )?;
+                let (input_schema, runtime_revision, flow_version) = plan_v3_runtime_contract(plan);
                 (
-                    WORKFLOW_RUN_INPUT_SCHEMA_V4,
-                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-                    WORKFLOW_RUN_FLOW_VERSION_V4,
+                    input_schema,
+                    runtime_revision,
+                    flow_version,
                     Some(ResolvedWorkflowVariableContract::from_contract(
                         contracts.variable_contract(),
                     )),
@@ -176,5 +166,92 @@ impl WorkflowRunCompiler {
         };
         let (run, steps) = WorkflowRun::create(input, requested_by)?;
         Ok(CompiledWorkflowRun { run, steps })
+    }
+}
+
+fn plan_v2_runtime_contract(
+    plan: &crate::modules::workflow::domain::WorkflowPlan,
+    has_composite_regions: bool,
+) -> (&'static str, &'static str, &'static str) {
+    if plan_has_connector(plan) {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V5,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+            WORKFLOW_RUN_FLOW_VERSION_V5,
+        )
+    } else if has_composite_regions {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V3,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+            WORKFLOW_RUN_FLOW_VERSION_V3,
+        )
+    } else {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V2,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+            WORKFLOW_RUN_FLOW_VERSION_V2,
+        )
+    }
+}
+
+fn plan_v3_runtime_contract(
+    plan: &crate::modules::workflow::domain::WorkflowPlan,
+) -> (&'static str, &'static str, &'static str) {
+    if plan_has_connector(plan) {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V5,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+            WORKFLOW_RUN_FLOW_VERSION_V5,
+        )
+    } else {
+        (
+            WORKFLOW_RUN_INPUT_SCHEMA_V4,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+            WORKFLOW_RUN_FLOW_VERSION_V4,
+        )
+    }
+}
+
+fn plan_has_connector(plan: &crate::modules::workflow::domain::WorkflowPlan) -> bool {
+    plan.steps.iter().any(|step| {
+        step.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type
+                == crate::modules::workflow::domain::CapabilityType::ConnectorRevision
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_connector_binding_selects_v5_even_with_composite_regions() {
+        let input = crate::modules::workflow::test_support::connector_workflow_run_input()
+            .expect("Connector WorkflowRun input");
+        assert_eq!(
+            plan_v2_runtime_contract(&input.plan, false),
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V5,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+                WORKFLOW_RUN_FLOW_VERSION_V5,
+            )
+        );
+        assert_eq!(
+            plan_v2_runtime_contract(&input.plan, true),
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V5,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+                WORKFLOW_RUN_FLOW_VERSION_V5,
+            )
+        );
+        assert_eq!(
+            plan_v3_runtime_contract(&input.plan),
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V5,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+                WORKFLOW_RUN_FLOW_VERSION_V5,
+            )
+        );
     }
 }

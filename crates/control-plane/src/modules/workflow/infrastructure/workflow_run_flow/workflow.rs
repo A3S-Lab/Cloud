@@ -255,6 +255,44 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 serde_json::to_value(metadata)?,
             ));
         }
+        if step.plan.kind == WorkflowStepKind::Service {
+            super::execution::validate_data_schema(
+                &step.input_schema,
+                &effective_input,
+                "Workflow Connector step input",
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let resolution = super::connector::resolve_step(
+                &invocation.run_id,
+                &input,
+                step,
+                effective_input.clone(),
+                &context,
+            )
+            .map_err(|error| super::connector::flow_error(&invocation.run_id, error))?;
+            match resolution {
+                super::connector::ConnectorStepResolution::Await(metadata) => {
+                    return Ok(context.create_hook(
+                        metadata.flow_hook_id(),
+                        metadata.flow_hook_token(),
+                        serde_json::to_value(metadata)?,
+                    ));
+                }
+                super::connector::ConnectorStepResolution::Wait { wait_id, resume_at } => {
+                    return Ok(context.wait_until(wait_id, resume_at));
+                }
+                super::connector::ConnectorStepResolution::Complete(result) => {
+                    resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                    continue;
+                }
+                super::connector::ConnectorStepResolution::Failed(error) => {
+                    return Ok(context.fail(format!(
+                        "Workflow Connector step {:?} failed: {error}",
+                        step.plan.id
+                    )));
+                }
+            }
+        }
         let durable_step_id = flow_step_id(&step.plan.id);
         if let Some(error) = context.step_failed(&durable_step_id) {
             return Ok(context.fail(format!("Workflow step {:?} failed: {error}", step.plan.id)));

@@ -4,7 +4,7 @@ use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
 const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
-const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=9a4d41d6eb2d08074483ceac349b4727c5874edb#9a4d41d6eb2d08074483ceac349b4727c5874edb";
+const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=006e988b1f63e92a381f138d10af4084b96625a8#006e988b1f63e92a381f138d10af4084b96625a8";
 const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

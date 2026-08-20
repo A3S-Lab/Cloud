@@ -19,11 +19,12 @@ pub(crate) const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
 const FLOW_TASK_RETRIES: u32 = 3;
 const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
-pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@4";
+pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@5";
 pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] = &[
     "a3s-cloud-workflows@1",
     "a3s-cloud-workflows@2",
     "a3s-cloud-workflows@3",
+    "a3s-cloud-workflows@4",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -901,6 +902,8 @@ mod tests {
             ("cloud.agent-execution", "1", "agent_execution"),
             ("cloud.workflow-run", "1", "workflow_run"),
             ("cloud.workflow-run", "2", "workflow_run"),
+            ("cloud.workflow-run", "3", "workflow_run"),
+            ("cloud.workflow-run", "4", "workflow_run"),
             (
                 "cloud.object-namespace.seal",
                 "1",

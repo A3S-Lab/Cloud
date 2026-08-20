@@ -62,6 +62,7 @@ pub fn project_workflow_run_record(
     let CompletedWorkflowSteps {
         completed,
         execution_failures,
+        connector_failures,
         composite_failures,
     } = completed_workflow_steps(&record.run.execution_input, &resolved_steps, snapshot)?;
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
@@ -82,6 +83,17 @@ pub fn project_workflow_run_record(
         };
         let execution_hook = if resolved.plan.kind == WorkflowStepKind::Execution {
             execution_hook(&record.run.execution_input, resolved, snapshot)?
+        } else {
+            None
+        };
+        let connector_hook = if resolved.plan.kind == WorkflowStepKind::Service {
+            super::connector::observed_connector_hooks(
+                &record.run.execution_input,
+                resolved,
+                snapshot,
+            )?
+            .into_iter()
+            .last()
         } else {
             None
         };
@@ -203,6 +215,67 @@ pub fn project_workflow_run_record(
                     result,
                     selected_handle,
                     failure,
+                    sequence,
+                    at,
+                )
+            } else if let Some(observed) = connector_hook {
+                let hook = observed.hook;
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    snapshot.last_sequence
+                } else {
+                    last_hook_sequence(history, &hook.hook_id)
+                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                };
+                let at = history
+                    .iter()
+                    .find(|event| event.sequence == sequence)
+                    .map(|event| event.timestamp)
+                    .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let failure = connector_failures.get(&projection.step_id).cloned();
+                let completed_result = completed.get(&projection.step_id);
+                let step_status = match hook.status {
+                    HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received if failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
+                    HookStatus::Received if completed_result.is_some() => {
+                        WorkflowStepProjectionStatus::Completed
+                    }
+                    HookStatus::Received if status.is_terminal() => {
+                        if matches!(
+                            status,
+                            WorkflowRunStatus::Failed | WorkflowRunStatus::TimedOut
+                        ) {
+                            WorkflowStepProjectionStatus::Failed
+                        } else {
+                            WorkflowStepProjectionStatus::Cancelled
+                        }
+                    }
+                    HookStatus::Received => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Disposed | HookStatus::Cancelled => {
+                        WorkflowStepProjectionStatus::Cancelled
+                    }
+                    status => {
+                        return Err(format!(
+                            "Workflow Connector hook {:?} has unsupported status {status:?}",
+                            hook.hook_id
+                        ))
+                    }
+                };
+                let result = (step_status == WorkflowStepProjectionStatus::Completed)
+                    .then(|| completed_result.map(|result| result.output.clone()))
+                    .flatten();
+                let step_error = if step_status == WorkflowStepProjectionStatus::Failed {
+                    failure.or_else(|| snapshot.error.clone())
+                } else {
+                    None
+                };
+                (
+                    step_status,
+                    observed.metadata.step_attempt,
+                    result,
+                    None,
+                    step_error,
                     sequence,
                     at,
                 )
@@ -376,6 +449,7 @@ pub fn project_workflow_run_record(
 pub(super) struct CompletedWorkflowSteps {
     pub(super) completed: BTreeMap<String, WorkflowLocalStepResult>,
     pub(super) execution_failures: BTreeMap<String, String>,
+    pub(super) connector_failures: BTreeMap<String, String>,
     pub(super) composite_failures: BTreeMap<String, String>,
 }
 
@@ -411,6 +485,7 @@ pub(super) fn completed_workflow_steps(
     }
 
     let mut execution_failures = BTreeMap::new();
+    let mut connector_failures = BTreeMap::new();
     let mut composite_failures = BTreeMap::new();
     for resolved in resolved_steps {
         match resolved.plan.kind {
@@ -468,6 +543,26 @@ pub(super) fn completed_workflow_steps(
                     }
                 }
             }
+            WorkflowStepKind::Service => {
+                let Some(observed) =
+                    super::connector::observed_connector_hooks(input, resolved, snapshot)?
+                        .into_iter()
+                        .last()
+                else {
+                    continue;
+                };
+                if observed.hook.status == HookStatus::Received {
+                    match super::connector::project_received_hook(resolved, &observed)? {
+                        super::connector::ConnectorProjectionResolution::Running => {}
+                        super::connector::ConnectorProjectionResolution::Completed(result) => {
+                            completed.insert(result.step_id.clone(), *result);
+                        }
+                        super::connector::ConnectorProjectionResolution::Failed(error) => {
+                            connector_failures.insert(resolved.plan.id.clone(), error);
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -518,6 +613,7 @@ pub(super) fn completed_workflow_steps(
     Ok(CompletedWorkflowSteps {
         completed,
         execution_failures,
+        connector_failures,
         composite_failures,
     })
 }
@@ -563,6 +659,22 @@ pub(super) fn verify_flow_authority(
                 );
                 expected_hooks.insert(hook_id);
                 execution_hook(&record.run.execution_input, resolved, snapshot)?;
+            }
+            WorkflowStepKind::Service => {
+                let observed = super::connector::observed_connector_hooks(
+                    &record.run.execution_input,
+                    resolved,
+                    snapshot,
+                )?;
+                super::connector::verify_hook_history(&observed, history)?;
+                super::connector::verify_wait_authority(
+                    &record.run.execution_input,
+                    snapshot,
+                    &observed,
+                )?;
+                for hook in observed {
+                    expected_hooks.insert(hook.metadata.flow_hook_id());
+                }
             }
             _ => {}
         }

@@ -28,8 +28,8 @@ pub use queries::{
 };
 pub use result::ConnectorProfileMutationResult;
 pub use workflow_port::{
-    IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptRequest,
-    WorkflowConnectorAttemptResult, WORKFLOW_CONNECTOR_CAPABILITY,
+    IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptAuthority,
+    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult, WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
 #[cfg(test)]
