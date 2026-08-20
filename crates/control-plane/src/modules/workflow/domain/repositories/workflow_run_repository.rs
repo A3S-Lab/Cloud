@@ -2,7 +2,10 @@ use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError,
     WorkflowRunId,
 };
-use crate::modules::workflow::domain::{WorkflowRun, WorkflowStepProjection};
+use crate::modules::workflow::domain::{
+    execution_failure_output, WorkflowRun, WorkflowStepKind, WorkflowStepProjection,
+    WorkflowStepProjectionStatus,
+};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -42,6 +45,37 @@ impl WorkflowRunRecord {
                     "WorkflowRun step {:?} projection drifted from its run",
                     planned.id
                 ));
+            }
+            if let Some(handle) = projected.selected_handle.as_deref() {
+                let declared = self.run.execution_input.plan.edges.iter().any(|edge| {
+                    edge.source == planned.id && edge.source_handle.as_deref() == Some(handle)
+                });
+                if !declared {
+                    return Err(format!(
+                        "WorkflowRun step {:?} projection selected an undeclared plan handle",
+                        planned.id
+                    ));
+                }
+                if planned.kind == WorkflowStepKind::Execution {
+                    let expected = planned
+                        .failure
+                        .as_ref()
+                        .ok_or_else(|| {
+                            format!(
+                                "WorkflowRun Execution step {:?} selected a handle without failure semantics",
+                                planned.id
+                            )
+                        })
+                        .and_then(execution_failure_output)?;
+                    if projected.status != WorkflowStepProjectionStatus::Failed
+                        || expected.name != handle
+                    {
+                        return Err(format!(
+                            "WorkflowRun Execution step {:?} failure projection drifted from its plan",
+                            planned.id
+                        ));
+                    }
+                }
             }
         }
         Ok(())

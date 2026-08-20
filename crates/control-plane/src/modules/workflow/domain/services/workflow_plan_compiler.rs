@@ -2,8 +2,9 @@ use crate::modules::shared_kernel::domain::{PlanRevisionId, PrincipalId, Workflo
 use crate::modules::workflow::domain::{
     OntologyRevision, PlanRevision, WorkflowDefinition, WorkflowGoal, WorkflowGoalContract,
     WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WorkflowStepBindingKind,
-    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -19,7 +20,14 @@ pub struct WorkflowPlanCompiler;
 
 impl WorkflowPlanCompiler {
     pub fn compiler_revision(workflow_revision: &WorkflowRevision) -> &'static str {
-        if workflow_revision.semantic_contracts.is_some() {
+        if workflow_revision.semantic_contracts.is_some()
+            && workflow_revision
+                .contract
+                .spec()
+                .has_non_branch_source_handles()
+        {
+            WORKFLOW_PLAN_COMPILER_REVISION_V3
+        } else if workflow_revision.semantic_contracts.is_some() {
             WORKFLOW_PLAN_COMPILER_REVISION_V2
         } else {
             WORKFLOW_PLAN_COMPILER_REVISION
@@ -55,6 +63,11 @@ impl WorkflowPlanCompiler {
             .map(|step| (step.id.as_str(), step))
             .collect::<BTreeMap<_, _>>();
         let semantic_contracts = workflow_revision.semantic_contracts.as_ref();
+        let failure_version = semantic_contracts.is_some()
+            && workflow_revision
+                .contract
+                .spec()
+                .has_non_branch_source_handles();
         let steps = order
             .iter()
             .map(|id| {
@@ -72,6 +85,18 @@ impl WorkflowPlanCompiler {
                     descriptor: semantic_contracts
                         .and_then(|contracts| contracts.descriptor_bindings().resolve(&step.id))
                         .cloned(),
+                    failure: if failure_version {
+                        Some(
+                            semantic_contracts
+                                .ok_or_else(|| {
+                                    "Workflow failure route lost semantic contracts".to_owned()
+                                })?
+                                .failure_contract(&step.id)?
+                                .clone(),
+                        )
+                    } else {
+                        None
+                    },
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -84,7 +109,9 @@ impl WorkflowPlanCompiler {
             goal_id,
             plan_revision_id,
             WorkflowPlan {
-                schema: if semantic_contracts.is_some() {
+                schema: if failure_version {
+                    WORKFLOW_PLAN_SCHEMA_V3
+                } else if semantic_contracts.is_some() {
                     WORKFLOW_PLAN_SCHEMA_V2
                 } else {
                     WORKFLOW_PLAN_SCHEMA

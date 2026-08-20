@@ -9,13 +9,15 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowCompositeRegionPolicy, WorkflowIterationFailureMode,
-    WorkflowIterationRegionPolicy, WorkflowRun, WorkflowRunFlowState, WorkflowStepProjectionStatus,
+    WorkflowIterationRegionPolicy, WorkflowRun, WorkflowRunFlowState,
+    WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepProjectionStatus,
     WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_FLOW_VERSION_V4,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
-    composite_workflow_run_input, execution_workflow_run_input, workflow_run_input,
-    TEST_EXECUTION_STEP_ID,
+    composite_workflow_run_input, execution_workflow_run_input,
+    routed_execution_workflow_run_input, workflow_run_input, TEST_EXECUTION_STEP_ID,
 };
 use crate::modules::workflow::{
     IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionRequest,
@@ -475,6 +477,40 @@ async fn workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     (engine, record, now)
 }
 
+async fn routed_failure_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+    let mut input =
+        routed_execution_workflow_run_input().expect("routed execution WorkflowRun input");
+    let now = canonical_timestamp(Utc::now());
+    input.requested_at = now;
+    input.deadline_at = now + chrono::Duration::hours(1);
+    input
+        .validate()
+        .expect("valid routed execution WorkflowRun input");
+    let (run, steps) = WorkflowRun::create(input.clone(), PrincipalId::new()).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-workflow-execution-test@1").expect("runtime build");
+    let spec = WorkflowSpec::rust_embedded(
+        WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION_V4,
+        "a3s-cloud",
+        "main",
+    )
+    .with_runtime_build(runtime_build_id.clone());
+    let engine = FlowEngine::builder(Arc::new(TestFlowRuntime))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            spec,
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start routed WorkflowRun Flow");
+    (engine, record, now)
+}
+
 #[tokio::test]
 async fn terminal_child_is_linked_and_resumed_into_the_parent_flow() {
     let (engine, record, now) = workflow_fixture().await;
@@ -538,6 +574,162 @@ async fn permanent_dispatch_rejection_fails_without_creating_a_child_reference()
         .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
         .expect("execution step projection");
     assert_eq!(step.status, WorkflowStepProjectionStatus::Failed);
+}
+
+#[tokio::test]
+async fn permanent_dispatch_rejection_follows_the_descriptor_bound_failure_edge() {
+    let (engine, record, now) = routed_failure_workflow_fixture().await;
+    let coordinator = FlowWorkflowRunCoordinator::with_executions(
+        engine.clone(),
+        Arc::new(RejectingWorkflowExecutionPort),
+    );
+
+    let completed = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate routed rejection")
+        .expect("completed projection");
+
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    assert!(engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Flow snapshot")
+        .child_operations
+        .is_empty());
+    let execution = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
+        .expect("execution step projection");
+    assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    assert!(execution.result.is_none());
+    assert!(execution
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("Execution dispatch rejected")));
+    let failure_output = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .expect("failure output projection");
+    assert_eq!(
+        failure_output.status,
+        WorkflowStepProjectionStatus::Completed
+    );
+    let failure = serde_json::from_value::<WorkflowStepFailureOutput>(
+        failure_output.result.clone().expect("typed failure output"),
+    )
+    .expect("failure output contract");
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::DispatchRejected
+    );
+    assert_eq!(
+        completed
+            .steps
+            .iter()
+            .find(|step| step.step_id == "output")
+            .expect("success output projection")
+            .status,
+        WorkflowStepProjectionStatus::Skipped
+    );
+}
+
+#[tokio::test]
+async fn terminal_execution_failure_follows_the_same_typed_failure_edge() {
+    let (engine, record, now) = routed_failure_workflow_fixture().await;
+    let port = Arc::new(FakeWorkflowExecutionPort::queued(engine.clone()));
+    let coordinator = FlowWorkflowRunCoordinator::with_executions(
+        engine,
+        port.clone() as Arc<dyn IWorkflowExecutionPort>,
+    );
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate execution")
+        .expect("waiting projection");
+    let finished_at = canonical_timestamp(Utc::now() + chrono::Duration::milliseconds(1));
+    port.finish(
+        ExecutionOutcome::Failed {
+            exit_code: Some(17),
+            reason: "script failed".into(),
+        },
+        finished_at,
+    )
+    .await;
+
+    let completed = coordinator
+        .reconcile(&waiting, finished_at + chrono::Duration::milliseconds(1))
+        .await
+        .expect("resume failed execution")
+        .expect("completed failure branch");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let execution = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
+        .expect("execution projection");
+    assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    let failure = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .and_then(|step| step.result.clone())
+        .and_then(|value| serde_json::from_value::<WorkflowStepFailureOutput>(value).ok())
+        .expect("typed failure result");
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::ExecutionFailed
+    );
+    assert_eq!(failure.message, "script failed");
+    assert!(failure.details.is_some());
+}
+
+#[tokio::test]
+async fn terminal_execution_cancellation_follows_the_same_typed_failure_edge() {
+    let (engine, record, now) = routed_failure_workflow_fixture().await;
+    let port = Arc::new(FakeWorkflowExecutionPort::queued(engine.clone()));
+    let coordinator = FlowWorkflowRunCoordinator::with_executions(
+        engine,
+        port.clone() as Arc<dyn IWorkflowExecutionPort>,
+    );
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate execution")
+        .expect("waiting projection");
+    let finished_at = canonical_timestamp(Utc::now() + chrono::Duration::milliseconds(1));
+    port.finish(ExecutionOutcome::Cancelled, finished_at).await;
+
+    let completed = coordinator
+        .reconcile(&waiting, finished_at + chrono::Duration::milliseconds(1))
+        .await
+        .expect("resume cancelled execution")
+        .expect("completed cancellation branch");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let execution = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
+        .expect("execution projection");
+    assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    let failure = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .and_then(|step| step.result.clone())
+        .and_then(|value| serde_json::from_value::<WorkflowStepFailureOutput>(value).ok())
+        .expect("typed cancellation result");
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::ExecutionCancelled
+    );
+    assert_eq!(failure.message, "child Execution was cancelled");
+    assert!(failure.details.is_some());
 }
 
 #[tokio::test]

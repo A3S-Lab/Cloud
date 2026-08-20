@@ -13,16 +13,19 @@ use crate::modules::workflow::domain::{
     WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
     WorkflowDataSchema, WorkflowDataType, WorkflowEdgeSpec, WorkflowPayload,
     WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowRunInput,
-    WorkflowStepConfiguration, WorkflowStepDescriptorBinding, WorkflowStepKind,
-    WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
-    WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
-    WorkflowVariableScope, WorkflowVariableStorageClass, WORKFLOW_PLAN_COMPILER_REVISION,
-    WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WorkflowStepConfiguration, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableContractSpec,
+    WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableRead,
+    WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -826,6 +829,107 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
     Ok(input)
 }
 
+pub(crate) fn routed_execution_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = execution_workflow_run_input()?;
+    let semantic_digest = Sha256Digest::parse(digest('8'))?;
+    let schema_digest = input
+        .plan
+        .steps
+        .first()
+        .ok_or_else(|| "WorkflowRun execution test plan has no steps".to_owned())?
+        .output_schema_digest
+        .clone();
+    let unsupported_failure = || WorkflowStepFailureContract {
+        error_output: None,
+        retry_classification: WorkflowStepRetryClassification::NotRetryable,
+        fallback: WorkflowStepFallbackMode::Unsupported,
+        failure_branch: false,
+    };
+    let routed_failure = WorkflowStepFailureContract {
+        error_output: Some(WorkflowStepPort {
+            name: "error".into(),
+            value_type: WorkflowDataType::Object,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }),
+        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let output_step = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun execution test plan lost output".to_owned())?;
+    let mut failure_output_step = output_step;
+    failure_output_step.id = "failure_output".into();
+    input.plan.steps.insert(2, failure_output_step);
+    for step in &mut input.plan.steps {
+        step.descriptor = Some(WorkflowStepDescriptorBinding {
+            step_id: step.id.clone(),
+            descriptor_id: format!("workflow.{}", step.kind.as_str()),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: semantic_digest.clone(),
+        });
+        step.failure = Some(if step.id == TEST_EXECUTION_STEP_ID {
+            routed_failure.clone()
+        } else {
+            unsupported_failure()
+        });
+    }
+    input.plan.edges = vec![
+        edge("input-execute", "input", TEST_EXECUTION_STEP_ID, None),
+        edge(
+            "execute-failure",
+            TEST_EXECUTION_STEP_ID,
+            "failure_output",
+            Some("error"),
+        ),
+        edge("execute-output", TEST_EXECUTION_STEP_ID, "output", None),
+    ];
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![WorkflowVariableDeclaration {
+            name: "request".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::Any,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: true,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: None,
+        }],
+        reads: Vec::new(),
+        assignments: Vec::new(),
+        exports: Vec::new(),
+    })?;
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V3.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V3.into();
+    input.plan.semantic_contract_set_digest = Some(Sha256Digest::parse(digest('9'))?);
+    input.plan.variable_contract_digest = Some(variables.digest().clone());
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun routed execution test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V4.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V4.into();
+    input.variable_contract =
+        Some(super::domain::ResolvedWorkflowVariableContract::from_contract(&variables));
+    input.validate()?;
+    Ok(input)
+}
+
 pub(crate) fn human_decision_form_release(
     input: &WorkflowRunInput,
 ) -> Result<FormReleaseRef, String> {
@@ -877,6 +981,7 @@ fn plan_step(
         policy_digest: None,
         capability: None,
         descriptor: None,
+        failure: None,
     }
 }
 

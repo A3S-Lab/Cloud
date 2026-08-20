@@ -1,12 +1,12 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    CapabilityType, WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
-    WorkflowStepOwner, WorkflowStepRetryClassification, WorkflowVariableContract,
-    WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_SCHEMA,
-    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
-    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
-    WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+    validate_execution_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowPlan,
+    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass, WorkflowStepOwner,
+    WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableDefaults,
+    WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
+    WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use serde::Serialize;
@@ -260,6 +260,7 @@ impl WorkflowRevisionSemanticContracts {
         let mut referenced_descriptors = BTreeSet::new();
         let mut application_ports = BTreeSet::new();
         let mut descriptors_by_step = BTreeMap::new();
+        let mut failures_by_step = BTreeMap::new();
         for step in &workflow.steps {
             let binding = self
                 .descriptor_bindings
@@ -282,6 +283,7 @@ impl WorkflowRevisionSemanticContracts {
             validate_capability_binding(step, descriptor.spec())?;
             validate_connector_retry_authority(step, descriptor.spec())?;
             descriptors_by_step.insert(step.id.as_str(), descriptor.spec());
+            failures_by_step.insert(step.id.as_str(), &descriptor.spec().failure);
             referenced_descriptors.insert((descriptor.id(), descriptor.revision()));
             if descriptor.spec().owner == WorkflowStepOwner::Applications {
                 application_ports.insert(step.id.as_str());
@@ -299,6 +301,7 @@ impl WorkflowRevisionSemanticContracts {
                     .into(),
             );
         }
+        validate_execution_failure_routes(workflow, &failures_by_step)?;
         validate_variable_read_ports(self.variable_contract.spec(), &descriptors_by_step)?;
         self.variable_contract
             .validate_graph_bindings_with_application_ports(workflow, &application_ports)?;
@@ -311,6 +314,26 @@ impl WorkflowRevisionSemanticContracts {
 
     pub const fn descriptor_registry(&self) -> &WorkflowStepDescriptorRegistry {
         &self.descriptor_registry
+    }
+
+    pub(crate) fn failure_contract(
+        &self,
+        step_id: &str,
+    ) -> Result<&super::WorkflowStepFailureContract, String> {
+        let binding = self
+            .descriptor_bindings
+            .resolve(step_id)
+            .ok_or_else(|| format!("Workflow step {step_id:?} lost its descriptor binding"))?;
+        let descriptor = self
+            .descriptor_registry
+            .resolve(&binding.descriptor_id, &binding.descriptor_revision)
+            .ok_or_else(|| format!("Workflow step {step_id:?} lost its descriptor revision"))?;
+        if descriptor.semantic_digest() != &binding.semantic_digest {
+            return Err(format!(
+                "Workflow step {step_id:?} descriptor semantic authority drifted"
+            ));
+        }
+        Ok(&descriptor.spec().failure)
     }
 
     pub const fn variable_contract(&self) -> &WorkflowVariableContract {
@@ -351,6 +374,18 @@ impl WorkflowRevisionSemanticContracts {
                     "Workflow plan step {:?} descriptor authority drifted",
                     step.id
                 ));
+            }
+            let expected_failure = self.failure_contract(&step.id)?;
+            match plan.schema.as_str() {
+                super::WORKFLOW_PLAN_SCHEMA_V2 if step.failure.is_none() => {}
+                super::WORKFLOW_PLAN_SCHEMA_V3
+                    if step.failure.as_ref() == Some(expected_failure) => {}
+                _ => {
+                    return Err(format!(
+                        "Workflow plan step {:?} failure semantics drifted",
+                        step.id
+                    ))
+                }
             }
         }
         Ok(())

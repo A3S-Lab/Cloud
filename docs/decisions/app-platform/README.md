@@ -23,7 +23,8 @@ AI application platform parity manifest.
 | [0016](0016-deterministic-composite-frames.md) | Reduce exact child Workflow inputs and outputs through one deterministic composite frame without adding another orchestrator |
 | [0017](0017-ordered-composite-region-results.md) | Reconstruct arbitrary composite child observations by stable ordinal before reducing output, failure policy, updates, and exports |
 | [0018](0018-authority-bound-composite-child-workflow-runs.md) | Execute composite frames as deterministic ordinary child WorkflowRuns through existing Operation, Outbox, Flow, cancellation, and recovery authority |
+| [0019](0019-descriptor-bound-execution-failure-routes.md) | Route finite Execution failures through descriptor-bound ordinary DAG edges without another retry or orchestration mechanism |
 
-All eighteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All nineteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

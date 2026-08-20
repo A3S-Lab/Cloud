@@ -218,6 +218,7 @@ pub(super) fn fixture() -> Fixture {
                 policy_digest: None,
                 capability: None,
                 descriptor: Some(descriptor("input", "workflow.input")),
+                failure: None,
             },
             WorkflowPlanStep {
                 id: "iteration".into(),
@@ -235,6 +236,7 @@ pub(super) fn fixture() -> Fixture {
                     capability: "workflow.run".into(),
                 }),
                 descriptor: Some(descriptor("iteration", "workflow.iteration")),
+                failure: None,
             },
             WorkflowPlanStep {
                 id: "output".into(),
@@ -245,6 +247,7 @@ pub(super) fn fixture() -> Fixture {
                 policy_digest: None,
                 capability: None,
                 descriptor: Some(descriptor("output", "workflow.output")),
+                failure: None,
             },
         ],
         edges: vec![

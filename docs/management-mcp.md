@@ -410,10 +410,12 @@ revision identities/digests and optional Environment identity, then compiles
 one immutable Plan revision. Legacy inputs retain
 `cloud.workflow.plan.v1`; complete revision-owned semantic contracts compile
 `cloud.workflow.plan.v2` with exact descriptor, variable, and semantic-set
-digests plus an optional `compositeRegionsDigest`. Goal list/get and Plan get
-return the same DTOs as REST. Identical semantic inputs produce identical
-canonical Plan bytes and digest; Goal and Plan identities remain distinct
-records.
+digests plus an optional `compositeRegionsDigest`. A graph that selects the
+exact finite-Execution descriptor error port compiles Plan v3 and returns each
+step's immutable failure contract; execution still uses the same Flow and
+Executions authorities. Goal list/get and Plan get return the same DTOs as
+REST. Identical semantic inputs produce identical canonical Plan bytes and
+digest; Goal and Plan identities remain distinct records.
 
 ## Built-in Workflow node catalog
 

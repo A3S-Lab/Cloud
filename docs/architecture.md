@@ -273,7 +273,7 @@ second entry in an authority row must be redesigned before implementation.
 | PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; bounded-context families project one concrete repository instance to every implemented port | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or persistence behavior in composition |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Flow runtime dispatch | One startup-validated exact registry assembled from owner-provided workflow and step identities | Prefix routing, an implicit default runtime, duplicate step ownership, or discovering collisions only after work is dispatched |
-| Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility`, configured from one Cloud manifest with current `a3s-cloud-workflows@3` with explicit `@1` and `@2` replay generations and explicitly retained generations | A static identity reused after replay code changes, caller-selected identities, or another build router/queue |
+| Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility`, configured from one Cloud manifest with current `a3s-cloud-workflows@4` with explicit `@1`, `@2`, and `@3` replay generations and explicitly retained generations | A static identity reused after replay code changes, caller-selected identities, or another build router/queue |
 | Portable Workflow DAG structure | A3S Flow `WorkflowDag` compiler | A Cloud compatibility parser, Cloud topology sorter, authoring-tool execution schema, or product-local graph compiler |
 | Ontology, goal, plan, and Workflow semantic state | Workflow context in PostgreSQL | Flow history as business truth, a graph database authority, planner-local files, or a second workflow engine |
 | Application identity, immutable release, delivery/toolkit policy, sessions, messages/variants, conversation variables, feedback, and annotations | Applications context in PostgreSQL | Mode-specific/toolkit runtimes, Workflow-owned conversations, direct provider clients, delivery-local state, or presentation state as truth |
@@ -562,7 +562,7 @@ not business ownership or convenience wrappers.
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Notifications | Deterministic personal in-app projections of curated committed Outbox facts, exact-recipient and Resource Grant filtering, idempotent read state, immutable personal outbound-subscription A3S ACLs with REST/client/CLI/MCP management, transactional delivery authorization facts, side-effect-free signed-webhook/Slack-compatible request builders, a NATS durable/manual-ack consumer composed with the fenced Connector service, monotonic logical terminal receipts, C6 `Retry-After` pacing, and fixed eight-attempt `Exhausted` termination without another retry mechanism | `C0.3-N1` and `N2g` are verified; component slices `C0.3-N2a` through `N2f` are implemented and migrations `114`-`115` pass the retained PostgreSQL 17 foundation. The [N2g H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/31881826576/job/95005391069) verifies real JetStream durable restart and ACK-only terminal replay through persisted C6 evidence. User-configured alert suppression/delivery budgets, SMTP, alert policy, production availability remain unavailable |
 | Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor, typed-variable, composite-region, and per-step provider-retry semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, exact Connector capability ownership, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, digest-bound variable defaults, bounded composite policy/child bindings, deterministic composite frame/export and ordered region reducers, Flow-backed sequential Iteration/Loop child WorkflowRun dispatch/linkage/cancellation/recovery, initial typed-variable Flow projection, Flow-derived authorized variable inspection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, finite `execution`, the component-only Connectors-owned exact-attempt port, and immutable policy v2 retry-budget contracts are implemented. Connector dispatch and remaining provider child lifecycle, Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor, typed-variable, composite-region, and per-step provider-retry semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, exact Connector capability ownership, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, digest-bound variable defaults, bounded composite policy/child bindings, deterministic composite frame/export and ordered region reducers, Flow-backed sequential Iteration/Loop child WorkflowRun dispatch/linkage/cancellation/recovery, Plan v3/Run v4 descriptor-bound typed finite-Execution failure routing, initial typed-variable Flow projection, Flow-derived authorized variable inspection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, finite `execution`, the component-only Connectors-owned exact-attempt port, and immutable policy v2 retry-budget contracts are implemented. Connector dispatch and remaining provider child lifecycle, Applications-owned variables, default-output fallback, Answer and non-Execution error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
 | Applications | Application identities, immutable releases, six authoring/delivery projections including classic/New Agent distinction, sessions, messages/variants, conversation variables, toolkit/feedback/annotation/publication policy, and managed application delivery | Planned `APP0`; every release binds one exact Workflow revision and no application mode or toolkit feature owns an execution engine/provider client |
 | Knowledge | Knowledge Bases, documents, General/Parent-child/Q&A and multimodal chunks, metadata, ingestion intent, index/retrieval policy, citations, external Knowledge bindings, and immutable KnowledgePipelineRelease-to-Workflow bindings | Planned `K0`; pipeline execution reuses `W0` and Flow, while Search/vector indexes remain rebuildable projections |
 | Files | User upload sessions, metadata, scan/quota/retention state, and typed immutable-object references | Planned `K0.1`; bytes reuse the shared immutable-object client and are not Build Artifacts |
@@ -587,7 +587,7 @@ root binds those steps and every current or replay-supported workflow
 name/version to that owner. Duplicate workflow identities or step names abort
 startup. Unknown workflow identities and unknown steps fail at the router;
 there is no prefix dispatch and no default Deployment or other product runtime.
-Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v3
+Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v4
 identities remain explicit registry entries rather than compatibility guesses.
 
 Workflow also owns the implemented immutable descriptor and typed-variable
@@ -609,9 +609,14 @@ Plan v2 pins exact descriptors, variable semantics, and the semantic set
 containing any default or composite material. Its optional
 `compositeRegionsDigest` and immutable Run v3 input preserve the exact bounded
 region ACL and digest for composite execution; non-composite Plan v2 runs keep
-their v2 bytes. WorkflowRun v2 reconstructs supported values and defaults,
-while v3 also restores reduced composite updates and exports, from immutable
-input plus existing Flow history. A step
+their v2 bytes. When an Execution graph opts into its descriptor error port,
+Plan v3 additionally pins every exact failure contract and Run v4 routes one
+typed `cloud.workflow.step-failure.v1` value through the matching ordinary DAG
+edge. Plans v1-v2 and Run inputs v1-v3 retain their canonical bytes and replay
+behavior. WorkflowRun v2 reconstructs supported values and defaults, v3 also
+restores reduced composite updates and exports, and v4 composes both with
+descriptor-bound Execution failure routing from immutable input plus existing
+Flow history. A step
 with explicit reads can consume only its typed `current` projection; a step
 without reads retains legacy dependency input. REST/OpenAPI `1.34.0` transports
 digest-bound defaults, while `1.35.0` adds optional `compositeRegionsAcl`
@@ -634,7 +639,12 @@ child Flow identity, resumes digest-bound results, and cancels/awaits children
 before parent termination. Iteration is initially sequential, with declared
 concurrency retained as an upper bound. Applications variable adapters remain
 open and fail closed. No variable/region table, cache, event log, worker,
-scheduler, queue, or second Flow mechanism was added.
+scheduler, queue, or second Flow mechanism was added. Runtime v4 uses the same
+authority-bound finite Execution hook and projection: dispatch rejection,
+failed child, or cancelled child becomes one bounded typed error result only
+when the Plan declares the exact descriptor handle. Its selected handle
+activates the ordinary error edge; without that edge the historical fail-fast
+path remains. Executions still owns retry and child lifecycle.
 
 `Executions` and `Agents` are intentionally different. `Executions` owns the
 generic finite Task product. `Agents` owns conversation semantics and binds an
@@ -656,6 +666,11 @@ Operation as an A3S Flow child. Executions alone resolves and materializes the
 template, persists the child, and owns cancellation/cleanup. This dependency
 direction prevents a Workflow-owned task repository, scheduler, queue, Runtime
 adapter, or copied execution state machine.
+The optional finite failure branch does not change that dependency: Plan v3
+pins the Executions descriptor error port, Run v4 derives a typed terminal
+value from the same hook payload, and normal DAG dependency matching chooses
+the exact handled edge. The Execution projection remains failed even when the
+parent completes its reachable failure branch.
 
 `Applications`, `Knowledge`, and `Automations` are semantic authorities too.
 Applications projects six current product experiences onto exact Workflow

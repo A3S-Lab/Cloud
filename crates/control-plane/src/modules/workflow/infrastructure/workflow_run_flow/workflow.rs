@@ -4,7 +4,8 @@ use super::{
 use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
     WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
+    WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepFailureOutput,
     WorkflowStepKind,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
@@ -218,12 +219,29 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 )));
             }
             if let Some(payload) = context.hook_payload(&hook_id) {
-                match execution_result(&invocation.run_id, &hook_id, step, &metadata, payload)? {
+                match execution_result(
+                    &invocation.run_id,
+                    &hook_id,
+                    &input,
+                    step,
+                    &metadata,
+                    payload,
+                )? {
                     ExecutionResolution::Succeeded(result) => {
                         resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
                         continue;
                     }
-                    ExecutionResolution::Failed(error) => {
+                    ExecutionResolution::Failed {
+                        error: _,
+                        routed: Some(result),
+                    } => {
+                        resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                        continue;
+                    }
+                    ExecutionResolution::Failed {
+                        error,
+                        routed: None,
+                    } => {
                         return Ok(context.fail(format!(
                             "Workflow execution step {:?} failed: {error}",
                             step.plan.id
@@ -298,12 +316,16 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
 
 pub(super) enum ExecutionResolution {
     Succeeded(Box<WorkflowLocalStepResult>),
-    Failed(String),
+    Failed {
+        error: String,
+        routed: Option<Box<WorkflowLocalStepResult>>,
+    },
 }
 
 pub(super) fn execution_result(
     run_id: &str,
     hook_id: &str,
+    input: &WorkflowRunInput,
     step: &ResolvedWorkflowRunStep,
     metadata: &WorkflowExecutionHookMetadata,
     observed: &Value,
@@ -318,14 +340,14 @@ pub(super) fn execution_result(
     }
     let (output, output_digest) = match payload.resolution {
         WorkflowExecutionResumeResolution::Rejected { reason } => {
-            return Ok(ExecutionResolution::Failed(reason));
+            return execution_failure_resolution(run_id, input, step, reason, None);
         }
         WorkflowExecutionResumeResolution::Completed {
             output,
             output_digest,
         } => {
             if let Some(error) = output.outcome.failure_message() {
-                return Ok(ExecutionResolution::Failed(error));
+                return execution_failure_resolution(run_id, input, step, error, Some(output));
             }
             (output, output_digest)
         }
@@ -344,6 +366,66 @@ pub(super) fn execution_result(
         .validate(step)
         .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
     Ok(ExecutionResolution::Succeeded(Box::new(result)))
+}
+
+fn execution_failure_resolution(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    error: String,
+    detail: Option<WorkflowExecutionStepOutput>,
+) -> Result<ExecutionResolution, FlowError> {
+    let Some(handle) = execution_failure_handle(input, step)? else {
+        return Ok(ExecutionResolution::Failed {
+            error,
+            routed: None,
+        });
+    };
+    let failure = match detail {
+        Some(output) => WorkflowStepFailureOutput::from_execution(step, output),
+        None => WorkflowStepFailureOutput::dispatch_rejected(step, error.clone()),
+    }
+    .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    let output = serde_json::to_value(failure)
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    let output_digest = super::execution::value_digest(&output, "Workflow step failure output")
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::Execution,
+        output,
+        output_digest,
+        selected_handle: Some(handle),
+        composite_region_result: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    Ok(ExecutionResolution::Failed {
+        error,
+        routed: Some(Box::new(result)),
+    })
+}
+
+fn execution_failure_handle(
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+) -> Result<Option<String>, FlowError> {
+    let handles = input
+        .plan
+        .edges
+        .iter()
+        .filter(|edge| edge.source == step.plan.id)
+        .filter_map(|edge| edge.source_handle.as_ref())
+        .collect::<Vec<_>>();
+    match handles.as_slice() {
+        [] => Ok(None),
+        [handle] => Ok(Some((*handle).clone())),
+        _ => Err(FlowError::InvalidWorkflow(format!(
+            "Workflow Execution step {:?} has more than one failure route",
+            step.plan.id
+        ))),
+    }
 }
 
 fn execution_payload_drift(run_id: &str, step_id: &str) -> FlowError {
@@ -436,11 +518,7 @@ fn dependency_state(
         let ResolvedState::Active(result) = source else {
             continue;
         };
-        let edge_active = if result.kind == WorkflowStepKind::Branch {
-            result.selected_handle.as_deref() == edge.source_handle.as_deref()
-        } else {
-            true
-        };
+        let edge_active = result.selected_handle.as_deref() == edge.source_handle.as_deref();
         if edge_active {
             active = true;
             dependencies.insert(edge.source.clone(), result.output.clone());

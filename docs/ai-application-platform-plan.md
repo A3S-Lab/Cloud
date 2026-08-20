@@ -396,7 +396,13 @@ non-composite invocation, node-output, defaults, deterministic run-assignment,
 direct-read, and opaque-reference values. Version 3 preserves exact composite
 ACL/digest material, executes authority-bound child WorkflowRuns, and restores
 reduced composite updates/exports from the same immutable input and Flow
-history.
+history. A finite Execution graph that declares the exact descriptor error edge
+emits Plan v3 and immutable WorkflowRun input/runtime/Flow v4. Dispatch
+rejection, terminal failure, and terminal cancellation become one bounded
+`cloud.workflow.step-failure.v1` result selected through the ordinary DAG; the
+Execution projection remains failed while its reachable error branch may
+complete the parent. Plan v1-v2 and Run v1-v3 retain their byte and replay
+shape, and no retry/provider mechanism moves into Workflow.
 REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP accept
 optional default and composite ACL material; the inspection surface added in
 `1.33.0` exposes variable materialization through one authorized, bounded
@@ -406,7 +412,9 @@ references, adds no variable store, and rejects Plan v1. Composite-region
 frames/exports and sequential Iteration/Loop dispatch are implemented through
 exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
 parent cancellation/timeout propagation. Applications dispatch remains open
-and fail closed. Existing `cloud.workflow.plan.v1` histories are unchanged.
+and fail closed. Default-output fallback, Answer, and non-Execution error
+semantics remain open. Existing `cloud.workflow.plan.v1` histories are
+unchanged.
 
 The initial `Iteration` executor dispatches deterministic item ordinals
 sequentially, preserving the declared maximum concurrency as a strict ceiling,
@@ -692,14 +700,15 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All eighteen
+   reject inventory/schema drift and false public claims. All nineteen
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
    defaults, revision-bound composite policy, the single Flow DAG compiler,
    exact runtime registry, versioned runtime builds, deterministic composite
-   frames, ordered composite-region reduction, and authority-bound child
-   WorkflowRun coordination are accepted and versioned.
+   frames, ordered composite-region reduction, authority-bound child
+   WorkflowRun coordination, and descriptor-bound finite-Execution failure
+   routing are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.

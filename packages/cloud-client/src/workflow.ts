@@ -189,6 +189,63 @@ export interface WorkflowPlanStep {
   policyDigest: string | null;
   capability: WorkflowCapabilityReference | null;
   descriptor: WorkflowStepDescriptorBinding | null;
+  failure?: WorkflowStepFailureContract;
+}
+
+export type WorkflowStepPortCardinality = 'single' | 'many';
+
+export type WorkflowStepRetryClassification = 'not_retryable' | 'flow_retryable' | 'owner_classified';
+
+export type WorkflowStepFallbackMode = 'unsupported' | 'default_output' | 'failure_branch';
+
+export interface WorkflowStepPort {
+  name: string;
+  valueType: WorkflowDataType;
+  cardinality: WorkflowStepPortCardinality;
+  required: boolean;
+  dynamic: boolean;
+}
+
+export interface WorkflowStepFailureContract {
+  errorOutput: WorkflowStepPort | null;
+  retryClassification: WorkflowStepRetryClassification;
+  fallback: WorkflowStepFallbackMode;
+  failureBranch: boolean;
+}
+
+export type WorkflowStepFailureClassification =
+  | 'dispatch_rejected'
+  | 'execution_failed'
+  | 'execution_cancelled';
+
+export type WorkflowExecutionOutcome =
+  | { kind: 'succeeded'; exit_code: 0 }
+  | { kind: 'failed'; exit_code: number | null; reason: string }
+  | { kind: 'cancelled' };
+
+export interface WorkflowExecutionStepOutput {
+  schema: 'cloud.workflow.execution-result.v1';
+  executionId: string;
+  operationId: string;
+  executionTemplateId: string;
+  executionTemplateRevisionId: string;
+  executionTemplateDigest: string;
+  invocationTemplateDigest: string;
+  outcome: WorkflowExecutionOutcome;
+  finishedAt: string;
+}
+
+export interface WorkflowExecutionFailureDetails {
+  kind: 'execution';
+  output: WorkflowExecutionStepOutput;
+}
+
+export interface WorkflowStepFailureOutput {
+  schema: 'cloud.workflow.step-failure.v1';
+  stepId: string;
+  classification: WorkflowStepFailureClassification;
+  message: string;
+  details?: WorkflowExecutionFailureDetails;
 }
 
 export interface WorkflowStepDescriptorBinding {
@@ -206,8 +263,11 @@ export interface WorkflowPlanEdge {
 }
 
 export interface WorkflowPlan {
-  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2';
-  compilerRevision: 'cloud.workflow.plan-compiler.v1' | 'cloud.workflow.plan-compiler.v2';
+  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2' | 'cloud.workflow.plan.v3';
+  compilerRevision:
+    | 'cloud.workflow.plan-compiler.v1'
+    | 'cloud.workflow.plan-compiler.v2'
+    | 'cloud.workflow.plan-compiler.v3';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
@@ -229,8 +289,11 @@ export interface WorkflowPlanRevision {
   projectId: string;
   workflowGoalId: string;
   id: string;
-  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2';
-  compilerRevision: 'cloud.workflow.plan-compiler.v1' | 'cloud.workflow.plan-compiler.v2';
+  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2' | 'cloud.workflow.plan.v3';
+  compilerRevision:
+    | 'cloud.workflow.plan-compiler.v1'
+    | 'cloud.workflow.plan-compiler.v2'
+    | 'cloud.workflow.plan-compiler.v3';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;
@@ -310,7 +373,7 @@ export interface WorkflowRunHistoryOptions {
 
 export interface WorkflowStepProjection {
   stepId: string;
-  kind: 'input' | 'transform' | 'branch' | 'output';
+  kind: WorkflowStepKind;
   status: WorkflowStepProjectionStatus;
   flowStepId: string;
   attemptGeneration: number;

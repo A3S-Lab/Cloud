@@ -16,8 +16,9 @@ pub use ontology::Ontology;
 pub use ontology_revision::{OntologyRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION};
 pub use plan_revision::{
     PlanRevision, WorkflowPlan, WorkflowPlanStep, WORKFLOW_PLAN_COMPILER_REVISION,
-    WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_COMPILER_REVISION_V3,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3,
 };
 pub use workflow_decision::{WorkflowDecision, WorkflowDecisionOutcome};
 pub use workflow_definition::WorkflowDefinition;

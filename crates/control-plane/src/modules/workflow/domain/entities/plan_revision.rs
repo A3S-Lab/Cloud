@@ -4,17 +4,20 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    CapabilityReference, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec,
-    WorkflowStepDescriptorBinding, WorkflowStepKind, WorkflowStepSpec,
+    validate_execution_failure_routes, CapabilityReference, WorkflowContractQuotas,
+    WorkflowEdgeSpec, WorkflowSpec, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepKind, WorkflowStepSpec,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const WORKFLOW_PLAN_SCHEMA: &str = "cloud.workflow.plan.v1";
 pub const WORKFLOW_PLAN_COMPILER_REVISION: &str = "cloud.workflow.plan-compiler.v1";
 pub const WORKFLOW_PLAN_SCHEMA_V2: &str = "cloud.workflow.plan.v2";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V2: &str = "cloud.workflow.plan-compiler.v2";
+pub const WORKFLOW_PLAN_SCHEMA_V3: &str = "cloud.workflow.plan.v3";
+pub const WORKFLOW_PLAN_COMPILER_REVISION_V3: &str = "cloud.workflow.plan-compiler.v3";
 pub const WORKFLOW_PLAN_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +32,8 @@ pub struct WorkflowPlanStep {
     pub capability: Option<CapabilityReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub descriptor: Option<WorkflowStepDescriptorBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<WorkflowStepFailureContract>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,11 +62,18 @@ pub struct WorkflowPlan {
 
 impl WorkflowPlan {
     pub fn validate(&self) -> Result<(), String> {
-        let semantic_version = match (self.schema.as_str(), self.compiler_revision.as_str()) {
-            (WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_COMPILER_REVISION) => false,
-            (WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_COMPILER_REVISION_V2) => true,
+        let version = match (self.schema.as_str(), self.compiler_revision.as_str()) {
+            (WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_COMPILER_REVISION) => WorkflowPlanVersion::V1,
+            (WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_COMPILER_REVISION_V2) => {
+                WorkflowPlanVersion::V2
+            }
+            (WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_COMPILER_REVISION_V3) => {
+                WorkflowPlanVersion::V3
+            }
             _ => return Err("Workflow plan schema and compiler revision are incompatible".into()),
         };
+        let semantic_version = version != WorkflowPlanVersion::V1;
+        let failure_version = version == WorkflowPlanVersion::V3;
         if self.workflow_definition_id.as_uuid().is_nil()
             || self.workflow_revision_id.as_uuid().is_nil()
             || self.ontology_id.as_uuid().is_nil()
@@ -98,6 +110,30 @@ impl WorkflowPlan {
             })
         {
             return Err("Workflow plan descriptor binding targets the wrong step".into());
+        }
+        if self
+            .steps
+            .iter()
+            .any(|step| step.failure.is_some() != failure_version)
+        {
+            return Err("Workflow plan step failure contracts are incomplete".into());
+        }
+        let failures = self
+            .steps
+            .iter()
+            .filter_map(|step| {
+                step.failure
+                    .as_ref()
+                    .map(|failure| (step.id.as_str(), failure))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let has_failure_routes = if failure_version {
+            validate_execution_failure_routes(&workflow, &failures)?
+        } else {
+            workflow.has_non_branch_source_handles()
+        };
+        if has_failure_routes != failure_version {
+            return Err("Workflow plan failure-route version is invalid".into());
         }
         if self.environment_id.is_none()
             && self
@@ -148,6 +184,13 @@ impl WorkflowPlan {
             edges: self.edges.clone(),
         })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkflowPlanVersion {
+    V1,
+    V2,
+    V3,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

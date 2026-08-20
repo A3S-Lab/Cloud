@@ -12,9 +12,10 @@ pub use readers::{WorkflowRunHistoryReader, WorkflowRunVariableReader};
 
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workflow::domain::{
-    ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    execution_failure_output, ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepFailureOutput,
+    WorkflowStepKind, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
         (
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V3,
+        ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V4,
         ),
     ]
     .into_iter()
@@ -83,11 +88,28 @@ impl WorkflowLocalStepResult {
         if self.step_id != expected.plan.id || self.kind != expected.plan.kind {
             return Err("Workflow local step result identity drifted".into());
         }
-        execution::validate_data_schema(
-            &expected.output_schema,
-            &self.output,
-            "Workflow step output",
-        )?;
+        let routed_failure =
+            self.kind == WorkflowStepKind::Execution && self.selected_handle.is_some();
+        if routed_failure {
+            let failure = serde_json::from_value::<WorkflowStepFailureOutput>(self.output.clone())
+                .map_err(|error| format!("Workflow step failure output is invalid: {error}"))?;
+            failure.validate(expected)?;
+            let expected_handle =
+                execution_failure_output(expected.plan.failure.as_ref().ok_or_else(|| {
+                    "Workflow Execution failure result lost its immutable contract".to_owned()
+                })?)?
+                .name
+                .as_str();
+            if self.selected_handle.as_deref() != Some(expected_handle) {
+                return Err("Workflow Execution failure selected the wrong error handle".into());
+            }
+        } else {
+            execution::validate_data_schema(
+                &expected.output_schema,
+                &self.output,
+                "Workflow step output",
+            )?;
+        }
         let digest = execution::value_digest(&self.output, "Workflow step output")?;
         if digest != self.output_digest {
             return Err("Workflow local step output digest does not match".into());
@@ -107,7 +129,7 @@ impl WorkflowLocalStepResult {
                     "Workflow branch selected undeclared handle {selected:?}"
                 ));
             }
-        } else if self.selected_handle.is_some() {
+        } else if self.selected_handle.is_some() && !routed_failure {
             return Err("non-branch Workflow step selected a handle".into());
         }
         match (self.kind, self.composite_region_result.as_ref()) {
@@ -152,6 +174,7 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
             WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION
                 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2
                 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
         ) {
             return Err(FlowError::Runtime(
                 "WorkflowRun step runtime contract revision is unsupported".into(),

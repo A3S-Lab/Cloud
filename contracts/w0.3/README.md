@@ -19,6 +19,29 @@ recoverable registry snapshot, and variables as immutable WorkflowRevision
 children. `cloud.workflow.plan.v2` pins each semantic descriptor digest; the
 `plan.v1` replay shape remains unchanged.
 
+## Descriptor-bound finite failure route
+
+The `executions.finite` descriptor declares one required static object error
+output named `error`, owner-classified retry, and failure-branch fallback. A
+Workflow graph may opt into that contract with one ordinary handled edge from
+the Execution step plus at least one unhandled success edge. The handle must be
+exactly `error`; no authoring label, presentation metadata, or runtime guess may
+select it.
+
+That graph emits `cloud.workflow.plan.v3`, which copies every exact descriptor
+failure contract into the canonical Plan. Immutable WorkflowRun
+input/runtime/Flow v4 converts dispatch rejection, terminal Execution failure,
+or terminal cancellation into a bounded `cloud.workflow.step-failure.v1`
+object and selects the same ordinary edge. The Execution projection stays
+failed while the reachable error path may complete its parent. Without the
+edge, historical fail-fast behavior remains. Plan v1-v2 and Run input v1-v3
+retain their byte and replay shape.
+
+This is conformance for the existing finite Execution port only. It adds no
+retry engine, error queue, node-run table, provider lifecycle, or Flow history.
+Default-output fallback, Answer frames, compensation, and other provider error
+branches remain unavailable.
+
 ## Typed variable scopes
 
 `variable-contract.acl` is the canonical conformance fixture for

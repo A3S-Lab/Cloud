@@ -1,12 +1,13 @@
 use super::entities::digest_payload_set;
 use super::{
-    CapabilityType, WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec,
-    WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep,
-    WorkflowPolicy, WorkflowPolicyMode, WorkflowStepConfiguration, WorkflowStepKind,
-    WorkflowVariableContract, WorkflowVariableDefaults, WorkflowVariableMutationMode,
-    WorkflowVariableReadMode, WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
-    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    execution_failure_output, CapabilityType, WorkflowCompositeRegions, WorkflowDataSchema,
+    WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan,
+    WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode, WorkflowStepConfiguration,
+    WorkflowStepKind, WorkflowVariableContract, WorkflowVariableDefaults,
+    WorkflowVariableMutationMode, WorkflowVariableReadMode, WorkflowVariableScope,
+    WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
     WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
@@ -29,6 +30,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V2: &str = "2";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V3: &str = "cloud.workflow-run.input.v3";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3: &str = "cloud.workflow-run-runtime.v3";
 pub const WORKFLOW_RUN_FLOW_VERSION_V3: &str = "3";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V4: &str = "cloud.workflow-run.input.v4";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4: &str = "cloud.workflow-run-runtime.v4";
+pub const WORKFLOW_RUN_FLOW_VERSION_V4: &str = "4";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -47,6 +51,7 @@ pub const WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA: &str =
     "cloud.workflow.execution-child-reference.v1";
 pub const WORKFLOW_EXECUTION_RESUME_SCHEMA: &str = "cloud.workflow.execution-resume.v1";
 pub const WORKFLOW_EXECUTION_RESULT_SCHEMA: &str = "cloud.workflow.execution-result.v1";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA: &str = "cloud.workflow.step-failure.v1";
 pub const WORKFLOW_EXECUTION_STEP_ATTEMPT: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -474,6 +479,24 @@ impl WorkflowExecutionOutcome {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowStepFailureClassification {
+    DispatchRejected,
+    ExecutionFailed,
+    ExecutionCancelled,
+}
+
+impl WorkflowStepFailureClassification {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DispatchRejected => "dispatch_rejected",
+            Self::ExecutionFailed => "execution_failed",
+            Self::ExecutionCancelled => "execution_cancelled",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowExecutionStepOutput {
@@ -490,19 +513,166 @@ pub struct WorkflowExecutionStepOutput {
 
 impl WorkflowExecutionStepOutput {
     pub fn validate(&self, metadata: &WorkflowExecutionHookMetadata) -> Result<(), String> {
-        self.outcome.validate()?;
-        if self.schema != WORKFLOW_EXECUTION_RESULT_SCHEMA
-            || self.execution_id.as_uuid().is_nil()
-            || self.operation_id.as_uuid() != self.execution_id.as_uuid()
-            || self.execution_template_id != metadata.execution_template_id
+        self.validate_shape()?;
+        if self.execution_template_id != metadata.execution_template_id
             || self.execution_template_revision_id != metadata.execution_template_revision_id
             || self.execution_template_digest != metadata.execution_template_digest
-            || self.finished_at != canonical_timestamp(self.finished_at)
         {
             return Err("Workflow execution step output authority is invalid".into());
         }
         Ok(())
     }
+
+    fn validate_shape(&self) -> Result<(), String> {
+        self.outcome.validate()?;
+        if self.schema != WORKFLOW_EXECUTION_RESULT_SCHEMA
+            || self.execution_id.as_uuid().is_nil()
+            || self.operation_id.as_uuid() != self.execution_id.as_uuid()
+            || self.finished_at != canonical_timestamp(self.finished_at)
+        {
+            return Err("Workflow execution step output shape is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkflowStepFailureDetails {
+    Execution { output: WorkflowExecutionStepOutput },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowStepFailureOutput {
+    pub schema: String,
+    pub step_id: String,
+    pub classification: WorkflowStepFailureClassification,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<WorkflowStepFailureDetails>,
+}
+
+impl WorkflowStepFailureOutput {
+    pub fn dispatch_rejected(
+        step: &ResolvedWorkflowRunStep,
+        message: String,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA.into(),
+            step_id: step.plan.id.clone(),
+            classification: WorkflowStepFailureClassification::DispatchRejected,
+            message,
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
+    pub fn from_execution(
+        step: &ResolvedWorkflowRunStep,
+        output: WorkflowExecutionStepOutput,
+    ) -> Result<Self, String> {
+        let (classification, message) = match &output.outcome {
+            WorkflowExecutionOutcome::Succeeded { .. } => {
+                return Err("successful Workflow execution cannot produce failure output".into())
+            }
+            WorkflowExecutionOutcome::Failed { reason, .. } => (
+                WorkflowStepFailureClassification::ExecutionFailed,
+                reason.clone(),
+            ),
+            WorkflowExecutionOutcome::Cancelled => (
+                WorkflowStepFailureClassification::ExecutionCancelled,
+                "child Execution was cancelled".into(),
+            ),
+        };
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA.into(),
+            step_id: step.plan.id.clone(),
+            classification,
+            message,
+            details: Some(WorkflowStepFailureDetails::Execution { output }),
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
+    pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
+        if self.schema != WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA
+            || self.step_id != step.plan.id
+            || step.plan.kind != WorkflowStepKind::Execution
+            || self.message.is_empty()
+            || self.message.len() > 16 * 1024
+            || self.message.contains(['\0', '\r', '\n'])
+        {
+            return Err("Workflow step failure output identity or message is invalid".into());
+        }
+        let failure =
+            step.plan.failure.as_ref().ok_or_else(|| {
+                "Workflow step failure output has no immutable contract".to_owned()
+            })?;
+        let error_output = execution_failure_output(failure)?;
+        let encoded = serde_json::to_value(self)
+            .map_err(|error| format!("Workflow step failure output is invalid: {error}"))?;
+        if !error_output.value_type.matches_json_value(&encoded) {
+            return Err("Workflow step failure output does not match its descriptor type".into());
+        }
+        canonical_json_bounded(
+            self,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow step failure output",
+        )?;
+        match (self.classification, self.details.as_ref()) {
+            (WorkflowStepFailureClassification::DispatchRejected, None) => Ok(()),
+            (
+                WorkflowStepFailureClassification::ExecutionFailed,
+                Some(WorkflowStepFailureDetails::Execution { output }),
+            ) => {
+                validate_failure_execution_authority(output, step)?;
+                match &output.outcome {
+                    WorkflowExecutionOutcome::Failed { reason, .. } if reason == &self.message => {
+                        Ok(())
+                    }
+                    _ => Err("Workflow execution failure classification drifted".into()),
+                }
+            }
+            (
+                WorkflowStepFailureClassification::ExecutionCancelled,
+                Some(WorkflowStepFailureDetails::Execution { output }),
+            ) => {
+                validate_failure_execution_authority(output, step)?;
+                if output.outcome == WorkflowExecutionOutcome::Cancelled
+                    && self.message == "child Execution was cancelled"
+                {
+                    Ok(())
+                } else {
+                    Err("Workflow execution cancellation classification drifted".into())
+                }
+            }
+            _ => Err("Workflow step failure details do not match their classification".into()),
+        }
+    }
+}
+
+fn validate_failure_execution_authority(
+    output: &WorkflowExecutionStepOutput,
+    step: &ResolvedWorkflowRunStep,
+) -> Result<(), String> {
+    output.validate_shape()?;
+    let capability = step
+        .plan
+        .capability
+        .as_ref()
+        .ok_or_else(|| "Workflow Execution failure lost its capability".to_owned())?;
+    capability.validate()?;
+    if capability.capability_type != CapabilityType::ExecutionTemplate
+        || output.execution_template_id.as_uuid() != capability.resource_id
+        || output.execution_template_revision_id.to_string() != capability.revision
+        || output.execution_template_digest != capability.digest
+    {
+        return Err("Workflow Execution failure detail authority drifted".into());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -626,7 +796,9 @@ impl WorkflowRunInput {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
         let maximum_bytes = if matches!(
             self.schema.as_str(),
-            WORKFLOW_RUN_INPUT_SCHEMA_V2 | WORKFLOW_RUN_INPUT_SCHEMA_V3
+            WORKFLOW_RUN_INPUT_SCHEMA_V2
+                | WORKFLOW_RUN_INPUT_SCHEMA_V3
+                | WORKFLOW_RUN_INPUT_SCHEMA_V4
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -636,95 +808,130 @@ impl WorkflowRunInput {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let (variable_contract, variable_defaults, composite_regions, composite_runtime) = match (
-            self.schema.as_str(),
-            self.runtime_contract_revision.as_str(),
-            self.flow_workflow_version.as_str(),
-            self.plan.schema.as_str(),
-            self.variable_contract.as_ref(),
-            self.variable_defaults.as_ref(),
-            self.composite_regions.as_ref(),
-        ) {
-            (
-                WORKFLOW_RUN_INPUT_SCHEMA,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-                WORKFLOW_RUN_FLOW_VERSION,
-                WORKFLOW_PLAN_SCHEMA,
-                None,
-                None,
-                None,
-            ) => (None, None, None, false),
-            (
-                WORKFLOW_RUN_INPUT_SCHEMA_V2,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-                WORKFLOW_RUN_FLOW_VERSION_V2,
-                WORKFLOW_PLAN_SCHEMA_V2,
-                Some(resolved),
-                defaults,
-                regions,
-            ) => {
-                let contract = resolved.restore()?;
-                if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
-                    return Err(
-                        "WorkflowRun variable contract drifted from the PlanRevision".into(),
-                    );
+        let (variable_contract, variable_defaults, composite_regions, composite_runtime) =
+            match (
+                self.schema.as_str(),
+                self.runtime_contract_revision.as_str(),
+                self.flow_workflow_version.as_str(),
+                self.plan.schema.as_str(),
+                self.variable_contract.as_ref(),
+                self.variable_defaults.as_ref(),
+                self.composite_regions.as_ref(),
+            ) {
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+                    WORKFLOW_RUN_FLOW_VERSION,
+                    WORKFLOW_PLAN_SCHEMA,
+                    None,
+                    None,
+                    None,
+                ) => (None, None, None, false),
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V2,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+                    WORKFLOW_RUN_FLOW_VERSION_V2,
+                    WORKFLOW_PLAN_SCHEMA_V2,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                ) => {
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) => {}
+                        (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    (Some(contract), defaults, regions, false)
                 }
-                let defaults = defaults
-                    .map(ResolvedWorkflowVariableDefaults::restore)
-                    .transpose()?;
-                validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
-                let regions = regions
-                    .map(ResolvedWorkflowCompositeRegions::restore)
-                    .transpose()?;
-                match (
-                    self.plan.composite_regions_digest.as_ref(),
-                    regions.as_ref(),
-                ) {
-                    (None, None) => {}
-                    (Some(_), Some(_)) => {}
-                    _ => {
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V3,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+                    WORKFLOW_RUN_FLOW_VERSION_V3,
+                    WORKFLOW_PLAN_SCHEMA_V2,
+                    Some(resolved),
+                    defaults,
+                    Some(resolved_regions),
+                ) => {
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = resolved_regions.restore()?;
+                    if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
                         return Err(
                             "WorkflowRun composite region material drifted from the PlanRevision"
                                 .into(),
-                        )
+                        );
                     }
+                    (Some(contract), defaults, Some(regions), true)
                 }
-                (Some(contract), defaults, regions, false)
-            }
-            (
-                WORKFLOW_RUN_INPUT_SCHEMA_V3,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-                WORKFLOW_RUN_FLOW_VERSION_V3,
-                WORKFLOW_PLAN_SCHEMA_V2,
-                Some(resolved),
-                defaults,
-                Some(resolved_regions),
-            ) => {
-                let contract = resolved.restore()?;
-                if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
-                    return Err(
-                        "WorkflowRun variable contract drifted from the PlanRevision".into(),
-                    );
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V4,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+                    WORKFLOW_RUN_FLOW_VERSION_V4,
+                    WORKFLOW_PLAN_SCHEMA_V3,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                ) => {
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime)
                 }
-                let defaults = defaults
-                    .map(ResolvedWorkflowVariableDefaults::restore)
-                    .transpose()?;
-                validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
-                let regions = resolved_regions.restore()?;
-                if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
+                _ => {
                     return Err(
-                        "WorkflowRun composite region material drifted from the PlanRevision"
+                        "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
                             .into(),
-                    );
+                    )
                 }
-                (Some(contract), defaults, Some(regions), true)
-            }
-            _ => {
-                return Err(
-                    "WorkflowRun input, runtime, plan, and Flow versions are incompatible".into(),
-                )
-            }
-        };
+            };
         if self.flow_workflow_name != WORKFLOW_RUN_FLOW_NAME
             || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()

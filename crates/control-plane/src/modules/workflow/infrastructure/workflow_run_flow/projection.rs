@@ -191,13 +191,17 @@ pub fn project_workflow_run_record(
                 } else {
                     None
                 };
+                let selected_handle = failure
+                    .as_ref()
+                    .and_then(|_| completed.get(&projection.step_id))
+                    .and_then(|result| result.selected_handle.clone());
                 (
                     step_status,
                     u32::try_from(metadata.step_attempt).map_err(|_| {
                         "Workflow execution attempt exceeds projection bounds".to_owned()
                     })?,
                     result,
-                    None,
+                    selected_handle,
                     failure,
                     sequence,
                     at,
@@ -445,6 +449,7 @@ pub(super) fn completed_workflow_steps(
                     match execution_result(
                         &snapshot.run_id,
                         &metadata.flow_hook_id(),
+                        input,
                         resolved,
                         &metadata,
                         payload,
@@ -454,7 +459,10 @@ pub(super) fn completed_workflow_steps(
                         ExecutionResolution::Succeeded(result) => {
                             completed.insert(result.step_id.clone(), *result);
                         }
-                        ExecutionResolution::Failed(error) => {
+                        ExecutionResolution::Failed { error, routed } => {
+                            if let Some(result) = routed {
+                                completed.insert(result.step_id.clone(), *result);
+                            }
                             execution_failures.insert(resolved.plan.id.clone(), error);
                         }
                     }

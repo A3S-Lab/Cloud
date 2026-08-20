@@ -4,7 +4,7 @@ use crate::modules::workflow::application::{
 use crate::modules::workflow::domain::{
     CapabilityReference, PlanRevision, WorkflowDefinition, WorkflowEdgeSpec, WorkflowGoalRecord,
     WorkflowPayload, WorkflowPlan, WorkflowPlanStep, WorkflowRevision,
-    WorkflowStepDescriptorBinding,
+    WorkflowStepDescriptorBinding, WorkflowStepFailureContract, WorkflowStepPort,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -102,6 +102,50 @@ pub struct WorkflowPlanStepResponse {
     pub policy_digest: Option<String>,
     pub capability: Option<WorkflowCapabilityReferenceResponse>,
     pub descriptor: Option<WorkflowStepDescriptorBindingResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<WorkflowStepFailureContractResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowStepFailureContractResponse {
+    pub error_output: Option<WorkflowStepPortResponse>,
+    pub retry_classification: String,
+    pub fallback: String,
+    pub failure_branch: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowStepPortResponse {
+    pub name: String,
+    pub value_type: String,
+    pub cardinality: String,
+    pub required: bool,
+    pub dynamic: bool,
+}
+
+impl From<WorkflowStepPort> for WorkflowStepPortResponse {
+    fn from(value: WorkflowStepPort) -> Self {
+        Self {
+            name: value.name,
+            value_type: value.value_type.as_str().to_owned(),
+            cardinality: value.cardinality.as_str().to_owned(),
+            required: value.required,
+            dynamic: value.dynamic,
+        }
+    }
+}
+
+impl From<WorkflowStepFailureContract> for WorkflowStepFailureContractResponse {
+    fn from(value: WorkflowStepFailureContract) -> Self {
+        Self {
+            error_output: value.error_output.map(WorkflowStepPortResponse::from),
+            retry_classification: value.retry_classification.as_str().to_owned(),
+            fallback: value.fallback.as_str().to_owned(),
+            failure_branch: value.failure_branch,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +183,7 @@ impl From<WorkflowPlanStep> for WorkflowPlanStepResponse {
             descriptor: value
                 .descriptor
                 .map(WorkflowStepDescriptorBindingResponse::from),
+            failure: value.failure.map(WorkflowStepFailureContractResponse::from),
         }
     }
 }

@@ -402,6 +402,7 @@ fn plan_step(
         policy_digest: None,
         capability: None,
         descriptor: None,
+        failure: None,
     }
 }
 

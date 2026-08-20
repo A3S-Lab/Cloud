@@ -218,8 +218,14 @@ impl WorkflowStepProjection {
         if self.status != WorkflowStepProjectionStatus::Failed && self.error.is_some() {
             return Err("non-failed Workflow step projection contains an error".into());
         }
-        if self.kind != WorkflowStepKind::Branch && self.selected_handle.is_some() {
-            return Err("only a Workflow branch projection may select a handle".into());
+        if self.selected_handle.is_some()
+            && self.kind != WorkflowStepKind::Branch
+            && !(self.kind == WorkflowStepKind::Execution
+                && self.status == WorkflowStepProjectionStatus::Failed)
+        {
+            return Err(
+                "only a Workflow branch or routed Execution failure may select a handle".into(),
+            );
         }
         Ok(())
     }

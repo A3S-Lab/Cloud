@@ -168,7 +168,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/Plan v2, typed-variable defaults/runtime projection and inspection, bounded composite-region policy/child-binding foundation, deterministic composite frame/export and ordered region reducers, Flow-backed sequential Iteration/Loop child WorkflowRun dispatch/linkage/cancellation/recovery, project-authorized read-only 23-node discovery catalog, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Applications-owned variables, business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/Plan v2, typed-variable defaults/runtime projection and inspection, bounded composite-region policy/child-binding foundation, deterministic composite frame/export and ordered region reducers, Flow-backed sequential Iteration/Loop child WorkflowRun dispatch/linkage/cancellation/recovery, Plan v3/Run v4 descriptor-bound finite-Execution failure routing, project-authorized read-only 23-node discovery catalog, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Applications-owned variables, default-output fallback, Answer and non-Execution error semantics, business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` — AI application lifecycle and delivery | Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` — Knowledge and Knowledge Pipeline | User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` — Automations and Connectors | Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery | Planned and unavailable |
@@ -426,6 +426,15 @@ boundary uses the canonical epoch because build input has no creation clock;
 the existing Cloud consumer gate requires the rebuilt descriptor to match and
 then proves exact cleanup. No alternate builder, clock option, or cache path is
 introduced.
+
+The finite Execution descriptor's required static object error port now has
+one exact executable meaning. A graph may add one matching handled edge beside
+its unhandled success edge; the compiler emits Plan v3 and immutable
+WorkflowRun input/runtime/Flow v4. Dispatch rejection, terminal failure, or
+terminal cancellation becomes a bounded `cloud.workflow.step-failure.v1`
+value selected through the ordinary DAG. The existing Execution hook,
+Operation child link, Flow history, projection, cancellation, and owner retry
+authority remain unchanged; Plan v1-v2 and Run v1-v3 replay remain explicit.
 
 `BX0.3` remains in progress only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
@@ -1869,7 +1878,7 @@ Operations remains the only durable orchestration mechanism.
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Verified | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.15.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests plus the clean A3S Box/PostgreSQL C0.2 gate certify the strict `12/12` persistence, rejected-write, idempotency, Outbox, audit, Search, immutability, replay, and tenant non-disclosure evidence |
-| `W0.3` | In progress; revision semantic authority, Plan v2, typed-variable defaults/runtime inspection, bounded composite-region policy/binding, deterministic composite frame/export and ordered region reduction, Flow-backed composite child lifecycle, and built-in discovery implemented | Migrations `076`, `079` through `081`, `096` through `100`, `103`, `105`, `107`, and `108` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask, and finite Execution authorities. Migration `103` stores three mandatory immutable WorkflowRevision semantic children; migration `107` permits optional exact default material; migration `108` permits optional `cloud.workflow.composite-regions.v1` material without adding a table. New publication requires composite material to exactly cover admitted Iteration/Loop descriptors, bounded policy, and exact non-nil child WorkflowRevision bindings. Compiler schema 2 cannot downgrade to legacy authority; `cloud.workflow.plan.v2` pins every exact descriptor plus semantic-contract-set, variable-contract, and optional composite-region digests, while Plan v1 remains byte-stable. WorkflowRun input/runtime/Flow v2 retains non-composite typed-variable/default execution; v3 freezes exact composite material and reconstructs parent and reduced composite variables solely from immutable input and existing Flow history. The frame/result reducer binds exact Plan, contract, policy, ordinal, and child-revision authority, projects bounded child input, and reduces bounded child output through one assignment snapshot, Run updates, and explicit exports. The self-contained region result sorts observations by zero-based ordinal, applies all three immutable Iteration failure modes, requires Loop's boolean termination path, and folds Run updates and exports in ordinal order. Runtime v3 creates one authority-bound hook per ordinal, derives and adopts an ordinary child Goal/Plan/WorkflowRun/Operation through existing repositories and Outbox, records the exact child Flow reference, resumes digest-bound results, and propagates cancellation or timeout before parent termination; initial Iteration dispatch is sequential and keeps declared concurrency as an upper bound. REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP accept optional `variableDefaultsAcl` and `compositeRegionsAcl`; REST/OpenAPI `1.33.0` continues to expose the bounded, project-authorized variable materialization. REST/OpenAPI `1.31.0` exposes the deterministic 23-node catalog. Tests cover publication, recovery, replay, incomplete-set rollback, lineage, immutability, authorization, cross-surface equality, catalog composition, default reconstruction, variable inspection, composite bounds/pins/reduction/runtime dispatch/child adoption/cancellation, and PostgreSQL/Flow reconnect while asserting that no variable/region table, cache, event log, worker, scheduler, queue, or second Flow mechanism exists. Applications-owned variables, Answer/error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
+| `W0.3` | In progress; revision semantic authority, Plan v2, Plan v3 typed finite-Execution failure routes, typed-variable defaults/runtime inspection, bounded composite-region policy/binding, deterministic composite frame/export and ordered region reduction, Flow-backed composite child lifecycle, and built-in discovery implemented | Migrations `076`, `079` through `081`, `096` through `100`, `103`, `105`, `107`, and `108` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask, and finite Execution authorities. Migration `103` stores three mandatory immutable WorkflowRevision semantic children; migration `107` permits optional exact default material; migration `108` permits optional `cloud.workflow.composite-regions.v1` material without adding a table. New publication requires composite material to exactly cover admitted Iteration/Loop descriptors, bounded policy, and exact non-nil child WorkflowRevision bindings. Compiler schema 2 cannot downgrade to legacy authority; `cloud.workflow.plan.v2` pins every exact descriptor plus semantic-contract-set, variable-contract, and optional composite-region digests, while Plan v1 remains byte-stable. A graph that selects the exact finite-Execution descriptor error port emits `cloud.workflow.plan.v3`; every step pins its descriptor failure contract and immutable WorkflowRun input/runtime/Flow v4 routes bounded `cloud.workflow.step-failure.v1` values through the ordinary handled DAG edge. Plans v1-v2 and Run inputs v1-v3 retain their bytes and replay behavior. WorkflowRun input/runtime/Flow v2 retains non-composite typed-variable/default execution; v3 freezes exact composite material and reconstructs parent and reduced composite variables solely from immutable input and existing Flow history; v4 composes those semantics with the existing authority-bound Execution hook, Flow history, and step projection rather than adding an error engine. The frame/result reducer binds exact Plan, contract, policy, ordinal, and child-revision authority, projects bounded child input, and reduces bounded child output through one assignment snapshot, Run updates, and explicit exports. The self-contained region result sorts observations by zero-based ordinal, applies all three immutable Iteration failure modes, requires Loop's boolean termination path, and folds Run updates and exports in ordinal order. Runtime v3 creates one authority-bound hook per ordinal, derives and adopts an ordinary child Goal/Plan/WorkflowRun/Operation through existing repositories and Outbox, records the exact child Flow reference, resumes digest-bound results, and propagates cancellation or timeout before parent termination; initial Iteration dispatch is sequential and keeps declared concurrency as an upper bound. REST/OpenAPI `1.40.0` and the maintained client expose the optional exact Plan v3 failure contracts without another control surface. REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP accept optional `variableDefaultsAcl` and `compositeRegionsAcl`; REST/OpenAPI `1.33.0` continues to expose the bounded, project-authorized variable materialization. REST/OpenAPI `1.31.0` exposes the deterministic 23-node catalog. Tests cover publication, recovery, replay, incomplete-set rollback, lineage, immutability, authorization, cross-surface equality, catalog composition, default reconstruction, variable inspection, composite bounds/pins/reduction/runtime dispatch/child adoption/cancellation, typed dispatch rejection and terminal Execution failure routing, and PostgreSQL/Flow reconnect while asserting that no variable/region table, cache, event log, worker, scheduler, queue, retry engine, or second Flow mechanism exists. Applications-owned variables, default-output fallback, Answer and non-Execution error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
@@ -1941,9 +1950,9 @@ and the termination-value path. The contract admits at most 512 regions and
 512 KiB.
 
 The composite digest participates in the semantic-contract-set identity.
-Plan v2 optionally pins `compositeRegionsDigest`, and immutable Run v2 input
-copies the exact ACL and digest. Existing Plan v1 and Run v2 bytes without
-composite material remain unchanged; historical revisions remain readable.
+Plan v2 optionally pins `compositeRegionsDigest`, and immutable Run v3 input
+copies the exact ACL and digest. Existing Plan v1 and non-composite Run v2
+bytes remain unchanged; historical revisions remain readable.
 REST/OpenAPI `1.35.0`, the maintained client, CLI publication files, and
 Management MCP accept optional `compositeRegionsAcl`. The
 `cloud.workflow.composite-frame.v1`, frame result, and
@@ -1976,8 +1985,8 @@ Output to be terminal, and proves every step reaches at least one sink. The
 runtime waits for all declared sinks, omits inactive branch sinks, preserves a
 single sink's historical value shape, orders a multiple-sink object by stable
 step ID, and enforces the existing aggregate byte bound. `W0.3` remains open
-for Applications-owned variable semantics, typed node error branches/fallback, and ordered
-Answer frames.
+for Applications-owned variable semantics, default-output fallback,
+non-Execution error branches, and ordered Answer frames.
 
 The shared execution substrate now pins A3S Flow `1.0.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.1`-backed PostgreSQL stores. Workflow
@@ -1986,7 +1995,7 @@ single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
 and `a3s_boot` schemas. One process-level supervisor now observes every
 mandatory worker exit, error, and panic and fails serving before a background
 path can disappear silently. New Cloud Operation
-runs pin runtime build `a3s-cloud-workflows@3`; the former `@1` and `@2`
+runs pin runtime build `a3s-cloud-workflows@4`; the former `@1`, `@2`, and `@3`
 generations are admitted only through the explicit compatibility set, while
 legacy unpinned histories remain replayable as migration debt. Composite runs
 pin WorkflowRun input/runtime/Flow v3; non-composite Plan v2 histories retain
@@ -2045,7 +2054,7 @@ Knowledge outcomes, six publication channels, seven monitoring outcomes, and
 eight enterprise outcomes. `a3s-cloud-contracts` rejects missing, duplicate,
 noncanonical, or falsely advertised entries and CI runs that gate explicitly.
 The manifest currently declares no public parity capability and keeps the
-composite claim false. The eighteen accepted authority decisions live under
+composite claim false. The nineteen accepted authority decisions live under
 [`docs/decisions/app-platform`](docs/decisions/app-platform/README.md).
 
 | Sub-gate | State | Outcome |
@@ -2234,14 +2243,15 @@ The default portfolio priority is:
     and finish ACL convergence with the transitive Use/Search dependencies;
     retain native submitted-value parity and protected
     submission, the implemented revision-owned semantic contract set, Plan v2
-    exact pinning, initial typed-variable Flow projection, Flow-derived
+    exact pinning plus Plan v3 descriptor-bound finite-Execution failure
+    routing, initial typed-variable Flow projection, Flow-derived
     authorized variable inspection, digest-bound defaults, bounded composite
     policy/child bindings, deterministic frame/export and ordered region
     reduction, Flow-backed sequential child WorkflowRun dispatch, linkage,
     cancellation, and recovery,
     and read-only built-in catalog discovery, then finish Applications-owned
-    variables,
-    error branches/fallback, and Answer frames while
+    variables, default-output fallback, non-Execution error routes, and Answer
+    frames while
     retaining the implemented reachable-sink Output aggregation and WorkflowRun
     execution on Operations and A3S Flow; expand real-PostgreSQL/provider cross-surface and process-death
     evidence for the remaining paths before closing `W0.3`, without waiting for

@@ -59,9 +59,10 @@ pub(super) fn validate_workflow(
     let mut incoming: BTreeMap<&str, Vec<&str>> =
         steps.keys().copied().map(|id| (id, Vec::new())).collect();
     let mut branch_handles: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    let mut non_branch_routes = BTreeSet::new();
 
     for edge in &spec.edges {
-        validate_edge_semantics(edge, &steps, &mut branch_handles)?;
+        validate_edge_semantics(edge, &steps, &mut branch_handles, &mut non_branch_routes)?;
         outgoing
             .get_mut(edge.source.as_str())
             .ok_or_else(|| format!("Workflow structural plan lost source {:?}", edge.source))?
@@ -88,6 +89,17 @@ pub(super) fn validate_workflow(
         }
         if !outputs.contains(&id) && outgoing[id].is_empty() {
             return Err(format!("Workflow step {id:?} does not lead toward output"));
+        }
+    }
+    for source in &non_branch_routes {
+        if !spec
+            .edges
+            .iter()
+            .any(|edge| edge.source == *source && edge.source_handle.is_none())
+        {
+            return Err(format!(
+                "Workflow routed step {source:?} requires at least one unhandled success edge"
+            ));
         }
     }
 
@@ -165,6 +177,7 @@ fn validate_edge_semantics<'a>(
     edge: &'a WorkflowEdgeSpec,
     steps: &BTreeMap<&str, &super::WorkflowStepSpec>,
     branch_handles: &mut BTreeMap<&'a str, BTreeSet<&'a str>>,
+    non_branch_routes: &mut BTreeSet<&'a str>,
 ) -> Result<(), String> {
     let source = steps.get(edge.source.as_str()).ok_or_else(|| {
         format!(
@@ -192,11 +205,14 @@ fn validate_edge_semantics<'a>(
                 edge.id
             ));
         }
-        (_, Some(_)) => {
-            return Err(format!(
-                "Workflow non-branch edge {:?} cannot declare source_handle",
-                edge.id
-            ));
+        (_, Some(handle)) => {
+            validate_identifier("Workflow routed handle", handle)?;
+            if !non_branch_routes.insert(edge.source.as_str()) {
+                return Err(format!(
+                    "Workflow non-branch step {:?} contains more than one handled route",
+                    edge.source
+                ));
+            }
         }
         (_, None) => {}
     }

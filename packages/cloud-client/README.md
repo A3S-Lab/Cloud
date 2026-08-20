@@ -137,8 +137,13 @@ binding. Cloud persists the set atomically, returns canonical ACL and digests,
 and compiles Plan v2 with exact per-step descriptor, semantic-set, variable,
 and optional `compositeRegionsDigest` pins. The client validates only
 transport shape and UTF-8 byte bounds, including the 512 KiB composite ACL
-limit; Cloud remains the ACL and compiler authority. This contract does not
-make `subworkflow` executable.
+limit; Cloud remains the ACL and compiler authority. A graph that opts into the
+exact finite-Execution descriptor error port is returned by REST contract
+`1.40.0` as Plan v3 with each step's immutable `failure` contract. Its Run v4 typed error value still travels
+through the ordinary Workflow output/history shape, so the client adds no
+failure scheduler or provider lifecycle. The exported
+`WorkflowStepFailureOutput` and Execution-detail types describe that stable
+value without attempting to interpret arbitrary Workflow output.
 
 `getWorkflowNodeCatalog` exposes the project-authorized read-only discovery
 projection added by REST contract `1.31.0`. It returns the exact frozen baseline,

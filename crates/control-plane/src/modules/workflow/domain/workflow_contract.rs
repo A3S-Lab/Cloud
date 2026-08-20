@@ -189,6 +189,17 @@ impl WorkflowSpec {
     pub fn topological_order(&self, quotas: WorkflowContractQuotas) -> Result<Vec<String>, String> {
         super::workflow_graph::validate_workflow(self, quotas.validate()?)
     }
+
+    pub(crate) fn has_non_branch_source_handles(&self) -> bool {
+        self.edges.iter().any(|edge| {
+            edge.source_handle.is_some()
+                && self
+                    .steps
+                    .iter()
+                    .find(|step| step.id == edge.source)
+                    .is_some_and(|step| step.kind != WorkflowStepKind::Branch)
+        })
+    }
 }
 
 /// Canonical closed ACL for one immutable Workflow revision.
@@ -681,6 +692,40 @@ mod tests {
             source_handle: Some("selected".into()),
         });
         assert!(branch.validate(Default::default()).is_err());
+    }
+
+    #[test]
+    fn graph_validation_reserves_one_non_branch_handle_beside_a_success_path() {
+        let mut routed = fixture();
+        routed
+            .steps
+            .push(step("failure-output", WorkflowStepKind::Output));
+        routed.edges.push(WorkflowEdgeSpec {
+            id: "transform-failure".into(),
+            source: "transform".into(),
+            target: "failure-output".into(),
+            source_handle: Some("error".into()),
+        });
+        routed
+            .validate(Default::default())
+            .expect("one named route beside normal success");
+
+        let mut missing_success = routed.clone();
+        missing_success
+            .edges
+            .retain(|edge| edge.id != "transform-output");
+        assert!(missing_success.validate(Default::default()).is_err());
+
+        routed
+            .steps
+            .push(step("other-output", WorkflowStepKind::Output));
+        routed.edges.push(WorkflowEdgeSpec {
+            id: "transform-other-failure".into(),
+            source: "transform".into(),
+            target: "other-output".into(),
+            source_handle: Some("other-error".into()),
+        });
+        assert!(routed.validate(Default::default()).is_err());
     }
 
     #[test]

@@ -12,6 +12,7 @@ mod workflow_composite_frame;
 mod workflow_composite_region_result;
 mod workflow_composite_regions;
 mod workflow_contract;
+mod workflow_failure_routing;
 mod workflow_goal_contract;
 mod workflow_graph;
 mod workflow_node_catalog;
@@ -24,6 +25,9 @@ mod workflow_variable_contract;
 mod workflow_variable_defaults;
 mod workflow_variable_materialization;
 
+pub(crate) use workflow_failure_routing::{
+    execution_failure_output, validate_execution_failure_routes,
+};
 pub(crate) use workflow_run_contract::validate_runtime_variable_contract;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
@@ -34,8 +38,9 @@ pub use entities::{
     WorkflowRevision, WorkflowRun, WorkflowRunFlowState, WorkflowRunStatus, WorkflowStepFlowState,
     WorkflowStepProjection, WorkflowStepProjectionStatus, ONTOLOGY_COMPILER_SCHEMA_VERSION,
     WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_COMPILER_SCHEMA_VERSION_V2,
-    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_MAX_BYTES,
-    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOADS,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_REVISION_MAX_PAYLOADS,
     WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES,
     WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES, WORKFLOW_STEP_RESULT_MAX_BYTES,
 };
@@ -132,16 +137,18 @@ pub use workflow_run_contract::{
     WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
     WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
     WorkflowExecutionStepOutput, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
+    WorkflowStepFailureClassification, WorkflowStepFailureDetails, WorkflowStepFailureOutput,
     WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA, WORKFLOW_EXECUTION_HOOK_SCHEMA,
     WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_EXECUTION_RESUME_SCHEMA,
     WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
     WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_INPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_MAX_BYTES_V2, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA,
 };
 pub use workflow_step_descriptor::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,

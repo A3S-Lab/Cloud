@@ -261,6 +261,10 @@ impl WorkflowRevision {
         validate_payload_bindings(&self.contract, &self.payloads)?;
         if let Some(contracts) = &self.semantic_contracts {
             contracts.validate(self.contract.spec())?;
+        } else if self.contract.spec().has_non_branch_source_handles() {
+            return Err(
+                "Workflow failure routes require immutable descriptor semantic contracts".into(),
+            );
         }
         if digest_payload_set(&self.payloads)? != self.payload_set_digest {
             return Err("Workflow revision payload-set digest is invalid".into());

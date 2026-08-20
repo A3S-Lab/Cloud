@@ -2017,6 +2017,10 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - A step descriptor declares typed error output and admitted retry, fallback,
   default-value, or failure-branch policy. A runtime/provider failure cannot
   choose an undeclared graph edge or silently reinterpret a historical plan.
+  The implemented finite Execution slice permits one exact handled error edge
+  beside its success path. Plan v3 pins every descriptor failure contract and
+  Run v4 derives `cloud.workflow.step-failure.v1` from the same authority-bound
+  hook; retry and child lifecycle remain Executions-owned.
 - An immutable Workflow variable contract declares invocation, node-output,
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
@@ -2571,8 +2575,11 @@ contract-set identity. The resulting `cloud.workflow.plan.v2` pins exact
 descriptor semantics and contract-set, variable, and optional composite-region
 digests. Plan v1 remains byte-stable. Non-composite Plan v2 runs retain
 WorkflowRun runtime/Flow v2, while composite runs pin v3 and execute exact
-ordinary child WorkflowRuns. Applications-owned variable access remains
-fail-closed rather than inferring a missing owner adapter.
+ordinary child WorkflowRuns. A finite Execution graph with the exact descriptor
+error edge emits `cloud.workflow.plan.v3`; immutable Run v4 selects that edge
+with one typed bounded failure value while preserving Plan v1-v2 and Run v1-v3
+bytes and replay. Applications-owned variable access remains fail-closed rather
+than inferring a missing owner adapter.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and
