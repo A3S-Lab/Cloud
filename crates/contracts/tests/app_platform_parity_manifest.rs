@@ -24,6 +24,15 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             .state(),
         AppPlatformGateState::Verified
     );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.2")
+            .expect("APP0.2 gate")
+            .state(),
+        AppPlatformGateState::InProgress
+    );
     assert!(manifest.digest().starts_with("sha256:"));
     assert_eq!(manifest.canonical_acl(), MANIFEST.replace("\r\n", "\n"));
     assert!(!manifest.parity_claim());
@@ -252,7 +261,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
         .collect::<Vec<_>>();
     assert_eq!(
         decisions.len(),
-        30,
+        31,
         "decision register changed unexpectedly"
     );
     for decision in decisions {

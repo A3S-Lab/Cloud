@@ -52,8 +52,8 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     state = "verified"
   }
   gate "APP0.2" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0031-single-application-session-authority.md", "implementation:crates/control-plane/src/modules/applications/domain/application_invocation.rs", "implementation:crates/control-plane/src/modules/applications/domain/session_repository.rs", "test:crates/control-plane/src/modules/applications/domain/session_repository_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_tests.rs"]
+    state = "in_progress"
   }
   gate "APP0.3" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]

@@ -314,10 +314,11 @@ fn parse_serial(value: &str) -> Option<Vec<u8>> {
     if hex.is_empty() || hex.len() % 2 != 0 {
         return None;
     }
-    hex.chunks_exact(2)
-        .map(|pair| {
-            let high = hex_value(pair[0])?;
-            let low = hex_value(pair[1])?;
+    (0..hex.len())
+        .step_by(2)
+        .map(|index| {
+            let high = hex_value(hex[index])?;
+            let low = hex_value(hex[index + 1])?;
             Some((high << 4) | low)
         })
         .collect()

@@ -350,10 +350,11 @@ fn decode_signature(value: &str) -> Option<[u8; 32]> {
         return None;
     }
     let mut decoded = [0_u8; 32];
-    for (index, pair) in encoded.as_bytes().chunks_exact(2).enumerate() {
-        decoded[index] = hex_nibble(pair[0])?
+    for (index, decoded_byte) in decoded.iter_mut().enumerate() {
+        let encoded_index = index * 2;
+        *decoded_byte = hex_nibble(encoded.as_bytes()[encoded_index])?
             .checked_mul(16)?
-            .checked_add(hex_nibble(pair[1])?)?;
+            .checked_add(hex_nibble(encoded.as_bytes()[encoded_index + 1])?)?;
     }
     Some(decoded)
 }
