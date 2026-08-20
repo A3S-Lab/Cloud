@@ -2,7 +2,6 @@ use super::dto::{
     ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
     CreateApplicationRequest, PublishApplicationReleaseRequest,
 };
-use super::request::{actor_principal_id, request_id, request_identity};
 use crate::modules::applications::application::{
     CreateApplication, GetApplication, GetApplicationRelease, ListApplicationReleases,
     ListApplications, PublishApplicationRelease, DEFAULT_APPLICATION_LIST_LIMIT,
@@ -13,7 +12,9 @@ use crate::modules::identity::presentation::{resource_access_evaluator, Organiza
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, OrganizationId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{
+    actor_principal_id, application_error_response, request_id, request_identity,
+};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
     AUTH_SCOPES_METADATA,

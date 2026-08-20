@@ -3,6 +3,7 @@ mod api_response_interceptor;
 mod management_mcp;
 mod oauth_transport;
 mod polling_sse;
+mod request_context;
 mod request_id_middleware;
 mod sequence_stream;
 
@@ -53,6 +54,7 @@ pub(crate) use oauth_transport::{
     bounded_oauth_query_pairs, oauth_callback_query, oauth_no_store, OAuthNoStoreErrorFilter,
 };
 pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
+pub(crate) use request_context::{actor_principal_id, request_id, request_identity};
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{
     decode_sequence_cursor, default_live_sequence_limit, format_sequence_cursor,

@@ -1,8 +1,9 @@
+use crate::modules::identity::presentation::authenticated_actor;
 use crate::modules::shared_kernel::domain::PrincipalId;
 use a3s_boot::{BootError, BootRequest, Result};
 use uuid::Uuid;
 
-pub(super) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
+pub(crate) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
     let idempotency_key = request
         .header("idempotency-key")
         .filter(|value| !value.is_empty())
@@ -11,17 +12,12 @@ pub(super) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> 
     Ok((idempotency_key, request_id(request)?))
 }
 
-pub(super) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {
-    Uuid::parse_str(request.require_auth_principal()?.subject())
-        .map(PrincipalId::from_uuid)
-        .map_err(|error| {
-            BootError::Internal(format!(
-                "authenticated principal identity is invalid: {error}"
-            ))
-        })
+pub(crate) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {
+    let principal = request.require_auth_principal()?;
+    Ok(authenticated_actor(&principal)?.principal_id)
 }
 
-pub(super) fn request_id(request: &BootRequest) -> Result<Uuid> {
+pub(crate) fn request_id(request: &BootRequest) -> Result<Uuid> {
     request
         .header("x-request-id")
         .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))

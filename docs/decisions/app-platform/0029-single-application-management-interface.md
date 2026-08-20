@@ -38,6 +38,11 @@ the dedicated `application:write` API-token scope; reads use `cloud:read`.
 Denied project access and missing Application/release identities retain the
 shared fail-closed response contract.
 
+One crate-level request context owns the identical request-ID, idempotency-key,
+and authenticated-actor extraction used by Applications and compatible
+controller modules. Domain-specific ACL, expected-version, credential-actor,
+and authorization rules remain with their owning modules.
+
 This interface adds no session, invocation, message, graph, Plan, Flow history,
 provider execution, Secret material, Gateway route, worker, queue, or second
 repository. Those capabilities remain owned by later APP0 gates and their
