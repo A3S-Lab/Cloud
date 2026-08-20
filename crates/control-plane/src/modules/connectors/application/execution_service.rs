@@ -3,9 +3,11 @@ use crate::modules::connectors::domain::{
     BeginConnectorExecutionDispatch, ConnectorExecutionAttemptBinding,
     ConnectorExecutionAttemptRecord, ConnectorExecutionEvidence, ConnectorExecutionFence,
     ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorExecutionReservation,
+    ConnectorResponseObjectError, ConnectorResponseObjectReference,
     IConnectorExecutionAttemptRepository, IConnectorExecutionPreparationPort,
-    IConnectorProfileRepository, ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
-    MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS, MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
+    IConnectorProfileRepository, IConnectorResponseObjectStore, ReserveConnectorExecutionAttempt,
+    SettleConnectorExecutionAttempt, MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS,
+    MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -83,8 +85,12 @@ impl fmt::Debug for ExecuteConnectorAttempt {
 pub enum ConnectorExecutionAttemptResult {
     Completed {
         evidence: ConnectorExecutionEvidence,
+        /// Present only when the caller selected immutable response-object
+        /// composition and accepted evidence is already backed by that object.
+        response_object: Option<ConnectorResponseObjectReference>,
         /// Present only for the process that observed the accepted response.
-        /// Replays intentionally return digest-only durable evidence.
+        /// Replays return durable evidence and, when requested, a verified
+        /// immutable response-object reference instead of the provider body.
         receipt: Option<ConnectorExecutionReceipt>,
         replayed: bool,
     },
@@ -107,6 +113,7 @@ pub enum ConnectorExecutionAttemptResult {
     SettlementPending {
         settlement: SettleConnectorExecutionAttempt,
         receipt: Option<ConnectorExecutionReceipt>,
+        response_object: Option<ConnectorResponseObjectReference>,
     },
 }
 
@@ -114,6 +121,7 @@ pub struct ConnectorExecutionApplicationService {
     profiles: Arc<dyn IConnectorProfileRepository>,
     attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
     preparation: Arc<dyn IConnectorExecutionPreparationPort>,
+    response_objects: Option<Arc<dyn IConnectorResponseObjectStore>>,
     options: ConnectorExecutionServiceOptions,
 }
 
@@ -128,15 +136,28 @@ impl ConnectorExecutionApplicationService {
             profiles,
             attempts,
             preparation,
+            response_objects: None,
             options: options.validate()?,
         })
+    }
+
+    /// Adds the typed Connector-owned child of the shared immutable-object
+    /// authority. Ordinary callers remain digest-only unless they explicitly
+    /// use `execute_exact_with_response_object`.
+    pub fn with_response_object_store(
+        mut self,
+        response_objects: Arc<dyn IConnectorResponseObjectStore>,
+    ) -> Self {
+        self.response_objects = Some(response_objects);
+        self
     }
 
     pub async fn execute(
         &self,
         command: ExecuteConnectorAttempt,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
-        self.execute_with_expected_revision(command, None).await
+        self.execute_with_expected_revision(command, None, false)
+            .await
     }
 
     /// Executes against an exact immutable revision only when its persisted
@@ -148,7 +169,26 @@ impl ConnectorExecutionApplicationService {
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
         Sha256Digest::parse(expected_revision_digest.as_str())
             .map_err(ApplicationError::Invalid)?;
-        self.execute_with_expected_revision(command, Some(expected_revision_digest))
+        self.execute_with_expected_revision(command, Some(expected_revision_digest), false)
+            .await
+    }
+
+    /// Executes one exact attempt and makes accepted evidence terminal only
+    /// after its response bytes have been written idempotently through the
+    /// shared immutable-object authority.
+    pub async fn execute_exact_with_response_object(
+        &self,
+        command: ExecuteConnectorAttempt,
+        expected_revision_digest: &Sha256Digest,
+    ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
+        Sha256Digest::parse(expected_revision_digest.as_str())
+            .map_err(ApplicationError::Invalid)?;
+        if self.response_objects.is_none() {
+            return Err(ApplicationError::Unavailable(
+                "Connector response-object storage is not configured".into(),
+            ));
+        }
+        self.execute_with_expected_revision(command, Some(expected_revision_digest), true)
             .await
     }
 
@@ -156,6 +196,7 @@ impl ConnectorExecutionApplicationService {
         &self,
         command: ExecuteConnectorAttempt,
         expected_revision_digest: Option<&Sha256Digest>,
+        retain_response_object: bool,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
         validate_command(&command)?;
         environment(
@@ -209,7 +250,9 @@ impl ConnectorExecutionApplicationService {
                 return indeterminate_result(&record)
             }
             ConnectorExecutionReservation::Completed(record) => {
-                return completed_from_record(record, true)
+                return self
+                    .completed_from_record(record, true, retain_response_object)
+                    .await
             }
         };
 
@@ -267,7 +310,7 @@ impl ConnectorExecutionApplicationService {
             .await
             .map_err(map_attempt_repository_error)?;
 
-        let (evidence, receipt) = match prepared.dispatch(&command.request).await {
+        let (evidence, receipt, response_object) = match prepared.dispatch(&command.request).await {
             Ok(receipt) => {
                 let evidence = ConnectorExecutionEvidence::accepted(
                     &revision,
@@ -276,7 +319,28 @@ impl ConnectorExecutionApplicationService {
                     dispatch_started_at,
                 )
                 .map_err(ApplicationError::Internal)?;
-                (evidence, Some(receipt))
+                let response_object = if retain_response_object {
+                    let reference =
+                        ConnectorResponseObjectReference::from_accepted(&revision, &receipt)
+                            .map_err(ApplicationError::Internal)?;
+                    reference
+                        .validate_evidence(&evidence)
+                        .map_err(ApplicationError::Internal)?;
+                    self.response_objects
+                        .as_ref()
+                        .ok_or_else(|| {
+                            ApplicationError::Unavailable(
+                                "Connector response-object storage is not configured".into(),
+                            )
+                        })?
+                        .put(&reference, receipt.response_body().to_vec())
+                        .await
+                        .map_err(map_response_object_error)?;
+                    Some(reference)
+                } else {
+                    None
+                };
+                (evidence, Some(receipt), response_object)
             }
             Err(error) => {
                 let completed_at = canonical_timestamp(Utc::now()).max(dispatch_started_at);
@@ -288,6 +352,7 @@ impl ConnectorExecutionApplicationService {
                         dispatch_started_at,
                         completed_at,
                     )?,
+                    None,
                     None,
                 )
             }
@@ -301,6 +366,7 @@ impl ConnectorExecutionApplicationService {
                         "terminal Connector execution evidence is missing".into(),
                     )
                 })?,
+                response_object,
                 receipt,
                 replayed: write.replayed,
             }),
@@ -315,6 +381,7 @@ impl ConnectorExecutionApplicationService {
                 Ok(ConnectorExecutionAttemptResult::SettlementPending {
                     settlement,
                     receipt,
+                    response_object,
                 })
             }
         }
@@ -341,6 +408,7 @@ impl ConnectorExecutionApplicationService {
         })?;
         Ok(ConnectorExecutionAttemptResult::Completed {
             evidence,
+            response_object: None,
             receipt: None,
             replayed: write.replayed,
         })
@@ -365,8 +433,46 @@ impl ConnectorExecutionApplicationService {
                     "terminal Connector preflight evidence is missing".into(),
                 )
             })?,
+            response_object: None,
             receipt: None,
             replayed: write.replayed,
+        })
+    }
+
+    async fn completed_from_record(
+        &self,
+        record: ConnectorExecutionAttemptRecord,
+        replayed: bool,
+        retain_response_object: bool,
+    ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
+        let evidence = record.evidence.ok_or_else(|| {
+            ApplicationError::Internal("terminal Connector execution evidence is missing".into())
+        })?;
+        let response_object = if retain_response_object
+            && evidence.outcome()
+                == crate::modules::connectors::domain::ConnectorExecutionOutcome::Accepted
+        {
+            let reference = ConnectorResponseObjectReference::from_evidence(&evidence)
+                .map_err(ApplicationError::Internal)?;
+            self.response_objects
+                .as_ref()
+                .ok_or_else(|| {
+                    ApplicationError::Unavailable(
+                        "Connector response-object storage is not configured".into(),
+                    )
+                })?
+                .verify(&reference)
+                .await
+                .map_err(map_response_object_error)?;
+            Some(reference)
+        } else {
+            None
+        };
+        Ok(ConnectorExecutionAttemptResult::Completed {
+            evidence,
+            response_object,
+            receipt: None,
+            replayed,
         })
     }
 }
@@ -417,19 +523,6 @@ fn error_evidence(
     .map_err(ApplicationError::Internal)
 }
 
-fn completed_from_record(
-    record: ConnectorExecutionAttemptRecord,
-    replayed: bool,
-) -> ApplicationResult<ConnectorExecutionAttemptResult> {
-    Ok(ConnectorExecutionAttemptResult::Completed {
-        evidence: record.evidence.ok_or_else(|| {
-            ApplicationError::Internal("terminal Connector execution evidence is missing".into())
-        })?,
-        receipt: None,
-        replayed,
-    })
-}
-
 fn in_flight_result(
     record: &ConnectorExecutionAttemptRecord,
 ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
@@ -441,6 +534,20 @@ fn in_flight_result(
             ApplicationError::Internal("Connector dispatch deadline is missing".into())
         })?,
     })
+}
+
+fn map_response_object_error(error: ConnectorResponseObjectError) -> ApplicationError {
+    match error {
+        ConnectorResponseObjectError::Unavailable(message) => {
+            ApplicationError::Unavailable(message)
+        }
+        ConnectorResponseObjectError::Invalid(message)
+        | ConnectorResponseObjectError::Conflict(message)
+        | ConnectorResponseObjectError::Integrity(message) => ApplicationError::Internal(message),
+        ConnectorResponseObjectError::NotFound => ApplicationError::Internal(
+            "accepted Connector evidence references a missing response object".into(),
+        ),
+    }
 }
 
 fn indeterminate_result(
@@ -487,6 +594,7 @@ fn map_attempt_repository_error(error: RepositoryError) -> ApplicationError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::ImmutableObjectClient;
     use crate::modules::connectors::domain::{
         ConnectorDefinition, ConnectorExecutionAttemptCursor, ConnectorExecutionOutcome,
         ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
@@ -495,7 +603,8 @@ mod tests {
         CreateConnectorProfileWrite, IPreparedConnectorExecution,
     };
     use crate::modules::connectors::infrastructure::{
-        InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
+        ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
+        InMemoryConnectorProfileRepository,
     };
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{
@@ -503,6 +612,14 @@ mod tests {
     };
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    fn response_objects() -> Arc<ConnectorResponseObjectStore> {
+        let objects: Arc<dyn object_store::ObjectStore> =
+            Arc::new(object_store::memory::InMemory::new());
+        let client = ImmutableObjectClient::from_store(objects, "connector-responses")
+            .expect("response object client");
+        Arc::new(ConnectorResponseObjectStore::from_client(client))
+    }
 
     #[derive(Clone, Copy)]
     enum PreparedOutcome {
@@ -785,6 +902,122 @@ mod tests {
             }
         ));
         assert_eq!(fixture.prepares.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn accepted_response_object_precedes_terminal_evidence_and_replays_exactly() {
+        let fixture = fixture().await;
+        let objects = response_objects();
+        let service = ConnectorExecutionApplicationService::new(
+            fixture.profiles.clone(),
+            fixture.attempts.clone(),
+            preparation(&fixture, PreparedOutcome::Accepted),
+            ConnectorExecutionServiceOptions::default(),
+        )
+        .expect("service")
+        .with_response_object_store(objects.clone());
+        let command = command(&fixture.revision, canonical_timestamp(Utc::now()));
+
+        let first = service
+            .execute_exact_with_response_object(
+                command.clone(),
+                fixture.revision.definition.digest(),
+            )
+            .await
+            .expect("execute with response object");
+        let (evidence, reference) = match first {
+            ConnectorExecutionAttemptResult::Completed {
+                evidence,
+                response_object: Some(reference),
+                replayed: false,
+                ..
+            } => (evidence, reference),
+            other => panic!("unexpected result: {other:?}"),
+        };
+        reference
+            .validate_evidence(&evidence)
+            .expect("response/evidence authority");
+        assert_eq!(
+            objects.get(&reference).await.expect("stored response"),
+            b"bounded-response"
+        );
+
+        let replay = service
+            .execute_exact_with_response_object(command, fixture.revision.definition.digest())
+            .await
+            .expect("replay with response object");
+        assert!(matches!(
+            replay,
+            ConnectorExecutionAttemptResult::Completed {
+                response_object: Some(replayed),
+                receipt: None,
+                replayed: true,
+                ..
+            } if replayed == reference
+        ));
+        assert_eq!(fixture.prepares.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+    }
+
+    struct UnavailableResponseObjects;
+
+    #[async_trait]
+    impl IConnectorResponseObjectStore for UnavailableResponseObjects {
+        async fn put(
+            &self,
+            _reference: &ConnectorResponseObjectReference,
+            _body: Vec<u8>,
+        ) -> Result<
+            crate::modules::connectors::domain::ConnectorResponseObjectWrite,
+            ConnectorResponseObjectError,
+        > {
+            Err(ConnectorResponseObjectError::Unavailable(
+                "injected response storage outage".into(),
+            ))
+        }
+
+        async fn get(
+            &self,
+            _reference: &ConnectorResponseObjectReference,
+        ) -> Result<Vec<u8>, ConnectorResponseObjectError> {
+            Err(ConnectorResponseObjectError::Unavailable(
+                "injected response storage outage".into(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn response_storage_failure_cannot_commit_success_or_redispatch_provider() {
+        let fixture = fixture().await;
+        let service = ConnectorExecutionApplicationService::new(
+            fixture.profiles.clone(),
+            fixture.attempts.clone(),
+            preparation(&fixture, PreparedOutcome::Accepted),
+            ConnectorExecutionServiceOptions::default(),
+        )
+        .expect("service")
+        .with_response_object_store(Arc::new(UnavailableResponseObjects));
+        let command = command(&fixture.revision, canonical_timestamp(Utc::now()));
+
+        assert!(matches!(
+            service
+                .execute_exact_with_response_object(
+                    command.clone(),
+                    fixture.revision.definition.digest(),
+                )
+                .await,
+            Err(ApplicationError::Unavailable(_))
+        ));
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            service
+                .execute_exact_with_response_object(command, fixture.revision.definition.digest(),)
+                .await
+                .expect("observe failed composition"),
+            ConnectorExecutionAttemptResult::InFlight { .. }
+                | ConnectorExecutionAttemptResult::Indeterminate { .. }
+        ));
         assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
     }
 

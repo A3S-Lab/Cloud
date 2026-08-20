@@ -49,8 +49,8 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@5`; the former
-  `@1`, `@2`, `@3`, and `@4` generations are admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@6`; the former
+  `@1`, `@2`, `@3`, `@4`, and `@5` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
@@ -306,11 +306,14 @@ creating their own control planes:
    plus Flow-backed sequential Iteration/Loop child WorkflowRun dispatch,
    linkage, cancellation, and recovery. It also pins finite Execution error
    ports in Plan v3 and routes typed dispatch/terminal failures through the
-   same DAG and Flow history. Component-only WorkflowRun v5 also
-   interprets exact Connector attempts, observations, durable waits, and
-   bounded retries through the sole C6 execution/evidence authority; immutable
-   response-object composition, default fallback, Answer, remaining providers,
-   and later `W0` gates remain unavailable.
+   same DAG and Flow history. Component-only WorkflowRun v5 interprets exact
+   Connector attempts, observations, durable waits, and bounded retries through
+   the sole C6 execution/evidence authority. New v6 composes accepted responses
+   through the Connectors-owned typed child of the shared immutable-object
+   client and retains only an exact opaque reference, digest, and byte count in
+   Flow. Historic v5 remains body-free and replay-compatible. Response
+   consumption, default fallback, Answer, remaining providers, and later `W0`
+   gates remain unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.

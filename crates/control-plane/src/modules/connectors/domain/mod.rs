@@ -8,6 +8,7 @@ mod http_definition;
 mod http_policy;
 mod profile;
 mod repository;
+mod response_object;
 
 pub use events::ConnectorRevisionPublished;
 pub use evidence::{
@@ -57,4 +58,8 @@ pub(crate) use repository::ConnectorWriteReference;
 pub use repository::{
     ConnectorRecord, CreateConnectorProfileWrite, IConnectorProfileRepository,
     ReviseConnectorProfileWrite,
+};
+pub use response_object::{
+    ConnectorResponseObjectError, ConnectorResponseObjectReference, ConnectorResponseObjectWrite,
+    IConnectorResponseObjectStore, CONNECTOR_RESPONSE_OBJECT_SCHEMA,
 };

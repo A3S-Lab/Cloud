@@ -810,14 +810,25 @@ does not own retry, waiting, a queue, or a scheduler. Workflow capability
 admission correspondingly maps `ConnectorRevision` only to the `connectors`
 owner and requires an exact non-nil revision UUID plus `connector.http`.
 
-WorkflowRun input/runtime/Flow v5 now supplies the scheduling boundary over
-that port. Each deterministic hook binds the exact run, Plan, step, Connector,
-request, policy, provider-attempt, and observation authority. A retryable
-terminal result schedules one durable Flow wait and then the next provider
-attempt; a deferred result waits before observing the same provider attempt;
-an indeterminate result fails closed without a blind retry. Accepted output is
-body-free and contains only its response digest and byte count. Projection
-reconstructs the Connector step from immutable Run input and the sole Flow
+Historic WorkflowRun input/runtime/Flow v5 supplies the scheduling boundary
+over that port. Each deterministic hook binds the exact run, Plan, step,
+Connector, request, policy, provider-attempt, and observation authority. A
+retryable terminal result schedules one durable Flow wait and then the next
+provider attempt; a deferred result waits before observing the same provider
+attempt; an indeterminate result fails closed without a blind retry. Its
+accepted output remains body-free and contains only the response digest and
+byte count.
+
+Component-only `AUT0.5-C10` adds WorkflowRun v6 without changing that attempt
+authority. Connectors derives `cloud.connector.response-object.v1` from the
+exact tenant, profile, revision, attempt, response digest, and length, then
+writes the accepted bounded body idempotently through the shared
+`connector-responses` immutable-object child before C6 terminal settlement.
+Flow v6 retains only `cloud.workflow.connector-response-object.v1`, its opaque
+relative reference, digest, and length. A failed object write leaves C6
+`dispatching` and cannot authorize provider replay; missing or corrupt content
+also fails closed on terminal replay. Projection reconstructs either the v5
+body-free result or the v6 reference from immutable Run input and the sole Flow
 history, including exact hook-creation and completed-wait evidence.
 
 The component-only `AUT0.5-C9` prerequisite freezes that missing retry budget
@@ -831,10 +842,9 @@ provider runtime not yet admitted fails closed. Descriptor validation keeps
 the classification with the Connectors-owned `connector.http` semantic
 profile. Policy v1 bytes remain unchanged, and no policy table, semantic
 child, retry counter, timer worker, queue, scheduler, or second configuration
-language is introduced. Flow interpretation and immutable response-object
-composition were separate gates: v4 now consumes the policy for deterministic
-attempt/wait decisions, while W0.4 immutable response-object composition
-remains open.
+language is introduced. Historic v5 consumes the policy for deterministic
+attempt/wait decisions, while v6 composes the immutable response reference.
+W0.4 response consumption and its remaining typed capability steps stay open.
 
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
@@ -997,16 +1007,17 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C9` profile/revision, authorized application,
+`AUT0.5-C2` through `C10` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
 provider wiring, revocation/recovery operations, retained integration evidence,
-and W0.4 immutable response-object composition over those same authorities.
-WorkflowRun v5 already supplies Flow-owned Connector observation, durable wait,
-bounded retry, fail-closed indeterminate handling, and body-free projection
-without another scheduler or provider authority. Notifications now retains PostgreSQL 17 plus
+and W0.4 response consumption over those same authorities. WorkflowRun v6 now
+supplies Flow-owned Connector observation, durable wait, bounded retry,
+fail-closed indeterminate handling, and an exact immutable response reference
+without another scheduler or provider authority; historic v5 projection stays
+body-free. Notifications now retains PostgreSQL 17 plus
 real NATS evidence for its first Event-consumer-to-C6 composition, but still
 needs separate versioned semantics before any user-configured suppression or
 delivery budget is admitted. Provider outage

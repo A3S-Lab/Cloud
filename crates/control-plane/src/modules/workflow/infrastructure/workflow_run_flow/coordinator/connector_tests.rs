@@ -1,13 +1,14 @@
 use super::super::FlowWorkflowRunCoordinator;
 use crate::modules::connectors::{
-    ConnectorExecutionEvidence, ConnectorExecutionOutcome, IWorkflowConnectorPort,
-    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
+    ConnectorExecutionEvidence, ConnectorExecutionOutcome, ConnectorResponseObjectReference,
+    IWorkflowConnectorPort, WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
+    WorkflowConnectorResponseMode,
 };
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Sha256Digest};
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowRun, WorkflowRunRecord, WorkflowRunStatus,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V5,
+    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V6,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
@@ -101,7 +102,12 @@ impl IWorkflowConnectorPort for FakeConnectorPort {
             completed_at,
         )
         .map_err(crate::modules::shared_kernel::application::ApplicationError::Invalid)?;
-        Ok(WorkflowConnectorAttemptResult::Completed { evidence })
+        let response_object = ConnectorResponseObjectReference::from_evidence(&evidence)
+            .map_err(crate::modules::shared_kernel::application::ApplicationError::Internal)?;
+        Ok(WorkflowConnectorAttemptResult::Completed {
+            evidence: Box::new(evidence),
+            response_object: Some(response_object),
+        })
     }
 }
 
@@ -126,6 +132,10 @@ async fn coordinator_resumes_exact_connector_evidence_without_a_child_reference(
     assert_eq!(requests[0].workflow_run_id, record.run.id);
     assert_eq!(requests[0].step_id, TEST_CONNECTOR_STEP_ID);
     assert_eq!(requests[0].step_attempt, 1);
+    assert_eq!(
+        requests[0].response_mode,
+        WorkflowConnectorResponseMode::ImmutableObjectReference
+    );
     let step = completed
         .steps
         .iter()
@@ -237,7 +247,7 @@ async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
             input.workflow_run_id.to_string(),
             WorkflowSpec::rust_embedded(
                 WORKFLOW_RUN_FLOW_NAME,
-                WORKFLOW_RUN_FLOW_VERSION_V5,
+                WORKFLOW_RUN_FLOW_VERSION_V6,
                 "a3s-cloud",
                 "main",
             )

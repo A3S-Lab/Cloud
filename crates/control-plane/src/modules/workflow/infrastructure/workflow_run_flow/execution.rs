@@ -4,6 +4,7 @@ use crate::modules::workflow::domain::{
     WorkflowDataSchema, WorkflowDataType, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
 };
 use serde_json::Value;
 
@@ -16,6 +17,7 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
     if input.step.plan.kind == WorkflowStepKind::Subworkflow {

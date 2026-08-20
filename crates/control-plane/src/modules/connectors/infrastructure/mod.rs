@@ -7,6 +7,7 @@ mod profile_in_memory;
 mod profile_materializer;
 mod profile_postgres;
 mod public_egress_authorizer;
+mod response_object_store;
 
 pub use attempt_in_memory::InMemoryConnectorExecutionRepository;
 pub use attempt_postgres::PostgresConnectorExecutionAttemptRepository;
@@ -20,3 +21,6 @@ pub use profile_in_memory::InMemoryConnectorProfileRepository;
 pub use profile_materializer::ConnectorHttpRevisionMaterializer;
 pub use profile_postgres::PostgresConnectorProfileRepository;
 pub use public_egress_authorizer::PublicInternetConnectorEgressAuthorizer;
+pub use response_object_store::{
+    ConnectorResponseObjectStore, CONNECTOR_RESPONSE_OBJECT_NAMESPACE,
+};

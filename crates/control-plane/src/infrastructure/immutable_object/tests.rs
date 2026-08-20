@@ -329,6 +329,25 @@ fn plugin_trust_root_adapter_cannot_reimplement_low_level_object_storage() {
 }
 
 #[test]
+fn connector_response_adapter_cannot_reimplement_low_level_object_storage() {
+    let source = include_str!("../../modules/connectors/infrastructure/response_object_store.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+    for forbidden in [
+        "object_store::",
+        "std::fs::",
+        "tokio::fs::",
+        "spawn_blocking",
+        "AmazonS3Builder",
+        "PutMode::Create",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "the typed Connector response adapter must reuse ImmutableObjectClient; found {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn real_s3_consumer_gates_share_the_one_test_fixture_and_production_client() {
     let consumers = [
         include_str!("../../modules/fleet/infrastructure/s3_log_chunk_store_tests.rs"),
@@ -367,6 +386,7 @@ fn production_composition_builds_one_provider_and_derives_every_consumer_namespa
         "logs",
         "artifacts",
         "asset-git-backups",
+        "connector-responses",
         "plugin-trust-roots",
     ] {
         assert!(
@@ -380,6 +400,7 @@ fn production_composition_builds_one_provider_and_derives_every_consumer_namespa
     for forbidden in [
         "LogChunkObjectStore::local",
         "NodeArtifactObjectStore::local",
+        "ConnectorResponseObjectStore::local",
         "PluginTrustRootObjectStore::local",
         "config.logs.storage_provider",
         "config.artifacts.store_dir",

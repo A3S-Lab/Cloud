@@ -1,21 +1,22 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    connector_workflow_run_input, human_decision_workflow_run_input,
-    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
-    TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
+    connector_workflow_run_input, connector_workflow_run_input_v5,
+    human_decision_workflow_run_input, routed_execution_workflow_run_input,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_CONNECTOR_STEP_ID,
+    TEST_HUMAN_STEP_ID,
 };
 
 #[test]
-fn v5_run_input_admits_only_exact_connector_service_authority() {
+fn v6_run_input_admits_only_exact_connector_service_authority() {
     let input = connector_workflow_run_input().expect("valid Connector WorkflowRun input");
-    input.validate().expect("valid v5 input");
-    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V5);
+    input.validate().expect("valid v6 input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V6);
     assert_eq!(
         input.runtime_contract_revision,
-        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
     );
-    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V5);
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V6);
 
     let mut missing_environment = input.clone();
     missing_environment.plan.environment_id = None;
@@ -35,12 +36,24 @@ fn v5_run_input_admits_only_exact_connector_service_authority() {
 }
 
 #[test]
+fn v5_connector_input_remains_valid_without_response_object_semantics() {
+    let input = connector_workflow_run_input_v5().expect("historic v5 Connector input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V5);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V5);
+    input.validate().expect("valid historic v5 input");
+}
+
+#[test]
 fn connector_generation_does_not_alias_failure_routing_v4() {
     let routed = routed_execution_workflow_run_input().expect("valid v4 failure-routing input");
     assert_eq!(routed.schema, WORKFLOW_RUN_INPUT_SCHEMA_V4);
     routed.validate().expect("v4 failure-routing input");
 
-    let mut connector = connector_workflow_run_input().expect("valid v5 Connector input");
+    let mut connector = connector_workflow_run_input().expect("valid v6 Connector input");
     connector.schema = WORKFLOW_RUN_INPUT_SCHEMA_V4.into();
     connector.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4.into();
     connector.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V4.into();

@@ -15,8 +15,9 @@ pub use application::{
     ListUnresolvedConnectorExecutionAttempts, ListUnresolvedConnectorExecutionAttemptsHandler,
     ReviseConnectorProfile, ReviseConnectorProfileHandler, WorkflowConnectorApplicationService,
     WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptRequest,
-    WorkflowConnectorAttemptResult, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
-    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT, WORKFLOW_CONNECTOR_CAPABILITY,
+    WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,
+    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
 pub use domain::{
@@ -28,24 +29,27 @@ pub use domain::{
     ConnectorExecutionReceipt, ConnectorExecutionRecoveryState, ConnectorExecutionRequest,
     ConnectorExecutionReservation, ConnectorHttpAuthentication, ConnectorHttpDefinition,
     ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
-    ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord, ConnectorRevision,
+    ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord, ConnectorResponseObjectError,
+    ConnectorResponseObjectReference, ConnectorResponseObjectWrite, ConnectorRevision,
     ConnectorRevisionPublished, ConnectorSecretBinding, ConnectorSecretBindingPurpose,
     ConnectorSecretReference, CreateConnectorProfileWrite, IConnectorEgressAuthorizer,
     IConnectorExecutionAttemptRepository, IConnectorExecutionEvidenceRepository,
     IConnectorExecutionPort, IConnectorExecutionPreparationPort, IConnectorProfileRepository,
-    IPreparedConnectorExecution, ReserveConnectorExecutionAttempt, ReviseConnectorProfileWrite,
-    SettleConnectorExecutionAttempt, CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES,
-    CONNECTOR_HTTP_DEFINITION_SCHEMA, MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
+    IConnectorResponseObjectStore, IPreparedConnectorExecution, ReserveConnectorExecutionAttempt,
+    ReviseConnectorProfileWrite, SettleConnectorExecutionAttempt,
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_HTTP_DEFINITION_SCHEMA,
+    CONNECTOR_RESPONSE_OBJECT_SCHEMA, MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
     MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE, MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS,
     MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
 };
 pub use infrastructure::{
     BoundedHttpConnectorExecutor, ConnectorHttpExecutionPreparationPort,
-    ConnectorHttpRevisionMaterializer, InMemoryConnectorExecutionEvidenceRepository,
-    InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
-    PostgresConnectorExecutionAttemptRepository, PostgresConnectorExecutionEvidenceRepository,
-    PostgresConnectorProfileRepository, PublicInternetConnectorEgressAuthorizer,
-    ResolvedConnectorAuthentication, ResolvedConnectorHttpRevision,
+    ConnectorHttpRevisionMaterializer, ConnectorResponseObjectStore,
+    InMemoryConnectorExecutionEvidenceRepository, InMemoryConnectorExecutionRepository,
+    InMemoryConnectorProfileRepository, PostgresConnectorExecutionAttemptRepository,
+    PostgresConnectorExecutionEvidenceRepository, PostgresConnectorProfileRepository,
+    PublicInternetConnectorEgressAuthorizer, ResolvedConnectorAuthentication,
+    ResolvedConnectorHttpRevision, CONNECTOR_RESPONSE_OBJECT_NAMESPACE,
 };
 pub use presentation::{
     ConnectorProfileMutationResponse, ConnectorProfileRecordResponse, ConnectorProfileResponse,

@@ -7,10 +7,13 @@ use crate::modules::connectors::domain::MAXIMUM_CONNECTOR_BODY_BYTES;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
 use crate::modules::workflow::domain::{
     WorkflowConnectorAttemptEvidence, WorkflowConnectorAttemptOutcome,
-    WorkflowConnectorHookMetadata, WorkflowConnectorResumePayload, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION_V5,
+    WorkflowConnectorHookMetadata, WorkflowConnectorResponseObjectReference,
+    WorkflowConnectorResumePayload, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V5,
+    WORKFLOW_RUN_FLOW_VERSION_V6,
 };
-use crate::modules::workflow::test_support::connector_workflow_run_input;
+use crate::modules::workflow::test_support::{
+    connector_workflow_run_input, connector_workflow_run_input_v5,
+};
 use a3s_flow::{
     FlowEngine, FlowError, HookStatus, WorkflowInvocation, WorkflowRunStatus, WorkflowSpec,
 };
@@ -18,11 +21,12 @@ use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
 
 #[tokio::test]
-async fn connector_runtime_completes_from_body_free_accepted_evidence() -> Result<(), FlowError> {
+async fn connector_runtime_completes_with_an_immutable_response_object() -> Result<(), FlowError> {
     let (engine, input) = start().await?;
     let metadata = active_hook(&engine, &input.workflow_run_id.to_string(), 1, 1).await?;
     let authority = attempt_authority(&metadata).map_err(FlowError::Runtime)?;
     let evidence = accepted_evidence(
+        &metadata,
         authority.attempt_id,
         authority.request_digest.clone(),
         authority.request_body_bytes,
@@ -51,13 +55,60 @@ async fn connector_runtime_completes_from_body_free_accepted_evidence() -> Resul
         "{snapshot:#?}"
     );
     let output = snapshot.output.expect("Connector Workflow output");
-    assert_eq!(output["schema"], "cloud.workflow.connector-result.v1");
+    assert_eq!(output["schema"], "cloud.workflow.connector-result.v2");
     assert_eq!(
         output["connectorAttemptId"],
         authority.attempt_id.to_string()
     );
     assert_eq!(output["responseStatus"], 200);
+    assert_eq!(
+        output["responseObject"]["connectorAttemptId"],
+        authority.attempt_id.to_string()
+    );
+    assert_eq!(
+        output["responseObject"]["digest"],
+        Sha256Digest::from_bytes(br#"{"accepted":true}"#).as_str()
+    );
     assert!(!snapshot.steps.contains_key("workflow-step:invoke"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn connector_v5_replay_remains_body_free_and_byte_compatible() -> Result<(), FlowError> {
+    let mut input = connector_workflow_run_input_v5().map_err(FlowError::Runtime)?;
+    input.requested_at = canonical_timestamp(Utc::now());
+    input.deadline_at = input.requested_at + Duration::hours(1);
+    let (engine, input) = start_input(input).await?;
+    let run_id = input.workflow_run_id.to_string();
+    let metadata = active_hook(&engine, &run_id, 1, 1).await?;
+    assert!(!metadata.requires_response_object());
+    let authority = attempt_authority(&metadata).map_err(FlowError::Runtime)?;
+    let evidence = accepted_evidence(
+        &metadata,
+        authority.attempt_id,
+        authority.request_digest.clone(),
+        authority.request_body_bytes,
+        input.requested_at + Duration::seconds(1),
+    )?;
+    let payload = WorkflowConnectorResumePayload::completed(
+        &metadata,
+        evidence,
+        authority.attempt_id,
+        &authority.request_digest,
+        authority.request_body_bytes,
+    )
+    .map_err(FlowError::Runtime)?;
+    engine
+        .resume_hook(
+            &run_id,
+            &metadata.flow_hook_id(),
+            serde_json::to_value(payload)?,
+        )
+        .await?;
+
+    let output = engine.snapshot(&run_id).await?.output.expect("v5 output");
+    assert_eq!(output["schema"], "cloud.workflow.connector-result.v1");
+    assert!(output.get("responseObject").is_none());
     Ok(())
 }
 
@@ -68,12 +119,13 @@ async fn connector_runtime_owns_retry_wait_and_next_attempt_identity() -> Result
     let first = active_hook(&engine, &run_id, 1, 1).await?;
     let first_authority = attempt_authority(&first).map_err(FlowError::Runtime)?;
     let completed_at = input.requested_at + Duration::seconds(1);
-    let evidence = WorkflowConnectorAttemptEvidence::restore(
+    let evidence = WorkflowConnectorAttemptEvidence::restore_with_response_object(
         first_authority.attempt_id,
         first_authority.request_digest.clone(),
         first_authority.request_body_bytes,
         WorkflowConnectorAttemptOutcome::Retryable,
         Some(503),
+        None,
         None,
         None,
         Some(7),
@@ -236,7 +288,7 @@ fn connector_runtime_rejects_an_oversized_c6_request_before_creating_a_hook() {
         input.workflow_run_id.to_string(),
         WorkflowSpec::rust_embedded(
             WORKFLOW_RUN_FLOW_NAME,
-            WORKFLOW_RUN_FLOW_VERSION_V5,
+            WORKFLOW_RUN_FLOW_VERSION_V6,
             "a3s-cloud",
             "main",
         ),
@@ -262,14 +314,21 @@ async fn connector_runtime_rejects_response_evidence_beyond_the_c6_bound() -> Re
     let metadata = active_hook(&engine, &run_id, 1, 1).await?;
     let authority = attempt_authority(&metadata).map_err(FlowError::Runtime)?;
     let completed_at = input.requested_at + Duration::seconds(1);
-    let evidence = WorkflowConnectorAttemptEvidence::restore(
+    let response_digest = Sha256Digest::from_bytes(b"bounded-body");
+    let response_object = response_object(
+        authority.attempt_id,
+        response_digest.clone(),
+        MAXIMUM_CONNECTOR_BODY_BYTES as u64 + 1,
+    )?;
+    let evidence = WorkflowConnectorAttemptEvidence::restore_with_response_object(
         authority.attempt_id,
         authority.request_digest.clone(),
         authority.request_body_bytes,
         WorkflowConnectorAttemptOutcome::Accepted,
         Some(200),
-        Some(Sha256Digest::from_bytes(b"bounded-body")),
+        Some(response_digest),
         Some(MAXIMUM_CONNECTOR_BODY_BYTES as u64 + 1),
+        Some(response_object),
         None,
         completed_at - Duration::seconds(1),
         completed_at,
@@ -331,6 +390,18 @@ async fn start() -> Result<
     let mut input = connector_workflow_run_input().map_err(FlowError::Runtime)?;
     input.requested_at = canonical_timestamp(Utc::now());
     input.deadline_at = input.requested_at + Duration::hours(1);
+    start_input(input).await
+}
+
+async fn start_input(
+    input: crate::modules::workflow::domain::WorkflowRunInput,
+) -> Result<
+    (
+        FlowEngine,
+        crate::modules::workflow::domain::WorkflowRunInput,
+    ),
+    FlowError,
+> {
     input.validate().map_err(FlowError::Runtime)?;
     let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
     engine
@@ -338,7 +409,11 @@ async fn start() -> Result<
             input.workflow_run_id.to_string(),
             WorkflowSpec::rust_embedded(
                 WORKFLOW_RUN_FLOW_NAME,
-                WORKFLOW_RUN_FLOW_VERSION_V5,
+                if input.flow_workflow_version == WORKFLOW_RUN_FLOW_VERSION_V5 {
+                    WORKFLOW_RUN_FLOW_VERSION_V5
+                } else {
+                    WORKFLOW_RUN_FLOW_VERSION_V6
+                },
                 "a3s-cloud",
                 "main",
             ),
@@ -365,22 +440,63 @@ async fn active_hook(
 }
 
 fn accepted_evidence(
+    metadata: &WorkflowConnectorHookMetadata,
     attempt_id: uuid::Uuid,
     request_digest: Sha256Digest,
     request_body_bytes: u64,
     completed_at: DateTime<Utc>,
 ) -> Result<WorkflowConnectorAttemptEvidence, FlowError> {
-    WorkflowConnectorAttemptEvidence::restore(
+    let response_digest = Sha256Digest::from_bytes(br#"{"accepted":true}"#);
+    let response_object = response_object(
         attempt_id,
-        request_digest,
-        request_body_bytes,
-        WorkflowConnectorAttemptOutcome::Accepted,
-        Some(200),
-        Some(Sha256Digest::from_bytes(br#"{"accepted":true}"#)),
-        Some(br#"{"accepted":true}"#.len() as u64),
-        None,
-        completed_at - Duration::seconds(1),
-        completed_at,
+        response_digest.clone(),
+        br#"{"accepted":true}"#.len() as u64,
+    )?;
+    let result = if metadata.requires_response_object() {
+        WorkflowConnectorAttemptEvidence::restore_with_response_object(
+            attempt_id,
+            request_digest,
+            request_body_bytes,
+            WorkflowConnectorAttemptOutcome::Accepted,
+            Some(200),
+            Some(response_digest),
+            Some(br#"{"accepted":true}"#.len() as u64),
+            Some(response_object),
+            None,
+            completed_at - Duration::seconds(1),
+            completed_at,
+        )
+    } else {
+        WorkflowConnectorAttemptEvidence::restore(
+            attempt_id,
+            request_digest,
+            request_body_bytes,
+            WorkflowConnectorAttemptOutcome::Accepted,
+            Some(200),
+            Some(response_digest),
+            Some(br#"{"accepted":true}"#.len() as u64),
+            None,
+            completed_at - Duration::seconds(1),
+            completed_at,
+        )
+    };
+    result.map_err(FlowError::Runtime)
+}
+
+fn response_object(
+    attempt_id: uuid::Uuid,
+    digest: Sha256Digest,
+    size_bytes: u64,
+) -> Result<WorkflowConnectorResponseObjectReference, FlowError> {
+    let hexadecimal = digest
+        .as_str()
+        .strip_prefix("sha256:")
+        .ok_or_else(|| FlowError::Runtime("invalid response digest".into()))?;
+    WorkflowConnectorResponseObjectReference::new(
+        attempt_id,
+        format!("attempts/{attempt_id}/sha256/{hexadecimal}/body"),
+        digest,
+        size_bytes,
     )
     .map_err(FlowError::Runtime)
 }
@@ -393,6 +509,7 @@ async fn resume_accepted(
 ) -> Result<(), FlowError> {
     let authority = attempt_authority(metadata).map_err(FlowError::Runtime)?;
     let evidence = accepted_evidence(
+        metadata,
         authority.attempt_id,
         authority.request_digest.clone(),
         authority.request_body_bytes,
@@ -422,18 +539,34 @@ async fn resume_retryable(
     completed_at: DateTime<Utc>,
 ) -> Result<(), FlowError> {
     let authority = attempt_authority(metadata).map_err(FlowError::Runtime)?;
-    let evidence = WorkflowConnectorAttemptEvidence::restore(
-        authority.attempt_id,
-        authority.request_digest.clone(),
-        authority.request_body_bytes,
-        WorkflowConnectorAttemptOutcome::Retryable,
-        Some(503),
-        None,
-        None,
-        None,
-        completed_at - Duration::seconds(1),
-        completed_at,
-    )
+    let evidence = if metadata.requires_response_object() {
+        WorkflowConnectorAttemptEvidence::restore_with_response_object(
+            authority.attempt_id,
+            authority.request_digest.clone(),
+            authority.request_body_bytes,
+            WorkflowConnectorAttemptOutcome::Retryable,
+            Some(503),
+            None,
+            None,
+            None,
+            None,
+            completed_at - Duration::seconds(1),
+            completed_at,
+        )
+    } else {
+        WorkflowConnectorAttemptEvidence::restore(
+            authority.attempt_id,
+            authority.request_digest.clone(),
+            authority.request_body_bytes,
+            WorkflowConnectorAttemptOutcome::Retryable,
+            Some(503),
+            None,
+            None,
+            None,
+            completed_at - Duration::seconds(1),
+            completed_at,
+        )
+    }
     .map_err(FlowError::Runtime)?;
     let payload = WorkflowConnectorResumePayload::completed(
         metadata,

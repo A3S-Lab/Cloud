@@ -2,7 +2,8 @@ use super::{
     ConnectorExecutionApplicationService, ConnectorExecutionAttemptResult, ExecuteConnectorAttempt,
 };
 use crate::modules::connectors::domain::{
-    ConnectorExecutionEvidence, ConnectorExecutionRequest, MAXIMUM_CONNECTOR_BODY_BYTES,
+    ConnectorExecutionEvidence, ConnectorExecutionOutcome, ConnectorExecutionRequest,
+    ConnectorResponseObjectReference, MAXIMUM_CONNECTOR_BODY_BYTES,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -17,6 +18,12 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub const WORKFLOW_CONNECTOR_CAPABILITY: &str = "connector.http";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowConnectorResponseMode {
+    DigestOnly,
+    ImmutableObjectReference,
+}
 
 /// One Flow-owned attempt against an exact, immutable Connector revision.
 ///
@@ -38,6 +45,7 @@ pub struct WorkflowConnectorAttemptRequest {
     pub connector_revision_digest: Sha256Digest,
     pub capability: String,
     pub input: serde_json::Value,
+    pub response_mode: WorkflowConnectorResponseMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,7 +135,8 @@ impl WorkflowConnectorAttemptRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowConnectorAttemptResult {
     Completed {
-        evidence: ConnectorExecutionEvidence,
+        evidence: Box<ConnectorExecutionEvidence>,
+        response_object: Option<ConnectorResponseObjectReference>,
     },
     Deferred {
         attempt_id: Uuid,
@@ -182,6 +191,31 @@ impl WorkflowConnectorApplicationService {
         Ok(())
     }
 
+    fn validate_response_object(
+        request: &WorkflowConnectorAttemptRequest,
+        evidence: &ConnectorExecutionEvidence,
+        response_object: Option<&ConnectorResponseObjectReference>,
+    ) -> ApplicationResult<()> {
+        match (request.response_mode, evidence.outcome(), response_object) {
+            (WorkflowConnectorResponseMode::DigestOnly, _, None) => Ok(()),
+            (
+                WorkflowConnectorResponseMode::ImmutableObjectReference,
+                ConnectorExecutionOutcome::Accepted,
+                Some(reference),
+            ) => reference
+                .validate_evidence(evidence)
+                .map_err(ApplicationError::Internal),
+            (
+                WorkflowConnectorResponseMode::ImmutableObjectReference,
+                ConnectorExecutionOutcome::Retryable | ConnectorExecutionOutcome::Rejected,
+                None,
+            ) => Ok(()),
+            _ => Err(ApplicationError::Internal(
+                "Workflow Connector response-object result is inconsistent".into(),
+            )),
+        }
+    }
+
     async fn normalize_result(
         &self,
         request: &WorkflowConnectorAttemptRequest,
@@ -190,17 +224,44 @@ impl WorkflowConnectorApplicationService {
         result: ConnectorExecutionAttemptResult,
     ) -> ApplicationResult<WorkflowConnectorAttemptResult> {
         let result = match result {
-            ConnectorExecutionAttemptResult::SettlementPending { settlement, .. } => {
-                self.executions
+            ConnectorExecutionAttemptResult::SettlementPending {
+                settlement,
+                response_object,
+                ..
+            } => {
+                let settled = self
+                    .executions
                     .settle_known(settlement, resource_access)
-                    .await?
+                    .await?;
+                match settled {
+                    ConnectorExecutionAttemptResult::Completed {
+                        evidence,
+                        receipt,
+                        replayed,
+                        ..
+                    } => ConnectorExecutionAttemptResult::Completed {
+                        evidence,
+                        response_object,
+                        receipt,
+                        replayed,
+                    },
+                    other => other,
+                }
             }
             result => result,
         };
         match result {
-            ConnectorExecutionAttemptResult::Completed { evidence, .. } => {
+            ConnectorExecutionAttemptResult::Completed {
+                evidence,
+                response_object,
+                ..
+            } => {
                 Self::validate_evidence(request, connector_request, &evidence)?;
-                Ok(WorkflowConnectorAttemptResult::Completed { evidence })
+                Self::validate_response_object(request, &evidence, response_object.as_ref())?;
+                Ok(WorkflowConnectorAttemptResult::Completed {
+                    evidence: Box::new(evidence),
+                    response_object,
+                })
             }
             ConnectorExecutionAttemptResult::Reserved { lease_expires_at }
             | ConnectorExecutionAttemptResult::ReservationExpired { lease_expires_at } => {
@@ -248,23 +309,29 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
                 project_id: request.project_id,
                 environment_id: request.environment_id,
             }]);
-        let result = self
-            .executions
-            .execute_exact(
-                ExecuteConnectorAttempt {
-                    organization_id: request.organization_id,
-                    project_id: request.project_id,
-                    environment_id: request.environment_id,
-                    profile_id: request.connector_profile_id,
-                    revision_id: request.connector_revision_id,
-                    request: connector_request.clone(),
-                    resource_access: resource_access.clone(),
-                    fence_token: Uuid::now_v7(),
-                    requested_at: canonical_timestamp(Utc::now()),
-                },
-                &request.connector_revision_digest,
-            )
-            .await?;
+        let command = ExecuteConnectorAttempt {
+            organization_id: request.organization_id,
+            project_id: request.project_id,
+            environment_id: request.environment_id,
+            profile_id: request.connector_profile_id,
+            revision_id: request.connector_revision_id,
+            request: connector_request.clone(),
+            resource_access: resource_access.clone(),
+            fence_token: Uuid::now_v7(),
+            requested_at: canonical_timestamp(Utc::now()),
+        };
+        let result = match request.response_mode {
+            WorkflowConnectorResponseMode::DigestOnly => {
+                self.executions
+                    .execute_exact(command, &request.connector_revision_digest)
+                    .await?
+            }
+            WorkflowConnectorResponseMode::ImmutableObjectReference => {
+                self.executions
+                    .execute_exact_with_response_object(command, &request.connector_revision_digest)
+                    .await?
+            }
+        };
         self.normalize_result(request, &connector_request, &resource_access, result)
             .await
     }
@@ -273,6 +340,7 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::ImmutableObjectClient;
     use crate::modules::connectors::domain::{
         ConnectorDefinition, ConnectorExecutionError, ConnectorExecutionReceipt,
         ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
@@ -282,7 +350,8 @@ mod tests {
         IConnectorProfileRepository, IPreparedConnectorExecution,
     };
     use crate::modules::connectors::infrastructure::{
-        InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
+        ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
+        InMemoryConnectorProfileRepository,
     };
     use crate::modules::shared_kernel::domain::{IdempotencyRequest, PrincipalId, ResourceName};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -397,6 +466,12 @@ mod tests {
             .await
             .expect("store profile");
         let dispatches = Arc::new(AtomicUsize::new(0));
+        let response_objects: Arc<dyn object_store::ObjectStore> =
+            Arc::new(object_store::memory::InMemory::new());
+        let response_objects = Arc::new(ConnectorResponseObjectStore::from_client(
+            ImmutableObjectClient::from_store(response_objects, "connector-responses")
+                .expect("response object client"),
+        ));
         let executions = Arc::new(
             ConnectorExecutionApplicationService::new(
                 profiles.clone(),
@@ -406,7 +481,8 @@ mod tests {
                 }),
                 super::super::ConnectorExecutionServiceOptions::default(),
             )
-            .expect("execution service"),
+            .expect("execution service")
+            .with_response_object_store(response_objects),
         );
         Fixture {
             port: WorkflowConnectorApplicationService::new(executions),
@@ -430,6 +506,7 @@ mod tests {
             connector_revision_digest: revision.definition.digest().clone(),
             capability: WORKFLOW_CONNECTOR_CAPABILITY.into(),
             input: serde_json::json!({"ticketId": "T-42", "priority": "high"}),
+            response_mode: WorkflowConnectorResponseMode::DigestOnly,
         }
     }
 
@@ -449,7 +526,10 @@ mod tests {
             .await
             .expect("execute attempt");
         let evidence = match &first {
-            WorkflowConnectorAttemptResult::Completed { evidence } => evidence,
+            WorkflowConnectorAttemptResult::Completed {
+                evidence,
+                response_object: None,
+            } => evidence,
             other => panic!("unexpected result: {other:?}"),
         };
         assert_eq!(evidence.attempt_id(), expected_attempt_id);
@@ -469,6 +549,46 @@ mod tests {
             .await
             .expect("replay attempt");
         assert_eq!(replay, first);
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn immutable_response_mode_returns_the_same_verified_object_on_replay() {
+        let fixture = fixture().await;
+        let mut request = request(&fixture.revision);
+        request.response_mode = WorkflowConnectorResponseMode::ImmutableObjectReference;
+
+        let first = fixture
+            .port
+            .execute_attempt(&request)
+            .await
+            .expect("execute response-object attempt");
+        let reference = match &first {
+            WorkflowConnectorAttemptResult::Completed {
+                evidence,
+                response_object: Some(reference),
+            } => {
+                reference
+                    .validate_evidence(evidence)
+                    .expect("response object authority");
+                reference.clone()
+            }
+            other => panic!("unexpected result: {other:?}"),
+        };
+
+        let replay = fixture
+            .port
+            .execute_attempt(&request)
+            .await
+            .expect("replay response-object attempt");
+        assert_eq!(replay, first);
+        assert!(matches!(
+            replay,
+            WorkflowConnectorAttemptResult::Completed {
+                response_object: Some(replayed),
+                ..
+            } if replayed == reference
+        ));
         assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
     }
 

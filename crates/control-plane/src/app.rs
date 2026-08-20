@@ -31,9 +31,10 @@ use crate::modules::assets::{
 use crate::modules::audit::{AuditModule, IAuditRecordRepository, ListAuditRecordsHandler};
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
-    ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer, ConnectorsModule,
-    CreateConnectorProfileHandler, GetConnectorProfileHandler, GetConnectorRevisionHandler,
-    IConnectorProfileRepository, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
+    ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
+    ConnectorResponseObjectStore, ConnectorsModule, CreateConnectorProfileHandler,
+    GetConnectorProfileHandler, GetConnectorRevisionHandler, IConnectorProfileRepository,
+    ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
     WorkflowConnectorApplicationService,
 };
@@ -492,6 +493,11 @@ async fn build_api_worker_application(
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
+        let connector_response_objects = Arc::new(ConnectorResponseObjectStore::from_client(
+            object_storage
+                .subnamespace("connector-responses")
+                .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
+        ));
         let connector_attempts = postgres_adapters.connector_attempts();
         let connector_materializer = ConnectorHttpRevisionMaterializer::new(
             Arc::clone(&secrets),
@@ -512,7 +518,8 @@ async fn build_api_worker_application(
                 connector_preparation,
                 ConnectorExecutionServiceOptions::default(),
             )
-            .map_err(ControlPlaneStartupError::Connector)?,
+            .map_err(ControlPlaneStartupError::Connector)?
+            .with_response_object_store(connector_response_objects),
         ))
     } else {
         None

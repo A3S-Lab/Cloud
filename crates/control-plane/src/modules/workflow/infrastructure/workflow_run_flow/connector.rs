@@ -2,6 +2,7 @@ use super::WorkflowLocalStepResult;
 use crate::modules::connectors::domain::MAXIMUM_CONNECTOR_BODY_BYTES;
 use crate::modules::connectors::{
     WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptRequest,
+    WorkflowConnectorResponseMode,
 };
 use crate::modules::workflow::domain::{
     ResolvedWorkflowRunStep, WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
@@ -158,6 +159,11 @@ pub(super) fn attempt_request(
         connector_revision_digest: metadata.connector_revision_digest.clone(),
         capability: metadata.capability.clone(),
         input: metadata.effective_input.clone(),
+        response_mode: if metadata.requires_response_object() {
+            WorkflowConnectorResponseMode::ImmutableObjectReference
+        } else {
+            WorkflowConnectorResponseMode::DigestOnly
+        },
     }
 }
 

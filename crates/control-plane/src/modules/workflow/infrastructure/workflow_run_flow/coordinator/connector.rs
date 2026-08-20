@@ -2,8 +2,9 @@ use super::{application_unavailable, permanent_dispatch_error, unavailable_at};
 use crate::modules::connectors::{ConnectorExecutionOutcome, WorkflowConnectorAttemptResult};
 use crate::modules::workflow::domain::{
     WorkflowConnectorAttemptEvidence, WorkflowConnectorAttemptOutcome,
-    WorkflowConnectorHookMetadata, WorkflowConnectorResumePayload, WorkflowRunCoordinationError,
-    WorkflowRunRecord, WorkflowStepKind,
+    WorkflowConnectorHookMetadata, WorkflowConnectorResponseObjectReference,
+    WorkflowConnectorResumePayload, WorkflowRunCoordinationError, WorkflowRunRecord,
+    WorkflowStepKind,
 };
 use a3s_flow::{FlowEvent, HookStatus, WorkflowRunSnapshot};
 
@@ -41,7 +42,10 @@ impl super::FlowWorkflowRunCoordinator {
             .connector_attempt_authority()
             .map_err(WorkflowRunCoordinationError::Unavailable)?;
         let payload = match port.execute_attempt(&request).await {
-            Ok(WorkflowConnectorAttemptResult::Completed { evidence }) => {
+            Ok(WorkflowConnectorAttemptResult::Completed {
+                evidence,
+                response_object,
+            }) => {
                 let outcome = match evidence.outcome() {
                     ConnectorExecutionOutcome::Accepted => {
                         WorkflowConnectorAttemptOutcome::Accepted
@@ -53,18 +57,50 @@ impl super::FlowWorkflowRunCoordinator {
                         WorkflowConnectorAttemptOutcome::Rejected
                     }
                 };
-                let evidence = WorkflowConnectorAttemptEvidence::restore(
-                    evidence.attempt_id(),
-                    evidence.request_digest().clone(),
-                    evidence.request_body_bytes(),
-                    outcome,
-                    evidence.response_status(),
-                    evidence.response_digest().cloned(),
-                    evidence.response_body_bytes(),
-                    evidence.retry_after().map(|delay| delay.as_secs()),
-                    evidence.started_at(),
-                    evidence.completed_at(),
-                )
+                let response_object = response_object
+                    .map(|reference| {
+                        WorkflowConnectorResponseObjectReference::new(
+                            reference.connector_attempt_id,
+                            reference.object_ref,
+                            reference.digest,
+                            reference.size_bytes,
+                        )
+                    })
+                    .transpose()
+                    .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                let evidence = if hook.metadata.requires_response_object() {
+                    WorkflowConnectorAttemptEvidence::restore_with_response_object(
+                        evidence.attempt_id(),
+                        evidence.request_digest().clone(),
+                        evidence.request_body_bytes(),
+                        outcome,
+                        evidence.response_status(),
+                        evidence.response_digest().cloned(),
+                        evidence.response_body_bytes(),
+                        response_object,
+                        evidence.retry_after().map(|delay| delay.as_secs()),
+                        evidence.started_at(),
+                        evidence.completed_at(),
+                    )
+                } else {
+                    if response_object.is_some() {
+                        return Err(WorkflowRunCoordinationError::Unavailable(
+                            "legacy Workflow Connector result exposed a response object".into(),
+                        ));
+                    }
+                    WorkflowConnectorAttemptEvidence::restore(
+                        evidence.attempt_id(),
+                        evidence.request_digest().clone(),
+                        evidence.request_body_bytes(),
+                        outcome,
+                        evidence.response_status(),
+                        evidence.response_digest().cloned(),
+                        evidence.response_body_bytes(),
+                        evidence.retry_after().map(|delay| delay.as_secs()),
+                        evidence.started_at(),
+                        evidence.completed_at(),
+                    )
+                }
                 .map_err(WorkflowRunCoordinationError::Unavailable)?;
                 WorkflowConnectorResumePayload::completed(
                     &hook.metadata,

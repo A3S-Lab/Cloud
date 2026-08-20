@@ -34,6 +34,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V4: &str = "4";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V5: &str = "cloud.workflow-run.input.v5";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5: &str = "cloud.workflow-run-runtime.v5";
 pub const WORKFLOW_RUN_FLOW_VERSION_V5: &str = "5";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V6: &str = "cloud.workflow-run.input.v6";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6: &str = "cloud.workflow-run-runtime.v6";
+pub const WORKFLOW_RUN_FLOW_VERSION_V6: &str = "6";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -171,6 +174,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V3
                 | WORKFLOW_RUN_INPUT_SCHEMA_V4
                 | WORKFLOW_RUN_INPUT_SCHEMA_V5
+                | WORKFLOW_RUN_INPUT_SCHEMA_V6
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -304,14 +308,27 @@ impl WorkflowRunInput {
                     (Some(contract), defaults, regions, composite_runtime, false)
                 }
                 (
-                    WORKFLOW_RUN_INPUT_SCHEMA_V5,
-                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-                    WORKFLOW_RUN_FLOW_VERSION_V5,
+                    schema @ (WORKFLOW_RUN_INPUT_SCHEMA_V5 | WORKFLOW_RUN_INPUT_SCHEMA_V6),
+                    runtime @ (WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6),
+                    flow @ (WORKFLOW_RUN_FLOW_VERSION_V5 | WORKFLOW_RUN_FLOW_VERSION_V6),
                     WORKFLOW_PLAN_SCHEMA_V2 | WORKFLOW_PLAN_SCHEMA_V3,
                     Some(resolved),
                     defaults,
                     regions,
-                ) => {
+                ) if matches!(
+                    (schema, runtime, flow),
+                    (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V5,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+                        WORKFLOW_RUN_FLOW_VERSION_V5
+                    ) | (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V6,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+                        WORKFLOW_RUN_FLOW_VERSION_V6
+                    )
+                ) =>
+                {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
                         return Err(

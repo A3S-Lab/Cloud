@@ -1,7 +1,7 @@
 use super::{
     CapabilityType, ResolvedWorkflowRunStep, WorkflowPolicyMode, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepKind, WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, ConnectorProfileId,
@@ -13,9 +13,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA: &str = "cloud.workflow.connector-hook.v1";
+pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2: &str = "cloud.workflow.connector-hook.v2";
 pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA: &str = "cloud.workflow.connector-resume.v1";
+pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA_V2: &str = "cloud.workflow.connector-resume.v2";
 pub const WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA: &str = "cloud.workflow.connector-evidence.v1";
+pub const WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2: &str = "cloud.workflow.connector-evidence.v2";
 pub const WORKFLOW_CONNECTOR_RESULT_SCHEMA: &str = "cloud.workflow.connector-result.v1";
+pub const WORKFLOW_CONNECTOR_RESULT_SCHEMA_V2: &str = "cloud.workflow.connector-result.v2";
+pub const WORKFLOW_CONNECTOR_RESPONSE_OBJECT_SCHEMA: &str =
+    "cloud.workflow.connector-response-object.v1";
 pub const WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT: u32 = 1_024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,7 +91,11 @@ impl WorkflowConnectorHookMetadata {
             "Workflow Connector effective input",
         )?;
         let value = Self {
-            schema: WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
+            schema: if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V6 {
+                WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_CONNECTOR_HOOK_SCHEMA.into()
+            },
             organization_id: input.organization_id,
             project_id: input.project_id,
             environment_id,
@@ -110,8 +120,10 @@ impl WorkflowConnectorHookMetadata {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != WORKFLOW_CONNECTOR_HOOK_SCHEMA
-            || self.organization_id.as_uuid().is_nil()
+        if !matches!(
+            self.schema.as_str(),
+            WORKFLOW_CONNECTOR_HOOK_SCHEMA | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
+        ) || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()
             || self.workflow_run_id.as_uuid().is_nil()
@@ -140,6 +152,10 @@ impl WorkflowConnectorHookMetadata {
             return Err("Workflow Connector effective input digest does not match".into());
         }
         Ok(())
+    }
+
+    pub fn requires_response_object(&self) -> bool {
+        self.schema == WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
     }
 
     pub fn flow_hook_id(&self) -> String {
@@ -191,6 +207,55 @@ impl WorkflowConnectorAttemptOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowConnectorResponseObjectReference {
+    pub schema: String,
+    pub connector_attempt_id: Uuid,
+    pub object_ref: String,
+    pub digest: Sha256Digest,
+    pub size_bytes: u64,
+}
+
+impl WorkflowConnectorResponseObjectReference {
+    pub fn new(
+        connector_attempt_id: Uuid,
+        object_ref: impl Into<String>,
+        digest: Sha256Digest,
+        size_bytes: u64,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema: WORKFLOW_CONNECTOR_RESPONSE_OBJECT_SCHEMA.into(),
+            connector_attempt_id,
+            object_ref: object_ref.into(),
+            digest,
+            size_bytes,
+        };
+        value.validate(connector_attempt_id)?;
+        Ok(value)
+    }
+
+    pub fn validate(&self, expected_attempt_id: Uuid) -> Result<(), String> {
+        if self.schema != WORKFLOW_CONNECTOR_RESPONSE_OBJECT_SCHEMA
+            || self.connector_attempt_id.is_nil()
+            || self.connector_attempt_id != expected_attempt_id
+            || self.size_bytes > WORKFLOW_RUN_INPUT_MAX_BYTES as u64
+        {
+            return Err("Workflow Connector response-object reference is invalid".into());
+        }
+        let digest = Sha256Digest::parse(self.digest.as_str())?;
+        let hexadecimal = digest
+            .as_str()
+            .strip_prefix("sha256:")
+            .ok_or_else(|| "Workflow Connector response-object digest is invalid".to_owned())?;
+        let expected_ref = format!("attempts/{expected_attempt_id}/sha256/{hexadecimal}/body");
+        if self.object_ref != expected_ref {
+            return Err("Workflow Connector response-object path changed its authority".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowConnectorAttemptEvidence {
     pub schema: String,
     pub connector_attempt_id: Uuid,
@@ -203,6 +268,8 @@ pub struct WorkflowConnectorAttemptEvidence {
     pub response_digest: Option<Sha256Digest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_body_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_object: Option<WorkflowConnectorResponseObjectReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry_after_seconds: Option<u64>,
     pub started_at: DateTime<Utc>,
@@ -223,8 +290,8 @@ impl WorkflowConnectorAttemptEvidence {
         started_at: DateTime<Utc>,
         completed_at: DateTime<Utc>,
     ) -> Result<Self, String> {
-        let value = Self {
-            schema: WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA.into(),
+        Self::restore_version(
+            WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA,
             connector_attempt_id,
             request_digest,
             request_body_bytes,
@@ -232,6 +299,68 @@ impl WorkflowConnectorAttemptEvidence {
             response_status,
             response_digest,
             response_body_bytes,
+            None,
+            retry_after_seconds,
+            started_at,
+            completed_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_with_response_object(
+        connector_attempt_id: Uuid,
+        request_digest: Sha256Digest,
+        request_body_bytes: u64,
+        outcome: WorkflowConnectorAttemptOutcome,
+        response_status: Option<u16>,
+        response_digest: Option<Sha256Digest>,
+        response_body_bytes: Option<u64>,
+        response_object: Option<WorkflowConnectorResponseObjectReference>,
+        retry_after_seconds: Option<u64>,
+        started_at: DateTime<Utc>,
+        completed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        Self::restore_version(
+            WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2,
+            connector_attempt_id,
+            request_digest,
+            request_body_bytes,
+            outcome,
+            response_status,
+            response_digest,
+            response_body_bytes,
+            response_object,
+            retry_after_seconds,
+            started_at,
+            completed_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn restore_version(
+        schema: &str,
+        connector_attempt_id: Uuid,
+        request_digest: Sha256Digest,
+        request_body_bytes: u64,
+        outcome: WorkflowConnectorAttemptOutcome,
+        response_status: Option<u16>,
+        response_digest: Option<Sha256Digest>,
+        response_body_bytes: Option<u64>,
+        response_object: Option<WorkflowConnectorResponseObjectReference>,
+        retry_after_seconds: Option<u64>,
+        started_at: DateTime<Utc>,
+        completed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema: schema.into(),
+            connector_attempt_id,
+            request_digest,
+            request_body_bytes,
+            outcome,
+            response_status,
+            response_digest,
+            response_body_bytes,
+            response_object,
             retry_after_seconds,
             started_at: canonical_timestamp(started_at),
             completed_at: canonical_timestamp(completed_at),
@@ -257,8 +386,10 @@ impl WorkflowConnectorAttemptEvidence {
     }
 
     fn validate_shape(&self) -> Result<(), String> {
-        if self.schema != WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA
-            || self.connector_attempt_id.is_nil()
+        if !matches!(
+            self.schema.as_str(),
+            WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA | WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2
+        ) || self.connector_attempt_id.is_nil()
             || self.started_at != canonical_timestamp(self.started_at)
             || self.completed_at != canonical_timestamp(self.completed_at)
             || self.completed_at < self.started_at
@@ -280,6 +411,32 @@ impl WorkflowConnectorAttemptEvidence {
             })
         {
             return Err("Workflow Connector response evidence is invalid".into());
+        }
+        let response_object_valid = match (
+            self.schema.as_str(),
+            self.outcome,
+            self.response_object.as_ref(),
+        ) {
+            (WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA, _, None) => true,
+            (
+                WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2,
+                WorkflowConnectorAttemptOutcome::Accepted,
+                Some(reference),
+            ) => {
+                reference.validate(self.connector_attempt_id).is_ok()
+                    && Some(&reference.digest) == self.response_digest.as_ref()
+                    && Some(reference.size_bytes) == self.response_body_bytes
+            }
+            (
+                WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2,
+                WorkflowConnectorAttemptOutcome::Retryable
+                | WorkflowConnectorAttemptOutcome::Rejected,
+                None,
+            ) => true,
+            _ => false,
+        };
+        if !response_object_valid {
+            return Err("Workflow Connector response-object evidence is inconsistent".into());
         }
         match self.outcome {
             WorkflowConnectorAttemptOutcome::Accepted
@@ -327,6 +484,8 @@ pub struct WorkflowConnectorStepOutput {
     pub response_status: u16,
     pub response_digest: Sha256Digest,
     pub response_body_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_object: Option<WorkflowConnectorResponseObjectReference>,
     pub completed_at: DateTime<Utc>,
 }
 
@@ -344,11 +503,22 @@ impl WorkflowConnectorStepOutput {
             expected_request_digest,
             expected_request_body_bytes,
         )?;
+        if metadata.requires_response_object()
+            != (evidence.schema == WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2)
+        {
+            return Err(
+                "Workflow Connector result changed its response-object contract version".into(),
+            );
+        }
         if evidence.outcome != WorkflowConnectorAttemptOutcome::Accepted {
             return Err("Workflow Connector result requires accepted evidence".into());
         }
         let value = Self {
-            schema: WORKFLOW_CONNECTOR_RESULT_SCHEMA.into(),
+            schema: if evidence.response_object.is_some() {
+                WORKFLOW_CONNECTOR_RESULT_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_CONNECTOR_RESULT_SCHEMA.into()
+            },
             connector_profile_id: metadata.connector_profile_id,
             connector_revision_id: metadata.connector_revision_id,
             connector_revision_digest: metadata.connector_revision_digest.clone(),
@@ -362,6 +532,7 @@ impl WorkflowConnectorStepOutput {
             response_body_bytes: evidence.response_body_bytes.ok_or_else(|| {
                 "accepted Workflow Connector evidence lost its response size".to_owned()
             })?,
+            response_object: evidence.response_object.clone(),
             completed_at: evidence.completed_at,
         };
         value.validate(metadata, expected_attempt_id)?;
@@ -374,8 +545,10 @@ impl WorkflowConnectorStepOutput {
         expected_attempt_id: Uuid,
     ) -> Result<(), String> {
         metadata.validate()?;
-        if self.schema != WORKFLOW_CONNECTOR_RESULT_SCHEMA
-            || self.connector_profile_id != metadata.connector_profile_id
+        if !matches!(
+            self.schema.as_str(),
+            WORKFLOW_CONNECTOR_RESULT_SCHEMA | WORKFLOW_CONNECTOR_RESULT_SCHEMA_V2
+        ) || self.connector_profile_id != metadata.connector_profile_id
             || self.connector_revision_id != metadata.connector_revision_id
             || self.connector_revision_digest != metadata.connector_revision_digest
             || self.connector_attempt_id != expected_attempt_id
@@ -385,6 +558,24 @@ impl WorkflowConnectorStepOutput {
             return Err("Workflow Connector result authority is invalid".into());
         }
         Sha256Digest::parse(self.response_digest.as_str())?;
+        match (self.schema.as_str(), self.response_object.as_ref()) {
+            (WORKFLOW_CONNECTOR_RESULT_SCHEMA, None) => {}
+            (WORKFLOW_CONNECTOR_RESULT_SCHEMA_V2, Some(reference)) => {
+                reference.validate(expected_attempt_id)?;
+                if reference.digest != self.response_digest
+                    || reference.size_bytes != self.response_body_bytes
+                {
+                    return Err(
+                        "Workflow Connector result response object changed its evidence".into(),
+                    );
+                }
+            }
+            _ => {
+                return Err(
+                    "Workflow Connector result schema and response object are inconsistent".into(),
+                )
+            }
+        }
         canonical_json_bounded(
             self,
             WORKFLOW_RUN_OUTPUT_MAX_BYTES,
@@ -414,7 +605,7 @@ pub struct WorkflowConnectorResumePayload {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WorkflowConnectorResumeResolution {
     Completed {
-        evidence: WorkflowConnectorAttemptEvidence,
+        evidence: Box<WorkflowConnectorAttemptEvidence>,
     },
     Deferred {
         connector_attempt_id: Uuid,
@@ -460,7 +651,9 @@ impl WorkflowConnectorResumePayload {
         )?;
         Self::build(
             metadata,
-            WorkflowConnectorResumeResolution::Completed { evidence },
+            WorkflowConnectorResumeResolution::Completed {
+                evidence: Box::new(evidence),
+            },
             expected_attempt_id,
             expected_request_digest,
             expected_request_body_bytes,
@@ -534,7 +727,11 @@ impl WorkflowConnectorResumePayload {
         expected_request_body_bytes: u64,
     ) -> Result<Self, String> {
         let mut value = Self {
-            schema: WORKFLOW_CONNECTOR_RESUME_SCHEMA.into(),
+            schema: if metadata.requires_response_object() {
+                WORKFLOW_CONNECTOR_RESUME_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_CONNECTOR_RESUME_SCHEMA.into()
+            },
             organization_id: metadata.organization_id,
             project_id: metadata.project_id,
             workflow_run_id: metadata.workflow_run_id,
@@ -564,7 +761,12 @@ impl WorkflowConnectorResumePayload {
         expected_request_body_bytes: u64,
     ) -> Result<(), String> {
         metadata.validate()?;
-        if self.schema != WORKFLOW_CONNECTOR_RESUME_SCHEMA
+        let expected_schema = if metadata.requires_response_object() {
+            WORKFLOW_CONNECTOR_RESUME_SCHEMA_V2
+        } else {
+            WORKFLOW_CONNECTOR_RESUME_SCHEMA
+        };
+        if self.schema != expected_schema
             || self.organization_id != metadata.organization_id
             || self.project_id != metadata.project_id
             || self.workflow_run_id != metadata.workflow_run_id
@@ -583,6 +785,13 @@ impl WorkflowConnectorResumePayload {
                     expected_request_digest,
                     expected_request_body_bytes,
                 )?;
+                if metadata.requires_response_object()
+                    != (evidence.schema == WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA_V2)
+                {
+                    return Err(
+                        "Workflow Connector evidence changed its response-object version".into(),
+                    );
+                }
             }
             WorkflowConnectorResumeResolution::Deferred {
                 connector_attempt_id,
@@ -690,14 +899,27 @@ mod tests {
     #[test]
     fn resume_payload_rejects_evidence_and_digest_tampering() {
         let (metadata, attempt_id, request_digest, request_bytes) = authority();
-        let evidence = WorkflowConnectorAttemptEvidence::restore(
+        let response_digest = Sha256Digest::from_bytes(br#"{"accepted":true}"#);
+        let hexadecimal = response_digest
+            .as_str()
+            .strip_prefix("sha256:")
+            .expect("digest");
+        let response_object = WorkflowConnectorResponseObjectReference::new(
+            attempt_id,
+            format!("attempts/{attempt_id}/sha256/{hexadecimal}/body"),
+            response_digest.clone(),
+            br#"{"accepted":true}"#.len() as u64,
+        )
+        .expect("response object");
+        let evidence = WorkflowConnectorAttemptEvidence::restore_with_response_object(
             attempt_id,
             request_digest.clone(),
             request_bytes,
             WorkflowConnectorAttemptOutcome::Accepted,
             Some(200),
-            Some(Sha256Digest::from_bytes(br#"{"accepted":true}"#)),
+            Some(response_digest),
             Some(br#"{"accepted":true}"#.len() as u64),
+            Some(response_object),
             None,
             DateTime::parse_from_rfc3339("2026-08-09T08:00:01Z")
                 .expect("time")
@@ -739,6 +961,7 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<WorkflowConnectorHookMetadata>();
         assert_send_sync::<WorkflowConnectorAttemptEvidence>();
+        assert_send_sync::<WorkflowConnectorResponseObjectReference>();
         assert_send_sync::<WorkflowConnectorStepOutput>();
         assert_send_sync::<WorkflowConnectorResumePayload>();
     }
