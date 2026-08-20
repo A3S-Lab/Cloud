@@ -53,5 +53,6 @@ Workflow and Flow retain graph and execution authority.
   head.
 - Database reads reparse canonical ACL and reject drift between that contract
   and its indexed Workflow evidence.
-- Authorization and public management or delivery surfaces remain separate
-  `APP0.1`/later-gate work; persistence alone is not an availability claim.
+- The authorization-before-replay CQRS boundary is layered separately by
+  decision 0028; persistence alone is not an availability claim, and public
+  management or delivery surfaces remain later-gate work.

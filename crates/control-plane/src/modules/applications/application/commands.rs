@@ -142,7 +142,7 @@ impl CommandHandler<CreateApplication> for CreateApplicationHandler {
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
             let event =
-                ApplicationReleasePublished::created(&application, &release, command.request_id)
+                ApplicationReleasePublished::published(&application, &release, command.request_id)
                     .map_err(BootError::Internal)?;
             let record =
                 ApplicationRecord::new(application, release).map_err(BootError::Internal)?;

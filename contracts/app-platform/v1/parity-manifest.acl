@@ -48,7 +48,7 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     state = "planned"
   }
   gate "APP0.1" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "contract:contracts/app0.1/application-release.acl", "doc:docs/decisions/app-platform/0002-application-delivery.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md", "implementation:crates/control-plane/src/modules/applications/application/mod.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/application_postgres.rs", "implementation:migrations/124_application_releases.sql", "test:crates/control-plane/src/modules/applications/application/tests.rs", "test:crates/control-plane/tests/support/applications.rs"]
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "contract:contracts/app0.1/application-release.acl", "doc:docs/decisions/app-platform/0002-application-delivery.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md", "doc:docs/decisions/app-platform/0027-atomic-application-release-persistence.md", "doc:docs/decisions/app-platform/0028-authorized-application-release-cqrs.md", "implementation:crates/control-plane/src/modules/applications/application/mod.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/persistence/postgres.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_revision.rs", "implementation:migrations/124_application_releases.sql", "test:crates/control-plane/src/modules/applications/application/tests.rs", "test:crates/control-plane/tests/support/applications.rs"]
     state = "in_progress"
   }
   gate "APP0.2" {

@@ -124,13 +124,14 @@ The code on `main` separates implemented mechanics from released capability:
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint
   behavior/Gateway, and lifecycle gates remain; the service is unavailable.
-- **In-progress / future platform families** — Applications now has the
-  component-only `APP0.1-C1/C2` immutable release contract, exact Workflow
-  evidence boundary, and migration `124` PostgreSQL/A3S ORM authority with
-  atomic idempotency, audit, and Outbox writes. Authorization and maintained
-  interfaces remain open. Knowledge, Automations, Inference, and Evolution
-  retain their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`, and `EV0` remain
-  unavailable.
+- **In-progress / future platform families** — Applications now has
+  component-only `APP0.1-C1/C2/C3`: the immutable release contract, migration
+  `124` PostgreSQL/A3S ORM authority, project-authorized CQRS, exact Workflow
+  semantic evidence, and atomic idempotency, audit, and Outbox writes.
+  Production composition and maintained REST/OpenAPI, client, CLI, and
+  Management MCP interfaces remain open. Knowledge, Automations, Inference,
+  and Evolution retain their gate-driven plans; `APP0`, `K0`, `AUT0`, `I0`,
+  and `EV0` remain unavailable.
 
 Gate-by-gate evidence, dependencies, and remaining work live in the
 [product roadmap](ROADMAP.md) and detailed plans.
@@ -337,11 +338,13 @@ creating their own control planes:
    `A1.1` is implemented; native Code integration verification remains.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
-   `APP0.1-C1/C2` freezes one canonical immutable release across all six
+   `APP0.1-C1/C2/C3` freezes one canonical immutable release across all six
    experiences, including distinct classic/New Agent identities, pins the
    exact Workflow revision evidence without copying its graph or runtime, and
    persists sequence-fenced releases with atomic idempotency, audit, and
-   Outbox facts through PostgreSQL/A3S ORM.
+   Outbox facts through PostgreSQL/A3S ORM. Project-authorized commands and
+   queries replay exact historical releases before resolving new Workflow
+   evidence; maintained public interfaces remain open.
    `K0` remains planned and `AUT0` has component-only Connector foundations in
    progress. All three product surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with

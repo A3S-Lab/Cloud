@@ -1,17 +1,32 @@
 use super::*;
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_control_plane::modules::applications::{
     Application, ApplicationAudience, ApplicationDeliveryPolicy, ApplicationExperience,
     ApplicationInteractionMode, ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
     ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
-    ApplicationWorkflowBinding, CreateApplicationWrite, IApplicationRepository,
-    PostgresApplicationRepository, PublishApplicationReleaseWrite,
+    ApplicationWorkflowBinding, ApplicationWorkflowRevisionEvidence, CreateApplication,
+    CreateApplicationHandler, CreateApplicationWrite, GetApplication, GetApplicationHandler,
+    IApplicationRepository, IApplicationWorkflowRevisionPort, ListApplicationReleases,
+    ListApplicationReleasesHandler, PostgresApplicationRepository, PublishApplicationRelease,
+    PublishApplicationReleaseHandler, PublishApplicationReleaseWrite,
+    WorkflowApplicationReleaseEvidenceReader,
 };
+use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ApplicationId, ApplicationReleaseId, PrincipalId, RepositoryError, Sha256Digest,
-    WorkflowDefinitionId, WorkflowRevisionId,
+    ApplicationId, ApplicationReleaseId, IdempotencyRequest, OrganizationId, PrincipalId,
+    ProjectId, RepositoryError, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
-use a3s_orm::{DatabaseError, Executor, PostgresError, PostgresTransaction, Query};
+use a3s_cloud_control_plane::modules::workflow::{
+    CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository,
+    PostgresWorkflowDefinitionRepository, WorkflowDefinition, WorkflowDefinitionRecord,
+    WorkflowRevisionPublished,
+};
+use a3s_orm::{
+    DatabaseError, Executor, PostgresError, PostgresExecutor, PostgresTransaction, Query,
+};
 use chrono::Duration;
+use std::sync::Arc;
 
 pub(super) async fn exercise_application_release_persistence(
     url: String,
@@ -362,6 +377,224 @@ pub(super) async fn exercise_application_release_persistence(
             .await,
         "skipping an Application release",
     );
+    exercise_authorized_application_cqrs(&executor, &database).await?;
+    Ok(())
+}
+
+async fn exercise_authorized_application_cqrs(
+    executor: &PostgresExecutor,
+    database: &Database<PostgresDialect, PostgresExecutor>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let actor = PrincipalId::new();
+    let created_at = Utc::now();
+    seed_scope(database, organization_id, project_id, actor, created_at).await?;
+
+    let workflow_definition_id = WorkflowDefinitionId::new();
+    let workflow_revision_id = WorkflowRevisionId::new();
+    let workflow_revision = super::workflow_semantic_contracts_support::semantic_revision(
+        organization_id,
+        project_id,
+        workflow_definition_id,
+        workflow_revision_id,
+        actor,
+        created_at,
+        false,
+    );
+    let workflow_definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        workflow_definition_id,
+        workflow_revision.contract.spec().name.clone(),
+        workflow_revision.contract.spec().description.clone(),
+        workflow_revision_id,
+        workflow_revision.contract.digest().clone(),
+        actor,
+        created_at,
+    )?;
+    let workflow_request_id = Uuid::now_v7();
+    let workflow_repository = Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
+    workflow_repository
+        .create(CreateWorkflowDefinitionWrite {
+            event: WorkflowRevisionPublished::created(
+                &workflow_definition,
+                &workflow_revision,
+                workflow_request_id,
+            )?,
+            record: WorkflowDefinitionRecord {
+                definition: workflow_definition,
+                revision: workflow_revision.clone(),
+            },
+            actor_principal_id: actor,
+            request_id: workflow_request_id,
+            idempotency: IdempotencyRequest::new(
+                "application-cqrs-workflow",
+                "create",
+                workflow_revision.contract.digest().as_str().as_bytes(),
+            )?,
+        })
+        .await?;
+
+    let evidence_reader = Arc::new(WorkflowApplicationReleaseEvidenceReader::new(
+        workflow_repository,
+    ));
+    let evidence = evidence_reader
+        .resolve_revision(
+            organization_id,
+            project_id,
+            workflow_definition_id,
+            workflow_revision_id,
+        )
+        .await?;
+    assert_eq!(
+        evidence.binding.workflow_contract_digest,
+        *workflow_revision.contract.digest()
+    );
+    assert_eq!(
+        evidence.binding.workflow_payload_set_digest,
+        workflow_revision.payload_set_digest
+    );
+    assert_eq!(
+        &evidence.binding.workflow_semantic_contract_set_digest,
+        workflow_revision
+            .semantic_contract_set_digest()
+            .expect("semantic contract set")
+    );
+
+    let applications = Arc::new(PostgresApplicationRepository::new(executor.clone()));
+    let create_handler =
+        CreateApplicationHandler::new(applications.clone(), evidence_reader.clone());
+    let initial_contract = cqrs_contract(&evidence, '1');
+    let create = CreateApplication {
+        organization_id,
+        project_id,
+        name: "Authorized support copilot".into(),
+        description: "Exact Workflow-backed Application CQRS".into(),
+        release_acl: initial_contract.canonical_acl().into(),
+        actor_principal_id: actor,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "application-cqrs-create".into(),
+        request_id: Uuid::now_v7(),
+    };
+    let created = create_handler
+        .execute(create.clone(), cqrs_context())
+        .await?
+        .map_err(|error| format!("create Application through CQRS: {error}"))?;
+    assert!(!created.replayed);
+    let replay = create_handler
+        .execute(create.clone(), cqrs_context())
+        .await?
+        .map_err(|error| format!("replay Application create: {error}"))?;
+    assert!(replay.replayed);
+    assert_eq!(replay.record, created.record);
+
+    let denied = create_handler
+        .execute(
+            CreateApplication {
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Project {
+                        project_id: ProjectId::new(),
+                    },
+                ]),
+                ..create.clone()
+            },
+            cqrs_context(),
+        )
+        .await?;
+    assert!(matches!(
+        denied,
+        Err(a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError::NotFound(_))
+    ));
+
+    let conflicting = create_handler
+        .execute(
+            CreateApplication {
+                release_acl: cqrs_contract(&evidence, '2').canonical_acl().into(),
+                ..create
+            },
+            cqrs_context(),
+        )
+        .await?;
+    assert!(matches!(
+        conflicting,
+        Err(a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError::Conflict(_))
+    ));
+
+    let publish_handler =
+        PublishApplicationReleaseHandler::new(applications.clone(), evidence_reader);
+    let publish = PublishApplicationRelease {
+        organization_id,
+        project_id,
+        application_id: created.record.application.id,
+        expected_version: 1,
+        release_acl: cqrs_contract(&evidence, '2').canonical_acl().into(),
+        actor_principal_id: actor,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "application-cqrs-publish-2".into(),
+        request_id: Uuid::now_v7(),
+    };
+    let published = publish_handler
+        .execute(publish.clone(), cqrs_context())
+        .await?
+        .map_err(|error| format!("publish Application release: {error}"))?;
+    assert!(!published.replayed);
+    let publish_replay = publish_handler
+        .execute(publish, cqrs_context())
+        .await?
+        .map_err(|error| format!("replay Application publication: {error}"))?;
+    assert!(publish_replay.replayed);
+    assert_eq!(publish_replay.record, published.record);
+
+    let queried = GetApplicationHandler::new(applications.clone())
+        .execute(
+            GetApplication {
+                organization_id,
+                project_id,
+                application_id: created.record.application.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            cqrs_context(),
+        )
+        .await?
+        .map_err(|error| format!("get Application through CQRS: {error}"))?;
+    assert_eq!(queried, published.record.application);
+    let history = ListApplicationReleasesHandler::new(applications)
+        .execute(
+            ListApplicationReleases {
+                organization_id,
+                project_id,
+                application_id: created.record.application.id,
+                limit: Some(50),
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            cqrs_context(),
+        )
+        .await?
+        .map_err(|error| format!("list Application releases through CQRS: {error}"))?;
+    assert_eq!(
+        history,
+        vec![published.record.release, created.record.release]
+    );
+
+    let persisted_facts = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64, i64)>(
+                "select (select count(*) from applications where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append("), (select count(*) from application_releases where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append("), (select count(*) from outbox_events where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and event_key = 'application.release.published'), (select count(*) from audit_records where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and action = 'application.release.published'), (select count(*) from idempotency_records where scope_key like ")
+            .bind(format!("organizations/{organization_id}/projects/{project_id}/applications%"))
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(persisted_facts, (1, 2, 2, 2, 2));
     Ok(())
 }
 
@@ -505,6 +738,30 @@ fn release_contract(
         },
         presentation_digest: digest(presentation_marker),
     })
+}
+
+fn cqrs_contract(
+    evidence: &ApplicationWorkflowRevisionEvidence,
+    presentation_marker: char,
+) -> ApplicationReleaseContract {
+    ApplicationReleaseContract::from_spec(ApplicationReleaseContractSpec {
+        experience: ApplicationExperience::Chatflow,
+        audience: ApplicationAudience::ProjectMembers,
+        delivery: ApplicationDeliveryPolicy {
+            interaction_mode: ApplicationInteractionMode::Conversation,
+            response_modes: vec![
+                ApplicationResponseMode::Blocking,
+                ApplicationResponseMode::Streaming,
+            ],
+        },
+        workflow: evidence.binding.clone(),
+        presentation_digest: digest(presentation_marker),
+    })
+    .expect("Application release contract")
+}
+
+fn cqrs_context() -> CqrsContext {
+    CqrsContext::new(ModuleRef::new())
 }
 
 fn digest(marker: char) -> Sha256Digest {

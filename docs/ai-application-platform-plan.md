@@ -51,7 +51,7 @@ That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The ten authority decisions are
+implementation is not a public capability. The twenty-eight authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -678,7 +678,8 @@ implementing a Cloud substitute is prohibited by this plan.
 | --- | --- | --- |
 | `APP0.1-C1` | Implemented; component-only | Strong Application/Release identities, one canonical `cloud.application.release.v1` A3S ACL, six closed experiences with immutable classic/New Agent distinction, bounded delivery/audience policy, exact Workflow definition/revision plus contract/payload/semantic/input/output digests, evidence matching, and immutable release/head lineage | `F0`, `W0.3` definition/revision foundation |
 | `APP0.1-C2` | Implemented; component-only | Migration `124` and one PostgreSQL/A3S ORM repository persist immutable canonical releases and sequence-fenced heads, check exact Workflow revision content/payload evidence, reparse ACL on reads, and atomically commit idempotency, audit, and Outbox facts without copying graph, Flow, provider, session, Secret, or Gateway authority | `APP0.1-C1`, `W0.3` definition/revision persistence |
-| `APP0.1` | In progress | Add authorization and maintained CQRS, REST/OpenAPI, client, CLI, and Management MCP contracts over the C1/C2 authority | `APP0.1-C2`, `C0.1` |
+| `APP0.1-C3` | Implemented; component-only | Add project-authorized create/publish/get/list CQRS, authorization before replay, exact historical idempotency replay before Workflow re-resolution, and one metadata-only port over the existing semantic Workflow repository. New publication matches definition/revision plus contract/payload/semantic/input/output digests; v1 admits exactly one Workflow Output because the release contract owns one output-schema digest, while Workflow retains broader multi-output authority | `APP0.1-C2`, `W0.3` semantic definition/revision persistence |
+| `APP0.1` | In progress | Add production composition plus maintained REST/OpenAPI, client, CLI, and Management MCP contracts over the C1/C2/C3 authority | `APP0.1-C3`, `C0.1` |
 | `APP0.2` | Add deterministic preset compilers, application end users, invocation/session/message/variant state, conversation variables, file references, Answer frames, citations, final outputs, feedback, annotations, cancellation, replay, and blocking/streaming parity | `APP0.1`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
@@ -737,7 +738,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twenty-seven
+   reject inventory/schema drift and false public claims. All twenty-eight
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -749,7 +750,8 @@ The recommended sequence is:
    objects, terminal-evidence-authorized Connector response reads, exact
    default-output folding, schema-bound typed JSON response projection,
    descriptor-bound Connector failure routing, the single Application release
-   authority, and its atomic persistence boundary are accepted and versioned.
+   authority, its atomic persistence boundary, and its authorization-before-
+   replay CQRS boundary are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.

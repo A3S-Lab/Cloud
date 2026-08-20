@@ -42,12 +42,12 @@ the classic/New Agent distinction. A presentation change or a new Workflow
 target creates another immutable release; changing experience requires a new
 Application identity.
 
-The component-only `APP0.1-C1/C2` implementation adds strong identifiers, the
-closed ACL contract, exact admission evidence, aggregate/release invariants,
-and a checked-in conformance fixture. C2 adds only the Applications head and
-immutable-release tables in migration `124`, authorized CQRS, a metadata-only
-Workflow adapter, and A3S ORM persistence that atomically reuses shared
-idempotency, Outbox, and audit writes. It adds no API, session/message state,
-variable store, Flow workflow, queue, worker, provider client, runtime,
-credential, object namespace, or Gateway route. Those capabilities remain
-unavailable until their named APP0 gates pass.
+The component-only `APP0.1-C1/C2/C3` implementation adds strong identifiers,
+the closed ACL contract, exact admission evidence, aggregate/release
+invariants, and a checked-in conformance fixture. C2 adds only the Applications
+head and immutable-release tables plus the A3S ORM transaction described by
+decision 0027. C3 adds the authorization-before-replay CQRS and metadata-only
+Workflow adapter described by decision 0028. It adds no public API,
+session/message state, variable store, Flow workflow, queue, worker, provider
+client, runtime, credential, object namespace, or Gateway route. Those
+capabilities remain unavailable until their named APP0 gates pass.

@@ -1,7 +1,7 @@
 # APP0.1 Application release contract
 
 This directory contains the checked-in conformance fixture for the
-component-only `APP0.1-C1/C2` foundation.
+component-only `APP0.1-C1/C2/C3` foundation.
 
 `cloud.application.release.v1` freezes one Applications-owned immutable
 publication contract:
@@ -28,6 +28,12 @@ the exact Workflow revision's content and payload-set digests, reject mutable
 or forked release history, and commit the release, head advance, idempotency
 receipt, audit record, and Outbox event in one transaction.
 
-`APP0.1-C1/C2` is not a public availability claim. Authorization and maintained
-CQRS, REST/OpenAPI, client, CLI, and Management MCP surfaces remain in the
-following `APP0.1` slices.
+C3 authorizes the canonical project before parsing or replay, reconstructs an
+exact historical release before resolving external evidence, and uses one
+metadata-only adapter over the existing semantic Workflow repository for new
+publication. It introduces no graph, Flow, provider, session, Secret, or
+Gateway authority.
+
+`APP0.1-C1/C2/C3` is not a public availability claim. Production composition
+and maintained REST/OpenAPI, client, CLI, and Management MCP surfaces remain
+in the following `APP0.1` slice.

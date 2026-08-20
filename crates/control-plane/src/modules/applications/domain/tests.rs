@@ -284,7 +284,7 @@ fn write_rejects_event_contract_schema_drift() {
     let record = ApplicationRecord::new(application, first).expect("record");
     let request_id = Uuid::now_v7();
     let mut event =
-        ApplicationReleasePublished::created(&record.application, &record.release, request_id)
+        ApplicationReleasePublished::published(&record.application, &record.release, request_id)
             .expect("event");
     event.payload["contractSchema"] =
         serde_json::Value::String("cloud.application.release.v0".into());
