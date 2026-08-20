@@ -590,6 +590,17 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce the backend-only source boundary
+        run: |
+          forbidden_paths=$(git ls-files |
+            grep -E '^(web/|website/|architecture-3d/|crates/web-server/|deploy/web/|tools/web/|\.github/workflows/cloud-pages\.yml$)' || true)
+          forbidden_ui_sources=$(git ls-files |
+            grep -E '\.(tsx|jsx|css|html|vue|svelte)$' || true)
+          if [[ -n $forbidden_paths || -n $forbidden_ui_sources ]]; then
+            printf '%s\n' "$forbidden_paths" "$forbidden_ui_sources" | sed '/^$/d'
+            exit 1
+          fi
+
       - name: Verify the AI application parity manifest
         run: >-
           cargo test --locked -p a3s-cloud-contracts

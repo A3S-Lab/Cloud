@@ -117,8 +117,10 @@ and unavailable status; deleting its marketing label is not retirement.
 
 Effective 2026-08-18, A3S Cloud ships no product Web UI. The product `web/`,
 static `crates/web-server/`, `deploy/web/`, and `tools/web/` paths and their
-build/runtime/CI wiring are removed. `website/` and `architecture-3d/` remain
-documentation projections only and are not product management surfaces.
+build/runtime/CI wiring are removed. The former `website/` documentation SPA,
+the former `architecture-3d/` interactive application, and their Pages
+pipeline are removed as well. Project documentation remains Markdown and
+static README assets, outside every product delivery and availability gate.
 
 An active delivery slice proceeds in this order:
 

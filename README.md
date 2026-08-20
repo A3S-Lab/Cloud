@@ -33,8 +33,10 @@ converges through one PostgreSQL authority and one durable execution path.
 > authoritative status is always [ROADMAP.md](ROADMAP.md).
 
 > [!NOTE]
-> A3S Cloud does not ship a product Web UI or static SPA server. `website/` and
-> `architecture-3d/` are documentation projections, not management surfaces.
+> A3S Cloud deliberately contains no product Web UI, static SPA,
+> documentation website, or interactive architecture application. Supported
+> behavior is exposed only through the backend interfaces described below;
+> project documentation remains repository-native Markdown and README assets.
 
 ## Current delivery
 
@@ -441,9 +443,7 @@ Cloud/
 |-- packages/cloud-client/
 |-- cli/
 |-- tools/               # provider, recovery, and release gates
-|-- docs/                # architecture, plans, decisions, and runbooks
-|-- website/             # public documentation projection
-`-- architecture-3d/     # interactive architecture projection
+`-- docs/                # architecture, plans, decisions, and runbooks
 ```
 
 This directory is its own Rust workspace inside the wider A3S monorepo.

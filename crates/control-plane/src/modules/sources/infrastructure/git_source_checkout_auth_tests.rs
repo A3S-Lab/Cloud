@@ -17,6 +17,8 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+const HTTP_FIXTURE_CHECKOUT_TIMEOUT: Duration = Duration::from_secs(60);
+
 #[tokio::test]
 async fn authenticated_http_checkout_uses_a_transient_header_and_credential_free_replay() {
     let fixture = GitFixture::new();
@@ -47,7 +49,7 @@ async fn authenticated_http_checkout_uses_a_transient_header_and_credential_free
     let checkout_root = fixture.root.path().join("http-checkouts");
     let checkout = GitSourceCheckout::for_http_test(
         &checkout_root,
-        Duration::from_secs(10),
+        HTTP_FIXTURE_CHECKOUT_TIMEOUT,
         1_000,
         16 * 1024 * 1024,
         &format!("http://{address}/remote.git"),

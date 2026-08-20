@@ -2237,9 +2237,10 @@ the exact retained gates. See the
 
 Effective 2026-08-18, A3S Cloud does not ship or plan a product Web UI. The
 former `web/`, `crates/web-server/`, `deploy/web/`, and `tools/web/` product
-paths and their build/runtime/CI wiring are removed. `website/` and
-`architecture-3d/` remain documentation projections and do not participate in
-management behavior or availability gates.
+paths, the former `website/` documentation SPA, the former `architecture-3d/`
+interactive application, and all of their build/deployment/Pages wiring are
+removed. Project documentation remains repository-native Markdown and static
+README assets; no Web application is part of Cloud's source or release graph.
 
 Every active slice must finish the owning domain and ACL contracts,
 persistence, provider adapters, REST/OpenAPI, maintained TypeScript client,

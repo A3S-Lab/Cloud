@@ -6,18 +6,10 @@
 __pycache__/
 *.py[cod]
 
-# Web
-/web/node_modules/
-/web/dist/
-/web/.next/
+# TypeScript interfaces
 /cli/node_modules/
 /cli/dist/
 /packages/cloud-client/node_modules/
-/architecture-3d/node_modules/
-/architecture-3d/dist/
-/website/node_modules/
-/website/doc_build/
-/website/docs_build/
 
 # Local configuration and credentials
 .env
