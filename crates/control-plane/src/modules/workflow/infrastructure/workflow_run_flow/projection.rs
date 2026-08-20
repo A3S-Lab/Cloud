@@ -1,5 +1,6 @@
 use super::workflow::{
-    execution_result, human_decision_result, inactive_step_ids, ExecutionResolution,
+    connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
+    ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -8,8 +9,8 @@ use crate::modules::workflow::domain::{
     WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
     WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
     WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
+    WorkflowStepProjectionStatus, WORKFLOW_EXECUTION_STEP_ATTEMPT,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind, StepStatus,
@@ -277,6 +278,10 @@ pub fn project_workflow_run_record(
                 let result = (step_status == WorkflowStepProjectionStatus::Completed)
                     .then(|| completed_result.map(|result| result.output.clone()))
                     .flatten();
+                let selected_handle = failure
+                    .as_ref()
+                    .and(completed_result)
+                    .and_then(|result| result.selected_handle.clone());
                 let step_error = if step_status == WorkflowStepProjectionStatus::Failed {
                     failure.or_else(|| snapshot.error.clone())
                 } else {
@@ -286,7 +291,7 @@ pub fn project_workflow_run_record(
                     step_status,
                     observed.metadata.step_attempt,
                     result,
-                    None,
+                    selected_handle,
                     step_error,
                     sequence,
                     at,
@@ -568,14 +573,47 @@ pub(super) fn completed_workflow_steps(
                     continue;
                 };
                 if observed.hook.status == HookStatus::Received {
-                    match super::connector::project_received_hook(resolved, &observed)? {
-                        super::connector::ConnectorProjectionResolution::Running => {}
+                    let failure = match super::connector::project_received_hook(
+                        resolved, &observed,
+                    )? {
+                        super::connector::ConnectorProjectionResolution::Running
+                            if observed.metadata.requires_typed_response() =>
+                        {
+                            let durable_step_id = flow_step_id(&resolved.plan.id);
+                            snapshot.steps.get(&durable_step_id).and_then(|step| {
+                                (step.status == StepStatus::Failed).then(|| {
+                                    super::connector::ConnectorStepFailure {
+                                        classification: WorkflowStepFailureClassification::ProviderResponseInvalid,
+                                        message: step.error.clone().unwrap_or_else(|| {
+                                            "Workflow Connector response step failed without an error"
+                                                .into()
+                                        }),
+                                    }
+                                })
+                            })
+                        }
+                        super::connector::ConnectorProjectionResolution::Running => None,
                         super::connector::ConnectorProjectionResolution::Completed(result) => {
                             completed.insert(result.step_id.clone(), *result);
+                            None
                         }
-                        super::connector::ConnectorProjectionResolution::Failed(error) => {
-                            connector_failures.insert(resolved.plan.id.clone(), error);
+                        super::connector::ConnectorProjectionResolution::Failed(failure) => {
+                            Some(*failure)
                         }
+                    };
+                    if let Some(failure) = failure {
+                        if let Some(result) = connector_failure_route_result(
+                            &snapshot.run_id,
+                            input,
+                            resolved,
+                            failure.classification,
+                            failure.message.clone(),
+                        )
+                        .map_err(|error| error.to_string())?
+                        {
+                            completed.insert(result.step_id.clone(), *result);
+                        }
+                        connector_failures.insert(resolved.plan.id.clone(), failure.message);
                     }
                 }
             }

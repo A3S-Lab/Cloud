@@ -21,18 +21,20 @@ use crate::modules::workflow::domain::{
     WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
     WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
     WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_COMPILER_REVISION_V4,
-    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_PLAN_COMPILER_REVISION_V5, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
+    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
+    WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
     WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
     WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
-    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -48,6 +50,30 @@ pub(crate) const TEST_HOOK_ID: &str = "human_review-2";
 pub(crate) const TEST_HUMAN_STEP_ID: &str = "human_review";
 pub(crate) const TEST_EXECUTION_STEP_ID: &str = "execute";
 pub(crate) const TEST_CONNECTOR_STEP_ID: &str = "invoke";
+
+fn unsupported_failure_contract() -> WorkflowStepFailureContract {
+    WorkflowStepFailureContract {
+        error_output: None,
+        retry_classification: WorkflowStepRetryClassification::NotRetryable,
+        fallback: WorkflowStepFallbackMode::Unsupported,
+        failure_branch: false,
+    }
+}
+
+fn routed_failure_contract() -> WorkflowStepFailureContract {
+    WorkflowStepFailureContract {
+        error_output: Some(WorkflowStepPort {
+            name: "error".into(),
+            value_type: WorkflowDataType::Object,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }),
+        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    }
+}
 
 pub(crate) fn pending_task() -> (HumanTask, PrincipalId) {
     let organization_id = OrganizationId::new();
@@ -714,6 +740,55 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
     Ok(input)
 }
 
+pub(crate) fn routed_connector_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = connector_workflow_run_input()?;
+    let output_step = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun Connector test plan lost output".to_owned())?;
+    let mut failure_output_step = output_step;
+    failure_output_step.id = "failure_output".into();
+    failure_output_step.descriptor = Some(WorkflowStepDescriptorBinding {
+        step_id: failure_output_step.id.clone(),
+        descriptor_id: "workflow.output".into(),
+        descriptor_revision: "1.0.0".into(),
+        semantic_digest: Sha256Digest::parse(digest('8'))?,
+    });
+    input.plan.steps.insert(2, failure_output_step);
+    for step in &mut input.plan.steps {
+        step.failure = Some(if step.id == TEST_CONNECTOR_STEP_ID {
+            routed_failure_contract()
+        } else {
+            unsupported_failure_contract()
+        });
+    }
+    input.plan.edges = vec![
+        edge("input-invoke", "input", TEST_CONNECTOR_STEP_ID, None),
+        edge(
+            "invoke-failure",
+            TEST_CONNECTOR_STEP_ID,
+            "failure_output",
+            Some("error"),
+        ),
+        edge("invoke-output", TEST_CONNECTOR_STEP_ID, "output", None),
+    ];
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V5.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V5.into();
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun routed Connector test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V9.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V9.into();
+    input.validate()?;
+    Ok(input)
+}
+
 pub(crate) fn connector_workflow_run_input_v6() -> Result<WorkflowRunInput, String> {
     let mut input = connector_workflow_run_input()?;
     input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V6.into();
@@ -1021,24 +1096,7 @@ pub(crate) fn routed_execution_workflow_run_input() -> Result<WorkflowRunInput, 
         .ok_or_else(|| "WorkflowRun execution test plan has no steps".to_owned())?
         .output_schema_digest
         .clone();
-    let unsupported_failure = || WorkflowStepFailureContract {
-        error_output: None,
-        retry_classification: WorkflowStepRetryClassification::NotRetryable,
-        fallback: WorkflowStepFallbackMode::Unsupported,
-        failure_branch: false,
-    };
-    let routed_failure = WorkflowStepFailureContract {
-        error_output: Some(WorkflowStepPort {
-            name: "error".into(),
-            value_type: WorkflowDataType::Object,
-            cardinality: WorkflowStepPortCardinality::Single,
-            required: true,
-            dynamic: false,
-        }),
-        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
-        fallback: WorkflowStepFallbackMode::FailureBranch,
-        failure_branch: true,
-    };
+    let routed_failure = routed_failure_contract();
     let output_step = input
         .plan
         .steps
@@ -1059,7 +1117,7 @@ pub(crate) fn routed_execution_workflow_run_input() -> Result<WorkflowRunInput, 
         step.failure = Some(if step.id == TEST_EXECUTION_STEP_ID {
             routed_failure.clone()
         } else {
-            unsupported_failure()
+            unsupported_failure_contract()
         });
     }
     input.plan.edges = vec![

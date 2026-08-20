@@ -7,7 +7,7 @@ use crate::modules::connectors::{
 use crate::modules::workflow::domain::{
     ResolvedWorkflowRunStep, WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
     WorkflowConnectorResumePayload, WorkflowConnectorResumeResolution, WorkflowConnectorStepOutput,
-    WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepKind,
+    WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepFailureClassification, WorkflowStepKind,
     WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT,
 };
 use a3s_flow::{FlowError, HookSnapshot, HookStatus, WorkflowContext, WorkflowRunSnapshot};
@@ -21,12 +21,27 @@ pub(super) enum ConnectorStepResolution {
     },
     Complete(Box<WorkflowLocalStepResult>),
     Consume(Box<super::connector_response::WorkflowConnectorResponseStepInput>),
-    Failed(String),
+    Failed(Box<ConnectorStepFailure>),
 }
 
 pub(super) enum ConnectorStepError {
     Invalid(String),
     NonDeterministic(String),
+}
+
+pub(super) struct ConnectorStepFailure {
+    pub classification: WorkflowStepFailureClassification,
+    pub message: String,
+}
+
+fn provider_failure(
+    classification: WorkflowStepFailureClassification,
+    message: String,
+) -> ConnectorStepResolution {
+    ConnectorStepResolution::Failed(Box::new(ConnectorStepFailure {
+        classification,
+        message,
+    }))
 }
 
 pub(super) fn resolve_step(
@@ -62,10 +77,13 @@ pub(super) fn resolve_step(
             let authority = attempt_authority(&metadata).map_err(ConnectorStepError::Invalid)?;
             let hook_id = metadata.flow_hook_id();
             if context.hook_disposed(&hook_id) {
-                return Ok(ConnectorStepResolution::Failed(format!(
-                    "Workflow Connector hook for step {:?}, attempt {step_attempt}, observation {observation} was disposed",
-                    step.plan.id
-                )));
+                return Ok(provider_failure(
+                    WorkflowStepFailureClassification::ProviderIndeterminate,
+                    format!(
+                        "Workflow Connector hook for step {:?}, attempt {step_attempt}, observation {observation} was disposed",
+                        step.plan.id
+                    ),
+                ));
             }
             let Some(observed) = context.hook_payload(&hook_id) else {
                 return Ok(ConnectorStepResolution::Await(Box::new(metadata)));
@@ -81,20 +99,26 @@ pub(super) fn resolve_step(
                             .map_err(ConnectorStepError::Invalid);
                         }
                         WorkflowConnectorAttemptOutcome::Rejected => {
-                            return Ok(ConnectorStepResolution::Failed(format!(
-                                "Workflow Connector step {:?} was rejected at attempt {step_attempt}{}",
-                                step.plan.id,
-                                status_suffix(evidence.response_status)
-                            )));
+                            return Ok(provider_failure(
+                                WorkflowStepFailureClassification::ProviderRejected,
+                                format!(
+                                    "Workflow Connector step {:?} was rejected at attempt {step_attempt}{}",
+                                    step.plan.id,
+                                    status_suffix(evidence.response_status)
+                                ),
+                            ));
                         }
                         WorkflowConnectorAttemptOutcome::Retryable => {
                             if step_attempt == retry_policy.maximum_attempts {
-                                return Ok(ConnectorStepResolution::Failed(format!(
-                                    "Workflow Connector step {:?} exhausted {} attempts{}",
-                                    step.plan.id,
-                                    retry_policy.maximum_attempts,
-                                    status_suffix(evidence.response_status)
-                                )));
+                                return Ok(provider_failure(
+                                    WorkflowStepFailureClassification::ProviderAttemptsExhausted,
+                                    format!(
+                                        "Workflow Connector step {:?} exhausted {} attempts{}",
+                                        step.plan.id,
+                                        retry_policy.maximum_attempts,
+                                        status_suffix(evidence.response_status)
+                                    ),
+                                ));
                             }
                             let resume_at =
                                 retry_resume_at(&evidence, retry_policy, input.deadline_at)
@@ -111,10 +135,13 @@ pub(super) fn resolve_step(
                     retry_not_before, ..
                 } => {
                     if observation == WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT {
-                        return Ok(ConnectorStepResolution::Failed(format!(
-                            "Workflow Connector step {:?} exceeded {} observations for attempt {step_attempt}",
-                            step.plan.id, WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT
-                        )));
+                        return Ok(provider_failure(
+                            WorkflowStepFailureClassification::ProviderObservationLimit,
+                            format!(
+                                "Workflow Connector step {:?} exceeded {} observations for attempt {step_attempt}",
+                                step.plan.id, WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT
+                            ),
+                        ));
                     }
                     let wait_id = metadata.observation_wait_id();
                     let resume_at = bounded_resume_at(retry_not_before, input.deadline_at);
@@ -128,13 +155,19 @@ pub(super) fn resolve_step(
                     })?;
                 }
                 WorkflowConnectorResumeResolution::Indeterminate { .. } => {
-                    return Ok(ConnectorStepResolution::Failed(format!(
-                        "Workflow Connector step {:?} became indeterminate at attempt {step_attempt}; provider retry is forbidden",
-                        step.plan.id
-                    )));
+                    return Ok(provider_failure(
+                        WorkflowStepFailureClassification::ProviderIndeterminate,
+                        format!(
+                            "Workflow Connector step {:?} became indeterminate at attempt {step_attempt}; provider retry is forbidden",
+                            step.plan.id
+                        ),
+                    ));
                 }
                 WorkflowConnectorResumeResolution::Rejected { reason } => {
-                    return Ok(ConnectorStepResolution::Failed(reason));
+                    return Ok(provider_failure(
+                        WorkflowStepFailureClassification::ProviderRejected,
+                        reason,
+                    ));
                 }
             }
         }
@@ -184,7 +217,17 @@ pub(super) struct ObservedConnectorHook<'a> {
 pub(super) enum ConnectorProjectionResolution {
     Running,
     Completed(Box<WorkflowLocalStepResult>),
-    Failed(String),
+    Failed(Box<ConnectorStepFailure>),
+}
+
+fn projected_provider_failure(
+    classification: WorkflowStepFailureClassification,
+    message: String,
+) -> ConnectorProjectionResolution {
+    ConnectorProjectionResolution::Failed(Box::new(ConnectorStepFailure {
+        classification,
+        message,
+    }))
 }
 
 pub(super) fn project_received_hook(
@@ -213,39 +256,63 @@ pub(super) fn project_received_hook(
             )
             .map(ConnectorProjectionResolution::Completed),
             WorkflowConnectorAttemptOutcome::Rejected => {
-                Ok(ConnectorProjectionResolution::Failed(format!(
-                    "Workflow Connector step {:?} was rejected at attempt {}{}",
-                    step.plan.id,
-                    observed.metadata.step_attempt,
-                    status_suffix(evidence.response_status)
-                )))
+                Ok(projected_provider_failure(
+                    WorkflowStepFailureClassification::ProviderRejected,
+                    format!(
+                        "Workflow Connector step {:?} was rejected at attempt {}{}",
+                        step.plan.id,
+                        observed.metadata.step_attempt,
+                        status_suffix(evidence.response_status)
+                    ),
+                ))
             }
             WorkflowConnectorAttemptOutcome::Retryable
                 if observed.metadata.step_attempt
                     == observed.metadata.retry_policy.maximum_attempts =>
             {
-                Ok(ConnectorProjectionResolution::Failed(format!(
-                    "Workflow Connector step {:?} exhausted {} attempts{}",
-                    step.plan.id,
-                    observed.metadata.retry_policy.maximum_attempts,
-                    status_suffix(evidence.response_status)
-                )))
+                Ok(projected_provider_failure(
+                    WorkflowStepFailureClassification::ProviderAttemptsExhausted,
+                    format!(
+                        "Workflow Connector step {:?} exhausted {} attempts{}",
+                        step.plan.id,
+                        observed.metadata.retry_policy.maximum_attempts,
+                        status_suffix(evidence.response_status)
+                    ),
+                ))
             }
             WorkflowConnectorAttemptOutcome::Retryable => {
                 Ok(ConnectorProjectionResolution::Running)
             }
         },
-        WorkflowConnectorResumeResolution::Deferred { .. } => {
-            Ok(ConnectorProjectionResolution::Running)
+        WorkflowConnectorResumeResolution::Deferred { .. }
+            if observed.metadata.observation
+                == WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT =>
+        {
+            Ok(projected_provider_failure(
+                WorkflowStepFailureClassification::ProviderObservationLimit,
+                format!(
+                    "Workflow Connector step {:?} exceeded {} observations for attempt {}",
+                    step.plan.id,
+                    WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT,
+                    observed.metadata.step_attempt
+                ),
+            ))
         }
+        WorkflowConnectorResumeResolution::Deferred { .. } => Ok(ConnectorProjectionResolution::Running),
         WorkflowConnectorResumeResolution::Indeterminate { .. } => {
-            Ok(ConnectorProjectionResolution::Failed(format!(
-                "Workflow Connector step {:?} became indeterminate at attempt {}; provider retry is forbidden",
-                step.plan.id, observed.metadata.step_attempt
-            )))
+            Ok(projected_provider_failure(
+                WorkflowStepFailureClassification::ProviderIndeterminate,
+                format!(
+                    "Workflow Connector step {:?} became indeterminate at attempt {}; provider retry is forbidden",
+                    step.plan.id, observed.metadata.step_attempt
+                ),
+            ))
         }
         WorkflowConnectorResumeResolution::Rejected { reason } => {
-            Ok(ConnectorProjectionResolution::Failed(reason))
+            Ok(projected_provider_failure(
+                WorkflowStepFailureClassification::ProviderRejected,
+                reason,
+            ))
         }
     }
 }

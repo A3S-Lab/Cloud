@@ -3,7 +3,7 @@ use crate::modules::shared_kernel::domain::{
     WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    execution_failure_output, WorkflowRun, WorkflowStepKind, WorkflowStepProjection,
+    descriptor_failure_output, WorkflowRun, WorkflowStepKind, WorkflowStepProjection,
     WorkflowStepProjectionStatus,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -87,22 +87,22 @@ impl WorkflowRunRecord {
                         planned.id
                     ));
                 }
-                if planned.kind == WorkflowStepKind::Execution {
+                if planned.kind != WorkflowStepKind::Branch {
                     let expected = planned
                         .failure
                         .as_ref()
                         .ok_or_else(|| {
                             format!(
-                                "WorkflowRun Execution step {:?} selected a handle without failure semantics",
+                                "WorkflowRun step {:?} selected a handle without failure semantics",
                                 planned.id
                             )
                         })
-                        .and_then(execution_failure_output)?;
+                        .and_then(descriptor_failure_output)?;
                     if projected.status != WorkflowStepProjectionStatus::Failed
                         || expected.name != handle
                     {
                         return Err(format!(
-                            "WorkflowRun Execution step {:?} failure projection drifted from its plan",
+                            "WorkflowRun step {:?} failure projection drifted from its plan",
                             planned.id
                         ));
                     }

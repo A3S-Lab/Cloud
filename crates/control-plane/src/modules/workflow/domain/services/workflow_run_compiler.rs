@@ -4,14 +4,16 @@ use crate::modules::workflow::domain::{
     ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, ResolvedWorkflowVariableContract,
     ResolvedWorkflowVariableDefaults, WorkflowGoal, WorkflowRevision, WorkflowRun,
     WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
+    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -77,7 +79,13 @@ impl WorkflowRunCompiler {
                 None,
                 None,
             ),
-            (WORKFLOW_PLAN_SCHEMA_V2, Some(contracts)) => {
+            (
+                plan_schema @ (WORKFLOW_PLAN_SCHEMA_V2
+                | WORKFLOW_PLAN_SCHEMA_V3
+                | WORKFLOW_PLAN_SCHEMA_V4
+                | WORKFLOW_PLAN_SCHEMA_V5),
+                Some(contracts),
+            ) => {
                 contracts.validate_plan_bindings(plan)?;
                 validate_runtime_variable_contract(
                     contracts.variable_contract(),
@@ -87,8 +95,15 @@ impl WorkflowRunCompiler {
                 let composite_regions = contracts
                     .composite_regions()
                     .map(ResolvedWorkflowCompositeRegions::from_regions);
-                let (input_schema, runtime_revision, flow_version) =
-                    plan_v2_runtime_contract(plan, composite_regions.is_some());
+                let (input_schema, runtime_revision, flow_version) = match plan_schema {
+                    WORKFLOW_PLAN_SCHEMA_V2 => {
+                        plan_v2_runtime_contract(plan, composite_regions.is_some())
+                    }
+                    WORKFLOW_PLAN_SCHEMA_V3 => plan_v3_runtime_contract(plan),
+                    WORKFLOW_PLAN_SCHEMA_V4 => plan_v4_runtime_contract(plan),
+                    WORKFLOW_PLAN_SCHEMA_V5 => plan_v5_runtime_contract(),
+                    _ => unreachable!("guarded Workflow Plan schema"),
+                };
                 (
                     input_schema,
                     runtime_revision,
@@ -100,52 +115,6 @@ impl WorkflowRunCompiler {
                         .variable_defaults()
                         .map(ResolvedWorkflowVariableDefaults::from_defaults),
                     composite_regions,
-                )
-            }
-            (WORKFLOW_PLAN_SCHEMA_V3, Some(contracts)) => {
-                contracts.validate_plan_bindings(plan)?;
-                validate_runtime_variable_contract(
-                    contracts.variable_contract(),
-                    contracts.variable_defaults(),
-                    plan,
-                )?;
-                let (input_schema, runtime_revision, flow_version) = plan_v3_runtime_contract(plan);
-                (
-                    input_schema,
-                    runtime_revision,
-                    flow_version,
-                    Some(ResolvedWorkflowVariableContract::from_contract(
-                        contracts.variable_contract(),
-                    )),
-                    contracts
-                        .variable_defaults()
-                        .map(ResolvedWorkflowVariableDefaults::from_defaults),
-                    contracts
-                        .composite_regions()
-                        .map(ResolvedWorkflowCompositeRegions::from_regions),
-                )
-            }
-            (WORKFLOW_PLAN_SCHEMA_V4, Some(contracts)) => {
-                contracts.validate_plan_bindings(plan)?;
-                validate_runtime_variable_contract(
-                    contracts.variable_contract(),
-                    contracts.variable_defaults(),
-                    plan,
-                )?;
-                let (input_schema, runtime_revision, flow_version) = plan_v4_runtime_contract(plan);
-                (
-                    input_schema,
-                    runtime_revision,
-                    flow_version,
-                    Some(ResolvedWorkflowVariableContract::from_contract(
-                        contracts.variable_contract(),
-                    )),
-                    contracts
-                        .variable_defaults()
-                        .map(ResolvedWorkflowVariableDefaults::from_defaults),
-                    contracts
-                        .composite_regions()
-                        .map(ResolvedWorkflowCompositeRegions::from_regions),
                 )
             }
             _ => {
@@ -254,6 +223,14 @@ fn plan_v4_runtime_contract(
     }
 }
 
+fn plan_v5_runtime_contract() -> (&'static str, &'static str, &'static str) {
+    (
+        WORKFLOW_RUN_INPUT_SCHEMA_V9,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+        WORKFLOW_RUN_FLOW_VERSION_V9,
+    )
+}
+
 fn plan_has_connector(plan: &crate::modules::workflow::domain::WorkflowPlan) -> bool {
     plan.steps.iter().any(|step| {
         step.capability.as_ref().is_some_and(|capability| {
@@ -301,6 +278,14 @@ mod tests {
                 WORKFLOW_RUN_INPUT_SCHEMA_V8,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
                 WORKFLOW_RUN_FLOW_VERSION_V8,
+            )
+        );
+        assert_eq!(
+            plan_v5_runtime_contract(),
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V9,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+                WORKFLOW_RUN_FLOW_VERSION_V9,
             )
         );
     }

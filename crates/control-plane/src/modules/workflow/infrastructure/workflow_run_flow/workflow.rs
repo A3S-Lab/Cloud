@@ -6,7 +6,7 @@ use crate::modules::workflow::domain::{
     WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
     WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
-    WorkflowStepFailureOutput, WorkflowStepKind,
+    WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepKind,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -288,6 +288,16 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 super::connector::ConnectorStepResolution::Consume(response) => {
                     let durable_step_id = flow_step_id(&step.plan.id);
                     if let Some(error) = context.step_failed(&durable_step_id) {
+                        if let Some(result) = connector_failure_route_result(
+                            &invocation.run_id,
+                            &input,
+                            step,
+                            WorkflowStepFailureClassification::ProviderResponseInvalid,
+                            error.to_owned(),
+                        )? {
+                            resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                            continue;
+                        }
                         return Ok(context.fail(format!(
                             "Workflow Connector response step {:?} failed: {error}",
                             step.plan.id
@@ -311,17 +321,33 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         );
                         continue;
                     }
+                    let retry = if failure_route_handle(&input, step)?.is_some() {
+                        RetryPolicy::none().continue_workflow_on_failure()
+                    } else {
+                        RetryPolicy::none()
+                    };
                     return Ok(context.schedule_steps(vec![context.step_with_retry(
                         durable_step_id,
                         super::connector_response::WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME,
                         serde_json::to_value(*response)?,
-                        RetryPolicy::none(),
+                        retry,
                     )]));
                 }
-                super::connector::ConnectorStepResolution::Failed(error) => {
+                super::connector::ConnectorStepResolution::Failed(failure) => {
+                    if let Some(result) = connector_failure_route_result(
+                        &invocation.run_id,
+                        &input,
+                        step,
+                        failure.classification,
+                        failure.message.clone(),
+                    )? {
+                        resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                        continue;
+                    }
                     return Ok(context.fail(format!(
                         "Workflow Connector step {:?} failed: {error}",
-                        step.plan.id
+                        step.plan.id,
+                        error = failure.message
                     )));
                 }
             }
@@ -474,24 +500,60 @@ fn execution_failure_resolution(
             .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
         return Ok(ExecutionResolution::Succeeded(Box::new(result)));
     }
-    let Some(handle) = execution_failure_handle(input, step)? else {
+    if failure_route_handle(input, step)?.is_none() {
         return Ok(ExecutionResolution::Failed {
             error,
             routed: None,
         });
-    };
+    }
     let failure = match detail {
         Some(output) => WorkflowStepFailureOutput::from_execution(step, output),
         None => WorkflowStepFailureOutput::dispatch_rejected(step, error.clone()),
     }
     .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
-    let output = serde_json::to_value(failure)
-        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    let routed = failure_route_result(run_id, input, step, failure)?;
+    Ok(ExecutionResolution::Failed { error, routed })
+}
+
+pub(super) fn connector_failure_route_result(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    classification: WorkflowStepFailureClassification,
+    message: String,
+) -> Result<Option<Box<WorkflowLocalStepResult>>, FlowError> {
+    if failure_route_handle(input, step)?.is_none() {
+        return Ok(None);
+    }
+    let failure =
+        WorkflowStepFailureOutput::provider(step, classification, message).map_err(|_| {
+            FlowError::NonDeterministic {
+                run_id: run_id.into(),
+                reason: format!(
+                "Workflow Connector step {:?} could not materialize its descriptor-bound failure",
+                step.plan.id
+            ),
+            }
+        })?;
+    failure_route_result(run_id, input, step, failure)
+}
+
+fn failure_route_result(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    failure: WorkflowStepFailureOutput,
+) -> Result<Option<Box<WorkflowLocalStepResult>>, FlowError> {
+    let Some(handle) = failure_route_handle(input, step)? else {
+        return Ok(None);
+    };
+    let output =
+        serde_json::to_value(failure).map_err(|_| failure_payload_drift(run_id, &step.plan.id))?;
     let output_digest = super::execution::value_digest(&output, "Workflow step failure output")
-        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+        .map_err(|_| failure_payload_drift(run_id, &step.plan.id))?;
     let result = WorkflowLocalStepResult {
         step_id: step.plan.id.clone(),
-        kind: WorkflowStepKind::Execution,
+        kind: step.plan.kind,
         output,
         output_digest,
         selected_handle: Some(handle),
@@ -500,14 +562,11 @@ fn execution_failure_resolution(
     };
     result
         .validate(step)
-        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
-    Ok(ExecutionResolution::Failed {
-        error,
-        routed: Some(Box::new(result)),
-    })
+        .map_err(|_| failure_payload_drift(run_id, &step.plan.id))?;
+    Ok(Some(Box::new(result)))
 }
 
-fn execution_failure_handle(
+pub(super) fn failure_route_handle(
     input: &WorkflowRunInput,
     step: &ResolvedWorkflowRunStep,
 ) -> Result<Option<String>, FlowError> {
@@ -522,9 +581,18 @@ fn execution_failure_handle(
         [] => Ok(None),
         [handle] => Ok(Some((*handle).clone())),
         _ => Err(FlowError::InvalidWorkflow(format!(
-            "Workflow Execution step {:?} has more than one failure route",
+            "Workflow step {:?} has more than one failure route",
             step.plan.id
         ))),
+    }
+}
+
+fn failure_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow step {step_id:?} could not restore its descriptor-bound failure value"
+        ),
     }
 }
 

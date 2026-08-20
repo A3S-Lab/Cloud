@@ -237,11 +237,13 @@ impl WorkflowStepProjection {
         }
         if self.selected_handle.is_some()
             && self.kind != WorkflowStepKind::Branch
-            && !(self.kind == WorkflowStepKind::Execution
-                && self.status == WorkflowStepProjectionStatus::Failed)
+            && !(matches!(
+                self.kind,
+                WorkflowStepKind::Execution | WorkflowStepKind::Service
+            ) && self.status == WorkflowStepProjectionStatus::Failed)
         {
             return Err(
-                "only a Workflow branch or routed Execution failure may select a handle".into(),
+                "only a Workflow branch or routed descriptor failure may select a handle".into(),
             );
         }
         Ok(())
@@ -351,6 +353,32 @@ mod tests {
             })
             .expect("fallback projection");
         assert_eq!(projection.default_output_evidence, Some(evidence));
+        projection.validate().expect("valid stored projection");
+    }
+
+    #[test]
+    fn failed_service_projection_may_retain_a_descriptor_bound_handle() {
+        let mut projection = WorkflowStepProjection::pending(
+            OrganizationId::new(),
+            ProjectId::new(),
+            WorkflowRunId::new(),
+            "invoke".into(),
+            WorkflowStepKind::Service,
+            timestamp(8, 0),
+        )
+        .expect("pending projection");
+        projection
+            .project_flow(WorkflowStepFlowState {
+                status: WorkflowStepProjectionStatus::Failed,
+                attempt_generation: 1,
+                selected_handle: Some("error".into()),
+                result: None,
+                error: Some("provider outcome is indeterminate".into()),
+                default_output_evidence: None,
+                last_flow_sequence: 4,
+                observed_at: timestamp(8, 2),
+            })
+            .expect("routed Service failure projection");
         projection.validate().expect("valid stored projection");
     }
 }

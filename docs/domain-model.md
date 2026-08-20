@@ -1034,10 +1034,13 @@ fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
 provider wiring, revocation/recovery operations, and retained integration
-evidence over those same authorities. WorkflowRun v8 now supplies Flow-owned
+evidence over those same authorities. WorkflowRun v8 supplies Flow-owned
 Connector observation, durable wait, bounded retry, fail-closed indeterminate
 handling, and strict schema-bound JSON projection through C11 without another
-scheduler or provider authority; historic v6 stays reference-only and v5 stays
+scheduler or provider authority. WorkflowRun v9 preserves that path and routes
+a terminal closed Connector classification only through an exact Plan-v5
+descriptor edge as `cloud.workflow.step-failure.v2`; historic v8 remains
+fail-closed without that interpretation, v6 stays reference-only, and v5 stays
 digest-only. Notifications now retains PostgreSQL 17 plus
 real NATS evidence for its first Event-consumer-to-C6 composition, but still
 needs separate versioned semantics before any user-configured suppression or
@@ -2067,7 +2070,12 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   hook. The mutually exclusive exact default fallback emits Plan v4/Run v7,
   binds one policy v3 value through the existing step policy digest, and keeps
   typed terminal evidence beside the completed projection. Retry and child
-  lifecycle remain Executions-owned.
+  lifecycle remain Executions-owned. An exact ConnectorRevision-bound Service
+  error edge emits Plan v5/Run v9 and derives a closed
+  `cloud.workflow.step-failure.v2` classification from the already verified
+  Connector hook/history; the Service projection remains failed while its
+  selected ordinary DAG branch may complete the parent. Flow remains the sole
+  scheduler and C6 remains the sole provider-attempt authority.
 - An immutable Workflow variable contract declares invocation, node-output,
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
@@ -2628,10 +2636,16 @@ with one typed bounded failure value while preserving Plan v1-v2 and Run v1-v3
 bytes and replay. A finite Execution graph selecting the descriptor's mutually
 exclusive exact default emits `cloud.workflow.plan.v4`; immutable Run v7 folds
 the same terminal observation into one canonical policy v3 value and retains
-`cloud.workflow.step-default-output.v1` evidence. Plans v1-v3 and Run inputs
-v1-v6 remain byte-stable. Migration `122` extends only the existing step
-projection. Applications-owned variable access remains fail-closed rather than
-inferring a missing owner adapter.
+`cloud.workflow.step-default-output.v1` evidence. A Connector graph with the
+exact descriptor error edge emits `cloud.workflow.plan.v5`; immutable Run v9
+preserves v8 typed success projection and selects that edge only for a bounded
+terminal provider classification. Plans v1-v4 and Run inputs v1-v8 remain
+byte-stable. Migration `122` adds nullable default-output evidence to the
+existing step projection. Migration `123` admits the already wired Service
+projection kind and its failed selected-handle shape; aggregate validation
+still proves the exact ConnectorRevision binding and declared handle.
+Applications-owned variable access remains fail-closed rather than inferring a
+missing owner adapter.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

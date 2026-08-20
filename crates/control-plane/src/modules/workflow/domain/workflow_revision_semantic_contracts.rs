@@ -1,6 +1,6 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    validate_execution_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowPlan,
+    validate_descriptor_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowPlan,
     WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
     WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
     WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
@@ -303,7 +303,7 @@ impl WorkflowRevisionSemanticContracts {
                     .into(),
             );
         }
-        validate_execution_failure_routes(workflow, &failures_by_step)?;
+        validate_descriptor_failure_routes(workflow, &failures_by_step)?;
         validate_variable_read_ports(self.variable_contract.spec(), &descriptors_by_step)?;
         self.variable_contract
             .validate_graph_bindings_with_application_ports(workflow, &application_ports)?;
@@ -433,6 +433,9 @@ impl WorkflowRevisionSemanticContracts {
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output.is_none() => {}
                 super::WORKFLOW_PLAN_SCHEMA_V4
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V5
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 _ => {

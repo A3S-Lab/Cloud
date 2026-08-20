@@ -1157,6 +1157,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/122_workflow_step_default_output_evidence.sql"
             )),
         ),
+        Migration::new(
+            "123",
+            "Workflow Connector step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/123_workflow_connector_step_projections.sql"
+            )),
+        ),
     ]
 }
 
@@ -2140,6 +2148,39 @@ mod workflow_default_output_evidence_migration_tests {
         assert!(!MIGRATION
             .contains("add constraint workflow_step_projections_selected_handle_check check"));
         assert!(!MIGRATION.contains("create table"));
+    }
+}
+
+#[cfg(test)]
+mod workflow_connector_step_projection_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/123_workflow_connector_step_projections.sql"
+    ));
+
+    #[test]
+    fn migration_123_admits_only_the_wired_service_projection_and_failure_route_shape() {
+        for expected in [
+            "drop constraint workflow_step_projections_kind_check",
+            "add constraint workflow_step_projections_kind_check check",
+            "'execution'",
+            "'service'",
+            "drop constraint workflow_step_projections_selected_handle_routing_check",
+            "add constraint workflow_step_projections_selected_handle_routing_check check",
+            "selected_handle is null",
+            "kind = 'branch'",
+            "kind in ('execution', 'service')",
+            "status = 'failed'",
+            "exact ConnectorRevision binding",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in ["create table", "add column", "create queue", "retry"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 123 added duplicate state or policy: {forbidden}"
+            );
+        }
     }
 }
 

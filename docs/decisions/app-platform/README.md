@@ -29,7 +29,8 @@ AI application platform parity manifest.
 | [0022](0022-terminal-evidence-authorized-connector-response-reads.md) | Resolve Connector response bytes only through environment authorization, accepted terminal evidence, and the shared immutable-object authority |
 | [0023](0023-descriptor-bound-default-output-fallback.md) | Fold terminal finite Execution failure into exact policy-owned output with typed evidence and no second runtime mechanism |
 | [0024](0024-schema-bound-connector-json-response-projection.md) | Project an authorized Connector response into typed Workflow JSON through one history-verified no-retry Flow step |
+| [0025](0025-descriptor-bound-connector-failure-routes.md) | Route Connector failures through descriptor-bound ordinary DAG edges without another error or retry mechanism |
 
-All twenty-four decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twenty-five decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

@@ -8,12 +8,15 @@ use crate::modules::connectors::{
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Sha256Digest};
 use crate::modules::workflow::domain::{
-    flow_step_id, IWorkflowRunCoordinator, WorkflowRun, WorkflowRunRecord, WorkflowRunStatus,
+    flow_step_id, IWorkflowRunCoordinator, WorkflowRun, WorkflowRunInput, WorkflowRunRecord,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFailureOutput,
     WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V8,
+    WORKFLOW_RUN_FLOW_VERSION_V9,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
-    connector_workflow_run_input, digest, TEST_CONNECTOR_STEP_ID,
+    connector_workflow_run_input, digest, routed_connector_workflow_run_input,
+    TEST_CONNECTOR_STEP_ID,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -59,8 +62,15 @@ impl IConnectorResponseObjectPort for FakeConnectorResponses {
 struct FakeConnectorPort {
     requests: Mutex<Vec<WorkflowConnectorAttemptRequest>>,
     calls: AtomicUsize,
-    defer_first: bool,
+    mode: FakeConnectorMode,
     retry_not_before: DateTime<Utc>,
+}
+
+#[derive(Clone, Copy)]
+enum FakeConnectorMode {
+    Accepted,
+    DeferredOnce,
+    Indeterminate,
 }
 
 impl FakeConnectorPort {
@@ -68,15 +78,22 @@ impl FakeConnectorPort {
         Self {
             requests: Mutex::new(Vec::new()),
             calls: AtomicUsize::new(0),
-            defer_first: false,
+            mode: FakeConnectorMode::Accepted,
             retry_not_before: now,
         }
     }
 
     fn deferred_once(retry_not_before: DateTime<Utc>) -> Self {
         Self {
-            defer_first: true,
+            mode: FakeConnectorMode::DeferredOnce,
             ..Self::accepted(retry_not_before)
+        }
+    }
+
+    fn indeterminate(now: DateTime<Utc>) -> Self {
+        Self {
+            mode: FakeConnectorMode::Indeterminate,
+            ..Self::accepted(now)
         }
     }
 }
@@ -92,10 +109,17 @@ impl IWorkflowConnectorPort for FakeConnectorPort {
         let authority = request
             .connector_attempt_authority()
             .map_err(crate::modules::shared_kernel::application::ApplicationError::Invalid)?;
-        if self.defer_first && call == 0 {
+        if matches!(self.mode, FakeConnectorMode::DeferredOnce) && call == 0 {
             return Ok(WorkflowConnectorAttemptResult::Deferred {
                 attempt_id: authority.attempt_id,
                 retry_not_before: self.retry_not_before,
+            });
+        }
+        if matches!(self.mode, FakeConnectorMode::Indeterminate) {
+            return Ok(WorkflowConnectorAttemptResult::Indeterminate {
+                attempt_id: authority.attempt_id,
+                dispatch_started_at: self.retry_not_before,
+                outcome_deadline_at: self.retry_not_before + Duration::seconds(30),
             });
         }
         let completed_at = canonical_timestamp(Utc::now());
@@ -217,6 +241,72 @@ async fn coordinator_observes_one_deferred_attempt_after_the_flow_wait() {
 }
 
 #[tokio::test]
+async fn coordinator_projects_the_descriptor_bound_connector_failure_route() {
+    let (engine, record, now) = routed_failure_fixture().await;
+    let port = Arc::new(FakeConnectorPort::indeterminate(now));
+    let coordinator = FlowWorkflowRunCoordinator::with_connectors(
+        engine.clone(),
+        port.clone() as Arc<dyn IWorkflowConnectorPort>,
+    );
+
+    let completed = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate indeterminate Connector")
+        .expect("completed failure branch projection");
+
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    assert_eq!(port.calls.load(Ordering::SeqCst), 1);
+    let connector = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_CONNECTOR_STEP_ID)
+        .expect("Connector projection");
+    assert_eq!(connector.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(connector.selected_handle.as_deref(), Some("error"));
+    assert!(connector.result.is_none());
+    assert!(connector
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("became indeterminate")));
+
+    let failure_output = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .expect("failure output projection");
+    assert_eq!(
+        failure_output.status,
+        WorkflowStepProjectionStatus::Completed
+    );
+    let failure = serde_json::from_value::<WorkflowStepFailureOutput>(
+        failure_output.result.clone().expect("typed failure output"),
+    )
+    .expect("failure output contract");
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::ProviderIndeterminate
+    );
+    assert_eq!(failure.step_id, TEST_CONNECTOR_STEP_ID);
+    assert!(failure.details.is_none());
+    assert_eq!(
+        completed
+            .steps
+            .iter()
+            .find(|step| step.step_id == "output")
+            .expect("success output projection")
+            .status,
+        WorkflowStepProjectionStatus::Skipped
+    );
+    assert!(engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Flow snapshot")
+        .child_operations
+        .is_empty());
+}
+
+#[tokio::test]
 async fn connector_projection_rejects_payload_and_creation_history_drift() {
     let (engine, record, now) = fixture().await;
     let port = Arc::new(FakeConnectorPort::accepted(now));
@@ -277,7 +367,25 @@ async fn connector_projection_rejects_payload_and_creation_history_drift() {
 }
 
 async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
-    let mut input = connector_workflow_run_input().expect("Connector WorkflowRun input");
+    fixture_with(
+        connector_workflow_run_input().expect("Connector WorkflowRun input"),
+        WORKFLOW_RUN_FLOW_VERSION_V8,
+    )
+    .await
+}
+
+async fn routed_failure_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+    fixture_with(
+        routed_connector_workflow_run_input().expect("routed Connector WorkflowRun input"),
+        WORKFLOW_RUN_FLOW_VERSION_V9,
+    )
+    .await
+}
+
+async fn fixture_with(
+    mut input: WorkflowRunInput,
+    flow_version: &str,
+) -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     let now = canonical_timestamp(Utc::now());
     input.requested_at = now;
     input.deadline_at = now + Duration::hours(1);
@@ -294,13 +402,8 @@ async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     engine
         .start_with_id(
             input.workflow_run_id.to_string(),
-            WorkflowSpec::rust_embedded(
-                WORKFLOW_RUN_FLOW_NAME,
-                WORKFLOW_RUN_FLOW_VERSION_V8,
-                "a3s-cloud",
-                "main",
-            )
-            .with_runtime_build(runtime_build_id),
+            WorkflowSpec::rust_embedded(WORKFLOW_RUN_FLOW_NAME, flow_version, "a3s-cloud", "main")
+                .with_runtime_build(runtime_build_id),
             serde_json::to_value(input).expect("encoded WorkflowRun input"),
         )
         .await

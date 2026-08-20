@@ -7,8 +7,8 @@ use super::{
     WorkflowVariableReadMode, WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
     WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
-    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
-    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, OrganizationId, PlanRevisionId, ProjectId, Sha256Digest,
@@ -44,6 +44,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V7: &str = "7";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V8: &str = "cloud.workflow-run.input.v8";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8: &str = "cloud.workflow-run-runtime.v8";
 pub const WORKFLOW_RUN_FLOW_VERSION_V8: &str = "8";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V9: &str = "cloud.workflow-run.input.v9";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9: &str = "cloud.workflow-run-runtime.v9";
+pub const WORKFLOW_RUN_FLOW_VERSION_V9: &str = "9";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -184,6 +187,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V6
                 | WORKFLOW_RUN_INPUT_SCHEMA_V7
                 | WORKFLOW_RUN_INPUT_SCHEMA_V8
+                | WORKFLOW_RUN_INPUT_SCHEMA_V9
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -320,18 +324,22 @@ impl WorkflowRunInput {
                     schema @ (WORKFLOW_RUN_INPUT_SCHEMA_V5
                     | WORKFLOW_RUN_INPUT_SCHEMA_V6
                     | WORKFLOW_RUN_INPUT_SCHEMA_V7
-                    | WORKFLOW_RUN_INPUT_SCHEMA_V8),
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V8
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V9),
                     runtime @ (WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7
-                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8),
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9),
                     flow @ (WORKFLOW_RUN_FLOW_VERSION_V5
                     | WORKFLOW_RUN_FLOW_VERSION_V6
                     | WORKFLOW_RUN_FLOW_VERSION_V7
-                    | WORKFLOW_RUN_FLOW_VERSION_V8),
+                    | WORKFLOW_RUN_FLOW_VERSION_V8
+                    | WORKFLOW_RUN_FLOW_VERSION_V9),
                     plan_schema @ (WORKFLOW_PLAN_SCHEMA_V2
                     | WORKFLOW_PLAN_SCHEMA_V3
-                    | WORKFLOW_PLAN_SCHEMA_V4),
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5),
                     Some(resolved),
                     defaults,
                     regions,
@@ -353,6 +361,10 @@ impl WorkflowRunInput {
                         WORKFLOW_RUN_INPUT_SCHEMA_V8,
                         WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
                         WORKFLOW_RUN_FLOW_VERSION_V8
+                    ) | (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V9,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+                        WORKFLOW_RUN_FLOW_VERSION_V9
                     )
                 ) && ((matches!(
                     plan_schema,
@@ -366,7 +378,9 @@ impl WorkflowRunInput {
                     && matches!(
                         flow,
                         WORKFLOW_RUN_FLOW_VERSION_V7 | WORKFLOW_RUN_FLOW_VERSION_V8
-                    ))) =>
+                    ))
+                    || (plan_schema == WORKFLOW_PLAN_SCHEMA_V5
+                        && flow == WORKFLOW_RUN_FLOW_VERSION_V9)) =>
                 {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -392,7 +406,20 @@ impl WorkflowRunInput {
                         ),
                     }
                     let composite_runtime = regions.is_some();
-                    (Some(contract), defaults, regions, composite_runtime, true)
+                    let connector_runtime_capable = matches!(
+                        flow,
+                        WORKFLOW_RUN_FLOW_VERSION_V5
+                            | WORKFLOW_RUN_FLOW_VERSION_V6
+                            | WORKFLOW_RUN_FLOW_VERSION_V8
+                            | WORKFLOW_RUN_FLOW_VERSION_V9
+                    );
+                    (
+                        Some(contract),
+                        defaults,
+                        regions,
+                        composite_runtime,
+                        connector_runtime_capable,
+                    )
                 }
                 _ => {
                     return Err(
@@ -451,6 +478,7 @@ impl WorkflowRunInput {
             WORKFLOW_RUN_INPUT_SCHEMA_V5
                 | WORKFLOW_RUN_INPUT_SCHEMA_V6
                 | WORKFLOW_RUN_INPUT_SCHEMA_V8
+                | WORKFLOW_RUN_INPUT_SCHEMA_V9
         );
         if (has_connector && !connector_runtime_capable)
             || (!has_connector && connector_runtime_required)

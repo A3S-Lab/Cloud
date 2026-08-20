@@ -49,8 +49,8 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@8`; the former
-  `@1` through `@7` generations are admitted only through the explicit Flow compatibility
+  New Operations pin replay generation `a3s-cloud-workflows@9`; the former
+  `@1` through `@8` generations are admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
   The stable release converges Cloud and Code on one Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
@@ -316,11 +316,17 @@ creating their own control planes:
    integrity-checked, Debug-redacted bytes to a typed owner. New v8 consumes
    that port in one no-retry Flow step, accepts exactly one duplicate-key-free
    JSON value, enforces the immutable output schema and Workflow output bound,
-   and records only the validated typed node output. Historic v5 remains
-   digest-only and v6 remains reference-only, while Plan v4/Run v7 folds finite
+   and records only the validated typed node output. Plan v5/Run v9 additionally
+   maps closed Connector terminal and response-validation failures to bounded
+   `cloud.workflow.step-failure.v2` values only when the exact
+   descriptor-bound `error` edge exists; the source projection remains failed
+   while the ordinary reachable failure branch may complete the parent. The
+   same DAG and Flow history remain the sole control path. Historic v8 keeps
+   its fail-closed behavior without this edge, v5 remains digest-only, and v6
+   remains reference-only, while Plan v4/Run v7 folds finite
    Execution failure observations into one exact policy-owned default output
    with typed projection evidence. This is a component execution path, not
-   public HTTP Request availability; Answer, non-Execution error semantics,
+   public HTTP Request availability; Answer, remaining non-Execution error semantics,
    remaining providers, recovery evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and

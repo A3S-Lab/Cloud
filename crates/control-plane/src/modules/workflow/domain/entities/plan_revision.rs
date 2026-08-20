@@ -4,10 +4,10 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    validate_execution_failure_routes, CapabilityReference, WorkflowContractQuotas,
-    WorkflowEdgeSpec, WorkflowSpec, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
-    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
-    WorkflowStepSpec,
+    has_connector_failure_route, validate_descriptor_failure_routes, CapabilityReference,
+    WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepDescriptorBinding,
+    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort,
+    WorkflowStepPortCardinality, WorkflowStepSpec,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,8 @@ pub const WORKFLOW_PLAN_SCHEMA_V3: &str = "cloud.workflow.plan.v3";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V3: &str = "cloud.workflow.plan-compiler.v3";
 pub const WORKFLOW_PLAN_SCHEMA_V4: &str = "cloud.workflow.plan.v4";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V4: &str = "cloud.workflow.plan-compiler.v4";
+pub const WORKFLOW_PLAN_SCHEMA_V5: &str = "cloud.workflow.plan.v5";
+pub const WORKFLOW_PLAN_COMPILER_REVISION_V5: &str = "cloud.workflow.plan-compiler.v5";
 pub const WORKFLOW_PLAN_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,11 +104,18 @@ impl WorkflowPlan {
             (WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_COMPILER_REVISION_V4) => {
                 WorkflowPlanVersion::V4
             }
+            (WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_COMPILER_REVISION_V5) => {
+                WorkflowPlanVersion::V5
+            }
             _ => return Err("Workflow plan schema and compiler revision are incompatible".into()),
         };
         let semantic_version = version != WorkflowPlanVersion::V1;
-        let failure_version = matches!(version, WorkflowPlanVersion::V3 | WorkflowPlanVersion::V4);
-        let default_output_version = version == WorkflowPlanVersion::V4;
+        let failure_version = matches!(
+            version,
+            WorkflowPlanVersion::V3 | WorkflowPlanVersion::V4 | WorkflowPlanVersion::V5
+        );
+        let default_output_capable =
+            matches!(version, WorkflowPlanVersion::V4 | WorkflowPlanVersion::V5);
         if self.workflow_definition_id.as_uuid().is_nil()
             || self.workflow_revision_id.as_uuid().is_nil()
             || self.ontology_id.as_uuid().is_nil()
@@ -151,7 +160,7 @@ impl WorkflowPlan {
         {
             return Err("Workflow plan step failure contracts are incomplete".into());
         }
-        if !default_output_version && self.steps.iter().any(|step| step.default_output.is_some()) {
+        if !default_output_capable && self.steps.iter().any(|step| step.default_output.is_some()) {
             return Err("Workflow plan default-output contracts require Plan v4".into());
         }
         let failures = self
@@ -164,10 +173,11 @@ impl WorkflowPlan {
             })
             .collect::<BTreeMap<_, _>>();
         let has_failure_routes = if failure_version {
-            validate_execution_failure_routes(&workflow, &failures)?
+            validate_descriptor_failure_routes(&workflow, &failures)?
         } else {
             workflow.has_non_branch_source_handles()
         };
+        let has_connector_failure_routes = has_connector_failure_route(&workflow);
         let has_default_outputs = validate_default_output_contracts(self)?;
         match version {
             WorkflowPlanVersion::V1 | WorkflowPlanVersion::V2
@@ -175,12 +185,24 @@ impl WorkflowPlan {
             {
                 return Err("Workflow plan failure semantics require a newer version".into())
             }
-            WorkflowPlanVersion::V3 if !has_failure_routes || has_default_outputs => {
-                return Err("Workflow Plan v3 must contain only routed failure semantics".into())
+            WorkflowPlanVersion::V3
+                if !has_failure_routes || has_connector_failure_routes || has_default_outputs =>
+            {
+                return Err(
+                    "Workflow Plan v3 must contain only finite-Execution routed failure semantics"
+                        .into(),
+                )
             }
             WorkflowPlanVersion::V4 if !has_default_outputs => {
                 return Err("Workflow Plan v4 requires at least one default-output fallback".into())
             }
+            WorkflowPlanVersion::V4 if has_connector_failure_routes => {
+                return Err("Workflow Plan v4 cannot contain a Connector failure route".into())
+            }
+            WorkflowPlanVersion::V5 if !has_connector_failure_routes => return Err(
+                "Workflow Plan v5 requires at least one descriptor-bound Connector failure route"
+                    .into(),
+            ),
             _ => {}
         }
         if self.environment_id.is_none()
@@ -240,6 +262,7 @@ enum WorkflowPlanVersion {
     V2,
     V3,
     V4,
+    V5,
 }
 
 fn validate_default_output_contracts(plan: &WorkflowPlan) -> Result<bool, String> {

@@ -183,6 +183,128 @@ fn failure_route_fixture() -> FailureRouteFixture {
     }
 }
 
+fn connector_failure_route_fixture() -> FailureRouteFixture {
+    let mut fixture = failure_route_fixture();
+    let connector_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Service),
+        ))
+        .expect("Connector configuration");
+    let retry_policy =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Policy(WorkflowPolicy {
+            mode: WorkflowPolicyMode::Static,
+            expression: None,
+            candidates: Vec::new(),
+            retry: Some(WorkflowRetryPolicy {
+                maximum_attempts: 3,
+                default_delay_seconds: 5,
+            }),
+            default_output: None,
+        }))
+        .expect("Connector retry policy");
+    let connector_step = fixture
+        .workflow
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "execute")
+        .expect("Execution step");
+    let execution_configuration_digest = connector_step.configuration_digest.clone();
+    connector_step.id = "invoke".into();
+    connector_step.label = "invoke".into();
+    connector_step.kind = WorkflowStepKind::Service;
+    connector_step.configuration_digest = connector_configuration.digest().clone();
+    connector_step.policy_digest = Some(retry_policy.digest().clone());
+    connector_step.capability = Some(CapabilityReference {
+        owner: CapabilityOwner::Connectors,
+        capability_type: CapabilityType::ConnectorRevision,
+        resource_id: uuid::Uuid::now_v7(),
+        revision: uuid::Uuid::now_v7().to_string(),
+        digest: digest('f'),
+        capability: "connector.http".into(),
+    });
+    for edge in &mut fixture.workflow.edges {
+        if edge.source == "execute" {
+            edge.source = "invoke".into();
+        }
+        if edge.target == "execute" {
+            edge.target = "invoke".into();
+        }
+        edge.id = edge.id.replace("execute", "invoke");
+    }
+
+    let old_registry = fixture.semantic_contracts.descriptor_registry();
+    let mut descriptor_specs = old_registry
+        .descriptors()
+        .iter()
+        .map(|descriptor| descriptor.spec().clone())
+        .collect::<Vec<_>>();
+    let connector = descriptor_specs
+        .iter_mut()
+        .find(|descriptor| descriptor.id == "executions.finite")
+        .expect("Execution descriptor");
+    connector.id = "connector.http".into();
+    connector.owner = WorkflowStepOwner::Connectors;
+    connector.kind = Some(WorkflowStepKind::Service);
+    connector.semantic_profile = "connector.http".into();
+    connector.execution_class = WorkflowStepExecutionClass::OwningApplicationPort;
+    connector.default_policy_digest = None;
+    connector.required_bindings = vec![WorkflowStepBindingKind::CapabilityReference];
+    connector.allowed_capability_types = vec![CapabilityType::ConnectorRevision];
+    connector.presentation.label = "HTTP Request".into();
+    connector.presentation.summary = "Calls one exact Connector revision".into();
+    connector.presentation.icon_key = "connector.http".into();
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: old_registry.id().into(),
+        revision: old_registry.revision().into(),
+        compiler_schema_version: old_registry.compiler_schema_version(),
+        descriptors: descriptor_specs,
+    })
+    .expect("Connector failure-route registry");
+    let old_bindings = fixture.semantic_contracts.descriptor_bindings();
+    let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: old_bindings.id().into(),
+        revision: old_bindings.revision().into(),
+        compiler_schema_version: old_bindings.compiler_schema_version(),
+        bindings: old_bindings
+            .bindings()
+            .iter()
+            .map(|binding| {
+                let step_id = if binding.step_id == "execute" {
+                    "invoke"
+                } else {
+                    binding.step_id.as_str()
+                };
+                let descriptor_id = if binding.descriptor_id == "executions.finite" {
+                    "connector.http"
+                } else {
+                    binding.descriptor_id.as_str()
+                };
+                WorkflowStepDescriptorBinding {
+                    step_id: step_id.into(),
+                    descriptor_id: descriptor_id.into(),
+                    descriptor_revision: binding.descriptor_revision.clone(),
+                    semantic_digest: registry
+                        .resolve(descriptor_id, &binding.descriptor_revision)
+                        .expect("rebuilt descriptor")
+                        .semantic_digest()
+                        .clone(),
+                }
+            })
+            .collect(),
+    })
+    .expect("Connector failure-route bindings");
+    let variables = fixture.semantic_contracts.variable_contract().clone();
+    fixture.semantic_contracts =
+        WorkflowRevisionSemanticContracts::create(&fixture.workflow, bindings, registry, variables)
+            .expect("Connector failure-route semantics");
+    fixture
+        .payloads
+        .retain(|payload| payload.digest() != &execution_configuration_digest);
+    fixture.payloads.push(connector_configuration);
+    fixture.payloads.push(retry_policy);
+    fixture
+}
+
 fn default_output_fixture() -> FailureRouteFixture {
     let mut fixture = failure_route_fixture();
     fixture
@@ -395,6 +517,48 @@ fn compiler_emits_plan_v3_and_run_v4_for_descriptor_bound_failure_routes() {
         .execution_input
         .validate()
         .expect("valid run v4 input");
+}
+
+#[test]
+fn compiler_emits_plan_v5_and_run_v9_for_connector_failure_routes() {
+    let (compiled, revision, principal_id, now) = compile_execution_fallback_fixture(
+        connector_failure_route_fixture(),
+        "Routed Connector goal",
+    );
+    assert_eq!(compiled.plan_revision.plan.schema, WORKFLOW_PLAN_SCHEMA_V5);
+    assert_eq!(
+        compiled.plan_revision.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V5
+    );
+    assert!(compiled
+        .plan_revision
+        .plan
+        .steps
+        .iter()
+        .all(|step| step.failure.is_some()));
+    let run = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("compiled run v9");
+    assert_eq!(run.run.execution_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V9);
+    assert_eq!(
+        run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9
+    );
+    assert_eq!(
+        run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V9
+    );
+    run.run
+        .execution_input
+        .validate()
+        .expect("valid run v9 input");
 }
 
 fn compile_execution_fallback_fixture(

@@ -2,9 +2,9 @@ use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
     connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
-    human_decision_workflow_run_input, routed_execution_workflow_run_input,
-    typed_variable_workflow_run_input, workflow_run_input, TEST_CONNECTOR_STEP_ID,
-    TEST_HUMAN_STEP_ID,
+    human_decision_workflow_run_input, routed_connector_workflow_run_input,
+    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
+    TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
 
 #[test]
@@ -33,6 +33,35 @@ fn v8_run_input_admits_only_exact_connector_service_authority() {
         .kind = WorkflowStepKind::Transform;
     refresh_plan_digest(&mut wrong_kind);
     assert!(wrong_kind.validate().is_err());
+}
+
+#[test]
+fn v9_run_input_admits_descriptor_bound_connector_failure_routes() {
+    let input = routed_connector_workflow_run_input().expect("valid routed Connector input");
+    assert_eq!(input.plan.schema, WORKFLOW_PLAN_SCHEMA_V5);
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V9);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V9);
+    input.validate().expect("valid v9 Connector failure route");
+
+    let mut legacy_failure = input.plan.clone();
+    legacy_failure.schema = WORKFLOW_PLAN_SCHEMA_V3.into();
+    legacy_failure.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V3.into();
+    assert!(legacy_failure.validate().is_err());
+
+    let mut legacy_default = input.plan.clone();
+    legacy_default.schema = WORKFLOW_PLAN_SCHEMA_V4.into();
+    legacy_default.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V4.into();
+    assert!(legacy_default.validate().is_err());
+
+    let mut missing_connector_route = input.plan;
+    missing_connector_route
+        .edges
+        .retain(|edge| edge.source_handle.is_none());
+    assert!(missing_connector_route.validate().is_err());
 }
 
 #[test]

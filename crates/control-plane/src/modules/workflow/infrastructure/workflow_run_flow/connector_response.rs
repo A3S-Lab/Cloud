@@ -8,7 +8,7 @@ use crate::modules::workflow::domain::{
     flow_step_id, CapabilityType, ResolvedWorkflowRunStep, WorkflowConnectorAttemptEvidence,
     WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorStepOutput,
     WorkflowStepKind, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -48,7 +48,11 @@ impl WorkflowConnectorResponseStepInput {
 
     pub(super) fn validate(&self) -> Result<(), String> {
         if self.schema != WORKFLOW_CONNECTOR_RESPONSE_STEP_SCHEMA
-            || self.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
+            || !matches!(
+                self.runtime_contract_revision.as_str(),
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9
+            )
             || self.step.plan.kind != WorkflowStepKind::Service
             || self.step.plan.id != self.metadata.step_id
             || self.step.plan.configuration_digest != self.metadata.configuration_digest
@@ -219,9 +223,17 @@ pub(super) fn verify_step_history(
     };
     let expected_input = serde_json::to_value(&expected)
         .map_err(|error| format!("could not encode Workflow Connector response step: {error}"))?;
+    let expected_retry = if super::workflow::failure_route_handle(input, step)
+        .map_err(|_| "Workflow Connector failure route is invalid".to_owned())?
+        .is_some()
+    {
+        a3s_flow::RetryPolicy::none().continue_workflow_on_failure()
+    } else {
+        a3s_flow::RetryPolicy::none()
+    };
     if step_name != WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME
         || observed_input != &expected_input
-        || retry != &a3s_flow::RetryPolicy::none()
+        || retry != &expected_retry
     {
         return Err("Workflow Connector response step creation authority drifted".into());
     }

@@ -18,6 +18,7 @@ use crate::modules::workflow::domain::{
 };
 use crate::modules::workflow::test_support::{
     connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
+    routed_connector_workflow_run_input,
 };
 use a3s_flow::{
     FlowEngine, FlowError, HookStatus, WorkflowInvocation, WorkflowRunStatus, WorkflowSpec,
@@ -150,6 +151,50 @@ async fn invalid_connector_json_fails_closed_without_provider_retry_or_body_disc
     let error = snapshot.error.as_deref().expect("typed response failure");
     assert!(error.contains("not one unambiguous JSON value"), "{error}");
     assert!(!error.contains("secret-provider-text"), "{error}");
+    assert_eq!(responses.reads.load(Ordering::SeqCst), 1);
+    assert!(!snapshot.hooks.contains_key("workflow-connector:invoke:2:1"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn invalid_connector_json_uses_the_descriptor_bound_failure_edge() -> Result<(), FlowError> {
+    let body = b"secret-provider-text".to_vec();
+    let input = routed_connector_workflow_run_input().map_err(FlowError::Runtime)?;
+    let (engine, input, responses) = start_input_with_body(input, body.clone()).await?;
+    let run_id = input.workflow_run_id.to_string();
+    let metadata = active_hook(&engine, &run_id, 1, 1).await?;
+    resume_accepted_body(
+        &engine,
+        &run_id,
+        &metadata,
+        input.requested_at + Duration::seconds(1),
+        &body,
+    )
+    .await?;
+
+    let snapshot = engine.snapshot(&run_id).await?;
+    assert_eq!(
+        snapshot.status,
+        WorkflowRunStatus::Completed,
+        "{snapshot:#?}"
+    );
+    let step = input
+        .resolved_steps()
+        .map_err(FlowError::Runtime)?
+        .into_iter()
+        .find(|step| step.plan.id == "invoke")
+        .expect("Connector step");
+    let observed =
+        observed_connector_hooks(&input, &step, &snapshot).map_err(FlowError::Runtime)?;
+    let history = engine.history(&run_id).await?;
+    super::connector_response::verify_step_history(&input, &step, &observed, &snapshot, &history)
+        .map_err(FlowError::Runtime)?;
+    let aggregate = snapshot.output.expect("routed Connector aggregate output");
+    let output = &aggregate["failure_output"];
+    assert_eq!(output["schema"], "cloud.workflow.step-failure.v2");
+    assert_eq!(output["stepId"], "invoke");
+    assert_eq!(output["classification"], "provider_response_invalid");
+    assert!(!output.to_string().contains("secret-provider-text"));
     assert_eq!(responses.reads.load(Ordering::SeqCst), 1);
     assert!(!snapshot.hooks.contains_key("workflow-connector:invoke:2:1"));
     Ok(())
@@ -368,6 +413,49 @@ async fn indeterminate_connector_attempt_fails_closed_without_blind_retry() -> R
         .error
         .as_deref()
         .is_some_and(|error| error.contains("provider retry is forbidden")));
+    assert!(!snapshot.hooks.contains_key("workflow-connector:invoke:2:1"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn indeterminate_connector_attempt_uses_the_descriptor_bound_failure_edge(
+) -> Result<(), FlowError> {
+    let input = routed_connector_workflow_run_input().map_err(FlowError::Runtime)?;
+    let (engine, input) = start_input(input).await?;
+    let run_id = input.workflow_run_id.to_string();
+    let metadata = active_hook(&engine, &run_id, 1, 1).await?;
+    let authority = attempt_authority(&metadata).map_err(FlowError::Runtime)?;
+    let payload = WorkflowConnectorResumePayload::indeterminate(
+        &metadata,
+        authority.attempt_id,
+        input.requested_at + Duration::seconds(1),
+        input.requested_at + Duration::seconds(10),
+        &authority.request_digest,
+        authority.request_body_bytes,
+    )
+    .map_err(FlowError::Runtime)?;
+    engine
+        .resume_hook(
+            &run_id,
+            &metadata.flow_hook_id(),
+            serde_json::to_value(payload)?,
+        )
+        .await?;
+
+    let snapshot = engine.snapshot(&run_id).await?;
+    assert_eq!(
+        snapshot.status,
+        WorkflowRunStatus::Completed,
+        "{snapshot:#?}"
+    );
+    let aggregate = snapshot.output.expect("routed Connector aggregate output");
+    let output = &aggregate["failure_output"];
+    assert_eq!(output["schema"], "cloud.workflow.step-failure.v2");
+    assert_eq!(output["stepId"], "invoke");
+    assert_eq!(output["classification"], "provider_indeterminate");
+    assert!(output["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("provider retry is forbidden")));
     assert!(!snapshot.hooks.contains_key("workflow-connector:invoke:2:1"));
     Ok(())
 }

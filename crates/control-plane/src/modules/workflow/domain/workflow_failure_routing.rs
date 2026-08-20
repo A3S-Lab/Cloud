@@ -1,15 +1,16 @@
 use super::{
-    WorkflowDataType, WorkflowSpec, WorkflowStepFailureContract, WorkflowStepFallbackMode,
-    WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    CapabilityType, WorkflowDataType, WorkflowSpec, WorkflowStepFailureContract,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepSpec,
 };
 use std::collections::BTreeMap;
 
 /// Validate the descriptor-bound failure routes in one already-validated DAG.
 ///
 /// A failure route is not a second control-flow mechanism. It is the one named
-/// outgoing edge of an Execution step whose handle exactly matches the error
-/// output declared by that step's immutable descriptor failure contract.
-pub(crate) fn validate_execution_failure_routes(
+/// outgoing edge of a runtime-supported step whose handle exactly matches the
+/// error output declared by that step's immutable descriptor failure contract.
+pub(crate) fn validate_descriptor_failure_routes(
     workflow: &WorkflowSpec,
     failures: &BTreeMap<&str, &WorkflowStepFailureContract>,
 ) -> Result<bool, String> {
@@ -33,7 +34,7 @@ pub(crate) fn validate_execution_failure_routes(
             continue;
         }
         routed = true;
-        if source.kind != WorkflowStepKind::Execution {
+        if !supports_failure_route(source) {
             return Err(format!(
                 "Workflow failure route {:?} targets unsupported {} step {:?}",
                 edge.id,
@@ -43,14 +44,14 @@ pub(crate) fn validate_execution_failure_routes(
         }
         let failure = failures.get(source.id.as_str()).ok_or_else(|| {
             format!(
-                "Workflow Execution step {:?} has a failure route without immutable descriptor semantics",
+                "Workflow step {:?} has a failure route without immutable descriptor semantics",
                 source.id
             )
         })?;
-        let error_output = execution_failure_output(failure)?;
+        let error_output = descriptor_failure_output(failure)?;
         if error_output.name != handle {
             return Err(format!(
-                "Workflow Execution step {:?} failure handle {handle:?} does not match descriptor error output {:?}",
+                "Workflow step {:?} failure handle {handle:?} does not match descriptor error output {:?}",
                 source.id, error_output.name
             ));
         }
@@ -58,16 +59,28 @@ pub(crate) fn validate_execution_failure_routes(
     Ok(routed)
 }
 
-pub(crate) fn execution_failure_output(
+pub(crate) fn has_connector_failure_route(workflow: &WorkflowSpec) -> bool {
+    let steps = workflow
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    workflow.edges.iter().any(|edge| {
+        edge.source_handle.is_some()
+            && steps
+                .get(edge.source.as_str())
+                .is_some_and(|step| is_connector_step(step))
+    })
+}
+
+pub(crate) fn descriptor_failure_output(
     failure: &WorkflowStepFailureContract,
 ) -> Result<&WorkflowStepPort, String> {
     let output = failure.error_output.as_ref().ok_or_else(|| {
-        "Workflow Execution failure route requires one typed descriptor error output".to_owned()
+        "Workflow failure route requires one typed descriptor error output".to_owned()
     })?;
     if failure.fallback != WorkflowStepFallbackMode::FailureBranch || !failure.failure_branch {
-        return Err(
-            "Workflow Execution failure route requires descriptor failure-branch fallback".into(),
-        );
+        return Err("Workflow failure route requires descriptor failure-branch fallback".into());
     }
     if output.cardinality != WorkflowStepPortCardinality::Single
         || !output.required
@@ -77,11 +90,20 @@ pub(crate) fn execution_failure_output(
             WorkflowDataType::Any | WorkflowDataType::Object
         )
     {
-        return Err(
-            "Workflow Execution failure output must be one required static object value".into(),
-        );
+        return Err("Workflow failure output must be one required static object value".into());
     }
     Ok(output)
+}
+
+fn supports_failure_route(step: &WorkflowStepSpec) -> bool {
+    step.kind == WorkflowStepKind::Execution || is_connector_step(step)
+}
+
+fn is_connector_step(step: &WorkflowStepSpec) -> bool {
+    step.kind == WorkflowStepKind::Service
+        && step.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::ConnectorRevision
+        })
 }
 
 #[cfg(test)]
@@ -89,7 +111,8 @@ mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::Sha256Digest;
     use crate::modules::workflow::domain::{
-        WorkflowEdgeSpec, WorkflowStepRetryClassification, WorkflowStepSpec,
+        CapabilityOwner, CapabilityReference, CapabilityType, WorkflowEdgeSpec,
+        WorkflowStepRetryClassification, WorkflowStepSpec,
     };
 
     fn digest(character: char) -> Sha256Digest {
@@ -157,28 +180,53 @@ mod tests {
         }
     }
 
+    fn routed_connector_workflow() -> WorkflowSpec {
+        let mut workflow = routed_workflow(WorkflowStepKind::Service);
+        workflow.steps[1].capability = Some(CapabilityReference {
+            owner: CapabilityOwner::Connectors,
+            capability_type: CapabilityType::ConnectorRevision,
+            resource_id: uuid::Uuid::new_v4(),
+            revision: uuid::Uuid::new_v4().to_string(),
+            digest: digest('d'),
+            capability: "connector.http".into(),
+        });
+        workflow
+    }
+
     #[test]
-    fn admits_only_execution_routes_with_static_object_failure_values() {
+    fn admits_only_runtime_supported_routes_with_static_object_failure_values() {
         let execution_failure = failure(WorkflowDataType::Object);
         let execution_failures = BTreeMap::from([("run", &execution_failure)]);
         assert_eq!(
-            validate_execution_failure_routes(
+            validate_descriptor_failure_routes(
                 &routed_workflow(WorkflowStepKind::Execution),
                 &execution_failures,
             ),
             Ok(true)
         );
 
-        let unsupported = validate_execution_failure_routes(
+        assert_eq!(
+            validate_descriptor_failure_routes(&routed_connector_workflow(), &execution_failures,),
+            Ok(true)
+        );
+
+        let unsupported = validate_descriptor_failure_routes(
             &routed_workflow(WorkflowStepKind::Transform),
             &execution_failures,
         )
         .expect_err("Transform failure routes remain gated");
         assert!(unsupported.contains("unsupported transform step"));
 
+        let unbound_service = validate_descriptor_failure_routes(
+            &routed_workflow(WorkflowStepKind::Service),
+            &execution_failures,
+        )
+        .expect_err("unbound Service failure routes remain gated");
+        assert!(unbound_service.contains("unsupported service step"));
+
         let string_failure = failure(WorkflowDataType::String);
         let string_failures = BTreeMap::from([("run", &string_failure)]);
-        let invalid = validate_execution_failure_routes(
+        let invalid = validate_descriptor_failure_routes(
             &routed_workflow(WorkflowStepKind::Execution),
             &string_failures,
         )

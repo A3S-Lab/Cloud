@@ -138,7 +138,7 @@ immutable descriptor and typed-variable domain contracts, read-only built-in
 discovery, internal Workflow-local, reachable-Output, HumanTask, and finite
 Execution portions of `W0.3`, including its descriptor-bound typed failure
 edge and exact default-output fallback, plus Flow-derived authorized variable
-inspection, are now present. The
+inspection and descriptor-bound Connector failure routing, are now present. The
 descriptor registry uses
 canonical ACL, exact SemVer identity, typed ports, existing coarse
 step/capability types, owner/execution class, semantic/configuration/default-
@@ -153,7 +153,11 @@ Plan step pins its descriptor failure contract while Run inputs v1-v3 retain
 their bytes and replay behavior. The mutually exclusive default fallback emits
 Plan v4 and immutable WorkflowRun input/runtime/Flow v7; policy v3 binds one
 canonical value and completed projection evidence retains the terminal reason.
-Plans v1-v3 and Run inputs v1-v6 retain their exact bytes and replay behavior.
+An exact Connector descriptor error edge emits Plan v5 and immutable
+WorkflowRun input/runtime/Flow v9; a closed terminal provider classification
+becomes `cloud.workflow.step-failure.v2` data on the ordinary DAG while the
+Service source projection remains failed. Plans v1-v4 and Run inputs v1-v8
+retain their exact bytes and replay behavior.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -273,7 +277,7 @@ uses one exact hook per ordinal and deterministic ordinary child WorkflowRun,
 links its Flow identity, resumes digest-bound results, and propagates parent
 cancellation/timeout before termination. Iteration is initially sequential
 under its declared concurrency ceiling. Applications-owned variables,
-Answer and non-Execution error semantics, business-service and remaining
+Answer and remaining non-Execution error semantics, business-service and remaining
 Agent/MCP/model/Tool capability dispatch,
 compensation, expanded cross-surface evidence, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
@@ -285,7 +289,13 @@ event log, worker, scheduler, queue, retry engine, or second Flow mechanism.
 Runtime v7 interprets the same terminal observation through the exact Plan v4
 default-output contract and retains `cloud.workflow.step-default-output.v1`
 evidence beside the completed value; migration `122` only extends the existing
-step projection.
+step projection with nullable fallback evidence. Runtime v9 preserves v8's
+strict Connector JSON success projection and selects an exact Plan-v5 error
+edge only for a closed terminal provider classification. Migration `123`
+admits the already wired Service projection kind and its failed selected-handle
+shape; immutable WorkflowRun plan validation still proves the exact
+ConnectorRevision binding and declared handle. No new table, log, queue,
+scheduler, retry engine, or Flow mechanism is introduced.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -309,8 +319,10 @@ and folds updates and exports in ordinal order. Authorized inspection reads
 parent and reduced composite materialization from immutable input and Flow
 history. Runtime still fails closed for Applications-owned reads/writes. Typed
 finite-Execution failure branches are implemented through Plan v3/Run v4 and
-exact default-output fallback through Plan v4/Run v7; non-Execution error
-branches and ordered Answer frames remain unimplemented parts of `W0.3`.
+exact default-output fallback through Plan v4/Run v7. Descriptor-bound
+Connector failure branches are implemented through Plan v5/Run v9; remaining
+non-Execution error branches and ordered Answer frames remain unimplemented
+parts of `W0.3`.
 
 ### 4.3 Compiler rules
 
