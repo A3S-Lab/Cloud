@@ -2124,7 +2124,7 @@ mod workflow_default_output_evidence_migration_tests {
     fn migration_122_adds_nullable_authority_bound_fallback_evidence() {
         for expected in [
             "pg_get_constraintdef(constraint_record.oid) like '%kind%branch%selected_handle%'",
-            "workflow_step_projections_selected_handle_check",
+            "workflow_step_projections_selected_handle_routing_check",
             "kind = 'execution'",
             "status = 'failed'",
             "add column default_output_evidence jsonb",
@@ -2137,6 +2137,8 @@ mod workflow_default_output_evidence_migration_tests {
         ] {
             assert!(MIGRATION.contains(expected), "missing {expected}");
         }
+        assert!(!MIGRATION
+            .contains("add constraint workflow_step_projections_selected_handle_check check"));
         assert!(!MIGRATION.contains("create table"));
     }
 }

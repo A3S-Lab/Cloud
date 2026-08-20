@@ -23,7 +23,7 @@ end
 $$;
 
 alter table workflow_step_projections
-    add constraint workflow_step_projections_selected_handle_check check (
+    add constraint workflow_step_projections_selected_handle_routing_check check (
         selected_handle is null
         or kind = 'branch'
         or (
