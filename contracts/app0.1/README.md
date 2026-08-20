@@ -30,6 +30,8 @@ receipt, audit record, and Outbox event in one transaction.
 
 Project authorization before replay, CQRS, REST/OpenAPI `1.42.0`, the maintained
 client, CLI, and six Management MCP tools now reuse this exact contract and the
-single Applications repository. `APP0.1` completion is not a public delivery or
-availability claim: sessions, invocation, messages, managed delivery,
-monitoring, enterprise evidence, and `APP0.2` through `APP0.6` remain open.
+single Applications repository. Component-only `APP0.2-C1` builds its session
+contract on these exact release identities. `APP0.1` completion is not a public
+delivery or availability claim: production session/invocation persistence and
+composition, managed delivery, monitoring, enterprise evidence, and completion
+of `APP0.2` through `APP0.6` remain open.

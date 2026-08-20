@@ -35,7 +35,8 @@ AI application platform parity manifest.
 | [0028](0028-authorized-application-release-cqrs.md) | Authorize Application release CQRS before replay and resolve only exact immutable Workflow evidence |
 | [0029](0029-single-application-management-interface.md) | Expose authorization-first Application management through one CQRS and persistence authority |
 | [0030](0030-canonical-user-file-admission.md) | Admit scoped user files through one canonical Files lifecycle and the shared immutable-object authority |
+| [0031](0031-single-application-session-authority.md) | Keep release-pinned sessions and exactly-once Workflow semantic effects in one Applications authority |
 
-All thirty decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All thirty-one decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

@@ -110,15 +110,15 @@
       "code": "APP0",
       "name": "AI application lifecycle and delivery",
       "outcome": "Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance",
-      "status": "In progress and unavailable; `APP0.1` implements the authorized immutable release lifecycle through REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP tools, while sessions, invocation, delivery, monitoring, and the composite `APP0.6` parity claim remain open",
+      "status": "In progress and unavailable; `APP0.1` implements the authorized immutable release lifecycle through REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP tools. Component-only `APP0.2-C1` freezes exact-release session, invocation-correlation, ordered-message, optimistic-variable, and exactly-once Workflow-effect semantics; production persistence/composition, delivery, monitoring, and the composite `APP0.6` parity claim remain open",
       "statusKind": "in-progress"
     },
     {
       "code": "K0",
       "name": "Knowledge and Knowledge Pipeline",
       "outcome": "User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines",
-      "status": "Planned and unavailable",
-      "statusKind": "planned"
+      "status": "In progress and unavailable; component-only `K0.1-C1` freezes strong identities, one canonical Files admission ACL/lifecycle, exact upload/scan receipts, typed references, and verified streaming through the shared immutable-object client. Quota/persistence/interfaces and all Knowledge/KnowledgePipeline lifecycle remain open",
+      "statusKind": "in-progress"
     },
     {
       "code": "AUT0",

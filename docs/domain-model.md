@@ -659,7 +659,21 @@ authorization runs before idempotency replay, and REST/OpenAPI `1.42.0`, the
 maintained client, CLI, and six Management MCP tools reuse the same create,
 publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
-those capabilities remain gated by `APP0.2` through `APP0.6`.
+those production capabilities remain gated by `APP0.2` through `APP0.6`.
+
+Component-only `APP0.2-C1` freezes the next Applications-owned records without
+making them available. `ApplicationEndUser` is scoped to one Application and
+may link explicitly to an Identity Principal without creating Membership or
+grant authority. `ApplicationSession` pins one exact release and owns only a
+monotonic channel-message sequence plus an optimistic immutable conversation-
+variable head. `ApplicationInvocation` correlates one request to at most one
+exact `WorkflowRun`; it stores no graph, scheduler, attempt history, or
+provider state. Each Workflow-derived Answer, final output, or variable
+assignment binds the exact run, step, attempt, and ordinal and derives a stable
+identity. An atomic repository contract replays the exact semantic effect and
+rejects changed or cross-kind reuse. PostgreSQL persistence, the production
+WorkflowRun port, remaining APP0.2 records, and every delivery interface remain
+open.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and

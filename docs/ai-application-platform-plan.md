@@ -680,7 +680,8 @@ implementing a Cloud substitute is prohibited by this plan.
 | `APP0.1-C2` | Implemented; component-only | Migration `124` and one PostgreSQL/A3S ORM repository persist immutable canonical releases and sequence-fenced heads, check exact Workflow revision content/payload evidence, reparse ACL on reads, and atomically commit idempotency, audit, and Outbox facts without copying graph, Flow, provider, session, Secret, or Gateway authority | `APP0.1-C1`, `W0.3` definition/revision persistence |
 | `APP0.1-C3` | Implemented; component-only | Project-authorized create/publish/get/list CQRS authorizes before replay, reconstructs exact historical idempotency results before Workflow re-resolution, and uses one metadata-only port over the existing semantic Workflow repository. New publication matches definition/revision plus contract/payload/semantic/input/output digests; v1 admits exactly one Workflow Output while Workflow retains broader multi-output authority | `APP0.1-C2`, `W0.3` semantic definition/revision persistence |
 | `APP0.1` | Implemented; later APP0 availability gates remain | Production composition, REST/OpenAPI `1.42.0`, typed client, CLI, and six Management MCP create/publish/list/current/exact-history tools all reuse the C1/C2/C3 authority. Focused domain, HTTP, MCP, client, CLI, OpenAPI, and PostgreSQL persistence evidence passes without adding graph, Flow, provider, session, Secret, or Gateway authority | `APP0.1-C3`, `C0.1` |
-| `APP0.2` | Add deterministic preset compilers, application end users, invocation/session/message/variant state, conversation variables, file references, Answer frames, citations, final outputs, feedback, annotations, cancellation, replay, and blocking/streaming parity | `APP0.1`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
+| `APP0.2-C1` | Implemented; component-only | Freeze Application-scoped end users, exact-release sessions, invocation-to-WorkflowRun correlation, monotonic input/Answer/final-output messages, optimistic immutable conversation-variable revisions, cancellation/terminal correlation, and stable `WorkflowRun + step + attempt + ordinal` effect identities. One atomic in-memory conformance repository proves exact replay, cross-kind effect exclusion, one final output, stale-write rejection, and no duplicate Flow or Identity authority. No PostgreSQL, production composition, interface, or availability is claimed | `APP0.1`, protected `W0.3` WorkflowRun identity |
+| `APP0.2` | Complete deterministic preset compilers, production session/invocation persistence and WorkflowRun composition, message variants, file references, citations, feedback, annotations, public cancellation/replay, blocking/streaming parity, and retained recovery evidence over the C1 contract | `APP0.2-C1`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
 | `APP0.5` | Add run-history and monitor projections, token/usage/cost correlation, latency and failure diagnostics, feedback/annotation review, retention/redaction, external telemetry export, and operator alerts without a second run log | `APP0.3`, `I0.2c`, Operations and telemetry foundations |
@@ -742,7 +743,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All thirty
+   reject inventory/schema drift and false public claims. All thirty-one
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -768,13 +769,15 @@ The recommended sequence is:
    policy/child bindings, deterministic frame/export and ordered region
    reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
-   folding/evidence, and Plan v5 Connector failure routing; complete
-   Applications-owned variables, the Answer event contract, remaining non-Execution
-   error branches, and retained Flow replay tests. Prove any proposed Flow
+   folding/evidence, and Plan v5 Connector failure routing; retain the
+   `APP0.2-C1` Applications-owned variable and Answer projection contract, then
+   complete its typed Workflow ports, remaining non-Execution error branches,
+   and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Retain the implemented `APP0.1`
-   vertical slice, and implement `K0.1` and `AUT0.1` independently. Do not add
-   provider behavior to these contract slices.
+   vertical slice and component-only `APP0.2-C1`, and implement `K0.1` and
+   `AUT0.1` independently. Do not add provider behavior to these contract
+   slices.
 4. **Complete the provider spine.** Advance `I0.2`, the required certified
    `I0.6` rerank/media profiles, `A1.3`, `U0.4`, `MCP0.5`, the shared object
    provider in `S0`, and `AUT0.5`. Bind exact revisions through typed ports; do
