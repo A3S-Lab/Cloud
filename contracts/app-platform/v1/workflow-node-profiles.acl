@@ -1,5 +1,5 @@
 workflow_node_profiles "dify-commercial-core-2026-08-13" {
-  parity_manifest_digest = "sha256:6f1e0f7419622a88c118164bf843dd012b89d848eb388825d9b57877b80f9b2a"
+  parity_manifest_digest = "sha256:ddf009395a082d808a071c2d5fe2f43314e2e80348a8535ed921aa39eec80ad6"
   revision = "1.0.0"
   schema = "a3s.cloud.app-platform.workflow-node-profiles.v1"
   node "node.agent" {

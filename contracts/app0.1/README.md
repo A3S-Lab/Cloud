@@ -1,7 +1,7 @@
 # APP0.1 Application release contract
 
 This directory contains the checked-in conformance fixture for the
-component-only `APP0.1-C1` foundation.
+component-only `APP0.1-C1/C2` foundation.
 
 `cloud.application.release.v1` freezes one Applications-owned immutable
 publication contract:
@@ -22,8 +22,12 @@ The Rust domain implementation parses and generates this fixture only through
 `a3s-acl`, rejects unknown or noncanonical fields, binds exact Workflow
 admission evidence, preserves immutable release lineage, and prevents an
 Application identity from changing between classic Agent, New Agent, or any
-other experience.
+other experience. The C2 application layer authorizes the project before
+idempotency replay, resolves only immutable Workflow metadata for new writes,
+and reconstructs an exact historical release for replays. Migration `124` and
+the PostgreSQL repository use A3S ORM and the shared idempotency, Outbox, and
+audit transaction boundary; they add no second execution or delivery system.
 
-`APP0.1-C1` is not a public availability claim. PostgreSQL/A3S ORM persistence,
-authorization, idempotency, Outbox/audit writes, and maintained REST, client,
-CLI, and Management MCP surfaces remain in the following `APP0.1` slices.
+`APP0.1-C1/C2` is not a public availability claim. Production composition and
+maintained REST/OpenAPI, client, CLI, and Management MCP surfaces remain in the
+following `APP0.1` slice.

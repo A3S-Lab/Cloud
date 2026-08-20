@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId, ProjectId, ResourceName,
-    Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
+    ApplicationId, ApplicationReleaseId, IdempotencyRequest, OrganizationId, PrincipalId,
+    ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
 use chrono::{TimeZone, Utc};
 use uuid::Uuid;
@@ -272,10 +272,41 @@ fn aggregate_advances_only_from_its_exact_current_release() {
 }
 
 #[test]
+fn write_rejects_event_contract_schema_drift() {
+    let first = release(contract(ApplicationExperience::Chatflow, 'f'));
+    let application = Application::create(
+        first.application_id,
+        ResourceName::parse("Support Chat").expect("name"),
+        "Customer support conversation".into(),
+        &first,
+    )
+    .expect("Application");
+    let record = ApplicationRecord::new(application, first).expect("record");
+    let request_id = Uuid::now_v7();
+    let mut event =
+        ApplicationReleasePublished::created(&record.application, &record.release, request_id)
+            .expect("event");
+    event.payload["contractSchema"] =
+        serde_json::Value::String("cloud.application.release.v0".into());
+    let write = CreateApplicationWrite {
+        actor_principal_id: record.application.created_by,
+        request_id,
+        idempotency: IdempotencyRequest::new("applications", "create", b"request")
+            .expect("idempotency"),
+        record,
+        event,
+    };
+
+    assert!(write.validate().is_err());
+}
+
+#[test]
 fn component_boundary_contains_no_second_execution_or_provider_authority() {
     let implementation = [
         include_str!("application.rs"),
         include_str!("application_release_contract.rs"),
+        include_str!("events.rs"),
+        include_str!("repository.rs"),
         include_str!("workflow_binding.rs"),
     ]
     .join("\n");

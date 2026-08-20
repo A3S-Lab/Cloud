@@ -662,7 +662,7 @@ async fn insert_unbound_successor(
         .await
 }
 
-fn semantic_revision(
+pub(super) fn semantic_revision(
     organization_id: OrganizationId,
     project_id: ProjectId,
     definition_id: WorkflowDefinitionId,

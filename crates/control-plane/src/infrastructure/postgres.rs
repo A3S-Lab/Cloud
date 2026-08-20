@@ -1165,6 +1165,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/123_workflow_connector_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "124",
+            "immutable Application releases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/124_application_releases.sql"
+            )),
+        ),
     ]
 }
 
@@ -2179,6 +2187,53 @@ mod workflow_connector_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 123 added duplicate state or policy: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_release_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/124_application_releases.sql"
+    ));
+
+    #[test]
+    fn migration_124_persists_only_application_heads_and_immutable_release_evidence() {
+        for expected in [
+            "create table applications",
+            "create table application_releases",
+            "cloud.application.release.v1",
+            "references workflow_revisions",
+            "deferrable initially deferred",
+            "validate_application_release_lineage",
+            "reject_application_release_mutation",
+            "validate_application_head_update",
+            "Application releases are immutable",
+            "Workflow and Flow retain semantic and execution authority",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 124 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table application_sessions",
+            "create table application_messages",
+            "create table application_runs",
+            "create table application_routes",
+            "create table application_credentials",
+            "create table application_queue",
+            "create table application_workflows",
+            "create table application_graphs",
+            "provider_endpoint",
+            "retry_count",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 124 added duplicate session, Workflow, runtime, route, credential, or retry authority: {forbidden}"
             );
         }
     }

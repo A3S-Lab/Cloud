@@ -646,14 +646,18 @@ delivery projections, session/message state, conversation variables, feedback,
 annotations, and publication policy. Every release binds one exact
 `WorkflowRevision`; the six experiences do not own separate runtimes.
 
-Component-only `APP0.1-C1` implements the first two primary records. One
+Component-only `APP0.1-C1/C2` implements the first two primary records. One
 canonical `cloud.application.release.v1` ACL freezes the experience,
 interaction/response modes, audience, presentation digest, and exact Workflow
 definition/revision plus contract, payload-set, semantic-contract-set, input,
 and output digests. `Application` keeps a sequence-fenced immutable release
-head, and its experience cannot change. No Applications table or public
-surface is claimed by C1; the following APP0.1 slices add those through the
-shared platform mechanisms.
+head, and its experience cannot change. Migration `124` stores only that head
+and immutable release evidence. Project-authorized CQRS resolves Workflow
+metadata through the existing Workflow repository, replays an exact historical
+release before re-resolving external evidence, and atomically reuses shared
+idempotency, Outbox, and audit writes through A3S ORM. It does not add a graph,
+run, queue, session, route, provider, credential, or runtime authority.
+Maintained interfaces and later APP0.1 slices remain unavailable.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and
