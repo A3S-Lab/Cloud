@@ -46,6 +46,7 @@ const OUTBOUND_SUBSCRIPTION_COLUMNS: readonly TableColumn<OutboundNotificationSu
   { header: 'CHANNEL', value: (row) => row.channel },
   { header: 'MIN SEVERITY', value: (row) => row.minimumSeverity },
   { header: 'ATTEMPTS', value: (row) => row.maximumProviderAttempts },
+  { header: 'SUPPRESS BEFORE', value: (row) => row.suppressBefore ?? '' },
   { header: 'STATE', value: (row) => row.state },
   { header: 'VERSION', value: (row) => row.aggregateVersion },
   { header: 'SUBSCRIPTION ID', value: (row) => row.subscriptionId },

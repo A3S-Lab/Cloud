@@ -9,7 +9,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_acl::builder::{number, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -19,8 +19,11 @@ pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA: &str =
     "cloud.notification.outbound-subscription.v1";
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2: &str =
     "cloud.notification.outbound-subscription.v2";
+pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3: &str =
+    "cloud.notification.outbound-subscription.v3";
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES: usize = 16 * 1024;
 pub const MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS: u64 = 1;
+pub const MAXIMUM_OUTBOUND_NOTIFICATION_SUPPRESSION_DAYS: i64 = 30;
 const OUTBOUND_NOTIFICATION_SUBSCRIPTION_BLOCK: &str = "notification_outbound_subscription";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +44,8 @@ pub struct OutboundNotificationSubscriptionDefinition {
     definition_schema: String,
     #[serde(default = "default_provider_attempt_budget")]
     maximum_provider_attempts: u64,
+    #[serde(default)]
+    suppress_before: Option<DateTime<Utc>>,
 }
 
 impl OutboundNotificationSubscriptionDefinition {
@@ -49,6 +54,7 @@ impl OutboundNotificationSubscriptionDefinition {
             spec,
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
             MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+            None,
         )
     }
 
@@ -60,6 +66,20 @@ impl OutboundNotificationSubscriptionDefinition {
             spec,
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
             maximum_provider_attempts,
+            None,
+        )
+    }
+
+    pub fn from_spec_with_suppression(
+        spec: OutboundNotificationSubscriptionSpec,
+        maximum_provider_attempts: u64,
+        suppress_before: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        Self::from_versioned_spec(
+            spec,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+            maximum_provider_attempts,
+            Some(suppress_before),
         )
     }
 
@@ -67,10 +87,21 @@ impl OutboundNotificationSubscriptionDefinition {
         spec: OutboundNotificationSubscriptionSpec,
         definition_schema: &str,
         maximum_provider_attempts: u64,
+        suppress_before: Option<DateTime<Utc>>,
     ) -> Result<Self, String> {
         validate_spec(spec)?;
-        validate_provider_attempt_budget(definition_schema, maximum_provider_attempts)?;
-        let document = definition_document(spec, definition_schema, maximum_provider_attempts);
+        let suppress_before = suppress_before.map(canonical_timestamp);
+        validate_versioned_policy(
+            definition_schema,
+            maximum_provider_attempts,
+            suppress_before,
+        )?;
+        let document = definition_document(
+            spec,
+            definition_schema,
+            maximum_provider_attempts,
+            suppress_before,
+        );
         let canonical_acl = format!("{}\n", generate_acl(&document));
         if canonical_acl.len() > OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES {
             return Err("outbound notification subscription ACL exceeds its byte limit".into());
@@ -87,6 +118,7 @@ impl OutboundNotificationSubscriptionDefinition {
             digest,
             definition_schema: definition_schema.into(),
             maximum_provider_attempts,
+            suppress_before,
         })
     }
 
@@ -108,6 +140,7 @@ impl OutboundNotificationSubscriptionDefinition {
             parsed.spec,
             &parsed.definition_schema,
             parsed.maximum_provider_attempts,
+            parsed.suppress_before,
         )?;
         if definition.canonical_acl != normalized {
             return Err("outbound notification subscription ACL is not canonical".into());
@@ -134,6 +167,16 @@ impl OutboundNotificationSubscriptionDefinition {
     }
 
     pub fn schema_version(&self) -> u32 {
+        match self.definition_schema.as_str() {
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA => 1,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 => 2,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3 => 3,
+            _ => unreachable!("validated outbound subscription schema"),
+        }
+    }
+
+    /// Subscription v3 changes admission only; eligible facts retain the delivery-v2 contract.
+    pub fn delivery_schema_version(&self) -> u32 {
         if self.definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA {
             1
         } else {
@@ -143,6 +186,10 @@ impl OutboundNotificationSubscriptionDefinition {
 
     pub const fn maximum_provider_attempts(&self) -> u64 {
         self.maximum_provider_attempts
+    }
+
+    pub const fn suppress_before(&self) -> Option<DateTime<Utc>> {
+        self.suppress_before
     }
 
     pub fn canonical_acl(&self) -> &str {
@@ -162,7 +209,7 @@ impl OutboundNotificationSubscriptionDefinition {
             notification,
             self.spec.channel,
             self.spec.target,
-            self.schema_version(),
+            self.delivery_schema_version(),
             self.maximum_provider_attempts,
         )
     }
@@ -177,6 +224,9 @@ impl OutboundNotificationSubscriptionDefinition {
 
     pub fn matches(&self, notification: &Notification) -> bool {
         severity_rank(notification.severity) >= severity_rank(self.spec.minimum_severity)
+            && self
+                .suppress_before
+                .is_none_or(|cutoff| notification.occurred_at >= cutoff)
     }
 }
 
@@ -282,10 +332,33 @@ impl OutboundNotificationSubscription {
             return Err("outbound notification subscription identity or time is invalid".into());
         }
         match (self.aggregate_version, self.revoked_at) {
-            (1, None) => Ok(()),
-            (2, Some(revoked_at)) if revoked_at >= self.created_at => Ok(()),
-            _ => Err("outbound notification subscription lifecycle is invalid".into()),
+            (1, None) | (2, Some(_)) => {}
+            _ => return Err("outbound notification subscription lifecycle is invalid".into()),
         }
+        if self
+            .revoked_at
+            .is_some_and(|revoked_at| revoked_at < self.created_at)
+        {
+            return Err("outbound notification subscription lifecycle is invalid".into());
+        }
+        if let Some(suppress_before) = self.definition.suppress_before() {
+            let latest = self
+                .created_at
+                .checked_add_signed(Duration::days(
+                    MAXIMUM_OUTBOUND_NOTIFICATION_SUPPRESSION_DAYS,
+                ))
+                .ok_or_else(|| {
+                    "outbound notification suppression cutoff exceeds the timestamp range"
+                        .to_owned()
+                })?;
+            if suppress_before <= self.created_at || suppress_before > latest {
+                return Err(
+                    "outbound notification suppression cutoff must be after creation and within 30 days"
+                        .into(),
+                );
+            }
+        }
+        Ok(())
     }
 
     pub const fn is_active(&self) -> bool {
@@ -354,6 +427,7 @@ fn definition_document(
     spec: OutboundNotificationSubscriptionSpec,
     definition_schema: &str,
     maximum_provider_attempts: u64,
+    suppress_before: Option<DateTime<Utc>>,
 ) -> Document {
     let mut root = BlockBuilder::new(OUTBOUND_NOTIFICATION_SUBSCRIPTION_BLOCK)
         .attr("schema", string(definition_schema))
@@ -375,10 +449,19 @@ fn definition_document(
             "connector_revision_id",
             string(&spec.target.revision_id.to_string()),
         );
-    if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 {
+    if matches!(
+        definition_schema,
+        OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+    ) {
         root = root.attr(
             "maximum_provider_attempts",
             number(maximum_provider_attempts as f64),
+        );
+    }
+    if let Some(suppress_before) = suppress_before {
+        root = root.attr(
+            "suppress_before",
+            string(&suppress_before.to_rfc3339_opts(SecondsFormat::Micros, true)),
         );
     }
     Document {
@@ -390,6 +473,7 @@ struct ParsedSubscriptionDefinition {
     spec: OutboundNotificationSubscriptionSpec,
     definition_schema: String,
     maximum_provider_attempts: u64,
+    suppress_before: Option<DateTime<Utc>>,
 }
 
 fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition, String> {
@@ -413,6 +497,10 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
         let mut attributes = common_attributes.to_vec();
         attributes.push("maximum_provider_attempts");
         attributes
+    } else if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3 {
+        let mut attributes = common_attributes.to_vec();
+        attributes.extend(["maximum_provider_attempts", "suppress_before"]);
+        attributes
     } else {
         return Err("outbound notification subscription schema is unsupported".into());
     };
@@ -433,7 +521,14 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
         } else {
             required_bounded_u64(root, "maximum_provider_attempts")?
         };
-    validate_provider_attempt_budget(&definition_schema, maximum_provider_attempts)?;
+    let suppress_before = (definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3)
+        .then(|| required_timestamp(root, "suppress_before"))
+        .transpose()?;
+    validate_versioned_policy(
+        &definition_schema,
+        maximum_provider_attempts,
+        suppress_before,
+    )?;
     let target = OutboundNotificationConnectorTarget::new(
         ProjectId::from_uuid(parse_id(root, "connector_project_id")?),
         EnvironmentId::from_uuid(parse_id(root, "connector_environment_id")?),
@@ -451,15 +546,18 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
         },
         definition_schema,
         maximum_provider_attempts,
+        suppress_before,
     })
 }
 
-fn validate_provider_attempt_budget(
+fn validate_versioned_policy(
     definition_schema: &str,
     maximum_provider_attempts: u64,
+    suppress_before: Option<DateTime<Utc>>,
 ) -> Result<(), String> {
     if definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA
         && definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+        && definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
     {
         return Err("outbound notification subscription schema is unsupported".into());
     }
@@ -473,7 +571,20 @@ fn validate_provider_attempt_budget(
             "outbound notification maximum provider attempts must be between 1 and 8".into(),
         );
     }
-    Ok(())
+    match (definition_schema, suppress_before) {
+        (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, Some(cutoff))
+            if cutoff == canonical_timestamp(cutoff) =>
+        {
+            Ok(())
+        }
+        (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, _) => Err(
+            "outbound notification subscription v3 requires a canonical suppression cutoff".into(),
+        ),
+        (_, None) => Ok(()),
+        (_, Some(_)) => {
+            Err("outbound notification suppression cutoff requires subscription schema v3".into())
+        }
+    }
 }
 
 fn required_value<'a>(block: &'a Block, name: &str) -> Result<&'a Value, String> {
@@ -517,6 +628,16 @@ fn required_bounded_u64(block: &Block, name: &str) -> Result<u64, String> {
     Ok(*value as u64)
 }
 
+fn required_timestamp(block: &Block, name: &str) -> Result<DateTime<Utc>, String> {
+    DateTime::parse_from_rfc3339(&required_string(block, name)?)
+        .map_err(|_| {
+            format!(
+                "outbound notification subscription field {name:?} must be an RFC 3339 timestamp"
+            )
+        })
+        .map(|value| value.with_timezone(&Utc))
+}
+
 fn default_subscription_schema() -> String {
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA.into()
 }
@@ -531,6 +652,30 @@ mod tests {
     use crate::modules::shared_kernel::domain::{
         ConnectorProfileId, ConnectorRevisionId, EnvironmentId, ProjectId,
     };
+
+    fn notification(
+        organization_id: OrganizationId,
+        recipient: PrincipalId,
+        occurred_at: DateTime<Utc>,
+    ) -> Notification {
+        Notification::project(
+            organization_id,
+            recipient,
+            Uuid::now_v7(),
+            "workload.health.changed".into(),
+            1,
+            Uuid::now_v7(),
+            1,
+            Uuid::now_v7(),
+            NotificationSeverity::Critical,
+            "Workload unhealthy".into(),
+            "The workload health check failed.".into(),
+            super::super::NotificationScope::Organization,
+            occurred_at,
+            occurred_at,
+        )
+        .expect("notification")
+    }
 
     fn definition() -> OutboundNotificationSubscriptionDefinition {
         OutboundNotificationSubscriptionDefinition::from_spec(
@@ -597,6 +742,7 @@ mod tests {
         assert!(!definition
             .canonical_acl()
             .contains("maximum_provider_attempts"));
+        assert_eq!(definition.suppress_before(), None);
     }
 
     #[test]
@@ -613,6 +759,7 @@ mod tests {
         );
         assert_eq!(definition.schema_version(), 2);
         assert_eq!(definition.maximum_provider_attempts(), 3);
+        assert_eq!(definition.suppress_before(), None);
         assert!(definition
             .canonical_acl()
             .contains("maximum_provider_attempts = 3"));
@@ -660,6 +807,106 @@ mod tests {
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
         );
         assert_eq!(definition.maximum_provider_attempts(), 3);
+    }
+
+    #[test]
+    fn version_three_acl_suppresses_strictly_by_bounded_source_event_time() {
+        let organization_id = OrganizationId::new();
+        let recipient = PrincipalId::new();
+        let created_at = canonical_timestamp(Utc::now());
+        let suppress_before = created_at + Duration::days(1);
+        let definition = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
+            definition().spec(),
+            3,
+            suppress_before,
+        )
+        .expect("version three definition");
+        assert_eq!(
+            definition.definition_schema(),
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+        );
+        assert_eq!(definition.schema_version(), 3);
+        assert_eq!(definition.delivery_schema_version(), 2);
+        assert_eq!(definition.maximum_provider_attempts(), 3);
+        assert_eq!(definition.suppress_before(), Some(suppress_before));
+        assert!(definition.canonical_acl().contains(&format!(
+            "suppress_before = \"{}\"",
+            suppress_before.to_rfc3339_opts(SecondsFormat::Micros, true)
+        )));
+        assert_eq!(
+            OutboundNotificationSubscriptionDefinition::parse_acl(definition.canonical_acl()),
+            Ok(definition.clone())
+        );
+
+        let subscription = OutboundNotificationSubscription::create(
+            organization_id,
+            NotificationSubscriptionId::new(),
+            recipient,
+            definition.clone(),
+            recipient,
+            created_at,
+        )
+        .expect("bounded suppressed subscription");
+        assert!(!subscription.matches(&notification(
+            organization_id,
+            recipient,
+            suppress_before - Duration::microseconds(1),
+        )));
+        let boundary = notification(organization_id, recipient, suppress_before);
+        assert!(subscription.matches(&boundary));
+        let delivery = definition
+            .delivery_for(&boundary)
+            .expect("eligible delivery");
+        assert_eq!(delivery.schema_version(), 2);
+        assert_eq!(delivery.maximum_provider_attempts(), 3);
+
+        for invalid_cutoff in [
+            created_at,
+            created_at + Duration::days(30) + Duration::microseconds(1),
+        ] {
+            let invalid = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
+                definition.spec(),
+                3,
+                invalid_cutoff,
+            )
+            .expect("definition is independent from subscription creation time");
+            assert!(OutboundNotificationSubscription::create(
+                organization_id,
+                NotificationSubscriptionId::new(),
+                recipient,
+                invalid,
+                recipient,
+                created_at,
+            )
+            .is_err());
+        }
+        assert!(OutboundNotificationSubscriptionDefinition::parse_acl(
+            &definition
+                .canonical_acl()
+                .replace("  suppress_before = ", "  unknown_suppression = ")
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn checked_in_version_three_contract_is_canonical() {
+        let source = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/c0.3/outbound-notification-subscription-v3.acl"
+        ));
+        let definition =
+            OutboundNotificationSubscriptionDefinition::parse_acl(source).expect("contract");
+        assert_eq!(
+            definition.definition_schema(),
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+        );
+        assert_eq!(definition.maximum_provider_attempts(), 3);
+        assert_eq!(
+            definition
+                .suppress_before()
+                .map(|value| value.to_rfc3339_opts(SecondsFormat::Micros, true)),
+            Some("2026-09-01T00:00:00.000000Z".into())
+        );
     }
 
     #[test]

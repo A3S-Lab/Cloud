@@ -103,6 +103,8 @@ pub struct OutboundNotificationSubscriptionEvent {
     pub definition_schema: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum_provider_attempts: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suppress_before: Option<chrono::DateTime<chrono::Utc>>,
     pub channel: String,
     pub connector_project_id: Uuid,
     pub connector_environment_id: Uuid,
@@ -120,7 +122,7 @@ impl OutboundNotificationSubscriptionEvent {
         subscription.validate()?;
         let spec = subscription.definition.spec();
         let schema_version = subscription.definition.schema_version();
-        let versioned_budget = (schema_version == 2).then(|| {
+        let versioned_budget = (schema_version >= 2).then(|| {
             (
                 subscription.definition.definition_schema().to_owned(),
                 subscription.definition.maximum_provider_attempts(),
@@ -143,6 +145,7 @@ impl OutboundNotificationSubscriptionEvent {
                 definition_digest: subscription.definition.digest().to_string(),
                 definition_schema: versioned_budget.as_ref().map(|(schema, _)| schema.clone()),
                 maximum_provider_attempts: versioned_budget.map(|(_, budget)| budget),
+                suppress_before: subscription.definition.suppress_before(),
                 channel: spec.channel.as_str().into(),
                 connector_project_id: spec.target.project_id.as_uuid(),
                 connector_environment_id: spec.target.environment_id.as_uuid(),
@@ -235,7 +238,7 @@ fn validate_subscription_event(
             format!("outbound notification subscription event is invalid: {error}")
         })?;
     let spec = subscription.definition.spec();
-    let versioned_budget = (subscription.definition.schema_version() == 2).then(|| {
+    let versioned_budget = (subscription.definition.schema_version() >= 2).then(|| {
         (
             subscription.definition.definition_schema(),
             subscription.definition.maximum_provider_attempts(),
@@ -247,6 +250,7 @@ fn validate_subscription_event(
         || payload.definition_schema.as_deref() != versioned_budget.map(|(schema, _)| schema)
         || payload.maximum_provider_attempts
             != versioned_budget.map(|(_, maximum_provider_attempts)| maximum_provider_attempts)
+        || payload.suppress_before != subscription.definition.suppress_before()
         || payload.channel != spec.channel.as_str()
         || payload.connector_project_id != spec.target.project_id.as_uuid()
         || payload.connector_environment_id != spec.target.environment_id.as_uuid()

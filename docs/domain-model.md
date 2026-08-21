@@ -1182,6 +1182,19 @@ existing Management MCP tools expose the actual schema and required budget
 without exposing delivery internals. No retry table, counter, timer, queue,
 scheduler, or second event rail is added.
 
+`N3b` adds canonical `cloud.notification.outbound-subscription.v3` with one
+immutable RFC 3339 UTC `suppress_before` cutoff beside the v2 attempt budget.
+It is later than creation and at most 30 days later. Projection compares only
+the immutable source notification `occurred_at`: a strictly earlier fact stays
+in the personal inbox without a delivery authorization, equality is eligible,
+and delayed projection cannot release it later. Migration `129` stores the
+cutoff and rejects schema/cutoff drift, post-admission mutation, and a forged
+pre-cutoff delivery. Eligible notifications retain the delivery-v2 payload and
+consumer contract. REST/OpenAPI `1.46.0`, the maintained client, CLI, and the
+existing Management MCP tools expose the nullable cutoff. No mutable silence
+record, clock worker, deferred release, timer, queue, scheduler, or second
+event rail is added.
+
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
 method, production HTTPS requirement, redirect rejection, request/response/time
@@ -1213,7 +1226,14 @@ for its first Event-consumer-to-C6 composition. The
 [N3a H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32503892384/job/96839623052)
 also verifies migration `128`, immutable versioned budgets, exact-bound
 Exhausted settlement, durable delivery, and terminal ACK-only replay;
-user-configured suppression remains a separate semantic gate. Provider outage
+`N3b` implements a subscription-v3-only immutable `suppress_before` cutoff.
+It filters solely on the source notification's immutable event time, retains
+the personal inbox row, treats equality as deliverable, and never releases a
+suppressed fact later. The cutoff is bounded to 30 days from subscription
+creation and changes only through revoke plus create. Eligible v3 facts retain
+the delivery-v2 consumer contract, so this policy introduces no mutable silence
+record, counter, clock worker, deferred release, timer, queue, scheduler, or
+second event rail. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains
