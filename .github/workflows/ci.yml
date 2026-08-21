@@ -74,27 +74,44 @@ jobs:
           exit 1
 
       - name: Start checksum-pinned S3-compatible object fixture
+        env:
+          MINIO_CLIENT_SHA256: ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f
+          MINIO_CLIENT_VERSION: RELEASE.2025-04-16T18-13-26Z
+          MINIO_SERVER_SHA256: 53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c
+          MINIO_SERVER_VERSION: RELEASE.2025-04-22T22-12-26Z
         run: |
-          docker run --detach --rm \
-            --name a3s-cloud-object-pages-minio \
-            --publish 127.0.0.1:9000:9000 \
-            --env MINIO_ROOT_USER=a3s-cloud-test \
-            --env MINIO_ROOT_PASSWORD=a3s-cloud-test-secret \
-            quay.io/minio/minio@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
-            server /data --address :9000
+          server_path="$RUNNER_TEMP/minio.${MINIO_SERVER_VERSION}"
+          client_path="$RUNNER_TEMP/mc.${MINIO_CLIENT_VERSION}"
+          curl --fail --location --silent --show-error \
+            --output "$server_path" \
+            "https://dl.min.io/server/minio/release/linux-amd64/archive/minio.${MINIO_SERVER_VERSION}"
+          curl --fail --location --silent --show-error \
+            --output "$client_path" \
+            "https://dl.min.io/client/mc/release/linux-amd64/archive/mc.${MINIO_CLIENT_VERSION}"
+          printf '%s  %s\n' "$MINIO_SERVER_SHA256" "$server_path" |
+            sha256sum --check --strict -
+          printf '%s  %s\n' "$MINIO_CLIENT_SHA256" "$client_path" |
+            sha256sum --check --strict -
+          chmod 0500 "$server_path" "$client_path"
+          object_root="$RUNNER_TEMP/a3s-cloud-object-pages-minio"
+          mkdir --parents "$object_root"
+          MINIO_ROOT_USER="$A3S_CLOUD_TEST_S3_ACCESS_KEY_ID" \
+            MINIO_ROOT_PASSWORD="$A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY" \
+            "$server_path" server "$object_root" --address :9000 \
+            >"$RUNNER_TEMP/a3s-cloud-object-pages-minio.log" 2>&1 &
+          echo "A3S_CLOUD_MINIO_PID=$!" >> "$GITHUB_ENV"
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
               break
             fi
             if [[ "$attempt" == 60 ]]; then
-              docker logs a3s-cloud-object-pages-minio
+              cat "$RUNNER_TEMP/a3s-cloud-object-pages-minio.log"
               exit 1
             fi
             sleep 1
           done
-          docker run --rm --network host \
-            --env MC_HOST_local=http://a3s-cloud-test:a3s-cloud-test-secret@127.0.0.1:9000 \
-            quay.io/minio/mc@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3 \
+          MC_HOST_local="http://${A3S_CLOUD_TEST_S3_ACCESS_KEY_ID}:${A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY}@127.0.0.1:9000" \
+            "$client_path" \
             mb --ignore-existing local/a3s-cloud-object-pages
 
       - name: Certify bounded object namespace pages across process death
@@ -114,7 +131,11 @@ jobs:
 
       - name: Stop S3-compatible object fixture
         if: always()
-        run: docker rm --force a3s-cloud-object-pages-minio || true
+        run: |
+          if [[ -n ${A3S_CLOUD_MINIO_PID:-} ]]; then
+            kill "$A3S_CLOUD_MINIO_PID" 2>/dev/null || true
+            wait "$A3S_CLOUD_MINIO_PID" 2>/dev/null || true
+          fi
 
       - name: Migrate and verify stable replica sets
         run: >-
