@@ -411,15 +411,16 @@ mod tests {
             execution_id,
         ));
 
-        checkpoint.identity.run_id = format!("agent-execution-{execution_id}");
-        let first = checkpoint
+        let mut managed_checkpoint = checkpoint.clone();
+        managed_checkpoint.identity.run_id = format!("agent-execution-{execution_id}");
+        let first = managed_checkpoint
             .recovery_successor(execution_id, recovered_at)
             .expect("first managed recovery");
         let second = first
             .recovery_successor(execution_id, recovered_at + chrono::Duration::seconds(1))
             .expect("second managed recovery");
         assert!(second.can_settle_recovery_predecessor_runtime_binding(
-            &checkpoint.node_runtime_binding(execution_id.as_uuid()),
+            &managed_checkpoint.node_runtime_binding(execution_id.as_uuid()),
             execution_id,
         ));
 

@@ -537,7 +537,11 @@ async fn lease_and_ack_code_command(
             AgentProtocolCommandV1::Recover { .. }
         )
     ));
-    let completed_at = canonical_timestamp(Utc::now().max(envelope.issued_at));
+    let earliest_evidence_at = envelope
+        .issued_at
+        .checked_add_signed(Duration::milliseconds(1))
+        .expect("command evidence timestamp");
+    let completed_at = canonical_timestamp(Utc::now().max(earliest_evidence_at));
     let receipt = AgentProtocolCommandReceiptV1 {
         schema: AgentProtocolCommandReceiptV1::SCHEMA.into(),
         action: command.action(),
