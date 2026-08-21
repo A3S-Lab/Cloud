@@ -141,6 +141,24 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         .expect("command framework")
         .expect("create subscription");
     assert!(!created.replayed);
+    let version_one_fact = fixture
+        .notifications
+        .outbox_events()
+        .await
+        .into_iter()
+        .find(|event| event.event_key == "notification.outbound-subscription.created")
+        .expect("version one subscription fact");
+    assert_eq!(version_one_fact.schema_version, 1);
+    for absent in [
+        "definitionSchema",
+        "maximumProviderAttempts",
+        "suppressBefore",
+    ] {
+        assert!(
+            version_one_fact.payload.get(absent).is_none(),
+            "historic version one subscription fact gained {absent}"
+        );
+    }
     assert!(
         fixture
             .create
@@ -218,6 +236,110 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         .await
         .expect("project after revoke");
     assert_eq!(fixture.notifications.outbound_deliveries().await.len(), 1);
+}
+
+#[tokio::test]
+async fn version_three_suppression_keeps_inbox_and_admits_only_the_exact_boundary() {
+    let fixture = fixture().await;
+    let suppress_before = canonical_timestamp(Utc::now()) + chrono::Duration::days(1);
+    let definition = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
+        OutboundNotificationSubscriptionDefinition::parse_acl(&fixture.definition_acl)
+            .expect("base definition")
+            .spec(),
+        2,
+        suppress_before,
+    )
+    .expect("suppression definition");
+    let created = fixture
+        .create
+        .execute(
+            CreateOutboundNotificationSubscription {
+                organization_id: fixture.organization_id,
+                definition_acl: definition.canonical_acl().into(),
+                actor_principal_id: fixture.actor,
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id: fixture.project_id,
+                        environment_id: fixture.environment_id,
+                    },
+                ]),
+                idempotency_key: "create-suppressed-delivery".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("command framework")
+        .expect("create suppressed subscription")
+        .subscription;
+    assert_eq!(created.definition.schema_version(), 3);
+    assert_eq!(created.definition.delivery_schema_version(), 2);
+    let subscription_fact = fixture
+        .notifications
+        .outbox_events()
+        .await
+        .into_iter()
+        .find(|event| event.event_key == "notification.outbound-subscription.created")
+        .expect("version three subscription fact");
+    assert_eq!(subscription_fact.schema_version, 3);
+    assert_eq!(
+        subscription_fact.payload["definitionSchema"],
+        "cloud.notification.outbound-subscription.v3"
+    );
+    assert_eq!(subscription_fact.payload["maximumProviderAttempts"], 2);
+    assert_eq!(
+        subscription_fact.payload["suppressBefore"],
+        serde_json::json!(suppress_before)
+    );
+
+    let suppressed = notification_at(
+        &fixture,
+        Uuid::now_v7(),
+        suppress_before - chrono::Duration::microseconds(1),
+    );
+    assert!(fixture
+        .notifications
+        .project(suppressed)
+        .await
+        .expect("project suppressed notification"));
+    assert_eq!(
+        fixture
+            .notifications
+            .list_page(fixture.organization_id, fixture.actor, false, None, 50)
+            .await
+            .expect("personal inbox")
+            .len(),
+        1
+    );
+    assert!(fixture.notifications.outbound_deliveries().await.is_empty());
+
+    let boundary = notification_at(&fixture, Uuid::now_v7(), suppress_before);
+    assert!(fixture
+        .notifications
+        .project(boundary)
+        .await
+        .expect("project boundary notification"));
+    let deliveries = fixture.notifications.outbound_deliveries().await;
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].schema_version(), 2);
+    assert_eq!(deliveries[0].maximum_provider_attempts(), 2);
+    assert_eq!(
+        deliveries[0]
+            .requested_event()
+            .expect("delivery fact")
+            .payload["schema"],
+        "a3s.cloud.notification-delivery.v2"
+    );
+    assert_eq!(
+        fixture
+            .notifications
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "notification.delivery.requested")
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -348,6 +470,14 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
 
 fn notification(fixture: &Fixture, source_event_id: Uuid) -> Notification {
     let now = canonical_timestamp(Utc::now());
+    notification_at(fixture, source_event_id, now)
+}
+
+fn notification_at(
+    fixture: &Fixture,
+    source_event_id: Uuid,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Notification {
     Notification::project(
         fixture.organization_id,
         fixture.actor,
@@ -361,8 +491,8 @@ fn notification(fixture: &Fixture, source_event_id: Uuid) -> Notification {
         "Organization role changed".into(),
         "Your organization role is now member.".into(),
         NotificationScope::Organization,
-        now,
-        now,
+        occurred_at,
+        occurred_at,
     )
     .expect("notification")
 }

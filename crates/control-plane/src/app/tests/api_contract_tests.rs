@@ -349,7 +349,8 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         response["properties"]["definitionSchema"]["enum"],
         json!([
             "cloud.notification.outbound-subscription.v1",
-            "cloud.notification.outbound-subscription.v2"
+            "cloud.notification.outbound-subscription.v2",
+            "cloud.notification.outbound-subscription.v3"
         ])
     );
     assert_eq!(
@@ -363,6 +364,14 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
     assert!(response["required"]
         .as_array()
         .is_some_and(|required| required.contains(&json!("maximumProviderAttempts"))));
+    assert_eq!(
+        response["properties"]["suppressBefore"]["format"],
+        "date-time"
+    );
+    assert_eq!(response["properties"]["suppressBefore"]["nullable"], true);
+    assert!(response["required"]
+        .as_array()
+        .is_some_and(|required| required.contains(&json!("suppressBefore"))));
 
     let revoke = &document["paths"]
         ["/organizations/{organization_id}/notification-outbound-subscriptions/{subscription_id}/revoke"]

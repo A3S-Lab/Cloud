@@ -3,7 +3,7 @@ use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
     MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
 };
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
@@ -64,7 +64,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                 "required": [
                     "organizationId", "subscriptionId", "channel", "minimumSeverity",
                     "connectorProjectId", "connectorEnvironmentId", "connectorProfileId",
-                    "connectorRevisionId", "maximumProviderAttempts", "definitionSchema",
+                    "connectorRevisionId", "maximumProviderAttempts", "suppressBefore", "definitionSchema",
                     "definitionAcl", "definitionDigest", "state", "aggregateVersion",
                     "createdBy", "createdAt", "revokedAt"
                 ],
@@ -88,11 +88,17 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                         "minimum": MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
                         "maximum": MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
                     },
+                    "suppressBefore": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
                     "definitionSchema": {
                         "type": "string",
                         "enum": [
                             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
                         ]
                     },
                     "definitionAcl": {

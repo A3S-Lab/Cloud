@@ -33,9 +33,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::{
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest,
     NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    ResourceName,
+    ResourceName, Sha256Digest,
 };
 use a3s_event::{Event, NatsConfig, StorageType};
+use a3s_orm::{DatabaseError, Executor, PostgresError, PostgresTransaction, Query};
 use async_trait::async_trait;
 use chrono::Duration as ChronoDuration;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -93,6 +94,21 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(
         versioned_budget_migration_state,
         (1, "versioned outbound notification delivery budgets".into())
+    );
+    let suppression_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("129"),
+        )
+        .await?;
+    assert_eq!(
+        suppression_migration_state,
+        (
+            1,
+            "bounded outbound notification event-time suppression".into()
+        )
     );
 
     let organization_id = OrganizationId::new();
@@ -182,16 +198,49 @@ pub(super) async fn exercise_notification_persistence(
         created_at,
     )
     .await?;
+    assert_null_suppression_rejected(&database, &subscription).await?;
+
+    let suppress_before = subscription
+        .definition
+        .suppress_before()
+        .ok_or("version three subscription must retain its event-time cutoff")?;
+    assert_eq!(
+        suppress_before,
+        subscription.created_at + ChronoDuration::seconds(1)
+    );
+    let suppressed = source_notification(
+        &database,
+        organization_id,
+        recipient,
+        "Suppressed outbound notification",
+        suppress_before - ChronoDuration::microseconds(1),
+    )
+    .await?;
+    let repository = notification_repository;
+    assert!(repository.project(suppressed.clone()).await?);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from notification_outbound_deliveries where organization_id = ",
+                )
+                .bind(organization_id.as_uuid()),
+            )
+            .await?,
+        0
+    );
+    let forged_suppressed_delivery = subscription.definition.delivery_for(&suppressed)?;
+    assert_suppressed_delivery_rejected(&executor, &forged_suppressed_delivery, subscription.id)
+        .await?;
 
     let first = source_notification(
         &database,
         organization_id,
         recipient,
         "Organization access granted",
-        created_at + ChronoDuration::seconds(1),
+        suppress_before,
     )
     .await?;
-    let repository = notification_repository;
     assert!(repository.project(first.clone()).await?);
     assert!(!repository.project(first.clone()).await?);
     assert_eq!(subscription.definition.maximum_provider_attempts(), 2);
@@ -336,7 +385,7 @@ pub(super) async fn exercise_notification_persistence(
             .list_page(organization_id, recipient, false, None, 50)
             .await?
             .len(),
-        2
+        3
     );
 
     let request_id = Uuid::now_v7();
@@ -386,7 +435,7 @@ pub(super) async fn exercise_notification_persistence(
             .list_page(organization_id, recipient, true, None, 50)
             .await?
             .len(),
-        1
+        2
     );
 
     assert_rejected(
@@ -431,7 +480,7 @@ pub(super) async fn exercise_notification_persistence(
                 .append(" and action = 'notification.inbox.read')"),
         )
         .await?;
-    assert_eq!(evidence, (2, 1, 1, 1));
+    assert_eq!(evidence, (3, 1, 1, 1));
     let outbound_evidence = database
         .fetch_one_as(
             sql_query::<(i64, i64, i64, i64)>("select (select count(*) from notification_outbound_subscriptions where organization_id = ")
@@ -448,7 +497,7 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(outbound_evidence, (1, 2, 1, 1));
     let pinned_budget_evidence = database
         .fetch_one_as(
-            sql_query::<(String, i64, i64, i32)>(
+            sql_query::<(String, i64, i64, i32, chrono::DateTime<Utc>)>(
                 "select (select min(definition_schema) from notification_outbound_subscriptions where organization_id = ",
             )
             .bind(organization_id.as_uuid())
@@ -458,16 +507,19 @@ pub(super) async fn exercise_notification_persistence(
             .bind(organization_id.as_uuid())
             .append("), (select min(schema_version) from outbox_events where organization_id = ")
             .bind(organization_id.as_uuid())
-            .append(" and event_key = 'notification.delivery.requested')"),
+            .append(" and event_key = 'notification.delivery.requested'), (select min(suppress_before) from notification_outbound_subscriptions where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(")"),
         )
         .await?;
     assert_eq!(
         pinned_budget_evidence,
         (
-            "cloud.notification.outbound-subscription.v2".into(),
+            "cloud.notification.outbound-subscription.v3".into(),
             2,
             2,
-            2
+            2,
+            suppress_before
         )
     );
     assert_rejected(
@@ -482,6 +534,19 @@ pub(super) async fn exercise_notification_persistence(
             )
             .await,
         "mutate a subscription provider-attempt budget",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update notification_outbound_subscriptions set suppress_before = suppress_before + interval '1 second' where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(subscription.id.as_uuid()),
+            )
+            .await,
+        "mutate a subscription event-time cutoff",
     );
     assert_rejected(
         database
@@ -886,15 +951,15 @@ async fn create_outbound_subscription(
     target: OutboundNotificationConnectorTarget,
     created_at: chrono::DateTime<Utc>,
 ) -> Result<OutboundNotificationSubscription, Box<dyn std::error::Error>> {
-    let definition =
-        OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
-            OutboundNotificationSubscriptionSpec {
-                channel: OutboundNotificationChannel::SlackCompatible,
-                minimum_severity: NotificationSeverity::Information,
-                target,
-            },
-            2,
-        )?;
+    let definition = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
+        OutboundNotificationSubscriptionSpec {
+            channel: OutboundNotificationChannel::SlackCompatible,
+            minimum_severity: NotificationSeverity::Information,
+            target,
+        },
+        2,
+        created_at + ChronoDuration::seconds(1),
+    )?;
     let subscription = OutboundNotificationSubscription::create(
         organization_id,
         NotificationSubscriptionId::new(),
@@ -977,6 +1042,174 @@ async fn source_notification(
         )
         .await?;
     Ok(notification)
+}
+
+async fn assert_suppressed_delivery_rejected(
+    executor: &PostgresExecutor,
+    delivery: &OutboundNotificationDelivery,
+    subscription_id: NotificationSubscriptionId,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fact = delivery.requested_event()?;
+    let payload_digest = Sha256Digest::from_bytes(&delivery.canonical_payload()?);
+    let target = delivery.target();
+    let organization_id = delivery.organization_id();
+    let delivery_id = delivery.id();
+    let notification_id = delivery.notification_id();
+    let recipient_principal_id = delivery.recipient_principal_id();
+    let maximum_provider_attempts = delivery.maximum_provider_attempts();
+    let channel = delivery.channel();
+    let occurred_at = delivery.occurred_at();
+    let rejected = executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let database = NotificationTransaction::new(transaction);
+                database
+                    .execute(
+                        sql_query::<()>("insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (")
+                            .bind(fact.event_id)
+                            .append(", ")
+                            .bind(fact.event_key.as_str())
+                            .append(", ")
+                            .bind(fact.schema_version)
+                            .append(", ")
+                            .bind(fact.organization_id)
+                            .append(", ")
+                            .bind(fact.aggregate_id)
+                            .append(", ")
+                            .bind(fact.aggregate_version)
+                            .append(", ")
+                            .bind(fact.occurred_at)
+                            .append(", ")
+                            .bind(fact.correlation_id)
+                            .append(", ")
+                            .bind(fact.causation_id)
+                            .append(", ")
+                            .bind(fact.payload)
+                            .append(")"),
+                    )
+                    .await?;
+                database
+                    .execute(
+                        sql_query::<()>("insert into notification_outbound_deliveries (organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at) values (")
+                            .bind(organization_id.as_uuid())
+                            .append(", ")
+                            .bind(delivery_id)
+                            .append(", ")
+                            .bind(notification_id.as_uuid())
+                            .append(", ")
+                            .bind(recipient_principal_id.as_uuid())
+                            .append(", ")
+                            .bind(subscription_id.as_uuid())
+                            .append(", ")
+                            .bind(fact.event_id)
+                            .append(", ")
+                            .bind(payload_digest.as_str())
+                            .append(", ")
+                            .bind(maximum_provider_attempts)
+                            .append(", ")
+                            .bind(channel.as_str())
+                            .append(", ")
+                            .bind(target.project_id.as_uuid())
+                            .append(", ")
+                            .bind(target.environment_id.as_uuid())
+                            .append(", ")
+                            .bind(target.profile_id.as_uuid())
+                            .append(", ")
+                            .bind(target.revision_id.as_uuid())
+                            .append(", ")
+                            .bind(occurred_at)
+                            .append(", null, null, null, null)"),
+                    )
+                    .await?;
+                Ok::<(), DatabaseError<PostgresError>>(())
+            })
+        })
+        .await;
+    let error = rejected.expect_err(
+        "database must reject a forged delivery authorization before the immutable event-time cutoff",
+    );
+    assert!(
+        format!("{error:?}").contains(
+            "Outbound notification delivery fact is not authorized by its exact inbox projection and versioned subscription policy"
+        ),
+        "database rejected the forged delivery for an unexpected reason: {error:?}"
+    );
+    Ok(())
+}
+
+async fn assert_null_suppression_rejected(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    subscription: &OutboundNotificationSubscription,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let spec = subscription.definition.spec();
+    let rejected = database
+        .execute(
+            sql_query::<()>("insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (")
+                .bind(subscription.organization_id.as_uuid())
+                .append(", ")
+                .bind(NotificationSubscriptionId::new().as_uuid())
+                .append(", ")
+                .bind(subscription.recipient_principal_id.as_uuid())
+                .append(", ")
+                .bind(spec.channel.as_str())
+                .append(", ")
+                .bind(spec.minimum_severity.as_str())
+                .append(", ")
+                .bind(spec.target.project_id.as_uuid())
+                .append(", ")
+                .bind(spec.target.environment_id.as_uuid())
+                .append(", ")
+                .bind(spec.target.profile_id.as_uuid())
+                .append(", ")
+                .bind(spec.target.revision_id.as_uuid())
+                .append(", ")
+                .bind(subscription.definition.definition_schema())
+                .append(", ")
+                .bind(subscription.definition.maximum_provider_attempts())
+                .append(", null, ")
+                .bind(subscription.definition.canonical_acl())
+                .append(", ")
+                .bind(subscription.definition.digest().as_str())
+                .append(", 2, ")
+                .bind(subscription.created_by.as_uuid())
+                .append(", ")
+                .bind(subscription.created_at)
+                .append(", ")
+                .bind(subscription.created_at)
+                .append(")"),
+        )
+        .await;
+    let error = rejected.expect_err("database must reject a v3 subscription without a cutoff");
+    assert!(
+        format!("{error:?}")
+            .contains("notification_outbound_subscriptions_definition_policy_check"),
+        "database rejected a null v3 cutoff for an unexpected reason: {error:?}"
+    );
+    Ok(())
+}
+
+struct NotificationTransaction<'a> {
+    transaction: &'a PostgresTransaction,
+}
+
+impl<'a> NotificationTransaction<'a> {
+    const fn new(transaction: &'a PostgresTransaction) -> Self {
+        Self { transaction }
+    }
+
+    async fn execute<Q>(&self, query: Q) -> Result<(), DatabaseError<PostgresError>>
+    where
+        Q: Query,
+    {
+        let query = query
+            .compile(&PostgresDialect)
+            .map_err(DatabaseError::Build)?;
+        self.transaction
+            .execute(&query)
+            .await
+            .map_err(DatabaseError::Execute)?;
+        Ok(())
+    }
 }
 
 fn assert_rejected<T, E: std::fmt::Debug>(result: Result<T, E>, label: &str) {

@@ -43,6 +43,7 @@ const SUBSCRIPTION: OutboundNotificationSubscription = {
   connectorProfileId: '019c0000-0000-7000-8000-000000000009',
   connectorRevisionId: '019c0000-0000-7000-8000-00000000000a',
   maximumProviderAttempts: 8,
+  suppressBefore: null,
   definitionSchema: 'cloud.notification.outbound-subscription.v1',
   definitionAcl: 'schema = "cloud.notification.outbound-subscription.v1"\n',
   definitionDigest: `sha256:${'a'.repeat(64)}`,
@@ -202,13 +203,16 @@ describe('notification commands', () => {
       fetch: async () =>
         envelope({
           ...SUBSCRIPTION,
-          definitionSchema: 'cloud.notification.outbound-subscription.v2',
+          definitionSchema: 'cloud.notification.outbound-subscription.v3',
           maximumProviderAttempts: 3,
+          suppressBefore: '2026-08-15T01:02:03Z',
         }),
     });
     expect(getExitCode).toBe(0);
     expect(getOutput.stdout()).toContain('ATTEMPTS');
     expect(getOutput.stdout()).toContain('3');
+    expect(getOutput.stdout()).toContain('SUPPRESS BEFORE');
+    expect(getOutput.stdout()).toContain('2026-08-15T01:02:03Z');
 
     const revokeOutput = capture();
     const revokeExitCode = await runCli(

@@ -1205,6 +1205,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/128_notification_outbound_delivery_budget.sql"
             )),
         ),
+        Migration::new(
+            "129",
+            "bounded outbound notification event-time suppression",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/129_notification_outbound_suppression.sql"
+            )),
+        ),
     ]
 }
 
@@ -1947,6 +1955,50 @@ mod notification_outbound_delivery_budget_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 128 duplicated delivery authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_outbound_suppression_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/129_notification_outbound_suppression.sql"
+    ));
+
+    #[test]
+    fn migration_129_filters_on_immutable_event_time_without_another_clock_or_queue() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "cloud.notification.outbound-subscription.v3",
+            "add column suppress_before timestamptz",
+            "suppress_before is not null",
+            "suppress_before <= created_at + interval '30 days'",
+            "inbox.occurred_at < subscription.suppress_before",
+            "new.suppress_before is distinct from old.suppress_before",
+            "when 'cloud.notification.outbound-subscription.v3' then 2",
+            "event-time cutoff",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "migration 129 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "clock_timestamp",
+            "now()",
+            "pg_sleep",
+            "retry_count",
+            "suppression_count",
+            "next_delivery",
+            "token_bucket",
+            "rate_bucket",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 129 duplicated suppression or delivery authority through {forbidden}"
             );
         }
     }

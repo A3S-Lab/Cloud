@@ -29,7 +29,8 @@ pub use outbound_repository::{
 pub use outbound_subscription::{
     OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
     OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionPage,
-    OutboundNotificationSubscriptionSpec, MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    OutboundNotificationSubscriptionSpec, MAXIMUM_OUTBOUND_NOTIFICATION_SUPPRESSION_DAYS,
+    MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
 };

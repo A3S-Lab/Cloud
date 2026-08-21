@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
+const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
 const SELECT_DELIVERIES: &str = "select organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at from notification_outbound_deliveries";
 
 struct OutboundSubscriptionRow {
@@ -40,6 +40,7 @@ struct OutboundSubscriptionRow {
     connector_revision_id: Uuid,
     definition_schema: String,
     maximum_provider_attempts: u64,
+    suppress_before: Option<DateTime<Utc>>,
     canonical_acl: String,
     definition_digest: String,
     aggregate_version: u64,
@@ -62,12 +63,13 @@ impl FromRow for OutboundSubscriptionRow {
             connector_revision_id: decode(row, 8)?,
             definition_schema: decode(row, 9)?,
             maximum_provider_attempts: decode(row, 10)?,
-            canonical_acl: decode(row, 11)?,
-            definition_digest: decode(row, 12)?,
-            aggregate_version: decode(row, 13)?,
-            created_by: decode(row, 14)?,
-            created_at: decode(row, 15)?,
-            revoked_at: decode(row, 16)?,
+            suppress_before: decode(row, 11)?,
+            canonical_acl: decode(row, 12)?,
+            definition_digest: decode(row, 13)?,
+            aggregate_version: decode(row, 14)?,
+            created_by: decode(row, 15)?,
+            created_at: decode(row, 16)?,
+            revoked_at: decode(row, 17)?,
         })
     }
 }
@@ -226,6 +228,7 @@ fn decode_subscription(
     let spec = definition.spec();
     if row.definition_schema != definition.definition_schema()
         || row.maximum_provider_attempts != definition.maximum_provider_attempts()
+        || row.suppress_before != definition.suppress_before()
         || row.channel != spec.channel.as_str()
         || row.minimum_severity != spec.minimum_severity.as_str()
         || row.connector_project_id != spec.target.project_id.as_uuid()
@@ -362,7 +365,7 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                     let inserted = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
+                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
                         )
                         .bind(subscription.organization_id.as_uuid())
                         .append(", ")
@@ -385,6 +388,8 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                         .bind(subscription.definition.definition_schema())
                         .append(", ")
                         .bind(subscription.definition.maximum_provider_attempts())
+                        .append(", ")
+                        .bind(subscription.definition.suppress_before())
                         .append(", ")
                         .bind(subscription.definition.canonical_acl())
                         .append(", ")
@@ -434,6 +439,7 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                                 "definitionDigest": subscription.definition.digest(),
                                 "definitionSchema": subscription.definition.definition_schema(),
                                 "maximumProviderAttempts": subscription.definition.maximum_provider_attempts(),
+                                "suppressBefore": subscription.definition.suppress_before(),
                                 "channel": spec.channel,
                                 "connectorProjectId": spec.target.project_id,
                                 "connectorEnvironmentId": spec.target.environment_id,

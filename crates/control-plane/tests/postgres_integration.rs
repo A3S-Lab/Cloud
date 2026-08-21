@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 128;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "128";
+const CLOUD_MIGRATION_COUNT: i64 = 129;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "129";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -296,7 +296,7 @@ async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
+async fn postgres_notifications_are_personal_event_time_suppressed_and_atomic() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
@@ -305,7 +305,7 @@ async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
         notifications_support::exercise_notification_persistence,
     )
     .await
-    .expect("PostgreSQL notification inbox projection gate");
+    .expect("PostgreSQL notification inbox and event-time suppression gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

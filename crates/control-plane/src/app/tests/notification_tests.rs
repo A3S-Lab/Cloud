@@ -473,6 +473,10 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         created["data"]["subscription"]["maximumProviderAttempts"],
         8
     );
+    assert_eq!(
+        created["data"]["subscription"]["suppressBefore"],
+        Value::Null
+    );
     assert!(created["data"]["subscription"]
         .get("recipientPrincipalId")
         .is_none());
@@ -531,6 +535,10 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         mcp_create["result"]["structuredContent"]["data"]["subscription"]
             ["maximumProviderAttempts"],
         3
+    );
+    assert_eq!(
+        mcp_create["result"]["structuredContent"]["data"]["subscription"]["suppressBefore"],
+        Value::Null
     );
     let second_subscription_id = mcp_create["result"]["structuredContent"]["data"]["subscription"]
         ["subscriptionId"]
@@ -617,6 +625,45 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         true
     );
 
+    let suppress_before = crate::modules::shared_kernel::domain::canonical_timestamp(
+        Utc::now() + chrono::Duration::days(1),
+    );
+    let suppressed_acl = outbound_subscription_acl_with_suppression(
+        &project,
+        &environment,
+        profile_id,
+        revision_id,
+        OutboundNotificationChannel::SignedWebhook,
+        2,
+        suppress_before,
+    )?;
+    let suppressed = app
+        .call(post_acl_as(
+            &root,
+            "notification-outbound-suppressed-create",
+            suppressed_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(suppressed.status(), 201);
+    let suppressed = response_json(&suppressed)?;
+    assert_eq!(
+        suppressed["data"]["subscription"]["definitionSchema"],
+        "cloud.notification.outbound-subscription.v3"
+    );
+    assert_eq!(
+        suppressed["data"]["subscription"]["maximumProviderAttempts"],
+        2
+    );
+    assert_eq!(
+        suppressed["data"]["subscription"]["suppressBefore"],
+        suppress_before.to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+    );
+    assert_eq!(
+        suppressed["data"]["subscription"]["definitionAcl"],
+        suppressed_acl
+    );
+
     let mcp_revoke = app
         .call(mcp_tool_call_as(
             5,
@@ -659,6 +706,28 @@ fn outbound_subscription_acl_with_budget(
             OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
                 spec,
                 maximum_provider_attempts,
+            )
+        })
+        .map(|definition| definition.canonical_acl().to_owned())
+        .map_err(BootError::Internal)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn outbound_subscription_acl_with_suppression(
+    project_id: &str,
+    environment_id: &str,
+    profile_id: &str,
+    revision_id: &str,
+    channel: OutboundNotificationChannel,
+    maximum_provider_attempts: u64,
+    suppress_before: chrono::DateTime<Utc>,
+) -> Result<String> {
+    outbound_subscription_definition(project_id, environment_id, profile_id, revision_id, channel)
+        .and_then(|spec| {
+            OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
+                spec,
+                maximum_provider_attempts,
+                suppress_before,
             )
         })
         .map(|definition| definition.canonical_acl().to_owned())
