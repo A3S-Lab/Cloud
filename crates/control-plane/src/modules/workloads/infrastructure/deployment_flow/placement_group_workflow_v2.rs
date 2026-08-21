@@ -171,7 +171,7 @@ pub(super) fn replay(
                 "placement-group-v2-materialization",
                 VALIDATE_MATERIALIZATION,
                 serde_json::to_value(ValidateMaterializationInput { deployment: input })?,
-                config.retry_policy(),
+                config.retry_policy(&context),
             ));
         }
     };
@@ -293,7 +293,7 @@ fn replay_scheduling(
                         attempt,
                         scheduling_deadline,
                     })?,
-                    config.retry_policy(),
+                    config.retry_policy(context),
                 )));
             }
         }
@@ -349,7 +349,7 @@ fn replay_scheduled_validation(
                         attempt,
                         placement_digest: placement_digest.clone(),
                     })?,
-                    config.retry_policy(),
+                    config.retry_policy(context),
                 ));
             }
         }

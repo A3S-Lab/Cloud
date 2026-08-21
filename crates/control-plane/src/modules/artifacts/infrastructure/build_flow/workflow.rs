@@ -566,7 +566,7 @@ fn stage_or_failure<T: serde::Serialize>(
         step_id,
         step_name,
         serde_json::to_value(input)?,
-        config.retry_policy(),
+        config.retry_policy(context),
     ))
 }
 
@@ -588,7 +588,7 @@ fn failure_command(
             flow: flow.clone(),
             reason,
         })?,
-        config.retry_policy(),
+        config.retry_policy(context),
     ))
 }
 

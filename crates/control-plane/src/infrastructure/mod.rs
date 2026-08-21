@@ -1,5 +1,6 @@
 mod durable_filesystem;
 mod flow;
+mod flow_retry;
 mod git;
 mod immutable_object;
 mod oci_registry_client;
@@ -20,6 +21,7 @@ pub use flow::{
     FlowInfrastructureError, FlowOperationCoordinator, FlowReadInfrastructure,
     FlowRuntimeRegistryError, FlowRuntimeRouter,
 };
+pub(crate) use flow_retry::{flow_step_retry_policy, BOUNDED_STEP_RETRY_PATCH_ID};
 #[cfg(test)]
 pub(crate) use immutable_object::DisposableS3TestContext;
 pub use postgres::{

@@ -43,18 +43,20 @@ converges through one PostgreSQL authority and one durable execution path.
 The code on `main` separates implemented mechanics from released capability:
 
 - **Implemented / durable foundation update** — `main` pins A3S Flow `1.0.0`
-  at exact latest-main revision `006e988b`, including its bounded child
-  Workflow batch primitive, so Workflow ACL graphs reuse Flow's portable DAG
-  compiler, while Boot
+  at exact latest-main revision `7c76eda9`, including bounded child Workflow
+  batches and capped exponential step retries with deterministic jitter, so
+  Workflow ACL graphs reuse Flow's portable DAG compiler, while Boot
   `0.2.0`, ORM `0.3.1`, the PostgreSQL queue, Operations, Outbox, audit, and
   replay remain the only durable path. One process-level supervisor observes
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@9`; the former
-  `@1` through `@8` generations are admitted only through the explicit Flow compatibility
-  set, which readiness exposes with the remaining unpinned migration switch.
-  The stable release converges Cloud and Code on one Flow revision. The
+  New Operations pin replay generation `a3s-cloud-workflows@14` and the
+  `cloud.flow.bounded-step-retries-v1` marker. Their infrastructure steps use
+  eight attempts with a 30-second capped backoff; `@1` through `@13` retain
+  their exact replay policy through the explicit Flow compatibility set, which
+  readiness exposes with the remaining unpinned migration switch. Cloud and
+  Code resolve one exact Flow revision. The
   [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
@@ -211,6 +213,7 @@ preservation register.
 | PostgreSQL schema execution | The terminating `a3s-cloud-migrate` process through one A3S ORM mechanism, with owner manifests and ledgers scoped to Cloud `public`, Flow `a3s_flow`, and Boot `a3s_boot` | Serving-process DDL, copied component SQL/admission logic, a second runner, or one shared credential reference |
 | PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; each bounded-context family projects one concrete repository instance to all of its ports | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or SQL/migrations in composition |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
+| Infrastructure step retry | One marker-pinned A3S Flow `RetryPolicy`, finite for new histories and byte-compatible for legacy replay | Product retry counters, sleep loops, random state, or silently rewriting persisted retry policy |
 | Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
 | Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility` configured by one Cloud build manifest | Reusing one build ID across runtime generations, caller-selected build IDs, or a second build router |
 | Portable DAG structure | A3S Flow `WorkflowDag`; Cloud constructs it programmatically from canonical ACL | A Cloud compatibility parser, topology sorter, or editor-owned execution schema |

@@ -48,7 +48,8 @@ AI application platform parity manifest.
 | [0041](0041-descriptor-bound-application-variable-effects.md) | Commit descriptor-bound v12 Application variable snapshots and CAS revisions before resuming the Workflow DAG |
 | [0042](0042-project-member-application-lifecycle-replay.md) | Expose project-member close, cancellation, and complete session replay through the existing Applications/Workflow authority |
 | [0043](0043-root-bound-repeated-application-answer-frames.md) | Bind repeated v13 composite Answer frames to one root Application invocation with stable zero-based ordinals |
+| [0044](0044-replay-pinned-bounded-flow-step-retries.md) | Pin finite capped infrastructure-step retries only to new Flow histories while preserving legacy replay bytes |
 
-All forty-three decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All forty-four decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

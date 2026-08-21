@@ -5,10 +5,13 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
+use crate::infrastructure::flow_step_retry_policy;
 use crate::modules::agents::domain::IAgentRepository;
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
-use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
+use a3s_flow::{
+    FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,8 +64,8 @@ impl AgentExecutionFlowConfig {
         })
     }
 
-    fn retry_policy(&self) -> a3s_flow::RetryPolicy {
-        a3s_flow::RetryPolicy::fixed(u32::MAX, self.retry_delay)
+    fn retry_policy(&self, context: &WorkflowContext<'_>) -> a3s_flow::RetryPolicy {
+        flow_step_retry_policy(context, self.retry_delay)
     }
 }
 

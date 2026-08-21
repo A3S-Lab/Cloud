@@ -9,6 +9,7 @@ mod tests;
 mod types;
 mod workflow;
 
+use crate::infrastructure::flow_step_retry_policy;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeSchedulingRepository,
 };
@@ -29,7 +30,9 @@ use crate::modules::workloads::domain::services::{
     IDeploymentRouteUpdater, IOciArtifactResolver, IWorkloadPrestartGate,
     UnrestrictedWorkloadPrestartGate,
 };
-use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
+use a3s_flow::{
+    FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -84,10 +87,8 @@ impl DeploymentFlowConfig {
         })
     }
 
-    pub(super) fn retry_policy(&self) -> a3s_flow::RetryPolicy {
-        // Infrastructure failures keep the durable operation suspended. Business
-        // failures are returned as typed step output and persisted by fail_deployment.
-        a3s_flow::RetryPolicy::fixed(u32::MAX, self.retry_delay)
+    pub(super) fn retry_policy(&self, context: &WorkflowContext<'_>) -> a3s_flow::RetryPolicy {
+        flow_step_retry_policy(context, self.retry_delay)
     }
 }
 

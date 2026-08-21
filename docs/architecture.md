@@ -590,6 +590,17 @@ there is no prefix dispatch and no default Deployment or other product runtime.
 Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v9
 identities remain explicit registry entries rather than compatibility guesses.
 
+New Operation histories also pin runtime build `a3s-cloud-workflows@14` and
+the immutable `cloud.flow.bounded-step-retries-v1` marker. Agent, Build, Data
+recovery, Deployment, and Execution infrastructure steps all obtain retry
+behavior from one Cloud adapter over A3S Flow: eight total attempts, a
+configured initial delay clamped to 30 seconds, capped exponential progression,
+and Flow's deterministic full jitter. Exhaustion replays the owning workflow,
+which already converts the durable failed step into its explicit terminal or
+cleanup path. Unmarked and `@1`-`@13` histories retain the exact fixed
+`u32::MAX` policy that their `step_created` events recorded. No product runtime
+owns a retry counter, clock, random source, scheduler, or queue.
+
 Workflow also owns the implemented immutable descriptor and typed-variable
 domain contracts. They define semantic metadata, typed value ownership,
 compiler admission, and the implemented initial runtime projection. Secret and

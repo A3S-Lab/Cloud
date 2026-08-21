@@ -248,7 +248,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "7.0.2"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=c37f810e142611edba30818f5ceef7dd5a941f4a#c37f810e142611edba30818f5ceef7dd5a941f4a"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=6906a09f7c2f061d75f2276649da959d28da182c#6906a09f7c2f061d75f2276649da959d28da182c"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -343,7 +343,7 @@ dependencies = [
 [[package]]
 name = "a3s-flow"
 version = "1.0.0"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=006e988b1f63e92a381f138d10af4084b96625a8#006e988b1f63e92a381f138d10af4084b96625a8"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=7c76eda911146dd08bf260dfa2b958ab089eed6f#7c76eda911146dd08bf260dfa2b958ab089eed6f"
 dependencies = [
  "a3s-boot",
  "a3s-orm",

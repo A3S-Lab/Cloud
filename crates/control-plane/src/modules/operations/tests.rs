@@ -1,7 +1,7 @@
 use super::*;
 use crate::infrastructure::{
-    cloud_runtime_build_compatibility, CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID,
-    REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS,
+    cloud_runtime_build_compatibility, BOUNDED_STEP_RETRY_PATCH_ID,
+    CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID, REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS,
 };
 use crate::modules::shared_kernel::domain::{OperationId, OrganizationId};
 use a3s_flow::{
@@ -249,16 +249,16 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
     assert!(left.projected + right.projected >= 1);
     assert_eq!(engine.list_run_ids().await?, vec![operation_id.to_string()]);
     assert_eq!(engine.history(&operation_id.to_string()).await?.len(), 3);
+    let snapshot = engine.snapshot(&operation_id.to_string()).await?;
     assert_eq!(
-        engine
-            .snapshot(&operation_id.to_string())
-            .await?
+        snapshot
             .spec
             .runtime_build_id
             .as_ref()
             .map(RuntimeBuildId::as_str),
         Some(CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID)
     );
+    assert!(snapshot.spec.has_patch_marker(BOUNDED_STEP_RETRY_PATCH_ID));
     let projection = repository
         .find_projection(operation_id)
         .await?
@@ -310,14 +310,9 @@ async fn operation_engine_replays_legacy_unpinned_history_without_creating_new_u
         .await?;
 
     assert_eq!(projection.status, OperationStatus::Succeeded);
-    assert_eq!(
-        engine
-            .snapshot(&operation_id.to_string())
-            .await?
-            .spec
-            .runtime_build_id,
-        None
-    );
+    let snapshot = engine.snapshot(&operation_id.to_string()).await?;
+    assert_eq!(snapshot.spec.runtime_build_id, None);
+    assert!(snapshot.spec.patch_markers.is_empty());
     Ok(())
 }
 
@@ -348,14 +343,9 @@ async fn operation_engine_replays_only_an_explicitly_compatible_pinned_generatio
         .await?;
 
     assert_eq!(projection.status, OperationStatus::Succeeded);
-    assert_eq!(
-        engine
-            .snapshot(&operation_id.to_string())
-            .await?
-            .spec
-            .runtime_build_id,
-        Some(legacy_build_id)
-    );
+    let snapshot = engine.snapshot(&operation_id.to_string()).await?;
+    assert_eq!(snapshot.spec.runtime_build_id, Some(legacy_build_id));
+    assert!(snapshot.spec.patch_markers.is_empty());
     Ok(())
 }
 

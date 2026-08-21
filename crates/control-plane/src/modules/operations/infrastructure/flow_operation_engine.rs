@@ -1,9 +1,12 @@
+use crate::infrastructure::BOUNDED_STEP_RETRY_PATCH_ID;
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRequest, OperationStatus,
 };
 use crate::modules::operations::domain::services::{IOperationEngine, OperationEngineError};
 use crate::modules::shared_kernel::domain::OperationId;
-use a3s_flow::{FlowEngine, FlowError, WorkflowRunSnapshot, WorkflowRunStatus, WorkflowSpec};
+use a3s_flow::{
+    FlowEngine, FlowError, WorkflowPatchId, WorkflowRunSnapshot, WorkflowRunStatus, WorkflowSpec,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use uuid::Uuid;
@@ -41,6 +44,9 @@ impl IOperationEngine for FlowOperationEngine {
             request.workflow.version(),
             "a3s-cloud",
             "main",
+        )
+        .with_patch_marker(
+            WorkflowPatchId::new(BOUNDED_STEP_RETRY_PATCH_ID).map_err(map_flow_error)?,
         )
         .with_runtime_build(current_build_id);
         let spec = match self.engine.snapshot(&run_id).await {

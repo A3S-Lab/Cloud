@@ -105,7 +105,7 @@ pub(super) fn replay(
                         deployment: input.clone(),
                         attempt,
                     })?,
-                    config.retry_policy(),
+                    config.retry_policy(&context),
                 ));
             }
         }

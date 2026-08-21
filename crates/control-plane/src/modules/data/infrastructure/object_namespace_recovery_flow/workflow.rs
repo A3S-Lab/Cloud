@@ -88,7 +88,7 @@ fn replay_step<T: serde::de::DeserializeOwned + Serialize>(
                 STEP_ID,
                 step_name,
                 serde_json::to_value(input)?,
-                runtime.retry_policy(),
+                runtime.retry_policy(context),
             ))
         }
     }
