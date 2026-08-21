@@ -1199,8 +1199,10 @@ a terminal closed Connector classification only through an exact Plan-v5
 descriptor edge as `cloud.workflow.step-failure.v2`; historic v8 remains
 fail-closed without that interpretation, v6 stays reference-only, and v5 stays
 digest-only. Notifications now retains PostgreSQL 17 plus real NATS evidence
-for its first Event-consumer-to-C6 composition. The versioned delivery budget
-is implemented component-only and awaits retained PostgreSQL 17 evidence;
+for its first Event-consumer-to-C6 composition. The
+[N3a H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32503892384/job/96839623052)
+also verifies migration `128`, immutable versioned budgets, exact-bound
+Exhausted settlement, durable delivery, and terminal ACK-only replay;
 user-configured suppression remains a separate semantic gate. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
