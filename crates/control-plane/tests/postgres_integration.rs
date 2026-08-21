@@ -77,6 +77,8 @@ async fn migrate_for_test(
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/application_delivery_recovery.rs"]
+mod application_delivery_recovery_support;
 #[path = "support/application_session_fixtures.rs"]
 mod application_session_fixtures_support;
 #[path = "support/application_sessions.rs"]
@@ -392,6 +394,19 @@ async fn postgres_application_invocations_compose_exact_workflow_runs_after_rest
     )
     .await
     .expect("PostgreSQL Application WorkflowRun composition gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_application_delivery_recovers_answer_variable_and_terminal_effects() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        application_delivery_recovery_support::exercise_application_delivery_recovery,
+    )
+    .await
+    .expect("PostgreSQL Application C6-C11 delivery and recovery gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

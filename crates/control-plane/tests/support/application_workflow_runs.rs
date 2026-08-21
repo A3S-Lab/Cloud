@@ -303,7 +303,7 @@ fn workflow_run_service(executor: &PostgresExecutor) -> WorkflowApplicationRunSe
     )
 }
 
-async fn persist_workflow(
+pub(super) async fn persist_workflow(
     executor: &PostgresExecutor,
     revision: &a3s_cloud_control_plane::modules::workflow::WorkflowRevision,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -338,7 +338,7 @@ async fn persist_workflow(
     Ok(())
 }
 
-async fn persist_ontology(
+pub(super) async fn persist_ontology(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,
     project_id: ProjectId,
