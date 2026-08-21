@@ -1253,7 +1253,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Personal alert policy (`C0.3-N4a` implemented)
+### 3.20 Personal alert policy (`C0.3-N4a` verified)
 
 The first alert-policy slice is one immutable personal
 `cloud.notification.alert-policy.v1` A3S ACL. The policy binds the exact
@@ -1288,9 +1288,12 @@ delivery.
 Migration `130` persists the immutable revoke-only policy lifecycle and exact
 ACL/column projection. REST/OpenAPI `1.47.0`, the maintained client, CLI, and
 four Management MCP tools expose the same create/list/get/revoke CQRS. Focused
-domain, projection, cross-surface, contract, client, CLI, and PostgreSQL-test
-compilation gates pass; retained PostgreSQL 17 and NATS evidence is still
-pending.
+domain, projection, cross-surface, contract, client, and CLI gates pass. The
+[retained PostgreSQL 17 and NATS H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32532413143/job/96926885588)
+also proves migration `130`, immutable create/revoke and ACL guards, idempotent
+Outbox/audit persistence, exact rejection/recovery projection and replay
+deduplication, silence after policy revocation, durable delivery, and terminal
+ACK-only replay.
 
 Future workload-health, certificate-expiry, backup, node-availability,
 operation-latency, and resource-signal families enter only as explicit bounded
