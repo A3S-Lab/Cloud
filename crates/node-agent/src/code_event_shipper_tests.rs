@@ -576,7 +576,7 @@ async fn retention_gap_replays_once_drains_the_checkpoint_and_accepts_the_recove
         endpoint,
     });
     let transport = Arc::new(EventTransport::new(0));
-    let shipper = shipper(
+    let initial_shipper = shipper(
         directory.path(),
         node_id,
         Arc::clone(&runtime),
@@ -584,12 +584,14 @@ async fn retention_gap_replays_once_drains_the_checkpoint_and_accepts_the_recove
         Arc::clone(&transport),
     );
 
-    assert!(shipper
+    assert!(initial_shipper
         .ship_once(std::slice::from_ref(&checkpoint))
         .await
         .expect("ship checkpoint page"));
     transport.failures.store(1, Ordering::SeqCst);
-    let interrupted = shipper.ship_once(std::slice::from_ref(&checkpoint)).await;
+    let interrupted = initial_shipper
+        .ship_once(std::slice::from_ref(&checkpoint))
+        .await;
     assert!(matches!(
         interrupted,
         Err(CodeEventShippingError::ControlPlane(
