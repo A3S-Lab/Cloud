@@ -1654,6 +1654,8 @@ impl ManagementTool {
             Self::MembershipsRevoke
                 | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsRevoke
+                | Self::ApplicationSessionsClose
+                | Self::ApplicationInvocationsCancel
                 | Self::WorkloadsStop
                 | Self::DeploymentsCancel
                 | Self::BuildRunsCancel
@@ -3187,6 +3189,29 @@ mod tests {
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
             .expect("grants")
+    }
+
+    #[test]
+    fn application_delivery_annotations_match_their_effects() {
+        for (tool, read_only, destructive) in [
+            (ManagementTool::ApplicationSessionsClose, false, true),
+            (ManagementTool::ApplicationSessionsReplay, true, false),
+            (ManagementTool::ApplicationInvocationsCancel, false, true),
+        ] {
+            let definition = tool.definition();
+            assert_eq!(
+                definition["annotations"]["readOnlyHint"].as_bool(),
+                Some(read_only),
+                "{} read-only annotation",
+                tool.name()
+            );
+            assert_eq!(
+                definition["annotations"]["destructiveHint"].as_bool(),
+                Some(destructive),
+                "{} destructive annotation",
+                tool.name()
+            );
+        }
     }
 
     #[test]

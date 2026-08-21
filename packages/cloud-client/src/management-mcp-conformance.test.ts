@@ -213,6 +213,7 @@ conformanceIt(
       'a3s_cloud_resource_grants_list',
       'a3s_cloud_resource_grants_get',
       'a3s_cloud_application_sessions_get',
+      'a3s_cloud_application_sessions_replay',
       'a3s_cloud_application_invocations_get',
       'a3s_cloud_application_messages_list',
     ]);
@@ -224,6 +225,8 @@ conformanceIt(
       'a3s_cloud_deployments_cancel',
       'a3s_cloud_build_runs_cancel',
       'a3s_cloud_workflow_runs_cancel',
+      'a3s_cloud_application_sessions_close',
+      'a3s_cloud_application_invocations_cancel',
     ]);
     for (const tool of toolDefinitions(adminCatalog)) {
       expect(tool.annotations.readOnlyHint).toBe(readOnlyToolSet.has(tool.name));
