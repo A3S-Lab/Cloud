@@ -1,7 +1,7 @@
 use super::{
-    ApplicationEndUser, ApplicationInvocation, ApplicationInvocationStatus, ApplicationMessage,
-    ApplicationMessageKind, ApplicationRelease, ApplicationSession, ApplicationSessionStatus,
-    ConversationVariableRevision,
+    ApplicationEndUser, ApplicationInvocation, ApplicationInvocationStatus,
+    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageKind,
+    ApplicationRelease, ApplicationSession, ApplicationSessionStatus, ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
@@ -66,6 +66,7 @@ impl OpenApplicationSessionWrite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestApplicationInvocationWrite {
     pub invocation: ApplicationInvocation,
+    pub workflow_authority: ApplicationInvocationWorkflowAuthority,
     pub input_message: ApplicationMessage,
     pub expected_session_version: u64,
 }
@@ -73,6 +74,7 @@ pub struct RequestApplicationInvocationWrite {
 impl RequestApplicationInvocationWrite {
     pub fn validate(&self) -> Result<(), String> {
         self.invocation.validate()?;
+        self.workflow_authority.validate_against(&self.invocation)?;
         self.input_message.validate()?;
         if self.expected_session_version == 0
             || self.invocation.status != ApplicationInvocationStatus::Requested
@@ -100,6 +102,7 @@ impl RequestApplicationInvocationWrite {
     pub fn matches_replay(
         &self,
         current: &ApplicationInvocation,
+        workflow_authority: &ApplicationInvocationWorkflowAuthority,
         input_message: &ApplicationMessage,
     ) -> Result<bool, String> {
         current.validate()?;
@@ -115,6 +118,7 @@ impl RequestApplicationInvocationWrite {
             && current.input == self.invocation.input
             && current.input_digest == self.invocation.input_digest
             && current.requested_at == self.invocation.requested_at
+            && workflow_authority == &self.workflow_authority
             && input_message == &self.input_message)
     }
 }
@@ -304,6 +308,14 @@ pub trait IApplicationSessionRepository: Send + Sync {
         application_id: ApplicationId,
         invocation_id: ApplicationInvocationId,
     ) -> Result<Option<ApplicationInvocation>, RepositoryError>;
+
+    async fn find_invocation_workflow_authority(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        invocation_id: ApplicationInvocationId,
+    ) -> Result<Option<ApplicationInvocationWorkflowAuthority>, RepositoryError>;
 
     async fn list_messages(
         &self,

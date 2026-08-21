@@ -30,9 +30,11 @@ receipt, audit record, and Outbox event in one transaction.
 
 Project authorization before replay, CQRS, REST/OpenAPI `1.42.0`, the maintained
 client, CLI, and six Management MCP tools now reuse this exact contract and the
-single Applications repository. Component-only `APP0.2-C1/C2/C3` builds and
-persists its session contract on these exact release identities through
-migration `125`, then composes exact invocations into ordinary Workflow Goals,
-Plans, and Runs through Workflow's existing authority. `APP0.1` completion is
-not a public delivery or availability claim: managed delivery, monitoring,
+single Applications repository. Component-only `APP0.2-C1/C2/C3/C4/C5` builds and
+persists its session and immutable invocation execution authority on these
+exact release identities through migrations `125`-`126`, compiles deterministic
+Model/Agent wrappers through Workflow's sole publication authority, then
+composes or cancels exact invocations through ordinary Workflow Goals, Plans,
+Runs, and the existing Workflow state machine. `APP0.1` completion is not a
+public delivery or availability claim: managed delivery, monitoring,
 enterprise evidence, and completion of `APP0.2` through `APP0.6` remain open.

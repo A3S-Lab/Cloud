@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 125;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "125";
+const CLOUD_MIGRATION_COUNT: i64 = 126;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "126";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -2222,6 +2222,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "agent_execution_events",
         "application_conversation_variable_revisions",
         "application_end_users",
+        "application_invocation_workflow_authorities",
         "application_invocations",
         "application_messages",
         "application_releases",
@@ -2269,6 +2270,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(protected_human_task_trigger_count, 4);
+    let invocation_workflow_authority_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid = 'application_invocation_workflow_authorities'::regclass and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(invocation_workflow_authority_trigger_count, 2);
     for index in [
         "workflow_runs_project_requested_idx",
         "workflow_runs_reconciliation_idx",

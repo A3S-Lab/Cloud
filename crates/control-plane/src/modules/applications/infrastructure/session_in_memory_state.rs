@@ -1,6 +1,7 @@
 use crate::modules::applications::domain::{
-    ApplicationEndUser, ApplicationInvocation, ApplicationMessage, ApplicationSession,
-    ApplicationWorkflowEffect, ConversationVariableRevision,
+    ApplicationEndUser, ApplicationInvocation, ApplicationInvocationWorkflowAuthority,
+    ApplicationMessage, ApplicationSession, ApplicationWorkflowEffect,
+    ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
@@ -86,6 +87,8 @@ pub(super) struct State {
     pub(super) end_users: BTreeMap<EndUserKey, ApplicationEndUser>,
     pub(super) sessions: BTreeMap<SessionKey, ApplicationSession>,
     pub(super) invocations: BTreeMap<InvocationKey, ApplicationInvocation>,
+    pub(super) invocation_workflow_authorities:
+        BTreeMap<InvocationKey, ApplicationInvocationWorkflowAuthority>,
     pub(super) messages: BTreeMap<MessageKey, ApplicationMessage>,
     pub(super) message_sequences: BTreeMap<MessageSequenceKey, ApplicationMessageId>,
     pub(super) variables: BTreeMap<VariableKey, ConversationVariableRevision>,

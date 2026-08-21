@@ -1,7 +1,8 @@
 use crate::infrastructure::{fetch_optional, PostgresPersistenceError};
 use crate::modules::applications::domain::{
-    ApplicationEndUser, ApplicationInvocation, ApplicationMessage, ApplicationSession,
-    ApplicationWorkflowEffect, ConversationVariableRevision,
+    ApplicationEndUser, ApplicationInvocation, ApplicationInvocationWorkflowAuthority,
+    ApplicationMessage, ApplicationSession, ApplicationWorkflowEffect,
+    ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationSessionId, OrganizationId, ProjectId,
@@ -11,8 +12,9 @@ use a3s_orm::{sql_query, PostgresTransaction};
 use uuid::Uuid;
 
 use super::session_postgres_records::{
-    decode_end_user, decode_invocation, decode_message, decode_session, decode_variable,
-    end_user_select, invocation_select, message_select, session_select, variable_select,
+    decode_end_user, decode_invocation, decode_invocation_workflow_authority, decode_message,
+    decode_session, decode_variable, end_user_select, invocation_select,
+    invocation_workflow_authority_select, message_select, session_select, variable_select,
 };
 
 pub(super) async fn lock_session(
@@ -107,6 +109,28 @@ pub(super) async fn load_message(
     )
     .await?
     .map(decode_message)
+    .transpose()
+    .map_err(Into::into)
+}
+
+pub(super) async fn load_invocation_workflow_authority(
+    transaction: &PostgresTransaction,
+    value: &ApplicationInvocationWorkflowAuthority,
+) -> Result<Option<ApplicationInvocationWorkflowAuthority>, PostgresPersistenceError> {
+    fetch_optional(
+        transaction,
+        invocation_workflow_authority_select()
+            .append(" where organization_id = ")
+            .bind(value.organization_id.as_uuid())
+            .append(" and project_id = ")
+            .bind(value.project_id.as_uuid())
+            .append(" and application_id = ")
+            .bind(value.application_id.as_uuid())
+            .append(" and invocation_id = ")
+            .bind(value.invocation_id.as_uuid()),
+    )
+    .await?
+    .map(decode_invocation_workflow_authority)
     .transpose()
     .map_err(Into::into)
 }

@@ -1,13 +1,14 @@
 use crate::modules::applications::domain::{
     ApplicationAudience, ApplicationEndUser, ApplicationInteractionMode, ApplicationInvocation,
-    ApplicationInvocationStatus, ApplicationMessage, ApplicationMessageKind,
-    ApplicationResponseMode, ApplicationSession, ApplicationSessionStatus,
+    ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority, ApplicationMessage,
+    ApplicationMessageKind, ApplicationResponseMode, ApplicationSession, ApplicationSessionStatus,
     ApplicationWorkflowEffect, ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
-    ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId, OrganizationId,
-    PrincipalId, ProjectId, RepositoryError, Sha256Digest, WorkflowRunId,
+    ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId, EnvironmentId,
+    OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    Sha256Digest, WorkflowRunId,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, Row, SqlQuery};
 use chrono::{DateTime, Utc};
@@ -17,6 +18,7 @@ use uuid::Uuid;
 const SELECT_END_USERS: &str = "select organization_id, project_id, application_id, id, audience, linked_principal_id, created_by, created_at from application_end_users";
 const SELECT_SESSIONS: &str = "select organization_id, project_id, application_id, application_release_id, application_release_number, application_release_digest, end_user_id, id, interaction_mode, status, last_message_sequence, current_variable_revision_id, current_variable_revision_number, current_variable_digest, aggregate_version, created_at, updated_at, closed_at from application_sessions";
 const SELECT_INVOCATIONS: &str = "select organization_id, project_id, application_id, application_release_id, application_release_digest, session_id, id, response_mode, input, input_digest, workflow_run_id, status, aggregate_version, requested_at, updated_at, completed_at from application_invocations";
+const SELECT_INVOCATION_WORKFLOW_AUTHORITIES: &str = "select organization_id, project_id, application_id, application_release_id, application_release_digest, session_id, invocation_id, ontology_id, ontology_revision_id, ontology_digest, environment_id, requested_by, timeout_seconds from application_invocation_workflow_authorities";
 const SELECT_MESSAGES: &str = "select organization_id, project_id, application_id, application_release_id, application_release_digest, session_id, invocation_id, id, sequence, kind, content, content_digest, workflow_run_id, workflow_step_id, workflow_attempt, workflow_effect_ordinal, created_at from application_messages";
 const SELECT_VARIABLES: &str = "select organization_id, project_id, application_id, application_release_id, application_release_digest, session_id, id, revision_number, parent_revision_id, parent_digest, values_json, values_digest, workflow_run_id, workflow_step_id, workflow_attempt, workflow_effect_ordinal, created_at from application_conversation_variable_revisions";
 
@@ -134,6 +136,42 @@ impl FromRow for ApplicationInvocationRow {
     }
 }
 
+pub(super) struct ApplicationInvocationWorkflowAuthorityRow {
+    organization_id: Uuid,
+    project_id: Uuid,
+    application_id: Uuid,
+    application_release_id: Uuid,
+    application_release_digest: String,
+    session_id: Uuid,
+    invocation_id: Uuid,
+    ontology_id: Uuid,
+    ontology_revision_id: Uuid,
+    ontology_digest: String,
+    environment_id: Option<Uuid>,
+    requested_by: Uuid,
+    timeout_seconds: u64,
+}
+
+impl FromRow for ApplicationInvocationWorkflowAuthorityRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            organization_id: decode(row, 0)?,
+            project_id: decode(row, 1)?,
+            application_id: decode(row, 2)?,
+            application_release_id: decode(row, 3)?,
+            application_release_digest: decode(row, 4)?,
+            session_id: decode(row, 5)?,
+            invocation_id: decode(row, 6)?,
+            ontology_id: decode(row, 7)?,
+            ontology_revision_id: decode(row, 8)?,
+            ontology_digest: decode(row, 9)?,
+            environment_id: decode(row, 10)?,
+            requested_by: decode(row, 11)?,
+            timeout_seconds: decode(row, 12)?,
+        })
+    }
+}
+
 pub(super) struct ApplicationMessageRow {
     organization_id: Uuid,
     project_id: Uuid,
@@ -234,6 +272,11 @@ pub(super) fn invocation_select() -> SqlQuery<ApplicationInvocationRow> {
     sql_query(SELECT_INVOCATIONS)
 }
 
+pub(super) fn invocation_workflow_authority_select(
+) -> SqlQuery<ApplicationInvocationWorkflowAuthorityRow> {
+    sql_query(SELECT_INVOCATION_WORKFLOW_AUTHORITIES)
+}
+
 pub(super) fn message_select() -> SqlQuery<ApplicationMessageRow> {
     sql_query(SELECT_MESSAGES)
 }
@@ -313,6 +356,30 @@ pub(super) fn decode_invocation(
     }
     .restore()
     .map_err(stored("invocation"))
+}
+
+pub(super) fn decode_invocation_workflow_authority(
+    row: ApplicationInvocationWorkflowAuthorityRow,
+) -> Result<ApplicationInvocationWorkflowAuthority, RepositoryError> {
+    let value = ApplicationInvocationWorkflowAuthority {
+        organization_id: OrganizationId::from_uuid(row.organization_id),
+        project_id: ProjectId::from_uuid(row.project_id),
+        application_id: ApplicationId::from_uuid(row.application_id),
+        application_release_id: ApplicationReleaseId::from_uuid(row.application_release_id),
+        application_release_digest: digest(row.application_release_digest, "release digest")?,
+        session_id: ApplicationSessionId::from_uuid(row.session_id),
+        invocation_id: ApplicationInvocationId::from_uuid(row.invocation_id),
+        ontology_id: OntologyId::from_uuid(row.ontology_id),
+        ontology_revision_id: OntologyRevisionId::from_uuid(row.ontology_revision_id),
+        ontology_digest: digest(row.ontology_digest, "Ontology digest")?,
+        environment_id: row.environment_id.map(EnvironmentId::from_uuid),
+        requested_by: PrincipalId::from_uuid(row.requested_by),
+        timeout_seconds: row.timeout_seconds,
+    };
+    value
+        .validate()
+        .map_err(stored("invocation Workflow authority"))?;
+    Ok(value)
 }
 
 pub(super) fn decode_message(

@@ -1,7 +1,8 @@
 use crate::infrastructure::{execute, require_one_row, PostgresPersistenceError};
 use crate::modules::applications::domain::{
-    ApplicationEndUser, ApplicationInvocation, ApplicationMessage, ApplicationMessageKind,
-    ApplicationSession, ApplicationWorkflowEffect, ConversationVariableRevision,
+    ApplicationEndUser, ApplicationInvocation, ApplicationInvocationWorkflowAuthority,
+    ApplicationMessage, ApplicationMessageKind, ApplicationSession, ApplicationWorkflowEffect,
+    ConversationVariableRevision,
 };
 use a3s_orm::{sql_query, PostgresTransaction};
 use uuid::Uuid;
@@ -126,6 +127,46 @@ pub(super) async fn insert_invocation(
                 .bind(value.updated_at)
                 .append(", ")
                 .bind(value.completed_at)
+                .append(")"),
+        )
+        .await?,
+    )
+}
+
+pub(super) async fn insert_invocation_workflow_authority(
+    transaction: &PostgresTransaction,
+    value: &ApplicationInvocationWorkflowAuthority,
+) -> Result<(), PostgresPersistenceError> {
+    require_one_row(
+        "Application invocation Workflow authority",
+        execute(
+            transaction,
+            sql_query::<()>("insert into application_invocation_workflow_authorities (organization_id, project_id, application_id, application_release_id, application_release_digest, session_id, invocation_id, ontology_id, ontology_revision_id, ontology_digest, environment_id, requested_by, timeout_seconds) values (")
+                .bind(value.organization_id.as_uuid())
+                .append(", ")
+                .bind(value.project_id.as_uuid())
+                .append(", ")
+                .bind(value.application_id.as_uuid())
+                .append(", ")
+                .bind(value.application_release_id.as_uuid())
+                .append(", ")
+                .bind(value.application_release_digest.as_str())
+                .append(", ")
+                .bind(value.session_id.as_uuid())
+                .append(", ")
+                .bind(value.invocation_id.as_uuid())
+                .append(", ")
+                .bind(value.ontology_id.as_uuid())
+                .append(", ")
+                .bind(value.ontology_revision_id.as_uuid())
+                .append(", ")
+                .bind(value.ontology_digest.as_str())
+                .append(", ")
+                .bind(value.environment_id.map(|id| id.as_uuid()))
+                .append(", ")
+                .bind(value.requested_by.as_uuid())
+                .append(", ")
+                .bind(value.timeout_seconds)
                 .append(")"),
         )
         .await?,

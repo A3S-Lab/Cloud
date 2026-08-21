@@ -4,8 +4,9 @@ use a3s_cloud_control_plane::modules::applications::{
     CreateApplicationWrite, IApplicationRepository, PostgresApplicationRepository,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ApplicationId, ApplicationReleaseId, IdempotencyRequest, OrganizationId, PrincipalId,
-    ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId, WorkflowRunId,
+    ApplicationId, ApplicationReleaseId, IdempotencyRequest, OntologyId, OntologyRevisionId,
+    OrganizationId, PrincipalId, ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId,
+    WorkflowRevisionId, WorkflowRunId,
 };
 use a3s_orm::{
     sql_query, DatabaseError, Executor, PostgresDialect, PostgresError, PostgresExecutor,
@@ -13,6 +14,13 @@ use a3s_orm::{
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+pub(super) struct SeededWorkflowRun {
+    pub run_id: WorkflowRunId,
+    pub ontology_id: OntologyId,
+    pub ontology_revision_id: OntologyRevisionId,
+    pub ontology_digest: Sha256Digest,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn persist_application_release(
@@ -75,13 +83,14 @@ pub(super) async fn seed_workflow_run(
     workflow_definition_id: WorkflowDefinitionId,
     workflow_revision_id: WorkflowRevisionId,
     created_at: DateTime<Utc>,
-) -> Result<WorkflowRunId, Box<dyn std::error::Error>> {
+) -> Result<SeededWorkflowRun, Box<dyn std::error::Error>> {
     let ontology_id = Uuid::now_v7();
     let ontology_revision_id = Uuid::now_v7();
     let goal_id = Uuid::now_v7();
     let plan_revision_id = Uuid::now_v7();
     let run_id = WorkflowRunId::new();
     let ontology_digest = digest('1');
+    let persisted_ontology_digest = ontology_digest.clone();
     let goal_digest = digest('2');
     let input_digest = digest('3');
     let workflow_digest = digest('a');
@@ -231,7 +240,12 @@ pub(super) async fn seed_workflow_run(
             })
         })
         .await?;
-    Ok(run_id)
+    Ok(SeededWorkflowRun {
+        run_id,
+        ontology_id: OntologyId::from_uuid(ontology_id),
+        ontology_revision_id: OntologyRevisionId::from_uuid(ontology_revision_id),
+        ontology_digest: persisted_ontology_digest,
+    })
 }
 
 struct SeedTransaction<'a> {

@@ -661,26 +661,35 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-Component-only `APP0.2-C1/C2/C3/C4` freezes and persists the next Applications-owned
-records without making them available. `ApplicationEndUser` is scoped to one Application and
-may link explicitly to an Identity Principal without creating Membership or
-grant authority. `ApplicationSession` pins one exact release and owns only a
-monotonic channel-message sequence plus an optimistic immutable conversation-
-variable head. `ApplicationInvocation` correlates one request to at most one
-exact `WorkflowRun`; it stores no graph, scheduler, attempt history, or
-provider state. Each Workflow-derived Answer, final output, or variable
-assignment binds the exact run, step, attempt, and ordinal and derives a stable
-identity. Migration `125` and one production A3S ORM repository atomically
-persist these records, immutable lineage, optimistic heads, and cross-kind
-effect claims; exact retries replay after reconnect while changed reuse fails
-closed. The typed internal `ApplicationWorkflowRunRequest` and evidence port
-derive one stable Workflow Goal, Plan, and Run identity from that exact
-invocation. Its production adapter reloads exact Workflow and Ontology
-revisions, invokes the existing Workflow compilers and repositories, adopts
-committed records after restart, and binds only the resulting ordinary run.
-If invocation cancellation wins the optimistic binding race, cancellation is
-requested through the existing WorkflowRun state machine. Applications adds no
-graph, Flow history, provider dispatch, queue, or second cancellation record.
+Component-only `APP0.2-C1/C2/C3/C4/C5` freezes and persists the next
+Applications-owned records without making them available. `ApplicationEndUser`
+is scoped to one Application and may link explicitly to an Identity Principal
+without creating Membership or grant authority. `ApplicationSession` pins one
+exact release and owns only a monotonic channel-message sequence plus an
+optimistic immutable conversation-variable head. `ApplicationInvocation`
+correlates one request to at most one exact `WorkflowRun`; it stores no graph,
+scheduler, attempt history, or provider state. Each Workflow-derived Answer,
+final output, or variable assignment binds the exact run, step, attempt, and
+ordinal and derives a stable identity. Migration `125` and one production A3S
+ORM repository atomically persist these records, immutable lineage, optimistic
+heads, and cross-kind effect claims; exact retries replay after reconnect while
+changed reuse fails closed.
+
+Migration `126` atomically adds one immutable
+`ApplicationInvocationWorkflowAuthority` companion to invocation admission. It
+pins the exact release digest, Ontology revision/digest, optional Environment,
+requesting Principal, and timeout needed after process death, but retains no
+credential, grant snapshot, Secret, Workflow graph, run history, or Flow state.
+The identity-only composition command reconstructs its typed
+`ApplicationWorkflowRunRequest` from that stored authority, and its production
+adapter reloads exact Workflow and Ontology revisions, invokes the existing
+Workflow compilers and repositories, adopts committed records after restart,
+and binds only the resulting ordinary run. If cancellation wins the optimistic
+binding race or is recovered after restart, cancellation uses the same stored
+authority and the existing WorkflowRun state machine without starting a second
+run. Applications adds no graph, Flow history, provider dispatch, queue, or
+second cancellation record.
+
 The preset compiler separately derives one stable wrapper Workflow identity per
 Application release, emits canonical three-step Model/Agent ACL and semantic
 material, and delegates creation to Workflow's shared publication port. It

@@ -2,6 +2,7 @@ mod application;
 mod application_effect;
 mod application_end_user;
 mod application_invocation;
+mod application_invocation_workflow_authority;
 mod application_message;
 mod application_release_contract;
 mod application_session;
@@ -17,6 +18,7 @@ pub use application_end_user::ApplicationEndUser;
 pub use application_invocation::{
     ApplicationInvocation, ApplicationInvocationStatus, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
 };
+pub use application_invocation_workflow_authority::ApplicationInvocationWorkflowAuthority;
 pub use application_message::{
     digest_json, ApplicationMessage, ApplicationMessageKind, APPLICATION_MESSAGE_MAX_BYTES,
 };

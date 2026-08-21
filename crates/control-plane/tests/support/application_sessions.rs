@@ -4,15 +4,16 @@ use super::*;
 use a3s_cloud_control_plane::modules::applications::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation,
-    ApplicationInvocationStatus, ApplicationMessage, ApplicationMessageKind,
-    ApplicationResponseMode, ApplicationSession, ApplicationWorkflowEffect,
+    ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority, ApplicationMessage,
+    ApplicationMessageKind, ApplicationResponseMode, ApplicationSession, ApplicationWorkflowEffect,
     CloseApplicationSessionWrite, ConversationVariableRevision, IApplicationSessionRepository,
     OpenApplicationSessionWrite, PostgresApplicationSessionRepository,
     RequestApplicationInvocationWrite,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationInvocationId, ApplicationSessionId, OrganizationId,
-    PrincipalId, ProjectId, RepositoryError, WorkflowDefinitionId, WorkflowRevisionId,
+    ApplicationEndUserId, ApplicationInvocationId, ApplicationSessionId, OntologyId,
+    OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    WorkflowDefinitionId, WorkflowRevisionId,
 };
 use a3s_orm::{Database, PostgresDialect};
 use chrono::{Duration, Utc};
@@ -33,6 +34,17 @@ pub(super) async fn exercise_application_session_persistence(
             )
             .await?,
         (1, "Application sessions and semantic effects".into())
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, String)>(
+                    "select count(*), max(name) from a3s_orm_migrations where version = ",
+                )
+                .bind("126"),
+            )
+            .await?,
+        (1, "Application invocation Workflow authority".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -114,9 +126,80 @@ pub(super) async fn exercise_application_session_persistence(
         json!({"query": "hello"}),
         created_at + Duration::seconds(3),
     )?;
+    let seeded_workflow = seed_workflow_run(
+        &executor,
+        organization_id,
+        project_id,
+        actor,
+        workflow_definition_id,
+        workflow_revision_id,
+        created_at + Duration::seconds(3),
+    )
+    .await?;
+    let workflow_authority = ApplicationInvocationWorkflowAuthority::new(
+        &invocation,
+        seeded_workflow.ontology_id,
+        seeded_workflow.ontology_revision_id,
+        seeded_workflow.ontology_digest,
+        None,
+        actor,
+        3_600,
+    )?;
     let input_message = ApplicationMessage::input(&session, &invocation, invocation.requested_at)?;
+    let orphan_authority = ApplicationInvocationWorkflowAuthority::new(
+        &invocation,
+        OntologyId::new(),
+        OntologyRevisionId::new(),
+        digest('8'),
+        None,
+        actor,
+        3_600,
+    )?;
+    assert!(
+        repository
+            .request_invocation(RequestApplicationInvocationWrite {
+                invocation: invocation.clone(),
+                workflow_authority: orphan_authority,
+                input_message: input_message.clone(),
+                expected_session_version: 1,
+            })
+            .await
+            .is_err(),
+        "unknown Ontology authority must abort the complete invocation transaction"
+    );
+    assert!(repository
+        .find_invocation(organization_id, project_id, application.id, invocation.id)
+        .await?
+        .is_none());
+    assert!(repository
+        .find_invocation_workflow_authority(
+            organization_id,
+            project_id,
+            application.id,
+            invocation.id,
+        )
+        .await?
+        .is_none());
+    assert!(repository
+        .list_messages(
+            organization_id,
+            project_id,
+            application.id,
+            session.id,
+            0,
+            10,
+        )
+        .await?
+        .is_empty());
+    assert_eq!(
+        repository
+            .find_session(organization_id, project_id, application.id, session.id)
+            .await?,
+        Some(session.clone())
+    );
     let request = RequestApplicationInvocationWrite {
         invocation: invocation.clone(),
+        workflow_authority: workflow_authority.clone(),
         input_message: input_message.clone(),
         expected_session_version: 1,
     };
@@ -127,16 +210,7 @@ pub(super) async fn exercise_application_session_persistence(
             .replayed
     );
 
-    let workflow_run_id = seed_workflow_run(
-        &executor,
-        organization_id,
-        project_id,
-        actor,
-        workflow_definition_id,
-        workflow_revision_id,
-        created_at + Duration::seconds(3),
-    )
-    .await?;
+    let workflow_run_id = seeded_workflow.run_id;
     let running =
         invocation.bind_workflow_run(1, workflow_run_id, created_at + Duration::seconds(4))?;
     let bind = AdvanceApplicationInvocationWrite {
@@ -309,6 +383,17 @@ pub(super) async fn exercise_application_session_persistence(
     );
     assert_eq!(
         restarted
+            .find_invocation_workflow_authority(
+                organization_id,
+                project_id,
+                application.id,
+                invocation.id,
+            )
+            .await?,
+        Some(workflow_authority)
+    );
+    assert_eq!(
+        restarted
             .list_messages(
                 organization_id,
                 project_id,
@@ -355,13 +440,15 @@ pub(super) async fn exercise_application_session_persistence(
 
     let counts = database
         .fetch_one_as(
-            sql_query::<(i64, i64, i64, i64, i64, i64)>(
+            sql_query::<(i64, i64, i64, i64, i64, i64, i64)>(
                 "select (select count(*) from application_end_users where organization_id = ",
             )
             .bind(organization_id.as_uuid())
             .append("), (select count(*) from application_sessions where organization_id = ")
             .bind(organization_id.as_uuid())
             .append("), (select count(*) from application_invocations where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append("), (select count(*) from application_invocation_workflow_authorities where organization_id = ")
             .bind(organization_id.as_uuid())
             .append("), (select count(*) from application_messages where organization_id = ")
             .bind(organization_id.as_uuid())
@@ -372,7 +459,20 @@ pub(super) async fn exercise_application_session_persistence(
             .append(")"),
         )
         .await?;
-    assert_eq!(counts, (1, 1, 1, 3, 2, 3));
+    assert_eq!(counts, (1, 1, 1, 1, 3, 2, 3));
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update application_invocation_workflow_authorities set timeout_seconds = timeout_seconds + 1 where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and application_id = ")
+                    .bind(application.id.as_uuid())
+                    .append(" and invocation_id = ")
+                    .bind(invocation.id.as_uuid()),
+            )
+            .await,
+        "mutating immutable Application invocation Workflow authority",
+    );
     assert_rejected(
         database
             .execute(

@@ -7,12 +7,13 @@ use crate::modules::shared_kernel::domain::{IdempotentWrite, RepositoryError};
 use a3s_orm::PostgresExecutor;
 
 use super::session_postgres_loads::{
-    load_end_user, load_message, load_variable, lock_invocation, lock_session,
+    load_end_user, load_invocation_workflow_authority, load_message, load_variable,
+    lock_invocation, lock_session,
 };
 use super::session_postgres_support::{lock_open_identity, write_error};
 use super::session_postgres_writes::{
-    insert_end_user, insert_invocation, insert_message, insert_session, insert_variable_revision,
-    update_session,
+    insert_end_user, insert_invocation, insert_invocation_workflow_authority, insert_message,
+    insert_session, insert_variable_revision, update_session,
 };
 
 pub(super) async fn open_session(
@@ -133,8 +134,17 @@ pub(super) async fn request_invocation(
                                 "Application invocation replay input message is missing".into(),
                             )
                         })?;
+                    let workflow_authority =
+                        load_invocation_workflow_authority(transaction, &write.workflow_authority)
+                            .await?
+                            .ok_or_else(|| {
+                                PostgresPersistenceError::Invariant(
+                                    "Application invocation replay Workflow authority is missing"
+                                        .into(),
+                                )
+                            })?;
                     if !write
-                        .matches_replay(&current, &input)
+                        .matches_replay(&current, &workflow_authority, &input)
                         .map_err(PostgresPersistenceError::Invariant)?
                     {
                         return Err(RepositoryError::Conflict(
@@ -159,6 +169,14 @@ pub(super) async fn request_invocation(
                     .await
                     .map_err(|error| {
                         write_error(error, "Application invocation identity is already in use")
+                    })?;
+                insert_invocation_workflow_authority(transaction, &write.workflow_authority)
+                    .await
+                    .map_err(|error| {
+                        write_error(
+                            error,
+                            "Application invocation Workflow authority is already in use",
+                        )
                     })?;
                 insert_message(transaction, &write.input_message)
                     .await

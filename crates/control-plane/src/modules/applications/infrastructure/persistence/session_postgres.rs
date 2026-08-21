@@ -1,9 +1,10 @@
 use crate::infrastructure::{transaction_error, PostgresPersistenceError};
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
-    AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation, ApplicationMessage,
-    ApplicationSession, CloseApplicationSessionWrite, ConversationVariableRevision,
-    IApplicationSessionRepository, OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
+    AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation,
+    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationSession,
+    CloseApplicationSessionWrite, ConversationVariableRevision, IApplicationSessionRepository,
+    OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
@@ -375,6 +376,23 @@ impl IApplicationSessionRepository for PostgresApplicationSessionRepository {
         invocation_id: ApplicationInvocationId,
     ) -> Result<Option<ApplicationInvocation>, RepositoryError> {
         reads::find_invocation(
+            &self.executor,
+            organization_id,
+            project_id,
+            application_id,
+            invocation_id,
+        )
+        .await
+    }
+
+    async fn find_invocation_workflow_authority(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        invocation_id: ApplicationInvocationId,
+    ) -> Result<Option<ApplicationInvocationWorkflowAuthority>, RepositoryError> {
+        reads::find_invocation_workflow_authority(
             &self.executor,
             organization_id,
             project_id,

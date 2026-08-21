@@ -2,10 +2,27 @@ use super::session_tests::{make_release, session_state};
 use super::*;
 use crate::modules::applications::infrastructure::InMemoryApplicationSessionRepository;
 use crate::modules::shared_kernel::domain::{
-    ApplicationInvocationId, RepositoryError, WorkflowRunId,
+    ApplicationInvocationId, OntologyId, OntologyRevisionId, PrincipalId, RepositoryError,
+    Sha256Digest, WorkflowRunId,
 };
 use chrono::Duration;
 use serde_json::json;
+
+fn workflow_authority(
+    invocation: &ApplicationInvocation,
+    requested_by: PrincipalId,
+) -> ApplicationInvocationWorkflowAuthority {
+    ApplicationInvocationWorkflowAuthority::new(
+        invocation,
+        OntologyId::new(),
+        OntologyRevisionId::new(),
+        Sha256Digest::parse(format!("sha256:{}", "1".repeat(64))).expect("Ontology digest"),
+        None,
+        requested_by,
+        3_600,
+    )
+    .expect("invocation Workflow authority")
+}
 
 #[tokio::test]
 async fn session_and_invocation_writes_are_atomic_and_replay_safe() {
@@ -42,8 +59,10 @@ async fn session_and_invocation_writes_are_atomic_and_replay_safe() {
     .expect("invocation");
     let input = ApplicationMessage::input(&session, &invocation, invocation.requested_at)
         .expect("input message");
+    let workflow_authority = workflow_authority(&invocation, release.created_by);
     let request = RequestApplicationInvocationWrite {
         invocation: invocation.clone(),
+        workflow_authority: workflow_authority.clone(),
         input_message: input.clone(),
         expected_session_version: 1,
     };
@@ -59,6 +78,18 @@ async fn session_and_invocation_writes_are_atomic_and_replay_safe() {
         .expect("request replay");
     assert!(request_replay.replayed);
     assert_eq!(request_replay.value, invocation);
+    assert_eq!(
+        repository
+            .find_invocation_workflow_authority(
+                invocation.organization_id,
+                invocation.project_id,
+                invocation.application_id,
+                invocation.id,
+            )
+            .await
+            .expect("find invocation Workflow authority"),
+        Some(workflow_authority.clone())
+    );
 
     let stored_session = repository
         .find_session(
@@ -113,6 +144,7 @@ async fn session_and_invocation_writes_are_atomic_and_replay_safe() {
     let conflict = repository
         .request_invocation(RequestApplicationInvocationWrite {
             invocation: changed_invocation,
+            workflow_authority,
             input_message: changed_input,
             expected_session_version: 1,
         })
@@ -160,6 +192,7 @@ async fn workflow_effects_are_once_only_across_messages_and_variables() {
         release.created_at + Duration::seconds(1),
     )
     .expect("invocation");
+    let workflow_authority = workflow_authority(&invocation, release.created_by);
     repository
         .request_invocation(RequestApplicationInvocationWrite {
             input_message: ApplicationMessage::input(
@@ -169,6 +202,7 @@ async fn workflow_effects_are_once_only_across_messages_and_variables() {
             )
             .expect("input"),
             invocation: invocation.clone(),
+            workflow_authority,
             expected_session_version: 1,
         })
         .await
@@ -443,10 +477,12 @@ async fn stale_or_closed_session_writes_leave_no_partial_state() {
     .expect("proposed invocation");
     let input =
         ApplicationMessage::input(&session, &invocation, invocation.requested_at).expect("input");
+    let workflow_authority = workflow_authority(&invocation, release.created_by);
     assert!(matches!(
         repository
             .request_invocation(RequestApplicationInvocationWrite {
                 invocation: invocation.clone(),
+                workflow_authority,
                 input_message: input,
                 expected_session_version: 1,
             })

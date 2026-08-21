@@ -7,11 +7,14 @@ use crate::modules::applications::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    ApplicationId, ApplicationInvocationId, ApplicationSessionId, EnvironmentId, OntologyId,
-    OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
+    ApplicationId, ApplicationInvocationId, ApplicationSessionId, OrganizationId, ProjectId,
+    RepositoryError,
 };
 use a3s_boot::{Command, CommandHandler, CqrsContext};
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
+
+const APPLICATION_INVOCATION_CANCELLATION_REASON: &str = "Application invocation cancellation";
 
 #[derive(Debug, Clone)]
 pub struct ComposeApplicationInvocationWorkflowRun {
@@ -20,12 +23,6 @@ pub struct ComposeApplicationInvocationWorkflowRun {
     pub application_id: ApplicationId,
     pub session_id: ApplicationSessionId,
     pub invocation_id: ApplicationInvocationId,
-    pub ontology_id: OntologyId,
-    pub ontology_revision_id: OntologyRevisionId,
-    pub ontology_digest: Sha256Digest,
-    pub environment_id: Option<EnvironmentId>,
-    pub requested_by: PrincipalId,
-    pub timeout_seconds: u64,
 }
 
 impl Command for ComposeApplicationInvocationWorkflowRun {
@@ -140,6 +137,23 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                     "Application invocation not found in session".into(),
                 )));
             }
+            let authority = match sessions
+                .find_invocation_workflow_authority(
+                    command.organization_id,
+                    command.project_id,
+                    command.application_id,
+                    command.invocation_id,
+                )
+                .await
+            {
+                Ok(Some(value)) => value,
+                Ok(None) | Err(RepositoryError::NotFound) => {
+                    return Ok(Err(ApplicationError::Conflict(
+                        "Application invocation Workflow authority is missing".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
+            };
             if invocation.status == ApplicationInvocationStatus::Requested
                 && session.status != ApplicationSessionStatus::Active
             {
@@ -151,12 +165,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 &release,
                 &session,
                 &invocation,
-                command.ontology_id,
-                command.ontology_revision_id,
-                command.ontology_digest,
-                command.environment_id,
-                command.requested_by,
-                command.timeout_seconds,
+                &authority,
             ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Conflict(error))),
@@ -169,6 +178,35 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 return Ok(Err(ApplicationError::Conflict(
                     "Application invocation is bound to a different WorkflowRun".into(),
                 )));
+            }
+            if matches!(
+                invocation.status,
+                ApplicationInvocationStatus::Cancelling | ApplicationInvocationStatus::Cancelled
+            ) {
+                return match request_workflow_cancellation(
+                    workflows.as_ref(),
+                    &request,
+                    APPLICATION_INVOCATION_CANCELLATION_REASON,
+                    invocation.updated_at,
+                )
+                .await
+                {
+                    Ok(Some(_)) => Ok(Err(ApplicationError::Conflict(
+                        "cancelled Application invocation cannot start a WorkflowRun".into(),
+                    ))),
+                    Ok(None) if invocation.workflow_run_id.is_none() => {
+                        Ok(Err(ApplicationError::Conflict(
+                            "cancelled Application invocation cannot start a WorkflowRun".into(),
+                        )))
+                    }
+                    Ok(None) => Ok(Err(ApplicationError::Internal(
+                        "bound Application WorkflowRun disappeared during cancellation recovery"
+                            .into(),
+                    ))),
+                    Err(error) => Ok(Err(ApplicationError::Unavailable(format!(
+                        "Application invocation cancellation recovery failed: {error}"
+                    )))),
+                };
             }
             if invocation.workflow_run_id.is_none()
                 && invocation.status != ApplicationInvocationStatus::Requested
@@ -241,23 +279,18 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                                         | ApplicationInvocationStatus::Cancelled
                                 ) =>
                         {
-                            let cancellation = workflows
-                                .request_cancellation(
-                                    &request,
-                                    "Application invocation was cancelled before WorkflowRun binding",
-                                    current.updated_at,
-                                )
-                                .await;
+                            let cancellation = request_workflow_cancellation(
+                                workflows.as_ref(),
+                                &request,
+                                APPLICATION_INVOCATION_CANCELLATION_REASON,
+                                current.updated_at,
+                            )
+                            .await;
                             match cancellation {
-                                Ok(Some(cancelled)) => {
-                                    if let Err(drift) = cancelled.validate_against(&request) {
-                                        return Ok(Err(ApplicationError::Internal(drift)));
-                                    }
-                                    Ok(Err(ApplicationError::Conflict(
-                                        "Application invocation was cancelled before WorkflowRun binding"
-                                            .into(),
-                                    )))
-                                }
+                                Ok(Some(_)) => Ok(Err(ApplicationError::Conflict(
+                                    "Application invocation was cancelled before WorkflowRun binding"
+                                        .into(),
+                                ))),
                                 Ok(None) => Ok(Err(ApplicationError::Internal(
                                     "Application WorkflowRun disappeared during cancellation recovery"
                                         .into(),
@@ -278,4 +311,21 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
             }
         })
     }
+}
+
+async fn request_workflow_cancellation(
+    workflows: &dyn IApplicationWorkflowRunPort,
+    request: &ApplicationWorkflowRunRequest,
+    reason: &str,
+    requested_at: DateTime<Utc>,
+) -> ApplicationResult<Option<ApplicationWorkflowRunEvidence>> {
+    let evidence = workflows
+        .request_cancellation(request, reason, requested_at)
+        .await?;
+    if let Some(value) = &evidence {
+        value
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+    }
+    Ok(evidence)
 }

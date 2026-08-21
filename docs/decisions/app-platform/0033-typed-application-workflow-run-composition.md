@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+Decision 0035 supersedes this decision's transient composition fields. The
+deterministic identities, typed port, ordinary Workflow records, and Flow
+ownership defined here remain accepted.
+
 ## Context
 
 Decisions 0031 and 0032 established and persisted the Applications-owned
@@ -20,9 +24,8 @@ not leave unowned execution running.
 
 Applications defines one typed internal request/evidence port. The request is
 constructed only from the exact immutable `ApplicationRelease`, its
-release-pinned `ApplicationSession`, and the persisted
-`ApplicationInvocation`, plus one exact Ontology revision, optional
-Environment, requesting Principal, and bounded timeout. It carries canonical
+release-pinned `ApplicationSession`, the persisted `ApplicationInvocation`, and
+the immutable execution authority added by Decision 0035. It carries canonical
 digests rather than copied Workflow or Ontology payloads.
 
 The Applications aggregate identity deterministically derives one `WorkflowRun`
@@ -54,7 +57,7 @@ cancellation queue or execution record is introduced.
 The production process registers this internal command with the PostgreSQL
 Application, Workflow, and Ontology adapters. A PostgreSQL 17 gate reconstructs
 all adapters, adopts the same deterministic evidence after restart, rejects
-timeout and Ontology drift, and proves that only one Goal, Plan, and Run exist.
+persisted authority drift, and proves that only one Goal, Plan, and Run exist.
 
 ## Consequences
 
@@ -63,8 +66,8 @@ timeout and Ontology drift, and proves that only one Goal, Plan, and Run exist.
 - Workflow remains the sole Goal, Plan, WorkflowRun, cancellation, and graph
   authority, while A3S Flow remains the sole durable execution and history
   authority.
-- Applications stores only its existing run correlation and never duplicates
-  Workflow or Flow state.
+- Applications stores its run correlation plus Decision 0035's minimal
+  immutable composition authority and never duplicates Workflow or Flow state.
 - `APP0.2-C3` is component-only. It intentionally has no HTTP, client, CLI, MCP,
   or channel delivery entry point. Public authorization, session/invocation
   commands, blocking and streaming delivery, public cancellation/replay,

@@ -6,11 +6,12 @@ use super::{
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, Application, ApplicationAudience, ApplicationDeliveryPolicy,
     ApplicationEndUser, ApplicationExperience, ApplicationInteractionMode, ApplicationInvocation,
-    ApplicationInvocationStatus, ApplicationMessage, ApplicationRecord, ApplicationRelease,
-    ApplicationReleaseContract, ApplicationReleaseContractSpec, ApplicationReleasePublished,
-    ApplicationResponseMode, ApplicationSession, ApplicationWorkflowBinding,
-    ConversationVariableRevision, CreateApplicationWrite, IApplicationRepository,
-    IApplicationSessionRepository, OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
+    ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority, ApplicationMessage,
+    ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
+    ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
+    ApplicationSession, ApplicationWorkflowBinding, ConversationVariableRevision,
+    CreateApplicationWrite, IApplicationRepository, IApplicationSessionRepository,
+    OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
 };
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
@@ -19,8 +20,8 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
     ApplicationSessionId, EnvironmentId, IdempotencyRequest, OntologyId, OntologyRevisionId,
-    OrganizationId, PrincipalId, ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId,
-    WorkflowRevisionId, WorkflowRunId,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName, Sha256Digest,
+    WorkflowDefinitionId, WorkflowRevisionId, WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use async_trait::async_trait;
@@ -160,6 +161,8 @@ struct Fixture {
     release: ApplicationRelease,
     session: ApplicationSession,
     invocation: ApplicationInvocation,
+    workflow_authority: ApplicationInvocationWorkflowAuthority,
+    input_message: ApplicationMessage,
     command: ComposeApplicationInvocationWorkflowRun,
 }
 
@@ -269,10 +272,21 @@ async fn fixture() -> Fixture {
     .expect("invocation");
     let input_message = ApplicationMessage::input(&session, &invocation, invocation.requested_at)
         .expect("input message");
+    let workflow_authority = ApplicationInvocationWorkflowAuthority::new(
+        &invocation,
+        OntologyId::new(),
+        OntologyRevisionId::new(),
+        digest('1'),
+        Some(EnvironmentId::new()),
+        actor,
+        3_600,
+    )
+    .expect("invocation Workflow authority");
     sessions
         .request_invocation(RequestApplicationInvocationWrite {
             invocation: invocation.clone(),
-            input_message,
+            workflow_authority: workflow_authority.clone(),
+            input_message: input_message.clone(),
             expected_session_version: session.aggregate_version,
         })
         .await
@@ -286,18 +300,14 @@ async fn fixture() -> Fixture {
         release,
         session,
         invocation,
+        workflow_authority,
+        input_message,
         command: ComposeApplicationInvocationWorkflowRun {
             organization_id,
             project_id,
             application_id,
             session_id,
             invocation_id,
-            ontology_id: OntologyId::new(),
-            ontology_revision_id: OntologyRevisionId::new(),
-            ontology_digest: digest('1'),
-            environment_id: Some(EnvironmentId::new()),
-            requested_by: actor,
-            timeout_seconds: 3_600,
         },
     }
 }
@@ -309,12 +319,7 @@ async fn deterministic_workflow_identity_is_scoped_to_the_application_aggregate(
         &fixture.release,
         &fixture.session,
         &fixture.invocation,
-        fixture.command.ontology_id,
-        fixture.command.ontology_revision_id,
-        fixture.command.ontology_digest.clone(),
-        fixture.command.environment_id,
-        fixture.command.requested_by,
-        fixture.command.timeout_seconds,
+        &fixture.workflow_authority,
     )
     .expect("Application WorkflowRun request");
     let mut other_application = request.clone();
@@ -336,6 +341,16 @@ async fn deterministic_workflow_identity_is_scoped_to_the_application_aggregate(
         request.plan_revision_id(),
         other_application.plan_revision_id()
     );
+
+    let mut unsupported_timeout = fixture.workflow_authority;
+    unsupported_timeout.timeout_seconds = u64::MAX;
+    assert!(ApplicationWorkflowRunRequest::from_invocation(
+        &fixture.release,
+        &fixture.session,
+        &fixture.invocation,
+        &unsupported_timeout,
+    )
+    .is_err());
 }
 
 #[tokio::test]
@@ -371,13 +386,18 @@ async fn composition_binds_one_deterministic_workflow_run_and_replays() {
     assert_eq!(replay.workflow, first.workflow);
     assert_eq!(fixture.workflows.calls.load(Ordering::SeqCst), 2);
 
-    let mut drifted = fixture.command;
-    drifted.timeout_seconds += 1;
-    let conflict = handler
-        .execute(drifted, context())
-        .await
-        .expect("command framework");
-    assert!(matches!(conflict, Err(ApplicationError::Conflict(_))));
+    let mut drifted_authority = fixture.workflow_authority;
+    drifted_authority.timeout_seconds += 1;
+    let conflict = fixture
+        .sessions
+        .request_invocation(RequestApplicationInvocationWrite {
+            invocation: fixture.invocation,
+            workflow_authority: drifted_authority,
+            input_message: fixture.input_message,
+            expected_session_version: fixture.session.aggregate_version,
+        })
+        .await;
+    assert!(matches!(conflict, Err(RepositoryError::Conflict(_))));
 }
 
 #[tokio::test]
@@ -411,6 +431,43 @@ async fn composition_rejects_drifted_workflow_evidence_before_binding() {
             .expect("invocation")
             .status,
         ApplicationInvocationStatus::Requested
+    );
+}
+
+#[tokio::test]
+async fn composition_recovers_persisted_cancellation_without_starting_a_workflow() {
+    let fixture = fixture().await;
+    let cancelling = fixture
+        .invocation
+        .request_cancellation(
+            fixture.invocation.aggregate_version,
+            fixture.invocation.updated_at + Duration::seconds(1),
+        )
+        .expect("cancelling invocation");
+    fixture
+        .sessions
+        .advance_invocation(AdvanceApplicationInvocationWrite {
+            invocation: cancelling,
+            expected_version: fixture.invocation.aggregate_version,
+        })
+        .await
+        .expect("persist cancellation");
+    let handler = ComposeApplicationInvocationWorkflowRunHandler::new(
+        fixture.applications,
+        fixture.sessions,
+        fixture.workflows.clone(),
+    );
+
+    let result = handler
+        .execute(fixture.command, context())
+        .await
+        .expect("command framework");
+
+    assert!(matches!(result, Err(ApplicationError::Conflict(_))));
+    assert_eq!(fixture.workflows.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        fixture.workflows.cancellation_calls.load(Ordering::SeqCst),
+        1
     );
 }
 
@@ -463,6 +520,7 @@ fn application_workflow_composition_types_are_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<ApplicationWorkflowRunRequest>();
     assert_send_sync::<ApplicationWorkflowRunEvidence>();
+    assert_send_sync::<ApplicationInvocationWorkflowAuthority>();
     assert_send_sync::<ComposeApplicationInvocationWorkflowRun>();
     assert_send_sync::<ComposeApplicationInvocationWorkflowRunHandler>();
 }

@@ -3,13 +3,13 @@ use super::workflow_semantic_contracts_support::semantic_revision;
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_control_plane::modules::applications::{
-    Application, ApplicationEndUser, ApplicationInvocation, ApplicationInvocationStatus,
-    ApplicationMessage, ApplicationRecord, ApplicationRelease, ApplicationReleasePublished,
-    ApplicationResponseMode, ApplicationSession, ApplicationWorkflowRunRequest,
-    ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
-    ConversationVariableRevision, CreateApplicationWrite, IApplicationRepository,
-    IApplicationSessionRepository, IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort,
-    OpenApplicationSessionWrite, PostgresApplicationRepository,
+    AdvanceApplicationInvocationWrite, Application, ApplicationEndUser, ApplicationInvocation,
+    ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority, ApplicationMessage,
+    ApplicationRecord, ApplicationRelease, ApplicationReleasePublished, ApplicationResponseMode,
+    ApplicationSession, ComposeApplicationInvocationWorkflowRun,
+    ComposeApplicationInvocationWorkflowRunHandler, ConversationVariableRevision,
+    CreateApplicationWrite, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationWorkflowRevisionPort, OpenApplicationSessionWrite, PostgresApplicationRepository,
     PostgresApplicationSessionRepository, RequestApplicationInvocationWrite,
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
@@ -17,7 +17,8 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationErr
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
     ApplicationSessionId, IdempotencyRequest, OntologyId, OntologyRevisionId, OrganizationId,
-    PrincipalId, ProjectId, ResourceName, WorkflowDefinitionId, WorkflowRevisionId,
+    PrincipalId, ProjectId, RepositoryError, ResourceName, WorkflowDefinitionId,
+    WorkflowRevisionId,
 };
 use a3s_cloud_control_plane::modules::workflow::domain::{
     CreateOntologyWrite, OntologyRecord, OntologyRevisionPublished,
@@ -145,14 +146,21 @@ pub(super) async fn exercise_application_workflow_run_composition(
         json!({"ticketId": "T-42"}),
         created_at + Duration::seconds(3),
     )?;
+    let input_message = ApplicationMessage::input(&session, &invocation, invocation.requested_at)?;
+    let workflow_authority = ApplicationInvocationWorkflowAuthority::new(
+        &invocation,
+        ontology_revision.ontology_id,
+        ontology_revision.id,
+        ontology_revision.contract.digest().clone(),
+        None,
+        actor,
+        120,
+    )?;
     sessions
         .request_invocation(RequestApplicationInvocationWrite {
-            input_message: ApplicationMessage::input(
-                &session,
-                &invocation,
-                invocation.requested_at,
-            )?,
+            input_message: input_message.clone(),
             invocation: invocation.clone(),
+            workflow_authority: workflow_authority.clone(),
             expected_session_version: session.aggregate_version,
         })
         .await?;
@@ -163,12 +171,6 @@ pub(super) async fn exercise_application_workflow_run_composition(
         application_id: application.id,
         session_id,
         invocation_id: invocation.id,
-        ontology_id: ontology_revision.ontology_id,
-        ontology_revision_id: ontology_revision.id,
-        ontology_digest: ontology_revision.contract.digest().clone(),
-        environment_id: None,
-        requested_by: actor,
-        timeout_seconds: 120,
     };
     let first = composition_handler(&executor)
         .execute(command.clone(), cqrs_context())
@@ -193,26 +195,28 @@ pub(super) async fn exercise_application_workflow_run_composition(
     assert_eq!(replay.invocation, first.invocation);
     assert_eq!(replay.workflow, first.workflow);
 
-    let timeout_drift = restarted
-        .execute(
-            ComposeApplicationInvocationWorkflowRun {
-                timeout_seconds: 121,
-                ..command.clone()
-            },
-            cqrs_context(),
-        )
-        .await?;
-    assert!(matches!(timeout_drift, Err(ApplicationError::Conflict(_))));
-    let ontology_drift = restarted
-        .execute(
-            ComposeApplicationInvocationWorkflowRun {
-                ontology_digest: digest('8'),
-                ..command
-            },
-            cqrs_context(),
-        )
-        .await?;
-    assert!(matches!(ontology_drift, Err(ApplicationError::Conflict(_))));
+    let mut timeout_drift_authority = workflow_authority.clone();
+    timeout_drift_authority.timeout_seconds = 121;
+    let timeout_drift = PostgresApplicationSessionRepository::new(executor.clone())
+        .request_invocation(RequestApplicationInvocationWrite {
+            invocation: invocation.clone(),
+            workflow_authority: timeout_drift_authority,
+            input_message: input_message.clone(),
+            expected_session_version: session.aggregate_version,
+        })
+        .await;
+    assert!(matches!(timeout_drift, Err(RepositoryError::Conflict(_))));
+    let mut ontology_drift_authority = workflow_authority;
+    ontology_drift_authority.ontology_digest = digest('8');
+    let ontology_drift = PostgresApplicationSessionRepository::new(executor.clone())
+        .request_invocation(RequestApplicationInvocationWrite {
+            invocation: invocation.clone(),
+            workflow_authority: ontology_drift_authority,
+            input_message,
+            expected_session_version: session.aggregate_version,
+        })
+        .await;
+    assert!(matches!(ontology_drift, Err(RepositoryError::Conflict(_))));
 
     let runs = PostgresWorkflowRunRepository::new(executor.clone());
     let persisted_run = runs
@@ -222,38 +226,37 @@ pub(super) async fn exercise_application_workflow_run_composition(
     assert_eq!(persisted_run.run.id, first.workflow.workflow_run_id);
     assert_eq!(persisted_run.run.plan_digest, first.workflow.plan_digest);
 
-    let cancellation_request = ApplicationWorkflowRunRequest::from_invocation(
-        &application_release,
-        &session,
-        &first.invocation,
-        ontology_revision.ontology_id,
-        ontology_revision.id,
-        ontology_revision.contract.digest().clone(),
-        None,
-        actor,
-        120,
-    )?;
-    let workflow_runs = workflow_run_service(&executor);
-    let cancelled = workflow_runs
-        .request_cancellation(
-            &cancellation_request,
-            "Application invocation cancellation race",
-            created_at + Duration::seconds(4),
+    let recovered_authority = PostgresApplicationSessionRepository::new(executor.clone())
+        .find_invocation_workflow_authority(
+            organization_id,
+            project_id,
+            application.id,
+            invocation.id,
         )
         .await?
-        .expect("cancelled WorkflowRun evidence");
-    assert_eq!(cancelled, first.workflow);
-    assert_eq!(
-        workflow_runs
-            .request_cancellation(
-                &cancellation_request,
-                "Application invocation cancellation race",
-                created_at + Duration::seconds(4),
-            )
-            .await?
-            .expect("replayed WorkflowRun cancellation"),
-        cancelled
-    );
+        .expect("persisted Application invocation Workflow authority");
+    assert_eq!(recovered_authority.requested_by, actor);
+    assert_eq!(recovered_authority.timeout_seconds, 120);
+    let cancelling = first.invocation.request_cancellation(
+        first.invocation.aggregate_version,
+        created_at + Duration::seconds(4),
+    )?;
+    sessions
+        .advance_invocation(AdvanceApplicationInvocationWrite {
+            invocation: cancelling,
+            expected_version: first.invocation.aggregate_version,
+        })
+        .await?;
+    let cancelled = composition_handler(&executor)
+        .execute(command.clone(), cqrs_context())
+        .await?
+        .expect_err("cancelled invocation cannot restart its WorkflowRun");
+    assert!(matches!(cancelled, ApplicationError::Conflict(_)));
+    let cancellation_replay = composition_handler(&executor)
+        .execute(command, cqrs_context())
+        .await?
+        .expect_err("cancelled invocation replay remains closed");
+    assert!(matches!(cancellation_replay, ApplicationError::Conflict(_)));
     assert_eq!(
         runs.find(organization_id, first.workflow.workflow_run_id)
             .await?

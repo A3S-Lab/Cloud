@@ -1181,6 +1181,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/125_application_sessions.sql"
             )),
         ),
+        Migration::new(
+            "126",
+            "Application invocation Workflow authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/126_application_invocation_workflow_authority.sql"
+            )),
+        ),
     ]
 }
 
@@ -2290,6 +2298,49 @@ mod application_session_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 125 duplicated another authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_invocation_workflow_authority_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/126_application_invocation_workflow_authority.sql"
+    ));
+
+    #[test]
+    fn migration_126_retains_one_immutable_restart_authority() {
+        for expected in [
+            "create table application_invocation_workflow_authorities",
+            "references application_invocations",
+            "references ontology_revisions",
+            "references environments",
+            "validate_application_invocation_workflow_authority",
+            "deferrable initially deferred",
+            "reject_application_session_child_mutation",
+            "immutable external revision and caller authority",
+        ] {
+            assert!(
+                MIGRATION
+                    .to_ascii_lowercase()
+                    .contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
+            );
+        }
+        for forbidden in [
+            "flow_history",
+            "provider_output",
+            "provider_state",
+            "create queue",
+            "retry_count",
+            "secret_material",
+            "membership_role",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 126 duplicated another authority through {forbidden}"
             );
         }
     }

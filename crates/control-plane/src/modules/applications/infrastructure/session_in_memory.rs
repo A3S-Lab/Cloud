@@ -1,9 +1,9 @@
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
-    AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation, ApplicationMessage,
-    ApplicationMessageKind, ApplicationSession, CloseApplicationSessionWrite,
-    ConversationVariableRevision, IApplicationSessionRepository, OpenApplicationSessionWrite,
-    RequestApplicationInvocationWrite,
+    AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation,
+    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageKind,
+    ApplicationSession, CloseApplicationSessionWrite, ConversationVariableRevision,
+    IApplicationSessionRepository, OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
@@ -104,6 +104,14 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
         let mut state = self.state.write().await;
         let invocation_key = invocation_key(&write.invocation);
         if let Some(current) = state.invocations.get(&invocation_key) {
+            let existing_authority = state
+                .invocation_workflow_authorities
+                .get(&invocation_key)
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "Application invocation replay Workflow authority is missing".into(),
+                    )
+                })?;
             let existing_message = state
                 .messages
                 .get(&message_key(&write.input_message))
@@ -113,7 +121,7 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
                     )
                 })?;
             if !write
-                .matches_replay(current, existing_message)
+                .matches_replay(current, existing_authority, existing_message)
                 .map_err(RepositoryError::Storage)?
             {
                 return Err(RepositoryError::Conflict(
@@ -144,6 +152,9 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
         state
             .invocations
             .insert(invocation_key, write.invocation.clone());
+        state
+            .invocation_workflow_authorities
+            .insert(invocation_key, write.workflow_authority);
         state.sessions.insert(session_key, next_session);
         Ok(IdempotentWrite {
             value: write.invocation,
@@ -422,6 +433,22 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
             .read()
             .await
             .invocations
+            .get(&(organization_id, project_id, application_id, invocation_id))
+            .cloned())
+    }
+
+    async fn find_invocation_workflow_authority(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        invocation_id: ApplicationInvocationId,
+    ) -> Result<Option<ApplicationInvocationWorkflowAuthority>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .invocation_workflow_authorities
             .get(&(organization_id, project_id, application_id, invocation_id))
             .cloned())
     }

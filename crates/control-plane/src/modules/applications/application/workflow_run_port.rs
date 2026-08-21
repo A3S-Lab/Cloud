@@ -1,6 +1,6 @@
 use crate::modules::applications::domain::{
-    ApplicationInvocation, ApplicationRelease, ApplicationSession, ApplicationWorkflowBinding,
-    APPLICATION_INVOCATION_INPUT_MAX_BYTES,
+    ApplicationInvocation, ApplicationInvocationWorkflowAuthority, ApplicationRelease,
+    ApplicationSession, ApplicationWorkflowBinding, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -52,15 +52,11 @@ impl ApplicationWorkflowRunRequest {
         release: &ApplicationRelease,
         session: &ApplicationSession,
         invocation: &ApplicationInvocation,
-        ontology_id: OntologyId,
-        ontology_revision_id: OntologyRevisionId,
-        ontology_digest: Sha256Digest,
-        environment_id: Option<EnvironmentId>,
-        requested_by: PrincipalId,
-        timeout_seconds: u64,
+        authority: &ApplicationInvocationWorkflowAuthority,
     ) -> Result<Self, String> {
         session.validate_release(release)?;
         invocation.validate()?;
+        authority.validate_against(invocation)?;
         if invocation.organization_id != session.organization_id
             || invocation.project_id != session.project_id
             || invocation.application_id != session.application_id
@@ -81,15 +77,15 @@ impl ApplicationWorkflowRunRequest {
             session_id: invocation.session_id,
             invocation_id: invocation.id,
             workflow: release.contract.spec().workflow.clone(),
-            ontology_id,
-            ontology_revision_id,
-            ontology_digest,
-            environment_id,
+            ontology_id: authority.ontology_id,
+            ontology_revision_id: authority.ontology_revision_id,
+            ontology_digest: authority.ontology_digest.clone(),
+            environment_id: authority.environment_id,
             input: invocation.input.clone(),
             input_digest: invocation.input_digest.clone(),
-            requested_by,
+            requested_by: authority.requested_by,
             requested_at: invocation.requested_at,
-            timeout_seconds,
+            timeout_seconds: authority.timeout_seconds,
         };
         value.validate()?;
         Ok(value)
@@ -128,6 +124,7 @@ impl ApplicationWorkflowRunRequest {
         if !self.input.is_object() {
             return Err("Application WorkflowRun input must be a JSON object".into());
         }
+        self.deadline_at()?;
         let canonical_input = canonical_json_bounded(
             &self.input,
             APPLICATION_INVOCATION_INPUT_MAX_BYTES,
@@ -138,6 +135,16 @@ impl ApplicationWorkflowRunRequest {
         }
         self.canonical_bytes()?;
         Ok(())
+    }
+
+    fn deadline_at(&self) -> Result<DateTime<Utc>, String> {
+        let timeout_seconds = i64::try_from(self.timeout_seconds)
+            .map_err(|_| "Application WorkflowRun timeout exceeds supported time".to_owned())?;
+        let timeout = Duration::try_seconds(timeout_seconds)
+            .ok_or_else(|| "Application WorkflowRun timeout exceeds supported time".to_owned())?;
+        self.requested_at
+            .checked_add_signed(timeout)
+            .ok_or_else(|| "Application WorkflowRun deadline overflowed".to_owned())
     }
 
     pub fn workflow_run_id(&self) -> WorkflowRunId {
@@ -201,13 +208,7 @@ impl ApplicationWorkflowRunEvidence {
     pub fn validate_against(&self, request: &ApplicationWorkflowRunRequest) -> Result<(), String> {
         request.validate()?;
         self.workflow.validate()?;
-        let timeout = i64::try_from(request.timeout_seconds)
-            .map(Duration::seconds)
-            .map_err(|_| "Application WorkflowRun timeout exceeds supported time".to_owned())?;
-        let deadline_at = request
-            .requested_at
-            .checked_add_signed(timeout)
-            .ok_or_else(|| "Application WorkflowRun deadline overflowed".to_owned())?;
+        let deadline_at = request.deadline_at()?;
         if self.organization_id != request.organization_id
             || self.project_id != request.project_id
             || self.application_id != request.application_id
