@@ -547,11 +547,16 @@ async fn exercise_execution_child_matrix(
     {
         return Err("finite child Operation authority drifted during enqueue".into());
     }
+    let suspended_parent_projection = runtime
+        .operations
+        .find_projection(created.value.run.operation_id)
+        .await?
+        .ok_or("finite parent Operation projection disappeared before starting its child")?;
     let child_start = runtime.operation_reconciler().run_once().await?;
-    if child_start.inspected != 2 || child_start.projected != 2 || !child_start.failures.is_empty()
+    if child_start.inspected != 2 || child_start.projected != 1 || !child_start.failures.is_empty()
     {
         return Err(format!(
-            "finite child Operation and suspended parent were not projected exactly once: {child_start:#?}"
+            "finite child Operation was not projected beside one stable parent replay: {child_start:#?}"
         )
         .into());
     }
@@ -560,10 +565,9 @@ async fn exercise_execution_child_matrix(
         .find_projection(created.value.run.operation_id)
         .await?
         .ok_or("finite parent Operation projection disappeared while starting its child")?;
-    if parent_projection.status != OperationStatus::Suspended {
+    if parent_projection != suspended_parent_projection {
         return Err(format!(
-            "finite parent Operation projected {:?} while its child started",
-            parent_projection.status
+            "finite parent Operation projection changed during a stable replay: before={suspended_parent_projection:#?} after={parent_projection:#?}",
         )
         .into());
     }
