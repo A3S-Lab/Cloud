@@ -1213,6 +1213,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/129_notification_outbound_suppression.sql"
             )),
         ),
+        Migration::new(
+            "130",
+            "immutable personal notification alert policies",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/130_notification_alert_policies.sql"
+            )),
+        ),
     ]
 }
 
@@ -1999,6 +2007,48 @@ mod notification_outbound_suppression_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 129 duplicated suppression or delivery authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_alert_policy_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/130_notification_alert_policies.sql"
+    ));
+
+    #[test]
+    fn migration_130_persists_only_immutable_closed_source_policies() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "create table notification_alert_policies",
+            "cloud.notification.alert-policy.v1",
+            "edge.domain-claim-status.v1",
+            "notification_alert_policies_active_source_scope_idx",
+            "new.notify_on_recovery is distinct from old.notify_on_recovery",
+            "active-to-revoked transition",
+            "compile-time closed owner-event registry",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "migration 130 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "json_path",
+            "jsonpath",
+            "metric_value",
+            "incident_state",
+            "firing_count",
+            "clock_timestamp",
+            "pg_sleep",
+            "next_evaluation",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 130 duplicated alert evaluation authority through {forbidden}"
             );
         }
     }

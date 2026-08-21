@@ -1,10 +1,11 @@
 use crate::modules::notifications::domain::{
-    Notification, NotificationPage, NotificationScope, NotificationSeverity,
-    OutboundNotificationChannel, OutboundNotificationSubscription,
-    OutboundNotificationSubscriptionPage,
+    Notification, NotificationAlertPolicy, NotificationAlertPolicyPage, NotificationPage,
+    NotificationScope, NotificationSeverity, OutboundNotificationChannel,
+    OutboundNotificationSubscription, OutboundNotificationSubscriptionPage,
 };
 use crate::modules::notifications::{
-    MarkNotificationReadResult, OutboundNotificationSubscriptionMutationResult,
+    MarkNotificationReadResult, NotificationAlertPolicyMutationResult,
+    OutboundNotificationSubscriptionMutationResult,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -124,6 +125,94 @@ impl From<MarkNotificationReadResult> for NotificationMutationResponse {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MarkNotificationReadRequest {
+    pub expected_version: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationAlertPolicyResponse {
+    pub organization_id: Uuid,
+    pub policy_id: Uuid,
+    pub source: String,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub notify_on_recovery: bool,
+    pub definition_schema: String,
+    pub definition_acl: String,
+    pub definition_digest: String,
+    pub state: String,
+    pub aggregate_version: u64,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<NotificationAlertPolicy> for NotificationAlertPolicyResponse {
+    fn from(policy: NotificationAlertPolicy) -> Self {
+        let spec = policy.definition.spec();
+        Self {
+            organization_id: policy.organization_id.as_uuid(),
+            policy_id: policy.id.as_uuid(),
+            source: spec.source.as_str().into(),
+            project_id: spec.project_id.as_uuid(),
+            environment_id: spec.environment_id.as_uuid(),
+            notify_on_recovery: spec.notify_on_recovery,
+            definition_schema: crate::modules::notifications::NOTIFICATION_ALERT_POLICY_SCHEMA
+                .into(),
+            definition_acl: policy.definition.canonical_acl().to_owned(),
+            definition_digest: policy.definition.digest().as_str().to_owned(),
+            state: if policy.is_active() {
+                "active".into()
+            } else {
+                "revoked".into()
+            },
+            aggregate_version: policy.aggregate_version,
+            created_by: policy.created_by.as_uuid(),
+            created_at: policy.created_at,
+            revoked_at: policy.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationAlertPolicyPageResponse {
+    pub policies: Vec<NotificationAlertPolicyResponse>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<NotificationAlertPolicyPage> for NotificationAlertPolicyPageResponse {
+    fn from(page: NotificationAlertPolicyPage) -> Self {
+        Self {
+            policies: page
+                .policies
+                .into_iter()
+                .map(NotificationAlertPolicyResponse::from)
+                .collect(),
+            next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationAlertPolicyMutationResponse {
+    pub policy: NotificationAlertPolicyResponse,
+    pub replayed: bool,
+}
+
+impl From<NotificationAlertPolicyMutationResult> for NotificationAlertPolicyMutationResponse {
+    fn from(result: NotificationAlertPolicyMutationResult) -> Self {
+        Self {
+            policy: result.policy.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeNotificationAlertPolicyRequest {
     pub expected_version: u64,
 }
 

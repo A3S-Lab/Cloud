@@ -24,7 +24,7 @@ use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+    NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
 };
 use crate::modules::projects::domain::value_objects::{
     BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
@@ -114,6 +114,10 @@ pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
 pub const NOTIFICATIONS_GET: &str = "a3s_cloud_notifications_get";
 pub const NOTIFICATIONS_READ: &str = "a3s_cloud_notifications_read";
+pub const NOTIFICATION_ALERT_POLICIES_CREATE: &str = "a3s_cloud_notification_alert_policies_create";
+pub const NOTIFICATION_ALERT_POLICIES_LIST: &str = "a3s_cloud_notification_alert_policies_list";
+pub const NOTIFICATION_ALERT_POLICIES_GET: &str = "a3s_cloud_notification_alert_policies_get";
+pub const NOTIFICATION_ALERT_POLICIES_REVOKE: &str = "a3s_cloud_notification_alert_policies_revoke";
 pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_CREATE: &str =
     "a3s_cloud_notification_outbound_subscriptions_create";
 pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_LIST: &str =
@@ -280,6 +284,10 @@ pub enum ManagementTool {
     NotificationsList,
     NotificationsGet,
     NotificationsRead,
+    NotificationAlertPoliciesCreate,
+    NotificationAlertPoliciesList,
+    NotificationAlertPoliciesGet,
+    NotificationAlertPoliciesRevoke,
     NotificationOutboundSubscriptionsCreate,
     NotificationOutboundSubscriptionsList,
     NotificationOutboundSubscriptionsGet,
@@ -316,7 +324,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 125] = [
+    const ALL: [Self; 129] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -423,6 +431,10 @@ impl ManagementTool {
         Self::NotificationsList,
         Self::NotificationsGet,
         Self::NotificationsRead,
+        Self::NotificationAlertPoliciesCreate,
+        Self::NotificationAlertPoliciesList,
+        Self::NotificationAlertPoliciesGet,
+        Self::NotificationAlertPoliciesRevoke,
         Self::NotificationOutboundSubscriptionsCreate,
         Self::NotificationOutboundSubscriptionsList,
         Self::NotificationOutboundSubscriptionsGet,
@@ -576,6 +588,10 @@ impl ManagementTool {
             Self::NotificationsList => NOTIFICATIONS_LIST,
             Self::NotificationsGet => NOTIFICATIONS_GET,
             Self::NotificationsRead => NOTIFICATIONS_READ,
+            Self::NotificationAlertPoliciesCreate => NOTIFICATION_ALERT_POLICIES_CREATE,
+            Self::NotificationAlertPoliciesList => NOTIFICATION_ALERT_POLICIES_LIST,
+            Self::NotificationAlertPoliciesGet => NOTIFICATION_ALERT_POLICIES_GET,
+            Self::NotificationAlertPoliciesRevoke => NOTIFICATION_ALERT_POLICIES_REVOKE,
             Self::NotificationOutboundSubscriptionsCreate => {
                 NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_CREATE
             }
@@ -661,6 +677,8 @@ impl ManagementTool {
             | Self::AuditRecordsList
             | Self::NotificationsList
             | Self::NotificationsGet
+            | Self::NotificationAlertPoliciesList
+            | Self::NotificationAlertPoliciesGet
             | Self::NotificationOutboundSubscriptionsList
             | Self::NotificationOutboundSubscriptionsGet
             | Self::ApplicationsList
@@ -676,6 +694,8 @@ impl ManagementTool {
             | Self::DurableCellRevisionsList
             | Self::DurableCellRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
+            | Self::NotificationAlertPoliciesCreate
+            | Self::NotificationAlertPoliciesRevoke
             | Self::NotificationOutboundSubscriptionsCreate
             | Self::NotificationOutboundSubscriptionsRevoke => {
                 Some(ApiTokenScope::NOTIFICATION_WRITE)
@@ -856,6 +876,10 @@ impl ManagementTool {
             | Self::NotificationsList
             | Self::NotificationsGet
             | Self::NotificationsRead
+            | Self::NotificationAlertPoliciesCreate
+            | Self::NotificationAlertPoliciesList
+            | Self::NotificationAlertPoliciesGet
+            | Self::NotificationAlertPoliciesRevoke
             | Self::NotificationOutboundSubscriptionsCreate
             | Self::NotificationOutboundSubscriptionsList
             | Self::NotificationOutboundSubscriptionsGet
@@ -1534,6 +1558,30 @@ impl ManagementTool {
                 mark_notification_read_schema(),
                 false,
             ),
+            Self::NotificationAlertPoliciesCreate => (
+                "Create my notification alert policy",
+                "Create one immutable personal alert policy from canonical A3S ACL for a closed source and exact authorized environment scope.",
+                create_notification_alert_policy_schema(),
+                false,
+            ),
+            Self::NotificationAlertPoliciesList => (
+                "List my notification alert policies",
+                "List one bounded, Resource-Grant-filtered page of the authenticated Principal's alert policies.",
+                notification_alert_policy_list_schema(),
+                true,
+            ),
+            Self::NotificationAlertPoliciesGet => (
+                "Get my notification alert policy",
+                "Get one exact personal alert policy when its environment scope remains authorized.",
+                uuid_id_schema("policyId"),
+                true,
+            ),
+            Self::NotificationAlertPoliciesRevoke => (
+                "Revoke my notification alert policy",
+                "Revoke one exact personal alert policy with optimistic concurrency and idempotency.",
+                revoke_notification_alert_policy_schema(),
+                false,
+            ),
             Self::NotificationOutboundSubscriptionsCreate => (
                 "Create my outbound notification subscription",
                 "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL, an exact Connector revision, and the ACL-pinned provider-attempt budget.",
@@ -1901,6 +1949,51 @@ fn mark_notification_read_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["notificationId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn notification_alert_policy_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_NOTIFICATION_LIMIT,
+                "default": DEFAULT_NOTIFICATION_LIMIT
+            }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn create_notification_alert_policy_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["definitionAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_notification_alert_policy_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "policyId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["policyId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

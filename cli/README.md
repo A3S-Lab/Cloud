@@ -88,6 +88,18 @@ the Notifications application boundary. The CLI has no local inbox, event
 projector, delivery queue, provider/template/subscription policy, scheduler, or
 notification configuration.
 
+`notification-alert-policies list [--cursor=<cursor>] [--limit=<1..200>]`
+and `notification-alert-policies get <policy-id>` read only the authenticated
+Principal's currently authorized personal policies. `notification-alert-policies
+create --file=<policy.acl>` requires `--idempotency-key`; revoke requires the
+exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses the
+canonical `cloud.notification.alert-policy.v1` ACL, admits the closed
+`edge.domain-claim-status.v1` source, rechecks Membership and Resource Grants,
+and projects rejection/recovery facts through the existing inbox and outbound
+delivery path. REST contract `1.47.0` exposes this lifecycle. The CLI has no
+expression evaluator, event registry, incident state, timer, scheduler, or
+second configuration format.
+
 `notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]` and
 `notification-subscriptions get <subscription-id>` read only the authenticated
 Principal's currently authorized subscriptions. `notification-subscriptions
@@ -241,6 +253,10 @@ audit-records list
 notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]
 notifications get <notification-id>
 notifications read <notification-id> --expected-version=<version>
+notification-alert-policies list [--cursor=<cursor>] [--limit=<1..200>]
+notification-alert-policies get <policy-id>
+notification-alert-policies create --file=<policy.acl>
+notification-alert-policies revoke <policy-id> --expected-version=<version>
 notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]
 notification-subscriptions get <subscription-id>
 notification-subscriptions create --file=<subscription.acl>

@@ -111,6 +111,36 @@ fn domain_claim_must_be_verified_and_revocation_is_terminal() {
 }
 
 #[test]
+fn rejected_domain_claim_can_recover_only_through_edge_verification() {
+    let now = Utc::now();
+    let mut claim = DomainClaim::create(
+        DomainClaimId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        DomainNamePattern::parse("recover.example.com").expect("pattern"),
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .expect("domain claim");
+    claim
+        .reject("DNS proof is not visible", now + Duration::seconds(1))
+        .expect("reject claim");
+    assert_eq!(claim.state, DomainClaimState::Rejected);
+    assert_eq!(claim.aggregate_version, 2);
+    claim
+        .verify(now + Duration::seconds(2))
+        .expect("recover claim");
+    assert_eq!(claim.state, DomainClaimState::Verified);
+    assert_eq!(claim.aggregate_version, 3);
+    assert!(claim.failure.is_none());
+    assert_eq!(
+        claim.verified_at,
+        Some(canonical_timestamp(now + Duration::seconds(2)))
+    );
+}
+
+#[test]
 fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() {
     let now = Utc::now();
     let certificate_id = GatewayCertificateId::new();

@@ -140,11 +140,14 @@ use crate::modules::integration_events::{
     OutboxRelayConfig,
 };
 use crate::modules::notifications::{
-    A3sEventOutboundNotificationConsumer, CreateOutboundNotificationSubscriptionHandler,
-    GetNotificationHandler, GetOutboundNotificationSubscriptionHandler, INotificationRepository,
-    IOutboundNotificationDispatcher, IOutboundNotificationRepository, ListNotificationsHandler,
-    ListOutboundNotificationSubscriptionsHandler, MarkNotificationReadHandler, NotificationsModule,
-    OutboundNotificationDispatcher, OutboxNotificationProjector,
+    A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
+    CreateOutboundNotificationSubscriptionHandler, GetNotificationAlertPolicyHandler,
+    GetNotificationHandler, GetOutboundNotificationSubscriptionHandler,
+    INotificationAlertPolicyRepository, INotificationRepository, IOutboundNotificationDispatcher,
+    IOutboundNotificationRepository, ListNotificationAlertPoliciesHandler,
+    ListNotificationsHandler, ListOutboundNotificationSubscriptionsHandler,
+    MarkNotificationReadHandler, NotificationsModule, OutboundNotificationDispatcher,
+    OutboxNotificationProjector, RevokeNotificationAlertPolicyHandler,
     RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
@@ -463,6 +466,7 @@ async fn build_api_worker_application(
     let search = adapters.search;
     let audit_records = adapters.audit_records;
     let notifications = adapters.notifications.notifications;
+    let alert_policies = adapters.notifications.alert_policies;
     let outbound_notifications = adapters.notifications.outbound_notifications;
     let outbound_notification_deliveries = adapters.notifications.outbound_deliveries;
     let plugin_registries = adapters.plugins.registries;
@@ -1111,6 +1115,8 @@ async fn build_api_worker_application(
             })?,
             Arc::clone(&notifications),
             Arc::clone(&memberships),
+            Arc::clone(&alert_policies),
+            Arc::clone(&resource_grants),
         )?)
     } else {
         None
@@ -1417,6 +1423,7 @@ async fn build_api_worker_application(
                 search,
                 audit_records,
                 notifications,
+                alert_policies,
                 outbound_notifications,
                 connector_profiles,
                 applications,
@@ -1476,7 +1483,9 @@ async fn build_relay_application(
     let event_publisher = event_publisher(&config).await?;
     let RelayPostgresAdapters {
         memberships,
+        resource_grants,
         notifications,
+        alert_policies,
         outbox,
     } = PostgresAdapterFactory::new(executor.clone()).relay();
     let outbox_relay = build_outbox_relay(
@@ -1485,6 +1494,8 @@ async fn build_relay_application(
         event_publisher.clone(),
         notifications,
         memberships,
+        alert_policies,
+        resource_grants,
     )?;
     let readiness = relay_readiness(executor, event_publisher);
     let application = build_process_status_application(&config, readiness)?;
@@ -1500,6 +1511,8 @@ fn build_outbox_relay(
     events: Arc<dyn IEventPublisher>,
     notifications: Arc<dyn INotificationRepository>,
     memberships: Arc<dyn IMembershipRepository>,
+    alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
+    resource_grants: Arc<dyn IResourceGrantRepository>,
 ) -> std::result::Result<OutboxRelay, ControlPlaneStartupError> {
     let relay = OutboxRelay::new(
         outbox,
@@ -1514,10 +1527,10 @@ fn build_outbox_relay(
         },
     )
     .map_err(ControlPlaneStartupError::Outbox)?
-    .with_projector(Arc::new(OutboxNotificationProjector::new(
-        notifications,
-        memberships,
-    )));
+    .with_projector(Arc::new(
+        OutboxNotificationProjector::new(notifications, memberships)
+            .with_alert_policies(alert_policies, resource_grants),
+    ));
     Ok(relay)
 }
 
@@ -1571,6 +1584,7 @@ struct ManagementApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
     notifications: Arc<dyn INotificationRepository>,
+    alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
     applications: Arc<dyn IApplicationRepository>,
@@ -1640,6 +1654,7 @@ fn build_management_application_with_health(
         search,
         audit_records,
         notifications,
+        alert_policies,
         outbound_notifications,
         connector_profiles,
         applications,
@@ -1701,6 +1716,11 @@ fn build_management_application_with_health(
     let list_notifications = Arc::clone(&notifications);
     let get_notifications = Arc::clone(&notifications);
     let mark_notifications_read = notifications;
+    let create_notification_alert_policies = Arc::clone(&alert_policies);
+    let revoke_notification_alert_policies = Arc::clone(&alert_policies);
+    let list_notification_alert_policies = Arc::clone(&alert_policies);
+    let get_notification_alert_policies = alert_policies;
+    let notification_alert_policy_environments = Arc::clone(&environments);
     let create_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let revoke_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let list_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
@@ -2166,6 +2186,19 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::notifications::MarkNotificationRead, _>(
                     MarkNotificationReadHandler::new(mark_notifications_read),
                 )
+                .command_handler::<
+                    crate::modules::notifications::CreateNotificationAlertPolicy,
+                    _,
+                >(CreateNotificationAlertPolicyHandler::new(
+                    create_notification_alert_policies,
+                    notification_alert_policy_environments,
+                ))
+                .command_handler::<
+                    crate::modules::notifications::RevokeNotificationAlertPolicy,
+                    _,
+                >(RevokeNotificationAlertPolicyHandler::new(
+                    revoke_notification_alert_policies,
+                ))
                 .command_handler::<
                     crate::modules::notifications::CreateOutboundNotificationSubscription,
                     _,
@@ -2771,6 +2804,15 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::notifications::GetNotification, _>(
                     GetNotificationHandler::new(get_notifications),
+                )
+                .query_handler::<
+                    crate::modules::notifications::ListNotificationAlertPolicies,
+                    _,
+                >(ListNotificationAlertPoliciesHandler::new(
+                    list_notification_alert_policies,
+                ))
+                .query_handler::<crate::modules::notifications::GetNotificationAlertPolicy, _>(
+                    GetNotificationAlertPolicyHandler::new(get_notification_alert_policies),
                 )
                 .query_handler::<
                     crate::modules::notifications::ListOutboundNotificationSubscriptions,

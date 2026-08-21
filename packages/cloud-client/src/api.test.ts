@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.46.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.47.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2976,6 +2976,89 @@ describe('CloudApi', () => {
         'client:notification:read'
       )
     ).toThrow('expected notification version must be a positive safe integer');
+    expect(called).toBe(false);
+  });
+
+  it('manages ACL-native notification alert policies through recipient-bound paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const policyId = '019c0000-0000-7000-8000-000000000038';
+    const acl = 'schema = "cloud.notification.alert-policy.v1"\n';
+
+    await api.listNotificationAlertPolicies('organization / one', {
+      cursor: `v1:1786579200000000:${policyId}`,
+      limit: 25,
+    });
+    await api.getNotificationAlertPolicy('organization / one', policyId);
+    await api.createNotificationAlertPolicy(
+      'organization / one',
+      acl,
+      'client:notification-alert-policy:create'
+    );
+    await api.revokeNotificationAlertPolicy(
+      'organization / one',
+      policyId,
+      1,
+      'client:notification-alert-policy:revoke'
+    );
+
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/notification-alert-policies?' +
+          `cursor=v1%3A1786579200000000%3A${policyId}&limit=25`,
+        'GET',
+      ],
+      [`/api/v1/organizations/organization%20%2F%20one/notification-alert-policies/${policyId}`, 'GET'],
+      ['/api/v1/organizations/organization%20%2F%20one/notification-alert-policies', 'POST'],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/notification-alert-policies/${policyId}/revoke`,
+        'POST',
+      ],
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'client:notification-alert-policy:create',
+        }),
+        body: acl,
+      })
+    );
+    expect(calls[3]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ expectedVersion: 1 }) }));
+  });
+
+  it('rejects invalid notification alert policy inputs before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() => api.listNotificationAlertPolicies('organization', { cursor: '' })).toThrow(
+      'notification alert policy cursor is invalid'
+    );
+    expect(() => api.listNotificationAlertPolicies('organization', { limit: 201 })).toThrow(
+      'notification alert policy limit must be between 1 and 200'
+    );
+    expect(() => api.getNotificationAlertPolicy('organization', 'not-a-uuid')).toThrow(
+      'notification alert policy ID must be a non-nil UUID'
+    );
+    expect(() => api.createNotificationAlertPolicy('organization', '', 'client:alert-policy:create')).toThrow(
+      'notification alert policy ACL must contain between 1 and 16384 UTF-8 bytes'
+    );
+    expect(() =>
+      api.revokeNotificationAlertPolicy(
+        'organization',
+        '019c0000-0000-7000-8000-000000000038',
+        0,
+        'client:alert-policy:revoke'
+      )
+    ).toThrow('expected notification alert policy version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

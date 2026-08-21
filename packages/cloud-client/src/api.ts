@@ -64,9 +64,14 @@ import {
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import {
+  encodeNotificationAlertPolicyQuery,
   encodeNotificationQuery,
   encodeOutboundNotificationSubscriptionQuery,
   type Notification,
+  type NotificationAlertPolicy,
+  type NotificationAlertPolicyMutationResult,
+  type NotificationAlertPolicyPage,
+  type NotificationAlertPolicyQuery,
   type NotificationMutationResult,
   type NotificationPage,
   type NotificationQuery,
@@ -74,8 +79,11 @@ import {
   type OutboundNotificationSubscriptionMutationResult,
   type OutboundNotificationSubscriptionPage,
   type OutboundNotificationSubscriptionQuery,
+  validateExpectedNotificationAlertPolicyVersion,
   validateExpectedNotificationVersion,
   validateExpectedOutboundNotificationSubscriptionVersion,
+  validateNotificationAlertPolicyAcl,
+  validateNotificationAlertPolicyId,
   validateNotificationId,
   validateOutboundNotificationSubscriptionAcl,
   validateOutboundNotificationSubscriptionId,
@@ -269,7 +277,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.46.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.47.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1715,6 +1723,65 @@ export class CloudApi {
     validateExpectedNotificationVersion(expectedVersion);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}/notifications/${encodeURIComponent(notificationId)}/read`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  listNotificationAlertPolicies(
+    organizationId: string,
+    query: NotificationAlertPolicyQuery = {},
+    signal?: AbortSignal
+  ): Promise<NotificationAlertPolicyPage> {
+    const parameters = encodeNotificationAlertPolicyQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-alert-policies?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  getNotificationAlertPolicy(
+    organizationId: string,
+    policyId: string,
+    signal?: AbortSignal
+  ): Promise<NotificationAlertPolicy> {
+    validateNotificationAlertPolicyId(policyId);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-alert-policies/${encodeURIComponent(policyId)}`,
+      signal
+    );
+  }
+
+  createNotificationAlertPolicy(
+    organizationId: string,
+    definitionAcl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<NotificationAlertPolicyMutationResult> {
+    validateNotificationAlertPolicyAcl(definitionAcl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}/notification-alert-policies`,
+      idempotencyKey,
+      definitionAcl,
+      signal
+    );
+  }
+
+  revokeNotificationAlertPolicy(
+    organizationId: string,
+    policyId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<NotificationAlertPolicyMutationResult> {
+    validateNotificationAlertPolicyId(policyId);
+    validateExpectedNotificationAlertPolicyVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-alert-policies/${encodeURIComponent(policyId)}/revoke`,
       idempotencyKey,
       { expectedVersion },
       signal

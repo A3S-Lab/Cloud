@@ -415,6 +415,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_audit_records_list",
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
+            "a3s_cloud_notification_alert_policies_list",
+            "a3s_cloud_notification_alert_policies_get",
             "a3s_cloud_notification_outbound_subscriptions_list",
             "a3s_cloud_notification_outbound_subscriptions_get",
             "a3s_cloud_workloads_list",
@@ -585,6 +587,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
             "a3s_cloud_notifications_read",
+            "a3s_cloud_notification_alert_policies_create",
+            "a3s_cloud_notification_alert_policies_list",
+            "a3s_cloud_notification_alert_policies_get",
+            "a3s_cloud_notification_alert_policies_revoke",
             "a3s_cloud_notification_outbound_subscriptions_create",
             "a3s_cloud_notification_outbound_subscriptions_list",
             "a3s_cloud_notification_outbound_subscriptions_get",
@@ -811,6 +817,28 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         list_outbound_subscriptions["annotations"]["readOnlyHint"],
         true
     );
+    let create_alert_policy = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_notification_alert_policies_create",
+    )?;
+    assert_eq!(
+        create_alert_policy["inputSchema"]["properties"]["definitionAcl"]["maxLength"],
+        crate::modules::notifications::NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        create_alert_policy["inputSchema"]["required"],
+        json!(["definitionAcl", "idempotencyKey"])
+    );
+    assert_eq!(create_alert_policy["annotations"]["readOnlyHint"], false);
+    let list_alert_policies = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_notification_alert_policies_list",
+    )?;
+    assert_eq!(
+        list_alert_policies["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(list_alert_policies["annotations"]["readOnlyHint"], true);
     let create_workflow_definition = listed_tool(
         &administrator_tools,
         "a3s_cloud_workflow_definitions_create",
@@ -1701,6 +1729,8 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
+            "a3s_cloud_notification_alert_policies_list",
+            "a3s_cloud_notification_alert_policies_get",
             "a3s_cloud_notification_outbound_subscriptions_list",
             "a3s_cloud_notification_outbound_subscriptions_get",
         ]

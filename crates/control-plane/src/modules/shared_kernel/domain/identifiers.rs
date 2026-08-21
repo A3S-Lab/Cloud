@@ -49,6 +49,7 @@ identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
 identifier!(NotificationId);
+identifier!(NotificationAlertPolicyId);
 identifier!(NotificationSubscriptionId);
 identifier!(ApplicationEndUserId);
 identifier!(ApplicationId);

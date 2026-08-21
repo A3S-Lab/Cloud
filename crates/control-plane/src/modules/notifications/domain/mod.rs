@@ -1,3 +1,5 @@
+mod alert_policy;
+mod alert_policy_repository;
 mod notification;
 mod notification_repository;
 mod outbound_adapter;
@@ -6,6 +8,15 @@ mod outbound_receipt;
 mod outbound_repository;
 mod outbound_subscription;
 
+pub use alert_policy::{
+    NotificationAlertPolicy, NotificationAlertPolicyCursor, NotificationAlertPolicyDefinition,
+    NotificationAlertPolicyPage, NotificationAlertPolicySpec, NotificationAlertSource,
+    NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, NOTIFICATION_ALERT_POLICY_SCHEMA,
+};
+pub use alert_policy_repository::{
+    CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
+    NotificationAlertPolicyEvent, RevokeNotificationAlertPolicyWrite,
+};
 pub use notification::{
     Notification, NotificationCursor, NotificationPage, NotificationScope, NotificationSeverity,
 };

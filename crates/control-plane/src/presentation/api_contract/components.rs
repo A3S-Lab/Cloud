@@ -1,9 +1,10 @@
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
-    MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+    MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES,
+    NOTIFICATION_ALERT_POLICY_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
 };
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
@@ -30,6 +31,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     let outbound_subscription_mutation_success = typed_success_response_schema(
         "#/components/schemas/OutboundNotificationSubscriptionMutation",
     );
+    let alert_policy_success =
+        typed_success_response_schema("#/components/schemas/NotificationAlertPolicy");
+    let alert_policy_page_success =
+        typed_success_response_schema("#/components/schemas/NotificationAlertPolicyPage");
+    let alert_policy_mutation_success =
+        typed_success_response_schema("#/components/schemas/NotificationAlertPolicyMutation");
     components.insert(
         "schemas".into(),
         json!({
@@ -58,6 +65,74 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "timestamp": { "type": "string", "format": "date-time" }
                 }
             },
+            "NotificationAlertPolicy": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "organizationId", "policyId", "source",
+                    "projectId", "environmentId", "notifyOnRecovery", "definitionSchema",
+                    "definitionAcl", "definitionDigest", "state", "aggregateVersion",
+                    "createdBy", "createdAt", "revokedAt"
+                ],
+                "properties": {
+                    "organizationId": { "type": "string", "format": "uuid" },
+                    "policyId": { "type": "string", "format": "uuid" },
+                    "source": {
+                        "type": "string",
+                        "enum": ["edge.domain-claim-status.v1"]
+                    },
+                    "projectId": { "type": "string", "format": "uuid" },
+                    "environmentId": { "type": "string", "format": "uuid" },
+                    "notifyOnRecovery": { "type": "boolean" },
+                    "definitionSchema": {
+                        "type": "string",
+                        "enum": [NOTIFICATION_ALERT_POLICY_SCHEMA]
+                    },
+                    "definitionAcl": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
+                    },
+                    "definitionDigest": {
+                        "type": "string",
+                        "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "state": { "type": "string", "enum": ["active", "revoked"] },
+                    "aggregateVersion": { "type": "integer", "minimum": 1, "maximum": 2 },
+                    "createdBy": { "type": "string", "format": "uuid" },
+                    "createdAt": { "type": "string", "format": "date-time" },
+                    "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+                }
+            },
+            "NotificationAlertPolicyPage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["policies", "nextCursor"],
+                "properties": {
+                    "policies": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/NotificationAlertPolicy" }
+                    },
+                    "nextCursor": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "nullable": true
+                    }
+                }
+            },
+            "NotificationAlertPolicyMutation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["policy", "replayed"],
+                "properties": {
+                    "policy": { "$ref": "#/components/schemas/NotificationAlertPolicy" },
+                    "replayed": { "type": "boolean" }
+                }
+            },
+            "NotificationAlertPolicySuccessResponse": alert_policy_success,
+            "NotificationAlertPolicyPageSuccessResponse": alert_policy_page_success,
+            "NotificationAlertPolicyMutationSuccessResponse": alert_policy_mutation_success,
             "OutboundNotificationSubscription": {
                 "type": "object",
                 "additionalProperties": false,
@@ -162,6 +237,29 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         response_components.insert(
             format!("RawSuccess{status}"),
             response_component(status, ""),
+        );
+    }
+    response_components.insert(
+        "NotificationAlertPolicySuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/NotificationAlertPolicySuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "NotificationAlertPolicyPageSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/NotificationAlertPolicyPageSuccessResponse",
+        ),
+    );
+    for status in [200, 201] {
+        response_components.insert(
+            format!("NotificationAlertPolicyMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/NotificationAlertPolicyMutationSuccessResponse",
+            ),
         );
     }
     response_components.insert(

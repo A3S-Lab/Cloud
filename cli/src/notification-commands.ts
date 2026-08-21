@@ -1,10 +1,13 @@
 import {
   type CloudApi,
   DEFAULT_NOTIFICATION_LIMIT,
+  encodeNotificationAlertPolicyQuery,
   encodeNotificationQuery,
   encodeOutboundNotificationSubscriptionQuery,
+  MAX_NOTIFICATION_ALERT_POLICY_ACL_BYTES,
   MAX_NOTIFICATION_LIMIT,
   MAX_OUTBOUND_NOTIFICATION_SUBSCRIPTION_ACL_BYTES,
+  type NotificationAlertPolicyQuery,
   type NotificationQuery,
   type OutboundNotificationSubscriptionQuery,
 } from '@a3s/cloud-client';
@@ -24,6 +27,9 @@ import { requireOrganization } from './context';
 import { usageError } from './errors';
 import {
   notificationMutationResult,
+  notificationAlertPoliciesResult,
+  notificationAlertPolicyMutationResult,
+  notificationAlertPolicyResult,
   notificationResult,
   notificationsResult,
   outboundNotificationSubscriptionMutationResult,
@@ -41,7 +47,11 @@ export async function executeNotificationCommand(
   cloudApi: () => CloudApi,
   dependencies: { readFile?: (path: string) => Promise<Uint8Array> } = {}
 ): Promise<CommandResult | undefined> {
-  if (!command.startsWith('notifications ') && !command.startsWith('notification-subscriptions ')) {
+  if (
+    !command.startsWith('notifications ') &&
+    !command.startsWith('notification-alert-policies ') &&
+    !command.startsWith('notification-subscriptions ')
+  ) {
     return undefined;
   }
   const organizationId = requireOrganization(context);
@@ -78,6 +88,70 @@ export async function executeNotificationCommand(
         await cloudApi().getNotification(
           organizationId,
           positionalUuid(arguments_.positionals, 2, 'notification ID')
+        )
+      );
+    }
+    case 'notification-alert-policies list': {
+      requireArity(arguments_.positionals, 2, 'notification-alert-policies list');
+      rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      if (arguments_.expectedVersion !== undefined || arguments_.stream !== undefined) {
+        throw usageError(
+          '--expected-version and --stream are not valid for notification-alert-policies list'
+        );
+      }
+      const query: NotificationAlertPolicyQuery = {
+        cursor: arguments_.cursor,
+        limit: boundedLimit(arguments_.limit, 'notification alert policy'),
+      };
+      try {
+        encodeNotificationAlertPolicyQuery(query);
+      } catch (error) {
+        if (error instanceof TypeError || error instanceof RangeError) {
+          throw usageError(error.message);
+        }
+        throw error;
+      }
+      return notificationAlertPoliciesResult(
+        await cloudApi().listNotificationAlertPolicies(organizationId, query)
+      );
+    }
+    case 'notification-alert-policies get':
+      requireReadCommand(arguments_, 'notification-alert-policies get <policy-id>');
+      return notificationAlertPolicyResult(
+        await cloudApi().getNotificationAlertPolicy(
+          organizationId,
+          positionalUuid(arguments_.positionals, 2, 'notification alert policy ID')
+        )
+      );
+    case 'notification-alert-policies create': {
+      const mutation = requireAclMutationCommand(arguments_, 2, 'notification-alert-policies create');
+      const definitionAcl = await readAclDocument(
+        mutation.file,
+        {
+          label: 'notification alert policy ACL',
+          maximumBytes: MAX_NOTIFICATION_ALERT_POLICY_ACL_BYTES,
+        },
+        dependencies.readFile
+      );
+      return notificationAlertPolicyMutationResult(
+        await cloudApi().createNotificationAlertPolicy(organizationId, definitionAcl, mutation.idempotencyKey)
+      );
+    }
+    case 'notification-alert-policies revoke': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        3,
+        'notification-alert-policies revoke <policy-id>',
+        'notification alert policy'
+      );
+      return notificationAlertPolicyMutationResult(
+        await cloudApi().revokeNotificationAlertPolicy(
+          organizationId,
+          positionalUuid(arguments_.positionals, 2, 'notification alert policy ID'),
+          mutation.expectedVersion,
+          mutation.idempotencyKey
         )
       );
     }
