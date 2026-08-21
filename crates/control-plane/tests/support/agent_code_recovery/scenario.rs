@@ -348,12 +348,13 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         AgentProtocolRunStateV1::Planning,
         1,
     )?;
+    let successor_accepted_at = accepted_at(&successor)?;
     let successor_write = || {
         AcceptAgentCodeEventBatchWrite::new(
             organization_id,
             node_id,
             successor.clone(),
-            accepted_at(&successor)?,
+            successor_accepted_at,
         )
     };
     let successor_receipt = agents.accept_code_event_batch(successor_write()?).await?;

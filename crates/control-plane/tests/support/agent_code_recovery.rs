@@ -35,9 +35,9 @@ use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccess
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::PostgresSecretRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    canonical_timestamp, AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId,
-    EnrollmentTokenId, EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, ResourceName, Sha256Digest,
+    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, EnrollmentTokenId,
+    EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, ResourceName, Sha256Digest,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     project_runtime_spec, CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
@@ -53,7 +53,7 @@ use a3s_runtime::contract::{
     RuntimeHealthState, RuntimeObservation, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
     TransportProtocol,
 };
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::error::Error;

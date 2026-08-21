@@ -315,3 +315,7 @@ fn idempotency(scope: &str, key: &str, body: &[u8]) -> Result<IdempotencyRequest
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
+
+fn canonical_timestamp(value: DateTime<Utc>) -> DateTime<Utc> {
+    value - Duration::nanoseconds(i64::from(value.nanosecond() % 1_000))
+}
