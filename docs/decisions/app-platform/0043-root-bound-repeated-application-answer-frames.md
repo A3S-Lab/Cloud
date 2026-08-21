@@ -82,9 +82,8 @@ public delivery surface, or non-ACL product configuration is added.
   attempt, ordinal, content, and commit evidence.
 - Focused contract, compiler, runtime, coordinator, lost-response,
   production-adapter, variable, and Connector compatibility tests cover the
-  v13 boundary. The PostgreSQL 17 C6-C13 gate additionally exercises two
-  ordinals and commit-before-response replay through the existing production
-  Applications repository; retained CI evidence is required before C13 is
-  recorded as verified.
+  v13 boundary. The [retained PostgreSQL 17 C6-C13 job](https://github.com/A3S-Lab/Cloud/actions/runs/32486698014/job/96784727028)
+  exercises two ordinals and commit-before-response replay through the existing
+  production Applications repository and records C13 as verified.
 - Public blocking/streaming delivery and the remaining `APP0.2` records and
   interfaces remain later gates.
