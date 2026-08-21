@@ -1,5 +1,8 @@
 import type {
   Notification,
+  NotificationAlertPolicy,
+  NotificationAlertPolicyMutationResult,
+  NotificationAlertPolicyPage,
   NotificationMutationResult,
   NotificationPage,
   OutboundNotificationSubscription,
@@ -37,6 +40,41 @@ export function notificationMutationResult(result: NotificationMutationResult): 
     table: renderTable(
       [{ ...result.notification, replayed: result.replayed }],
       [...NOTIFICATION_COLUMNS, { header: 'REPLAYED', value: (row) => row.replayed }]
+    ),
+  };
+}
+
+const ALERT_POLICY_COLUMNS: readonly TableColumn<NotificationAlertPolicy>[] = [
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+  { header: 'SOURCE', value: (row) => row.source },
+  { header: 'PROJECT ID', value: (row) => row.projectId },
+  { header: 'ENVIRONMENT ID', value: (row) => row.environmentId },
+  { header: 'RECOVERY', value: (row) => row.notifyOnRecovery },
+  { header: 'STATE', value: (row) => row.state },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'POLICY ID', value: (row) => row.policyId },
+];
+
+export function notificationAlertPoliciesResult(page: NotificationAlertPolicyPage): CommandResult {
+  const table = renderTable(page.policies, ALERT_POLICY_COLUMNS);
+  return {
+    json: page,
+    table: page.nextCursor ? `${table}Next cursor: ${sanitizeCell(page.nextCursor)}\n` : table,
+  };
+}
+
+export function notificationAlertPolicyResult(policy: NotificationAlertPolicy): CommandResult {
+  return { json: policy, table: renderTable([policy], ALERT_POLICY_COLUMNS) };
+}
+
+export function notificationAlertPolicyMutationResult(
+  result: NotificationAlertPolicyMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable(
+      [{ ...result.policy, replayed: result.replayed }],
+      [...ALERT_POLICY_COLUMNS, { header: 'REPLAYED', value: (row) => row.replayed }]
     ),
   };
 }

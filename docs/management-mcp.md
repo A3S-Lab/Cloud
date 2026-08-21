@@ -84,6 +84,12 @@ audit used by REST, the maintained client, and CLI. MCP owns no notification
 projection, delivery queue, provider/template/subscription policy, scheduler, or
 configuration format.
 
+The personal alert-policy slice adds recipient-only create/list/exact-get/revoke
+over the same Notifications CQRS and canonical A3S ACL used by REST, the client,
+and CLI. Its two reads require `cloud:read`; create and revoke require
+`notification:write`. MCP owns no source registry, expression evaluator,
+incident state, projection worker, queue, scheduler, or configuration parser.
+
 ## Transport contract
 
 The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
@@ -201,6 +207,10 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
 | `a3s_cloud_notifications_read` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
+| `a3s_cloud_notification_alert_policies_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact environment scope, Resource Grant, and idempotency required |
+| `a3s_cloud_notification_alert_policies_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
+| `a3s_cloud_notification_alert_policies_get` | Principal self-query | `cloud:read`; denied and missing policy IDs share one `404` contract |
+| `a3s_cloud_notification_alert_policies_revoke` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
 | `a3s_cloud_notification_outbound_subscriptions_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact Connector revision, Resource Grant, and idempotency required |
 | `a3s_cloud_notification_outbound_subscriptions_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
 | `a3s_cloud_notification_outbound_subscriptions_get` | Principal self-query | `cloud:read`; denied and missing subscription IDs share one `404` contract |
@@ -319,6 +329,22 @@ recipient selector: recipient identity always comes from the authenticated
 credential. They do not project source events or introduce an MCP-specific
 store, queue, delivery provider, template/subscription model, scheduler, or
 configuration document.
+
+## Personal notification alert policies
+
+REST contract `1.47.0` adds the four
+`a3s_cloud_notification_alert_policies_*` tools. Create accepts only one bounded
+canonical `cloud.notification.alert-policy.v1` ACL for the closed
+`edge.domain-claim-status.v1` source and an exact project/environment scope.
+List and exact get apply current Resource Grants; revoke requires the current
+aggregate version and a caller-owned idempotency key. Recipient identity always
+comes from the authenticated credential.
+
+The response contains the canonical ACL/digest, closed source, exact scope,
+recovery preference, lifecycle version, and timestamps. It exposes no arbitrary
+event selector, provider failure, metric query, incident state, delivery
+attempt, Secret, or credential. The MCP adapter adds no parser, repository,
+projector, queue, scheduler, or second event rail.
 
 ## Personal outbound notification subscriptions
 
@@ -691,7 +717,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 125-tool administrator and 68-tool
+current focused source runner requires exact 129-tool administrator and 70-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

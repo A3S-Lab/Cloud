@@ -311,7 +311,7 @@ async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_notifications_are_personal_event_time_suppressed_and_atomic() {
+async fn postgres_notifications_are_personal_alerted_event_time_suppressed_and_atomic() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
@@ -320,7 +320,7 @@ async fn postgres_notifications_are_personal_event_time_suppressed_and_atomic() 
         notifications_support::exercise_notification_persistence,
     )
     .await
-    .expect("PostgreSQL notification inbox and event-time suppression gate");
+    .expect("PostgreSQL notification inbox, alert policy, and event-time suppression gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

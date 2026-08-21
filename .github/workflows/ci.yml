@@ -194,11 +194,11 @@ jobs:
           postgres_project_attribution_is_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify personal notification, delivery-budget, and suppression persistence
+      - name: Certify personal notification, alert-policy, delivery-budget, and suppression persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_notifications_are_personal_event_time_suppressed_and_atomic
+          postgres_notifications_are_personal_alerted_event_time_suppressed_and_atomic
           -- --exact --nocapture --test-threads=1
 
       - name: Certify the PostgreSQL-only API process composition
@@ -265,13 +265,13 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Certify event-time suppression, durable NATS delivery, and terminal replay
+      - name: Certify alert projection, event-time suppression, durable NATS delivery, and terminal replay
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_notifications_are_personal_event_time_suppressed_and_atomic
+          postgres_notifications_are_personal_alerted_event_time_suppressed_and_atomic
           -- --exact --nocapture --test-threads=1
 
       - name: Certify the closed relay process composition

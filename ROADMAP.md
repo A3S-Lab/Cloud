@@ -942,7 +942,7 @@ not introduce a second scheduler.
 | `C0.1` | Verified | REST/client/CLI parity, stable errors, authorized search, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired REST/OpenAPI/client login-link-callback surfaces, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable project attribution, a personal in-app notification inbox, immutable outbound-subscription A3S ACLs with REST/client/CLI/MCP management, transactional delivery authorization, signed-webhook/Slack-compatible adapters over the shared Connector execution port, a NATS durable/manual-ack consumer, C6 `Retry-After` pacing, v1 fixed-eight and v2/v3 user-configured one-through-eight Exhausted termination, v3 bounded immutable event-time suppression, Outbox/audit, and one bounded tenant-administrator audit query are implemented. SMTP, retained production evidence, alert policy, tenant-scoped security investigation, retention/export policy, and usage-fact attribution snapshots remain planned |
+| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired REST/OpenAPI/client login-link-callback surfaces, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable project attribution, a personal in-app notification inbox, immutable outbound-subscription A3S ACLs with REST/client/CLI/MCP management, transactional delivery authorization, signed-webhook/Slack-compatible adapters over the shared Connector execution port, a NATS durable/manual-ack consumer, C6 `Retry-After` pacing, v1 fixed-eight and v2/v3 user-configured one-through-eight Exhausted termination, v3 bounded immutable event-time suppression, immutable personal alert-policy A3S ACLs over the closed DomainClaim rejection/recovery source with REST/client/CLI/MCP management, Outbox/audit, and one bounded tenant-administrator audit query are implemented. SMTP, retained N4a PostgreSQL/NATS evidence, tenant-scoped security investigation, retention/export policy, and usage-fact attribution snapshots remain planned |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 | `C0.5` | Planned | Enterprise SAML/OIDC federation, SCIM provisioning/deprovisioning, session policy, application/Workflow/Knowledge-granular Resource Grants, tamper-evident audit and SIEM export, PII-redaction policy, BYOK/data-residency bindings, and air-gapped governance evidence over the existing Identity, Secrets, audit, `S0`, and `H0` authorities |
 
@@ -1011,7 +1011,7 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 122 administrator tools and 68 read-only tools:
+The current catalog contains 129 administrator tools and 70 read-only tools:
 the verified catalog is retained, fifteen Identity tools come from the
 implemented Membership, MembershipInvitation, and Resource Grant `C0.3`
 slices, seven Ontology tools come from backend `W0.2`, and ten Workflow
@@ -1042,7 +1042,10 @@ owner/admin-only audit query reuses `cloud:read` and the shared append-only
 audit repository. Three personal-notification tools add list, exact get, and
 idempotent mark-read over the same Notifications CQRS boundary. Four additional
 personal outbound-subscription tools add create/list/exact-get/revoke over that
-same repository, ACL, authorization, and idempotency authority. Focused catalog,
+same repository, ACL, authorization, and idempotency authority. Four personal
+alert-policy tools add create/list/exact-get/revoke over the closed typed source
+registry and the same Notifications authority; list and get are read-only.
+Focused catalog,
 permission, strict-argument, lifecycle, migration, deterministic-plan,
 Workflow node-catalog, WorkflowRun, ExecutionTemplate, plugin tenant,
 notification, and historical-replay tests
@@ -1050,7 +1053,7 @@ pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog, Workflow node-catalog, invitation lifecycle,
 notification, Connector lifecycle, Durable Cell lifecycle, and
 variable-inspection tests pass the
-current `122/68` source
+current `129/70` source
 catalog, and the
 dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology
@@ -1143,7 +1146,7 @@ adds no direct HTTP client, copied Connector/Secret/contact authority, retry
 table, mutable counter, token bucket, timer, queue, scheduler, second event rail,
 or configuration format.
 
-SMTP and alert policy,
+SMTP, retained N4a PostgreSQL/NATS evidence,
 tenant-scoped security investigation, audit retention/export policy, and
 usage-fact attribution remain planned, so `C0.3` is in progress
 rather than verified.
@@ -1171,6 +1174,7 @@ their own RBAC or resource-ownership registry:
 | `C0.3-N2g` | Verified on PostgreSQL 17 and NATS JetStream in CI (`2026-08-15`) | The existing PostgreSQL notification fixture publishes through the same transactional Outbox relay and production exact-subject A3S Event durable/manual-ack consumer. It persists the exact C6 attempt/evidence and terminal receipt before ACK, restarts the same durable consumer, injects an exact terminal replay, and proves the replay is ACK-only without another dispatcher call. The [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/31881826576/job/95005391069) runs a checksum-pinned official NATS server binary under the Box-only CI policy and reruns the same PostgreSQL gate; it adds no product queue, retry loop, repository, table, parser, or configuration format. |
 | `C0.3-N3a` | Verified on PostgreSQL 17 and NATS JetStream in CI (`2026-08-22`) | Canonical `cloud.notification.outbound-subscription.v2` adds one immutable `maximum_provider_attempts` value from 1 through 8; v1 remains byte-compatible and always means eight. The budget is pinned into the subscription event, v2 delivery payload, migration `128` subscription/delivery facts, terminal receipt, REST/OpenAPI `1.45.0`, maintained client, CLI, and Management MCP response. Dispatch and Exhausted settlement read only the delivery-pinned value and immutable C6 evidence. Migration constraints reject schema/budget drift, event-version mismatch, post-admission mutation, over-budget terminal generations, and Exhausted before the exact bound. The [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32503892384/job/96839623052) proves migration `128`, immutable budget persistence, exact-bound Exhausted settlement, durable NATS delivery, and terminal ACK-only replay. This adds no mutable counter, token bucket, timer, sleep, queue, scheduler, second event rail, or configuration parser. |
 | `C0.3-N3b` | Verified on PostgreSQL 17 and NATS JetStream in CI (`2026-08-22`) | Canonical `cloud.notification.outbound-subscription.v3` preserves exact v1/v2 bytes and adds one immutable RFC 3339 UTC `suppress_before` cutoff alongside the v2 one-through-eight attempt budget. The cutoff must be later than subscription creation and at most 30 days later. A source notification whose immutable `occurred_at` is strictly earlier than the cutoff remains in the personal inbox but authorizes no outbound delivery fact; equality is deliverable, delayed projection cannot release a previously suppressed fact, and changing the cutoff requires revoke plus create. Eligible v3 notifications reuse the delivery-v2 payload and the existing Outbox, A3S Event, C6 evidence, and receipt path because suppression is an admission policy rather than a consumer protocol. Migration `129` persists and guards the cutoff, while REST/OpenAPI `1.46.0`, the maintained client, CLI, and four existing Management MCP tools expose it without delivery internals. The [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32516778570/job/96880061349) proves cutoff non-null/bounds/immutability enforcement, pre-cutoff inbox retention, forged-delivery rejection, equality admission, unchanged delivery-v2 publication, exact-bound settlement, durable NATS delivery, and terminal ACK-only replay. This adds no mutable silence record, counter, timer, deferred release, queue, scheduler, second event rail, or configuration format. |
+| `C0.3-N4a` | Implemented; focused cross-surface tests pass and CI is wired (`2026-08-22`) | One immutable personal `cloud.notification.alert-policy.v1` A3S ACL is owned by its exact recipient and binds one exact project/environment scope, recovery preference, and the closed `edge.domain-claim-status.v1` source family. The compile-time source registry admits only exact `edge.domain-claim.rejected` and `edge.domain-claim.verified` schema-v1 owner facts and validates their typed payload/envelope identity. Rejection is a warning; verified is informational recovery only when the same recipient and claim has a most-recent policy-covered projected rejection after that policy's creation, so initial success and stale pre-policy history stay silent. Projection rechecks active Membership and current Resource Grants before writing the existing personal inbox; delayed facts after revocation or grant loss stay silent. Migration `130` persists the immutable revoke-only lifecycle with idempotency, Outbox, and audit; REST/OpenAPI `1.47.0`, the maintained client, CLI, and four Management MCP tools expose the same CQRS. Edge remains the sole claim-transition authority, while the existing Outbox relay, Notification repository, outbound subscription, A3S Event, and C6 delivery path remain the only event and delivery authorities. Missing-data or recovery transitions for later health sources must be explicit bounded facts from their owning context or existing reconciler. No arbitrary event key, JSON-path/expression evaluator, metrics store, incident state, mutable counter, poller, timer, scheduler, queue, second event rail, or configuration parser is introduced. Retained PostgreSQL 17 and NATS evidence remains pending. |
 
 The verified `C0.3-RG2` boundary is the authorization prerequisite now reused
 by protected HumanTask submission and remains mandatory for any new

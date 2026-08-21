@@ -40,6 +40,46 @@ export interface NotificationQuery {
   limit?: number;
 }
 
+export type NotificationAlertSource = 'edge.domain-claim-status.v1';
+export type NotificationAlertPolicyState = 'active' | 'revoked';
+
+export interface NotificationAlertPolicy {
+  organizationId: string;
+  policyId: string;
+  source: NotificationAlertSource;
+  projectId: string;
+  environmentId: string;
+  notifyOnRecovery: boolean;
+  definitionSchema: 'cloud.notification.alert-policy.v1';
+  definitionAcl: string;
+  definitionDigest: string;
+  state: NotificationAlertPolicyState;
+  aggregateVersion: number;
+  createdBy: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface NotificationAlertPolicyPage {
+  policies: NotificationAlertPolicy[];
+  nextCursor: string | null;
+}
+
+export interface NotificationAlertPolicyMutationResult {
+  policy: NotificationAlertPolicy;
+  replayed: boolean;
+}
+
+export interface NotificationAlertPolicyQuery {
+  cursor?: string;
+  limit?: number;
+}
+
+type PersonalPageQuery = {
+  cursor?: string;
+  limit?: number;
+};
+
 export type OutboundNotificationChannel = 'signed_webhook' | 'slack_compatible';
 export type OutboundNotificationSubscriptionState = 'active' | 'revoked';
 
@@ -84,6 +124,7 @@ export interface OutboundNotificationSubscriptionQuery {
 
 export const DEFAULT_NOTIFICATION_LIMIT = 50;
 export const MAX_NOTIFICATION_LIMIT = 200;
+export const MAX_NOTIFICATION_ALERT_POLICY_ACL_BYTES = 16 * 1024;
 export const MAX_OUTBOUND_NOTIFICATION_SUBSCRIPTION_ACL_BYTES = 16 * 1024;
 
 export function encodeNotificationQuery(query: NotificationQuery = {}): URLSearchParams {
@@ -100,6 +141,12 @@ export function encodeOutboundNotificationSubscriptionQuery(
   return encodePersonalPageQuery(new URLSearchParams(), query, 'outbound notification subscription');
 }
 
+export function encodeNotificationAlertPolicyQuery(
+  query: NotificationAlertPolicyQuery = {}
+): URLSearchParams {
+  return encodePersonalPageQuery(new URLSearchParams(), query, 'notification alert policy');
+}
+
 export function validateNotificationId(value: string): void {
   validateNonNilUuid(value, 'notification ID');
 }
@@ -107,6 +154,25 @@ export function validateNotificationId(value: string): void {
 export function validateExpectedNotificationVersion(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new RangeError('expected notification version must be a positive safe integer');
+  }
+}
+
+export function validateNotificationAlertPolicyId(value: string): void {
+  validateNonNilUuid(value, 'notification alert policy ID');
+}
+
+export function validateExpectedNotificationAlertPolicyVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected notification alert policy version must be a positive safe integer');
+  }
+}
+
+export function validateNotificationAlertPolicyAcl(acl: string): void {
+  const byteLength = new TextEncoder().encode(acl).byteLength;
+  if (byteLength < 1 || byteLength > MAX_NOTIFICATION_ALERT_POLICY_ACL_BYTES) {
+    throw new RangeError(
+      `notification alert policy ACL must contain between 1 and ${MAX_NOTIFICATION_ALERT_POLICY_ACL_BYTES} UTF-8 bytes`
+    );
   }
 }
 
@@ -133,7 +199,7 @@ export function validateOutboundNotificationSubscriptionAcl(acl: string): void {
 
 function encodePersonalPageQuery(
   parameters: URLSearchParams,
-  query: OutboundNotificationSubscriptionQuery,
+  query: PersonalPageQuery,
   label: string
 ): URLSearchParams {
   if (query.cursor !== undefined) {

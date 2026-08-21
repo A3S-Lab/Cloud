@@ -39,8 +39,9 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::PostgresIdentityRepository;
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::notifications::{
-    INotificationRepository, IOutboundNotificationDeliveryRepository,
-    IOutboundNotificationRepository, PostgresNotificationRepository,
+    INotificationAlertPolicyRepository, INotificationRepository,
+    IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
+    PostgresNotificationRepository,
 };
 use crate::modules::operations::{IOperationRepository, PostgresOperationRepository};
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
@@ -131,7 +132,9 @@ impl PostgresAdapterFactory {
         let notifications = NotificationPostgresAdapters::new(self.executor.clone());
         RelayPostgresAdapters {
             memberships: identity.memberships,
+            resource_grants: identity.resource_grants,
             notifications: notifications.notifications,
+            alert_policies: notifications.alert_policies,
             outbox: self.outbox(),
         }
     }
@@ -175,7 +178,9 @@ pub(super) struct ApiWorkerPostgresAdapters {
 
 pub(super) struct RelayPostgresAdapters {
     pub(super) memberships: Arc<dyn IMembershipRepository>,
+    pub(super) resource_grants: Arc<dyn IResourceGrantRepository>,
     pub(super) notifications: Arc<dyn INotificationRepository>,
+    pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,
 }
 
@@ -245,6 +250,7 @@ impl WorkflowPostgresAdapters {
 
 pub(super) struct NotificationPostgresAdapters {
     pub(super) notifications: Arc<dyn INotificationRepository>,
+    pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     pub(super) outbound_deliveries: Arc<dyn IOutboundNotificationDeliveryRepository>,
 }
@@ -254,6 +260,7 @@ impl NotificationPostgresAdapters {
         let repository = Arc::new(PostgresNotificationRepository::new(executor));
         Self {
             notifications: repository.clone(),
+            alert_policies: repository.clone(),
             outbound_notifications: repository.clone(),
             outbound_deliveries: repository,
         }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type {
   CloudFetch,
   Notification,
+  NotificationAlertPolicy,
   NotificationPage,
   OutboundNotificationSubscription,
 } from '@a3s/cloud-client';
@@ -11,6 +12,7 @@ const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const NOTIFICATION_ID = '019c0000-0000-7000-8000-000000000002';
 const REQUEST_ID = '019c0000-0000-7000-8000-000000000003';
 const SUBSCRIPTION_ID = '019c0000-0000-7000-8000-000000000006';
+const POLICY_ID = '019c0000-0000-7000-8000-00000000000c';
 
 const NOTIFICATION: Notification = {
   id: NOTIFICATION_ID,
@@ -31,6 +33,23 @@ const NOTIFICATION: Notification = {
 const PAGE: NotificationPage = {
   notifications: [NOTIFICATION],
   nextCursor: `v1:1786678923000000:${NOTIFICATION_ID}`,
+};
+
+const ALERT_POLICY: NotificationAlertPolicy = {
+  organizationId: ORGANIZATION_ID,
+  policyId: POLICY_ID,
+  source: 'edge.domain-claim-status.v1',
+  projectId: '019c0000-0000-7000-8000-000000000007',
+  environmentId: '019c0000-0000-7000-8000-000000000008',
+  notifyOnRecovery: true,
+  definitionSchema: 'cloud.notification.alert-policy.v1',
+  definitionAcl: 'schema = "cloud.notification.alert-policy.v1"\n',
+  definitionDigest: `sha256:${'b'.repeat(64)}`,
+  state: 'active',
+  aggregateVersion: 1,
+  createdBy: '019c0000-0000-7000-8000-00000000000b',
+  createdAt: '2026-08-14T01:02:03Z',
+  revokedAt: null,
 };
 
 const SUBSCRIPTION: OutboundNotificationSubscription = {
@@ -157,6 +176,98 @@ describe('notification commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('manages one ACL-native personal alert policy', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const createOutput = capture();
+    const exitCode = await runCli(
+      [
+        'notification-alert-policies',
+        'create',
+        '--file=alert-policy.acl',
+        '--idempotency-key=cli:notification-alert-policy:create',
+        '--output=json',
+      ],
+      {
+        ...createOutput.runtime,
+        environment: environment(),
+        readFile: async () => new TextEncoder().encode(ALERT_POLICY.definitionAcl),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ policy: ALERT_POLICY, replayed: false });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/notification-alert-policies`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'cli:notification-alert-policy:create',
+        }),
+        body: ALERT_POLICY.definitionAcl,
+      })
+    );
+    expect(createOutput.stdout()).toContain(`"policyId": "${POLICY_ID}"`);
+
+    const listOutput = capture();
+    const listExitCode = await runCli(['notification-alert-policies', 'list', '--limit=25'], {
+      ...listOutput.runtime,
+      environment: environment(),
+      fetch: async (...args) => {
+        calls.push(args);
+        return envelope({ policies: [ALERT_POLICY], nextCursor: null });
+      },
+    });
+    expect(listExitCode).toBe(0);
+    expect(listOutput.stdout()).toContain('POLICY ID');
+    expect(listOutput.stdout()).toContain('edge.domain-claim-status.v1');
+
+    const getOutput = capture();
+    const getExitCode = await runCli(['notification-alert-policies', 'get', POLICY_ID], {
+      ...getOutput.runtime,
+      environment: environment(),
+      fetch: async (...args) => {
+        calls.push(args);
+        return envelope(ALERT_POLICY);
+      },
+    });
+    expect(getExitCode).toBe(0);
+    expect(getOutput.stdout()).toContain(POLICY_ID);
+
+    const revokeOutput = capture();
+    const revokeExitCode = await runCli(
+      [
+        'notification-alert-policies',
+        'revoke',
+        POLICY_ID,
+        '--expected-version=1',
+        '--idempotency-key=cli:notification-alert-policy:revoke',
+      ],
+      {
+        ...revokeOutput.runtime,
+        environment: environment(),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({
+            policy: { ...ALERT_POLICY, state: 'revoked', aggregateVersion: 2 },
+            replayed: false,
+          });
+        },
+      }
+    );
+    expect(revokeExitCode).toBe(0);
+    expect(calls[3]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/notification-alert-policies/${POLICY_ID}/revoke`
+    );
+    expect(calls[3]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ expectedVersion: 1 }) }));
+    expect(revokeOutput.stdout()).toContain('revoked');
+  });
+
   it('creates an ACL-native outbound subscription and revokes it through the same authority', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -245,6 +356,10 @@ describe('notification commands', () => {
 
   it.each([
     [['notifications', 'list', '--limit=201'], 'notification limit must be between 1 and 200'],
+    [
+      ['notification-alert-policies', 'list', '--limit=201'],
+      'notification alert policy limit must be between 1 and 200',
+    ],
     [['organizations', 'list', '--unread-only'], '--unread-only is valid only for notifications list'],
     [
       ['notifications', 'get', NOTIFICATION_ID, '--unread-only'],

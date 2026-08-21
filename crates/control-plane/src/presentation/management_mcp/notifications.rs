@@ -1,17 +1,20 @@
 use super::tool_result;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::notifications::presentation::{
-    NotificationMutationResponse, NotificationPageResponse, NotificationResponse,
-    OutboundNotificationSubscriptionMutationResponse, OutboundNotificationSubscriptionPageResponse,
-    OutboundNotificationSubscriptionResponse,
+    NotificationAlertPolicyMutationResponse, NotificationAlertPolicyPageResponse,
+    NotificationAlertPolicyResponse, NotificationMutationResponse, NotificationPageResponse,
+    NotificationResponse, OutboundNotificationSubscriptionMutationResponse,
+    OutboundNotificationSubscriptionPageResponse, OutboundNotificationSubscriptionResponse,
 };
 use crate::modules::notifications::{
-    CreateOutboundNotificationSubscription, GetNotification, GetOutboundNotificationSubscription,
+    CreateNotificationAlertPolicy, CreateOutboundNotificationSubscription, GetNotification,
+    GetNotificationAlertPolicy, GetOutboundNotificationSubscription, ListNotificationAlertPolicies,
     ListNotifications, ListOutboundNotificationSubscriptions, MarkNotificationRead,
-    RevokeOutboundNotificationSubscription,
+    RevokeNotificationAlertPolicy, RevokeOutboundNotificationSubscription,
 };
 use crate::modules::shared_kernel::domain::{
-    NotificationId, NotificationSubscriptionId, OrganizationId, PrincipalId,
+    NotificationAlertPolicyId, NotificationId, NotificationSubscriptionId, OrganizationId,
+    PrincipalId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde::Deserialize;
@@ -43,6 +46,42 @@ pub struct NotificationArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MarkNotificationReadArguments {
     notification_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationAlertPolicyListArguments {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(
+        default = "super::arguments::default_list_limit",
+        deserialize_with = "super::arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationAlertPolicyArguments {
+    policy_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateNotificationAlertPolicyArguments {
+    definition_acl: String,
+    #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeNotificationAlertPolicyArguments {
+    policy_id: Uuid,
     #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
     #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
@@ -156,6 +195,116 @@ pub async fn mark_read(
         Ok(result) => {
             tool_result::success(200, NotificationMutationResponse::from(result), request_id)
         }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_alert_policies(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: NotificationAlertPolicyListArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListNotificationAlertPolicies {
+            organization_id,
+            actor_principal_id,
+            resource_access,
+            cursor: arguments.cursor,
+            limit: arguments.limit,
+        })
+        .await?
+    {
+        Ok(page) => tool_result::success(
+            200,
+            NotificationAlertPolicyPageResponse::from(page),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_alert_policy(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: NotificationAlertPolicyArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetNotificationAlertPolicy {
+            organization_id,
+            policy_id: NotificationAlertPolicyId::from_uuid(arguments.policy_id),
+            actor_principal_id,
+            resource_access,
+        })
+        .await?
+    {
+        Ok(policy) => tool_result::success(
+            200,
+            NotificationAlertPolicyResponse::from(policy),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_alert_policy(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateNotificationAlertPolicyArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateNotificationAlertPolicy {
+            organization_id,
+            definition_acl: arguments.definition_acl,
+            actor_principal_id,
+            resource_access,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            NotificationAlertPolicyMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_alert_policy(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RevokeNotificationAlertPolicyArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeNotificationAlertPolicy {
+            organization_id,
+            policy_id: NotificationAlertPolicyId::from_uuid(arguments.policy_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            resource_access,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            NotificationAlertPolicyMutationResponse::from(result),
+            request_id,
+        ),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

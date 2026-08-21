@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::modules::notifications::{
-    INotificationRepository, Notification, NotificationScope, NotificationSeverity,
+    INotificationRepository, Notification, NotificationAlertPolicyDefinition,
+    NotificationAlertPolicySpec, NotificationAlertSource, NotificationScope, NotificationSeverity,
     OutboundNotificationChannel, OutboundNotificationConnectorTarget,
     OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
 };
@@ -12,6 +13,8 @@ use crate::modules::shared_kernel::domain::{
 
 const NOTIFICATION_MEMBER_TOKEN: &str =
     "a3s_3333333333333333333333333333333333333333333333333333333333333333";
+const NOTIFICATION_FOREIGN_TOKEN: &str =
+    "a3s_9999999999999999999999999999999999999999999999999999999999999999";
 
 #[tokio::test]
 async fn personal_inbox_is_recipient_bound_paginated_and_idempotently_read() -> Result<()> {
@@ -680,6 +683,268 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
     Ok(())
 }
 
+#[tokio::test]
+async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface() -> Result<()> {
+    let notifications =
+        Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new());
+    let app = build_test_application_with_notifications(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        Arc::clone(&notifications),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "notification-alert-bootstrap", "Alert policies").await?;
+    create_api_token(
+        &app,
+        &organization,
+        "notification-alert-writer",
+        "Alert policy writer",
+        NOTIFICATION_MEMBER_TOKEN,
+        &[ApiTokenScope::NOTIFICATION_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "notification-alert-reader",
+        "Alert policy reader",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::CLOUD_READ],
+        None,
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "notification-alert-project",
+        "Alert project",
+    )
+    .await?;
+    let environment = crate::app::tests::connector_tests::create_connector_environment(
+        &app,
+        &organization,
+        &project,
+        "notification-alert-environment",
+    )
+    .await?;
+    let definition_acl = notification_alert_policy_acl(&project, &environment, true)?;
+    let root = format!("/api/v1/organizations/{organization}/notification-alert-policies");
+
+    assert_eq!(
+        app.call(post_acl_as(
+            &root,
+            "notification-alert-read-denied",
+            definition_acl.clone(),
+            PROJECT_TOKEN,
+        ))
+        .await?
+        .status(),
+        403
+    );
+    let create = || {
+        post_acl_as(
+            &root,
+            "notification-alert-create",
+            definition_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        )
+    };
+    let created = app.call(create()).await?;
+    assert_eq!(created.status(), 201);
+    let created = response_json(&created)?;
+    assert_eq!(created["data"]["replayed"], false);
+    assert_eq!(created["data"]["policy"]["state"], "active");
+    assert_eq!(
+        created["data"]["policy"]["source"],
+        "edge.domain-claim-status.v1"
+    );
+    assert_eq!(
+        created["data"]["policy"]["definitionSchema"],
+        "cloud.notification.alert-policy.v1"
+    );
+    assert_eq!(created["data"]["policy"]["definitionAcl"], definition_acl);
+    assert!(created["data"]["policy"]
+        .get("recipientPrincipalId")
+        .is_none());
+    let policy_id = created["data"]["policy"]["policyId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("notification alert policy ID is missing".into()))?
+        .to_owned();
+
+    let replay = app.call(create()).await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(response_json(&replay)?["data"]["replayed"], true);
+    let changed_acl = notification_alert_policy_acl(&project, &environment, false)?;
+    assert_eq!(
+        app.call(post_acl_as(
+            &root,
+            "notification-alert-create",
+            changed_acl,
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+    assert_eq!(
+        app.call(post_acl_as(
+            &root,
+            "notification-alert-duplicate-scope",
+            definition_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+
+    let listed = app
+        .call(get_as(format!("{root}?limit=1"), PROJECT_TOKEN))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed = response_json(&listed)?;
+    assert_eq!(listed["data"]["policies"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed["data"]["policies"][0]["policyId"], policy_id);
+    assert!(listed["data"]["nextCursor"].is_null());
+    assert_eq!(
+        app.call(get_as(format!("{root}?limit=201"), PROJECT_TOKEN))
+            .await?
+            .status(),
+        400
+    );
+    let exact = app
+        .call(get_as(format!("{root}/{policy_id}"), PROJECT_TOKEN))
+        .await?;
+    assert_eq!(exact.status(), 200);
+    assert_eq!(response_json(&exact)?["data"]["environmentId"], environment);
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "notification-alert-foreign-membership",
+            json!({"name": "Foreign alert reader", "role": "member"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let foreign_principal = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("foreign Principal ID is missing".into()))?;
+    let foreign_token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "notification-alert-foreign-token",
+            json!({
+                "name": "Foreign alert reader",
+                "token": NOTIFICATION_FOREIGN_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::NOTIFICATION_WRITE],
+                "principalId": foreign_principal,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(foreign_token.status(), 201);
+    assert_eq!(
+        app.call(get_as(
+            format!("{root}/{policy_id}"),
+            NOTIFICATION_FOREIGN_TOKEN,
+        ))
+        .await?
+        .status(),
+        404
+    );
+    let foreign_list = app.call(get_as(&root, NOTIFICATION_FOREIGN_TOKEN)).await?;
+    assert_eq!(foreign_list.status(), 200);
+    assert!(response_json(&foreign_list)?["data"]["policies"]
+        .as_array()
+        .is_some_and(Vec::is_empty));
+
+    let revoke = || {
+        post_json_as(
+            format!("{root}/{policy_id}/revoke"),
+            "notification-alert-revoke",
+            json!({"expectedVersion": 1}),
+            NOTIFICATION_MEMBER_TOKEN,
+        )
+    };
+    let revoked = app.call(revoke()).await?;
+    assert_eq!(revoked.status(), 200);
+    assert_eq!(
+        response_json(&revoked)?["data"]["policy"]["state"],
+        "revoked"
+    );
+    assert_eq!(
+        response_json(&app.call(revoke()).await?)?["data"]["replayed"],
+        true
+    );
+
+    let mcp_create = app
+        .call(mcp_tool_call_as(
+            6,
+            "a3s_cloud_notification_alert_policies_create",
+            json!({
+                "definitionAcl": definition_acl,
+                "idempotencyKey": "notification-alert-mcp-create"
+            }),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    let mcp_create = response_json(&mcp_create)?;
+    assert_eq!(mcp_create["result"]["isError"], false);
+    assert_eq!(mcp_create["result"]["structuredContent"]["code"], 201);
+    let mcp_policy_id = mcp_create["result"]["structuredContent"]["data"]["policy"]["policyId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP alert policy ID is missing".into()))?
+        .to_owned();
+    assert_ne!(mcp_policy_id, policy_id);
+
+    let mcp_list = app
+        .call(mcp_tool_call_as(
+            7,
+            "a3s_cloud_notification_alert_policies_list",
+            json!({"limit": 50}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    let mcp_list = response_json(&mcp_list)?;
+    assert_eq!(mcp_list["result"]["isError"], false);
+    assert_eq!(
+        mcp_list["result"]["structuredContent"]["data"]["policies"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    let mcp_get = app
+        .call(mcp_tool_call_as(
+            8,
+            "a3s_cloud_notification_alert_policies_get",
+            json!({"policyId": mcp_policy_id.clone()}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response_json(&mcp_get)?["result"]["isError"], false);
+    let mcp_revoke = app
+        .call(mcp_tool_call_as(
+            9,
+            "a3s_cloud_notification_alert_policies_revoke",
+            json!({
+                "policyId": mcp_policy_id,
+                "expectedVersion": 1,
+                "idempotencyKey": "notification-alert-mcp-revoke"
+            }),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    let mcp_revoke = response_json(&mcp_revoke)?;
+    assert_eq!(mcp_revoke["result"]["isError"], false);
+    assert_eq!(
+        mcp_revoke["result"]["structuredContent"]["data"]["policy"]["state"],
+        "revoked"
+    );
+    Ok(())
+}
+
 fn outbound_subscription_acl(
     project_id: &str,
     environment_id: &str,
@@ -691,6 +956,25 @@ fn outbound_subscription_acl(
         .and_then(OutboundNotificationSubscriptionDefinition::from_spec)
         .map(|definition| definition.canonical_acl().to_owned())
         .map_err(BootError::Internal)
+}
+
+fn notification_alert_policy_acl(
+    project_id: &str,
+    environment_id: &str,
+    notify_on_recovery: bool,
+) -> Result<String> {
+    let parse = |value: &str, label: &str| {
+        Uuid::parse_str(value)
+            .map_err(|error| BootError::Internal(format!("invalid {label}: {error}")))
+    };
+    NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+        source: NotificationAlertSource::EdgeDomainClaimStatusV1,
+        project_id: ProjectId::from_uuid(parse(project_id, "project ID")?),
+        environment_id: EnvironmentId::from_uuid(parse(environment_id, "environment ID")?),
+        notify_on_recovery,
+    })
+    .map(|definition| definition.canonical_acl().to_owned())
+    .map_err(BootError::Internal)
 }
 
 fn outbound_subscription_acl_with_budget(
