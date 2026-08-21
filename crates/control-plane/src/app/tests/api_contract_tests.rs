@@ -285,6 +285,101 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
 }
 
 #[test]
+fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection =
+        &document["paths"]["/organizations/{organization_id}/notification-alert-policies"];
+    assert_eq!(collection["get"]["tags"], json!(["Notifications"]));
+    assert_eq!(collection["post"]["tags"], json!(["Notifications"]));
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        crate::modules::notifications::NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
+    );
+    assert!(collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert_eq!(
+        collection["post"]["responses"]["201"]["$ref"],
+        "#/components/responses/NotificationAlertPolicyMutationSuccess201"
+    );
+    assert!(collection["post"]["responses"]["413"].is_object());
+    assert!(collection["post"]["responses"]["415"].is_object());
+    let limit = collection["get"]["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("alert policy list limit is missing".into()))?;
+    assert_eq!(limit["schema"]["default"], 50);
+    assert_eq!(limit["schema"]["maximum"], 200);
+    assert_eq!(
+        collection["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/NotificationAlertPolicyPageSuccess200"
+    );
+    for (schema_name, data_schema_ref) in [
+        (
+            "NotificationAlertPolicySuccessResponse",
+            "#/components/schemas/NotificationAlertPolicy",
+        ),
+        (
+            "NotificationAlertPolicyPageSuccessResponse",
+            "#/components/schemas/NotificationAlertPolicyPage",
+        ),
+        (
+            "NotificationAlertPolicyMutationSuccessResponse",
+            "#/components/schemas/NotificationAlertPolicyMutation",
+        ),
+    ] {
+        let envelope = &document["components"]["schemas"][schema_name];
+        assert_eq!(envelope["type"], "object");
+        assert_eq!(envelope["properties"]["data"], json!({}));
+        assert_eq!(
+            envelope["allOf"][0]["properties"]["data"]["$ref"],
+            data_schema_ref
+        );
+    }
+    let response = &document["components"]["schemas"]["NotificationAlertPolicy"];
+    assert_eq!(
+        response["properties"]["source"]["enum"],
+        json!(["edge.domain-claim-status.v1"])
+    );
+    assert_eq!(
+        response["properties"]["definitionSchema"]["enum"],
+        json!(["cloud.notification.alert-policy.v1"])
+    );
+    assert!(response["properties"].get("recipientPrincipalId").is_none());
+    assert!(response["required"]
+        .as_array()
+        .is_some_and(|required| !required.contains(&json!("recipientPrincipalId"))));
+
+    let item = &document["paths"]
+        ["/organizations/{organization_id}/notification-alert-policies/{policy_id}"]["get"];
+    assert_eq!(
+        item["responses"]["200"]["$ref"],
+        "#/components/responses/NotificationAlertPolicySuccess200"
+    );
+    let revoke = &document["paths"]
+        ["/organizations/{organization_id}/notification-alert-policies/{policy_id}/revoke"]["post"];
+    assert_eq!(
+        revoke["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert_eq!(
+        revoke["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        revoke["responses"]["200"]["$ref"],
+        "#/components/responses/NotificationAlertPolicyMutationSuccess200"
+    );
+    Ok(())
+}
+
+#[test]
 fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounded() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

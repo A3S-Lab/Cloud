@@ -1747,6 +1747,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new())
     });
     let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
+    let alert_policies: Arc<dyn INotificationAlertPolicyRepository> =
+        notification_repository.clone();
     let outbound_notifications: Arc<dyn IOutboundNotificationRepository> = notification_repository;
     build_management_application_with_health(
         config(),
@@ -1799,6 +1801,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
             notifications,
+            alert_policies,
             outbound_notifications,
             connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
             applications: Arc::new(

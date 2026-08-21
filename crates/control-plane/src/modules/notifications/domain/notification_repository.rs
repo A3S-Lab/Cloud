@@ -1,10 +1,11 @@
-use super::{Notification, NotificationCursor};
+use super::{Notification, NotificationAlertSource, NotificationCursor};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, NotificationId, OrganizationId, PrincipalId,
     RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -82,6 +83,18 @@ pub trait INotificationRepository: Send + Sync {
         after: Option<NotificationCursor>,
         limit: usize,
     ) -> Result<Vec<Notification>, RepositoryError>;
+
+    /// Returns the latest already-projected fact in one closed alert source family before the
+    /// supplied aggregate version. This is history, not a second mutable incident authority.
+    async fn latest_alert_source_projection(
+        &self,
+        organization_id: OrganizationId,
+        recipient_principal_id: PrincipalId,
+        source: NotificationAlertSource,
+        source_aggregate_id: Uuid,
+        not_before: DateTime<Utc>,
+        before_aggregate_version: u64,
+    ) -> Result<Option<Notification>, RepositoryError>;
 
     async fn replay_mark_read(
         &self,

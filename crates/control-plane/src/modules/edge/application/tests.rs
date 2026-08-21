@@ -155,6 +155,27 @@ struct RetryableDomainOwnershipVerifier {
     calls: AtomicUsize,
 }
 
+#[derive(Default)]
+struct RecoveringDomainOwnershipVerifier {
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl IDomainOwnershipVerifier for RecoveringDomainOwnershipVerifier {
+    async fn verify(
+        &self,
+        request: DomainOwnershipVerificationRequest,
+    ) -> Result<(), DomainOwnershipVerificationError> {
+        assert_eq!(request.presented_proof, request.expected_value);
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(DomainOwnershipVerificationError::Rejected(
+                "DNS ownership proof was rejected".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl IDomainOwnershipVerifier for RetryableDomainOwnershipVerifier {
     async fn verify(
@@ -571,6 +592,95 @@ async fn unobserved_domain_proof_remains_pending_and_retryable_with_the_same_key
         .expect("replay domain verification");
     assert!(replay.replayed);
     assert_eq!(replay.claim, verified.claim);
+    assert_eq!(verifier.calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn rejected_domain_claim_recovers_through_a_new_idempotent_verification_attempt() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let now = Utc::now();
+    let claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse("recover.example.com").expect("domain pattern"),
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .expect("domain claim");
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: claim.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-recovering-domain-claim-creation",
+            claim.id.to_string(),
+            claim.pattern.as_str().as_bytes(),
+        )
+        .expect("create idempotency"),
+        event: DomainClaimChanged::envelope(&claim, Uuid::now_v7()).expect("created event"),
+    })
+    .await
+    .expect("persist domain claim");
+
+    let verifier = Arc::new(RecoveringDomainOwnershipVerifier::default());
+    let repository: Arc<dyn IEdgeRepository> = edge.clone();
+    let handler = VerifyDomainClaimHandler::new(repository, verifier.clone());
+    let rejected_command = VerifyDomainClaim {
+        organization_id,
+        claim_id: claim.id,
+        proof: claim.challenge_value.clone(),
+        idempotency_key: "verify-recovering-domain-rejected".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(1),
+    };
+    let rejected = handler
+        .execute(rejected_command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("persist rejection");
+    assert!(!rejected.replayed);
+    assert_eq!(rejected.claim.state, DomainClaimState::Rejected);
+    assert_eq!(rejected.claim.aggregate_version, 2);
+    assert_eq!(edge.outbox_events().await.len(), 2);
+
+    let rejected_replay = handler
+        .execute(rejected_command, context())
+        .await
+        .expect("command bus")
+        .expect("replay rejection");
+    assert!(rejected_replay.replayed);
+    assert_eq!(rejected_replay.claim, rejected.claim);
+    assert_eq!(verifier.calls.load(Ordering::SeqCst), 1);
+
+    let recovered_command = VerifyDomainClaim {
+        organization_id,
+        claim_id: claim.id,
+        proof: claim.challenge_value,
+        idempotency_key: "verify-recovering-domain-success".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(2),
+    };
+    let recovered = handler
+        .execute(recovered_command.clone(), context())
+        .await
+        .expect("command bus")
+        .expect("recover domain claim");
+    assert!(!recovered.replayed);
+    assert_eq!(recovered.claim.state, DomainClaimState::Verified);
+    assert_eq!(recovered.claim.aggregate_version, 3);
+    assert!(recovered.claim.failure.is_none());
+    assert_eq!(edge.outbox_events().await.len(), 3);
+
+    let recovered_replay = handler
+        .execute(recovered_command, context())
+        .await
+        .expect("command bus")
+        .expect("replay recovery");
+    assert!(recovered_replay.replayed);
+    assert_eq!(recovered_replay.claim, recovered.claim);
     assert_eq!(verifier.calls.load(Ordering::SeqCst), 2);
 }
 

@@ -1,14 +1,18 @@
 use crate::modules::notifications::domain::{
-    CreateOutboundNotificationSubscriptionWrite, INotificationRepository,
+    CreateNotificationAlertPolicyWrite, CreateOutboundNotificationSubscriptionWrite,
+    INotificationAlertPolicyRepository, INotificationRepository,
     IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
-    MarkNotificationReadWrite, Notification, NotificationCursor, OutboundNotificationDelivery,
-    OutboundNotificationDeliveryAdmission, OutboundNotificationSubscription,
-    OutboundNotificationSubscriptionCursor, OutboundNotificationTerminalReceipt,
+    MarkNotificationReadWrite, Notification, NotificationAlertPolicy,
+    NotificationAlertPolicyCursor, NotificationAlertSource, NotificationCursor,
+    OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
+    OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
+    OutboundNotificationTerminalReceipt, RevokeNotificationAlertPolicyWrite,
     RevokeOutboundNotificationSubscriptionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, NotificationId, NotificationSubscriptionId,
-    OrganizationId, PrincipalId, RepositoryError, Sha256Digest,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, NotificationId,
+    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    Sha256Digest,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -28,6 +32,8 @@ struct State {
         BTreeMap<(String, String), (String, OutboundNotificationSubscription)>,
     subscriptions:
         BTreeMap<(OrganizationId, NotificationSubscriptionId), OutboundNotificationSubscription>,
+    alert_policy_idempotency: BTreeMap<(String, String), (String, NotificationAlertPolicy)>,
+    alert_policies: BTreeMap<(OrganizationId, NotificationAlertPolicyId), NotificationAlertPolicy>,
     outbound_deliveries: BTreeMap<(OrganizationId, uuid::Uuid), StoredOutboundDelivery>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
 }
@@ -208,6 +214,40 @@ impl INotificationRepository for InMemoryNotificationRepository {
         Ok(notifications)
     }
 
+    async fn latest_alert_source_projection(
+        &self,
+        organization_id: OrganizationId,
+        recipient_principal_id: PrincipalId,
+        source: NotificationAlertSource,
+        source_aggregate_id: uuid::Uuid,
+        not_before: chrono::DateTime<chrono::Utc>,
+        before_aggregate_version: u64,
+    ) -> Result<Option<Notification>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .notifications
+            .values()
+            .filter(|notification| {
+                notification.organization_id == organization_id
+                    && notification.recipient_principal_id == recipient_principal_id
+                    && notification.source_aggregate_id == source_aggregate_id
+                    && notification.occurred_at >= not_before
+                    && notification.source_aggregate_version < before_aggregate_version
+                    && source
+                        .event_keys()
+                        .contains(&notification.source_event_key.as_str())
+            })
+            .max_by(|left, right| {
+                left.source_aggregate_version
+                    .cmp(&right.source_aggregate_version)
+                    .then_with(|| left.occurred_at.cmp(&right.occurred_at))
+                    .then_with(|| left.id.cmp(&right.id))
+            })
+            .cloned())
+    }
+
     async fn replay_mark_read(
         &self,
         idempotency: &IdempotencyRequest,
@@ -267,6 +307,197 @@ impl INotificationRepository for InMemoryNotificationRepository {
             value: write.notification,
             replayed: false,
         })
+    }
+}
+
+#[async_trait]
+impl INotificationAlertPolicyRepository for InMemoryNotificationRepository {
+    async fn replay_alert_policy_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<IdempotentWrite<NotificationAlertPolicy>>, RepositoryError> {
+        idempotency.validate().map_err(RepositoryError::Storage)?;
+        let state = self.state.read().await;
+        let key = (
+            idempotency.storage_key().0.to_owned(),
+            idempotency.storage_key().1.to_owned(),
+        );
+        match state.alert_policy_idempotency.get(&key) {
+            Some((digest, _)) if digest != &idempotency.request_digest => {
+                Err(RepositoryError::IdempotencyConflict)
+            }
+            Some((_, policy)) => Ok(Some(IdempotentWrite {
+                value: policy.clone(),
+                replayed: true,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn create_alert_policy(
+        &self,
+        write: CreateNotificationAlertPolicyWrite,
+    ) -> Result<IdempotentWrite<NotificationAlertPolicy>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Storage)?;
+        let mut state = self.state.write().await;
+        let idempotency_key = (
+            write.idempotency.storage_key().0.to_owned(),
+            write.idempotency.storage_key().1.to_owned(),
+        );
+        if let Some((digest, policy)) = state.alert_policy_idempotency.get(&idempotency_key) {
+            if digest != &write.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: policy.clone(),
+                replayed: true,
+            });
+        }
+        let policy = write.policy;
+        let key = (policy.organization_id, policy.id);
+        if state.alert_policies.contains_key(&key) {
+            return Err(RepositoryError::Conflict(
+                "notification alert policy ID is already in use".into(),
+            ));
+        }
+        let spec = policy.definition.spec();
+        if state.alert_policies.values().any(|existing| {
+            let existing_spec = existing.definition.spec();
+            existing.is_active()
+                && existing.organization_id == policy.organization_id
+                && existing.recipient_principal_id == policy.recipient_principal_id
+                && existing_spec.source == spec.source
+                && existing_spec.project_id == spec.project_id
+                && existing_spec.environment_id == spec.environment_id
+        }) {
+            return Err(RepositoryError::Conflict(
+                "an active notification alert policy already owns this exact source scope".into(),
+            ));
+        }
+        state.alert_policies.insert(key, policy.clone());
+        state.alert_policy_idempotency.insert(
+            idempotency_key,
+            (write.idempotency.request_digest, policy.clone()),
+        );
+        state.outbox.push(write.event);
+        Ok(IdempotentWrite {
+            value: policy,
+            replayed: false,
+        })
+    }
+
+    async fn revoke_alert_policy(
+        &self,
+        write: RevokeNotificationAlertPolicyWrite,
+    ) -> Result<IdempotentWrite<NotificationAlertPolicy>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Storage)?;
+        let mut state = self.state.write().await;
+        let idempotency_key = (
+            write.idempotency.storage_key().0.to_owned(),
+            write.idempotency.storage_key().1.to_owned(),
+        );
+        if let Some((digest, policy)) = state.alert_policy_idempotency.get(&idempotency_key) {
+            if digest != &write.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: policy.clone(),
+                replayed: true,
+            });
+        }
+        let key = (write.policy.organization_id, write.policy.id);
+        let existing = state
+            .alert_policies
+            .get(&key)
+            .ok_or(RepositoryError::NotFound)?;
+        write.validate_against(existing).map_err(|_| {
+            RepositoryError::Conflict("notification alert policy changed while revoking".into())
+        })?;
+        let policy = write.policy;
+        state.alert_policies.insert(key, policy.clone());
+        state.alert_policy_idempotency.insert(
+            idempotency_key,
+            (write.idempotency.request_digest, policy.clone()),
+        );
+        state.outbox.push(write.event);
+        Ok(IdempotentWrite {
+            value: policy,
+            replayed: false,
+        })
+    }
+
+    async fn find_alert_policy(
+        &self,
+        organization_id: OrganizationId,
+        recipient_principal_id: PrincipalId,
+        policy_id: NotificationAlertPolicyId,
+    ) -> Result<Option<NotificationAlertPolicy>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .alert_policies
+            .get(&(organization_id, policy_id))
+            .filter(|policy| policy.recipient_principal_id == recipient_principal_id)
+            .cloned())
+    }
+
+    async fn list_alert_policy_page(
+        &self,
+        organization_id: OrganizationId,
+        recipient_principal_id: PrincipalId,
+        after: Option<NotificationAlertPolicyCursor>,
+        limit: usize,
+    ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
+        let mut policies = self
+            .state
+            .read()
+            .await
+            .alert_policies
+            .values()
+            .filter(|policy| {
+                policy.organization_id == organization_id
+                    && policy.recipient_principal_id == recipient_principal_id
+                    && after.is_none_or(|cursor| {
+                        policy.created_at < cursor.created_at
+                            || (policy.created_at == cursor.created_at
+                                && policy.id < cursor.policy_id)
+                    })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        policies.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        policies.truncate(limit);
+        Ok(policies)
+    }
+
+    async fn list_active_alert_policies_for_source(
+        &self,
+        organization_id: OrganizationId,
+        source: NotificationAlertSource,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        occurred_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
+        let mut policies = self
+            .state
+            .read()
+            .await
+            .alert_policies
+            .values()
+            .filter(|policy| {
+                policy.organization_id == organization_id
+                    && policy.matches(source, project_id, environment_id, occurred_at)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        policies.sort_by_key(|policy| (policy.created_at, policy.id));
+        Ok(policies)
     }
 }
 

@@ -22,7 +22,7 @@ use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+    NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
 };
 use crate::modules::projects::domain::value_objects::{
     BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
@@ -448,6 +448,25 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             upsert_parameter(parameters, parameter);
         }
     }
+    if method == "get" && is_notification_alert_policy_collection_path(path) {
+        for parameter in [
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_NOTIFICATION_LIMIT,
+                    "default": DEFAULT_NOTIFICATION_LIMIT
+                }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
+        }
+    }
     if method == "get" && path.ends_with("/human-tasks") {
         upsert_parameter(
             parameters,
@@ -780,6 +799,17 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
             })
         };
         content.insert("application/json".into(), json!({"schema": schema}));
+    } else if is_notification_alert_policy_collection_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
+                }
+            }),
+        );
     } else if is_notification_outbound_subscription_collection_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
@@ -791,7 +821,8 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
-    } else if is_notification_outbound_subscription_revoke_path(path)
+    } else if is_notification_alert_policy_revoke_path(path)
+        || is_notification_outbound_subscription_revoke_path(path)
         || is_notification_read_path(path)
     {
         content.insert(
@@ -1023,6 +1054,10 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
     for status in success_statuses(method, path) {
         let component = if let Some(component) =
+            notification_alert_policy_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) =
             notification_outbound_subscription_success_component(method, path, status)
         {
             component
@@ -1048,6 +1083,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_mcp_route_policy_mutation_path(path)
                 || is_application_request_body_path(path)
                 || is_durable_cell_mutation_path(path)
+                || is_notification_alert_policy_collection_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
     {
         error_statuses.extend([413, 415]);
@@ -1204,7 +1240,9 @@ fn operation_tag(path: &str) -> &'static str {
         "Operations"
     } else if path.contains("audit-records") {
         "Audit"
-    } else if path.contains("notifications") || path.contains("notification-outbound-subscriptions")
+    } else if path.contains("notifications")
+        || path.contains("notification-alert-policies")
+        || path.contains("notification-outbound-subscriptions")
     {
         "Notifications"
     } else if path.contains("plugin-registries") {
@@ -1345,6 +1383,7 @@ fn creates_resource(path: &str) -> bool {
         || is_application_mutation_path(path)
         || is_durable_cell_application_collection_path(path)
         || is_durable_cell_revision_collection_path(path)
+        || is_notification_alert_policy_collection_path(path)
         || is_notification_outbound_subscription_collection_path(path)
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
@@ -1376,6 +1415,37 @@ fn is_membership_invitation_version_path(path: &str) -> bool {
 
 fn is_notification_read_path(path: &str) -> bool {
     path.ends_with("/notifications/{notification_id}/read")
+}
+
+fn is_notification_alert_policy_collection_path(path: &str) -> bool {
+    path.ends_with("/notification-alert-policies")
+}
+
+fn is_notification_alert_policy_revoke_path(path: &str) -> bool {
+    path.ends_with("/notification-alert-policies/{policy_id}/revoke")
+}
+
+fn is_notification_alert_policy_item_path(path: &str) -> bool {
+    path.ends_with("/notification-alert-policies/{policy_id}")
+}
+
+fn notification_alert_policy_success_component(
+    method: &str,
+    path: &str,
+    status: u16,
+) -> Option<String> {
+    if method == "get" && is_notification_alert_policy_collection_path(path) {
+        Some("NotificationAlertPolicyPageSuccess200".into())
+    } else if method == "get" && is_notification_alert_policy_item_path(path) {
+        Some("NotificationAlertPolicySuccess200".into())
+    } else if method == "post"
+        && (is_notification_alert_policy_collection_path(path)
+            || is_notification_alert_policy_revoke_path(path))
+    {
+        Some(format!("NotificationAlertPolicyMutationSuccess{status}"))
+    } else {
+        None
+    }
 }
 
 fn is_notification_outbound_subscription_collection_path(path: &str) -> bool {

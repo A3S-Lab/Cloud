@@ -4,8 +4,8 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::notifications::domain::{
-    INotificationRepository, MarkNotificationReadWrite, Notification, NotificationCursor,
-    NotificationScope, NotificationSeverity,
+    INotificationRepository, MarkNotificationReadWrite, Notification, NotificationAlertSource,
+    NotificationCursor, NotificationScope, NotificationSeverity,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId, NotificationId, OrganizationId,
@@ -281,6 +281,43 @@ impl INotificationRepository for PostgresNotificationRepository {
             .into_iter()
             .map(decode_notification)
             .collect()
+    }
+
+    async fn latest_alert_source_projection(
+        &self,
+        organization_id: OrganizationId,
+        recipient_principal_id: PrincipalId,
+        source: NotificationAlertSource,
+        source_aggregate_id: Uuid,
+        not_before: DateTime<Utc>,
+        before_aggregate_version: u64,
+    ) -> Result<Option<Notification>, RepositoryError> {
+        let mut query = notification_query()
+            .append(" where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and recipient_principal_id = ")
+            .bind(recipient_principal_id.as_uuid())
+            .append(" and source_aggregate_id = ")
+            .bind(source_aggregate_id)
+            .append(" and occurred_at >= ")
+            .bind(not_before)
+            .append(" and source_aggregate_version < ")
+            .bind(before_aggregate_version)
+            .append(" and (");
+        for (index, event_key) in source.event_keys().iter().enumerate() {
+            if index > 0 {
+                query = query.append(" or ");
+            }
+            query = query.append("source_event_key = ").bind(*event_key);
+        }
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(query.append(
+                ") order by source_aggregate_version desc, occurred_at desc, id desc limit 1",
+            ))
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(decode_notification)
+            .transpose()
     }
 
     async fn replay_mark_read(

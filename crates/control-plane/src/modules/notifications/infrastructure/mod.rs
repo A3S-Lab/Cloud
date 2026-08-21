@@ -1,3 +1,4 @@
+mod alert_policy_postgres;
 mod in_memory;
 mod outbound_connector;
 mod outbound_event_consumer;

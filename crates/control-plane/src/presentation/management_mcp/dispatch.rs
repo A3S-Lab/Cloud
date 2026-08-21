@@ -40,9 +40,11 @@ use super::identity::{
     RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
 use super::notifications::{
-    CreateOutboundNotificationSubscriptionArguments, MarkNotificationReadArguments,
-    NotificationArguments, NotificationListArguments, OutboundNotificationSubscriptionArguments,
-    OutboundNotificationSubscriptionListArguments, RevokeOutboundNotificationSubscriptionArguments,
+    CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
+    MarkNotificationReadArguments, NotificationAlertPolicyArguments,
+    NotificationAlertPolicyListArguments, NotificationArguments, NotificationListArguments,
+    OutboundNotificationSubscriptionArguments, OutboundNotificationSubscriptionListArguments,
+    RevokeNotificationAlertPolicyArguments, RevokeOutboundNotificationSubscriptionArguments,
 };
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
@@ -1183,6 +1185,57 @@ pub async fn execute(
         ManagementTool::NotificationsRead => {
             let arguments = arguments::parse::<MarkNotificationReadArguments>(arguments).ok()?;
             notifications::mark_read(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationAlertPoliciesList => {
+            let arguments =
+                arguments::parse::<NotificationAlertPolicyListArguments>(arguments).ok()?;
+            notifications::list_alert_policies(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationAlertPoliciesGet => {
+            let arguments = arguments::parse::<NotificationAlertPolicyArguments>(arguments).ok()?;
+            notifications::get_alert_policy(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationAlertPoliciesCreate => {
+            let arguments =
+                arguments::parse::<CreateNotificationAlertPolicyArguments>(arguments).ok()?;
+            notifications::create_alert_policy(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationAlertPoliciesRevoke => {
+            let arguments =
+                arguments::parse::<RevokeNotificationAlertPolicyArguments>(arguments).ok()?;
+            notifications::revoke_alert_policy(
                 command_bus,
                 organization_id,
                 actor_principal_id,

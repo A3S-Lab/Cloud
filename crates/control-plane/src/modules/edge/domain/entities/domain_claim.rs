@@ -94,7 +94,10 @@ impl DomainClaim {
         if self.state == DomainClaimState::Verified {
             return Ok(());
         }
-        if self.state != DomainClaimState::Pending {
+        if !matches!(
+            self.state,
+            DomainClaimState::Pending | DomainClaimState::Rejected
+        ) {
             return Err("domain claim cannot be verified from its current state".into());
         }
         self.state = DomainClaimState::Verified;
