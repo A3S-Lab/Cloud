@@ -446,7 +446,9 @@ mod connector;
 
 pub(crate) use application::{
     application_answer_workflow_run_input, application_answers_workflow_run_input,
-    application_variable_workflow_run_input, application_workflow_run_input,
+    application_frame_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
+    application_nested_frame_answer_authorities, application_variable_workflow_run_input,
+    application_workflow_run_input,
 };
 pub(crate) use composite::composite_workflow_run_input;
 pub(crate) use connector::{

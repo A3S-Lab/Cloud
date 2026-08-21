@@ -1,4 +1,8 @@
 use super::*;
+use crate::modules::workflow::domain::{
+    WorkflowApplicationFrameAuthority, WorkflowCompositeFrame, WorkflowIterationFailureMode,
+    WorkflowIterationRegionPolicy,
+};
 
 pub(crate) fn application_workflow_run_input() -> Result<WorkflowRunInput, String> {
     let mut input = typed_variable_workflow_run_input()?;
@@ -110,6 +114,239 @@ pub(crate) fn application_answers_workflow_run_input() -> Result<WorkflowRunInpu
         )?);
     input.validate()?;
     Ok(input)
+}
+
+pub(crate) fn application_frame_answer_workflow_run_input(
+    ordinal: u32,
+) -> Result<(WorkflowRunInput, WorkflowCompositeFrame, WorkflowRunInput), String> {
+    let (parent, child) = application_frame_answer_parent()?;
+    let (frame, child) = application_frame_answer_child(&parent, &child, ordinal)?;
+    Ok((parent, frame, child))
+}
+
+pub(crate) fn application_frame_answer_workflow_run_inputs() -> Result<
+    (
+        WorkflowRunInput,
+        Vec<(WorkflowCompositeFrame, WorkflowRunInput)>,
+    ),
+    String,
+> {
+    let (parent, child) = application_frame_answer_parent()?;
+    let frames = (0..2)
+        .map(|ordinal| application_frame_answer_child(&parent, &child, ordinal))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((parent, frames))
+}
+
+pub(crate) fn application_nested_frame_answer_authorities(
+) -> Result<[WorkflowApplicationFrameAuthority; 3], String> {
+    let (mut outer, _) = application_frame_answer_parent()?;
+    let (middle, leaf) = application_frame_answer_parent()?;
+    let middle_plan = &middle.plan;
+    let capability = outer
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "iteration")
+        .and_then(|step| step.capability.as_mut())
+        .ok_or_else(|| "nested Application root lost its child capability".to_owned())?;
+    capability.resource_id = middle_plan.workflow_definition_id.as_uuid();
+    capability.revision = middle_plan.workflow_revision_id.to_string();
+    capability.digest = middle_plan.workflow_digest.clone();
+    outer.plan.validate()?;
+    outer.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &outer.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "nested Application root test plan",
+    )?))?;
+    outer.validate()?;
+
+    let (_, middle_zero) = application_frame_answer_child(&outer, &middle, 0)?;
+    let (_, middle_one) = application_frame_answer_child(&outer, &middle, 1)?;
+    let (_, inner_zero_zero) = application_frame_answer_child(&middle_zero, &leaf, 0)?;
+    let (_, inner_zero_one) = application_frame_answer_child(&middle_zero, &leaf, 1)?;
+    let (_, inner_one_zero) = application_frame_answer_child(&middle_one, &leaf, 0)?;
+    let authority = |input: &WorkflowRunInput| {
+        input
+            .application_projection
+            .as_ref()
+            .and_then(|projection| projection.frame_authority.clone())
+            .ok_or_else(|| "nested Application child lost its frame authority".to_owned())
+    };
+    Ok([
+        authority(&inner_zero_zero)?,
+        authority(&inner_zero_one)?,
+        authority(&inner_one_zero)?,
+    ])
+}
+
+fn application_frame_answer_parent() -> Result<(WorkflowRunInput, WorkflowRunInput), String> {
+    let child = application_answer_workflow_run_input()?;
+    let policy = WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {
+        step_id: "iteration".into(),
+        maximum_items: 2,
+        maximum_concurrency: 1,
+        failure_mode: WorkflowIterationFailureMode::Terminate,
+    });
+    let root_input = serde_json::json!({
+        "items": [child.goal_input.clone(), child.goal_input.clone()]
+    });
+    let mut parent = composite_workflow_run_input(policy, root_input)?;
+    let schema_digest = parent
+        .plan
+        .steps
+        .first()
+        .ok_or_else(|| "Application frame parent lost its Input step".to_owned())?
+        .output_schema_digest
+        .clone();
+    let semantic_digest = parent
+        .plan
+        .steps
+        .first()
+        .and_then(|step| step.descriptor.as_ref())
+        .ok_or_else(|| "Application frame parent lost its descriptor binding".to_owned())?
+        .semantic_digest
+        .clone();
+    let mut items_configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    items_configuration.template = Some("{{current.items}}".into());
+    let items_configuration = configuration(items_configuration)?;
+    let mut items = plan_step(
+        "items",
+        WorkflowStepKind::Transform,
+        &items_configuration,
+        &schema_digest,
+    );
+    items.descriptor = Some(WorkflowStepDescriptorBinding {
+        step_id: "items".into(),
+        descriptor_id: "workflow.transform".into(),
+        descriptor_revision: "1.0.0".into(),
+        semantic_digest,
+    });
+    parent.plan.steps.insert(1, items);
+    parent
+        .plan
+        .edges
+        .retain(|edge| !(edge.source == "input" && edge.target == "iteration"));
+    parent.plan.edges.extend([
+        edge("input-items", "input", "items", None),
+        edge("items-iteration", "items", "iteration", None),
+    ]);
+    parent
+        .plan
+        .edges
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    parent
+        .payloads
+        .push(ResolvedWorkflowPayload::from_payload(&items_configuration));
+    parent
+        .payloads
+        .sort_by(|left, right| left.digest.cmp(&right.digest));
+    let payloads = parent
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    parent.plan.workflow_payload_set_digest = digest_payload_set(&payloads)?;
+    {
+        let composite = parent
+            .plan
+            .steps
+            .iter_mut()
+            .find(|step| step.id == "iteration")
+            .ok_or_else(|| "Application frame parent lost its composite step".to_owned())?;
+        let capability = composite
+            .capability
+            .as_mut()
+            .ok_or_else(|| "Application frame parent lost its child capability".to_owned())?;
+        capability.resource_id = child.plan.workflow_definition_id.as_uuid();
+        capability.revision = child.plan.workflow_revision_id.to_string();
+        capability.digest = child.plan.workflow_digest.clone();
+    }
+    parent.plan.validate()?;
+    parent.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &parent.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "Application frame parent test plan",
+    )?))?;
+    parent.schema = crate::modules::workflow::domain::WORKFLOW_RUN_INPUT_SCHEMA_V13.into();
+    parent.runtime_contract_revision =
+        crate::modules::workflow::domain::WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13.into();
+    parent.flow_workflow_version =
+        crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V13.into();
+    parent.application_projection = Some(
+        WorkflowRunApplicationProjection::from_application_composite(
+            &parent.plan,
+            "output".into(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )?,
+    );
+    parent.validate()?;
+    Ok((parent, child))
+}
+
+fn application_frame_answer_child(
+    parent: &WorkflowRunInput,
+    child: &WorkflowRunInput,
+    ordinal: u32,
+) -> Result<(WorkflowCompositeFrame, WorkflowRunInput), String> {
+    let variables = parent
+        .variable_contract
+        .as_ref()
+        .ok_or_else(|| "Application frame parent lost its variable contract".to_owned())?
+        .restore()?;
+    let regions = parent
+        .composite_regions
+        .as_ref()
+        .ok_or_else(|| "Application frame parent lost its composite regions".to_owned())?
+        .restore()?;
+    let frame = WorkflowCompositeFrame::open(
+        crate::modules::workflow::domain::WorkflowCompositeFrameRequest {
+            organization_id: parent.organization_id,
+            project_id: parent.project_id,
+            workflow_run_id: parent.workflow_run_id,
+            plan_revision_id: parent.plan_revision_id,
+            plan_digest: parent.plan_digest.clone(),
+            region_step_id: "iteration".into(),
+            ordinal,
+            effective_input: child.goal_input.clone(),
+            available_variables: std::collections::BTreeMap::from([(
+                "request".into(),
+                parent.goal_input.clone(),
+            )]),
+        },
+        &parent.plan,
+        &regions,
+        &variables,
+        None,
+    )?;
+    let authority =
+        crate::modules::workflow::domain::WorkflowApplicationFrameAuthority::from_parent(
+            parent, &frame,
+        )?
+        .ok_or_else(|| "Application frame authority was not projected".to_owned())?;
+    let mut child = child.clone();
+    let current_projection = child
+        .application_projection
+        .take()
+        .ok_or_else(|| "Application frame child lost its Answer projection".to_owned())?;
+    child.organization_id = parent.organization_id;
+    child.project_id = parent.project_id;
+    child.workflow_run_id = frame.child_workflow_run_id();
+    child.schema = crate::modules::workflow::domain::WORKFLOW_RUN_INPUT_SCHEMA_V13.into();
+    child.runtime_contract_revision =
+        crate::modules::workflow::domain::WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13.into();
+    child.flow_workflow_version =
+        crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V13.into();
+    child.application_projection = Some(WorkflowRunApplicationProjection::from_application_frame(
+        &child.plan,
+        current_projection.final_output_step_id,
+        current_projection.answer_step_ids,
+        authority,
+    )?);
+    child.validate()?;
+    Ok((frame, child))
 }
 
 pub(crate) fn application_variable_workflow_run_input() -> Result<WorkflowRunInput, String> {

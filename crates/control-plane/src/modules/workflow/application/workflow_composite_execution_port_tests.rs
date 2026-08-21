@@ -254,6 +254,7 @@ fn fixture() -> Fixture {
         ontology_revision_id,
         ontology_digest: ontology.contract.digest().clone(),
         environment_id: None,
+        application_frame: None,
         requested_by: principal_id,
         requested_at: now,
         timeout_seconds: 3_600,

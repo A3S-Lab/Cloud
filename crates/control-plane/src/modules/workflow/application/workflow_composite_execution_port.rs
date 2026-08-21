@@ -6,10 +6,10 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::{
     workflow_run_timeout_seconds, CancelWorkflowRunWrite, CreateWorkflowGoalWrite,
     CreateWorkflowRunWrite, IOntologyRepository, IWorkflowDefinitionRepository,
-    IWorkflowGoalRepository, IWorkflowRunRepository, WorkflowCompositeFrame, WorkflowGoalCompiled,
-    WorkflowGoalContract, WorkflowGoalRecord, WorkflowGoalSpec, WorkflowPlanCompiler,
-    WorkflowRunCancellationRequested, WorkflowRunCompiler, WorkflowRunRecord, WorkflowRunRequested,
-    WORKFLOW_COMPOSITE_FRAME_MAX_BYTES,
+    IWorkflowGoalRepository, IWorkflowRunRepository, WorkflowApplicationFrameAuthority,
+    WorkflowCompositeFrame, WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord,
+    WorkflowGoalSpec, WorkflowPlanCompiler, WorkflowRunCancellationRequested, WorkflowRunCompiler,
+    WorkflowRunRecord, WorkflowRunRequested, WORKFLOW_COMPOSITE_FRAME_MAX_BYTES,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -26,6 +26,8 @@ pub struct WorkflowCompositeExecutionRequest {
     pub ontology_digest: Sha256Digest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_id: Option<EnvironmentId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application_frame: Option<WorkflowApplicationFrameAuthority>,
     pub requested_by: PrincipalId,
     pub requested_at: DateTime<Utc>,
     pub timeout_seconds: u64,
@@ -49,6 +51,9 @@ impl WorkflowCompositeExecutionRequest {
             return Err("Workflow composite execution request authority is invalid".into());
         }
         workflow_run_timeout_seconds(Some(self.timeout_seconds))?;
+        if let Some(application_frame) = self.application_frame.as_ref() {
+            application_frame.validate_for_frame(&self.frame)?;
+        }
         canonical_json_bounded(
             self,
             WORKFLOW_COMPOSITE_FRAME_MAX_BYTES,
@@ -262,6 +267,15 @@ impl WorkflowCompositeExecutionApplicationService {
             .ok_or_else(|| {
                 ApplicationError::Invalid("composite child deadline overflowed".into())
             })?;
+        let observed_application_frame = input
+            .application_projection
+            .as_ref()
+            .and_then(|projection| projection.frame_authority.as_ref());
+        let expected_application_frame = input
+            .plan
+            .semantic_contract_set_digest
+            .as_ref()
+            .and(request.application_frame.as_ref());
         if run.id != request.workflow_run_id()
             || run.workflow_goal_id != request.workflow_goal_id()
             || run.plan_revision_id != request.plan_revision_id()
@@ -277,6 +291,7 @@ impl WorkflowCompositeExecutionApplicationService {
             || input.plan.environment_id != request.environment_id
             || input.goal_input != request.frame.child_input
             || input.plan.input_digest != request.frame.child_input_digest
+            || observed_application_frame != expected_application_frame
         {
             return Err(ApplicationError::Conflict(
                 "composite child WorkflowRun authority drifted".into(),
@@ -297,15 +312,31 @@ impl IWorkflowCompositeExecutionPort for WorkflowCompositeExecutionApplicationSe
             return Ok(record);
         }
         let (goal, revision) = self.compile_goal(request).await?;
-        let compiled = WorkflowRunCompiler::compile(
-            request.workflow_run_id(),
-            &goal.goal,
-            &goal.plan_revision,
-            &revision,
-            Some(request.timeout_seconds),
-            request.requested_by,
-            request.requested_at,
-        )
+        let compiled = if let (Some(application_frame), Some(_)) = (
+            request.application_frame.clone(),
+            revision.semantic_contracts.as_ref(),
+        ) {
+            WorkflowRunCompiler::compile_for_application_frame(
+                request.workflow_run_id(),
+                &goal.goal,
+                &goal.plan_revision,
+                &revision,
+                Some(request.timeout_seconds),
+                request.requested_by,
+                request.requested_at,
+                application_frame,
+            )
+        } else {
+            WorkflowRunCompiler::compile(
+                request.workflow_run_id(),
+                &goal.goal,
+                &goal.plan_revision,
+                &revision,
+                Some(request.timeout_seconds),
+                request.requested_by,
+                request.requested_at,
+            )
+        }
         .map_err(ApplicationError::Invalid)?;
         let record = WorkflowRunRecord {
             run: compiled.run,

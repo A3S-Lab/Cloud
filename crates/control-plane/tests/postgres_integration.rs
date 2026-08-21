@@ -397,7 +397,7 @@ async fn postgres_application_invocations_compose_exact_workflow_runs_after_rest
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn postgres_application_delivery_recovers_answer_variable_and_terminal_effects() {
+async fn postgres_application_delivery_recovers_frame_answer_variable_and_terminal_effects() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
@@ -406,7 +406,7 @@ async fn postgres_application_delivery_recovers_answer_variable_and_terminal_eff
         application_delivery_recovery_support::exercise_application_delivery_recovery,
     )
     .await
-    .expect("PostgreSQL Application C6-C11 delivery and recovery gate");
+    .expect("PostgreSQL Application C6-C12 delivery and recovery gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

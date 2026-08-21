@@ -320,9 +320,10 @@ parent and reduced composite materialization from immutable input and Flow
 history. Runtime still fails closed for Applications-owned reads/writes. Typed
 finite-Execution failure branches are implemented through Plan v3/Run v4 and
 exact default-output fallback through Plan v4/Run v7. Descriptor-bound
-Connector failure branches are implemented through Plan v5/Run v9; remaining
-non-Execution error branches and ordered Answer frames remain unimplemented
-parts of `W0.3`.
+Connector failure branches are implemented through Plan v5/Run v9. Application
+composite Answer frames use Run v13 root/child authority and stable zero-based
+ordinals; remaining non-Execution error branches remain unimplemented parts of
+`W0.3`.
 
 ### 4.3 Compiler rules
 

@@ -16,8 +16,9 @@ use crate::modules::workflow::domain::{
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
-    composite_workflow_run_input, execution_workflow_run_input,
-    routed_execution_workflow_run_input, workflow_run_input, TEST_EXECUTION_STEP_ID,
+    application_frame_answer_workflow_run_inputs, composite_workflow_run_input,
+    execution_workflow_run_input, routed_execution_workflow_run_input, workflow_run_input,
+    TEST_EXECUTION_STEP_ID,
 };
 use crate::modules::workflow::{
     IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionRequest,
@@ -230,6 +231,7 @@ impl IWorkflowExecutionPort for RejectingWorkflowExecutionPort {
 struct FakeWorkflowCompositePort {
     engine: FlowEngine,
     children: Mutex<BTreeMap<WorkflowRunId, WorkflowRunRecord>>,
+    requests: Mutex<Vec<WorkflowCompositeExecutionRequest>>,
     creates: AtomicUsize,
     terminal_on_start: bool,
 }
@@ -239,6 +241,7 @@ impl FakeWorkflowCompositePort {
         Self {
             engine,
             children: Mutex::new(BTreeMap::new()),
+            requests: Mutex::new(Vec::new()),
             creates: AtomicUsize::new(0),
             terminal_on_start: false,
         }
@@ -253,6 +256,10 @@ impl FakeWorkflowCompositePort {
 
     fn create_count(&self) -> usize {
         self.creates.load(Ordering::SeqCst)
+    }
+
+    async fn requests(&self) -> Vec<WorkflowCompositeExecutionRequest> {
+        self.requests.lock().await.clone()
     }
 
     async fn statuses(&self) -> Vec<WorkflowRunStatus> {
@@ -379,6 +386,7 @@ impl IWorkflowCompositeExecutionPort for FakeWorkflowCompositePort {
         request: &WorkflowCompositeExecutionRequest,
     ) -> ApplicationResult<WorkflowRunRecord> {
         request.validate().map_err(ApplicationError::Invalid)?;
+        self.requests.lock().await.push(request.clone());
         let id = request.workflow_run_id();
         if let Some(record) = self.children.lock().await.get(&id).cloned() {
             return Ok(record);
@@ -926,6 +934,40 @@ async fn composite_workflow_fixture(
     (engine, record, now)
 }
 
+async fn application_composite_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>)
+{
+    let (mut input, _) = application_frame_answer_workflow_run_inputs()
+        .expect("Application composite WorkflowRun input");
+    let now = canonical_timestamp(Utc::now());
+    input.requested_at = now;
+    input.deadline_at = now + chrono::Duration::hours(1);
+    input
+        .validate()
+        .expect("valid Application composite WorkflowRun input");
+    let (run, steps) = WorkflowRun::create(input.clone(), PrincipalId::new()).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-workflow-execution-test@1").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(TestFlowRuntime))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                &input.flow_workflow_name,
+                &input.flow_workflow_version,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start Application composite WorkflowRun Flow");
+    (engine, record, now)
+}
+
 #[tokio::test]
 async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() {
     let (engine, record, now) = composite_workflow_fixture(serde_json::json!([
@@ -946,6 +988,7 @@ async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() 
         .expect("waiting parent projection");
     assert_eq!(waiting.run.status, WorkflowRunStatus::Waiting);
     assert_eq!(port.create_count(), 1);
+    assert!(port.requests().await[0].application_frame.is_none());
     assert_eq!(
         engine
             .snapshot(&record.run.flow_run_id)
@@ -973,6 +1016,40 @@ async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() 
         .expect("completed parent snapshot");
     assert_eq!(snapshot.child_operations.len(), 2);
     assert!(snapshot.status.is_terminal());
+}
+
+#[tokio::test]
+async fn v13_application_composite_projects_exact_frame_authority_to_child_port() {
+    let (engine, record, now) = application_composite_workflow_fixture().await;
+    let port = Arc::new(FakeWorkflowCompositePort::queued(engine.clone()));
+    let coordinator = FlowWorkflowRunCoordinator::with_composites(
+        engine,
+        port.clone() as Arc<dyn IWorkflowCompositeExecutionPort>,
+    );
+
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate Application composite child")
+        .expect("waiting Application parent projection");
+    assert_eq!(waiting.run.status, WorkflowRunStatus::Waiting);
+    let requests = port.requests().await;
+    let [request] = requests.as_slice() else {
+        panic!("expected one Application composite request, got {requests:#?}")
+    };
+    let authority = request
+        .application_frame
+        .as_ref()
+        .expect("Application frame authority");
+    authority
+        .validate_for_frame(&request.frame)
+        .expect("exact composite request authority");
+    assert_eq!(authority.organization_id, record.run.organization_id);
+    assert_eq!(authority.project_id, record.run.project_id);
+    assert_eq!(authority.application_workflow_run_id, record.run.id);
+    assert_eq!(authority.parent_workflow_run_id, record.run.id);
+    assert_eq!(authority.frame_ordinal, 0);
+    assert_eq!(authority.child_workflow_run_id, request.workflow_run_id());
 }
 
 #[tokio::test]

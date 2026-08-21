@@ -244,13 +244,13 @@ jobs:
           postgres_application_invocations_compose_exact_workflow_runs_after_restart
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify Application C6-C11 delivery recovery
+      - name: Certify Application C6-C13 delivery recovery
         env:
           RUST_BACKTRACE: "1"
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_application_delivery_recovers_answer_variable_and_terminal_effects
+          postgres_application_delivery_recovers_frame_answer_variable_and_terminal_effects
           -- --exact --nocapture --test-threads=1
 
       - name: Certify immutable Connector profile persistence

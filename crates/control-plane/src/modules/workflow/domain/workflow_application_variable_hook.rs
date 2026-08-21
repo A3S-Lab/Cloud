@@ -1,6 +1,7 @@
 use super::{
     ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
@@ -51,8 +52,11 @@ impl WorkflowApplicationVariableSnapshotHookMetadata {
             })?
             .digest
             .clone();
-        if projection.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
-            || !projection.is_variable_step(&step.plan.id)
+        if !matches!(
+            projection.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) || !projection.is_variable_step(&step.plan.id)
             || !matches!(
                 step.plan.kind,
                 WorkflowStepKind::Output | WorkflowStepKind::Service
@@ -240,8 +244,11 @@ impl WorkflowApplicationVariableWriteHookMetadata {
         let snapshot_metadata =
             WorkflowApplicationVariableSnapshotHookMetadata::from_run_step(input, step)?;
         snapshot.validate(&snapshot_metadata)?;
-        if projection.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
-            || !projection.is_variable_assignment_step(&step.plan.id)
+        if !matches!(
+            projection.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) || !projection.is_variable_assignment_step(&step.plan.id)
             || step.plan.kind != WorkflowStepKind::Service
         {
             return Err(
@@ -323,8 +330,11 @@ impl WorkflowApplicationVariableWriteHookMetadata {
         let projection = input.application_projection.as_ref().ok_or_else(|| {
             "Workflow Application variable write lost its immutable projection".to_owned()
         })?;
-        if projection.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
-            || !projection.is_variable_assignment_step(&step.plan.id)
+        if !matches!(
+            projection.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) || !projection.is_variable_assignment_step(&step.plan.id)
             || step.plan.kind != WorkflowStepKind::Service
             || self.organization_id != input.organization_id
             || self.project_id != input.project_id

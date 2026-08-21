@@ -266,7 +266,9 @@ impl FlowWorkflowRunCoordinator {
                 "Workflow Applications semantic-effect coordination is not configured".into(),
             )
         })?;
-        let request = hook.request();
+        let request = hook
+            .request()
+            .map_err(WorkflowRunCoordinationError::Unavailable)?;
         request
             .validate()
             .map_err(WorkflowRunCoordinationError::Unavailable)?;
@@ -746,6 +748,12 @@ fn application_lifecycle_projection(
     let Some(application) = record.run.execution_input.application_projection.as_ref() else {
         return Ok(None);
     };
+    application
+        .validate(&record.run.execution_input.plan)
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+    if !application.projects_application_lifecycle() {
+        return Ok(None);
+    }
     let status = match record.run.status {
         WorkflowRunStatus::Completed => ApplicationInvocationStatus::Succeeded,
         WorkflowRunStatus::Failed | WorkflowRunStatus::TimedOut => {
@@ -757,9 +765,6 @@ fn application_lifecycle_projection(
         | WorkflowRunStatus::Waiting
         | WorkflowRunStatus::Cancelling => return Ok(None),
     };
-    application
-        .validate(&record.run.execution_input.plan)
-        .map_err(WorkflowRunCoordinationError::Unavailable)?;
     let completed_at = record.run.finished_at.ok_or_else(|| {
         WorkflowRunCoordinationError::Unavailable(
             "terminal Application WorkflowRun has no finish time".into(),

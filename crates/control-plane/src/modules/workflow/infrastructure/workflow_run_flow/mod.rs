@@ -23,10 +23,11 @@ use crate::modules::workflow::domain::{
     WorkflowStepDefaultOutputEvidence, WorkflowStepFailureOutput, WorkflowStepKind,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
         (
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V12,
+        ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V13,
         ),
     ]
     .into_iter()
@@ -275,6 +280,7 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
                 ) {
                     return Err(FlowError::Runtime(
                         "WorkflowRun step runtime contract revision is unsupported".into(),

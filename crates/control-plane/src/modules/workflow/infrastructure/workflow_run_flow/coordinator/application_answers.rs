@@ -8,18 +8,18 @@ pub(super) struct ObservedApplicationAnswerHook {
 }
 
 impl ObservedApplicationAnswerHook {
-    pub(super) fn request(&self) -> WorkflowApplicationMessageRequest {
-        WorkflowApplicationMessageRequest {
+    pub(super) fn request(&self) -> Result<WorkflowApplicationMessageRequest, String> {
+        Ok(WorkflowApplicationMessageRequest {
             effect: WorkflowApplicationEffectRequest {
                 organization_id: self.metadata.organization_id,
-                workflow_run_id: self.metadata.workflow_run_id,
-                step_id: self.metadata.step_id.clone(),
+                workflow_run_id: self.metadata.effect_workflow_run_id(),
+                step_id: self.metadata.effect_step_id()?,
                 step_attempt: self.metadata.step_attempt,
-                effect_ordinal: 0,
+                effect_ordinal: self.metadata.effect_ordinal(),
                 occurred_at: self.created_at,
             },
             content: self.metadata.content.clone(),
-        }
+        })
     }
 }
 
