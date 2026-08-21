@@ -130,7 +130,7 @@ The code on `main` separates implemented mechanics from released capability:
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-  tools. Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8` freezes and persists
+  tools. Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9` freezes and persists
   release-pinned end users, sessions, invocation correlation, ordered messages,
   optimistic conversation variables, exactly-once Workflow semantic effects,
   and immutable invocation execution authority through migrations `125`-`127`
@@ -144,13 +144,15 @@ The code on `main` separates implemented mechanics from released capability:
   Workflow consumer port now resolves the sole Run-bound invocation, reads the
   exact conversation-variable version, and applies Answer, final-output,
   variable, and terminal effects with deterministic ambiguous-commit recovery.
-  C8 exposes project-member session open/read,
+  Application-only Run v10 projects its aggregate final output and terminal
+  state through that port before WorkflowRun persistence. C8 exposes
+  project-member session open/read,
   invocation request/read, and ordered message reads through REST/OpenAPI
   `1.43.0`, the maintained client, CLI, and five additional Management MCP
-  tools. Workflow runtime dispatch over the C7 port, application-scoped
-  credentials, public close/cancel commands, blocking/streaming answer
-  delivery, Gateway routing, monitoring, and the `APP0.6` parity gate remain
-  open.
+  tools. Descriptor-bound Answer/Application-variable dispatch,
+  application-scoped credentials, public close/cancel commands,
+  blocking/streaming answer delivery, Gateway routing, monitoring, and the
+  `APP0.6` parity gate remain open.
   `K0.1-C1` now has a component-only Files admission
   foundation: one canonical UserFile ACL, bounded upload/scan/retention
   lifecycle, typed immutable reference, and streaming adapter over the shared
@@ -371,7 +373,7 @@ creating their own control planes:
    Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
    REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
    tools all reuse that authority. Component-only
-   `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8` adds and
+    `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9` adds and
    persists the single release-pinned session/message/variable contract,
    deterministic Workflow-effect replay boundary, and immutable invocation
    execution authority through migrations `125`-`127`. A typed internal port
@@ -381,11 +383,12 @@ creating their own control planes:
    or dispatch path. Authorization-first internal session, invocation,
    cancellation, and bounded cursor CQRS recover exact persisted state; no
    application-scoped public delivery protocol is claimed. The C7 internal
-   Workflow consumer port
-   resolves Applications authority from the bound Run and applies exact
-   Answer/final-output/variable/terminal effects, but Workflow Flow dispatch
-   over that port remains gated. C8 adds project-member management delivery
-   through REST
+    Workflow consumer port resolves Applications authority from the bound Run
+    and applies exact Answer/final-output/variable/terminal effects. C9 uses
+    application-only Run v10 to project aggregate final output and terminal
+    state before WorkflowRun persistence; descriptor-bound Answer and
+    Application-variable dispatch remain gated. C8 adds project-member
+    management delivery through REST
    contract `1.43.0`, the client, CLI, and five Management MCP tools, while
    application credentials, public close/cancel, answer streaming, and Gateway
    delivery remain unavailable.
