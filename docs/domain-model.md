@@ -661,7 +661,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-`APP0.2-C1/C2/C3/C4/C5/C6/C7/C8/C9` freezes and persists the next
+`APP0.2-C1` through `C11` freezes and persists the next
 Applications-owned records and exposes only project-member management
 admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
@@ -724,9 +724,28 @@ successful terminal invocation, maps failed/time-out and cancellation outcomes
 to their closed Application terminal states, and only then returns the
 WorkflowRun projection for persistence. A missing port or effect failure blocks
 that save, so retry regenerates the same effect identity and timestamp. Inputs
-v1-v9 never probe Applications. Descriptor-bound Answer and
-Application-variable step dispatch are not yet implemented, and no public
-availability is claimed.
+v1-v9 never probe Applications. At this C9 boundary, descriptor-bound Answer
+and Application-variable step dispatch are not yet implemented.
+
+C10 partitions the exact coarse Output steps into one Workflow-owned final
+Output and ordered Applications-owned `application.answer` ports. Its
+projection v2 and Run v11 compute each typed Answer value before creating a
+deterministic Hook, require exact C7 message commit evidence before resuming,
+and exclude Answer leaves from final-output aggregation. Historic v1-v10 runs
+never acquire Answer dispatch.
+
+C11 admits only the exact
+`application.conversation-variable-assign` Service descriptor alongside the
+existing exact Answer descriptor. Projection v3 and Run v12 process variable
+ports in immutable Plan order: a first Hook freezes the C7 owner snapshot, and
+an assignment uses a second digest-only Hook before the existing Applications
+CAS. Expected revision and effect identity come from owner and Flow authority,
+never caller values. Lost responses replay the exact read or write; stale CAS
+and drift fail closed. Authorized inspection reconstructs the latest values
+from the same redacted Flow history, while independent composite regions may
+coexist only when they do not read, assign, or export Application values.
+Historic v1-v11 behavior remains unchanged, and no public availability is
+claimed.
 
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse

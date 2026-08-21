@@ -9,14 +9,15 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::entities::digest_payload_set;
 use crate::modules::workflow::domain::{
     AssignmentPolicyRef, CapabilityOwner, CapabilityReference, CapabilityType, HumanTask,
-    NewHumanTask, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, WorkflowBranchRoute,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
-    WorkflowDataSchema, WorkflowDataType, WorkflowDefaultOutput, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
-    WorkflowRetryPolicy, WorkflowRunApplicationProjection, WorkflowRunInput,
-    WorkflowStepConfiguration, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding,
-    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort,
-    WorkflowStepPortCardinality, WorkflowStepRetryClassification, WorkflowVariableContract,
+    NewHumanTask, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
+    ResolvedWorkflowVariableContract, WorkflowBranchRoute, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeRegions, WorkflowCompositeRegionsSpec, WorkflowDataSchema, WorkflowDataType,
+    WorkflowDefaultOutput, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPlan,
+    WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode, WorkflowRetryPolicy,
+    WorkflowRunApplicationProjection, WorkflowRunInput, WorkflowStepConfiguration,
+    WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepRetryClassification, WorkflowVariableAssignment, WorkflowVariableContract,
     WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
     WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
     WorkflowVariableStorageClass, WORKFLOW_PLAN_COMPILER_REVISION,
@@ -25,15 +26,16 @@ use crate::modules::workflow::domain::{
     WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
-    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
-    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V2,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5,
+    WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8,
+    WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10,
+    WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
+    WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
@@ -55,6 +57,7 @@ pub(crate) const TEST_EXECUTION_STEP_ID: &str = "execute";
 pub(crate) const TEST_CONNECTOR_STEP_ID: &str = "invoke";
 pub(crate) const TEST_ANSWER_STEP_ID: &str = "answer";
 pub(crate) const TEST_SECOND_ANSWER_STEP_ID: &str = "answer_second";
+pub(crate) const TEST_APPLICATION_VARIABLE_STEP_ID: &str = "assign_conversation";
 
 fn unsupported_failure_contract() -> WorkflowStepFailureContract {
     WorkflowStepFailureContract {
@@ -545,6 +548,170 @@ pub(crate) fn application_answers_workflow_run_input() -> Result<WorkflowRunInpu
                 TEST_SECOND_ANSWER_STEP_ID.into(),
             ],
         )?);
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn application_variable_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = typed_variable_workflow_run_input()?;
+    let schema_digest = input
+        .plan
+        .steps
+        .first()
+        .ok_or_else(|| "WorkflowRun test plan has no steps".to_owned())?
+        .output_schema_digest
+        .clone();
+    let assignment_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Service))?;
+    let mut assignment = plan_step(
+        TEST_APPLICATION_VARIABLE_STEP_ID,
+        WorkflowStepKind::Service,
+        &assignment_configuration,
+        &schema_digest,
+    );
+    let semantic_digest = input
+        .plan
+        .steps
+        .first()
+        .and_then(|step| step.descriptor.as_ref())
+        .ok_or_else(|| "WorkflowRun test plan has no descriptor binding".to_owned())?
+        .semantic_digest
+        .clone();
+    assignment.descriptor = Some(WorkflowStepDescriptorBinding {
+        step_id: TEST_APPLICATION_VARIABLE_STEP_ID.into(),
+        descriptor_id: "application.conversation-variable-assign".into(),
+        descriptor_revision: "1.0.0".into(),
+        semantic_digest,
+    });
+    let output_index = input
+        .plan
+        .steps
+        .iter()
+        .position(|step| step.id == "output")
+        .ok_or_else(|| "WorkflowRun test plan has no output step".to_owned())?;
+    input.plan.steps.insert(output_index, assignment);
+    input
+        .plan
+        .edges
+        .retain(|edge| edge.id != "high-output" && edge.id != "normal-output");
+    input.plan.edges.extend([
+        edge(
+            "high-assign-conversation",
+            "high",
+            TEST_APPLICATION_VARIABLE_STEP_ID,
+            None,
+        ),
+        edge(
+            "normal-assign-conversation",
+            "normal",
+            TEST_APPLICATION_VARIABLE_STEP_ID,
+            None,
+        ),
+        edge(
+            "assign-conversation-output",
+            TEST_APPLICATION_VARIABLE_STEP_ID,
+            "output",
+            None,
+        ),
+    ]);
+
+    let existing = input
+        .variable_contract
+        .as_ref()
+        .ok_or_else(|| "WorkflowRun test plan has no variable contract".to_owned())?
+        .restore()?;
+    let mut variables = existing.spec().clone();
+    variables.declarations.extend([
+        WorkflowVariableDeclaration {
+            name: "conversation_topic".into(),
+            scope: WorkflowVariableScope::Application,
+            value_type: WorkflowDataType::String,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: None,
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::OptimisticApplicationPort,
+            required: false,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: None,
+        },
+        WorkflowVariableDeclaration {
+            name: "conversation_revision".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::Number,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest.clone()),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: false,
+            source_step_id: None,
+            source_path: vec!["conversationRevision".into()],
+            region_id: None,
+            default_value_digest: None,
+        },
+        WorkflowVariableDeclaration {
+            name: "conversation_effect".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::String,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest.clone()),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: false,
+            source_step_id: None,
+            source_path: vec!["conversationEffect".into()],
+            region_id: None,
+            default_value_digest: None,
+        },
+    ]);
+    variables.assignments.push(WorkflowVariableAssignment {
+        id: "assign-conversation-topic".into(),
+        target_variable: "conversation_topic".into(),
+        source_variable: "request".into(),
+        writer_step_id: TEST_APPLICATION_VARIABLE_STEP_ID.into(),
+        writer_region_id: None,
+        source_path: vec!["priority".into()],
+        value_type: WorkflowDataType::String,
+        value_schema_digest: schema_digest.clone(),
+        mutation_order: 1,
+        expected_revision_variable: Some("conversation_revision".into()),
+        idempotency_key_variable: Some("conversation_effect".into()),
+    });
+    let variables = WorkflowVariableContract::from_spec(variables)?;
+
+    let mut payloads = input
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    payloads.push(assignment_configuration);
+    payloads.sort_by(|left, right| left.digest().cmp(right.digest()));
+    input.plan.workflow_payload_set_digest = digest_payload_set(&payloads)?;
+    input.payloads = payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::from_payload)
+        .collect();
+    input.plan.variable_contract_digest = Some(variables.digest().clone());
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V12.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V12.into();
+    input.variable_contract = Some(ResolvedWorkflowVariableContract::from_contract(&variables));
+    input.application_projection = Some(
+        WorkflowRunApplicationProjection::from_application_variables(
+            &input.plan,
+            "output".into(),
+            Vec::new(),
+            vec![TEST_APPLICATION_VARIABLE_STEP_ID.into()],
+            vec![TEST_APPLICATION_VARIABLE_STEP_ID.into()],
+        )?,
+    );
     input.validate()?;
     Ok(input)
 }

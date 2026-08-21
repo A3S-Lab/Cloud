@@ -260,10 +260,25 @@ impl WorkflowRevision {
         }
         if let Some(contracts) = &self.semantic_contracts {
             contracts.validate(self.contract.spec())?;
-        } else if self.contract.spec().has_non_branch_source_handles() {
-            return Err(
-                "Workflow failure routes require immutable descriptor semantic contracts".into(),
-            );
+        } else {
+            if self
+                .contract
+                .spec()
+                .steps
+                .iter()
+                .any(|step| step.kind == WorkflowStepKind::Service && step.capability.is_none())
+            {
+                return Err(
+                    "Workflow Service steps without ConnectorRevision require immutable descriptor semantic contracts"
+                        .into(),
+                );
+            }
+            if self.contract.spec().has_non_branch_source_handles() {
+                return Err(
+                    "Workflow failure routes require immutable descriptor semantic contracts"
+                        .into(),
+                );
+            }
         }
         validate_payload_bindings(
             &self.contract,

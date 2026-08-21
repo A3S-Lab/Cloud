@@ -834,8 +834,8 @@ fn compiler_preserves_standalone_v2_and_emits_application_projection_v10() {
         organization_id,
         project_id,
         definition_id,
-        bound_workflow.name,
-        bound_workflow.description,
+        bound_workflow.name.clone(),
+        bound_workflow.description.clone(),
         revision_id,
         contract.digest().clone(),
         principal_id,
@@ -1164,8 +1164,8 @@ fn compiler_emits_v11_only_for_exact_application_answer_and_rejects_standalone_d
         organization_id,
         project_id,
         definition_id,
-        bound_workflow.name,
-        bound_workflow.description,
+        bound_workflow.name.clone(),
+        bound_workflow.description.clone(),
         revision_id,
         contract.digest().clone(),
         principal_id,
@@ -1254,6 +1254,423 @@ fn compiler_emits_v11_only_for_exact_application_answer_and_rejects_standalone_d
     assert_eq!(projection.final_output_step_id, "output");
     assert_eq!(projection.answer_step_ids, ["answer"]);
     input.validate().expect("valid v11 input");
+}
+
+#[test]
+fn compiler_emits_v12_only_for_exact_application_variable_port() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let definition_id = WorkflowDefinitionId::new();
+    let revision_id = WorkflowRevisionId::new();
+    let principal_id = PrincipalId::new();
+    let now = Utc::now();
+    let data_schema =
+        WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
+            value_type: WorkflowDataType::Any,
+            fields: Vec::new(),
+        }))
+        .expect("data schema");
+    let input_configuration = WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+        WorkflowStepConfiguration::empty(WorkflowStepKind::Input),
+    ))
+    .expect("input configuration");
+    let assignment_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Service),
+        ))
+        .expect("assignment configuration");
+    let output_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Output),
+        ))
+        .expect("output configuration");
+    let bound_workflow = WorkflowSpec {
+        name: "Application variable workflow".into(),
+        description: String::new(),
+        steps: vec![
+            WorkflowStepSpec {
+                configuration_digest: input_configuration.digest().clone(),
+                input_schema_digest: data_schema.digest().clone(),
+                output_schema_digest: data_schema.digest().clone(),
+                ..step("input", WorkflowStepKind::Input)
+            },
+            WorkflowStepSpec {
+                configuration_digest: assignment_configuration.digest().clone(),
+                input_schema_digest: data_schema.digest().clone(),
+                output_schema_digest: data_schema.digest().clone(),
+                ..step("assign", WorkflowStepKind::Service)
+            },
+            WorkflowStepSpec {
+                configuration_digest: output_configuration.digest().clone(),
+                input_schema_digest: data_schema.digest().clone(),
+                output_schema_digest: data_schema.digest().clone(),
+                ..step("output", WorkflowStepKind::Output)
+            },
+        ],
+        edges: vec![
+            WorkflowEdgeSpec {
+                id: "input-assign".into(),
+                source: "input".into(),
+                target: "assign".into(),
+                source_handle: None,
+            },
+            WorkflowEdgeSpec {
+                id: "assign-output".into(),
+                source: "assign".into(),
+                target: "output".into(),
+                source_handle: None,
+            },
+        ],
+    };
+    let contract = WorkflowContract::from_spec(bound_workflow.clone()).expect("workflow");
+    let legacy_error = WorkflowRevision::initial(
+        organization_id,
+        project_id,
+        definition_id,
+        WorkflowRevisionId::new(),
+        contract.clone(),
+        vec![
+            data_schema.clone(),
+            input_configuration.clone(),
+            assignment_configuration.clone(),
+            output_configuration.clone(),
+        ],
+        principal_id,
+        now,
+    )
+    .expect_err("capability-free legacy Service revision");
+    assert!(legacy_error.contains("require immutable descriptor semantic contracts"));
+    let mut assignment_descriptor = descriptor(
+        "application.conversation-variable-assign",
+        WorkflowStepKind::Service,
+        "input",
+        "values",
+    );
+    assignment_descriptor.owner = WorkflowStepOwner::Applications;
+    assignment_descriptor.execution_class = WorkflowStepExecutionClass::OwningApplicationPort;
+    assignment_descriptor.required_bindings = vec![WorkflowStepBindingKind::ReleaseReference];
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.application-variable".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: vec![
+            descriptor(
+                "workflow.input",
+                WorkflowStepKind::Input,
+                "invocation",
+                "value",
+            ),
+            assignment_descriptor.clone(),
+            descriptor(
+                "workflow.output",
+                WorkflowStepKind::Output,
+                "result",
+                "value",
+            ),
+        ],
+    })
+    .expect("registry");
+    let descriptor_bindings =
+        WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+            id: "support.application-variable".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            bindings: [
+                ("input", "workflow.input"),
+                ("assign", "application.conversation-variable-assign"),
+                ("output", "workflow.output"),
+            ]
+            .into_iter()
+            .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+                step_id: step_id.into(),
+                descriptor_id: descriptor_id.into(),
+                descriptor_revision: "1.0.0".into(),
+                semantic_digest: registry
+                    .resolve(descriptor_id, "1.0.0")
+                    .expect("descriptor")
+                    .semantic_digest()
+                    .clone(),
+            })
+            .collect(),
+        })
+        .expect("bindings");
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.application-variable".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![
+            WorkflowVariableDeclaration {
+                name: "request".into(),
+                scope: WorkflowVariableScope::InvocationInput,
+                value_type: WorkflowDataType::Any,
+                value_schema_digest: data_schema.digest().clone(),
+                source_schema_digest: Some(data_schema.digest().clone()),
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Immutable,
+                required: true,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: None,
+            },
+            WorkflowVariableDeclaration {
+                name: "conversation_topic".into(),
+                scope: WorkflowVariableScope::Application,
+                value_type: WorkflowDataType::String,
+                value_schema_digest: data_schema.digest().clone(),
+                source_schema_digest: None,
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::OptimisticApplicationPort,
+                required: false,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: None,
+            },
+            WorkflowVariableDeclaration {
+                name: "conversation_revision".into(),
+                scope: WorkflowVariableScope::InvocationInput,
+                value_type: WorkflowDataType::Number,
+                value_schema_digest: data_schema.digest().clone(),
+                source_schema_digest: Some(data_schema.digest().clone()),
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Immutable,
+                required: true,
+                source_step_id: None,
+                source_path: vec!["conversationRevision".into()],
+                region_id: None,
+                default_value_digest: None,
+            },
+            WorkflowVariableDeclaration {
+                name: "conversation_effect".into(),
+                scope: WorkflowVariableScope::InvocationInput,
+                value_type: WorkflowDataType::String,
+                value_schema_digest: data_schema.digest().clone(),
+                source_schema_digest: Some(data_schema.digest().clone()),
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Immutable,
+                required: true,
+                source_step_id: None,
+                source_path: vec!["conversationEffect".into()],
+                region_id: None,
+                default_value_digest: None,
+            },
+        ],
+        reads: Vec::new(),
+        assignments: vec![WorkflowVariableAssignment {
+            id: "assign-conversation-topic".into(),
+            target_variable: "conversation_topic".into(),
+            source_variable: "request".into(),
+            writer_step_id: "assign".into(),
+            writer_region_id: None,
+            source_path: vec!["topic".into()],
+            value_type: WorkflowDataType::String,
+            value_schema_digest: data_schema.digest().clone(),
+            mutation_order: 1,
+            expected_revision_variable: Some("conversation_revision".into()),
+            idempotency_key_variable: Some("conversation_effect".into()),
+        }],
+        exports: Vec::new(),
+    })
+    .expect("variables");
+    let semantic_contracts = WorkflowRevisionSemanticContracts::create(
+        &bound_workflow,
+        descriptor_bindings,
+        registry,
+        variables,
+    )
+    .expect("semantic contracts");
+    let classified = semantic_contracts
+        .application_output_steps(&bound_workflow)
+        .expect("Application outputs");
+    assert_eq!(classified.final_output_step_id, "output");
+    assert_eq!(classified.variable_step_ids, ["assign".to_owned()].into());
+    assert_eq!(
+        classified.variable_assignment_step_ids,
+        ["assign".to_owned()].into()
+    );
+
+    let revision = WorkflowRevision::initial_with_semantic_contracts(
+        organization_id,
+        project_id,
+        definition_id,
+        revision_id,
+        contract.clone(),
+        vec![
+            data_schema,
+            input_configuration,
+            assignment_configuration,
+            output_configuration,
+        ],
+        semantic_contracts,
+        principal_id,
+        now,
+    )
+    .expect("revision");
+    let definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        definition_id,
+        bound_workflow.name.clone(),
+        bound_workflow.description.clone(),
+        revision_id,
+        contract.digest().clone(),
+        principal_id,
+        now,
+    )
+    .expect("definition");
+    let ontology_id = OntologyId::new();
+    let ontology_revision_id = OntologyRevisionId::new();
+    let ontology_contract = OntologyContract::from_spec(OntologySpec {
+        name: "Application variable ontology".into(),
+        description: String::new(),
+        object_types: vec![OntologyObjectType {
+            id: "request".into(),
+            label: "Request".into(),
+            schema_digest: digest('a'),
+            key_fields: vec!["id".into()],
+        }],
+        relation_types: Vec::new(),
+        rules: Vec::new(),
+    })
+    .expect("ontology");
+    let ontology_revision = OntologyRevision::initial(
+        organization_id,
+        project_id,
+        ontology_id,
+        ontology_revision_id,
+        ontology_contract.clone(),
+        principal_id,
+        now,
+    );
+    let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: "Application variable goal".into(),
+        workflow_definition_id: definition_id,
+        workflow_revision_id: revision_id,
+        workflow_digest: contract.digest().clone(),
+        ontology_id,
+        ontology_revision_id,
+        ontology_digest: ontology_contract.digest().clone(),
+        environment_id: None,
+        input: json!({
+            "topic": "urgent",
+            "conversationRevision": 0,
+            "conversationEffect": "effect-1"
+        }),
+    })
+    .expect("goal");
+    let compiled = WorkflowPlanCompiler::compile_goal(
+        WorkflowGoalId::new(),
+        PlanRevisionId::new(),
+        goal_contract,
+        &definition,
+        &revision,
+        &ontology_revision,
+        principal_id,
+        now,
+    )
+    .expect("compiled goal");
+    let standalone_error = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect_err("standalone Application variable dispatch");
+    assert!(standalone_error.contains("requires Application composition"));
+    let application = WorkflowRunCompiler::compile_for_application(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("Application variable run");
+    let input = &application.run.execution_input;
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V12);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V12);
+    let projection = input
+        .application_projection
+        .as_ref()
+        .expect("Application projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+    );
+    assert_eq!(projection.variable_step_ids, ["assign"]);
+    assert_eq!(projection.variable_assignment_step_ids, ["assign"]);
+    input.validate().expect("valid v12 input");
+
+    assignment_descriptor.id = "application.variable-assign".into();
+    assignment_descriptor.semantic_profile = "application.variable-assign".into();
+    let alias_registry =
+        WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+            id: "support.application-variable-alias".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            descriptors: vec![
+                descriptor(
+                    "workflow.input",
+                    WorkflowStepKind::Input,
+                    "invocation",
+                    "value",
+                ),
+                assignment_descriptor,
+                descriptor(
+                    "workflow.output",
+                    WorkflowStepKind::Output,
+                    "result",
+                    "value",
+                ),
+            ],
+        })
+        .expect("alias registry");
+    let alias_bindings =
+        WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+            id: "support.application-variable-alias".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            bindings: [
+                ("input", "workflow.input"),
+                ("assign", "application.variable-assign"),
+                ("output", "workflow.output"),
+            ]
+            .into_iter()
+            .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+                step_id: step_id.into(),
+                descriptor_id: descriptor_id.into(),
+                descriptor_revision: "1.0.0".into(),
+                semantic_digest: alias_registry
+                    .resolve(descriptor_id, "1.0.0")
+                    .expect("descriptor")
+                    .semantic_digest()
+                    .clone(),
+            })
+            .collect(),
+        })
+        .expect("alias bindings");
+    let error = WorkflowRevisionSemanticContracts::create(
+        &bound_workflow,
+        alias_bindings,
+        alias_registry,
+        revision
+            .semantic_contracts
+            .as_ref()
+            .expect("semantics")
+            .variable_contract()
+            .clone(),
+    )
+    .expect_err("descriptor alias");
+    assert!(error.contains("unsupported release_reference binding"));
 }
 
 mod execution_fallback;

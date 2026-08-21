@@ -1,7 +1,9 @@
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
-    materialize_workflow_variables_with_composites, project_workflow_variable_reads,
-    WorkflowCompositeRegionResult, WorkflowRunInput, WORKFLOW_RUN_INPUT_MAX_BYTES,
+    materialize_workflow_variables_with_application, project_workflow_variable_reads,
+    resolve_application_variable_assignment_values,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowCompositeRegionResult,
+    WorkflowRunInput, WORKFLOW_RUN_INPUT_MAX_BYTES,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -17,6 +19,7 @@ pub(super) fn effective_input(
     legacy_input: Value,
     outputs: &BTreeMap<String, Value>,
     composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+    application: Option<&WorkflowApplicationVariableSnapshotResumePayload>,
 ) -> Result<WorkflowStepVariableProjection, String> {
     let Some(contract) = input.variable_contract.as_ref() else {
         return Ok(WorkflowStepVariableProjection {
@@ -36,8 +39,13 @@ pub(super) fn effective_input(
             authoritative: false,
         });
     }
-    let values =
-        materialize_workflow_variables_with_composites(input, &contract, outputs, composites)?;
+    let values = materialize_workflow_variables_with_application(
+        input,
+        &contract,
+        outputs,
+        composites,
+        application,
+    )?;
     let Some(projected) = project_workflow_variable_reads(&contract, step_id, &values)? else {
         return Ok(WorkflowStepVariableProjection {
             input: legacy_input,
@@ -53,6 +61,30 @@ pub(super) fn effective_input(
         input: projected,
         authoritative: true,
     })
+}
+
+pub(super) fn application_assignment_values(
+    input: &WorkflowRunInput,
+    step_id: &str,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+    application: &WorkflowApplicationVariableSnapshotResumePayload,
+) -> Result<Value, String> {
+    let contract = input
+        .variable_contract
+        .as_ref()
+        .ok_or_else(|| {
+            "Workflow Application variable assignment lost its immutable contract".to_owned()
+        })?
+        .restore()?;
+    resolve_application_variable_assignment_values(
+        input,
+        &contract,
+        step_id,
+        outputs,
+        composites,
+        application,
+    )
 }
 
 #[cfg(test)]
@@ -148,6 +180,7 @@ mod tests {
                 serde_json::json!({"summary": "HIGH T-42"}),
             )]),
             &BTreeMap::new(),
+            None,
         )
         .expect("projected input");
         assert!(projected.authoritative);
@@ -209,6 +242,7 @@ mod tests {
             Value::Null,
             &BTreeMap::new(),
             &BTreeMap::new(),
+            None,
         )
         .expect("default projection");
         assert!(projected.authoritative);
@@ -282,7 +316,7 @@ mod tests {
             exports: vec![],
         })
         .expect("atomic-writer contract");
-        let values = materialize_workflow_variables_with_composites(
+        let values = materialize_workflow_variables_with_application(
             &input,
             &contract,
             &BTreeMap::from([
@@ -290,6 +324,7 @@ mod tests {
                 ("high".into(), serde_json::json!({})),
             ]),
             &BTreeMap::new(),
+            None,
         )
         .expect("materialized assignments");
 

@@ -1,22 +1,23 @@
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, WorkflowRunId};
 use crate::modules::workflow::domain::{
-    validate_runtime_variable_contract, workflow_run_timeout_seconds, PlanRevision,
-    ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, ResolvedWorkflowVariableContract,
-    ResolvedWorkflowVariableDefaults, WorkflowGoal, WorkflowRevision, WorkflowRun,
-    WorkflowRunApplicationProjection, WorkflowRunInput, WorkflowStepProjection,
-    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3,
-    WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
-    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
+    validate_application_runtime_variable_contract, validate_runtime_variable_contract,
+    workflow_run_timeout_seconds, PlanRevision, ResolvedWorkflowCompositeRegions,
+    ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
+    WorkflowGoal, WorkflowRevision, WorkflowRun, WorkflowRunApplicationProjection,
+    WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V2,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12,
     WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
     WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -137,24 +138,64 @@ impl WorkflowRunCompiler {
                 Some(contracts),
             ) => {
                 contracts.validate_plan_bindings(plan)?;
-                validate_runtime_variable_contract(
-                    contracts.variable_contract(),
-                    contracts.variable_defaults(),
-                    plan,
-                )?;
+                if !project_to_application
+                    && contracts.has_application_owned_steps(workflow_revision.contract.spec())?
+                {
+                    return Err(
+                        "WorkflowRun with Applications-owned steps requires Application composition"
+                            .into(),
+                    );
+                }
                 let composite_regions = contracts
                     .composite_regions()
                     .map(ResolvedWorkflowCompositeRegions::from_regions);
-                let application_projection = if project_to_application {
-                    let outputs =
-                        contracts.application_output_steps(workflow_revision.contract.spec())?;
+                let application_outputs = project_to_application
+                    .then(|| contracts.application_output_steps(workflow_revision.contract.spec()))
+                    .transpose()?;
+                if application_outputs
+                    .as_ref()
+                    .is_some_and(|outputs| !outputs.variable_step_ids.is_empty())
+                {
+                    validate_application_runtime_variable_contract(
+                        contracts.variable_contract(),
+                        contracts.variable_defaults(),
+                        plan,
+                    )?;
+                } else {
+                    validate_runtime_variable_contract(
+                        contracts.variable_contract(),
+                        contracts.variable_defaults(),
+                        plan,
+                    )?;
+                }
+                let application_projection = if let Some(outputs) = application_outputs {
                     let answer_step_ids = plan
                         .steps
                         .iter()
                         .filter(|step| outputs.answer_step_ids.contains(&step.id))
                         .map(|step| step.id.clone())
                         .collect::<Vec<_>>();
-                    Some(if answer_step_ids.is_empty() {
+                    let variable_step_ids = plan
+                        .steps
+                        .iter()
+                        .filter(|step| outputs.variable_step_ids.contains(&step.id))
+                        .map(|step| step.id.clone())
+                        .collect::<Vec<_>>();
+                    let variable_assignment_step_ids = plan
+                        .steps
+                        .iter()
+                        .filter(|step| outputs.variable_assignment_step_ids.contains(&step.id))
+                        .map(|step| step.id.clone())
+                        .collect::<Vec<_>>();
+                    Some(if !variable_step_ids.is_empty() {
+                        WorkflowRunApplicationProjection::from_application_variables(
+                            plan,
+                            outputs.final_output_step_id,
+                            answer_step_ids,
+                            variable_step_ids,
+                            variable_assignment_step_ids,
+                        )?
+                    } else if answer_step_ids.is_empty() {
                         WorkflowRunApplicationProjection::from_plan(plan)?
                     } else {
                         WorkflowRunApplicationProjection::from_application_outputs(
@@ -164,16 +205,19 @@ impl WorkflowRunCompiler {
                         )?
                     })
                 } else {
-                    if contracts.has_application_owned_steps(workflow_revision.contract.spec())? {
-                        return Err(
-                            "WorkflowRun with Applications-owned steps requires Application composition"
-                                .into(),
-                        );
-                    }
                     None
                 };
                 let (input_schema, runtime_revision, flow_version) = if project_to_application {
                     if application_projection
+                        .as_ref()
+                        .is_some_and(|projection| !projection.variable_step_ids.is_empty())
+                    {
+                        (
+                            WORKFLOW_RUN_INPUT_SCHEMA_V12,
+                            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+                            WORKFLOW_RUN_FLOW_VERSION_V12,
+                        )
+                    } else if application_projection
                         .as_ref()
                         .is_some_and(|projection| !projection.answer_step_ids.is_empty())
                     {

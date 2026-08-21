@@ -135,6 +135,25 @@ impl WorkflowPlan {
             (false, None, None, None) | (true, Some(_), Some(_), _) => {}
             _ => return Err("Workflow plan semantic contract bindings are invalid".into()),
         }
+        for step in self
+            .steps
+            .iter()
+            .filter(|step| step.kind == WorkflowStepKind::Service && step.capability.is_none())
+        {
+            if !semantic_version {
+                return Err(
+                    "Legacy Workflow plans cannot contain a capability-free Service step".into(),
+                );
+            }
+            if step.descriptor.as_ref().is_none_or(|descriptor| {
+                descriptor.descriptor_id != "application.conversation-variable-assign"
+            }) {
+                return Err(
+                    "Capability-free Workflow Service plans require the exact Application variable descriptor"
+                        .into(),
+                );
+            }
+        }
         let workflow = self.workflow_spec()?;
         let order = workflow.topological_order(WorkflowContractQuotas::default())?;
         if self

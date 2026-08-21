@@ -53,10 +53,15 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V10: &str = "10";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V11: &str = "cloud.workflow-run.input.v11";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11: &str = "cloud.workflow-run-runtime.v11";
 pub const WORKFLOW_RUN_FLOW_VERSION_V11: &str = "11";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V12: &str = "cloud.workflow-run.input.v12";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12: &str = "cloud.workflow-run-runtime.v12";
+pub const WORKFLOW_RUN_FLOW_VERSION_V12: &str = "12";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
     "cloud.workflow-run.application-projection.v2";
+pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3: &str =
+    "cloud.workflow-run.application-projection.v3";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -157,6 +162,10 @@ pub struct WorkflowRunApplicationProjection {
     pub final_output_step_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answer_step_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variable_step_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variable_assignment_step_ids: Vec<String>,
 }
 
 impl WorkflowRunApplicationProjection {
@@ -173,6 +182,8 @@ impl WorkflowRunApplicationProjection {
             schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA.into(),
             final_output_step_id: output.id.clone(),
             answer_step_ids: Vec::new(),
+            variable_step_ids: Vec::new(),
+            variable_assignment_step_ids: Vec::new(),
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -187,6 +198,26 @@ impl WorkflowRunApplicationProjection {
             schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2.into(),
             final_output_step_id,
             answer_step_ids,
+            variable_step_ids: Vec::new(),
+            variable_assignment_step_ids: Vec::new(),
+        };
+        projection.validate(plan)?;
+        Ok(projection)
+    }
+
+    pub(crate) fn from_application_variables(
+        plan: &WorkflowPlan,
+        final_output_step_id: String,
+        answer_step_ids: Vec<String>,
+        variable_step_ids: Vec<String>,
+        variable_assignment_step_ids: Vec<String>,
+    ) -> Result<Self, String> {
+        let projection = Self {
+            schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3.into(),
+            final_output_step_id,
+            answer_step_ids,
+            variable_step_ids,
+            variable_assignment_step_ids,
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -203,6 +234,18 @@ impl WorkflowRunApplicationProjection {
                 answer_step_id,
             )?;
         }
+        for variable_step_id in &self.variable_step_ids {
+            super::validation::validate_identifier(
+                "WorkflowRun Application variable step",
+                variable_step_id,
+            )?;
+        }
+        for assignment_step_id in &self.variable_assignment_step_ids {
+            super::validation::validate_identifier(
+                "WorkflowRun Application variable assignment step",
+                assignment_step_id,
+            )?;
+        }
         let outputs = plan
             .steps
             .iter()
@@ -211,12 +254,22 @@ impl WorkflowRunApplicationProjection {
         match self.schema.as_str() {
             WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
                 if self.answer_step_ids.is_empty()
-                    && matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id) =>
+                    && self.variable_step_ids.is_empty()
+                    && self.variable_assignment_step_ids.is_empty()
+                    && matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id)
+                    && plan_step_uses_descriptor(
+                        plan,
+                        &self.final_output_step_id,
+                        WorkflowStepKind::Output,
+                        "workflow.output",
+                    ) =>
             {
                 Ok(())
             }
             WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
                 if !self.answer_step_ids.is_empty()
+                    && self.variable_step_ids.is_empty()
+                    && self.variable_assignment_step_ids.is_empty()
                     && outputs
                         .iter()
                         .any(|output| output.id == self.final_output_step_id)
@@ -224,24 +277,234 @@ impl WorkflowRunApplicationProjection {
                         .iter()
                         .filter(|output| output.id != self.final_output_step_id)
                         .map(|output| output.id.as_str())
-                        .eq(self.answer_step_ids.iter().map(String::as_str)) =>
+                        .eq(self.answer_step_ids.iter().map(String::as_str))
+                    && plan_step_uses_descriptor(
+                        plan,
+                        &self.final_output_step_id,
+                        WorkflowStepKind::Output,
+                        "workflow.output",
+                    )
+                    && self.answer_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Output,
+                            "application.answer",
+                        )
+                    }) =>
             {
                 Ok(())
             }
-            _ => Err(
-                "WorkflowRun Application projection drifted from its final Output and ordered Answer steps"
-                    .into(),
-            ),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                if !self.variable_step_ids.is_empty()
+                    && outputs
+                        .iter()
+                        .any(|output| output.id == self.final_output_step_id)
+                    && outputs
+                        .iter()
+                        .filter(|output| output.id != self.final_output_step_id)
+                        .map(|output| output.id.as_str())
+                        .eq(self.answer_step_ids.iter().map(String::as_str))
+                    && plan
+                        .steps
+                        .iter()
+                        .filter(|step| self.variable_step_ids.contains(&step.id))
+                        .map(|step| step.id.as_str())
+                        .eq(self.variable_step_ids.iter().map(String::as_str))
+                    && plan
+                        .steps
+                        .iter()
+                        .filter(|step| self.variable_assignment_step_ids.contains(&step.id))
+                        .map(|step| step.id.as_str())
+                        .eq(self.variable_assignment_step_ids.iter().map(String::as_str))
+                    && self
+                        .variable_assignment_step_ids
+                        .iter()
+                        .all(|step_id| self.variable_step_ids.contains(step_id))
+                    && plan_step_uses_descriptor(
+                        plan,
+                        &self.final_output_step_id,
+                        WorkflowStepKind::Output,
+                        "workflow.output",
+                    )
+                    && self.answer_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Output,
+                            "application.answer",
+                        )
+                    })
+                    && self.variable_assignment_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Service,
+                            "application.conversation-variable-assign",
+                        )
+                    })
+                    && self.variable_step_ids.iter().all(|step_id| {
+                        self.variable_assignment_step_ids.contains(step_id)
+                            || self.answer_step_ids.contains(step_id)
+                    }) =>
+            {
+                Ok(())
+            }
+            _ => Err("WorkflowRun Application projection drifted from its exact descriptor-bound final Output, Answer, or variable steps".into()),
         }
     }
 
-    pub fn is_answer_step(&self, step_id: &str) -> bool {
-        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
-            && self
-                .answer_step_ids
+    pub(crate) fn validate_variable_contract(
+        &self,
+        plan: &WorkflowPlan,
+        contract: &WorkflowVariableContract,
+    ) -> Result<(), String> {
+        self.validate(plan)?;
+        if self.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3 {
+            return Err(
+                "WorkflowRun Application variable material requires projection schema v3".into(),
+            );
+        }
+        let application_variables = contract
+            .spec()
+            .declarations
+            .iter()
+            .filter(|declaration| declaration.scope == WorkflowVariableScope::Application)
+            .map(|declaration| declaration.name.as_str())
+            .collect::<BTreeSet<_>>();
+        if application_variables.is_empty() {
+            return Err(
+                "WorkflowRun Application projection v3 has no Application-scoped variables".into(),
+            );
+        }
+        let mut variable_steps = BTreeSet::new();
+        let mut assignment_steps = BTreeSet::new();
+        for read in &contract.spec().reads {
+            if application_variables.contains(read.variable.as_str()) {
+                variable_steps.insert(read.consumer_step_id.as_str());
+            }
+        }
+        for assignment in &contract.spec().assignments {
+            if application_variables.contains(assignment.source_variable.as_str())
+                || assignment
+                    .expected_revision_variable
+                    .as_deref()
+                    .is_some_and(|name| application_variables.contains(name))
+                || assignment
+                    .idempotency_key_variable
+                    .as_deref()
+                    .is_some_and(|name| application_variables.contains(name))
+            {
+                variable_steps.insert(assignment.writer_step_id.as_str());
+            }
+            if application_variables.contains(assignment.target_variable.as_str()) {
+                variable_steps.insert(assignment.writer_step_id.as_str());
+                assignment_steps.insert(assignment.writer_step_id.as_str());
+            }
+        }
+        let ordered_variable_steps = plan
+            .steps
+            .iter()
+            .filter(|step| variable_steps.contains(step.id.as_str()))
+            .map(|step| step.id.as_str())
+            .collect::<Vec<_>>();
+        let ordered_assignment_steps = plan
+            .steps
+            .iter()
+            .filter(|step| assignment_steps.contains(step.id.as_str()))
+            .map(|step| step.id.as_str())
+            .collect::<Vec<_>>();
+        if ordered_variable_steps
+            != self
+                .variable_step_ids
                 .iter()
-                .any(|answer_step_id| answer_step_id == step_id)
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+            || ordered_assignment_steps
+                != self
+                    .variable_assignment_step_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+        {
+            return Err(
+                "WorkflowRun Application variable projection drifted from its exact variable contract"
+                    .into(),
+            );
+        }
+        for step_id in &self.variable_step_ids {
+            let step = plan
+                .steps
+                .iter()
+                .find(|step| step.id == *step_id)
+                .ok_or_else(|| {
+                    format!("WorkflowRun Application variable step {step_id:?} disappeared")
+                })?;
+            if !matches!(
+                step.kind,
+                WorkflowStepKind::Output | WorkflowStepKind::Service
+            ) {
+                return Err(format!(
+                    "WorkflowRun Application variable step {step_id:?} has an unsupported kind"
+                ));
+            }
+        }
+        for step_id in &self.variable_assignment_step_ids {
+            if !plan
+                .steps
+                .iter()
+                .any(|step| step.id == *step_id && step.kind == WorkflowStepKind::Service)
+            {
+                return Err(format!(
+                    "WorkflowRun Application variable assignment step {step_id:?} is not a Service"
+                ));
+            }
+        }
+        Ok(())
     }
+
+    pub fn is_answer_step(&self, step_id: &str) -> bool {
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+        ) && self
+            .answer_step_ids
+            .iter()
+            .any(|answer_step_id| answer_step_id == step_id)
+    }
+
+    pub fn is_variable_step(&self, step_id: &str) -> bool {
+        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+            && self
+                .variable_step_ids
+                .iter()
+                .any(|variable_step_id| variable_step_id == step_id)
+    }
+
+    pub fn is_variable_assignment_step(&self, step_id: &str) -> bool {
+        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+            && self
+                .variable_assignment_step_ids
+                .iter()
+                .any(|assignment_step_id| assignment_step_id == step_id)
+    }
+}
+
+fn plan_step_uses_descriptor(
+    plan: &WorkflowPlan,
+    step_id: &str,
+    kind: WorkflowStepKind,
+    descriptor_id: &str,
+) -> bool {
+    plan.steps.iter().any(|step| {
+        step.id == step_id
+            && step.kind == kind
+            && step
+                .descriptor
+                .as_ref()
+                .is_some_and(|descriptor| descriptor.descriptor_id == descriptor_id)
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -296,6 +559,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V9
                 | WORKFLOW_RUN_INPUT_SCHEMA_V10
                 | WORKFLOW_RUN_INPUT_SCHEMA_V11
+                | WORKFLOW_RUN_INPUT_SCHEMA_V12
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -619,6 +883,53 @@ impl WorkflowRunInput {
                     let composite_runtime = regions.is_some();
                     (Some(contract), defaults, regions, composite_runtime, true)
                 }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V12,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+                    WORKFLOW_RUN_FLOW_VERSION_V12,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3 =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_application_runtime_variable_contract(
+                        &contract,
+                        defaults.as_ref(),
+                        &self.plan,
+                    )?;
+                    application_projection.validate_variable_contract(&self.plan, &contract)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime, true)
+                }
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
@@ -638,7 +949,22 @@ impl WorkflowRunInput {
         }
         self.plan.validate()?;
         if let Some(contract) = variable_contract.as_ref() {
-            contract.validate_graph_bindings(&self.plan.workflow_spec()?)?;
+            let workflow = self.plan.workflow_spec()?;
+            if let Some(application) = self.application_projection.as_ref().filter(|projection| {
+                projection.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+            }) {
+                let application_ports = application
+                    .variable_step_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>();
+                contract.validate_graph_bindings_with_application_ports(
+                    &workflow,
+                    &application_ports,
+                )?;
+            } else {
+                contract.validate_graph_bindings(&workflow)?;
+            }
         }
         if let (Some(contract), Some(defaults)) =
             (variable_contract.as_ref(), variable_defaults.as_ref())
@@ -715,7 +1041,14 @@ impl WorkflowRunInput {
                 && step.plan.kind == WorkflowStepKind::Subworkflow)
                 || (connector_runtime_capable
                     && step.plan.kind == WorkflowStepKind::Service
-                    && connector_step);
+                    && connector_step)
+                || self
+                    .application_projection
+                    .as_ref()
+                    .is_some_and(|projection| {
+                        projection.is_variable_assignment_step(&step.plan.id)
+                            && step.plan.kind == WorkflowStepKind::Service
+                    });
             if !supported {
                 return Err(format!(
                     "WorkflowRun runtime does not execute {} step {:?}",
@@ -824,15 +1157,44 @@ pub(crate) fn validate_runtime_variable_contract(
     defaults: Option<&WorkflowVariableDefaults>,
     plan: &WorkflowPlan,
 ) -> Result<(), String> {
+    validate_runtime_variable_contract_generation(contract, defaults, plan, false)
+}
+
+pub(crate) fn validate_application_runtime_variable_contract(
+    contract: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
+    plan: &WorkflowPlan,
+) -> Result<(), String> {
+    if !contract
+        .spec()
+        .declarations
+        .iter()
+        .any(|declaration| declaration.scope == WorkflowVariableScope::Application)
+    {
+        return Err(
+            "WorkflowRun Application variable runtime has no Application-scoped declaration".into(),
+        );
+    }
+    validate_runtime_variable_contract_generation(contract, defaults, plan, true)
+}
+
+fn validate_runtime_variable_contract_generation(
+    contract: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
+    plan: &WorkflowPlan,
+    application_runtime: bool,
+) -> Result<(), String> {
     for declaration in &contract.spec().declarations {
-        if declaration.scope == WorkflowVariableScope::Application {
+        if declaration.scope == WorkflowVariableScope::Application && !application_runtime {
             return Err(format!(
                 "WorkflowRun runtime v2 does not execute {} variable {:?}",
                 declaration.scope.as_str(),
                 declaration.name
             ));
         }
-        if declaration.mutation_mode == WorkflowVariableMutationMode::OptimisticApplicationPort {
+        if declaration.mutation_mode == WorkflowVariableMutationMode::OptimisticApplicationPort
+            && !application_runtime
+        {
             return Err(format!(
                 "WorkflowRun runtime v2 does not own application mutation for variable {:?}",
                 declaration.name
@@ -864,6 +1226,7 @@ pub(crate) fn validate_runtime_variable_contract(
         .reads
         .iter()
         .any(|read| read.mode == WorkflowVariableReadMode::ApplicationPort)
+        && !application_runtime
     {
         return Err("WorkflowRun runtime v2 does not own application variable reads".into());
     }

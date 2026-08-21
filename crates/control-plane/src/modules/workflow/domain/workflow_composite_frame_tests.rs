@@ -344,6 +344,60 @@ fn frame_materializes_exact_inputs_assignments_and_exports() {
 }
 
 #[test]
+fn frame_allows_unrelated_application_variables_but_rejects_region_access() {
+    let mut fixture = fixture();
+    let mut spec = fixture.variables.spec().clone();
+    let mut application = declaration(
+        "conversation_topic",
+        WorkflowVariableScope::Application,
+        WorkflowDataType::String,
+        'c',
+    );
+    application.mutation_mode = WorkflowVariableMutationMode::OptimisticApplicationPort;
+    application.required = false;
+    spec.declarations.push(application);
+    fixture.variables = WorkflowVariableContract::from_spec(spec.clone())
+        .expect("contract with unrelated Application variable");
+    fixture.plan.variable_contract_digest = Some(fixture.variables.digest().clone());
+    fixture.request.plan_digest = plan_digest(&fixture.plan);
+
+    WorkflowCompositeFrame::open(
+        fixture.request.clone(),
+        &fixture.plan,
+        &fixture.regions,
+        &fixture.variables,
+        None,
+    )
+    .expect("unrelated Application authority remains outside the frame");
+
+    spec.reads.push(WorkflowVariableRead {
+        id: "iteration-application-variable".into(),
+        variable: "conversation_topic".into(),
+        consumer_step_id: "iteration".into(),
+        consumer_region_id: Some("iteration".into()),
+        target_port: "applicationValue".into(),
+        path: Vec::new(),
+        expected_type: WorkflowDataType::String,
+        expected_schema_digest: digest('c'),
+        required: false,
+        mode: WorkflowVariableReadMode::ApplicationPort,
+    });
+    fixture.variables =
+        WorkflowVariableContract::from_spec(spec).expect("Application read contract");
+    fixture.plan.variable_contract_digest = Some(fixture.variables.digest().clone());
+    fixture.request.plan_digest = plan_digest(&fixture.plan);
+    let error = WorkflowCompositeFrame::open(
+        fixture.request,
+        &fixture.plan,
+        &fixture.regions,
+        &fixture.variables,
+        None,
+    )
+    .expect_err("Application variable crossing the region boundary");
+    assert!(error.contains("Application variable"), "{error}");
+}
+
+#[test]
 fn frame_is_replay_stable_and_detects_stored_state_drift() {
     let fixture = fixture();
     let first = WorkflowCompositeFrame::open(

@@ -8,6 +8,7 @@ pub mod services;
 mod validation;
 pub mod value_objects;
 mod workflow_application_answer_hook;
+mod workflow_application_variable_hook;
 mod workflow_composite_execution;
 mod workflow_composite_frame;
 mod workflow_composite_region_result;
@@ -33,7 +34,9 @@ mod workflow_variable_materialization;
 pub(crate) use workflow_failure_routing::{
     descriptor_failure_output, has_connector_failure_route, validate_descriptor_failure_routes,
 };
-pub(crate) use workflow_run_contract::validate_runtime_variable_contract;
+pub(crate) use workflow_run_contract::{
+    validate_application_runtime_variable_contract, validate_runtime_variable_contract,
+};
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
@@ -86,7 +89,7 @@ pub use services::{
     WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
 };
 pub(crate) use services::{
-    inspect_workflow_run_variables, inspect_workflow_run_variables_with_composites,
+    inspect_workflow_run_variables, inspect_workflow_run_variables_with_application,
 };
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,
@@ -98,6 +101,15 @@ pub use workflow_application_answer_hook::{
     WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
     WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA, WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA,
     WORKFLOW_APPLICATION_ANSWER_STEP_ATTEMPT,
+};
+pub use workflow_application_variable_hook::{
+    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
+    WorkflowApplicationVariableWriteResumePayload,
+    WORKFLOW_APPLICATION_VARIABLE_SNAPSHOT_HOOK_SCHEMA,
+    WORKFLOW_APPLICATION_VARIABLE_SNAPSHOT_RESUME_SCHEMA,
+    WORKFLOW_APPLICATION_VARIABLE_STEP_ATTEMPT, WORKFLOW_APPLICATION_VARIABLE_WRITE_HOOK_SCHEMA,
+    WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA,
 };
 pub use workflow_composite_execution::{
     WorkflowCompositeChildReferenceMetadata, WorkflowCompositeHookMetadata,
@@ -171,22 +183,23 @@ pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
     ResolvedWorkflowRunStep, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
     WorkflowRunApplicationProjection, WorkflowRunInput, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
-    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
-    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_MAX_BYTES_V2, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3,
+    WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
+    WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
+    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_MAX_BYTES_V2, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10,
+    WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12, WORKFLOW_RUN_INPUT_SCHEMA_V2,
     WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
     WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
     WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 pub use workflow_step_descriptor::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
@@ -221,8 +234,9 @@ pub use workflow_variable_defaults::{
     WORKFLOW_VARIABLE_DEFAULT_MAX_VALUE_BYTES,
 };
 pub(crate) use workflow_variable_materialization::{
-    lookup_workflow_variable_path, materialize_workflow_variables_with_composites,
-    project_workflow_variable_reads,
+    lookup_workflow_variable_path, materialize_workflow_variables_with_application,
+    materialize_workflow_variables_with_composites, project_workflow_variable_reads,
+    resolve_application_variable_assignment_values,
 };
 
 #[cfg(test)]

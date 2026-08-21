@@ -76,6 +76,8 @@ pub struct WorkflowRevisionSemanticContractRef<'a> {
 pub(crate) struct WorkflowApplicationOutputSteps {
     pub final_output_step_id: String,
     pub answer_step_ids: BTreeSet<String>,
+    pub variable_step_ids: BTreeSet<String>,
+    pub variable_assignment_step_ids: BTreeSet<String>,
 }
 
 impl WorkflowRevisionSemanticContracts {
@@ -344,16 +346,20 @@ impl WorkflowRevisionSemanticContracts {
         self.validate(workflow)?;
         let mut final_output_step_ids = Vec::new();
         let mut answer_step_ids = BTreeSet::new();
+        let mut variable_port_step_ids = BTreeSet::new();
         for step in &workflow.steps {
             let descriptor = self.descriptor_for_step(&step.id)?.spec();
             if descriptor.owner == WorkflowStepOwner::Applications {
-                if !is_exact_application_answer_descriptor(descriptor) {
+                if is_exact_application_answer_descriptor(descriptor) {
+                    answer_step_ids.insert(step.id.clone());
+                } else if is_exact_application_variable_descriptor(descriptor) {
+                    variable_port_step_ids.insert(step.id.clone());
+                } else {
                     return Err(format!(
-                        "Application Workflow step {:?} is not the supported application.answer port",
+                        "Application Workflow step {:?} is not a supported exact Applications port",
                         step.id
                     ));
                 }
-                answer_step_ids.insert(step.id.clone());
                 continue;
             }
             if step.kind == WorkflowStepKind::Output {
@@ -372,9 +378,69 @@ impl WorkflowRevisionSemanticContracts {
                     .into(),
             );
         };
+        let application_variables = self
+            .variable_contract
+            .spec()
+            .declarations
+            .iter()
+            .filter(|declaration| declaration.scope == super::WorkflowVariableScope::Application)
+            .map(|declaration| declaration.name.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut variable_step_ids = BTreeSet::new();
+        let mut variable_assignment_step_ids = BTreeSet::new();
+        for read in &self.variable_contract.spec().reads {
+            if application_variables.contains(read.variable.as_str()) {
+                variable_step_ids.insert(read.consumer_step_id.clone());
+            }
+        }
+        for assignment in &self.variable_contract.spec().assignments {
+            if application_variables.contains(assignment.source_variable.as_str())
+                || assignment
+                    .expected_revision_variable
+                    .as_deref()
+                    .is_some_and(|name| application_variables.contains(name))
+                || assignment
+                    .idempotency_key_variable
+                    .as_deref()
+                    .is_some_and(|name| application_variables.contains(name))
+            {
+                variable_step_ids.insert(assignment.writer_step_id.clone());
+            }
+            if application_variables.contains(assignment.target_variable.as_str()) {
+                if !variable_port_step_ids.contains(&assignment.writer_step_id) {
+                    return Err(format!(
+                        "Application variable assignment {:?} does not use the exact application.conversation-variable-assign port",
+                        assignment.id
+                    ));
+                }
+                variable_step_ids.insert(assignment.writer_step_id.clone());
+                variable_assignment_step_ids.insert(assignment.writer_step_id.clone());
+            }
+        }
+        if variable_port_step_ids != variable_assignment_step_ids {
+            return Err(
+                "Every application.conversation-variable-assign step must own at least one exact Application variable assignment"
+                    .into(),
+            );
+        }
+        let application_ports = answer_step_ids
+            .union(&variable_port_step_ids)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if variable_step_ids
+            .iter()
+            .any(|step_id| !application_ports.contains(step_id))
+        {
+            return Err(
+                "Application variable access requires an exact descriptor-bound Applications port"
+                    .into(),
+            );
+        }
         Ok(WorkflowApplicationOutputSteps {
             final_output_step_id: final_output_step_id.clone(),
             answer_step_ids,
+            variable_step_ids,
+            variable_assignment_step_ids,
         })
     }
 
@@ -736,7 +802,8 @@ fn validate_supported_bindings(
             binding,
             WorkflowStepBindingKind::CapabilityReference | WorkflowStepBindingKind::PlacementPolicy
         ) && !(*binding == &WorkflowStepBindingKind::ReleaseReference
-            && is_exact_application_answer_descriptor(descriptor))
+            && (is_exact_application_answer_descriptor(descriptor)
+                || is_exact_application_variable_descriptor(descriptor)))
     }) {
         return Err(format!(
             "Workflow step {:?} descriptor requires unsupported {} binding",
@@ -752,6 +819,23 @@ fn is_exact_application_answer_descriptor(descriptor: &super::WorkflowStepDescri
         && descriptor.semantic_profile == "application.answer"
         && descriptor.owner == WorkflowStepOwner::Applications
         && descriptor.kind == Some(WorkflowStepKind::Output)
+        && descriptor.execution_class == WorkflowStepExecutionClass::OwningApplicationPort
+        && descriptor.required_bindings == [WorkflowStepBindingKind::ReleaseReference]
+        && descriptor.allowed_capability_types.is_empty()
+        && descriptor.default_policy_digest.is_none()
+        && descriptor.failure.error_output.is_none()
+        && descriptor.failure.retry_classification == WorkflowStepRetryClassification::NotRetryable
+        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !descriptor.failure.failure_branch
+}
+
+fn is_exact_application_variable_descriptor(
+    descriptor: &super::WorkflowStepDescriptorSpec,
+) -> bool {
+    descriptor.id == "application.conversation-variable-assign"
+        && descriptor.semantic_profile == "application.conversation-variable-assign"
+        && descriptor.owner == WorkflowStepOwner::Applications
+        && descriptor.kind == Some(WorkflowStepKind::Service)
         && descriptor.execution_class == WorkflowStepExecutionClass::OwningApplicationPort
         && descriptor.required_bindings == [WorkflowStepBindingKind::ReleaseReference]
         && descriptor.allowed_capability_types.is_empty()
@@ -786,6 +870,15 @@ fn validate_capability_binding(
     step: &super::WorkflowStepSpec,
     descriptor: &super::WorkflowStepDescriptorSpec,
 ) -> Result<(), String> {
+    if step.kind == WorkflowStepKind::Service
+        && step.capability.is_none()
+        && !is_exact_application_variable_descriptor(descriptor)
+    {
+        return Err(format!(
+            "Workflow capability-free Service step {:?} is not the exact Application variable port",
+            step.id
+        ));
+    }
     let requires_capability = descriptor
         .required_bindings
         .contains(&WorkflowStepBindingKind::CapabilityReference);
@@ -935,5 +1028,28 @@ mod connector_retry_authority_tests {
         drifted = descriptor;
         drifted.failure.retry_classification = WorkflowStepRetryClassification::FlowRetryable;
         assert!(validate_connector_retry_authority(&step, &drifted).is_err());
+    }
+
+    #[test]
+    fn capability_free_service_requires_the_exact_application_variable_descriptor() {
+        let mut candidate = step();
+        candidate.capability = None;
+        candidate.policy_digest = None;
+
+        let mut generic = descriptor();
+        generic.id = "workflow.service".into();
+        generic.semantic_profile = "workflow.service".into();
+        generic.owner = WorkflowStepOwner::Workflow;
+        generic.required_bindings.clear();
+        generic.allowed_capability_types.clear();
+        generic.failure.retry_classification = WorkflowStepRetryClassification::NotRetryable;
+        assert!(validate_capability_binding(&candidate, &generic).is_err());
+
+        generic.id = "application.conversation-variable-assign".into();
+        generic.semantic_profile = "application.conversation-variable-assign".into();
+        generic.owner = WorkflowStepOwner::Applications;
+        generic.required_bindings = vec![WorkflowStepBindingKind::ReleaseReference];
+        validate_capability_binding(&candidate, &generic)
+            .expect("exact descriptor-bound Application variable Service");
     }
 }

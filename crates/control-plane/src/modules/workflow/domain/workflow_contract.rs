@@ -767,7 +767,6 @@ mod tests {
             (WorkflowStepKind::Model, CapabilityType::ModelRevision),
             (WorkflowStepKind::Tool, CapabilityType::UsePackage),
             (WorkflowStepKind::Memory, CapabilityType::UsePackage),
-            (WorkflowStepKind::Service, CapabilityType::ConnectorRevision),
             (
                 WorkflowStepKind::Subworkflow,
                 CapabilityType::WorkflowRevision,
@@ -790,6 +789,23 @@ mod tests {
         let mut local = fixture();
         local.steps[1].capability = Some(capability(CapabilityType::ExecutionTemplate));
         assert!(local.validate(Default::default()).is_err());
+    }
+
+    #[test]
+    fn service_without_connector_defers_to_descriptor_semantic_authority() {
+        let mut service = fixture();
+        service.steps[1].kind = WorkflowStepKind::Service;
+        service
+            .validate(Default::default())
+            .expect("structural Application Service candidate");
+
+        service.steps[1].capability = Some(capability(CapabilityType::ConnectorRevision));
+        service
+            .validate(Default::default())
+            .expect("exact Connector Service");
+
+        service.steps[1].capability = Some(capability(CapabilityType::UsePackage));
+        assert!(service.validate(Default::default()).is_err());
     }
 
     #[test]

@@ -1,17 +1,19 @@
 use super::workflow::{
-    application_answer_result, connector_failure_route_result, execution_result,
-    human_decision_result, inactive_step_ids, ExecutionResolution,
+    application_answer_result, application_variable_write_result, connector_failure_route_result,
+    execution_result, human_decision_result, inactive_step_ids, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
-    flow_step_id, WorkflowApplicationAnswerHookMetadata, WorkflowCompositeChildReferenceMetadata,
-    WorkflowCompositeFrameResolution, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeResumePayload, WorkflowExecutionChildReferenceMetadata,
-    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState,
-    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
-    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    flow_step_id, WorkflowApplicationAnswerHookMetadata,
+    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
+    WorkflowCompositeChildReferenceMetadata, WorkflowCompositeFrameResolution,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
+    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
+    WorkflowStepProjectionStatus, WORKFLOW_EXECUTION_STEP_ATTEMPT,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind, StepStatus,
@@ -78,6 +80,40 @@ pub fn project_workflow_run_record(
             .ok_or_else(|| format!("WorkflowRun lost resolved step {:?}", projection.step_id))?;
         let durable_step_id = flow_step_id(&projection.step_id);
         let flow_step = snapshot.steps.get(&durable_step_id);
+        let variable_hooks = if record
+            .run
+            .execution_input
+            .application_projection
+            .as_ref()
+            .is_some_and(|application| application.is_variable_assignment_step(&resolved.plan.id))
+        {
+            let snapshot_hook = application_variable_snapshot_hook(
+                &record.run.execution_input,
+                resolved,
+                snapshot,
+            )?;
+            snapshot_hook
+                .map(|(hook, metadata)| -> Result<_, String> {
+                    let application_snapshot =
+                        application_variable_snapshot_payload(hook, &metadata)?;
+                    let write = application_snapshot
+                        .as_ref()
+                        .map(|application_snapshot| {
+                            application_variable_write_hook(
+                                &record.run.execution_input,
+                                resolved,
+                                application_snapshot,
+                                snapshot,
+                            )
+                        })
+                        .transpose()?
+                        .flatten();
+                    Ok(((hook, metadata), write))
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let answer_hook = if record
             .run
             .execution_input
@@ -99,7 +135,15 @@ pub fn project_workflow_run_record(
         } else {
             None
         };
-        let connector_hook = if resolved.plan.kind == WorkflowStepKind::Service {
+        let connector_hook = if resolved.plan.kind == WorkflowStepKind::Service
+            && !record
+                .run
+                .execution_input
+                .application_projection
+                .as_ref()
+                .is_some_and(|application| {
+                    application.is_variable_assignment_step(&resolved.plan.id)
+                }) {
             super::connector::observed_connector_hooks(
                 &record.run.execution_input,
                 resolved,
@@ -119,7 +163,67 @@ pub fn project_workflow_run_record(
             })
             .flatten();
         let (step_status, attempt, result, selected_handle, step_error, sequence, at) =
-            if let Some((hook, metadata)) = answer_hook {
+            if let Some(((snapshot_hook, snapshot_metadata), write_hook)) = variable_hooks {
+                let hook = write_hook
+                    .as_ref()
+                    .map(|(hook, _)| *hook)
+                    .unwrap_or(snapshot_hook);
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    snapshot.last_sequence
+                } else {
+                    last_hook_sequence(history, &hook.hook_id)
+                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                };
+                let at = history
+                    .iter()
+                    .find(|event| event.sequence == sequence)
+                    .map(|event| event.timestamp)
+                    .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let step_status = match hook.status {
+                    HookStatus::Active | HookStatus::Received if write_hook.is_none() => {
+                        WorkflowStepProjectionStatus::Running
+                    }
+                    HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received => WorkflowStepProjectionStatus::Completed,
+                    HookStatus::Disposed | HookStatus::Cancelled => {
+                        WorkflowStepProjectionStatus::Cancelled
+                    }
+                    status => {
+                        return Err(format!(
+                        "Workflow Application variable hook {:?} has unsupported status {status:?}",
+                        hook.hook_id
+                    ))
+                    }
+                };
+                let result = if write_hook
+                    .as_ref()
+                    .is_some_and(|(hook, _)| hook.status == HookStatus::Received)
+                {
+                    Some(
+                        completed
+                            .get(&projection.step_id)
+                            .ok_or_else(|| {
+                                format!(
+                                    "Workflow Application variable step {:?} has no committed result",
+                                    projection.step_id
+                                )
+                            })?
+                            .output
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
+                (
+                    step_status,
+                    snapshot_metadata.step_attempt,
+                    result,
+                    None,
+                    None,
+                    sequence,
+                    at,
+                )
+            } else if let Some((hook, metadata)) = answer_hook {
                 let sequence = if hook.status == HookStatus::Cancelled {
                     snapshot.last_sequence
                 } else {
@@ -574,6 +678,66 @@ pub(super) fn completed_workflow_steps(
         if input
             .application_projection
             .as_ref()
+            .is_some_and(|application| application.is_variable_assignment_step(&resolved.plan.id))
+        {
+            let Some((snapshot_hook, snapshot_metadata)) =
+                application_variable_snapshot_hook(input, resolved, snapshot)?
+            else {
+                continue;
+            };
+            let Some(application_snapshot) =
+                application_variable_snapshot_payload(snapshot_hook, &snapshot_metadata)?
+            else {
+                continue;
+            };
+            let Some((write_hook, write_metadata)) =
+                application_variable_write_hook(input, resolved, &application_snapshot, snapshot)?
+            else {
+                continue;
+            };
+            if write_hook.status == HookStatus::Received {
+                let payload = write_hook.payload.as_ref().ok_or_else(|| {
+                    format!(
+                        "Workflow Application variable write hook {:?} is received without a payload",
+                        write_hook.hook_id
+                    )
+                })?;
+                let outputs = completed
+                    .iter()
+                    .map(|(step_id, result)| (step_id.clone(), result.output.clone()))
+                    .collect::<BTreeMap<_, _>>();
+                let composites = completed
+                    .iter()
+                    .filter_map(|(step_id, result)| {
+                        result
+                            .composite_region_result
+                            .clone()
+                            .map(|region| (step_id.clone(), region))
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                let values = super::variables::application_assignment_values(
+                    input,
+                    &resolved.plan.id,
+                    &outputs,
+                    &composites,
+                    &application_snapshot,
+                )?;
+                let result = application_variable_write_result(
+                    &snapshot.run_id,
+                    &write_metadata.flow_hook_id(),
+                    resolved,
+                    &write_metadata,
+                    &values,
+                    payload,
+                )
+                .map_err(|error| error.to_string())?;
+                completed.insert(result.step_id.clone(), result);
+            }
+            continue;
+        }
+        if input
+            .application_projection
+            .as_ref()
             .is_some_and(|application| application.is_answer_step(&resolved.plan.id))
         {
             let Some((hook, metadata)) = application_answer_hook(input, resolved, snapshot)? else {
@@ -786,13 +950,51 @@ pub(super) fn verify_flow_authority(
     let resolved_steps = record.run.execution_input.resolved_steps()?;
     let mut expected_hooks = std::collections::BTreeSet::new();
     for resolved in &resolved_steps {
-        if record
-            .run
-            .execution_input
-            .application_projection
-            .as_ref()
-            .is_some_and(|application| application.is_answer_step(&resolved.plan.id))
-        {
+        let application = record.run.execution_input.application_projection.as_ref();
+        if application.is_some_and(|projection| projection.is_variable_step(&resolved.plan.id)) {
+            let snapshot_metadata = WorkflowApplicationVariableSnapshotHookMetadata::from_run_step(
+                &record.run.execution_input,
+                resolved,
+            )?;
+            expected_hooks.insert(snapshot_metadata.flow_hook_id());
+            let snapshot_hook = application_variable_snapshot_hook(
+                &record.run.execution_input,
+                resolved,
+                snapshot,
+            )?;
+            if application
+                .is_some_and(|projection| projection.is_variable_assignment_step(&resolved.plan.id))
+            {
+                let write_hook_id = format!(
+                    "workflow-application-variable-write:{}:{}",
+                    resolved.plan.id,
+                    crate::modules::workflow::domain::WORKFLOW_APPLICATION_VARIABLE_STEP_ATTEMPT
+                );
+                expected_hooks.insert(write_hook_id.clone());
+                let application_snapshot = snapshot_hook
+                    .as_ref()
+                    .map(|(hook, metadata)| application_variable_snapshot_payload(hook, metadata))
+                    .transpose()?
+                    .flatten();
+                match application_snapshot.as_ref() {
+                    Some(application_snapshot) => {
+                        application_variable_write_hook(
+                            &record.run.execution_input,
+                            resolved,
+                            application_snapshot,
+                            snapshot,
+                        )?;
+                    }
+                    None if snapshot.hooks.contains_key(&write_hook_id) => return Err(
+                        "Workflow Application variable write hook precedes its snapshot evidence"
+                            .into(),
+                    ),
+                    None => {}
+                }
+                continue;
+            }
+        }
+        if application.is_some_and(|projection| projection.is_answer_step(&resolved.plan.id)) {
             let hook_id = format!(
                 "workflow-application-answer:{}:{}",
                 resolved.plan.id,
@@ -1053,6 +1255,90 @@ pub(super) fn execution_hook<'a>(
     )?;
     if hook.hook_id != hook_id || hook.token != expected.flow_hook_token() || observed != expected {
         return Err("Workflow execution hook authority drifted".into());
+    }
+    Ok(Some((hook, observed)))
+}
+
+pub(super) fn application_variable_snapshot_hook<'a>(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    snapshot: &'a WorkflowRunSnapshot,
+) -> Result<
+    Option<(
+        &'a HookSnapshot,
+        WorkflowApplicationVariableSnapshotHookMetadata,
+    )>,
+    String,
+> {
+    let expected = WorkflowApplicationVariableSnapshotHookMetadata::from_run_step(input, resolved)?;
+    let hook_id = expected.flow_hook_id();
+    let Some(hook) = snapshot.hooks.get(&hook_id) else {
+        return Ok(None);
+    };
+    let observed = serde_json::from_value::<WorkflowApplicationVariableSnapshotHookMetadata>(
+        hook.metadata.clone(),
+    )
+    .map_err(|error| {
+        format!("Workflow Application variable snapshot hook metadata is invalid: {error}")
+    })?;
+    observed.validate()?;
+    if hook.hook_id != hook_id || hook.token != expected.flow_hook_token() || observed != expected {
+        return Err("Workflow Application variable snapshot hook authority drifted".into());
+    }
+    Ok(Some((hook, observed)))
+}
+
+pub(super) fn application_variable_snapshot_payload(
+    hook: &HookSnapshot,
+    metadata: &WorkflowApplicationVariableSnapshotHookMetadata,
+) -> Result<Option<WorkflowApplicationVariableSnapshotResumePayload>, String> {
+    if hook.status != HookStatus::Received {
+        return Ok(None);
+    }
+    let payload = hook.payload.as_ref().ok_or_else(|| {
+        format!(
+            "Workflow Application variable snapshot hook {:?} is received without a payload",
+            hook.hook_id
+        )
+    })?;
+    let payload =
+        serde_json::from_value::<WorkflowApplicationVariableSnapshotResumePayload>(payload.clone())
+            .map_err(|error| {
+                format!("Workflow Application variable snapshot payload is invalid: {error}")
+            })?;
+    payload.validate(metadata)?;
+    Ok(Some(payload))
+}
+
+pub(super) fn application_variable_write_hook<'a>(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    application_snapshot: &WorkflowApplicationVariableSnapshotResumePayload,
+    snapshot: &'a WorkflowRunSnapshot,
+) -> Result<
+    Option<(
+        &'a HookSnapshot,
+        WorkflowApplicationVariableWriteHookMetadata,
+    )>,
+    String,
+> {
+    let hook_id = format!(
+        "workflow-application-variable-write:{}:{}",
+        resolved.plan.id,
+        crate::modules::workflow::domain::WORKFLOW_APPLICATION_VARIABLE_STEP_ATTEMPT
+    );
+    let Some(hook) = snapshot.hooks.get(&hook_id) else {
+        return Ok(None);
+    };
+    let observed = serde_json::from_value::<WorkflowApplicationVariableWriteHookMetadata>(
+        hook.metadata.clone(),
+    )
+    .map_err(|error| {
+        format!("Workflow Application variable write hook metadata is invalid: {error}")
+    })?;
+    observed.validate_run_step(input, resolved, application_snapshot)?;
+    if hook.hook_id != hook_id || hook.token != observed.flow_hook_token() {
+        return Err("Workflow Application variable write hook authority drifted".into());
     }
     Ok(Some((hook, observed)))
 }

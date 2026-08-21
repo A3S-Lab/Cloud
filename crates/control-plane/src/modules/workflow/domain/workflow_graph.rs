@@ -154,6 +154,12 @@ fn validate_capability_binding(
             "Workflow {} steps cannot bind an external capability",
             kind.as_str()
         )),
+        // Service is the one coarse Flow kind shared by ConnectorRevision
+        // dispatch and descriptor-bound owning-application ports. The graph
+        // has no descriptor material, so a capability-free Service can only
+        // be classified later by immutable semantic contracts. Legacy
+        // Workflow revisions and plans reject this deferred shape.
+        (_, None) if kind == WorkflowStepKind::Service => Ok(()),
         (_, None) => Err(format!(
             "Workflow {} steps require one exact capability reference",
             kind.as_str()

@@ -1,9 +1,14 @@
 use super::project_workflow_run_record;
-use super::projection::{application_answer_hook, execution_hook, verify_flow_authority};
+use super::projection::{
+    application_answer_hook, application_variable_snapshot_hook,
+    application_variable_snapshot_payload, application_variable_write_hook, execution_hook,
+    verify_flow_authority,
+};
 use crate::modules::applications::{
     ApplicationInvocationStatus, ApplicationMessageKind, IWorkflowApplicationEffectsPort,
     WorkflowApplicationEffectRequest, WorkflowApplicationMessageRequest,
-    WorkflowApplicationTerminalRequest,
+    WorkflowApplicationRunReference, WorkflowApplicationTerminalRequest,
+    WorkflowApplicationVariableVersion, WorkflowApplicationVariableWriteRequest,
 };
 use crate::modules::executions::{
     Execution, ExecutionOutcome, IWorkflowExecutionPort, WorkflowExecutionRequest,
@@ -13,7 +18,9 @@ use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowApplicationAnswerHookMetadata,
-    WorkflowApplicationAnswerResumePayload, WorkflowExecutionChildReferenceMetadata,
+    WorkflowApplicationAnswerResumePayload, WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
+    WorkflowApplicationVariableWriteResumePayload, WorkflowExecutionChildReferenceMetadata,
     WorkflowExecutionHookMetadata, WorkflowExecutionOutcome, WorkflowExecutionResumePayload,
     WorkflowExecutionStepOutput, WorkflowRunCoordinationError, WorkflowRunRecord,
     WorkflowRunStatus, WorkflowStepKind, WorkflowStepProjectionStatus,
@@ -301,6 +308,172 @@ impl FlowWorkflowRunCoordinator {
             .map_err(|error| unavailable_at("resume Application Answer hook", error))
     }
 
+    async fn coordinate_active_application_variables(
+        &self,
+        record: &WorkflowRunRecord,
+        snapshot: &WorkflowRunSnapshot,
+        history: &[a3s_flow::FlowEventEnvelope],
+    ) -> Result<(), WorkflowRunCoordinationError> {
+        let hooks = application_variable_hooks(record, snapshot, history)?;
+        let active = hooks
+            .into_iter()
+            .filter(|hook| hook.status() == HookStatus::Active)
+            .collect::<Vec<_>>();
+        if active.len() > 1 {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "WorkflowRun replay exposed more than one active Application variable hook".into(),
+            ));
+        }
+        let Some(hook) = active.first() else {
+            return Ok(());
+        };
+        let port = self.application_effects.as_ref().ok_or_else(|| {
+            WorkflowRunCoordinationError::Unavailable(
+                "Workflow Applications semantic-effect coordination is not configured".into(),
+            )
+        })?;
+        match hook {
+            ObservedApplicationVariableHook::Snapshot {
+                metadata,
+                status: _,
+            } => {
+                let observed = port
+                    .read_conversation_variables(&WorkflowApplicationRunReference {
+                        organization_id: metadata.organization_id,
+                        workflow_run_id: metadata.workflow_run_id,
+                    })
+                    .await
+                    .map_err(|error| {
+                        application_effect_unavailable("read conversation variables", error)
+                    })?;
+                observed
+                    .validate()
+                    .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                if observed.organization_id != metadata.organization_id
+                    || observed.project_id != metadata.project_id
+                    || observed.workflow_run_id != metadata.workflow_run_id
+                {
+                    return Err(WorkflowRunCoordinationError::Unavailable(
+                        "Workflow Applications variable snapshot evidence drifted".into(),
+                    ));
+                }
+                let payload = WorkflowApplicationVariableSnapshotResumePayload::new(
+                    metadata,
+                    observed.application_id,
+                    observed.application_release_id,
+                    observed.application_release_digest,
+                    observed.session_id,
+                    observed.invocation_id,
+                    observed.version.revision_id,
+                    observed.version.revision_number,
+                    observed.version.values_digest,
+                    observed.values,
+                )
+                .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                self.engine
+                    .resume_hook(
+                        &record.run.flow_run_id,
+                        &metadata.flow_hook_id(),
+                        serde_json::to_value(payload).map_err(|error| {
+                            WorkflowRunCoordinationError::Unavailable(error.to_string())
+                        })?,
+                    )
+                    .await
+                    .map_err(|error| {
+                        unavailable_at("resume Application variable snapshot hook", error)
+                    })
+            }
+            ObservedApplicationVariableHook::Write {
+                metadata,
+                values,
+                created_at,
+                status: _,
+            } => {
+                let request = WorkflowApplicationVariableWriteRequest {
+                    effect: WorkflowApplicationEffectRequest {
+                        organization_id: metadata.organization_id,
+                        workflow_run_id: metadata.workflow_run_id,
+                        step_id: metadata.step_id.clone(),
+                        step_attempt: metadata.step_attempt,
+                        effect_ordinal: 0,
+                        occurred_at: *created_at,
+                    },
+                    expected: WorkflowApplicationVariableVersion {
+                        revision_id: metadata.expected_revision_id,
+                        revision_number: metadata.expected_revision_number,
+                        values_digest: metadata.expected_values_digest.clone(),
+                    },
+                    values: values.clone(),
+                };
+                request
+                    .validate()
+                    .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                let write = port
+                    .advance_conversation_variables(&request)
+                    .await
+                    .map_err(|error| {
+                        application_effect_unavailable("advance conversation variables", error)
+                    })?;
+                let revision = &write.value;
+                revision
+                    .validate()
+                    .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                let expected_effect = request
+                    .effect
+                    .effect()
+                    .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                if revision.organization_id != metadata.organization_id
+                    || revision.project_id != metadata.project_id
+                    || revision.application_id != metadata.application_id
+                    || revision.application_release_id != metadata.application_release_id
+                    || revision.application_release_digest != metadata.application_release_digest
+                    || revision.session_id != metadata.session_id
+                    || revision.parent_revision_id != Some(metadata.expected_revision_id)
+                    || revision.parent_digest.as_ref() != Some(&metadata.expected_values_digest)
+                    || revision.source_effect.as_ref() != Some(&expected_effect)
+                    || revision.values != *values
+                    || revision.values_digest != metadata.values_digest
+                    || revision.created_at != *created_at
+                {
+                    return Err(WorkflowRunCoordinationError::Unavailable(
+                        "Workflow Applications variable commit evidence drifted".into(),
+                    ));
+                }
+                let parent_revision_id = revision.parent_revision_id.ok_or_else(|| {
+                    WorkflowRunCoordinationError::Unavailable(
+                        "Workflow Applications variable commit lost its parent".into(),
+                    )
+                })?;
+                let parent_digest = revision.parent_digest.clone().ok_or_else(|| {
+                    WorkflowRunCoordinationError::Unavailable(
+                        "Workflow Applications variable commit lost its parent digest".into(),
+                    )
+                })?;
+                let payload = WorkflowApplicationVariableWriteResumePayload::new(
+                    metadata,
+                    revision.id,
+                    revision.revision_number,
+                    parent_revision_id,
+                    parent_digest,
+                    revision.values_digest.clone(),
+                )
+                .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                self.engine
+                    .resume_hook(
+                        &record.run.flow_run_id,
+                        &metadata.flow_hook_id(),
+                        serde_json::to_value(payload).map_err(|error| {
+                            WorkflowRunCoordinationError::Unavailable(error.to_string())
+                        })?,
+                    )
+                    .await
+                    .map_err(|error| {
+                        unavailable_at("resume Application variable write hook", error)
+                    })
+            }
+        }
+    }
+
     async fn cancel_execution_children(
         &self,
         record: &WorkflowRunRecord,
@@ -524,6 +697,8 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
                 }
             }
         } else if !snapshot.status.is_terminal() {
+            self.coordinate_active_application_variables(record, &snapshot, &history)
+                .await?;
             self.coordinate_active_application_answer(record, &snapshot, &history)
                 .await?;
             self.coordinate_active_execution(record, &snapshot, &history)
@@ -678,6 +853,28 @@ struct ObservedApplicationAnswerHook {
     status: HookStatus,
 }
 
+#[derive(Debug, Clone)]
+enum ObservedApplicationVariableHook {
+    Snapshot {
+        metadata: WorkflowApplicationVariableSnapshotHookMetadata,
+        status: HookStatus,
+    },
+    Write {
+        metadata: Box<WorkflowApplicationVariableWriteHookMetadata>,
+        values: serde_json::Value,
+        created_at: DateTime<Utc>,
+        status: HookStatus,
+    },
+}
+
+impl ObservedApplicationVariableHook {
+    const fn status(&self) -> HookStatus {
+        match self {
+            Self::Snapshot { status, .. } | Self::Write { status, .. } => *status,
+        }
+    }
+}
+
 impl ObservedApplicationAnswerHook {
     fn request(&self) -> WorkflowApplicationMessageRequest {
         WorkflowApplicationMessageRequest {
@@ -760,6 +957,163 @@ fn application_answer_hooks(
         });
     }
     Ok(hooks)
+}
+
+fn application_variable_hooks(
+    record: &WorkflowRunRecord,
+    snapshot: &WorkflowRunSnapshot,
+    history: &[a3s_flow::FlowEventEnvelope],
+) -> Result<Vec<ObservedApplicationVariableHook>, WorkflowRunCoordinationError> {
+    let Some(application) = record.run.execution_input.application_projection.as_ref() else {
+        return Ok(Vec::new());
+    };
+    if application.variable_step_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let resolved_steps = record
+        .run
+        .execution_input
+        .resolved_steps()
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+    let completed = super::projection::completed_workflow_steps(
+        &record.run.execution_input,
+        &resolved_steps,
+        snapshot,
+    )
+    .map_err(WorkflowRunCoordinationError::Unavailable)?
+    .completed;
+    let mut hooks = Vec::new();
+    for resolved in resolved_steps
+        .iter()
+        .filter(|resolved| application.is_variable_step(&resolved.plan.id))
+    {
+        let Some((snapshot_hook, snapshot_metadata)) =
+            application_variable_snapshot_hook(&record.run.execution_input, resolved, snapshot)
+                .map_err(WorkflowRunCoordinationError::Unavailable)?
+        else {
+            continue;
+        };
+        verify_application_hook_creation(
+            &snapshot_metadata.flow_hook_id(),
+            &snapshot_metadata.flow_hook_token(),
+            &snapshot_metadata,
+            history,
+            "variable snapshot",
+        )?;
+        hooks.push(ObservedApplicationVariableHook::Snapshot {
+            metadata: snapshot_metadata.clone(),
+            status: snapshot_hook.status,
+        });
+        if !application.is_variable_assignment_step(&resolved.plan.id) {
+            continue;
+        }
+        let Some(application_snapshot) =
+            application_variable_snapshot_payload(snapshot_hook, &snapshot_metadata)
+                .map_err(WorkflowRunCoordinationError::Unavailable)?
+        else {
+            continue;
+        };
+        let Some((write_hook, write_metadata)) = application_variable_write_hook(
+            &record.run.execution_input,
+            resolved,
+            &application_snapshot,
+            snapshot,
+        )
+        .map_err(WorkflowRunCoordinationError::Unavailable)?
+        else {
+            continue;
+        };
+        let outputs = completed
+            .iter()
+            .filter(|(step_id, _)| *step_id != &resolved.plan.id)
+            .map(|(step_id, result)| (step_id.clone(), result.output.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let composites = completed
+            .iter()
+            .filter(|(step_id, _)| *step_id != &resolved.plan.id)
+            .filter_map(|(step_id, result)| {
+                result
+                    .composite_region_result
+                    .clone()
+                    .map(|region| (step_id.clone(), region))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let values = super::variables::application_assignment_values(
+            &record.run.execution_input,
+            &resolved.plan.id,
+            &outputs,
+            &composites,
+            &application_snapshot,
+        )
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        let expected_metadata = WorkflowApplicationVariableWriteHookMetadata::from_run_step(
+            &record.run.execution_input,
+            resolved,
+            &application_snapshot,
+            &values,
+        )
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        if write_metadata != expected_metadata {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "Workflow Application variable write hook values drifted".into(),
+            ));
+        }
+        let write_created_at = verify_application_hook_creation(
+            &write_metadata.flow_hook_id(),
+            &write_metadata.flow_hook_token(),
+            &write_metadata,
+            history,
+            "variable write",
+        )?;
+        hooks.push(ObservedApplicationVariableHook::Write {
+            metadata: Box::new(write_metadata),
+            values,
+            created_at: write_created_at,
+            status: write_hook.status,
+        });
+    }
+    Ok(hooks)
+}
+
+fn verify_application_hook_creation<T: serde::Serialize>(
+    hook_id: &str,
+    token: &str,
+    metadata: &T,
+    history: &[a3s_flow::FlowEventEnvelope],
+    label: &str,
+) -> Result<DateTime<Utc>, WorkflowRunCoordinationError> {
+    let expected_metadata = serde_json::to_value(metadata)
+        .map_err(|error| WorkflowRunCoordinationError::Unavailable(error.to_string()))?;
+    let matching = history
+        .iter()
+        .filter(|envelope| {
+            matches!(
+                &envelope.event,
+                FlowEvent::HookCreated { hook_id: observed, .. } if observed == hook_id
+            )
+        })
+        .collect::<Vec<_>>();
+    if matching.len() != 1 {
+        return Err(WorkflowRunCoordinationError::Unavailable(format!(
+            "Workflow Application {label} hook {hook_id:?} must have exactly one creation event"
+        )));
+    }
+    let FlowEvent::HookCreated {
+        token: observed_token,
+        metadata: observed_metadata,
+        ..
+    } = &matching[0].event
+    else {
+        return Err(WorkflowRunCoordinationError::Unavailable(format!(
+            "Workflow Application {label} hook {hook_id:?} creation history is invalid"
+        )));
+    };
+    if observed_token != token || observed_metadata != &expected_metadata {
+        return Err(WorkflowRunCoordinationError::Unavailable(format!(
+            "Workflow Application {label} hook {hook_id:?} creation authority drifted"
+        )));
+    }
+    Ok(canonical_timestamp(matching[0].timestamp))
 }
 
 fn execution_hooks(

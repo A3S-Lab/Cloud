@@ -99,7 +99,7 @@ impl WorkflowCompositeFrame {
     ) -> Result<Self, String> {
         validate_request_authority(&request, plan, regions, variables)?;
         validate_defaults(variables, defaults)?;
-        reject_application_variables(variables)?;
+        reject_application_variable_access(variables, &request.region_step_id)?;
 
         let step = plan
             .steps
@@ -217,7 +217,7 @@ impl WorkflowCompositeFrame {
         {
             return Err("Workflow composite frame contract authority drifted".into());
         }
-        reject_application_variables(variables)?;
+        reject_application_variable_access(variables, &self.region_step_id)?;
 
         let step = plan
             .steps
@@ -522,7 +522,25 @@ pub(super) fn validate_plan_bindings(
         return Err("Workflow composite frame semantic contract identity drifted".into());
     }
     regions.validate_plan(plan)?;
-    variables.validate_graph_bindings(&plan.workflow_spec()?)
+    let application_ports = plan
+        .steps
+        .iter()
+        .filter(|step| {
+            step.descriptor.as_ref().is_some_and(|descriptor| {
+                matches!(
+                    (step.kind, descriptor.descriptor_id.as_str()),
+                    (WorkflowStepKind::Output, "application.answer")
+                        | (
+                            WorkflowStepKind::Service,
+                            "application.conversation-variable-assign"
+                        )
+                )
+            })
+        })
+        .map(|step| step.id.as_str())
+        .collect::<BTreeSet<_>>();
+    variables
+        .validate_graph_bindings_with_application_ports(&plan.workflow_spec()?, &application_ports)
 }
 
 fn validate_defaults(
@@ -542,17 +560,48 @@ fn validate_defaults(
     }
 }
 
-fn reject_application_variables(variables: &WorkflowVariableContract) -> Result<(), String> {
-    if variables.spec().declarations.iter().any(|declaration| {
-        declaration.scope == WorkflowVariableScope::Application
-            || declaration.mutation_mode == WorkflowVariableMutationMode::OptimisticApplicationPort
-    }) || variables
+fn reject_application_variable_access(
+    variables: &WorkflowVariableContract,
+    region_step_id: &str,
+) -> Result<(), String> {
+    let application_variables = variables
         .spec()
-        .reads
+        .declarations
         .iter()
-        .any(|read| read.mode == WorkflowVariableReadMode::ApplicationPort)
-    {
-        return Err("Workflow composite frame v1 does not own Applications variables".into());
+        .filter(|declaration| {
+            declaration.scope == WorkflowVariableScope::Application
+                || declaration.mutation_mode
+                    == WorkflowVariableMutationMode::OptimisticApplicationPort
+        })
+        .map(|declaration| declaration.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let reads_application = variables.spec().reads.iter().any(|read| {
+        read.consumer_step_id == region_step_id
+            && (read.mode == WorkflowVariableReadMode::ApplicationPort
+                || application_variables.contains(read.variable.as_str()))
+    });
+    let assigns_application = variables.spec().assignments.iter().any(|assignment| {
+        (assignment.writer_step_id == region_step_id
+            || assignment.writer_region_id.as_deref() == Some(region_step_id))
+            && [
+                Some(assignment.source_variable.as_str()),
+                Some(assignment.target_variable.as_str()),
+                assignment.expected_revision_variable.as_deref(),
+                assignment.idempotency_key_variable.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|name| application_variables.contains(name))
+    });
+    let exports_application = variables.spec().exports.iter().any(|export| {
+        export.region_id == region_step_id
+            && (application_variables.contains(export.source_variable.as_str())
+                || application_variables.contains(export.target_variable.as_str()))
+    });
+    if reads_application || assigns_application || exports_application {
+        return Err(
+            "Workflow composite frame v1 cannot cross Applications variable authority".into(),
+        );
     }
     Ok(())
 }

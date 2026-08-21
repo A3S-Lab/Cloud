@@ -1,7 +1,10 @@
-use super::projection::{completed_workflow_steps, verify_flow_authority};
+use super::projection::{
+    application_variable_snapshot_hook, application_variable_snapshot_payload,
+    completed_workflow_steps, verify_flow_authority,
+};
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
-    inspect_workflow_run_variables, inspect_workflow_run_variables_with_composites,
+    inspect_workflow_run_variables, inspect_workflow_run_variables_with_application,
     IWorkflowRunHistoryReader, IWorkflowRunVariableReader, WorkflowRunHistoryEvent,
     WorkflowRunHistoryPage, WorkflowRunInput, WorkflowRunRecord, WorkflowRunVariableInspection,
     WORKFLOW_RUN_OUTPUT_MAX_BYTES,
@@ -69,6 +72,33 @@ impl WorkflowRunVariableReader {
                 .iter()
                 .map(|(step_id, result)| (step_id.clone(), result.output.clone()))
                 .collect::<BTreeMap<_, _>>();
+            let mut application_values = None;
+            if let Some(application) = record.run.execution_input.application_projection.as_ref() {
+                for resolved in resolved_steps
+                    .iter()
+                    .filter(|resolved| application.is_variable_step(&resolved.plan.id))
+                {
+                    if let Some((hook, metadata)) = application_variable_snapshot_hook(
+                        &record.run.execution_input,
+                        resolved,
+                        &snapshot,
+                    )
+                    .map_err(FlowError::Runtime)?
+                    {
+                        if let Some(payload) =
+                            application_variable_snapshot_payload(hook, &metadata)
+                                .map_err(FlowError::Runtime)?
+                        {
+                            application_values = Some(payload.values);
+                        }
+                    }
+                    if application.is_variable_assignment_step(&resolved.plan.id) {
+                        if let Some(result) = completed.get(&resolved.plan.id) {
+                            application_values = Some(result.output.clone());
+                        }
+                    }
+                }
+            }
             let composites = completed
                 .into_iter()
                 .filter_map(|(step_id, result)| {
@@ -81,12 +111,13 @@ impl WorkflowRunVariableReader {
                 .last()
                 .map(|event| event.timestamp)
                 .ok_or_else(|| FlowError::Runtime("WorkflowRun Flow history is empty".into()))?;
-            return inspect_workflow_run_variables_with_composites(
+            return inspect_workflow_run_variables_with_application(
                 record,
                 snapshot.last_sequence,
                 observed_at,
                 &outputs,
                 &composites,
+                application_values.as_ref(),
             )
             .map_err(FlowError::Runtime);
         }

@@ -4,8 +4,10 @@ use super::{
 use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep,
     WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
-    WorkflowEdgeSpec, WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
+    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
+    WorkflowApplicationVariableWriteResumePayload, WorkflowEdgeSpec, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
     WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepKind,
 };
@@ -86,6 +88,40 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 ResolvedState::Inactive => None,
             })
             .collect::<BTreeMap<_, _>>();
+        let application_snapshot = if input
+            .application_projection
+            .as_ref()
+            .is_some_and(|projection| projection.is_variable_step(&step.plan.id))
+        {
+            let metadata =
+                WorkflowApplicationVariableSnapshotHookMetadata::from_run_step(&input, step)
+                    .map_err(FlowError::InvalidWorkflow)?;
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow Application variable snapshot hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            match context.hook_payload(&hook_id) {
+                Some(payload) => Some(application_variable_snapshot_result(
+                    &invocation.run_id,
+                    &hook_id,
+                    step,
+                    &metadata,
+                    payload,
+                )?),
+                None => {
+                    return Ok(context.create_hook(
+                        hook_id,
+                        metadata.flow_hook_token(),
+                        serde_json::to_value(metadata)?,
+                    ))
+                }
+            }
+        } else {
+            None
+        };
         let (effective_input, typed_projection_authoritative) =
             if step.plan.kind == WorkflowStepKind::Subworkflow {
                 (legacy_input, false)
@@ -96,6 +132,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     legacy_input,
                     &all_steps,
                     &composite_results,
+                    application_snapshot.as_ref(),
                 )
                 .map_err(FlowError::InvalidWorkflow)?;
                 (projection.input, projection.authoritative)
@@ -249,6 +286,66 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         )));
                     }
                 }
+            }
+            return Ok(context.create_hook(
+                hook_id,
+                metadata.flow_hook_token(),
+                serde_json::to_value(metadata)?,
+            ));
+        }
+        if input
+            .application_projection
+            .as_ref()
+            .is_some_and(|projection| projection.is_variable_assignment_step(&step.plan.id))
+        {
+            super::execution::validate_data_schema(
+                &step.input_schema,
+                &effective_input,
+                "Workflow Application variable assignment step input",
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let application_snapshot = application_snapshot.as_ref().ok_or_else(|| {
+                FlowError::InvalidWorkflow(format!(
+                    "Workflow Application variable assignment step {:?} lost its snapshot",
+                    step.plan.id
+                ))
+            })?;
+            let values = super::variables::application_assignment_values(
+                &input,
+                &step.plan.id,
+                &all_steps,
+                &composite_results,
+                application_snapshot,
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let metadata = WorkflowApplicationVariableWriteHookMetadata::from_run_step(
+                &input,
+                step,
+                application_snapshot,
+                &values,
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow Application variable write hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            if let Some(payload) = context.hook_payload(&hook_id) {
+                let result = application_variable_write_result(
+                    &invocation.run_id,
+                    &hook_id,
+                    step,
+                    &metadata,
+                    &values,
+                    payload,
+                )?;
+                resolved.insert(
+                    step.plan.id.clone(),
+                    ResolvedState::Active(Box::new(result)),
+                );
+                continue;
             }
             return Ok(context.create_hook(
                 hook_id,
@@ -725,6 +822,86 @@ pub(super) fn application_answer_result(
         .validate(step)
         .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
     Ok(result)
+}
+
+pub(super) fn application_variable_snapshot_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowApplicationVariableSnapshotHookMetadata,
+    observed: &Value,
+) -> Result<WorkflowApplicationVariableSnapshotResumePayload, FlowError> {
+    let payload = serde_json::from_value::<WorkflowApplicationVariableSnapshotResumePayload>(
+        observed.clone(),
+    )
+    .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "snapshot"))?;
+    payload
+        .validate(metadata)
+        .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "snapshot"))?;
+    if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+        return Err(application_variable_payload_drift(
+            run_id,
+            &step.plan.id,
+            "snapshot",
+        ));
+    }
+    Ok(payload)
+}
+
+pub(super) fn application_variable_write_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowApplicationVariableWriteHookMetadata,
+    values: &Value,
+    observed: &Value,
+) -> Result<WorkflowLocalStepResult, FlowError> {
+    let payload =
+        serde_json::from_value::<WorkflowApplicationVariableWriteResumePayload>(observed.clone())
+            .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "write"))?;
+    payload
+        .validate(metadata)
+        .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "write"))?;
+    if payload.flow_run_id != run_id
+        || payload.flow_hook_id != hook_id
+        || super::execution::value_digest(values, "Workflow Application variable assignment output")
+            .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "write"))?
+            != metadata.values_digest
+    {
+        return Err(application_variable_payload_drift(
+            run_id,
+            &step.plan.id,
+            "write",
+        ));
+    }
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::Service,
+        output: values.clone(),
+        output_digest: metadata.values_digest.clone(),
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "write"))?;
+    super::execution::validate_data_schema(
+        &step.output_schema,
+        &result.output,
+        "Workflow Application variable assignment output",
+    )
+    .map_err(|_| application_variable_payload_drift(run_id, &step.plan.id, "write"))?;
+    Ok(result)
+}
+
+fn application_variable_payload_drift(run_id: &str, step_id: &str, phase: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow Application variable {phase} for step {step_id:?} received invalid authority-bound evidence"
+        ),
+    }
 }
 
 fn application_answer_payload_drift(run_id: &str, step_id: &str) -> FlowError {

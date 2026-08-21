@@ -1,12 +1,76 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    application_answer_workflow_run_input, application_workflow_run_input,
-    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
-    human_decision_workflow_run_input, routed_connector_workflow_run_input,
-    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
-    TEST_ANSWER_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
+    application_answer_workflow_run_input, application_variable_workflow_run_input,
+    application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
+    connector_workflow_run_input_v6, human_decision_workflow_run_input,
+    routed_connector_workflow_run_input, routed_execution_workflow_run_input,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
+    TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v12_run_input_pins_exact_application_variable_projection_without_aliasing_v11() {
+    let input = application_variable_workflow_run_input()
+        .expect("valid Application-variable WorkflowRun input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V12);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V12);
+    let projection = input
+        .application_projection
+        .as_ref()
+        .expect("Application projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+    );
+    assert_eq!(projection.final_output_step_id, "output");
+    assert!(projection.answer_step_ids.is_empty());
+    assert_eq!(
+        projection.variable_step_ids,
+        [TEST_APPLICATION_VARIABLE_STEP_ID]
+    );
+    assert_eq!(
+        projection.variable_assignment_step_ids,
+        [TEST_APPLICATION_VARIABLE_STEP_ID]
+    );
+    input.validate().expect("valid v12 input");
+
+    let canonical = String::from_utf8(input.canonical_bytes().expect("canonical v12 input"))
+        .expect("UTF-8 v12 input");
+    assert!(canonical.contains("variable_step_ids"));
+    assert!(canonical.contains("variable_assignment_step_ids"));
+
+    let mut v11_alias = input.clone();
+    v11_alias.schema = WORKFLOW_RUN_INPUT_SCHEMA_V11.into();
+    v11_alias.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11.into();
+    v11_alias.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V11.into();
+    assert!(v11_alias.validate().is_err());
+
+    let mut missing_assignment = input.clone();
+    missing_assignment
+        .application_projection
+        .as_mut()
+        .expect("Application projection")
+        .variable_assignment_step_ids
+        .clear();
+    assert!(missing_assignment.validate().is_err());
+
+    let mut descriptor_alias = input;
+    descriptor_alias
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == TEST_APPLICATION_VARIABLE_STEP_ID)
+        .and_then(|step| step.descriptor.as_mut())
+        .expect("Application variable descriptor")
+        .descriptor_id = "application.variable-assign".into();
+    refresh_plan_digest(&mut descriptor_alias);
+    assert!(descriptor_alias.validate().is_err());
+}
 
 #[test]
 fn v11_run_input_partitions_answer_from_final_output_without_reinterpreting_v10() {
@@ -66,6 +130,8 @@ fn v10_run_input_requires_exact_application_final_output_projection() {
     let canonical = String::from_utf8(input.canonical_bytes().expect("canonical v10 input"))
         .expect("UTF-8 v10 input");
     assert!(!canonical.contains("answer_step_ids"));
+    assert!(!canonical.contains("variable_step_ids"));
+    assert!(!canonical.contains("variable_assignment_step_ids"));
 
     let mut drifted = input.clone();
     drifted

@@ -1,7 +1,7 @@
 use super::{
-    WorkflowCompositeRegionResult, WorkflowRunInput, WorkflowVariableAssignment,
-    WorkflowVariableContract, WorkflowVariableDeclaration, WorkflowVariableReadMode,
-    WorkflowVariableScope,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowCompositeRegionResult,
+    WorkflowRunInput, WorkflowVariableAssignment, WorkflowVariableContract,
+    WorkflowVariableDeclaration, WorkflowVariableReadMode, WorkflowVariableScope,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -14,7 +14,13 @@ pub(crate) fn materialize_workflow_variables(
     contract: &WorkflowVariableContract,
     outputs: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, String> {
-    materialize_workflow_variables_with_composites(input, contract, outputs, &BTreeMap::new())
+    materialize_workflow_variables_with_application(
+        input,
+        contract,
+        outputs,
+        &BTreeMap::new(),
+        None,
+    )
 }
 
 pub(crate) fn materialize_workflow_variables_with_composites(
@@ -22,6 +28,32 @@ pub(crate) fn materialize_workflow_variables_with_composites(
     contract: &WorkflowVariableContract,
     outputs: &BTreeMap<String, Value>,
     composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+) -> Result<BTreeMap<String, Value>, String> {
+    materialize_workflow_variables_with_application(input, contract, outputs, composites, None)
+}
+
+pub(crate) fn materialize_workflow_variables_with_application(
+    input: &WorkflowRunInput,
+    contract: &WorkflowVariableContract,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+    application: Option<&WorkflowApplicationVariableSnapshotResumePayload>,
+) -> Result<BTreeMap<String, Value>, String> {
+    materialize_workflow_variables_with_application_values(
+        input,
+        contract,
+        outputs,
+        composites,
+        application.map(|snapshot| &snapshot.values),
+    )
+}
+
+pub(crate) fn materialize_workflow_variables_with_application_values(
+    input: &WorkflowRunInput,
+    contract: &WorkflowVariableContract,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+    application_values: Option<&Value>,
 ) -> Result<BTreeMap<String, Value>, String> {
     let defaults = input
         .variable_defaults
@@ -90,11 +122,26 @@ pub(crate) fn materialize_workflow_variables_with_composites(
             WorkflowVariableScope::Run => None,
             WorkflowVariableScope::CompositeLocal => continue,
             WorkflowVariableScope::Application => {
-                return Err(format!(
-                    "WorkflowRun runtime v2 cannot materialize {} variable {:?}",
-                    declaration.scope.as_str(),
-                    declaration.name
-                ));
+                let Some(application_values) = application_values else {
+                    continue;
+                };
+                let application_values = application_values.as_object().ok_or_else(|| {
+                    "Workflow Application variable snapshot is not a JSON object".to_owned()
+                })?;
+                match application_values.get(&declaration.name) {
+                    Some(value) => {
+                        validate_materialized_value(declaration, value)?;
+                        values_insert(&mut values, declaration, value)?;
+                    }
+                    None if declaration.required => {
+                        return Err(format!(
+                            "required Workflow Application variable {:?} is unavailable",
+                            declaration.name
+                        ));
+                    }
+                    None => {}
+                }
+                continue;
             }
         };
         let default = defaults
@@ -152,6 +199,16 @@ pub(crate) fn materialize_workflow_variables_with_composites(
             .filter(|assignment| {
                 assignment.writer_step_id == step.id && assignment.writer_region_id.is_none()
             })
+            .filter(|assignment| {
+                contract
+                    .spec()
+                    .declarations
+                    .iter()
+                    .find(|declaration| declaration.name == assignment.target_variable)
+                    .is_some_and(|declaration| {
+                        declaration.scope != WorkflowVariableScope::Application
+                    })
+            })
             .map(|assignment| {
                 resolve_workflow_variable_assignment(assignment, &values)
                     .map(|value| (assignment.target_variable.clone(), value))
@@ -160,6 +217,78 @@ pub(crate) fn materialize_workflow_variables_with_composites(
         for (target, value) in updates {
             values.insert(target, value);
         }
+    }
+    Ok(values)
+}
+
+fn values_insert(
+    materialized: &mut BTreeMap<String, Value>,
+    declaration: &WorkflowVariableDeclaration,
+    value: &Value,
+) -> Result<(), String> {
+    if materialized
+        .insert(declaration.name.clone(), value.clone())
+        .is_some()
+    {
+        return Err(format!(
+            "Workflow Application variable {:?} was materialized twice",
+            declaration.name
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn resolve_application_variable_assignment_values(
+    input: &WorkflowRunInput,
+    contract: &WorkflowVariableContract,
+    step_id: &str,
+    outputs: &BTreeMap<String, Value>,
+    composites: &BTreeMap<String, WorkflowCompositeRegionResult>,
+    application: &WorkflowApplicationVariableSnapshotResumePayload,
+) -> Result<Value, String> {
+    let materialized = materialize_workflow_variables_with_application(
+        input,
+        contract,
+        outputs,
+        composites,
+        Some(application),
+    )?;
+    let declarations = contract
+        .spec()
+        .declarations
+        .iter()
+        .map(|declaration| (declaration.name.as_str(), declaration))
+        .collect::<BTreeMap<_, _>>();
+    let assignments = contract
+        .spec()
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.writer_step_id == step_id)
+        .filter(|assignment| {
+            declarations
+                .get(assignment.target_variable.as_str())
+                .is_some_and(|declaration| declaration.scope == WorkflowVariableScope::Application)
+        })
+        .collect::<Vec<_>>();
+    if assignments.is_empty() {
+        return Err(format!(
+            "Workflow Application variable step {step_id:?} has no exact assignment"
+        ));
+    }
+    let mut values =
+        application.values.as_object().cloned().ok_or_else(|| {
+            "Workflow Application variable snapshot is not a JSON object".to_owned()
+        })?;
+    for assignment in assignments {
+        let value = resolve_workflow_variable_assignment(assignment, &materialized)?;
+        values.insert(assignment.target_variable.clone(), value);
+    }
+    let values = Value::Object(values);
+    let digest = super::workflow_application_variable_hook::value_digest(&values)?;
+    if digest == application.values_digest {
+        return Err(format!(
+            "Workflow Application variable step {step_id:?} did not change canonical values"
+        ));
     }
     Ok(values)
 }
