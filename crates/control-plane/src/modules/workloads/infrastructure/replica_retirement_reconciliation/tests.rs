@@ -4,20 +4,23 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId,
-    OperationId, OrganizationId, ProjectId, ResourceName, WorkloadId, WorkloadRevisionId,
+    OperationId, OrganizationId, ProjectId, ResourceName, Sha256Digest, WorkloadId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, HttpHealthCheck, OciArtifact, ResourceClaimReservation, ResourceKind,
-    ResourceSlotRequest, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
-    WorkloadReplicaMember, WorkloadRevision,
+    Deployment, HttpHealthCheck, ManagedOwnerKind, ManagedOwnerReference, OciArtifact,
+    ResourceClaimReservation, ResourceKind, ResourceSlotRequest, ServicePort, ServiceProcess,
+    ServiceResources, ServiceTemplate, Workload, WorkloadReplicaMember, WorkloadRevision,
+    WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
 };
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
 };
 use crate::modules::workloads::{
     CreateDeploymentBundle, DeploymentRequested, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaEvacuationRepository, IWorkloadRepository, ReconfigureReplicaSetWrite,
-    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, WorkloadControlSpec,
+    IWorkloadReplicaEvacuationRepository, IWorkloadRepository, IWorkloadWriterFenceAdapter,
+    IWorkloadWriterFenceRepository, ReconfigureReplicaSetWrite, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, WorkloadControlSpec, WorkloadWriterFenceCommit,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandFailure, NodeResourceClaimPrepare, NodeResourceClaimReleased,
@@ -26,6 +29,7 @@ use a3s_cloud_contracts::{
 use async_trait::async_trait;
 use chrono::Duration as ChronoDuration;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 
 #[derive(Default)]
@@ -139,6 +143,142 @@ impl IWorkloadRuntimeControl for FakeControl {
     }
 }
 
+struct ScriptedWriterFence {
+    owner: ManagedOwnerReference,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl IWorkloadWriterFenceAdapter for ScriptedWriterFence {
+    async fn prepare_replica_retirement(
+        &self,
+        target: &RetiringReplicaTarget,
+        command: &NodeCommand,
+        acknowledgement: &NodeCommandAck,
+    ) -> Result<Option<WorkloadWriterFenceCommit>, RepositoryError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let binding = target.replica_binding.as_ref().ok_or_else(|| {
+            RepositoryError::Conflict("writer-fence test target omitted its binding".into())
+        })?;
+        let operation_id = OperationId::from_uuid(Uuid::new_v5(
+            &target.replica.id.as_uuid(),
+            b"writer-fence-test-operation",
+        ));
+        let fenced_at =
+            canonical_timestamp(acknowledgement.completed_at.max(target.replica.updated_at));
+        let receipt = WorkloadWriterFenceReceipt::issue(WorkloadWriterFenceReceiptSpec {
+            organization_id: target.replica.organization_id,
+            project_id: target.replica.project_id,
+            environment_id: target.replica.environment_id,
+            workload_id: target.replica.workload_id,
+            workload_revision_id: target.revision.id,
+            workload_revision_generation: target.revision.generation,
+            replica_id: target.replica.id,
+            replica_ordinal: target.replica.ordinal,
+            writer_epoch: target.replica.generation,
+            member_id: target.member.id,
+            placement_generation: target.member.placement_generation,
+            managed_owner: self.owner.clone(),
+            node_id: target.member.node_id.ok_or_else(|| {
+                RepositoryError::Conflict("writer-fence test target omitted its node".into())
+            })?,
+            runtime_unit_id: binding.runtime_unit_id.clone(),
+            command_id: command.id,
+            command_payload_digest: Sha256Digest::parse(
+                command
+                    .payload_digest()
+                    .map_err(RepositoryError::Conflict)?,
+            )
+            .map_err(RepositoryError::Conflict)?,
+            acknowledgement_digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                .map_err(RepositoryError::Conflict)?,
+            continuation_operation_id: operation_id,
+            fenced_at,
+        })
+        .map_err(RepositoryError::Conflict)?;
+        Ok(Some(WorkloadWriterFenceCommit {
+            operation: OperationRequest::new(
+                operation_id,
+                target.replica.organization_id,
+                OperationSubject::new("workload", target.replica.workload_id.as_uuid())
+                    .map_err(RepositoryError::Conflict)?,
+                WorkflowIdentity::new("cloud.test.writer-fence", "1")
+                    .map_err(RepositoryError::Conflict)?,
+                serde_json::json!({ "receiptDigest": receipt.digest() }),
+                fenced_at,
+            ),
+            receipt,
+        }))
+    }
+}
+
+#[tokio::test]
+async fn owner_writer_fence_is_committed_with_runtime_fence_before_retirement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = canonical_timestamp(Utc::now() - ChronoDuration::minutes(1));
+    let repository = Arc::new(InMemoryWorkloadRepository::new());
+    let owner = ManagedOwnerReference::new(
+        ManagedOwnerKind::parse("durable-cell.application")?,
+        Uuid::now_v7(),
+        1,
+        format!("sha256:{}", "d".repeat(64)),
+    )?;
+    let target = seed_managed_stopping_target(repository.as_ref(), owner.clone(), base).await?;
+    let control = Arc::new(FakeControl::default());
+    let writer_fences = Arc::new(ScriptedWriterFence {
+        owner,
+        calls: AtomicUsize::new(0),
+    });
+    let reconciler = reconciler(
+        repository.clone(),
+        control.clone(),
+        Arc::new(InMemoryResourceClaimRepository::new()),
+    )?
+    .with_writer_fence_adapter(writer_fences.clone());
+
+    let dispatched = reconciler
+        .run_once(base + ChronoDuration::seconds(20))
+        .await?;
+    assert_eq!(dispatched.removal_commands, 1);
+    assert_eq!(dispatched.writer_fences, 0);
+    let removal = control
+        .commands()
+        .await
+        .into_iter()
+        .find(|command| matches!(&command.payload, NodeCommandPayload::RuntimeRemove { .. }))
+        .ok_or("RuntimeRemove command")?;
+    let completed_at = base + ChronoDuration::seconds(21);
+    control
+        .acknowledge_at(
+            &removal,
+            completed_at,
+            successful_runtime_removal(&removal, completed_at)?,
+        )
+        .await;
+
+    let completed = reconciler
+        .run_once(base + ChronoDuration::seconds(22))
+        .await?;
+    assert_eq!(completed.runtime_fences, 1);
+    assert_eq!(completed.writer_fences, 1);
+    assert_eq!(completed.retired, 1);
+    assert!(completed.failures.is_empty());
+    assert_eq!(writer_fences.calls.load(Ordering::SeqCst), 1);
+    let receipt = repository
+        .latest_writer_fence(target.replica.organization_id, target.replica.workload_id)
+        .await?
+        .ok_or("writer-fence receipt")?;
+    assert_eq!(receipt.spec().command_id, removal.id);
+    assert_eq!(receipt.spec().writer_epoch, target.replica.generation);
+    let operation = repository
+        .writer_fence_operation(receipt.spec().continuation_operation_id)
+        .await
+        .ok_or("writer-fence Operation")?;
+    assert_eq!(operation.requested_at, receipt.spec().fenced_at);
+    assert!(repository.pending_replica_retirements(10).await?.is_empty());
+    Ok(())
+}
+
 #[tokio::test]
 async fn unplaced_retiring_replica_completes_once_without_commands(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -151,11 +291,21 @@ async fn unplaced_retiring_replica_completes_once_without_commands(
     )
     .await?;
     let control = Arc::new(FakeControl::default());
+    let writer_fences = Arc::new(ScriptedWriterFence {
+        owner: ManagedOwnerReference::new(
+            ManagedOwnerKind::parse("durable-cell.application")?,
+            Uuid::now_v7(),
+            1,
+            format!("sha256:{}", "e".repeat(64)),
+        )?,
+        calls: AtomicUsize::new(0),
+    });
     let reconciler = reconciler(
         repository.clone(),
         control.clone(),
         Arc::new(InMemoryResourceClaimRepository::new()),
-    )?;
+    )?
+    .with_writer_fence_adapter(writer_fences.clone());
 
     let report = reconciler.run_once(now).await?;
     assert_eq!(report.targets, 1);
@@ -184,6 +334,7 @@ async fn unplaced_retiring_replica_completes_once_without_commands(
         1
     );
     assert_eq!(reconciler.run_once(now).await?.targets, 0);
+    assert_eq!(writer_fences.calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         repository
             .outbox_events()
@@ -561,7 +712,17 @@ async fn evacuation_fences_and_releases_the_old_generation_before_rematerializin
         target.replica.updated_at,
     )
     .await?;
-    let reconciler = reconciler(repository.clone(), control.clone(), claims.clone())?;
+    let writer_fences = Arc::new(ScriptedWriterFence {
+        owner: ManagedOwnerReference::new(
+            ManagedOwnerKind::parse("durable-cell.application")?,
+            Uuid::now_v7(),
+            1,
+            format!("sha256:{}", "f".repeat(64)),
+        )?,
+        calls: AtomicUsize::new(0),
+    });
+    let reconciler = reconciler(repository.clone(), control.clone(), claims.clone())?
+        .with_writer_fence_adapter(writer_fences.clone());
 
     reconciler
         .run_once(base + ChronoDuration::seconds(10))
@@ -612,6 +773,7 @@ async fn evacuation_fences_and_releases_the_old_generation_before_rematerializin
     assert_eq!(completed.claims_released, 1);
     assert_eq!(completed.evacuated, 1);
     assert_eq!(completed.retired, 0);
+    assert_eq!(writer_fences.calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         claims.find(claim.organization_id, claim.id).await?.state,
         ResourceClaimState::Released
@@ -679,6 +841,66 @@ fn reconciler(
         Duration::from_secs(30),
         100,
     )
+}
+
+async fn seed_managed_stopping_target(
+    repository: &InMemoryWorkloadRepository,
+    owner: ManagedOwnerReference,
+    at: DateTime<Utc>,
+) -> Result<RetiringReplicaTarget, Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("managed writer fence fixture")?,
+        at,
+    );
+    let mut bundle = deployment_bundle(workload.clone(), at)?;
+    bundle.control = WorkloadControlSpec::managed_replica_set(owner, 1, 1)?;
+    let deployment = bundle.deployment.clone();
+    repository.create_deployment(bundle).await?;
+    let resolving = repository
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            at + ChronoDuration::seconds(1),
+        )
+        .await?;
+    let scheduled = repository
+        .assign_node(
+            resolving.id,
+            resolving.aggregate_version,
+            NodeId::new(),
+            at + ChronoDuration::seconds(2),
+        )
+        .await?;
+    repository
+        .mark_dispatched(
+            scheduled.id,
+            scheduled.aggregate_version,
+            NodeCommandId::new(),
+            at + ChronoDuration::seconds(3),
+        )
+        .await?;
+    let control = repository
+        .find_workload_control(organization_id, workload.id)
+        .await?;
+    repository
+        .reconfigure_replica_set(replica_set_write(
+            &control,
+            0,
+            "stop-managed-writer",
+            at + ChronoDuration::seconds(4),
+        )?)
+        .await?;
+    repository
+        .pending_replica_retirements(10)
+        .await?
+        .into_iter()
+        .find(|target| target.replica.workload_id == workload.id)
+        .ok_or_else(|| "managed retiring replica target is missing".into())
 }
 
 async fn seed_retiring_target(

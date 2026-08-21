@@ -31,9 +31,10 @@ pub use domain::entities::{
     Workload, WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup,
     WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
     WorkloadPlacementGroupState, WorkloadPlacementGroupWrite, WorkloadReplica,
-    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
+    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
+    WorkloadWriterFenceReceiptSpec, CANONICAL_REPLICA_ORDINAL,
     MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS, MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS,
-    MAX_WORKLOAD_REPLICAS,
+    MAX_WORKLOAD_REPLICAS, WORKLOAD_WRITER_FENCE_RECEIPT_SCHEMA,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaEvacuated,
@@ -46,19 +47,21 @@ pub use domain::repositories::{
     IWorkloadPlacementGroupRepository, IWorkloadPlacementGroupSchedulingRepository,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
     IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PlacementGroupCancellationWrite, PlacementGroupMaterialization, PlacementGroupMemberPlacement,
-    PlacementGroupPlacement, PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite,
-    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
-    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
-    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
-    SecretRotationReconciliation, WorkloadStopBundle,
+    IWorkloadWriterFenceRepository, PlacementGroupCancellationWrite, PlacementGroupMaterialization,
+    PlacementGroupMemberPlacement, PlacementGroupPlacement, PlacementGroupSchedulingWrite,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
+    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
+    SecretRotation, SecretRotationCompletion, SecretRotationReconciliation, WorkloadStopBundle,
+    WorkloadWriterFenceCommit,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
     DeploymentRouteUpdateRequest, IDeploymentRouteUpdater, IOciArtifactResolver,
-    IWorkloadPrestartGate, OciArtifactResolutionError, OciRegistryCredentialReference,
-    ReplicaSetReconfiguration, ReplicaSetReconfigurationError, UnrestrictedWorkloadPrestartGate,
+    IWorkloadPrestartGate, IWorkloadWriterFenceAdapter, OciArtifactResolutionError,
+    OciRegistryCredentialReference, ReplicaSetReconfiguration, ReplicaSetReconfigurationError,
+    UnrestrictedWorkloadPrestartGate, UnrestrictedWorkloadWriterFenceAdapter,
     UnroutedDeploymentRouteUpdater, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 pub use infrastructure::{

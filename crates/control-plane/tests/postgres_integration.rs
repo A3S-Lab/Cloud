@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 131;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "131";
+const CLOUD_MIGRATION_COUNT: i64 = 132;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "132";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -157,6 +157,8 @@ mod workflow_run_process_death_support;
 mod workflow_semantic_contracts_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
+#[path = "support/workload_writer_fences.rs"]
+mod workload_writer_fences_support;
 #[path = "support/workloads.rs"]
 mod workloads_support;
 
@@ -828,6 +830,13 @@ async fn exercise_postgres_replica_set_foundation(
     )
     .await?;
     let node_pool_id = fleet_support::exercise_fleet(&executor, organization_id).await?;
+    workload_writer_fences_support::exercise_atomic_writer_fence_commit(
+        &executor,
+        organization_id,
+        project_id,
+        environment_id,
+    )
+    .await?;
     workloads_support::exercise_workload_node_pool_selection(
         &executor,
         organization_id,

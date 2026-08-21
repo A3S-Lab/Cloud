@@ -131,7 +131,11 @@ The code on `main` separates implemented mechanics from released capability:
   materialization. Exact `@1` histories retain their one-step replay contract.
   A PostgreSQL 17 CI gate kills the worker before the second seal, restore, and
   recovery-cleanup page completions and reconstructs each run from durable Flow
-  history. Workloads writer-fence enqueue and a retained real-S3 pass remain.
+  history. Migration `131` now lets Workloads bind the stopped current
+  single-replica Durable Cell's exact successful `RuntimeRemove` acknowledgement
+  to an immutable writer-fence receipt and atomically enqueue
+  `cloud.object-namespace.seal@2` with the Runtime fence. Successful seal
+  admission before start/rollout/rollback and a retained real-S3 pass remain.
 - **Implemented backend / Durable Cell interfaces** — application and revision
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint

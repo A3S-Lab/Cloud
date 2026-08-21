@@ -1223,10 +1223,18 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "131",
+            "immutable Workload writer-fence receipts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/131_workload_writer_fence_receipts.sql"
+            )),
+        ),
+        Migration::new(
+            "132",
             "durable Agent Code commands",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/131_agent_code_command_persistence.sql"
+                "/../../migrations/132_agent_code_command_persistence.sql"
             )),
         ),
     ]
@@ -2063,14 +2071,59 @@ mod notification_alert_policy_migration_tests {
 }
 
 #[cfg(test)]
-mod agent_code_command_migration_tests {
+mod workload_writer_fence_migration_tests {
     const MIGRATION: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../migrations/131_agent_code_command_persistence.sql"
+        "/../../migrations/131_workload_writer_fence_receipts.sql"
     ));
 
     #[test]
-    fn migration_131_extends_the_existing_fleet_command_authority() {
+    fn migration_131_keeps_runtime_fences_immutable_and_operation_bound() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        let canonical = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+        for expected in [
+            "create table workload_writer_fence_receipts",
+            "unique (node_id, id, aggregate_id, generation, command_kind, payload_digest)",
+            "primary key (organization_id, workload_id, writer_epoch)",
+            "command_kind = 'runtime_remove'",
+            "foreign key ( node_id, command_id, replica_id, writer_epoch, command_kind, command_payload_digest ) references node_commands ( node_id, id, aggregate_id, generation, command_kind, payload_digest )",
+            "foreign key (organization_id, continuation_operation_id)",
+            "references operation_requests (organization_id, operation_id)",
+            "cloud.workload.writer-fence-receipt.v1",
+            "before update or delete",
+            "workload writer-fence receipts are immutable",
+            "owner-supplied continuation atomically enqueued",
+        ] {
+            assert!(
+                canonical.contains(&expected.to_ascii_lowercase()),
+                "migration 131 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "secret_value",
+            "access_key_id",
+            "secret_access_key",
+            "create table object_namespace",
+            "create table recovery",
+            "retry_count",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 131 duplicated external authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_code_command_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/132_agent_code_command_persistence.sql"
+    ));
+
+    #[test]
+    fn migration_132_extends_the_existing_fleet_command_authority() {
         let lower = MIGRATION.to_ascii_lowercase();
         for expected in [
             "drop constraint node_commands_command_kind_check",
@@ -2084,13 +2137,13 @@ mod agent_code_command_migration_tests {
         ] {
             assert!(
                 lower.contains(expected),
-                "migration 131 is missing {expected}"
+                "migration 132 is missing {expected}"
             );
         }
         for forbidden in ["create table", "agent_commands", "code_agent_commands"] {
             assert!(
                 !lower.contains(forbidden),
-                "migration 131 duplicated Fleet command authority through {forbidden}"
+                "migration 132 duplicated Fleet command authority through {forbidden}"
             );
         }
     }

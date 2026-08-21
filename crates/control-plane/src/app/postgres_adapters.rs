@@ -69,7 +69,8 @@ use crate::modules::workloads::{
     IDeploymentFlowWorkloadRepository, IResourceClaimRepository, ISecretRotationRestartRepository,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
     IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeControl,
-    IWorkloadRuntimeTargetRepository, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, IWorkloadWriterFenceRepository,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository,
 };
 use a3s_orm::PostgresExecutor;
 use std::sync::Arc;
@@ -313,6 +314,7 @@ pub(super) struct WorkloadPostgresAdapters {
     pub(super) replica_deployments: Arc<dyn IWorkloadReplicaDeploymentRepository>,
     pub(super) replica_evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository>,
     pub(super) replica_retirements: Arc<dyn IWorkloadReplicaRetirementRepository>,
+    pub(super) writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
     pub(super) workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
     pub(super) secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository>,
     pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
@@ -327,6 +329,7 @@ impl WorkloadPostgresAdapters {
             replica_deployments: repository.clone(),
             replica_evacuations: repository.clone(),
             replica_retirements: repository.clone(),
+            writer_fences: repository.clone(),
             workload_targets: repository.clone(),
             secret_rotation_restarts: repository,
             resource_claims: Arc::new(PostgresResourceClaimRepository::new(executor)),

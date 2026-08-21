@@ -1,15 +1,15 @@
 use super::schema::WorkloadReplicas;
-use super::{queries, replicas};
+use super::{operation_requests, queries, replicas, writer_fences};
 use crate::infrastructure::{store_outbox, transaction_error, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId,
+    canonical_timestamp, IdempotentWrite, OrganizationId, RepositoryError, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId,
 };
 use crate::modules::workloads::domain::entities::{WorkloadReplica, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::events::{WorkloadReplicaEvacuated, WorkloadReplicaRetired};
 use crate::modules::workloads::domain::repositories::{
     ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    RetiringReplicaTarget,
+    RetiringReplicaTarget, WorkloadWriterFenceCommit,
 };
 use a3s_orm::{
     select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
@@ -112,9 +112,16 @@ async fn dispatch_in_transaction(
 pub(super) async fn record_fence(
     executor: &PostgresExecutor,
     fence: ReplicaRuntimeFence,
+    writer_fence: Option<WorkloadWriterFenceCommit>,
 ) -> Result<WorkloadReplica, RepositoryError> {
     executor
-        .transaction(move |transaction| Box::pin(record_fence_in_transaction(transaction, fence)))
+        .transaction(move |transaction| {
+            Box::pin(record_fence_in_transaction(
+                transaction,
+                fence,
+                writer_fence,
+            ))
+        })
         .await
         .map_err(transaction_error)
 }
@@ -122,8 +129,10 @@ pub(super) async fn record_fence(
 async fn record_fence_in_transaction(
     transaction: &PostgresTransaction,
     fence: ReplicaRuntimeFence,
+    writer_fence: Option<WorkloadWriterFenceCommit>,
 ) -> Result<WorkloadReplica, PostgresPersistenceError> {
-    lock_workload_control(transaction, fence.organization_id, fence.workload_id).await?;
+    let control =
+        lock_workload_control(transaction, fence.organization_id, fence.workload_id).await?;
     let mut replica = replicas::replica_for_update(
         transaction,
         fence.organization_id,
@@ -133,18 +142,83 @@ async fn record_fence_in_transaction(
     .await?
     .ok_or(RepositoryError::NotFound)?;
     require_generation(&replica, fence.replica_generation)?;
-    if replica.lifecycle == WorkloadReplicaLifecycle::Retiring
+    let replayed = replica.lifecycle == WorkloadReplicaLifecycle::Retiring
         && replica.retirement_command_id == Some(fence.command_id)
-        && replica.runtime_fenced_at == Some(fence.fenced_at)
-    {
-        return Ok(replica);
+        && replica.runtime_fenced_at == Some(canonical_timestamp(fence.fenced_at));
+    let mut existing_writer_fence = None;
+    if let Some(commit) = &writer_fence {
+        let spec = commit.receipt.spec();
+        let member = replicas::member_for_update(
+            transaction,
+            fence.organization_id,
+            fence.replica_id,
+            spec.member_id,
+        )
+        .await?
+        .ok_or_else(|| invariant("writer-fenced Workload replica member is missing"))?;
+        let binding = replicas::binding_for_replica_generation(
+            transaction,
+            fence.organization_id,
+            fence.replica_id,
+            fence.replica_generation,
+        )
+        .await?
+        .ok_or_else(|| invariant("writer-fenced Workload replica binding is missing"))?;
+        commit
+            .validate_replica_retirement(&fence, &control, &replica, &member, &binding)
+            .map_err(RepositoryError::Conflict)?;
+        existing_writer_fence = writer_fences::find_in_transaction(
+            transaction,
+            fence.organization_id,
+            fence.workload_id,
+            fence.replica_generation,
+        )
+        .await?;
+        if existing_writer_fence
+            .as_ref()
+            .is_some_and(|existing| existing != &commit.receipt)
+        {
+            return Err(RepositoryError::Conflict(
+                "Workload writer-fence receipt replay changed its exact evidence".into(),
+            )
+            .into());
+        }
+        if existing_writer_fence.is_some() && !replayed {
+            return Err(invariant(
+                "Workload writer-fence receipt exists before its Runtime fence",
+            ));
+        }
+        if existing_writer_fence.is_some() {
+            let existing_operation = operation_requests::find(
+                transaction,
+                commit.receipt.spec().continuation_operation_id,
+            )
+            .await?
+            .ok_or_else(|| invariant("Workload writer-fence Operation is missing"))?;
+            if !existing_operation.has_same_definition(&commit.operation)
+                || existing_operation.requested_at != commit.operation.requested_at
+            {
+                return Err(RepositoryError::Conflict(
+                    "Workload writer-fence Operation replay changed its definition".into(),
+                )
+                .into());
+            }
+        }
     }
-    require_version(&replica, fence.expected_replica_version)?;
-    let previous_version = replica.aggregate_version;
-    replica
-        .record_runtime_fenced(fence.command_id, fence.fenced_at)
-        .map_err(RepositoryError::Conflict)?;
-    replicas::persist_replica(transaction, &replica, previous_version).await?;
+    if !replayed {
+        require_version(&replica, fence.expected_replica_version)?;
+        let previous_version = replica.aggregate_version;
+        replica
+            .record_runtime_fenced(fence.command_id, fence.fenced_at)
+            .map_err(RepositoryError::Conflict)?;
+        replicas::persist_replica(transaction, &replica, previous_version).await?;
+    }
+    if existing_writer_fence.is_none() {
+        if let Some(commit) = &writer_fence {
+            operation_requests::insert(transaction, &commit.operation).await?;
+            writer_fences::insert(transaction, &commit.receipt).await?;
+        }
+    }
     Ok(replica)
 }
 

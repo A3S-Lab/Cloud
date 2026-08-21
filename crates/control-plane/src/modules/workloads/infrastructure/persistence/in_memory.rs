@@ -1,12 +1,13 @@
+use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadPlacementGroupId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
+    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, DeploymentStatus,
     OciArtifact, Workload, WorkloadControl, WorkloadPlacementGroup, WorkloadReplica,
-    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
+    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired,
@@ -17,12 +18,13 @@ use crate::modules::workloads::domain::repositories::{
     IWorkloadPlacementGroupRepository, IWorkloadPlacementGroupSchedulingRepository,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
     IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PlacementGroupCancellationWrite, PlacementGroupMaterialization, PlacementGroupPlacement,
-    PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
-    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, WorkloadStopBundle,
+    IWorkloadWriterFenceRepository, PlacementGroupCancellationWrite, PlacementGroupMaterialization,
+    PlacementGroupPlacement, PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, RetiringReplicaTarget, WorkloadStopBundle,
+    WorkloadWriterFenceCommit,
 };
 use crate::modules::workloads::domain::services::{
     plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
@@ -68,6 +70,8 @@ struct State {
     cancellation_idempotency: BTreeMap<(String, String), (String, Deployment)>,
     stop_idempotency: BTreeMap<(String, String), (String, WorkloadStopBundle)>,
     replica_set_idempotency: BTreeMap<(String, String), (String, ReplicaSetWriteResult)>,
+    writer_fences: BTreeMap<(WorkloadId, u64), WorkloadWriterFenceReceipt>,
+    writer_fence_operations: BTreeMap<OperationId, OperationRequest>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
 }
 
@@ -226,6 +230,19 @@ impl InMemoryWorkloadRepository {
 
     pub async fn outbox_events(&self) -> Vec<a3s_cloud_contracts::DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn writer_fence_operation(
+        &self,
+        operation_id: OperationId,
+    ) -> Option<OperationRequest> {
+        self.state
+            .read()
+            .await
+            .writer_fence_operations
+            .get(&operation_id)
+            .cloned()
     }
 
     #[cfg(test)]
@@ -2231,6 +2248,7 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
     async fn record_replica_runtime_fenced(
         &self,
         fence: ReplicaRuntimeFence,
+        writer_fence: Option<WorkloadWriterFenceCommit>,
     ) -> Result<WorkloadReplica, RepositoryError> {
         let mut state = self.state.write().await;
         let mut replica = state
@@ -2247,17 +2265,80 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
                 "replica Runtime fence changed generation".into(),
             ));
         }
-        if replica.lifecycle == WorkloadReplicaLifecycle::Retiring
+        let replayed = replica.lifecycle == WorkloadReplicaLifecycle::Retiring
             && replica.retirement_command_id == Some(fence.command_id)
-            && replica.runtime_fenced_at == Some(fence.fenced_at)
-        {
-            return Ok(replica);
+            && replica.runtime_fenced_at == Some(canonical_timestamp(fence.fenced_at));
+        let mut existing_writer_fence = None;
+        if let Some(commit) = &writer_fence {
+            let spec = commit.receipt.spec();
+            let control = state.controls.get(&fence.workload_id).ok_or_else(|| {
+                RepositoryError::Storage("writer-fenced Workload control is missing".into())
+            })?;
+            let member = state.replica_members.get(&spec.member_id).ok_or_else(|| {
+                RepositoryError::Storage("writer-fenced Workload replica member is missing".into())
+            })?;
+            let binding = state
+                .deployment_replica_member_bindings
+                .values()
+                .find(|binding| {
+                    binding.workload_id == fence.workload_id
+                        && binding.replica_id == fence.replica_id
+                        && binding.replica_generation == fence.replica_generation
+                        && binding.member_id == spec.member_id
+                })
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "writer-fenced Workload replica binding is missing".into(),
+                    )
+                })?;
+            commit
+                .validate_replica_retirement(&fence, control, &replica, member, binding)
+                .map_err(RepositoryError::Conflict)?;
+            existing_writer_fence = state
+                .writer_fences
+                .get(&(fence.workload_id, fence.replica_generation))
+                .cloned();
+            if existing_writer_fence
+                .as_ref()
+                .is_some_and(|existing| existing != &commit.receipt)
+            {
+                return Err(RepositoryError::Conflict(
+                    "Workload writer-fence receipt replay changed its exact evidence".into(),
+                ));
+            }
+            if existing_writer_fence.is_some() && !replayed {
+                return Err(RepositoryError::Storage(
+                    "Workload writer-fence receipt exists before its Runtime fence".into(),
+                ));
+            }
+            if let Some(existing) = state.writer_fence_operations.get(&commit.operation.id) {
+                if !existing.has_same_definition(&commit.operation)
+                    || existing.requested_at != commit.operation.requested_at
+                {
+                    return Err(RepositoryError::Conflict(
+                        "Workload writer-fence Operation replay changed its definition".into(),
+                    ));
+                }
+            }
         }
-        require_replica_version(&replica, fence.expected_replica_version)?;
-        replica
-            .record_runtime_fenced(fence.command_id, fence.fenced_at)
-            .map_err(RepositoryError::Conflict)?;
-        state.replicas.insert(replica.id, replica.clone());
+        if !replayed {
+            require_replica_version(&replica, fence.expected_replica_version)?;
+            replica
+                .record_runtime_fenced(fence.command_id, fence.fenced_at)
+                .map_err(RepositoryError::Conflict)?;
+            state.replicas.insert(replica.id, replica.clone());
+        }
+        if existing_writer_fence.is_none() {
+            if let Some(commit) = writer_fence {
+                state
+                    .writer_fence_operations
+                    .insert(commit.operation.id, commit.operation);
+                state.writer_fences.insert(
+                    (fence.workload_id, fence.replica_generation),
+                    commit.receipt,
+                );
+            }
+        }
         Ok(replica)
     }
 
@@ -2396,6 +2477,26 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
             value: replica,
             replayed: false,
         })
+    }
+}
+
+#[async_trait]
+impl IWorkloadWriterFenceRepository for InMemoryWorkloadRepository {
+    async fn latest_writer_fence(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Option<WorkloadWriterFenceReceipt>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .writer_fences
+            .range((workload_id, 0)..=(workload_id, u64::MAX))
+            .rev()
+            .map(|(_, receipt)| receipt)
+            .find(|receipt| receipt.spec().organization_id == organization_id)
+            .cloned())
     }
 }
 
