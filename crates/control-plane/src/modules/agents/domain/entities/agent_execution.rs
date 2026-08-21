@@ -141,6 +141,39 @@ impl AgentExecution {
         Ok(true)
     }
 
+    pub fn recover_code_run(
+        &mut self,
+        expected: &AgentCodeRunBinding,
+        recovered_at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        expected.validate()?;
+        if self.status.is_terminal() {
+            return Err("terminal Agent execution cannot recover its A3S Code run".into());
+        }
+        let current = self
+            .code
+            .as_ref()
+            .ok_or_else(|| "Agent execution has no bound A3S Code run".to_string())?;
+        if current.is_recovery_successor_of(expected, self.id) {
+            return Ok(false);
+        }
+        if !current.has_same_run_binding(expected) {
+            return Err("Agent execution Code recovery checkpoint changed".into());
+        }
+
+        let recovered_at = canonical_timestamp(recovered_at);
+        if recovered_at < self.updated_at {
+            return Err("Agent execution Code recovery time regressed".into());
+        }
+        let successor = current.recovery_successor(self.id, recovered_at)?;
+        let mut next = self.clone();
+        next.record_observation(recovered_at)?;
+        next.code = Some(successor);
+        next.validate()?;
+        *self = next;
+        Ok(true)
+    }
+
     pub fn request_cancellation(&mut self, requested_at: DateTime<Utc>) -> Result<(), String> {
         if self.status.is_terminal() {
             return Err("terminal Agent execution cannot be cancelled".into());
@@ -411,7 +444,8 @@ mod tests {
     use super::super::AgentEventContent;
     use super::*;
     use crate::modules::shared_kernel::domain::{
-        AssetId, AssetReleaseId, BuildRunId, Sha256Digest,
+        AssetId, AssetReleaseId, BuildRunId, DeploymentId, NodeId, Sha256Digest, WorkloadId,
+        WorkloadReplicaId, WorkloadRevisionId,
     };
 
     fn binding(organization_id: OrganizationId) -> AgentReleaseBinding {
@@ -427,6 +461,29 @@ mod tests {
             42,
         )
         .expect("binding")
+    }
+
+    fn code_binding(execution: &AgentExecution, bound_at: DateTime<Utc>) -> AgentCodeRunBinding {
+        AgentCodeRunBinding::new(
+            NodeId::new(),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            DeploymentId::new(),
+            WorkloadReplicaId::new(),
+            "agent-runtime:revision:1",
+            1,
+            Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest"),
+            "agent",
+            a3s_cloud_contracts::AgentProtocolRunIdentityV1 {
+                schema: a3s_cloud_contracts::AgentProtocolRunIdentityV1::SCHEMA.into(),
+                protocol: a3s_cloud_contracts::AGENT_PROTOCOL_V1.into(),
+                agent_release_identity: execution.agent.artifact_digest().as_str().into(),
+                session_id: format!("agent-conversation-{}", execution.conversation_id),
+                run_id: format!("agent-execution-{}", execution.id),
+            },
+            bound_at,
+        )
+        .expect("Code run binding")
     }
 
     #[test]
@@ -570,5 +627,63 @@ mod tests {
         assert_eq!(execution.status, AgentExecutionStatus::Succeeded);
         assert_eq!(execution.cancellation_requested_at, Some(at));
         execution.validate().expect("valid completed execution");
+    }
+
+    #[test]
+    fn code_recovery_replays_after_the_successor_has_started() {
+        let organization_id = OrganizationId::new();
+        let at = canonical_timestamp(Utc::now());
+        let mut execution = AgentExecution::create(
+            organization_id,
+            AgentConversationId::new(),
+            AgentExecutionId::new(),
+            OperationId::new(),
+            binding(organization_id),
+            at,
+        )
+        .expect("execution");
+        let checkpoint = code_binding(&execution, at);
+        execution
+            .bind_code_run(checkpoint.clone())
+            .expect("bind Code run");
+
+        let recovered_at = at + chrono::Duration::seconds(1);
+        assert!(execution
+            .recover_code_run(&checkpoint, recovered_at)
+            .expect("recover Code run"));
+        let first_recovery = execution.clone();
+        assert!(!execution
+            .recover_code_run(&checkpoint, recovered_at)
+            .expect("replay recovery"));
+        assert_eq!(execution, first_recovery);
+
+        let identity = execution
+            .code
+            .as_ref()
+            .expect("recovered binding")
+            .identity()
+            .clone();
+        let page = a3s_cloud_contracts::AgentProtocolEventPageV1 {
+            schema: a3s_cloud_contracts::AgentProtocolEventPageV1::SCHEMA.into(),
+            identity,
+            after_event_sequence: None,
+            first_available_sequence: None,
+            latest_sequence_exclusive: 0,
+            next_after_event_sequence: None,
+            state: a3s_cloud_contracts::AgentProtocolRunStateV1::Planning,
+            observed_at_ms: u64::try_from((at + chrono::Duration::days(1)).timestamp_millis())
+                .expect("provider timestamp"),
+            retention_gap: false,
+            has_more: false,
+            events: Vec::new(),
+        };
+        execution
+            .accept_code_event_page(&page, recovered_at + chrono::Duration::seconds(1), &[])
+            .expect("start recovered run");
+        let progressed = execution.clone();
+        assert!(!execution
+            .recover_code_run(&checkpoint, recovered_at + chrono::Duration::seconds(2),)
+            .expect("replay recovery after progress"));
+        assert_eq!(execution, progressed);
     }
 }

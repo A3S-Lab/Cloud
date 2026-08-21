@@ -506,7 +506,7 @@ Planned `C0.3` security incident timelines correlate authorized audit and
 AnySentry/OpenTelemetry evidence references for investigation and notification;
 they cannot enforce policy or mutate an owning aggregate.
 
-### 3.13 Agent execution (`A1.1` foundation; native `A1.2` integration in progress)
+### 3.13 Agent execution (`A1.1` foundation; native `A1.2` orchestration implemented locally)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
@@ -521,7 +521,8 @@ Primary aggregates:
 
 Current supporting records:
 
-- one immutable Agent-release binding embedded in `AgentExecution`; and
+- one immutable Agent-release binding and one current exact Code/
+  Workload/Runtime delivery binding embedded in `AgentExecution`; and
 - `AgentExecutionEvent`.
 
 Planned supporting records:
@@ -546,6 +547,15 @@ Workload, Fleet command, Runtime/Box lifecycle, and recovery rules. A provider
 may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
+
+For local `A1.2`, a Code retention gap or a changed Runtime process start
+identity rotates only the embedded current run binding to a deterministic
+successor. The predecessor run ID becomes Code Core's native recovery
+checkpoint. The Node Agent adopts that successor only from its existing
+command journal and receipt-settles any predecessor batch that was already
+durable without projecting it into the semantic sequence. Provider event time
+and Cloud aggregate time remain separate clocks. Dependency publication and
+clean Linux PostgreSQL/Runtime recovery evidence still gate verification.
 
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
@@ -2134,7 +2144,7 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
-### Agent conversation and execution (`A1.1` foundation; native `A1.2` integration in progress)
+### Agent conversation and execution (`A1.1` foundation; native `A1.2` orchestration implemented locally)
 
 - A conversation belongs to one organization, project, and environment and
   owns the sole positive monotonic `last_event_sequence` head.
@@ -2151,6 +2161,10 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - `AgentExecution` owns logical state and the correlated Operation identity.
   `A1.2` binds exact Code run and existing Workload/Runtime delivery identity,
   then reuses Operations/Flow and Fleet to reach the native `a3s code harness`.
+  A retention gap or same-generation provider-process replacement rotates a
+  deterministic successor, dispatches Code Core's native recovery with the
+  predecessor run as checkpoint, and scopes cancellation to that exact current
+  run. No checkpoint table or second run lifecycle is introduced.
   `A1.3` generalizes that path behind one provider contract without replacing
   the logical execution or semantic sequence. Flow history owns orchestration
   recovery; Runtime logs own process output; neither can substitute for

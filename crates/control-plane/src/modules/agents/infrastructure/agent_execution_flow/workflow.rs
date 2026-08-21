@@ -89,14 +89,21 @@ fn prepare(
 fn observe(
     config: &AgentExecutionFlowConfig,
     context: &WorkflowContext<'_>,
-    dispatched: super::types::DispatchedAgentExecution,
+    mut dispatched: super::types::DispatchedAgentExecution,
 ) -> a3s_flow::Result<RuntimeCommand> {
     let mut attempt = 1_u32;
     loop {
         let step_id = format!("observe-{attempt}");
         match context.step_output_as::<ObserveOutput>(&step_id)? {
             Some(ObserveOutput::Terminal { completed }) => return complete(context, completed),
-            Some(ObserveOutput::Pending { next_poll_at, .. }) => {
+            Some(ObserveOutput::Pending {
+                next_poll_at,
+                dispatched: next_dispatched,
+                ..
+            }) => {
+                if let Some(next_dispatched) = next_dispatched {
+                    dispatched = *next_dispatched;
+                }
                 let wait_id = format!("observe-wait-{attempt}");
                 if !context.wait_completed(&wait_id) {
                     return Ok(context.wait_until(wait_id, next_poll_at));

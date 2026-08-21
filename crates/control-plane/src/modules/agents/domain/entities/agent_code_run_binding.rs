@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, NodeId, Sha256Digest, WorkloadId, WorkloadReplicaId,
-    WorkloadRevisionId,
+    canonical_timestamp, AgentExecutionId, DeploymentId, NodeId, Sha256Digest, WorkloadId,
+    WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
@@ -160,6 +160,12 @@ impl AgentCodeRunBinding {
     }
 
     pub fn has_same_run_binding(&self, other: &Self) -> bool {
+        self.has_same_runtime_binding(other)
+            && self.identity == other.identity
+            && self.bound_at == other.bound_at
+    }
+
+    pub fn has_same_runtime_binding(&self, other: &Self) -> bool {
         self.node_id == other.node_id
             && self.workload_id == other.workload_id
             && self.workload_revision_id == other.workload_revision_id
@@ -169,8 +175,88 @@ impl AgentCodeRunBinding {
             && self.runtime_generation == other.runtime_generation
             && self.runtime_spec_digest == other.runtime_spec_digest
             && self.service_port_name == other.service_port_name
-            && self.identity == other.identity
-            && self.bound_at == other.bound_at
+    }
+
+    pub fn recovery_run_id(execution_id: AgentExecutionId, checkpoint_run_id: &str) -> String {
+        let recovery_id = uuid::Uuid::new_v5(
+            &execution_id.as_uuid(),
+            format!("a3s-code-recovery-v1:{checkpoint_run_id}").as_bytes(),
+        );
+        format!("agent-recovery-{recovery_id}")
+    }
+
+    pub fn recovery_successor(
+        &self,
+        execution_id: AgentExecutionId,
+        recovered_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let mut identity = self.identity.clone();
+        identity.run_id = Self::recovery_run_id(execution_id, &self.identity.run_id);
+        Self::new(
+            self.node_id,
+            self.workload_id,
+            self.workload_revision_id,
+            self.deployment_id,
+            self.replica_id,
+            self.runtime_unit_id.clone(),
+            self.runtime_generation,
+            self.runtime_spec_digest.clone(),
+            self.service_port_name.clone(),
+            identity,
+            recovered_at,
+        )
+    }
+
+    pub fn is_recovery_successor_of(
+        &self,
+        previous: &Self,
+        execution_id: AgentExecutionId,
+    ) -> bool {
+        self.has_same_runtime_binding(previous)
+            && self.identity.schema == previous.identity.schema
+            && self.identity.protocol == previous.identity.protocol
+            && self.identity.agent_release_identity == previous.identity.agent_release_identity
+            && self.identity.session_id == previous.identity.session_id
+            && self.identity.run_id
+                == Self::recovery_run_id(execution_id, &previous.identity.run_id)
+            && self.bound_at >= previous.bound_at
+    }
+
+    pub fn can_settle_recovery_predecessor_runtime_binding(
+        &self,
+        previous: &NodeCodeAgentRuntimeBindingV1,
+        execution_id: AgentExecutionId,
+    ) -> bool {
+        let mut expected = previous.clone();
+        expected.code_run_identity.run_id =
+            Self::recovery_run_id(execution_id, &previous.code_run_identity.run_id);
+        let current = self.node_runtime_binding(execution_id.as_uuid());
+        if current == expected {
+            return true;
+        }
+
+        let mut same_lineage = previous.clone();
+        same_lineage.code_run_identity.run_id = self.identity.run_id.clone();
+        current == same_lineage
+            && is_recovery_run_id(&self.identity.run_id)
+            && (previous.code_run_identity.run_id == format!("agent-execution-{execution_id}")
+                || is_recovery_run_id(&previous.code_run_identity.run_id))
+    }
+
+    pub fn validate_recovery_page(&self, page: &AgentProtocolEventPageV1) -> Result<(), String> {
+        page.validate()
+            .map_err(|error| format!("invalid A3S Code event page ({})", error.code()))?;
+        let page_observed_at = page_observed_at(page)?;
+        if page.identity != self.identity
+            || page.after_event_sequence != self.accepted_after_event_sequence
+            || !page.retention_gap
+            || self
+                .observed_at
+                .is_some_and(|observed_at| page_observed_at < observed_at)
+        {
+            return Err("A3S Code recovery page does not continue its exact bound run".into());
+        }
+        Ok(())
     }
 
     pub fn node_runtime_binding(&self, execution_id: uuid::Uuid) -> NodeCodeAgentRuntimeBindingV1 {
@@ -192,10 +278,7 @@ impl AgentCodeRunBinding {
     pub fn accept_event_page(&mut self, page: &AgentProtocolEventPageV1) -> Result<(), String> {
         page.validate()
             .map_err(|error| format!("invalid A3S Code event page ({})", error.code()))?;
-        let page_observed_at = i64::try_from(page.observed_at_ms)
-            .ok()
-            .and_then(DateTime::<Utc>::from_timestamp_millis)
-            .ok_or_else(|| "A3S Code event page timestamp exceeds supported bounds".to_string())?;
+        let page_observed_at = page_observed_at(page)?;
         if page.identity != self.identity
             || page.after_event_sequence != self.accepted_after_event_sequence
             || page.retention_gap
@@ -243,5 +326,124 @@ impl AgentCodeRunBinding {
         }
         self.node_runtime_binding(uuid::Uuid::from_u128(1))
             .validate()
+    }
+}
+
+fn page_observed_at(page: &AgentProtocolEventPageV1) -> Result<DateTime<Utc>, String> {
+    i64::try_from(page.observed_at_ms)
+        .ok()
+        .and_then(DateTime::<Utc>::from_timestamp_millis)
+        .ok_or_else(|| "A3S Code event page timestamp exceeds supported bounds".to_string())
+}
+
+fn is_recovery_run_id(run_id: &str) -> bool {
+    run_id
+        .strip_prefix("agent-recovery-")
+        .is_some_and(|value| uuid::Uuid::parse_str(value).is_ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding(bound_at: DateTime<Utc>) -> AgentCodeRunBinding {
+        AgentCodeRunBinding::new(
+            NodeId::new(),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            DeploymentId::new(),
+            WorkloadReplicaId::new(),
+            "agent-runtime:revision:1",
+            1,
+            Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest"),
+            "agent",
+            AgentProtocolRunIdentityV1 {
+                schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
+                protocol: a3s_cloud_contracts::AGENT_PROTOCOL_V1.into(),
+                agent_release_identity: format!("sha256:{}", "a".repeat(64)),
+                session_id: "agent-conversation-1".into(),
+                run_id: "agent-execution-1".into(),
+            },
+            bound_at,
+        )
+        .expect("Code binding")
+    }
+
+    #[test]
+    fn recovery_successor_is_deterministic_without_comparing_provider_and_cloud_clocks() {
+        let bound_at = canonical_timestamp(Utc::now());
+        let execution_id = AgentExecutionId::new();
+        let mut checkpoint = binding(bound_at);
+        let provider_observed_at = bound_at + chrono::Duration::days(1);
+        let checkpoint_page = AgentProtocolEventPageV1 {
+            schema: AgentProtocolEventPageV1::SCHEMA.into(),
+            identity: checkpoint.identity().clone(),
+            after_event_sequence: None,
+            first_available_sequence: None,
+            latest_sequence_exclusive: 0,
+            next_after_event_sequence: None,
+            state: AgentProtocolRunStateV1::Planning,
+            observed_at_ms: u64::try_from(provider_observed_at.timestamp_millis())
+                .expect("provider timestamp"),
+            retention_gap: false,
+            has_more: false,
+            events: Vec::new(),
+        };
+        checkpoint
+            .accept_event_page(&checkpoint_page)
+            .expect("checkpoint observation");
+
+        let recovered_at = bound_at + chrono::Duration::seconds(1);
+        let mut successor = checkpoint
+            .recovery_successor(execution_id, recovered_at)
+            .expect("recovery successor");
+        let replay = checkpoint
+            .recovery_successor(execution_id, recovered_at)
+            .expect("deterministic recovery successor");
+        assert_eq!(successor, replay);
+        assert_eq!(
+            successor.identity().run_id,
+            AgentCodeRunBinding::recovery_run_id(execution_id, &checkpoint.identity().run_id)
+        );
+        assert!(successor.is_recovery_successor_of(&checkpoint, execution_id));
+        assert!(successor.can_settle_recovery_predecessor_runtime_binding(
+            &checkpoint.node_runtime_binding(execution_id.as_uuid()),
+            execution_id,
+        ));
+
+        let mut managed_checkpoint = checkpoint.clone();
+        managed_checkpoint.identity.run_id = format!("agent-execution-{execution_id}");
+        let first = managed_checkpoint
+            .recovery_successor(execution_id, recovered_at)
+            .expect("first managed recovery");
+        let second = first
+            .recovery_successor(execution_id, recovered_at + chrono::Duration::seconds(1))
+            .expect("second managed recovery");
+        assert!(second.can_settle_recovery_predecessor_runtime_binding(
+            &managed_checkpoint.node_runtime_binding(execution_id.as_uuid()),
+            execution_id,
+        ));
+
+        let successor_page = AgentProtocolEventPageV1 {
+            schema: AgentProtocolEventPageV1::SCHEMA.into(),
+            identity: successor.identity().clone(),
+            after_event_sequence: None,
+            first_available_sequence: None,
+            latest_sequence_exclusive: 0,
+            next_after_event_sequence: None,
+            state: AgentProtocolRunStateV1::Executing,
+            observed_at_ms: u64::try_from(
+                (provider_observed_at + chrono::Duration::seconds(1)).timestamp_millis(),
+            )
+            .expect("successor provider timestamp"),
+            retention_gap: false,
+            has_more: false,
+            events: Vec::new(),
+        };
+        successor
+            .accept_event_page(&successor_page)
+            .expect("advance recovered run");
+        assert!(!successor.is_initial());
+        assert!(successor.is_recovery_successor_of(&checkpoint, execution_id));
     }
 }

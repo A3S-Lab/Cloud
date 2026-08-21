@@ -28,6 +28,8 @@ struct DurableCodeEventCursor {
     observed_state: AgentProtocolRunStateV1,
     observed_at_ms: u64,
     drained: bool,
+    #[serde(default)]
+    recovery_required: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,7 +79,10 @@ impl CodeEventShippingState {
                 .map_err(CodeEventShippingError::Invalid)?;
             if binding_key(&cursor.binding)? != *identity_digest
                 || cursor.observed_at_ms == 0
-                || cursor.drained && !cursor.observed_state.is_terminal()
+                || cursor.drained
+                    && !cursor.observed_state.is_terminal()
+                    && !cursor.recovery_required
+                || cursor.recovery_required && !cursor.drained
             {
                 return Err(CodeEventShippingError::Invalid(
                     "durable Code event cursor is invalid".into(),
@@ -272,7 +277,9 @@ impl FileCodeEventShippingState {
                 after_event_sequence: pending.page.next_after_event_sequence,
                 observed_state: pending.page.state,
                 observed_at_ms: pending.page.observed_at_ms,
-                drained: pending.page.state.is_terminal() && !pending.page.has_more,
+                drained: pending.page.retention_gap
+                    || pending.page.state.is_terminal() && !pending.page.has_more,
+                recovery_required: pending.page.retention_gap,
             },
         );
         state.validate(self.node_id)?;
@@ -395,20 +402,16 @@ impl CodeEventShipper {
                 .harness
                 .event_page(&endpoint, &request, self.request_timeout)
                 .await?;
-            if page.retention_gap {
-                return Err(CodeEventShippingError::Invalid(
-                    "A3S Code event retention gap requires execution recovery".into(),
-                ));
-            }
-            let changed = cursor.is_none_or(|cursor| {
-                cursor.after_event_sequence != page.next_after_event_sequence
-                    || cursor.observed_state != page.state
-                    || page.state.is_terminal() && !cursor.drained
-            });
+            let changed = page.retention_gap
+                || cursor.is_none_or(|cursor| {
+                    cursor.after_event_sequence != page.next_after_event_sequence
+                        || cursor.observed_state != page.state
+                        || page.state.is_terminal() && !cursor.drained
+                });
             if page.events.is_empty() && !changed {
                 continue;
             }
-            let change_set = if page.state.is_terminal() && !page.has_more {
+            let change_set = if !page.retention_gap && page.state.is_terminal() && !page.has_more {
                 let request = AgentProtocolChangeSetRequestV1 {
                     schema: AgentProtocolChangeSetRequestV1::SCHEMA.into(),
                     identity: binding.code_run_identity.clone(),

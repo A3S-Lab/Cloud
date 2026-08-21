@@ -215,3 +215,65 @@ fn change_set_is_only_valid_on_its_exact_terminal_page() {
         .run_id = "another-run".into();
     assert!(mismatched.validate().is_err());
 }
+
+#[test]
+fn retention_gap_is_delivered_without_a_terminal_change_set() {
+    let execution_id = Uuid::now_v7();
+    let observed_at_ms = 1_723_000_000_000;
+    let run_identity = identity();
+    let event = serde_json::from_value(serde_json::json!({
+        "sequence": 2,
+        "occurred_at_ms": observed_at_ms,
+        "event": {
+            "version": 1,
+            "type": "text_delta",
+            "payload": {"text": "retained tail"},
+            "metadata": {
+                "session_id": run_identity.session_id.as_str(),
+                "run_id": run_identity.run_id.as_str(),
+                "sequence": 2,
+                "timestamp_ms": observed_at_ms
+            }
+        }
+    }))
+    .expect("retained Code event");
+    let page = AgentProtocolEventPageV1 {
+        schema: AgentProtocolEventPageV1::SCHEMA.into(),
+        identity: run_identity.clone(),
+        after_event_sequence: Some(0),
+        first_available_sequence: Some(2),
+        latest_sequence_exclusive: 3,
+        next_after_event_sequence: Some(2),
+        state: AgentProtocolRunStateV1::Completed,
+        observed_at_ms,
+        retention_gap: true,
+        has_more: false,
+        events: vec![event],
+    };
+    page.validate().expect("retention-gap page");
+    let mut batch = NodeCodeAgentEventBatchV1 {
+        schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: Uuid::now_v7(),
+        binding: binding(execution_id),
+        page,
+        change_set: None,
+        sent_at_ms: observed_at_ms + 1,
+    };
+    batch.validate().expect("retention-gap delivery");
+    batch.change_set = Some(AgentProtocolChangeSetV1 {
+        schema: AgentProtocolChangeSetV1::SCHEMA.into(),
+        identity: run_identity,
+        state: AgentProtocolRunStateV1::Completed,
+        format: AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1.into(),
+        encoding: AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1.into(),
+        base_tree: format!("git-tree:{}", "a".repeat(40)),
+        result_tree: format!("git-tree:{}", "b".repeat(40)),
+        patch_digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            .into(),
+        patch_bytes: 0,
+        patch_base64: String::new(),
+        observed_at_ms,
+    });
+    assert!(batch.validate().is_err());
+}

@@ -2,7 +2,7 @@ use super::*;
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversationCreated, AgentEventContent,
     AgentExecutionCancellationRequested, AgentExecutionEventDraft, AgentExecutionEventKind,
-    AgentExecutionStarted, AgentExecutionStatus, AgentReleaseBinding,
+    AgentExecutionStarted, AgentExecutionStatus, AgentReleaseBinding, RecoverAgentCodeRunWrite,
     RequestAgentExecutionCancellationWrite,
 };
 use crate::modules::shared_kernel::domain::{
@@ -504,6 +504,219 @@ async fn code_event_batch_projects_semantics_and_replays_one_receipt() {
         .await
         .expect("replay Code binding after progress");
     assert!(binding_replay.replayed);
+}
+
+#[tokio::test]
+async fn retention_gap_rotates_the_run_and_settles_an_in_flight_checkpoint_batch() {
+    let repository = InMemoryAgentRepository::new();
+    let conversation = create_conversation(&repository, conversation()).await;
+    let execution = execution(&conversation);
+    start_execution(&repository, execution.clone()).await;
+    let node_id = NodeId::new();
+    let binding = code_binding(
+        &execution,
+        node_id,
+        execution.requested_at + Duration::milliseconds(1),
+    );
+    repository
+        .bind_code_run(BindAgentCodeRunWrite {
+            organization_id: execution.organization_id,
+            execution_id: execution.id,
+            binding: binding.clone(),
+        })
+        .await
+        .expect("bind Code run");
+
+    let first = event_batch(
+        &execution,
+        &binding,
+        Uuid::now_v7(),
+        AgentProtocolRunStateV1::Executing,
+        1,
+    );
+    let first_accepted_at = accepted_at(&first);
+    repository
+        .accept_code_event_batch(
+            AcceptAgentCodeEventBatchWrite::new(
+                execution.organization_id,
+                node_id,
+                first.clone(),
+                first_accepted_at,
+            )
+            .expect("first page write"),
+        )
+        .await
+        .expect("accept first page");
+    let checkpoint = repository
+        .find_execution(execution.organization_id, execution.id)
+        .await
+        .expect("find checkpoint execution")
+        .expect("checkpoint execution")
+        .code
+        .expect("checkpoint binding");
+    assert_eq!(checkpoint.accepted_after_event_sequence(), Some(0));
+
+    let gap_observed_at_ms = first.page.observed_at_ms + 24 * 60 * 60 * 1_000;
+    let gap_page = AgentProtocolEventPageV1 {
+        schema: AgentProtocolEventPageV1::SCHEMA.into(),
+        identity: checkpoint.identity().clone(),
+        after_event_sequence: Some(0),
+        first_available_sequence: Some(2),
+        latest_sequence_exclusive: 3,
+        next_after_event_sequence: Some(2),
+        state: AgentProtocolRunStateV1::Executing,
+        observed_at_ms: gap_observed_at_ms,
+        retention_gap: true,
+        has_more: false,
+        events: vec![event_record(checkpoint.identity(), 2, gap_observed_at_ms)],
+    };
+    gap_page.validate().expect("retention-gap page");
+    let gap_batch = NodeCodeAgentEventBatchV1 {
+        schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: node_id.as_uuid(),
+        binding: checkpoint.node_runtime_binding(execution.id.as_uuid()),
+        page: gap_page,
+        change_set: None,
+        sent_at_ms: gap_observed_at_ms + 1,
+    };
+    gap_batch.validate().expect("retention-gap batch");
+    let gap_accepted_at = first_accepted_at + Duration::milliseconds(1);
+    let gap_write = || {
+        AcceptAgentCodeEventBatchWrite::new(
+            execution.organization_id,
+            node_id,
+            gap_batch.clone(),
+            gap_accepted_at,
+        )
+        .expect("retention-gap write")
+    };
+    let receipt = repository
+        .accept_code_event_batch(gap_write())
+        .await
+        .expect("accept retention gap");
+    assert!(!receipt.replayed);
+    assert_eq!(receipt.accepted_events, 1);
+
+    let recovered = repository
+        .find_execution(execution.organization_id, execution.id)
+        .await
+        .expect("find recovered execution")
+        .expect("recovered execution");
+    let recovered_binding = recovered.code.clone().expect("recovered binding");
+    assert_eq!(
+        recovered_binding.identity().run_id,
+        AgentCodeRunBinding::recovery_run_id(execution.id, &checkpoint.identity().run_id)
+    );
+    assert_eq!(recovered_binding.bound_at(), gap_accepted_at);
+    assert!(recovered_binding.is_initial());
+    assert_eq!(
+        repository
+            .list_events(
+                execution.organization_id,
+                execution.conversation_id,
+                None,
+                10,
+            )
+            .await
+            .expect("events after retention gap")
+            .len(),
+        2
+    );
+
+    let replay = repository
+        .accept_code_event_batch(gap_write())
+        .await
+        .expect("replay retention gap");
+    assert!(replay.replayed);
+    assert!(
+        repository
+            .recover_code_run(RecoverAgentCodeRunWrite {
+                organization_id: execution.organization_id,
+                execution_id: execution.id,
+                expected_binding: checkpoint.clone(),
+                recovered_at: gap_accepted_at,
+            })
+            .await
+            .expect("replay explicit recovery")
+            .replayed
+    );
+
+    let stale_observed_at_ms = gap_observed_at_ms + 1;
+    let stale_page = AgentProtocolEventPageV1 {
+        schema: AgentProtocolEventPageV1::SCHEMA.into(),
+        identity: checkpoint.identity().clone(),
+        after_event_sequence: Some(0),
+        first_available_sequence: Some(0),
+        latest_sequence_exclusive: 2,
+        next_after_event_sequence: Some(1),
+        state: AgentProtocolRunStateV1::Executing,
+        observed_at_ms: stale_observed_at_ms,
+        retention_gap: false,
+        has_more: false,
+        events: vec![event_record(checkpoint.identity(), 1, stale_observed_at_ms)],
+    };
+    stale_page.validate().expect("in-flight checkpoint page");
+    let stale_batch = NodeCodeAgentEventBatchV1 {
+        schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: node_id.as_uuid(),
+        binding: checkpoint.node_runtime_binding(execution.id.as_uuid()),
+        page: stale_page,
+        change_set: None,
+        sent_at_ms: stale_observed_at_ms + 1,
+    };
+    let stale_accepted_at = gap_accepted_at + Duration::milliseconds(1);
+    let stale_receipt = repository
+        .accept_code_event_batch(
+            AcceptAgentCodeEventBatchWrite::new(
+                execution.organization_id,
+                node_id,
+                stale_batch,
+                stale_accepted_at,
+            )
+            .expect("stale batch write"),
+        )
+        .await
+        .expect("settle in-flight checkpoint batch");
+    assert!(!stale_receipt.replayed);
+    assert_eq!(
+        repository
+            .find_execution(execution.organization_id, execution.id)
+            .await
+            .expect("find execution after stale batch")
+            .expect("execution after stale batch"),
+        recovered
+    );
+
+    let recovered_page = event_batch(
+        &execution,
+        &recovered_binding,
+        Uuid::now_v7(),
+        AgentProtocolRunStateV1::Planning,
+        0,
+    );
+    repository
+        .accept_code_event_batch(
+            AcceptAgentCodeEventBatchWrite::new(
+                execution.organization_id,
+                node_id,
+                recovered_page.clone(),
+                accepted_at(&recovered_page),
+            )
+            .expect("recovered page write"),
+        )
+        .await
+        .expect("accept recovered run page");
+    let current = repository
+        .find_execution(execution.organization_id, execution.id)
+        .await
+        .expect("find current execution")
+        .expect("current execution");
+    assert_eq!(
+        current.code.expect("current binding").observed_state(),
+        AgentProtocolRunStateV1::Planning
+    );
 }
 
 #[tokio::test]
