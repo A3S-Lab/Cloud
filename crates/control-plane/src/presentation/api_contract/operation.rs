@@ -317,10 +317,13 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || is_application_collection_path(path)
             || is_application_release_collection_path(path)
             || is_application_message_collection_path(path)
+            || is_application_session_replay_path(path)
             || is_durable_cell_application_collection_path(path)
             || is_durable_cell_revision_collection_path(path))
     {
-        let schema = if is_application_message_collection_path(path) {
+        let schema = if is_application_message_collection_path(path)
+            || is_application_session_replay_path(path)
+        {
             json!({
                 "type": "integer",
                 "minimum": 1,
@@ -366,7 +369,10 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             }),
         );
     }
-    if method == "get" && is_application_message_collection_path(path) {
+    if method == "get"
+        && (is_application_message_collection_path(path)
+            || is_application_session_replay_path(path))
+    {
         upsert_parameter(
             parameters,
             json!({
@@ -733,7 +739,7 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
-    } else if is_application_mutation_path(path) {
+    } else if is_application_request_body_path(path) {
         content.insert(
             "application/json".into(),
             json!({"schema": application_request_schema(path)}),
@@ -1036,7 +1042,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)
-                || is_application_mutation_path(path)
+                || is_application_request_body_path(path)
                 || is_durable_cell_mutation_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
     {
@@ -1395,6 +1401,12 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_invocation_collection_path(path)
 }
 
+fn is_application_request_body_path(path: &str) -> bool {
+    is_application_mutation_path(path)
+        || is_application_session_close_path(path)
+        || is_application_invocation_cancel_path(path)
+}
+
 fn is_application_collection_path(path: &str) -> bool {
     path.ends_with("/applications")
 }
@@ -1417,6 +1429,22 @@ fn is_application_message_collection_path(path: &str) -> bool {
         && path.ends_with("/messages")
 }
 
+fn is_application_session_close_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/close")
+}
+
+fn is_application_session_replay_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/replay")
+}
+
+fn is_application_invocation_cancel_path(path: &str) -> bool {
+    path.contains(
+        "/applications/{application_id}/sessions/{session_id}/invocations/{invocation_id}/",
+    ) && path.ends_with("/cancel")
+}
+
 fn application_request_schema(path: &str) -> Value {
     let release_acl = json!({
         "type": "string",
@@ -1431,6 +1459,16 @@ fn application_request_schema(path: &str) -> Value {
             "properties": {
                 "expectedVersion": {"type": "integer", "minimum": 1},
                 "releaseAcl": release_acl
+            }
+        });
+    }
+    if is_application_session_close_path(path) || is_application_invocation_cancel_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion"],
+            "properties": {
+                "expectedVersion": {"type": "integer", "minimum": 1}
             }
         });
     }

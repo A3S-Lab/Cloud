@@ -1,6 +1,7 @@
 use super::applications::{
     ApplicationArguments, ApplicationInvocationArguments, ApplicationReleaseArguments,
-    ApplicationSessionArguments, CreateApplicationArguments, ListApplicationMessagesArguments,
+    ApplicationSessionArguments, CancelApplicationInvocationArguments,
+    CloseApplicationSessionArguments, CreateApplicationArguments, ListApplicationMessagesArguments,
     ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
     PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
@@ -233,6 +234,30 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::ApplicationSessionsClose => {
+            let arguments = arguments::parse::<CloseApplicationSessionArguments>(arguments).ok()?;
+            applications::close_session(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationSessionsReplay => {
+            let arguments = arguments::parse::<ListApplicationMessagesArguments>(arguments).ok()?;
+            applications::replay_session(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::ApplicationInvocationsRequest => {
             let arguments =
                 arguments::parse::<RequestApplicationInvocationArguments>(arguments).ok()?;
@@ -250,6 +275,19 @@ pub async fn execute(
             let arguments = arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
             applications::get_invocation(
                 query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationInvocationsCancel => {
+            let arguments =
+                arguments::parse::<CancelApplicationInvocationArguments>(arguments).ok()?;
+            applications::cancel_invocation(
+                command_bus,
                 organization_id,
                 actor_principal_id,
                 arguments,

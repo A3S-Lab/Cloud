@@ -215,10 +215,8 @@ async fn applications_are_release_versioned_across_rest_client_contract_and_mana
         ))
         .await?;
     assert_eq!(fetched_session.status(), 200);
-    assert_eq!(
-        response_json(&fetched_session)?["data"]["lastMessageSequence"],
-        1
-    );
+    let fetched_session = response_json(&fetched_session)?;
+    assert_eq!(fetched_session["data"]["lastMessageSequence"], 1);
     let fetched_invocation = app
         .call(get_as(
             format!("{invocations_path}/{invocation_id}"),
@@ -240,6 +238,82 @@ async fn applications_are_release_versioned_across_rest_client_contract_and_mana
     let messages = response_json(&messages)?;
     assert_eq!(messages["data"].as_array().map(Vec::len), Some(1));
     assert_eq!(messages["data"][0]["kind"], "input");
+
+    let session_replay_path = format!("{sessions_path}/{session_id}/replay");
+    let session_replay = app
+        .call(get_as(
+            format!("{session_replay_path}?afterSequence=0&limit=50"),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(session_replay.status(), 200);
+    let session_replay = response_json(&session_replay)?;
+    assert_eq!(session_replay["data"]["session"]["sessionId"], session_id);
+    assert_eq!(session_replay["data"]["messages"][0]["kind"], "input");
+    assert_eq!(
+        session_replay["data"]["currentVariables"]["values"]["locale"],
+        "en-US"
+    );
+    assert_eq!(session_replay["data"]["nextSequence"], 1);
+    assert_eq!(session_replay["data"]["hasMore"], false);
+
+    let invocation_version = invoked["data"]["invocation"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("Application invocation version is missing".into()))?;
+    let cancel_path = format!("{invocations_path}/{invocation_id}/cancel");
+    let cancelled = app
+        .call(post_json_as(
+            &cancel_path,
+            "application-invocation-cancel",
+            json!({"expectedVersion": invocation_version}),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cancelled.status(), 200);
+    let cancelled = response_json(&cancelled)?;
+    assert_eq!(cancelled["data"]["invocation"]["status"], "cancelling");
+    assert_eq!(cancelled["data"]["replayed"], false);
+    assert_eq!(
+        cancelled["data"]["workflow"]["workflowRunId"],
+        invoked["data"]["workflow"]["workflowRunId"]
+    );
+    let cancel_replay = app
+        .call(post_json_as(
+            &cancel_path,
+            "application-invocation-cancel",
+            json!({"expectedVersion": invocation_version}),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cancel_replay.status(), 200);
+    assert_eq!(response_json(&cancel_replay)?["data"]["replayed"], true);
+
+    let session_version = fetched_session["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("Application session version is missing".into()))?;
+    let close_path = format!("{sessions_path}/{session_id}/close");
+    let closed = app
+        .call(post_json_as(
+            &close_path,
+            "application-session-close",
+            json!({"expectedVersion": session_version}),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(closed.status(), 200);
+    let closed = response_json(&closed)?;
+    assert_eq!(closed["data"]["session"]["status"], "closed");
+    assert_eq!(closed["data"]["replayed"], false);
+    let close_replay = app
+        .call(post_json_as(
+            &close_path,
+            "application-session-close",
+            json!({"expectedVersion": session_version}),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(close_replay.status(), 200);
+    assert_eq!(response_json(&close_replay)?["data"]["replayed"], true);
 
     let denied_delivery_read = app
         .call(get_as(
@@ -328,6 +402,65 @@ async fn applications_are_release_versioned_across_rest_client_contract_and_mana
     )
     .await?;
     assert_eq!(mcp_messages["data"].as_array().map(Vec::len), Some(1));
+
+    let mcp_replay = mcp_call(
+        &app,
+        25,
+        "a3s_cloud_application_sessions_replay",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "afterSequence": 0,
+            "limit": 50
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_replay["data"]["nextSequence"], 1);
+    assert_eq!(mcp_replay["data"]["hasMore"], false);
+    assert_eq!(
+        mcp_replay["data"]["currentVariables"]["values"]["channel"],
+        "mcp"
+    );
+
+    let mcp_invocation_version = mcp_invocation["data"]["invocation"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| {
+            BootError::Internal("MCP Application invocation version is missing".into())
+        })?;
+    let mcp_cancel = mcp_call(
+        &app,
+        26,
+        "a3s_cloud_application_invocations_cancel",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "invocationId": mcp_invocation_id,
+            "expectedVersion": mcp_invocation_version,
+            "idempotencyKey": "application-mcp-invocation-cancel"
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_cancel["data"]["invocation"]["status"], "cancelling");
+
+    let mcp_session_version = mcp_session_read["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("MCP Application session version is missing".into()))?;
+    let mcp_close = mcp_call(
+        &app,
+        27,
+        "a3s_cloud_application_sessions_close",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "expectedVersion": mcp_session_version,
+            "idempotencyKey": "application-mcp-session-close"
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_close["data"]["session"]["status"], "closed");
 
     let replay = app
         .call(post_json(

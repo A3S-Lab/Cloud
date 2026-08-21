@@ -85,8 +85,11 @@ Commands:
   application-releases get APP RELEASE Get one exact immutable Application release
   application-sessions open APP RELEASE Open an idempotent project-member session; optional variables JSON --file
   application-sessions get APP SESSION Get one caller-owned Application session
+  application-sessions close APP SESSION Close one caller-owned session with optimistic concurrency
+  application-sessions replay APP SESSION Replay session head, variables, and ordered messages
   application-invocations request APP SESSION Request an invocation from JSON --file
   application-invocations get APP SESSION INVOCATION Get one caller-owned invocation
+  application-invocations cancel APP SESSION INVOCATION Cancel one invocation with optimistic concurrency
   application-messages list APP SESSION List ordered channel messages after an optional sequence cursor
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision

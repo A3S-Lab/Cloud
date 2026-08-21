@@ -760,12 +760,20 @@ message reads fail closed as not found for another Principal. REST/OpenAPI
 MCP tools reuse these same commands, queries, and repository; they add no
 presentation-owned state.
 
+The C12 management boundary exposes C6's existing optimistic session close,
+invocation cancellation, and complete replay through REST/OpenAPI `1.44.0`,
+the client, CLI, and three more `application:write` Management MCP tools.
+Replay returns the exact session head, contiguous message page, current
+Applications-owned variable revision, next sequence, and `hasMore` evidence.
+Cancellation still delegates to Workflow's sole state machine; no second
+session, invocation, variable, WorkflowRun, or Flow authority is introduced.
+
 The preset compiler separately derives one stable wrapper Workflow identity per
 Application release, emits canonical three-step Model/Agent ACL and semantic
 material, and delegates creation to Workflow's shared publication port. It
 does not publish the owning Model/Agent profile or make a delivery route
-available. Application-scoped or anonymous credentials, public close and
-cancellation interfaces, blocking/streaming answer delivery, remaining
+available. Application-scoped or anonymous credentials, blocking/streaming
+answer delivery, remaining
 message/file/feedback records, Gateway delivery, and retained recovery evidence
 remain open.
 

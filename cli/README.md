@@ -497,11 +497,15 @@ variables; invocation request requires one bounded JSON object containing the
 exact Ontology revision, response mode, input, and optional Environment and
 timeout. Mutations use the normal caller-owned idempotency key. Cloud derives
 stable Principal-bound identities and creates or adopts the ordinary Workflow
-Goal, Plan, and Run; the CLI stores no session or Workflow state and does not
-provide application-scoped credentials, cancellation, synchronous/streaming
-answers, or Gateway delivery. Message reads use `--cursor` as the exclusive
-last observed session sequence and default to 100 records with a maximum of
-500.
+Goal, Plan, and Run. Contract `1.44.0` adds versioned `application-sessions
+close`, versioned `application-invocations cancel`, and
+`application-sessions replay`; the last returns the session and variable heads
+with the bounded contiguous message page and next cursor. Versioned mutations
+require `--expected-version` and `--idempotency-key`. The CLI stores no session
+or Workflow state and does not provide application-scoped credentials,
+synchronous/streaming answers, or Gateway delivery. Message and replay reads
+use `--cursor` as the exclusive last observed session sequence and default to
+100 records with a maximum of 500.
 
 `connector-profiles` creates, revises, lists, and reads environment-scoped
 Connector profile heads; `connector-revisions` lists or reads their immutable

@@ -1,14 +1,15 @@
 use super::tool_result;
 use crate::modules::applications::presentation::{
-    ApplicationInvocationMutationResponse, ApplicationInvocationResponse,
-    ApplicationMessageResponse, ApplicationMutationResponse, ApplicationReleaseResponse,
-    ApplicationResponse, ApplicationSessionMutationResponse, ApplicationSessionResponse,
+    ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
+    ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationMutationResponse,
+    ApplicationReleaseResponse, ApplicationResponse, ApplicationSessionMutationResponse,
+    ApplicationSessionReplayResponse, ApplicationSessionResponse,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationSession, ApplicationResponseMode,
-    CreateApplication, GetApplication, GetApplicationInvocation, GetApplicationRelease,
-    GetApplicationSession, ListApplicationReleases, ListApplications, PublishApplicationRelease,
-    ReplayApplicationSession,
+    CancelApplicationInvocation, CloseApplicationSession, CreateApplication, GetApplication,
+    GetApplicationInvocation, GetApplicationRelease, GetApplicationSession,
+    ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
@@ -17,6 +18,7 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -106,6 +108,21 @@ pub struct ApplicationSessionArguments {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloseApplicationSessionArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    #[serde(
+        rename = "idempotencyKey",
+        deserialize_with = "super::arguments::deserialize_idempotency_key"
+    )]
+    _idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequestApplicationInvocationArguments {
     project_id: Uuid,
     application_id: Uuid,
@@ -127,6 +144,22 @@ pub struct ApplicationInvocationArguments {
     application_id: Uuid,
     session_id: Uuid,
     invocation_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelApplicationInvocationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    invocation_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    #[serde(
+        rename = "idempotencyKey",
+        deserialize_with = "super::arguments::deserialize_idempotency_key"
+    )]
+    _idempotency_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,6 +401,43 @@ pub async fn get_session(
     }
 }
 
+pub async fn close_session(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CloseApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    let CloseApplicationSessionArguments {
+        project_id,
+        application_id,
+        session_id,
+        expected_version,
+        _idempotency_key: _,
+    } = arguments;
+    match bus
+        .execute(CloseApplicationSession {
+            organization_id,
+            project_id: ProjectId::from_uuid(project_id),
+            application_id: ApplicationId::from_uuid(application_id),
+            session_id: ApplicationSessionId::from_uuid(session_id),
+            expected_version,
+            actor_principal_id,
+            resource_access,
+            closed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationSessionMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
 pub async fn request_invocation(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
@@ -438,6 +508,45 @@ pub async fn get_invocation(
     }
 }
 
+pub async fn cancel_invocation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CancelApplicationInvocationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    let CancelApplicationInvocationArguments {
+        project_id,
+        application_id,
+        session_id,
+        invocation_id,
+        expected_version,
+        _idempotency_key: _,
+    } = arguments;
+    match bus
+        .execute(CancelApplicationInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(project_id),
+            application_id: ApplicationId::from_uuid(application_id),
+            session_id: ApplicationSessionId::from_uuid(session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(invocation_id),
+            expected_version,
+            actor_principal_id,
+            resource_access,
+            requested_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationInvocationCancellationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
 pub async fn list_messages(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
@@ -466,6 +575,36 @@ pub async fn list_messages(
                 .into_iter()
                 .map(ApplicationMessageResponse::from)
                 .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn replay_session(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ListApplicationMessagesArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ReplayApplicationSession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            after_sequence: arguments.after_sequence,
+            limit: Some(arguments.limit),
+            actor_principal_id,
+            resource_access,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationSessionReplayResponse::from(result),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

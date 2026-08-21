@@ -48,6 +48,12 @@ describe('a3s-cloud Application commands', () => {
       session(),
     ],
     [
+      ['application-sessions', 'replay', APPLICATION_ID, SESSION_ID],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/applications/${APPLICATION_ID}` +
+        `/sessions/${SESSION_ID}/replay?afterSequence=0&limit=100`,
+      sessionReplay(),
+    ],
+    [
       ['application-invocations', 'get', APPLICATION_ID, SESSION_ID, INVOCATION_ID],
       `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/applications/${APPLICATION_ID}` +
         `/sessions/${SESSION_ID}/invocations/${INVOCATION_ID}`,
@@ -301,6 +307,85 @@ describe('a3s-cloud Application commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('closes a session and cancels an invocation with optimistic replay fences', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const isCancellation = String(args[0]).endsWith('/cancel');
+        return envelope(
+          isCancellation
+            ? { invocation: invocation(), workflow: workflowEvidence(), replayed: false }
+            : { session: { ...session(), status: 'closed' }, replayed: false }
+        );
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'application-sessions',
+          'close',
+          APPLICATION_ID,
+          SESSION_ID,
+          '--expected-version=2',
+          '--idempotency-key=cli:application:session-close',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-invocations',
+          'cancel',
+          APPLICATION_ID,
+          SESSION_ID,
+          INVOCATION_ID,
+          '--expected-version=2',
+          '--idempotency-key=cli:application:invocation-cancel',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}/close`,
+        'POST',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}` +
+          `/sessions/${SESSION_ID}/invocations/${INVOCATION_ID}/cancel`,
+        'POST',
+      ],
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ expectedVersion: 2 }),
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'cli:application:session-close',
+        }),
+      })
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ expectedVersion: 2 }),
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'cli:application:invocation-cancel',
+        }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
   it('rejects unknown Application invocation fields before transport', async () => {
     let called = false;
     const output = capture();
@@ -514,6 +599,35 @@ function message() {
     contentDigest: DIGEST,
     workflowEffect: null,
     createdAt: '2026-08-20T00:00:01.000Z',
+  };
+}
+
+function conversationVariables() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    applicationId: APPLICATION_ID,
+    applicationReleaseId: RELEASE_ID,
+    applicationReleaseDigest: DIGEST,
+    sessionId: SESSION_ID,
+    revisionId: RELEASE_ID,
+    revisionNumber: 1,
+    parentRevisionId: null,
+    parentDigest: null,
+    values: { locale: 'en-US' },
+    valuesDigest: DIGEST,
+    sourceEffect: null,
+    createdAt: '2026-08-20T00:00:00.000Z',
+  };
+}
+
+function sessionReplay() {
+  return {
+    session: session(),
+    messages: [message()],
+    currentVariables: conversationVariables(),
+    nextSequence: 1,
+    hasMore: false,
   };
 }
 

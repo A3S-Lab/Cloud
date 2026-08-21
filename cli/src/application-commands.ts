@@ -11,6 +11,7 @@ import {
 import { readAclDocument, requireAclMutationCommand, requireVersionedAclMutationCommand } from './acl-file';
 import {
   applicationMutationResult,
+  applicationInvocationCancellationResult,
   applicationInvocationMutationResult,
   applicationInvocationResult,
   applicationMessagesResult,
@@ -18,6 +19,7 @@ import {
   applicationReleaseResult,
   applicationReleasesResult,
   applicationSessionMutationResult,
+  applicationSessionReplayResult,
   applicationSessionResult,
   applicationsResult,
 } from './application-results';
@@ -34,6 +36,7 @@ import {
   requireIdempotencyKey,
   requireListCommand,
   requireReadCommand,
+  requireVersionedMutationCommand,
 } from './command-options';
 import type { CloudContext } from './context';
 import { parseUuid, requireOrganization, requireProject } from './context';
@@ -168,6 +171,41 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 3, 'Application session ID')
         )
       );
+    case 'application-sessions close': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        4,
+        'application-sessions close <application-id> <session-id>',
+        'Application session'
+      );
+      return applicationSessionMutationResult(
+        await cloudApi().closeApplicationSession(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          { expectedVersion: mutation.expectedVersion },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'application-sessions replay': {
+      const pagination = applicationReplayPagination(
+        arguments_,
+        'application-sessions replay <application-id> <session-id>',
+        'Application session replay'
+      );
+      return applicationSessionReplayResult(
+        await cloudApi().replayApplicationSession(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          pagination.afterSequence,
+          pagination.limit
+        )
+      );
+    }
     case 'application-invocations request': {
       const mutation = requireApplicationJsonMutation(
         arguments_,
@@ -209,8 +247,31 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 4, 'Application invocation ID')
         )
       );
+    case 'application-invocations cancel': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        5,
+        'application-invocations cancel <application-id> <session-id> <invocation-id>',
+        'Application invocation'
+      );
+      return applicationInvocationCancellationResult(
+        await cloudApi().cancelApplicationInvocation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application invocation ID'),
+          { expectedVersion: mutation.expectedVersion },
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'application-messages list': {
-      const pagination = applicationMessagePagination(arguments_);
+      const pagination = applicationReplayPagination(
+        arguments_,
+        'application-messages list <application-id> <session-id>',
+        'Application message'
+      );
       return applicationMessagesResult(
         await cloudApi().listApplicationMessages(
           organizationId(),
@@ -227,29 +288,33 @@ export async function executeApplicationCommand(
   }
 }
 
-function applicationMessagePagination(arguments_: ParsedArguments): {
+function applicationReplayPagination(
+  arguments_: ParsedArguments,
+  usage: string,
+  label: string
+): {
   afterSequence: number;
   limit: number;
 } {
-  requireArity(arguments_.positionals, 4, 'application-messages list <application-id> <session-id>');
+  requireArity(arguments_.positionals, 4, usage);
   rejectIdempotencyOption(arguments_);
   rejectFileOption(arguments_);
   rejectExpectedVersionOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
   if (arguments_.stream !== undefined) {
-    throw usageError('--stream is not valid for Application message reads');
+    throw usageError(`--stream is not valid for ${label} reads`);
   }
   return {
     afterSequence: boundedApplicationMessageInteger(
       arguments_.cursor,
-      'Application message cursor',
+      `${label} cursor`,
       0,
       Number.MAX_SAFE_INTEGER,
       0
     ),
     limit: boundedApplicationMessageInteger(
       arguments_.limit,
-      'Application message limit',
+      `${label} limit`,
       1,
       MAX_APPLICATION_MESSAGE_LIST_LIMIT,
       DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT

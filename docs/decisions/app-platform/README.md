@@ -46,7 +46,8 @@ AI application platform parity manifest.
 | [0039](0039-versioned-application-workflow-lifecycle-projection.md) | Project v10 Application WorkflowRun final output and terminal state before saving the replayed Workflow projection |
 | [0040](0040-descriptor-bound-application-answer-effects.md) | Commit descriptor-bound v11 Answer messages through Applications before resuming the Workflow DAG |
 | [0041](0041-descriptor-bound-application-variable-effects.md) | Commit descriptor-bound v12 Application variable snapshots and CAS revisions before resuming the Workflow DAG |
+| [0042](0042-project-member-application-lifecycle-replay.md) | Expose project-member close, cancellation, and complete session replay through the existing Applications/Workflow authority |
 
-All forty-one decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All forty-two decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

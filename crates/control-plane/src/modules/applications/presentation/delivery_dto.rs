@@ -1,9 +1,11 @@
 use crate::modules::applications::application::{
     ApplicationInvocationMutationResult, ApplicationSessionMutationResult,
-    ApplicationWorkflowRunEvidence,
+    ApplicationWorkflowRunEvidence, CancelApplicationInvocationResult,
+    CloseApplicationSessionResult, ReplayApplicationSessionResult,
 };
 use crate::modules::applications::domain::{
     ApplicationInvocation, ApplicationMessage, ApplicationSession, ApplicationWorkflowEffect,
+    ConversationVariableRevision,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -27,6 +29,12 @@ pub struct RequestApplicationInvocationRequest {
     pub response_mode: String,
     pub input: Value,
     pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationExpectedVersionRequest {
+    pub expected_version: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -86,6 +94,15 @@ pub struct ApplicationSessionMutationResponse {
 
 impl From<ApplicationSessionMutationResult> for ApplicationSessionMutationResponse {
     fn from(result: ApplicationSessionMutationResult) -> Self {
+        Self {
+            session: result.session.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+impl From<CloseApplicationSessionResult> for ApplicationSessionMutationResponse {
+    fn from(result: CloseApplicationSessionResult) -> Self {
         Self {
             session: result.session.into(),
             replayed: result.replayed,
@@ -189,6 +206,24 @@ impl From<ApplicationInvocationMutationResult> for ApplicationInvocationMutation
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ApplicationInvocationCancellationResponse {
+    pub invocation: ApplicationInvocationResponse,
+    pub workflow: Option<ApplicationWorkflowRunEvidenceResponse>,
+    pub replayed: bool,
+}
+
+impl From<CancelApplicationInvocationResult> for ApplicationInvocationCancellationResponse {
+    fn from(result: CancelApplicationInvocationResult) -> Self {
+        Self {
+            invocation: result.invocation.into(),
+            workflow: result.workflow.map(Into::into),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApplicationWorkflowEffectResponse {
     pub workflow_run_id: Uuid,
     pub step_id: String,
@@ -243,6 +278,70 @@ impl From<ApplicationMessage> for ApplicationMessageResponse {
             content_digest: message.content_digest.as_str().to_owned(),
             workflow_effect: message.workflow_effect.map(Into::into),
             created_at: message.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationConversationVariablesResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub revision_id: Uuid,
+    pub revision_number: u64,
+    pub parent_revision_id: Option<Uuid>,
+    pub parent_digest: Option<String>,
+    pub values: Value,
+    pub values_digest: String,
+    pub source_effect: Option<ApplicationWorkflowEffectResponse>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<ConversationVariableRevision> for ApplicationConversationVariablesResponse {
+    fn from(revision: ConversationVariableRevision) -> Self {
+        Self {
+            organization_id: revision.organization_id.as_uuid(),
+            project_id: revision.project_id.as_uuid(),
+            application_id: revision.application_id.as_uuid(),
+            application_release_id: revision.application_release_id.as_uuid(),
+            application_release_digest: revision.application_release_digest.as_str().to_owned(),
+            session_id: revision.session_id.as_uuid(),
+            revision_id: revision.id.as_uuid(),
+            revision_number: revision.revision_number,
+            parent_revision_id: revision.parent_revision_id.map(|value| value.as_uuid()),
+            parent_digest: revision
+                .parent_digest
+                .map(|value| value.as_str().to_owned()),
+            values: revision.values,
+            values_digest: revision.values_digest.as_str().to_owned(),
+            source_effect: revision.source_effect.map(Into::into),
+            created_at: revision.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationSessionReplayResponse {
+    pub session: ApplicationSessionResponse,
+    pub messages: Vec<ApplicationMessageResponse>,
+    pub current_variables: ApplicationConversationVariablesResponse,
+    pub next_sequence: u64,
+    pub has_more: bool,
+}
+
+impl From<ReplayApplicationSessionResult> for ApplicationSessionReplayResponse {
+    fn from(result: ReplayApplicationSessionResult) -> Self {
+        Self {
+            session: result.session.into(),
+            messages: result.messages.into_iter().map(Into::into).collect(),
+            current_variables: result.current_variables.into(),
+            next_sequence: result.next_sequence,
+            has_more: result.has_more,
         }
     }
 }

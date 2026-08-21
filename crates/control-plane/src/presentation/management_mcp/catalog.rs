@@ -60,8 +60,11 @@ pub const APPLICATION_RELEASES_LIST: &str = "a3s_cloud_application_releases_list
 pub const APPLICATION_RELEASES_GET: &str = "a3s_cloud_application_releases_get";
 pub const APPLICATION_SESSIONS_OPEN: &str = "a3s_cloud_application_sessions_open";
 pub const APPLICATION_SESSIONS_GET: &str = "a3s_cloud_application_sessions_get";
+pub const APPLICATION_SESSIONS_CLOSE: &str = "a3s_cloud_application_sessions_close";
+pub const APPLICATION_SESSIONS_REPLAY: &str = "a3s_cloud_application_sessions_replay";
 pub const APPLICATION_INVOCATIONS_REQUEST: &str = "a3s_cloud_application_invocations_request";
 pub const APPLICATION_INVOCATIONS_GET: &str = "a3s_cloud_application_invocations_get";
+pub const APPLICATION_INVOCATIONS_CANCEL: &str = "a3s_cloud_application_invocations_cancel";
 pub const APPLICATION_MESSAGES_LIST: &str = "a3s_cloud_application_messages_list";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
@@ -181,8 +184,11 @@ pub enum ManagementTool {
     ApplicationReleasesGet,
     ApplicationSessionsOpen,
     ApplicationSessionsGet,
+    ApplicationSessionsClose,
+    ApplicationSessionsReplay,
     ApplicationInvocationsRequest,
     ApplicationInvocationsGet,
+    ApplicationInvocationsCancel,
     ApplicationMessagesList,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
@@ -310,7 +316,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 122] = [
+    const ALL: [Self; 125] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -321,8 +327,11 @@ impl ManagementTool {
         Self::ApplicationReleasesGet,
         Self::ApplicationSessionsOpen,
         Self::ApplicationSessionsGet,
+        Self::ApplicationSessionsClose,
+        Self::ApplicationSessionsReplay,
         Self::ApplicationInvocationsRequest,
         Self::ApplicationInvocationsGet,
+        Self::ApplicationInvocationsCancel,
         Self::ApplicationMessagesList,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
@@ -471,8 +480,11 @@ impl ManagementTool {
             Self::ApplicationReleasesGet => APPLICATION_RELEASES_GET,
             Self::ApplicationSessionsOpen => APPLICATION_SESSIONS_OPEN,
             Self::ApplicationSessionsGet => APPLICATION_SESSIONS_GET,
+            Self::ApplicationSessionsClose => APPLICATION_SESSIONS_CLOSE,
+            Self::ApplicationSessionsReplay => APPLICATION_SESSIONS_REPLAY,
             Self::ApplicationInvocationsRequest => APPLICATION_INVOCATIONS_REQUEST,
             Self::ApplicationInvocationsGet => APPLICATION_INVOCATIONS_GET,
+            Self::ApplicationInvocationsCancel => APPLICATION_INVOCATIONS_CANCEL,
             Self::ApplicationMessagesList => APPLICATION_MESSAGES_LIST,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
@@ -597,8 +609,11 @@ impl ManagementTool {
             | Self::ApplicationReleasesPublish
             | Self::ApplicationSessionsOpen
             | Self::ApplicationSessionsGet
+            | Self::ApplicationSessionsClose
+            | Self::ApplicationSessionsReplay
             | Self::ApplicationInvocationsRequest
             | Self::ApplicationInvocationsGet
+            | Self::ApplicationInvocationsCancel
             | Self::ApplicationMessagesList => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
@@ -788,8 +803,11 @@ impl ManagementTool {
             | Self::ApplicationReleasesGet
             | Self::ApplicationSessionsOpen
             | Self::ApplicationSessionsGet
+            | Self::ApplicationSessionsClose
+            | Self::ApplicationSessionsReplay
             | Self::ApplicationInvocationsRequest
             | Self::ApplicationInvocationsGet
+            | Self::ApplicationInvocationsCancel
             | Self::ApplicationMessagesList
             | Self::FormsRevise
             | Self::FormReleasesGet
@@ -940,6 +958,18 @@ impl ManagementTool {
                 application_session_schema(),
                 true,
             ),
+            Self::ApplicationSessionsClose => (
+                "Close Application session",
+                "Close or replay one caller-owned Application session using optimistic concurrency and explicit idempotency.",
+                close_application_session_schema(),
+                false,
+            ),
+            Self::ApplicationSessionsReplay => (
+                "Replay Application session",
+                "Read one caller-owned session head, current variable snapshot, and bounded contiguous channel page.",
+                list_application_messages_schema(),
+                true,
+            ),
             Self::ApplicationInvocationsRequest => (
                 "Request Application invocation",
                 "Persist one idempotent invocation and start or adopt its exact ordinary WorkflowRun.",
@@ -951,6 +981,12 @@ impl ManagementTool {
                 "Get one caller-owned Application invocation and WorkflowRun correlation.",
                 application_invocation_schema(),
                 true,
+            ),
+            Self::ApplicationInvocationsCancel => (
+                "Cancel Application invocation",
+                "Request or replay cancellation of one caller-owned Application invocation using optimistic concurrency and explicit idempotency.",
+                cancel_application_invocation_schema(),
+                false,
             ),
             Self::ApplicationMessagesList => (
                 "List Application messages",
@@ -2144,6 +2180,27 @@ fn application_session_schema() -> Value {
     })
 }
 
+fn close_application_session_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "expectedVersion",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
 fn request_application_invocation_schema() -> Value {
     json!({
         "type": "object",
@@ -2194,6 +2251,29 @@ fn application_invocation_schema() -> Value {
             "invocationId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "applicationId", "sessionId", "invocationId"],
+        "additionalProperties": false
+    })
+}
+
+fn cancel_application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "invocationId",
+            "expectedVersion",
+            "idempotencyKey"
+        ],
         "additionalProperties": false
     })
 }

@@ -6,8 +6,10 @@ mod dto;
 
 pub use applications_module::ApplicationsModule;
 pub use delivery_dto::{
-    ApplicationInvocationMutationResponse, ApplicationInvocationResponse,
-    ApplicationMessageResponse, ApplicationSessionMutationResponse, ApplicationSessionResponse,
+    ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,
+    ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
+    ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationSessionMutationResponse,
+    ApplicationSessionReplayResponse, ApplicationSessionResponse,
     ApplicationWorkflowEffectResponse, ApplicationWorkflowRunEvidenceResponse,
     OpenApplicationSessionRequest, RequestApplicationInvocationRequest,
 };

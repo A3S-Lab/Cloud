@@ -121,6 +121,10 @@ export interface ApplicationSessionMutationResult {
   replayed: boolean;
 }
 
+export interface ApplicationExpectedVersionInput {
+  expectedVersion: number;
+}
+
 export interface OpenApplicationSessionInput {
   releaseId: string;
   initialVariables?: Record<string, unknown>;
@@ -164,6 +168,12 @@ export interface ApplicationInvocationMutationResult {
   replayed: boolean;
 }
 
+export interface ApplicationInvocationCancellationResult {
+  invocation: ApplicationInvocation;
+  workflow: ApplicationWorkflowRunEvidence | null;
+  replayed: boolean;
+}
+
 export interface RequestApplicationInvocationInput {
   ontologyId: string;
   ontologyRevisionId: string;
@@ -195,6 +205,31 @@ export interface ApplicationMessage {
   contentDigest: string;
   workflowEffect: ApplicationWorkflowEffect | null;
   createdAt: string;
+}
+
+export interface ApplicationConversationVariables {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  revisionId: string;
+  revisionNumber: number;
+  parentRevisionId: string | null;
+  parentDigest: string | null;
+  values: Record<string, unknown>;
+  valuesDigest: string;
+  sourceEffect: ApplicationWorkflowEffect | null;
+  createdAt: string;
+}
+
+export interface ApplicationSessionReplay {
+  session: ApplicationSession;
+  messages: ApplicationMessage[];
+  currentVariables: ApplicationConversationVariables;
+  nextSequence: number;
+  hasMore: boolean;
 }
 
 export function validateApplicationName(name: string): void {

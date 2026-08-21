@@ -266,8 +266,13 @@ bounded JSON objects, and message reads use an exclusive sequence cursor with
 100/500 defaults and limits. Cloud derives stable Principal-bound identities,
 admits one exact release and Ontology revision, and creates or adopts the
 ordinary Workflow Goal, Plan, and Run through the existing Workflow authority.
+REST contract `1.44.0` additionally exposes `closeApplicationSession`,
+`cancelApplicationInvocation`, and `replayApplicationSession` over the same
+authority. Close and cancel require a positive expected aggregate version and
+idempotency key. Full replay returns the session head, bounded contiguous
+messages, current variable revision, next sequence, and `hasMore` evidence.
 The client does not create an end-user credential, session store, Workflow
-runtime, answer stream, cancellation path, or Gateway route. Blocking and
+runtime, answer stream, cancellation authority, or Gateway route. Blocking and
 streaming response-mode values are retained as invocation intent only; this
 slice returns asynchronous admission evidence rather than a synchronous or SSE
 answer.

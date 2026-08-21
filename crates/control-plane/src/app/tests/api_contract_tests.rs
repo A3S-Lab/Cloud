@@ -204,6 +204,21 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
     );
     assert!(sessions["post"]["responses"]["201"].is_object());
 
+    let close = &document["paths"]
+        [format!("{base}/{{application_id}}/sessions/{{session_id}}/close")]["post"];
+    assert_eq!(close["tags"], json!(["Applications"]));
+    assert_eq!(
+        close["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert_eq!(
+        close["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedVersion"]["minimum"],
+        1
+    );
+    assert!(close["responses"]["200"].is_object());
+    assert!(close["responses"].get("201").is_none());
+
     let invocation_path = format!("{base}/{{application_id}}/sessions/{{session_id}}/invocations");
     let invocation = &document["paths"][&invocation_path];
     let invocation_schema =
@@ -222,6 +237,13 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
     );
     assert!(invocation["post"]["responses"]["201"].is_object());
     assert!(document["paths"][format!("{invocation_path}/{{invocation_id}}")]["get"].is_object());
+    let cancel = &document["paths"][format!("{invocation_path}/{{invocation_id}}/cancel")]["post"];
+    assert_eq!(
+        cancel["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert!(cancel["responses"]["200"].is_object());
+    assert!(cancel["responses"].get("201").is_none());
 
     let messages = &document["paths"]
         [format!("{base}/{{application_id}}/sessions/{{session_id}}/messages")]["get"];
@@ -245,6 +267,19 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
         parameters
             .iter()
             .any(|parameter| parameter["name"] == "afterSequence")
+    }));
+    let replay = &document["paths"]
+        [format!("{base}/{{application_id}}/sessions/{{session_id}}/replay")]["get"];
+    let replay_parameters = replay["parameters"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("Application replay parameters are missing".into()))?;
+    assert!(replay_parameters.iter().any(|parameter| {
+        parameter["name"] == "afterSequence" && parameter["schema"]["minimum"] == 0
+    }));
+    assert!(replay_parameters.iter().any(|parameter| {
+        parameter["name"] == "limit"
+            && parameter["schema"]["maximum"]
+                == crate::modules::applications::MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT
     }));
     Ok(())
 }

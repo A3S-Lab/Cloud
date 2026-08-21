@@ -1,12 +1,14 @@
 import type {
   Application,
   ApplicationInvocation,
+  ApplicationInvocationCancellationResult,
   ApplicationInvocationMutationResult,
   ApplicationMessage,
   ApplicationMutationResult,
   ApplicationRelease,
   ApplicationSession,
   ApplicationSessionMutationResult,
+  ApplicationSessionReplay,
 } from '@a3s/cloud-client';
 import { renderTable } from './output';
 import type { CommandResult } from './results';
@@ -115,6 +117,25 @@ export function applicationInvocationMutationResult(
   };
 }
 
+export function applicationInvocationCancellationResult(
+  result: ApplicationInvocationCancellationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable(
+      [{ ...result.invocation, replayed: result.replayed }],
+      [...APPLICATION_INVOCATION_COLUMNS, { header: 'REPLAYED', value: (row) => row.replayed }]
+    ),
+  };
+}
+
 export function applicationMessagesResult(rows: ApplicationMessage[]): CommandResult {
   return { json: rows, table: renderTable(rows, APPLICATION_MESSAGE_COLUMNS) };
+}
+
+export function applicationSessionReplayResult(result: ApplicationSessionReplay): CommandResult {
+  return {
+    json: result,
+    table: renderTable(result.messages, APPLICATION_MESSAGE_COLUMNS),
+  };
 }

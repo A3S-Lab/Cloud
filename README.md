@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.43.0" src="https://img.shields.io/badge/REST_contract-1.43.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.44.0" src="https://img.shields.io/badge/REST_contract-1.44.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -59,7 +59,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.43.0`](openapi/v1.json), maintained
+  [OpenAPI `1.44.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. Broader enterprise `C0` gates remain.
@@ -152,7 +152,10 @@ The code on `main` separates implemented mechanics from released capability:
   project-member session open/read,
   invocation request/read, and ordered message reads through REST/OpenAPI
   `1.43.0`, the maintained client, CLI, and five additional Management MCP
-  tools. Application-scoped credentials, public close/cancel commands,
+  tools. C12 extends the same authority with versioned session close,
+  invocation cancellation, and complete session replay through REST/OpenAPI
+  `1.44.0`, the client, CLI, and three additional Management MCP tools.
+  Application-scoped credentials,
   blocking/streaming answer delivery, Gateway routing, monitoring, and the
   `APP0.6` parity gate remain open.
   `K0.1-C1` now has a component-only Files admission
@@ -392,8 +395,9 @@ creating their own control planes:
     dispatch through Run v11; C11 adds Run v12 snapshot/CAS dispatch and
     Flow-derived inspection for exact Application-variable ports. C8 adds
     project-member management delivery through REST
-   contract `1.43.0`, the client, CLI, and five Management MCP tools, while
-   application credentials, public close/cancel, answer streaming, and Gateway
+   contract `1.43.0`, the client, CLI, and five Management MCP tools. C12 adds
+   close/cancel/full replay through contract `1.44.0` and three more Management
+   MCP tools, while application credentials, answer streaming, and Gateway
    delivery remain unavailable.
    `K0.1-C1` now freezes the Files-owned canonical upload reference and
    admission state machine while reusing the shared immutable-object client;

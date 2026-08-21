@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.43.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.44.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1282,6 +1282,14 @@ describe('CloudApi', () => {
       'application / one',
       'session / one'
     );
+    await api.closeApplicationSession(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      { expectedVersion: 2 },
+      'application:session-close'
+    );
     await api.requestApplicationInvocation(
       'organization / one',
       'project / one',
@@ -1303,7 +1311,24 @@ describe('CloudApi', () => {
       'session / one',
       'invocation / one'
     );
+    await api.cancelApplicationInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one',
+      { expectedVersion: 2 },
+      'application:invocation-cancel'
+    );
     await api.listApplicationMessages(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      7,
+      25
+    );
+    await api.replayApplicationSession(
       'organization / one',
       'project / one',
       'application / one',
@@ -1343,6 +1368,10 @@ describe('CloudApi', () => {
         'GET',
       ],
       [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/close',
+        'POST',
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations',
         'POST',
       ],
@@ -1351,7 +1380,15 @@ describe('CloudApi', () => {
         'GET',
       ],
       [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one/cancel',
+        'POST',
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/messages?afterSequence=7&limit=25',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/replay?afterSequence=7&limit=25',
         'GET',
       ],
     ]);
@@ -1379,6 +1416,12 @@ describe('CloudApi', () => {
     );
     expect(calls[8]?.[1]).toEqual(
       expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:session-close' }),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      })
+    );
+    expect(calls[9]?.[1]).toEqual(
+      expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'application:invoke' }),
         body: JSON.stringify({
           ontologyId: 'ontology / one',
@@ -1387,6 +1430,12 @@ describe('CloudApi', () => {
           input: { query: 'hello' },
           timeoutSeconds: 300,
         }),
+      })
+    );
+    expect(calls[11]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:invocation-cancel' }),
+        body: JSON.stringify({ expectedVersion: 2 }),
       })
     );
 
@@ -1445,6 +1494,30 @@ describe('CloudApi', () => {
     expect(() =>
       api.listApplicationMessages('organization', 'project', 'application', 'session', -1)
     ).toThrow('afterSequence must be a non-negative');
+    expect(() =>
+      api.closeApplicationSession(
+        'organization',
+        'project',
+        'application',
+        'session',
+        { expectedVersion: 0 },
+        'application:invalid-session-close'
+      )
+    ).toThrow('expected Application version');
+    expect(() =>
+      api.cancelApplicationInvocation(
+        'organization',
+        'project',
+        'application',
+        'session',
+        'invocation',
+        { expectedVersion: 0 },
+        'application:invalid-invocation-cancel'
+      )
+    ).toThrow('expected Application version');
+    expect(() =>
+      api.replayApplicationSession('organization', 'project', 'application', 'session', 0, 501)
+    ).toThrow('Application message list limit must be between');
   });
 
   it('exposes bounded ACL-native Connector profile and revision management', async () => {

@@ -1,12 +1,15 @@
 import {
   type Application,
+  type ApplicationExpectedVersionInput,
   type ApplicationInvocation,
+  type ApplicationInvocationCancellationResult,
   type ApplicationInvocationMutationResult,
   type ApplicationMessage,
   type ApplicationMutationResult,
   type ApplicationRelease,
   type ApplicationSession,
   type ApplicationSessionMutationResult,
+  type ApplicationSessionReplay,
   type CreateApplicationInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
@@ -266,7 +269,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.43.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.44.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1995,6 +1998,24 @@ export class CloudApi {
     return this.get(this.applicationSessionPath(organizationId, projectId, applicationId, sessionId), signal);
   }
 
+  closeApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: ApplicationExpectedVersionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    validateApplicationExpectedVersion(input.expectedVersion);
+    return this.postJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/close`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
   requestApplicationInvocation(
     organizationId: string,
     projectId: string,
@@ -2032,6 +2053,26 @@ export class CloudApi {
     );
   }
 
+  cancelApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: ApplicationExpectedVersionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationCancellationResult> {
+    validateApplicationExpectedVersion(input.expectedVersion);
+    return this.postJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/cancel`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
   listApplicationMessages(
     organizationId: string,
     projectId: string,
@@ -2045,6 +2086,23 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/messages?afterSequence=${afterSequence}&limit=${limit}`,
+      signal
+    );
+  }
+
+  replayApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    afterSequence = 0,
+    limit = DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionReplay> {
+    validateApplicationMessageList(afterSequence, limit);
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/replay?afterSequence=${afterSequence}&limit=${limit}`,
       signal
     );
   }
