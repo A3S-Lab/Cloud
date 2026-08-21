@@ -25,8 +25,8 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "queue-postgres",
     "security",
 ] }
-a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "72a102f615cfaa79c87d408fb4fa0e8ef8b56c6d" }
-a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "72a102f615cfaa79c87d408fb4fa0e8ef8b56c6d", default-features = false, features = ["build", "vm"] }
+a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "af68626e75210dfa2bd405548b1f2aed7f90772b" }
+a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "af68626e75210dfa2bd405548b1f2aed7f90772b", default-features = false, features = ["build", "vm"] }
 a3s-code-core = { version = "=7.0.2", git = "https://github.com/A3S-Lab/Code.git", rev = "6906a09f7c2f061d75f2276649da959d28da182c", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { version = "=1.0.0", git = "https://github.com/A3S-Lab/Flow.git", rev = "7c76eda911146dd08bf260dfa2b958ab089eed6f", default-features = false, features = ["boot", "postgres"] }
