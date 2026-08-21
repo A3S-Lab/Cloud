@@ -1213,7 +1213,14 @@ for its first Event-consumer-to-C6 composition. The
 [N3a H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32503892384/job/96839623052)
 also verifies migration `128`, immutable versioned budgets, exact-bound
 Exhausted settlement, durable delivery, and terminal ACK-only replay;
-user-configured suppression remains a separate semantic gate. Provider outage
+`N3b` is frozen as a subscription-v3-only immutable `suppress_before` cutoff.
+It filters solely on the source notification's immutable event time, retains
+the personal inbox row, treats equality as deliverable, and never releases a
+suppressed fact later. The cutoff is bounded to 30 days from subscription
+creation and changes only through revoke plus create. Eligible v3 facts retain
+the delivery-v2 consumer contract, so this policy introduces no mutable silence
+record, counter, clock worker, deferred release, timer, queue, scheduler, or
+second event rail. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains

@@ -2142,6 +2142,19 @@ node.
   mutable counter, rate/token bucket,
   timer, sleep, queue, scheduler, second event rail, or configuration parser.
   User-configured suppression remains the separate `C0.3-N3b` gate.
+- Architecture frozen for component-only `C0.3-N3b`: canonical
+  `cloud.notification.outbound-subscription.v3` retains exact v1/v2 bytes and
+  adds one immutable RFC 3339 UTC `suppress_before` event-time cutoff beside
+  the v2 one-through-eight Provider-attempt budget. The cutoff must be later
+  than subscription creation and no more than 30 days later. Notifications
+  with immutable source `occurred_at` strictly before the cutoff remain in the
+  personal inbox but create no outbound delivery authorization; equality is
+  eligible, projection delay never releases a suppressed fact, and changing
+  the cutoff requires revoke plus create. Eligible v3 notifications emit the
+  existing delivery-v2 contract and reuse the same Outbox, A3S Event, C6, and
+  receipt authorities. This admission-only policy adds no mutable silence
+  record, counter, clock worker, deferred release, timer, queue, scheduler,
+  second event rail, or configuration format.
 - Implemented as component-only `AUT0.5-C2`: one environment-scoped
   `ConnectorProfile` head advances through immutable `ConnectorRevision`
   lineage. The owner parser accepts and emits canonical
