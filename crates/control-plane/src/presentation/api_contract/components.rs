@@ -1,4 +1,10 @@
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::notifications::{
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+};
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
 
@@ -44,6 +50,129 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "requestId": { "type": "string", "format": "uuid" },
                     "timestamp": { "type": "string", "format": "date-time" }
                 }
+            },
+            "OutboundNotificationSubscription": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "organizationId", "subscriptionId", "channel", "minimumSeverity",
+                    "connectorProjectId", "connectorEnvironmentId", "connectorProfileId",
+                    "connectorRevisionId", "maximumProviderAttempts", "definitionSchema",
+                    "definitionAcl", "definitionDigest", "state", "aggregateVersion",
+                    "createdBy", "createdAt", "revokedAt"
+                ],
+                "properties": {
+                    "organizationId": { "type": "string", "format": "uuid" },
+                    "subscriptionId": { "type": "string", "format": "uuid" },
+                    "channel": {
+                        "type": "string",
+                        "enum": ["signed_webhook", "slack_compatible"]
+                    },
+                    "minimumSeverity": {
+                        "type": "string",
+                        "enum": ["information", "warning", "critical"]
+                    },
+                    "connectorProjectId": { "type": "string", "format": "uuid" },
+                    "connectorEnvironmentId": { "type": "string", "format": "uuid" },
+                    "connectorProfileId": { "type": "string", "format": "uuid" },
+                    "connectorRevisionId": { "type": "string", "format": "uuid" },
+                    "maximumProviderAttempts": {
+                        "type": "integer",
+                        "minimum": MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+                        "maximum": MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+                    },
+                    "definitionSchema": {
+                        "type": "string",
+                        "enum": [
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+                        ]
+                    },
+                    "definitionAcl": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+                    },
+                    "definitionDigest": {
+                        "type": "string",
+                        "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "state": { "type": "string", "enum": ["active", "revoked"] },
+                    "aggregateVersion": { "type": "integer", "minimum": 1, "maximum": 2 },
+                    "createdBy": { "type": "string", "format": "uuid" },
+                    "createdAt": { "type": "string", "format": "date-time" },
+                    "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+                }
+            },
+            "OutboundNotificationSubscriptionPage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["subscriptions", "nextCursor"],
+                "properties": {
+                    "subscriptions": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/OutboundNotificationSubscription" }
+                    },
+                    "nextCursor": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "nullable": true
+                    }
+                }
+            },
+            "OutboundNotificationSubscriptionMutation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["subscription", "replayed"],
+                "properties": {
+                    "subscription": {
+                        "$ref": "#/components/schemas/OutboundNotificationSubscription"
+                    },
+                    "replayed": { "type": "boolean" }
+                }
+            },
+            "OutboundNotificationSubscriptionSuccessResponse": {
+                "allOf": [
+                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
+                    {
+                        "type": "object",
+                        "required": ["data"],
+                        "properties": {
+                            "data": {
+                                "$ref": "#/components/schemas/OutboundNotificationSubscription"
+                            }
+                        }
+                    }
+                ]
+            },
+            "OutboundNotificationSubscriptionPageSuccessResponse": {
+                "allOf": [
+                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
+                    {
+                        "type": "object",
+                        "required": ["data"],
+                        "properties": {
+                            "data": {
+                                "$ref": "#/components/schemas/OutboundNotificationSubscriptionPage"
+                            }
+                        }
+                    }
+                ]
+            },
+            "OutboundNotificationSubscriptionMutationSuccessResponse": {
+                "allOf": [
+                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
+                    {
+                        "type": "object",
+                        "required": ["data"],
+                        "properties": {
+                            "data": {
+                                "$ref": "#/components/schemas/OutboundNotificationSubscriptionMutation"
+                            }
+                        }
+                    }
+                ]
             }
         }),
     );
@@ -59,6 +188,29 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         response_components.insert(
             format!("RawSuccess{status}"),
             response_component(status, ""),
+        );
+    }
+    response_components.insert(
+        "OutboundNotificationSubscriptionSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/OutboundNotificationSubscriptionSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "OutboundNotificationSubscriptionPageSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/OutboundNotificationSubscriptionPageSuccessResponse",
+        ),
+    );
+    for status in [200, 201] {
+        response_components.insert(
+            format!("OutboundNotificationSubscriptionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/OutboundNotificationSubscriptionMutationSuccessResponse",
+            ),
         );
     }
     response_components.insert(

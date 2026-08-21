@@ -16,7 +16,7 @@ pub use outbound_delivery::{
     OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
     MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, OUTBOUND_NOTIFICATION_EVENT_KEY,
-    OUTBOUND_NOTIFICATION_SCHEMA,
+    OUTBOUND_NOTIFICATION_SCHEMA, OUTBOUND_NOTIFICATION_SCHEMA_V2,
 };
 pub use outbound_receipt::{
     OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
@@ -29,6 +29,7 @@ pub use outbound_repository::{
 pub use outbound_subscription::{
     OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
     OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionPage,
-    OutboundNotificationSubscriptionSpec, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    OutboundNotificationSubscriptionSpec, MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
 };

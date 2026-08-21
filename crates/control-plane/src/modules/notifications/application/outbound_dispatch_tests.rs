@@ -10,6 +10,8 @@ use crate::modules::connectors::{
 };
 use crate::modules::notifications::{
     Notification, NotificationScope, NotificationSeverity, OutboundNotificationConnectorTarget,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
@@ -39,6 +41,14 @@ async fn fixture_with_retry_after(retry_after: Option<Duration>) -> Fixture {
 async fn fixture_with_retryable_generations(
     retry_after: Option<Duration>,
     retryable_generations: &[u64],
+) -> Fixture {
+    fixture_with_retryable_generations_and_budget(retry_after, retryable_generations, None).await
+}
+
+async fn fixture_with_retryable_generations_and_budget(
+    retry_after: Option<Duration>,
+    retryable_generations: &[u64],
+    maximum_provider_attempts: Option<u64>,
 ) -> Fixture {
     let now = canonical_timestamp(Utc::now());
     let revision = ConnectorRevision::initial(
@@ -113,18 +123,33 @@ async fn fixture_with_retryable_generations(
         now,
     )
     .expect("notification");
-    let delivery = OutboundNotificationDelivery::from_notification(
-        &notification,
-        OutboundNotificationChannel::SlackCompatible,
-        OutboundNotificationConnectorTarget::new(
-            revision.project_id,
-            revision.environment_id,
-            revision.profile_id,
-            revision.id,
-        )
-        .expect("target"),
+    let target = OutboundNotificationConnectorTarget::new(
+        revision.project_id,
+        revision.environment_id,
+        revision.profile_id,
+        revision.id,
     )
-    .expect("delivery");
+    .expect("target");
+    let delivery = if let Some(maximum_provider_attempts) = maximum_provider_attempts {
+        OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
+            OutboundNotificationSubscriptionSpec {
+                channel: OutboundNotificationChannel::SlackCompatible,
+                minimum_severity: NotificationSeverity::Warning,
+                target,
+            },
+            maximum_provider_attempts,
+        )
+        .expect("version two definition")
+        .delivery_for(&notification)
+        .expect("version two delivery")
+    } else {
+        OutboundNotificationDelivery::from_notification(
+            &notification,
+            OutboundNotificationChannel::SlackCompatible,
+            target,
+        )
+        .expect("delivery")
+    };
     let retryable_attempts = retryable_generations
         .iter()
         .map(|generation| {
@@ -193,6 +218,34 @@ async fn provider_attempt_budget_terminates_from_durable_retryable_evidence() {
         fixture.dispatches.load(Ordering::SeqCst),
         MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS as usize
     );
+}
+
+#[tokio::test]
+async fn versioned_provider_attempt_budget_exhausts_at_the_pinned_generation() {
+    let fixture = fixture_with_retryable_generations_and_budget(None, &[1, 2], Some(2)).await;
+    assert_eq!(fixture.delivery.maximum_provider_attempts(), 2);
+
+    for delivery_count in 1..=2 {
+        assert!(matches!(
+            fixture
+                .dispatcher
+                .dispatch(&fixture.delivery, delivery_count)
+                .await
+                .expect("retryable generation"),
+            OutboundNotificationDispatchResult::Retryable { generation, .. }
+                if generation == delivery_count
+        ));
+    }
+    assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 2);
+    assert!(matches!(
+        fixture
+            .dispatcher
+            .dispatch(&fixture.delivery, 3)
+            .await
+            .expect("exhausted replay"),
+        OutboundNotificationDispatchResult::Exhausted { generation: 2, .. }
+    ));
+    assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 2);
 }
 
 struct RecordingSequencePreparation {

@@ -301,6 +301,10 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         .get("application/json")
         .is_none());
     assert!(collection["post"]["responses"]["201"].is_object());
+    assert_eq!(
+        collection["post"]["responses"]["201"]["$ref"],
+        "#/components/responses/OutboundNotificationSubscriptionMutationSuccess201"
+    );
     assert!(collection["post"]["responses"]["413"].is_object());
     assert!(collection["post"]["responses"]["415"].is_object());
     let limit = collection["get"]["parameters"]
@@ -313,6 +317,30 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         .ok_or_else(|| BootError::Internal("subscription list limit is missing".into()))?;
     assert_eq!(limit["schema"]["default"], 50);
     assert_eq!(limit["schema"]["maximum"], 200);
+    assert_eq!(
+        collection["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/OutboundNotificationSubscriptionPageSuccess200"
+    );
+
+    let response = &document["components"]["schemas"]["OutboundNotificationSubscription"];
+    assert_eq!(
+        response["properties"]["definitionSchema"]["enum"],
+        json!([
+            "cloud.notification.outbound-subscription.v1",
+            "cloud.notification.outbound-subscription.v2"
+        ])
+    );
+    assert_eq!(
+        response["properties"]["maximumProviderAttempts"]["minimum"],
+        1
+    );
+    assert_eq!(
+        response["properties"]["maximumProviderAttempts"]["maximum"],
+        8
+    );
+    assert!(response["required"]
+        .as_array()
+        .is_some_and(|required| required.contains(&json!("maximumProviderAttempts"))));
 
     let revoke = &document["paths"]
         ["/organizations/{organization_id}/notification-outbound-subscriptions/{subscription_id}/revoke"]
@@ -324,6 +352,10 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
     assert_eq!(
         revoke["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
         false
+    );
+    assert_eq!(
+        revoke["responses"]["200"]["$ref"],
+        "#/components/responses/OutboundNotificationSubscriptionMutationSuccess200"
     );
     Ok(())
 }

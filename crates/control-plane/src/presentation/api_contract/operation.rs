@@ -1022,7 +1022,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
     for status in success_statuses(method, path) {
-        let component = if let Some(component) = asset_git_success_component(path) {
+        let component = if let Some(component) =
+            notification_outbound_subscription_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) = asset_git_success_component(path) {
             component.to_owned()
         } else if path.ends_with("/stream") {
             "SseSuccess200".to_owned()
@@ -1380,6 +1384,31 @@ fn is_notification_outbound_subscription_collection_path(path: &str) -> bool {
 
 fn is_notification_outbound_subscription_revoke_path(path: &str) -> bool {
     path.ends_with("/notification-outbound-subscriptions/{subscription_id}/revoke")
+}
+
+fn is_notification_outbound_subscription_item_path(path: &str) -> bool {
+    path.ends_with("/notification-outbound-subscriptions/{subscription_id}")
+}
+
+fn notification_outbound_subscription_success_component(
+    method: &str,
+    path: &str,
+    status: u16,
+) -> Option<String> {
+    if method == "get" && is_notification_outbound_subscription_collection_path(path) {
+        Some("OutboundNotificationSubscriptionPageSuccess200".into())
+    } else if method == "get" && is_notification_outbound_subscription_item_path(path) {
+        Some("OutboundNotificationSubscriptionSuccess200".into())
+    } else if method == "post"
+        && (is_notification_outbound_subscription_collection_path(path)
+            || is_notification_outbound_subscription_revoke_path(path))
+    {
+        Some(format!(
+            "OutboundNotificationSubscriptionMutationSuccess{status}"
+        ))
+    } else {
+        None
+    }
 }
 
 fn is_connector_profile_mutation_path(path: &str) -> bool {

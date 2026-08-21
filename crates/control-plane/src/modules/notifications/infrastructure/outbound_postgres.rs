@@ -11,7 +11,6 @@ use crate::modules::notifications::domain::{
     OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
     OutboundNotificationSubscriptionDefinition, OutboundNotificationTerminalOutcome,
     OutboundNotificationTerminalReceipt, RevokeOutboundNotificationSubscriptionWrite,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
@@ -26,8 +25,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
-const SELECT_DELIVERIES: &str = "select organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at from notification_outbound_deliveries";
+const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
+const SELECT_DELIVERIES: &str = "select organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at from notification_outbound_deliveries";
 
 struct OutboundSubscriptionRow {
     organization_id: Uuid,
@@ -40,6 +39,7 @@ struct OutboundSubscriptionRow {
     connector_profile_id: Uuid,
     connector_revision_id: Uuid,
     definition_schema: String,
+    maximum_provider_attempts: u64,
     canonical_acl: String,
     definition_digest: String,
     aggregate_version: u64,
@@ -61,12 +61,13 @@ impl FromRow for OutboundSubscriptionRow {
             connector_profile_id: decode(row, 7)?,
             connector_revision_id: decode(row, 8)?,
             definition_schema: decode(row, 9)?,
-            canonical_acl: decode(row, 10)?,
-            definition_digest: decode(row, 11)?,
-            aggregate_version: decode(row, 12)?,
-            created_by: decode(row, 13)?,
-            created_at: decode(row, 14)?,
-            revoked_at: decode(row, 15)?,
+            maximum_provider_attempts: decode(row, 10)?,
+            canonical_acl: decode(row, 11)?,
+            definition_digest: decode(row, 12)?,
+            aggregate_version: decode(row, 13)?,
+            created_by: decode(row, 14)?,
+            created_at: decode(row, 15)?,
+            revoked_at: decode(row, 16)?,
         })
     }
 }
@@ -79,6 +80,7 @@ struct OutboundDeliveryRow {
     subscription_id: Uuid,
     requested_event_id: Uuid,
     payload_digest: String,
+    maximum_provider_attempts: u64,
     channel: String,
     connector_project_id: Uuid,
     connector_environment_id: Uuid,
@@ -101,16 +103,17 @@ impl FromRow for OutboundDeliveryRow {
             subscription_id: decode(row, 4)?,
             requested_event_id: decode(row, 5)?,
             payload_digest: decode(row, 6)?,
-            channel: decode(row, 7)?,
-            connector_project_id: decode(row, 8)?,
-            connector_environment_id: decode(row, 9)?,
-            connector_profile_id: decode(row, 10)?,
-            connector_revision_id: decode(row, 11)?,
-            occurred_at: decode(row, 12)?,
-            terminal_outcome: decode(row, 13)?,
-            terminal_generation: decode(row, 14)?,
-            terminal_attempt_id: decode(row, 15)?,
-            terminal_at: decode(row, 16)?,
+            maximum_provider_attempts: decode(row, 7)?,
+            channel: decode(row, 8)?,
+            connector_project_id: decode(row, 9)?,
+            connector_environment_id: decode(row, 10)?,
+            connector_profile_id: decode(row, 11)?,
+            connector_revision_id: decode(row, 12)?,
+            occurred_at: decode(row, 13)?,
+            terminal_outcome: decode(row, 14)?,
+            terminal_generation: decode(row, 15)?,
+            terminal_attempt_id: decode(row, 16)?,
+            terminal_at: decode(row, 17)?,
         })
     }
 }
@@ -143,12 +146,10 @@ pub(super) async fn store_outbound_deliveries(
             continue;
         }
         let spec = subscription.definition.spec();
-        let delivery = OutboundNotificationDelivery::from_notification(
-            notification,
-            spec.channel,
-            spec.target,
-        )
-        .map_err(RepositoryError::Storage)?;
+        let delivery = subscription
+            .definition
+            .delivery_for(notification)
+            .map_err(RepositoryError::Storage)?;
         let payload_digest = Sha256Digest::from_bytes(
             &delivery
                 .canonical_payload()
@@ -161,7 +162,7 @@ pub(super) async fn store_outbound_deliveries(
         let inserted = execute(
             transaction,
             sql_query::<()>(
-                "insert into notification_outbound_deliveries (organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at) values (",
+                "insert into notification_outbound_deliveries (organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at) values (",
             )
             .bind(delivery.organization_id().as_uuid())
             .append(", ")
@@ -176,6 +177,8 @@ pub(super) async fn store_outbound_deliveries(
             .bind(delivery.requested_event_id())
             .append(", ")
             .bind(payload_digest.as_str())
+            .append(", ")
+            .bind(delivery.maximum_provider_attempts())
             .append(", ")
             .bind(delivery.channel().as_str())
             .append(", ")
@@ -211,11 +214,6 @@ fn delivery_query() -> SqlQuery<OutboundDeliveryRow> {
 fn decode_subscription(
     row: OutboundSubscriptionRow,
 ) -> Result<OutboundNotificationSubscription, PostgresPersistenceError> {
-    if row.definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA {
-        return Err(PostgresPersistenceError::Invariant(
-            "stored outbound notification subscription schema is unsupported".into(),
-        ));
-    }
     let definition = OutboundNotificationSubscriptionDefinition::restore(
         &row.canonical_acl,
         &row.definition_digest,
@@ -226,7 +224,9 @@ fn decode_subscription(
         ))
     })?;
     let spec = definition.spec();
-    if row.channel != spec.channel.as_str()
+    if row.definition_schema != definition.definition_schema()
+        || row.maximum_provider_attempts != definition.maximum_provider_attempts()
+        || row.channel != spec.channel.as_str()
         || row.minimum_severity != spec.minimum_severity.as_str()
         || row.connector_project_id != spec.target.project_id.as_uuid()
         || row.connector_environment_id != spec.target.environment_id.as_uuid()
@@ -271,6 +271,7 @@ fn delivery_matches_row(
         && !row.subscription_id.is_nil()
         && row.requested_event_id == delivery.requested_event_id()
         && row.payload_digest == payload_digest.as_str()
+        && row.maximum_provider_attempts == delivery.maximum_provider_attempts()
         && row.channel == delivery.channel().as_str()
         && row.connector_project_id == target.project_id.as_uuid()
         && row.connector_environment_id == target.environment_id.as_uuid()
@@ -290,7 +291,7 @@ fn decode_receipt(
     ) {
         (None, None, None, None) => Ok(None),
         (Some(outcome), Some(generation), Some(attempt_id), Some(terminal_at)) => {
-            OutboundNotificationTerminalReceipt::restore(
+            OutboundNotificationTerminalReceipt::restore_with_provider_attempt_budget(
                 OrganizationId::from_uuid(row.organization_id),
                 row.id,
                 OutboundNotificationConnectorTarget::new(
@@ -300,6 +301,7 @@ fn decode_receipt(
                     ConnectorRevisionId::from_uuid(row.connector_revision_id),
                 )
                 .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?,
+                row.maximum_provider_attempts,
                 OutboundNotificationTerminalOutcome::parse(outcome)
                     .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?,
                 generation,
@@ -360,7 +362,7 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                     let inserted = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
+                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
                         )
                         .bind(subscription.organization_id.as_uuid())
                         .append(", ")
@@ -380,7 +382,9 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                         .append(", ")
                         .bind(spec.target.revision_id.as_uuid())
                         .append(", ")
-                        .bind(OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA)
+                        .bind(subscription.definition.definition_schema())
+                        .append(", ")
+                        .bind(subscription.definition.maximum_provider_attempts())
                         .append(", ")
                         .bind(subscription.definition.canonical_acl())
                         .append(", ")
@@ -428,6 +432,8 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                                 "subscriptionId": subscription.id,
                                 "recipientPrincipalId": subscription.recipient_principal_id,
                                 "definitionDigest": subscription.definition.digest(),
+                                "definitionSchema": subscription.definition.definition_schema(),
+                                "maximumProviderAttempts": subscription.definition.maximum_provider_attempts(),
                                 "channel": spec.channel,
                                 "connectorProjectId": spec.target.project_id,
                                 "connectorEnvironmentId": spec.target.environment_id,

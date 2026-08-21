@@ -1197,6 +1197,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/127_application_invocation_timeout_policy.sql"
             )),
         ),
+        Migration::new(
+            "128",
+            "versioned outbound notification delivery budgets",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/128_notification_outbound_delivery_budget.sql"
+            )),
+        ),
     ]
 }
 
@@ -1898,6 +1906,47 @@ mod notification_outbound_attempt_budget_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 115 must not add another rate/retry authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_outbound_delivery_budget_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/128_notification_outbound_delivery_budget.sql"
+    ));
+
+    #[test]
+    fn migration_128_pins_versioned_budgets_without_another_delivery_mechanism() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "cloud.notification.outbound-subscription.v2",
+            "add column maximum_provider_attempts",
+            "subscription.maximum_provider_attempts <> new.maximum_provider_attempts",
+            "requested.schema_version <> expected_schema_version",
+            "new.maximum_provider_attempts is distinct from old.maximum_provider_attempts",
+            "new.terminal_generation is distinct from new.maximum_provider_attempts",
+            "pinned delivery budget",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "migration 128 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "retry_count",
+            "next_attempt",
+            "next_retry",
+            "token_bucket",
+            "rate_bucket",
+            "provider_response",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 128 duplicated delivery authority through {forbidden}"
             );
         }
     }

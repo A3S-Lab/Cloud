@@ -99,6 +99,10 @@ pub struct OutboundNotificationSubscriptionEvent {
     pub subscription_id: NotificationSubscriptionId,
     pub recipient_principal_id: PrincipalId,
     pub definition_digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub definition_schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum_provider_attempts: Option<u64>,
     pub channel: String,
     pub connector_project_id: Uuid,
     pub connector_environment_id: Uuid,
@@ -115,11 +119,18 @@ impl OutboundNotificationSubscriptionEvent {
     ) -> Result<DomainEventEnvelope, String> {
         subscription.validate()?;
         let spec = subscription.definition.spec();
+        let schema_version = subscription.definition.schema_version();
+        let versioned_budget = (schema_version == 2).then(|| {
+            (
+                subscription.definition.definition_schema().to_owned(),
+                subscription.definition.maximum_provider_attempts(),
+            )
+        });
         let occurred_at = subscription.revoked_at.unwrap_or(subscription.created_at);
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
-            schema_version: 1,
+            schema_version,
             organization_id: subscription.organization_id.as_uuid(),
             aggregate_id: subscription.id.as_uuid(),
             aggregate_version: subscription.aggregate_version,
@@ -130,6 +141,8 @@ impl OutboundNotificationSubscriptionEvent {
                 subscription_id: subscription.id,
                 recipient_principal_id: subscription.recipient_principal_id,
                 definition_digest: subscription.definition.digest().to_string(),
+                definition_schema: versioned_budget.as_ref().map(|(schema, _)| schema.clone()),
+                maximum_provider_attempts: versioned_budget.map(|(_, budget)| budget),
                 channel: spec.channel.as_str().into(),
                 connector_project_id: spec.target.project_id.as_uuid(),
                 connector_environment_id: spec.target.environment_id.as_uuid(),
@@ -207,7 +220,7 @@ fn validate_subscription_event(
         || actor_principal_id.as_uuid().is_nil()
         || request_id.is_nil()
         || event.event_key != event_key
-        || event.schema_version != 1
+        || event.schema_version != subscription.definition.schema_version()
         || event.organization_id != subscription.organization_id.as_uuid()
         || event.aggregate_id != subscription.id.as_uuid()
         || event.aggregate_version != subscription.aggregate_version
@@ -222,9 +235,18 @@ fn validate_subscription_event(
             format!("outbound notification subscription event is invalid: {error}")
         })?;
     let spec = subscription.definition.spec();
+    let versioned_budget = (subscription.definition.schema_version() == 2).then(|| {
+        (
+            subscription.definition.definition_schema(),
+            subscription.definition.maximum_provider_attempts(),
+        )
+    });
     if payload.subscription_id != subscription.id
         || payload.recipient_principal_id != subscription.recipient_principal_id
         || payload.definition_digest != subscription.definition.digest().as_str()
+        || payload.definition_schema.as_deref() != versioned_budget.map(|(schema, _)| schema)
+        || payload.maximum_provider_attempts
+            != versioned_budget.map(|(_, maximum_provider_attempts)| maximum_provider_attempts)
         || payload.channel != spec.channel.as_str()
         || payload.connector_project_id != spec.target.project_id.as_uuid()
         || payload.connector_environment_id != spec.target.environment_id.as_uuid()

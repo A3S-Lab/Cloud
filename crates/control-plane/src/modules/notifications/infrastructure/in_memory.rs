@@ -107,13 +107,10 @@ impl INotificationRepository for InMemoryNotificationRepository {
             .values()
             .filter(|subscription| subscription.matches(&notification))
         {
-            let spec = subscription.definition.spec();
-            let delivery = OutboundNotificationDelivery::from_notification(
-                &notification,
-                spec.channel,
-                spec.target,
-            )
-            .map_err(RepositoryError::Storage)?;
+            let delivery = subscription
+                .definition
+                .delivery_for(&notification)
+                .map_err(RepositoryError::Storage)?;
             if state
                 .outbound_deliveries
                 .contains_key(&(delivery.organization_id(), delivery.id()))

@@ -431,12 +431,13 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         revision_id,
         OutboundNotificationChannel::SignedWebhook,
     )?;
-    let slack_acl = outbound_subscription_acl(
+    let slack_acl = outbound_subscription_acl_with_budget(
         &project,
         &environment,
         profile_id,
         revision_id,
         OutboundNotificationChannel::SlackCompatible,
+        3,
     )?;
     let root = format!("/api/v1/organizations/{organization}/notification-outbound-subscriptions");
 
@@ -464,6 +465,14 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
     assert_eq!(created["data"]["replayed"], false);
     assert_eq!(created["data"]["subscription"]["state"], "active");
     assert_eq!(created["data"]["subscription"]["definitionAcl"], signed_acl);
+    assert_eq!(
+        created["data"]["subscription"]["definitionSchema"],
+        "cloud.notification.outbound-subscription.v1"
+    );
+    assert_eq!(
+        created["data"]["subscription"]["maximumProviderAttempts"],
+        8
+    );
     assert!(created["data"]["subscription"]
         .get("recipientPrincipalId")
         .is_none());
@@ -514,6 +523,15 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         .await?;
     let mcp_create = response_json(&mcp_create)?;
     assert_eq!(mcp_create["result"]["isError"], false);
+    assert_eq!(
+        mcp_create["result"]["structuredContent"]["data"]["subscription"]["definitionSchema"],
+        "cloud.notification.outbound-subscription.v2"
+    );
+    assert_eq!(
+        mcp_create["result"]["structuredContent"]["data"]["subscription"]
+            ["maximumProviderAttempts"],
+        3
+    );
     let second_subscription_id = mcp_create["result"]["structuredContent"]["data"]["subscription"]
         ["subscriptionId"]
         .as_str()
@@ -570,6 +588,14 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         .await?;
     let mcp_get = response_json(&mcp_get)?;
     assert_eq!(mcp_get["result"]["isError"], false);
+    assert_eq!(
+        mcp_get["result"]["structuredContent"]["data"]["definitionSchema"],
+        "cloud.notification.outbound-subscription.v2"
+    );
+    assert_eq!(
+        mcp_get["result"]["structuredContent"]["data"]["maximumProviderAttempts"],
+        3
+    );
     assert!(!mcp_get.to_string().contains("hooks.example.test"));
 
     let revoke = || {
@@ -614,11 +640,42 @@ fn outbound_subscription_acl(
     revision_id: &str,
     channel: OutboundNotificationChannel,
 ) -> Result<String> {
+    outbound_subscription_definition(project_id, environment_id, profile_id, revision_id, channel)
+        .and_then(OutboundNotificationSubscriptionDefinition::from_spec)
+        .map(|definition| definition.canonical_acl().to_owned())
+        .map_err(BootError::Internal)
+}
+
+fn outbound_subscription_acl_with_budget(
+    project_id: &str,
+    environment_id: &str,
+    profile_id: &str,
+    revision_id: &str,
+    channel: OutboundNotificationChannel,
+    maximum_provider_attempts: u64,
+) -> Result<String> {
+    outbound_subscription_definition(project_id, environment_id, profile_id, revision_id, channel)
+        .and_then(|spec| {
+            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
+                spec,
+                maximum_provider_attempts,
+            )
+        })
+        .map(|definition| definition.canonical_acl().to_owned())
+        .map_err(BootError::Internal)
+}
+
+fn outbound_subscription_definition(
+    project_id: &str,
+    environment_id: &str,
+    profile_id: &str,
+    revision_id: &str,
+    channel: OutboundNotificationChannel,
+) -> std::result::Result<OutboundNotificationSubscriptionSpec, String> {
     let parse = |value: &str, label: &str| {
-        Uuid::parse_str(value)
-            .map_err(|error| BootError::Internal(format!("invalid {label}: {error}")))
+        Uuid::parse_str(value).map_err(|error| format!("invalid {label}: {error}"))
     };
-    OutboundNotificationSubscriptionDefinition::from_spec(OutboundNotificationSubscriptionSpec {
+    Ok(OutboundNotificationSubscriptionSpec {
         channel,
         minimum_severity: NotificationSeverity::Warning,
         target: OutboundNotificationConnectorTarget::new(
@@ -627,10 +684,8 @@ fn outbound_subscription_acl(
             ConnectorProfileId::from_uuid(parse(profile_id, "Connector profile ID")?),
             ConnectorRevisionId::from_uuid(parse(revision_id, "Connector revision ID")?),
         )
-        .map_err(BootError::Internal)?,
+        .map_err(|error| error.to_string())?,
     })
-    .map(|definition| definition.canonical_acl().to_owned())
-    .map_err(BootError::Internal)
 }
 
 fn projected_notification(

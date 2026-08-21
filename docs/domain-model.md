@@ -1095,15 +1095,17 @@ Primary record:
 
 - `Notification`
 
-### 3.19 Outbound notification delivery (`C0.3-N2a` through `C0.3-N2f`)
+### 3.19 Outbound notification delivery (`C0.3-N2a` through `C0.3-N3a`)
 
 The first outbound component boundary derives one immutable
 `OutboundNotificationDelivery` from an existing personal notification, one
 channel, and one opaque exact Connector project/environment/profile/revision
 reference. Its UUID is deterministic for the notification, channel, and exact
-revision. The canonical `a3s.cloud.notification-delivery.v1` payload is bounded
-to 16 KiB and contains no endpoint, credential, provider response, or inbox read
-state. Connection and subscription revisions remain external references;
+revision. The canonical versioned `a3s.cloud.notification-delivery` payload is
+bounded to 16 KiB and contains no endpoint, credential, provider response, or
+inbox read state. Historic v1 payload bytes remain unchanged; v2 adds only the
+immutable provider-attempt budget selected by the subscription. Connection and
+subscription revisions remain external references;
 Notifications does not become another connection, Secret, or recipient-directory
 authority.
 
@@ -1156,6 +1158,20 @@ is the sole state transition. These adapters reuse the same repository,
 idempotency, Outbox, audit, and Connector revision admission; they never expose
 resolved endpoints, Secrets, provider bodies, attempts, receipts, or retry state.
 
+`N3a` adds canonical `cloud.notification.outbound-subscription.v2` with one
+immutable `maximum_provider_attempts` value from one through eight. Historic v1
+ACL and delivery payload bytes remain unchanged and always mean eight. The
+selected value is pinned into the subscription event, delivery authorization
+fact, v2 payload, terminal receipt, and migration `128` columns, so replay never
+consults mutable subscription state. Dispatch cannot create a generation past
+that value, and Exhausted settlement requires the exact retryable C6 evidence at
+the bound. PostgreSQL constraints reject version/budget drift, event/payload
+mismatch, post-admission mutation, over-budget terminal facts, and early
+Exhausted settlement. REST/OpenAPI `1.45.0`, the maintained client, CLI, and the
+existing Management MCP tools expose the actual schema and required budget
+without exposing delivery internals. No retry table, counter, timer, queue,
+scheduler, or second event rail is added.
+
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
 method, production HTTPS requirement, redirect rejection, request/response/time
@@ -1182,10 +1198,10 @@ scheduler or provider authority. WorkflowRun v9 preserves that path and routes
 a terminal closed Connector classification only through an exact Plan-v5
 descriptor edge as `cloud.workflow.step-failure.v2`; historic v8 remains
 fail-closed without that interpretation, v6 stays reference-only, and v5 stays
-digest-only. Notifications now retains PostgreSQL 17 plus
-real NATS evidence for its first Event-consumer-to-C6 composition, but still
-needs separate versioned semantics before any user-configured suppression or
-delivery budget is admitted. Provider outage
+digest-only. Notifications now retains PostgreSQL 17 plus real NATS evidence
+for its first Event-consumer-to-C6 composition. The versioned delivery budget
+is implemented component-only and awaits retained PostgreSQL 17 evidence;
+user-configured suppression remains a separate semantic gate. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains

@@ -8,7 +8,6 @@ use crate::modules::notifications::domain::{
     outbound_notification_attempt_id, IOutboundNotificationRequestAdapter,
     OutboundNotificationChannel, OutboundNotificationDelivery,
     MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
-    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::notifications::infrastructure::{
     SignedWebhookNotificationAdapter, SlackCompatibleNotificationAdapter,
@@ -108,7 +107,7 @@ impl OutboundNotificationDispatcher {
         // redeliveries while bounding the number of logical provider attempts.
         let maximum_generation = delivery_count
             .min(MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION)
-            .min(MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS);
+            .min(delivery.maximum_provider_attempts());
         let adapter = self.adapter(delivery.channel())?;
         let target = delivery.target();
         let resource_access =
@@ -154,8 +153,7 @@ impl OutboundNotificationDispatcher {
                         })
                     }
                     ConnectorExecutionOutcome::Retryable
-                        if replayed
-                            && generation == MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS =>
+                        if replayed && generation == delivery.maximum_provider_attempts() =>
                     {
                         return Ok(OutboundNotificationDispatchResult::Exhausted {
                             generation,
@@ -204,8 +202,7 @@ impl OutboundNotificationDispatcher {
                             }
                             ConnectorExecutionOutcome::Retryable
                                 if replayed
-                                    && generation
-                                        == MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS =>
+                                    && generation == delivery.maximum_provider_attempts() =>
                             {
                                 return Ok(OutboundNotificationDispatchResult::Exhausted {
                                     generation,

@@ -1536,7 +1536,7 @@ impl ManagementTool {
             ),
             Self::NotificationOutboundSubscriptionsCreate => (
                 "Create my outbound notification subscription",
-                "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL and an exact Connector revision.",
+                "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL, an exact Connector revision, and the ACL-pinned provider-attempt budget.",
                 create_notification_outbound_subscription_schema(),
                 false,
             ),
@@ -1548,7 +1548,7 @@ impl ManagementTool {
             ),
             Self::NotificationOutboundSubscriptionsGet => (
                 "Get my outbound notification subscription",
-                "Get one exact recipient-bound outbound notification subscription without resolving its Connector endpoint or credentials.",
+                "Get one exact recipient-bound outbound notification subscription and immutable provider-attempt budget without resolving its Connector endpoint or credentials.",
                 uuid_id_schema("subscriptionId"),
                 true,
             ),
