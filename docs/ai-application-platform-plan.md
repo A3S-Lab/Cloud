@@ -51,7 +51,7 @@ That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The thirty-three authority decisions are
+implementation is not a public capability. The thirty-four authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -746,7 +746,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All thirty-three
+   reject inventory/schema drift and false public claims. All thirty-four
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -761,9 +761,9 @@ The recommended sequence is:
    authority, its atomic persistence boundary, authorization-before-replay
    CQRS, one management interface over that same authority, canonical UserFile
    admission through the shared immutable-object authority, the single
-   Application session authority and its atomic persistence, and typed exact
-   invocation-to-ordinary-WorkflowRun composition are
-   accepted and versioned.
+   Application session authority and its atomic persistence, typed exact
+   invocation-to-ordinary-WorkflowRun composition, and deterministic preset
+   wrapper Workflow publication are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
@@ -775,12 +775,13 @@ The recommended sequence is:
    reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
    folding/evidence, and Plan v5 Connector failure routing; retain the
-    `APP0.2-C1/C2/C3` Applications-owned variable, Answer, and typed WorkflowRun
-    composition contract, then complete remaining non-Execution error branches,
+    `APP0.2-C1/C2/C3/C4` Applications-owned variable, Answer, typed WorkflowRun
+    composition, and preset wrapper publication contracts, then complete
+    remaining non-Execution error branches,
    and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Retain the implemented `APP0.1`
-    vertical slice and component-only `APP0.2-C1/C2/C3`, and implement `K0.1` and
+    vertical slice and component-only `APP0.2-C1/C2/C3/C4`, and implement `K0.1` and
    `AUT0.1` independently. Do not add provider behavior to these contract
    slices.
 4. **Complete the provider spine.** Advance `I0.2`, the required certified
