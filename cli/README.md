@@ -94,8 +94,10 @@ Principal's currently authorized subscriptions. `notification-subscriptions
 create --file=<subscription.acl>` requires `--idempotency-key`; revoke requires
 the exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses
 the canonical ACL, checks the exact Connector revision and Resource Grant, and
-owns persistence, Outbox, audit, and replay. The CLI never resolves endpoints,
-Secrets, credentials, delivery evidence, or retry state.
+owns persistence, Outbox, audit, and replay. REST contract `1.45.0` reports the
+actual v1/v2 definition schema and immutable `ATTEMPTS` budget; v1 means eight,
+while v2 admits 1 through 8. The CLI never resolves endpoints, Secrets,
+credentials, delivery evidence, or retry state.
 
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires

@@ -5,6 +5,7 @@ use crate::modules::notifications::{
     IOutboundNotificationDispatcher, Notification, NotificationScope, NotificationSeverity,
     OutboundNotificationChannel, OutboundNotificationConnectorTarget,
     OutboundNotificationDeliveryAdmission, OutboundNotificationDispatchResult,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
     OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
@@ -129,6 +130,10 @@ impl IOutboundNotificationDeliveryRepository for RecordingDeliveryRepository {
 }
 
 fn delivery() -> OutboundNotificationDelivery {
+    delivery_with_budget(None)
+}
+
+fn delivery_with_budget(maximum_provider_attempts: Option<u64>) -> OutboundNotificationDelivery {
     let now = canonical_timestamp(Utc::now());
     let notification = Notification::project(
         OrganizationId::new(),
@@ -147,18 +152,34 @@ fn delivery() -> OutboundNotificationDelivery {
         now,
     )
     .expect("notification");
-    OutboundNotificationDelivery::from_notification(
-        &notification,
-        OutboundNotificationChannel::SlackCompatible,
-        OutboundNotificationConnectorTarget::new(
-            ProjectId::new(),
-            EnvironmentId::new(),
-            ConnectorProfileId::new(),
-            ConnectorRevisionId::new(),
-        )
-        .expect("target"),
+    let target = OutboundNotificationConnectorTarget::new(
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ConnectorProfileId::new(),
+        ConnectorRevisionId::new(),
     )
-    .expect("delivery")
+    .expect("target");
+    match maximum_provider_attempts {
+        Some(maximum_provider_attempts) => {
+            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
+                OutboundNotificationSubscriptionSpec {
+                    channel: OutboundNotificationChannel::SlackCompatible,
+                    minimum_severity: NotificationSeverity::Warning,
+                    target,
+                },
+                maximum_provider_attempts,
+            )
+            .expect("definition")
+            .delivery_for(&notification)
+            .expect("version two delivery")
+        }
+        None => OutboundNotificationDelivery::from_notification(
+            &notification,
+            OutboundNotificationChannel::SlackCompatible,
+            target,
+        )
+        .expect("delivery"),
+    }
 }
 
 fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> ReceivedEvent {
@@ -167,7 +188,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         SUBJECT,
         "cloud",
         OUTBOUND_NOTIFICATION_EVENT_KEY,
-        1,
+        fact.schema_version,
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         serde_json::json!({
@@ -187,6 +208,21 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         num_delivered: delivery_count,
         stream: "test".into(),
     }
+}
+
+#[test]
+fn version_two_event_requires_its_matching_envelope_version() {
+    let delivery = delivery_with_budget(Some(2));
+    let received = event(&delivery, 1);
+    assert_eq!(received.event.version, 2);
+    assert_eq!(
+        decode_delivery_event(&received, SUBJECT),
+        Ok(delivery.clone())
+    );
+
+    let mut downgraded = received;
+    downgraded.event.version = 1;
+    assert!(decode_delivery_event(&downgraded, SUBJECT).is_err());
 }
 
 fn evidence(

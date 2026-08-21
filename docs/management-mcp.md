@@ -322,17 +322,21 @@ configuration document.
 
 ## Personal outbound notification subscriptions
 
-The four `a3s_cloud_notification_outbound_subscriptions_*` tools reuse the
+REST contract `1.45.0` extends the four
+`a3s_cloud_notification_outbound_subscriptions_*` tools, which reuse the
 same Notifications commands and queries as REST, the maintained client, and
-CLI. Create accepts one canonical bounded
-`cloud.notification.outbound-subscription.v1` A3S ACL and binds the
-authenticated Principal to an exact Connector revision. List and exact get
+CLI. Create accepts one canonical bounded v1 or
+`cloud.notification.outbound-subscription.v2` A3S ACL and binds the
+authenticated Principal to an exact Connector revision. v1 retains its fixed
+eight-attempt meaning; v2 requires `maximum_provider_attempts` from 1 through
+8. List and exact get
 apply current Resource Grants; list keyset-pages past invisible records, while
 denied and missing exact IDs both return `404`. Revoke uses the current
 aggregate version and caller-owned idempotency key.
 
-The response contains the canonical subscription ACL/digest and exact
-Connector identifiers. It never resolves the Connector endpoint, Secret,
+The response contains the actual definition schema, canonical subscription
+ACL/digest, exact Connector identifiers, and immutable
+`maximumProviderAttempts`. It never resolves the Connector endpoint, Secret,
 credential, provider body, attempt/evidence, delivery receipt, or retry state.
 The MCP adapter adds no recipient selector, repository, configuration parser,
 queue, scheduler, retry counter, or delivery mechanism.

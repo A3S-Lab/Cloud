@@ -258,7 +258,6 @@ fn decode_delivery_event(
     if event.subject != expected_subject
         || event.category != "cloud"
         || event.event_type != OUTBOUND_NOTIFICATION_EVENT_KEY
-        || event.version != 1
         || event.source != "a3s-cloud"
         || received.num_delivered == 0
     {
@@ -267,7 +266,8 @@ fn decode_delivery_event(
     let envelope: PublishedOutboxEnvelope = serde_json::from_value(event.payload.clone())
         .map_err(|_| "outbound notification Outbox envelope is invalid".to_owned())?;
     let delivery = OutboundNotificationDelivery::from_payload(&envelope.data)?;
-    if envelope.organization_id != delivery.organization_id().as_uuid()
+    if event.version != delivery.schema_version()
+        || envelope.organization_id != delivery.organization_id().as_uuid()
         || envelope.aggregate_id != delivery.id()
         || envelope.aggregate_version != 1
         || envelope.occurred_at != delivery.occurred_at()

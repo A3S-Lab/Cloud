@@ -5,7 +5,6 @@ use crate::modules::notifications::domain::{
 };
 use crate::modules::notifications::{
     MarkNotificationReadResult, OutboundNotificationSubscriptionMutationResult,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -139,6 +138,7 @@ pub struct OutboundNotificationSubscriptionResponse {
     pub connector_environment_id: Uuid,
     pub connector_profile_id: Uuid,
     pub connector_revision_id: Uuid,
+    pub maximum_provider_attempts: u64,
     pub definition_schema: String,
     pub definition_acl: String,
     pub definition_digest: String,
@@ -161,7 +161,8 @@ impl From<OutboundNotificationSubscription> for OutboundNotificationSubscription
             connector_environment_id: spec.target.environment_id.as_uuid(),
             connector_profile_id: spec.target.profile_id.as_uuid(),
             connector_revision_id: spec.target.revision_id.as_uuid(),
-            definition_schema: OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA.into(),
+            maximum_provider_attempts: subscription.definition.maximum_provider_attempts(),
+            definition_schema: subscription.definition.definition_schema().into(),
             definition_acl: subscription.definition.canonical_acl().to_owned(),
             definition_digest: subscription.definition.digest().as_str().to_owned(),
             state: if subscription.is_active() {

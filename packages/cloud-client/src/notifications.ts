@@ -52,7 +52,10 @@ export interface OutboundNotificationSubscription {
   connectorEnvironmentId: string;
   connectorProfileId: string;
   connectorRevisionId: string;
-  definitionSchema: 'cloud.notification.outbound-subscription.v1';
+  maximumProviderAttempts: number;
+  definitionSchema:
+    | 'cloud.notification.outbound-subscription.v1'
+    | 'cloud.notification.outbound-subscription.v2';
   definitionAcl: string;
   definitionDigest: string;
   state: OutboundNotificationSubscriptionState;

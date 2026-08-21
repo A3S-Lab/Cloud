@@ -25,7 +25,7 @@ use a3s_cloud_control_plane::modules::notifications::{
     OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionEvent,
     OutboundNotificationSubscriptionSpec, OutboundNotificationTerminalOutcome,
     OutboundNotificationTerminalReceipt, PostgresNotificationRepository,
-    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::application::{
     ApplicationError, ApplicationResult,
@@ -81,6 +81,18 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(
         attempt_budget_migration_state,
         (1, "bounded outbound notification attempt receipts".into())
+    );
+    let versioned_budget_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("128"),
+        )
+        .await?;
+    assert_eq!(
+        versioned_budget_migration_state,
+        (1, "versioned outbound notification delivery budgets".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -182,11 +194,8 @@ pub(super) async fn exercise_notification_persistence(
     let repository = notification_repository;
     assert!(repository.project(first.clone()).await?);
     assert!(!repository.project(first.clone()).await?);
-    let outbound_delivery = OutboundNotificationDelivery::from_notification(
-        &first,
-        subscription.definition.spec().channel,
-        target,
-    )?;
+    assert_eq!(subscription.definition.maximum_provider_attempts(), 2);
+    let outbound_delivery = subscription.definition.delivery_for(&first)?;
     assert!(matches!(
         repository.admit_delivery(&outbound_delivery).await?,
         Some(OutboundNotificationDeliveryAdmission::Pending)
@@ -275,15 +284,10 @@ pub(super) async fn exercise_notification_persistence(
     let outcomes = [left?, right?];
     assert_eq!(outcomes.into_iter().filter(|inserted| *inserted).count(), 1);
 
-    let exhausted_delivery = OutboundNotificationDelivery::from_notification(
-        &concurrent,
-        subscription.definition.spec().channel,
-        target,
-    )?;
-    let exhausted_attempt_id = outbound_notification_attempt_id(
-        exhausted_delivery.id(),
-        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
-    )?;
+    let exhausted_delivery = subscription.definition.delivery_for(&concurrent)?;
+    let maximum_provider_attempts = subscription.definition.maximum_provider_attempts();
+    let exhausted_attempt_id =
+        outbound_notification_attempt_id(exhausted_delivery.id(), maximum_provider_attempts)?;
     let exhausted_request = ConnectorExecutionRequest::new(
         connector_revision.id,
         exhausted_attempt_id,
@@ -308,7 +312,7 @@ pub(super) async fn exercise_notification_persistence(
     .await?;
     let exhausted_receipt = OutboundNotificationTerminalReceipt::exhausted(
         &exhausted_delivery,
-        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+        maximum_provider_attempts,
         &exhausted_evidence,
     )?;
     assert!(
@@ -442,6 +446,56 @@ pub(super) async fn exercise_notification_persistence(
         )
         .await?;
     assert_eq!(outbound_evidence, (1, 2, 1, 1));
+    let pinned_budget_evidence = database
+        .fetch_one_as(
+            sql_query::<(String, i64, i64, i32)>(
+                "select (select min(definition_schema) from notification_outbound_subscriptions where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append("), (select min(maximum_provider_attempts) from notification_outbound_subscriptions where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append("), (select min(maximum_provider_attempts) from notification_outbound_deliveries where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append("), (select min(schema_version) from outbox_events where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and event_key = 'notification.delivery.requested')"),
+        )
+        .await?;
+    assert_eq!(
+        pinned_budget_evidence,
+        (
+            "cloud.notification.outbound-subscription.v2".into(),
+            2,
+            2,
+            2
+        )
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update notification_outbound_subscriptions set maximum_provider_attempts = 3 where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(subscription.id.as_uuid()),
+            )
+            .await,
+        "mutate a subscription provider-attempt budget",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update notification_outbound_deliveries set maximum_provider_attempts = 3 where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(outbound_delivery.id()),
+            )
+            .await,
+        "mutate a delivery provider-attempt budget",
+    );
 
     if let Ok(nats_url) = std::env::var("A3S_CLOUD_TEST_NATS_URL") {
         exercise_notification_nats_delivery(
@@ -452,8 +506,7 @@ pub(super) async fn exercise_notification_persistence(
             organization_id,
             recipient,
             connector_revision,
-            subscription.definition.spec().channel,
-            target,
+            subscription.definition.clone(),
             created_at + ChronoDuration::seconds(20),
         )
         .await?;
@@ -591,8 +644,7 @@ async fn exercise_notification_nats_delivery(
     organization_id: OrganizationId,
     recipient: PrincipalId,
     connector_revision: ConnectorRevision,
-    channel: OutboundNotificationChannel,
-    target: OutboundNotificationConnectorTarget,
+    definition: OutboundNotificationSubscriptionDefinition,
     occurred_at: chrono::DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let notification = source_notification(
@@ -604,7 +656,7 @@ async fn exercise_notification_nats_delivery(
     )
     .await?;
     assert!(repository.project(notification.clone()).await?);
-    let delivery = OutboundNotificationDelivery::from_notification(&notification, channel, target)?;
+    let delivery = definition.delivery_for(&notification)?;
 
     let nats_config = NatsConfig {
         url: nats_url,
@@ -719,7 +771,7 @@ fn delivery_event(delivery: &OutboundNotificationDelivery, subject: &str) -> Res
         subject,
         "cloud",
         OUTBOUND_NOTIFICATION_EVENT_KEY,
-        1,
+        fact.schema_version,
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         json!({
@@ -834,13 +886,15 @@ async fn create_outbound_subscription(
     target: OutboundNotificationConnectorTarget,
     created_at: chrono::DateTime<Utc>,
 ) -> Result<OutboundNotificationSubscription, Box<dyn std::error::Error>> {
-    let definition = OutboundNotificationSubscriptionDefinition::from_spec(
-        OutboundNotificationSubscriptionSpec {
-            channel: OutboundNotificationChannel::SlackCompatible,
-            minimum_severity: NotificationSeverity::Information,
-            target,
-        },
-    )?;
+    let definition =
+        OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
+            OutboundNotificationSubscriptionSpec {
+                channel: OutboundNotificationChannel::SlackCompatible,
+                minimum_severity: NotificationSeverity::Information,
+                target,
+            },
+            2,
+        )?;
     let subscription = OutboundNotificationSubscription::create(
         organization_id,
         NotificationSubscriptionId::new(),

@@ -42,6 +42,7 @@ const SUBSCRIPTION: OutboundNotificationSubscription = {
   connectorEnvironmentId: '019c0000-0000-7000-8000-000000000008',
   connectorProfileId: '019c0000-0000-7000-8000-000000000009',
   connectorRevisionId: '019c0000-0000-7000-8000-00000000000a',
+  maximumProviderAttempts: 8,
   definitionSchema: 'cloud.notification.outbound-subscription.v1',
   definitionAcl: 'schema = "cloud.notification.outbound-subscription.v1"\n',
   definitionDigest: `sha256:${'a'.repeat(64)}`,
@@ -193,6 +194,21 @@ describe('notification commands', () => {
       })
     );
     expect(output.stdout()).toContain(`"subscriptionId": "${SUBSCRIPTION_ID}"`);
+
+    const getOutput = capture();
+    const getExitCode = await runCli(['notification-subscriptions', 'get', SUBSCRIPTION_ID], {
+      ...getOutput.runtime,
+      environment: environment(),
+      fetch: async () =>
+        envelope({
+          ...SUBSCRIPTION,
+          definitionSchema: 'cloud.notification.outbound-subscription.v2',
+          maximumProviderAttempts: 3,
+        }),
+    });
+    expect(getExitCode).toBe(0);
+    expect(getOutput.stdout()).toContain('ATTEMPTS');
+    expect(getOutput.stdout()).toContain('3');
 
     const revokeOutput = capture();
     const revokeExitCode = await runCli(

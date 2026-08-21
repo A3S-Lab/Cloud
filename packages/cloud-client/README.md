@@ -313,7 +313,9 @@ adds no ACL parser, OCI/DNS validator, S0 lifecycle, scheduler, or state store.
 `revokeOutboundNotificationSubscription` expose the recipient-bound lifecycle
 added by REST contract `1.37.0`. Create sends one bounded canonical A3S ACL as
 `application/vnd.a3s.acl`; revoke carries one positive expected aggregate
-version. Lists use the shared opaque cursor and 50/200 bounds. Notifications
+version. Contract `1.45.0` widens the response definition schema to v1/v2 and
+adds required `maximumProviderAttempts`; v1 remains exactly eight and v2 pins
+one value from 1 through 8. Lists use the shared opaque cursor and 50/200 bounds. Notifications
 remains authoritative for recipient identity, Resource Grants, exact Connector
 revision admission, idempotency, Outbox, audit, and persistence. The client has
 no ACL parser and never resolves endpoints, Secrets, credentials, provider

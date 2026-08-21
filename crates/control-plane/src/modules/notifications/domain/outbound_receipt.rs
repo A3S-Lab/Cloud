@@ -47,6 +47,8 @@ pub struct OutboundNotificationTerminalReceipt {
     organization_id: OrganizationId,
     delivery_id: Uuid,
     target: OutboundNotificationConnectorTarget,
+    #[serde(default = "default_provider_attempt_budget")]
+    maximum_provider_attempts: u64,
     outcome: OutboundNotificationTerminalOutcome,
     generation: u64,
     attempt_id: Uuid,
@@ -102,10 +104,11 @@ impl OutboundNotificationTerminalReceipt {
         attempt_id: Uuid,
         outcome_deadline_at: DateTime<Utc>,
     ) -> Result<Self, String> {
-        Self::restore(
+        Self::restore_with_provider_attempt_budget(
             delivery.organization_id(),
             delivery.id(),
             delivery.target(),
+            delivery.maximum_provider_attempts(),
             OutboundNotificationTerminalOutcome::Indeterminate,
             generation,
             attempt_id,
@@ -127,10 +130,34 @@ impl OutboundNotificationTerminalReceipt {
         attempt_id: Uuid,
         terminal_at: DateTime<Utc>,
     ) -> Result<Self, String> {
+        Self::restore_with_provider_attempt_budget(
+            organization_id,
+            delivery_id,
+            target,
+            MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+            outcome,
+            generation,
+            attempt_id,
+            terminal_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_with_provider_attempt_budget(
+        organization_id: OrganizationId,
+        delivery_id: Uuid,
+        target: OutboundNotificationConnectorTarget,
+        maximum_provider_attempts: u64,
+        outcome: OutboundNotificationTerminalOutcome,
+        generation: u64,
+        attempt_id: Uuid,
+        terminal_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
         let receipt = Self {
             organization_id,
             delivery_id,
             target,
+            maximum_provider_attempts,
             outcome,
             generation,
             attempt_id,
@@ -160,10 +187,11 @@ impl OutboundNotificationTerminalReceipt {
                 "Connector evidence does not match the outbound notification delivery".into(),
             );
         }
-        let receipt = Self::restore(
+        let receipt = Self::restore_with_provider_attempt_budget(
             delivery.organization_id(),
             delivery.id(),
             target,
+            delivery.maximum_provider_attempts(),
             outcome,
             generation,
             evidence.attempt_id(),
@@ -178,10 +206,13 @@ impl OutboundNotificationTerminalReceipt {
         if self.organization_id.as_uuid().is_nil()
             || self.delivery_id.is_nil()
             || self.attempt_id.is_nil()
+            || self.maximum_provider_attempts == 0
+            || self.maximum_provider_attempts > MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+            || self.generation > self.maximum_provider_attempts
             || self.attempt_id
                 != outbound_notification_attempt_id(self.delivery_id, self.generation)?
             || self.outcome == OutboundNotificationTerminalOutcome::Exhausted
-                && self.generation != MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+                && self.generation != self.maximum_provider_attempts
             || self.terminal_at != canonical_timestamp(self.terminal_at)
         {
             return Err("outbound notification terminal receipt is invalid".into());
@@ -195,6 +226,7 @@ impl OutboundNotificationTerminalReceipt {
         if self.organization_id != delivery.organization_id()
             || self.delivery_id != delivery.id()
             || self.target != delivery.target()
+            || self.maximum_provider_attempts != delivery.maximum_provider_attempts()
             || self.terminal_at < delivery.occurred_at()
         {
             return Err(
@@ -216,6 +248,10 @@ impl OutboundNotificationTerminalReceipt {
         self.target
     }
 
+    pub const fn maximum_provider_attempts(&self) -> u64 {
+        self.maximum_provider_attempts
+    }
+
     pub const fn outcome(&self) -> OutboundNotificationTerminalOutcome {
         self.outcome
     }
@@ -233,11 +269,16 @@ impl OutboundNotificationTerminalReceipt {
     }
 }
 
+const fn default_provider_attempt_budget() -> u64 {
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::notifications::{
         Notification, NotificationScope, NotificationSeverity, OutboundNotificationChannel,
+        OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
     };
     use crate::modules::shared_kernel::domain::{
         ConnectorProfileId, ConnectorRevisionId, EnvironmentId, PrincipalId, ProjectId,
@@ -298,5 +339,78 @@ mod tests {
             receipt.terminal_at(),
         )
         .is_err());
+    }
+
+    #[test]
+    fn receipt_must_match_the_delivery_pinned_budget() {
+        let legacy = delivery();
+        let definition =
+            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
+                OutboundNotificationSubscriptionSpec {
+                    channel: legacy.channel(),
+                    minimum_severity: NotificationSeverity::Warning,
+                    target: legacy.target(),
+                },
+                2,
+            )
+            .expect("version two definition");
+        let notification = Notification::project(
+            legacy.organization_id(),
+            legacy.recipient_principal_id(),
+            legacy.source_event_id(),
+            legacy.source_event_key().into(),
+            1,
+            Uuid::now_v7(),
+            1,
+            legacy.correlation_id(),
+            legacy.severity(),
+            legacy.title().into(),
+            legacy.body().into(),
+            legacy.scope(),
+            legacy.occurred_at(),
+            legacy.occurred_at(),
+        )
+        .expect("notification");
+        let delivery = definition.delivery_for(&notification).expect("delivery");
+        let attempt_id = outbound_notification_attempt_id(delivery.id(), 2).expect("attempt");
+        let receipt = OutboundNotificationTerminalReceipt::restore_with_provider_attempt_budget(
+            delivery.organization_id(),
+            delivery.id(),
+            delivery.target(),
+            2,
+            OutboundNotificationTerminalOutcome::Exhausted,
+            2,
+            attempt_id,
+            delivery.occurred_at(),
+        )
+        .expect("receipt");
+        assert_eq!(receipt.maximum_provider_attempts(), 2);
+        assert!(receipt.validate_against(&delivery).is_ok());
+        assert!(
+            OutboundNotificationTerminalReceipt::restore_with_provider_attempt_budget(
+                delivery.organization_id(),
+                delivery.id(),
+                delivery.target(),
+                3,
+                OutboundNotificationTerminalOutcome::Exhausted,
+                2,
+                attempt_id,
+                delivery.occurred_at(),
+            )
+            .is_err()
+        );
+        assert!(
+            OutboundNotificationTerminalReceipt::restore_with_provider_attempt_budget(
+                delivery.organization_id(),
+                delivery.id(),
+                delivery.target(),
+                2,
+                OutboundNotificationTerminalOutcome::Delivered,
+                3,
+                outbound_notification_attempt_id(delivery.id(), 3).expect("attempt three"),
+                delivery.occurred_at(),
+            )
+            .is_err()
+        );
     }
 }

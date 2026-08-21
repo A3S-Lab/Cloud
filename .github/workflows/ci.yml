@@ -117,7 +117,7 @@ jobs:
           postgres_project_attribution_is_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify personal notification persistence
+      - name: Certify personal notification and versioned delivery-budget persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
@@ -188,7 +188,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Certify durable NATS notification delivery and terminal replay
+      - name: Certify durable versioned-budget NATS delivery and terminal replay
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
         run: >-
