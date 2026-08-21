@@ -306,7 +306,7 @@ async fn prove_service_process_death_recovery(
     provider_resource_id: &str,
     first_started_at_ms: u64,
 ) -> TestResult<()> {
-    let store = BoxStateStore::load_readonly(&home.join("boxes.json"))?;
+    let store = BoxStateStore::load_readonly(home.join("boxes.json"))?;
     let matching = store
         .records()
         .iter()
