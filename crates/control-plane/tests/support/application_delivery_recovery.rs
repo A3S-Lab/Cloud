@@ -29,9 +29,11 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::{
     ApplicationError, ApplicationResult,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, OntologyId, OntologyRevisionId, OrganizationId,
-    PlanRevisionId, PrincipalId, ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId,
-    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
+    canonical_json_bounded, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId, IdempotencyRequest,
+    IdempotentWrite, OntologyId, OntologyRevisionId, OrganizationId, PlanRevisionId, PrincipalId,
+    ProjectId, ResourceName, Sha256Digest, WorkflowDefinitionId, WorkflowGoalId,
+    WorkflowRevisionId, WorkflowRunId,
 };
 use a3s_cloud_control_plane::modules::workflow::domain::{
     WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBinding,
@@ -42,20 +44,24 @@ use a3s_cloud_control_plane::modules::workflow::{
     IWorkflowRunCoordinator, IWorkflowRunRepository, IWorkflowRunVariableReader,
     PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
     PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository,
-    WorkflowCompositeExecutionRequest, WorkflowContract, WorkflowDataSchema, WorkflowDataType,
-    WorkflowDefinition, WorkflowEdgeSpec, WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPlanCompiler, WorkflowRevision, WorkflowRunCompiler,
-    WorkflowRunFlowRuntime, WorkflowRunRecord, WorkflowRunStatus, WorkflowRunVariableReader,
-    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepConfiguration,
-    WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
-    WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
-    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
-    WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentationSpec,
-    WorkflowStepRetryClassification, WorkflowStepSpec, WorkflowVariableAssignment,
-    WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
-    WorkflowVariableMutationMode, WorkflowVariableScope, WorkflowVariableStorageClass,
-    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_INPUT_SCHEMA_V12,
+    WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
+    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
+    WorkflowApplicationVariableWriteResumePayload, WorkflowCompositeExecutionRequest,
+    WorkflowContract, WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowEdgeSpec,
+    WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayload, WorkflowPayloadContent,
+    WorkflowPlanCompiler, WorkflowRevision, WorkflowRunCompiler, WorkflowRunFlowRuntime,
+    WorkflowRunRecord, WorkflowRunStatus, WorkflowRunVariableReader, WorkflowSpec,
+    WorkflowStepBindingKind, WorkflowStepConfiguration, WorkflowStepDescriptorAdmission,
+    WorkflowStepDescriptorRegistry, WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec,
+    WorkflowStepExecutionClass, WorkflowStepFailureContract, WorkflowStepFallbackMode,
+    WorkflowStepKind, WorkflowStepOwner, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepPresentationSpec, WorkflowStepRetryClassification, WorkflowStepSpec,
+    WorkflowVariableAssignment, WorkflowVariableContract, WorkflowVariableContractSpec,
+    WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableScope,
+    WorkflowVariableStorageClass, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_INPUT_SCHEMA_V12,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use a3s_flow::{
     FlowEngine, RuntimeBuildCompatibility, RuntimeBuildId, WorkflowSpec as FlowWorkflowSpec,
@@ -204,6 +210,129 @@ async fn application_delivery_recovery_fixture_is_a_valid_semantic_revision() {
         ["workflow-application-answer:answer:1"],
         "Application recovery fixture must preserve immutable Plan-order suspension"
     );
+
+    let answer_hook = snapshot
+        .hooks
+        .get("workflow-application-answer:answer:1")
+        .expect("Application recovery Answer hook");
+    let answer_metadata = serde_json::from_value::<WorkflowApplicationAnswerHookMetadata>(
+        answer_hook.metadata.clone(),
+    )
+    .expect("Application recovery Answer metadata");
+    let answer_payload = WorkflowApplicationAnswerResumePayload::new(
+        &answer_metadata,
+        ApplicationMessageId::new(),
+        2,
+        answer_metadata.content_digest.clone(),
+    )
+    .expect("Application recovery Answer evidence");
+    engine
+        .resume_hook(
+            &record.run.flow_run_id,
+            &answer_metadata.flow_hook_id(),
+            serde_json::to_value(answer_payload).expect("encode Application Answer evidence"),
+        )
+        .await
+        .expect("resume Application recovery Answer");
+
+    let waiting_snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Application recovery variable snapshot");
+    let snapshot_hook = waiting_snapshot
+        .hooks
+        .get("workflow-application-variable-snapshot:assign_conversation:1")
+        .expect("Application recovery variable snapshot hook");
+    let snapshot_metadata =
+        serde_json::from_value::<WorkflowApplicationVariableSnapshotHookMetadata>(
+            snapshot_hook.metadata.clone(),
+        )
+        .expect("Application recovery variable snapshot metadata");
+    let values = json!({"locale": "en-US"});
+    let values_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(
+            &values,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Application recovery variable snapshot",
+        )
+        .expect("canonical Application recovery variable snapshot"),
+    );
+    let snapshot_revision_id = ConversationVariableRevisionId::new();
+    let snapshot_payload = WorkflowApplicationVariableSnapshotResumePayload::new(
+        &snapshot_metadata,
+        ApplicationId::new(),
+        ApplicationReleaseId::new(),
+        digest('a'),
+        ApplicationSessionId::new(),
+        ApplicationInvocationId::new(),
+        snapshot_revision_id,
+        1,
+        values_digest.clone(),
+        values,
+    )
+    .expect("Application recovery variable snapshot evidence");
+    engine
+        .resume_hook(
+            &record.run.flow_run_id,
+            &snapshot_metadata.flow_hook_id(),
+            serde_json::to_value(snapshot_payload)
+                .expect("encode Application variable snapshot evidence"),
+        )
+        .await
+        .expect("resume Application recovery variable snapshot");
+
+    let waiting_write = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Application recovery variable write");
+    let write_hook = waiting_write
+        .hooks
+        .get("workflow-application-variable-write:assign_conversation:1")
+        .expect("Application recovery variable write hook");
+    let write_metadata = serde_json::from_value::<WorkflowApplicationVariableWriteHookMetadata>(
+        write_hook.metadata.clone(),
+    )
+    .expect("Application recovery variable write metadata");
+    assert_eq!(write_metadata.expected_revision_id, snapshot_revision_id);
+    assert_eq!(write_metadata.expected_revision_number, 1);
+    assert_eq!(write_metadata.expected_values_digest, values_digest);
+    let committed_values = json!({"conversation_topic": "billing", "locale": "en-US"});
+    let committed_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(
+            &committed_values,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Application recovery variable commit",
+        )
+        .expect("canonical Application recovery variable commit"),
+    );
+    assert_eq!(write_metadata.values_digest, committed_digest);
+    let write_payload = WorkflowApplicationVariableWriteResumePayload::new(
+        &write_metadata,
+        ConversationVariableRevisionId::new(),
+        2,
+        snapshot_revision_id,
+        values_digest,
+        committed_digest,
+    )
+    .expect("Application recovery variable commit evidence");
+    engine
+        .resume_hook(
+            &record.run.flow_run_id,
+            &write_metadata.flow_hook_id(),
+            serde_json::to_value(write_payload)
+                .expect("encode Application variable commit evidence"),
+        )
+        .await
+        .expect("resume Application recovery variable write");
+    let completed = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("completed Application recovery Flow");
+    assert_eq!(completed.status, a3s_flow::WorkflowRunStatus::Completed);
+    assert!(completed
+        .hooks
+        .values()
+        .all(|hook| hook.status != a3s_flow::HookStatus::Active));
 }
 
 pub(super) async fn exercise_application_delivery_recovery(
@@ -400,8 +529,9 @@ pub(super) async fn exercise_application_delivery_recovery(
     ));
     let waiting_for_snapshot = coordinator(engine.clone(), answer_recovery)
         .reconcile(&record, record.run.requested_at)
-        .await?;
-    assert!(waiting_for_snapshot.is_none());
+        .await?
+        .expect("waiting variable snapshot projection");
+    assert_eq!(waiting_for_snapshot.run.status, WorkflowRunStatus::Waiting);
 
     let snapshot_recovery = Arc::new(RecoveringApplicationEffects::new(
         Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
@@ -409,8 +539,12 @@ pub(super) async fn exercise_application_delivery_recovery(
     ));
     let waiting_for_variable_write = coordinator(engine.clone(), snapshot_recovery)
         .reconcile(&record, record.run.requested_at)
-        .await?;
-    assert!(waiting_for_variable_write.is_none());
+        .await?
+        .expect("waiting variable write projection");
+    assert_eq!(
+        waiting_for_variable_write.run.status,
+        WorkflowRunStatus::Waiting
+    );
     let snapshotted_variables = WorkflowApplicationEffectsService::new(Arc::new(
         PostgresApplicationSessionRepository::new(executor.clone()),
     ))
