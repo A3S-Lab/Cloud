@@ -321,6 +321,28 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         collection["get"]["responses"]["200"]["$ref"],
         "#/components/responses/OutboundNotificationSubscriptionPageSuccess200"
     );
+    for (schema_name, data_schema_ref) in [
+        (
+            "OutboundNotificationSubscriptionSuccessResponse",
+            "#/components/schemas/OutboundNotificationSubscription",
+        ),
+        (
+            "OutboundNotificationSubscriptionPageSuccessResponse",
+            "#/components/schemas/OutboundNotificationSubscriptionPage",
+        ),
+        (
+            "OutboundNotificationSubscriptionMutationSuccessResponse",
+            "#/components/schemas/OutboundNotificationSubscriptionMutation",
+        ),
+    ] {
+        let envelope = &document["components"]["schemas"][schema_name];
+        assert_eq!(envelope["type"], "object");
+        assert_eq!(envelope["properties"]["data"], json!({}));
+        assert_eq!(
+            envelope["allOf"][0]["properties"]["data"]["$ref"],
+            data_schema_ref
+        );
+    }
 
     let response = &document["components"]["schemas"]["OutboundNotificationSubscription"];
     assert_eq!(

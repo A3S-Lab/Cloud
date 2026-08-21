@@ -808,10 +808,8 @@
         "type": "object"
       },
       "OutboundNotificationSubscriptionMutationSuccessResponse": {
+        "additionalProperties": false,
         "allOf": [
-          {
-            "$ref": "#/components/schemas/ApiSuccessResponse"
-          },
           {
             "properties": {
               "data": {
@@ -823,7 +821,34 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
       },
       "OutboundNotificationSubscriptionPage": {
         "additionalProperties": false,
@@ -848,10 +873,8 @@
         "type": "object"
       },
       "OutboundNotificationSubscriptionPageSuccessResponse": {
+        "additionalProperties": false,
         "allOf": [
-          {
-            "$ref": "#/components/schemas/ApiSuccessResponse"
-          },
           {
             "properties": {
               "data": {
@@ -863,13 +886,38 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
       },
       "OutboundNotificationSubscriptionSuccessResponse": {
+        "additionalProperties": false,
         "allOf": [
-          {
-            "$ref": "#/components/schemas/ApiSuccessResponse"
-          },
           {
             "properties": {
               "data": {
@@ -881,7 +929,34 @@
             ],
             "type": "object"
           }
-        ]
+        ],
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {

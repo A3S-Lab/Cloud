@@ -23,6 +23,13 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "A3S API token" }
         }),
     );
+    let outbound_subscription_success =
+        typed_success_response_schema("#/components/schemas/OutboundNotificationSubscription");
+    let outbound_subscription_page_success =
+        typed_success_response_schema("#/components/schemas/OutboundNotificationSubscriptionPage");
+    let outbound_subscription_mutation_success = typed_success_response_schema(
+        "#/components/schemas/OutboundNotificationSubscriptionMutation",
+    );
     components.insert(
         "schemas".into(),
         json!({
@@ -132,48 +139,9 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "replayed": { "type": "boolean" }
                 }
             },
-            "OutboundNotificationSubscriptionSuccessResponse": {
-                "allOf": [
-                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
-                    {
-                        "type": "object",
-                        "required": ["data"],
-                        "properties": {
-                            "data": {
-                                "$ref": "#/components/schemas/OutboundNotificationSubscription"
-                            }
-                        }
-                    }
-                ]
-            },
-            "OutboundNotificationSubscriptionPageSuccessResponse": {
-                "allOf": [
-                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
-                    {
-                        "type": "object",
-                        "required": ["data"],
-                        "properties": {
-                            "data": {
-                                "$ref": "#/components/schemas/OutboundNotificationSubscriptionPage"
-                            }
-                        }
-                    }
-                ]
-            },
-            "OutboundNotificationSubscriptionMutationSuccessResponse": {
-                "allOf": [
-                    { "$ref": "#/components/schemas/ApiSuccessResponse" },
-                    {
-                        "type": "object",
-                        "required": ["data"],
-                        "properties": {
-                            "data": {
-                                "$ref": "#/components/schemas/OutboundNotificationSubscriptionMutation"
-                            }
-                        }
-                    }
-                ]
-            }
+            "OutboundNotificationSubscriptionSuccessResponse": outbound_subscription_success,
+            "OutboundNotificationSubscriptionPageSuccessResponse": outbound_subscription_page_success,
+            "OutboundNotificationSubscriptionMutationSuccessResponse": outbound_subscription_mutation_success
         }),
     );
 
@@ -246,6 +214,30 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     }
     components.insert("responses".into(), Value::Object(response_components));
     Ok(())
+}
+
+fn typed_success_response_schema(data_schema_ref: &str) -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "data", "requestId", "timestamp"],
+        "properties": {
+            "code": { "type": "integer", "minimum": 200, "maximum": 399 },
+            "message": { "type": "string" },
+            "data": {},
+            "requestId": { "type": "string", "format": "uuid" },
+            "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "allOf": [
+            {
+                "type": "object",
+                "required": ["data"],
+                "properties": {
+                    "data": { "$ref": data_schema_ref }
+                }
+            }
+        ]
+    })
 }
 
 pub(super) fn response_ref(component: &str) -> Value {
