@@ -1313,6 +1313,39 @@ Primary record:
 
 - `NotificationAlertPolicy`
 
+#### Edge certificate-renewal fact (`C0.3-N4b` frozen)
+
+Edge remains the certificate lifecycle authority. Its existing Gateway
+certificate reconciler may emit renewal status only for a
+`GatewayCertificateConvergence` whose reason is exactly `Renewal`. A terminal
+`Rejected` or `Unavailable` transition produces
+`edge.gateway-certificate.renewal-failed`; a terminal `Applied` transition
+produces `edge.gateway-certificate.renewed`. Both use schema version 1. A
+staged or dispatched convergence, a command-dispatch error, snapshot-validity
+renewal, domain or certificate revocation, projection repair, and every pending
+state produce no renewal-status fact.
+
+The fact subject is the deterministic pair of logical `Route` and physical
+Gateway `Node`; its aggregate version is that node's monotonic Gateway revision.
+One fact per retained Route therefore carries exactly one organization,
+project, environment, hostname/path, Workload, node, previous certificate,
+replacement certificate, active certificate, and active-certificate expiry.
+The failed fact exposes only the closed public terminal outcome `rejected` or
+`unavailable`, never the Gateway acknowledgement message, provider response,
+credential, certificate material, or another private failure detail. A
+replicated Route has an independent subject on each node, so a healthy replica
+cannot close another replica's failure.
+
+The terminal convergence projection and all of its facts commit atomically to
+the existing Edge repository and transactional Outbox. Replaying a terminal
+acknowledgement or unavailability observation adds no fact. No new lifecycle
+record is needed: a later `C0.3-N4c` Notifications source may use its existing
+projection history to interpret `renewed` as recovery only after a covered
+failure for the same subject. An initial or routine successful renewal remains
+notification-silent. This prerequisite owns no alert policy, incident, mutable
+counter, poller, timer, scheduler, queue, second event rail, migration,
+configuration parser, or public API.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
