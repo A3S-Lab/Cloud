@@ -4038,12 +4038,22 @@ Runtime class, node channel, object client, or per-Cell desired-state store.
   the ordinary Workloads Service to the identical S0 bucket/application
   prefix/endpoint/region, pinned image/profile, public/internal sockets,
   single-replica advertise identity, and exact Secret targets; it rejects an
-  environment that could disable the default RPO=0 output gate. C4/C5 must
-  still make one real single-node application prove named state, alarms,
-  WebSockets, idle recovery, RPO=0 process death, rollout/rollback, restore,
-  stop, deletion, and exact cleanup. No duplicate build, artifact, Secret,
-  object-store, task, scheduler, Workload, route, or lifecycle mechanism is
-  permitted.
+  environment that could disable the default RPO=0 output gate.
+  Component-only C5a adds migration `131`: after the stopped current
+  canonical single replica returns the exact successful Fleet
+  `RuntimeRemove` acknowledgement, the sole Workloads retirement transaction
+  commits its Runtime fence, immutable
+  `cloud.workload.writer-fence-receipt.v1`, and deterministic
+  `cloud.object-namespace.seal@2` request atomically. The receipt binds tenant,
+  revision, writer epoch, member placement, managed owner, Runtime node/unit,
+  command payload, and acknowledgement; ordinary Workloads, evacuation,
+  unplaced, and old-revision rollout/rollback retirements do not enter this
+  adapter. C4b/C4c and the remaining C5 work must still make one real
+  single-node application prove named state, alarms, WebSockets, idle
+  recovery, RPO=0 process death, successful seal before any new writer,
+  rollout/rollback, restore, complete stop, deletion, and exact cleanup. No
+  duplicate build, artifact, Secret, object-store, task, scheduler, Workload,
+  route, or lifecycle mechanism is permitted.
 - `CELL0.6` adds multi-node acquisition, peer forwarding, takeover, partition,
   pressure shedding, graceful handoff, upgrade, and stale-node return.
 - `CELL0.7` publishes only a capability-tested Workers/Durable Objects matrix
