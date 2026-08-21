@@ -212,6 +212,9 @@ conformanceIt(
       'a3s_cloud_membership_invitations_get',
       'a3s_cloud_resource_grants_list',
       'a3s_cloud_resource_grants_get',
+      'a3s_cloud_application_sessions_get',
+      'a3s_cloud_application_invocations_get',
+      'a3s_cloud_application_messages_list',
     ]);
     const destructiveToolSet = new Set<string>([
       'a3s_cloud_memberships_revoke',
