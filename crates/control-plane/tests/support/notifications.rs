@@ -716,6 +716,7 @@ async fn exercise_notification_alert_policy_persistence(
         2,
         policy.created_at + ChronoDuration::seconds(1),
     )?;
+    persist_outbox_message(database, &rejected).await?;
     projector.project(&rejected).await?;
     projector.project(&rejected).await?;
     let projected = repository
@@ -737,6 +738,7 @@ async fn exercise_notification_alert_policy_persistence(
         3,
         policy.created_at + ChronoDuration::seconds(2),
     )?;
+    persist_outbox_message(database, &recovered).await?;
     projector.project(&recovered).await?;
     projector.project(&recovered).await?;
     let projected = repository
@@ -780,19 +782,19 @@ async fn exercise_notification_alert_policy_persistence(
         .await?
         .is_empty());
 
-    projector
-        .project(&notification_domain_claim_message(
-            organization_id,
-            project_id,
-            environment_id,
-            DomainClaimId::new(),
-            "edge.domain-claim.rejected",
-            DomainClaimState::Rejected,
-            Some("late rejection"),
-            2,
-            revoked.revoked_at.expect("revoked at") + ChronoDuration::seconds(1),
-        )?)
-        .await?;
+    let late_rejected = notification_domain_claim_message(
+        organization_id,
+        project_id,
+        environment_id,
+        DomainClaimId::new(),
+        "edge.domain-claim.rejected",
+        DomainClaimState::Rejected,
+        Some("late rejection"),
+        2,
+        revoked.revoked_at.expect("revoked at") + ChronoDuration::seconds(1),
+    )?;
+    persist_outbox_message(database, &late_rejected).await?;
+    projector.project(&late_rejected).await?;
     assert_eq!(
         repository
             .list_page(organization_id, recipient, false, None, 50)
@@ -905,6 +907,38 @@ fn notification_domain_claim_message(
         })?,
         delivery_attempts: 1,
     })
+}
+
+async fn persist_outbox_message(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    message: &OutboxMessage,
+) -> Result<(), Box<dyn std::error::Error>> {
+    database
+        .execute(
+            sql_query::<()>("insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (")
+                .bind(message.event_id)
+                .append(", ")
+                .bind(message.event_key.clone())
+                .append(", ")
+                .bind(message.schema_version)
+                .append(", ")
+                .bind(message.organization_id)
+                .append(", ")
+                .bind(message.aggregate_id)
+                .append(", ")
+                .bind(message.aggregate_version)
+                .append(", ")
+                .bind(message.occurred_at)
+                .append(", ")
+                .bind(message.correlation_id)
+                .append(", ")
+                .bind(message.causation_id)
+                .append(", ")
+                .bind(message.payload.clone())
+                .append(")"),
+        )
+        .await?;
+    Ok(())
 }
 
 struct CountingDeliveryRepository {
