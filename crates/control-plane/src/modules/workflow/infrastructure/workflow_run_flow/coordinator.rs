@@ -1,8 +1,9 @@
 use super::project_workflow_run_record;
-use super::projection::{execution_hook, verify_flow_authority};
+use super::projection::{application_answer_hook, execution_hook, verify_flow_authority};
 use crate::modules::applications::{
-    ApplicationInvocationStatus, IWorkflowApplicationEffectsPort, WorkflowApplicationEffectRequest,
-    WorkflowApplicationMessageRequest, WorkflowApplicationTerminalRequest,
+    ApplicationInvocationStatus, ApplicationMessageKind, IWorkflowApplicationEffectsPort,
+    WorkflowApplicationEffectRequest, WorkflowApplicationMessageRequest,
+    WorkflowApplicationTerminalRequest,
 };
 use crate::modules::executions::{
     Execution, ExecutionOutcome, IWorkflowExecutionPort, WorkflowExecutionRequest,
@@ -11,7 +12,8 @@ use crate::modules::executions::{
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
 use crate::modules::workflow::domain::{
-    IWorkflowRunCoordinator, WorkflowExecutionChildReferenceMetadata,
+    IWorkflowRunCoordinator, WorkflowApplicationAnswerHookMetadata,
+    WorkflowApplicationAnswerResumePayload, WorkflowExecutionChildReferenceMetadata,
     WorkflowExecutionHookMetadata, WorkflowExecutionOutcome, WorkflowExecutionResumePayload,
     WorkflowExecutionStepOutput, WorkflowRunCoordinationError, WorkflowRunRecord,
     WorkflowRunStatus, WorkflowStepKind, WorkflowStepProjectionStatus,
@@ -226,6 +228,77 @@ impl FlowWorkflowRunCoordinator {
                 .await?;
         }
         Ok(())
+    }
+
+    async fn coordinate_active_application_answer(
+        &self,
+        record: &WorkflowRunRecord,
+        snapshot: &WorkflowRunSnapshot,
+        history: &[a3s_flow::FlowEventEnvelope],
+    ) -> Result<(), WorkflowRunCoordinationError> {
+        let hooks = application_answer_hooks(record, snapshot, history)?;
+        let active = hooks
+            .into_iter()
+            .filter(|hook| hook.status == HookStatus::Active)
+            .collect::<Vec<_>>();
+        if active.len() > 1 {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "WorkflowRun replay exposed more than one active Application Answer hook".into(),
+            ));
+        }
+        let Some(hook) = active.first() else {
+            return Ok(());
+        };
+        let port = self.application_effects.as_ref().ok_or_else(|| {
+            WorkflowRunCoordinationError::Unavailable(
+                "Workflow Applications semantic-effect coordination is not configured".into(),
+            )
+        })?;
+        let request = hook.request();
+        request
+            .validate()
+            .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        let write = port
+            .append_answer(&request)
+            .await
+            .map_err(|error| application_effect_unavailable("append Answer", error))?;
+        let message = &write.value;
+        message
+            .validate()
+            .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        let expected_effect = request
+            .effect
+            .effect()
+            .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        if message.organization_id != hook.metadata.organization_id
+            || message.project_id != hook.metadata.project_id
+            || message.kind != ApplicationMessageKind::Answer
+            || message.content != hook.metadata.content
+            || message.content_digest != hook.metadata.content_digest
+            || message.workflow_effect.as_ref() != Some(&expected_effect)
+            || message.created_at != hook.created_at
+        {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "Workflow Applications Answer commit evidence drifted".into(),
+            ));
+        }
+        let payload = WorkflowApplicationAnswerResumePayload::new(
+            &hook.metadata,
+            message.id,
+            message.sequence,
+            message.content_digest.clone(),
+        )
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+        self.engine
+            .resume_hook(
+                &record.run.flow_run_id,
+                &hook.metadata.flow_hook_id(),
+                serde_json::to_value(payload).map_err(|error| {
+                    WorkflowRunCoordinationError::Unavailable(error.to_string())
+                })?,
+            )
+            .await
+            .map_err(|error| unavailable_at("resume Application Answer hook", error))
     }
 
     async fn cancel_execution_children(
@@ -451,6 +524,8 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
                 }
             }
         } else if !snapshot.status.is_terminal() {
+            self.coordinate_active_application_answer(record, &snapshot, &history)
+                .await?;
             self.coordinate_active_execution(record, &snapshot, &history)
                 .await?;
             self.coordinate_active_composite(record, &snapshot, &history)
@@ -594,6 +669,97 @@ impl ObservedExecutionHook {
             requested_at: self.created_at,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct ObservedApplicationAnswerHook {
+    metadata: WorkflowApplicationAnswerHookMetadata,
+    created_at: DateTime<Utc>,
+    status: HookStatus,
+}
+
+impl ObservedApplicationAnswerHook {
+    fn request(&self) -> WorkflowApplicationMessageRequest {
+        WorkflowApplicationMessageRequest {
+            effect: WorkflowApplicationEffectRequest {
+                organization_id: self.metadata.organization_id,
+                workflow_run_id: self.metadata.workflow_run_id,
+                step_id: self.metadata.step_id.clone(),
+                step_attempt: self.metadata.step_attempt,
+                effect_ordinal: 0,
+                occurred_at: self.created_at,
+            },
+            content: self.metadata.content.clone(),
+        }
+    }
+}
+
+fn application_answer_hooks(
+    record: &WorkflowRunRecord,
+    snapshot: &WorkflowRunSnapshot,
+    history: &[a3s_flow::FlowEventEnvelope],
+) -> Result<Vec<ObservedApplicationAnswerHook>, WorkflowRunCoordinationError> {
+    let Some(application) = record.run.execution_input.application_projection.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let mut hooks = Vec::new();
+    for resolved in record
+        .run
+        .execution_input
+        .resolved_steps()
+        .map_err(WorkflowRunCoordinationError::Unavailable)?
+    {
+        if !application.is_answer_step(&resolved.plan.id) {
+            continue;
+        }
+        let Some((hook, metadata)) =
+            application_answer_hook(&record.run.execution_input, &resolved, snapshot)
+                .map_err(WorkflowRunCoordinationError::Unavailable)?
+        else {
+            continue;
+        };
+        let expected_metadata = serde_json::to_value(&metadata)
+            .map_err(|error| WorkflowRunCoordinationError::Unavailable(error.to_string()))?;
+        let matching = history
+            .iter()
+            .filter(|envelope| {
+                matches!(
+                    &envelope.event,
+                    FlowEvent::HookCreated { hook_id, .. }
+                        if hook_id == &metadata.flow_hook_id()
+                )
+            })
+            .collect::<Vec<_>>();
+        if matching.len() != 1 {
+            return Err(WorkflowRunCoordinationError::Unavailable(format!(
+                "Workflow Application Answer hook {:?} must have exactly one creation event",
+                metadata.flow_hook_id()
+            )));
+        }
+        let FlowEvent::HookCreated {
+            token,
+            metadata: observed_metadata,
+            ..
+        } = &matching[0].event
+        else {
+            return Err(WorkflowRunCoordinationError::Unavailable(format!(
+                "Workflow Application Answer hook {:?} creation history is invalid",
+                metadata.flow_hook_id()
+            )));
+        };
+        if token != &metadata.flow_hook_token() || observed_metadata != &expected_metadata {
+            return Err(WorkflowRunCoordinationError::Unavailable(format!(
+                "Workflow Application Answer hook {:?} creation authority drifted",
+                metadata.flow_hook_id()
+            )));
+        }
+        hooks.push(ObservedApplicationAnswerHook {
+            metadata,
+            created_at: canonical_timestamp(matching[0].timestamp),
+            status: hook.status,
+        });
+    }
+    Ok(hooks)
 }
 
 fn execution_hooks(

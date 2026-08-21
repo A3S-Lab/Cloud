@@ -50,8 +50,13 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V9: &str = "9";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V10: &str = "cloud.workflow-run.input.v10";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10: &str = "cloud.workflow-run-runtime.v10";
 pub const WORKFLOW_RUN_FLOW_VERSION_V10: &str = "10";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V11: &str = "cloud.workflow-run.input.v11";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11: &str = "cloud.workflow-run-runtime.v11";
+pub const WORKFLOW_RUN_FLOW_VERSION_V11: &str = "11";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
+pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
+    "cloud.workflow-run.application-projection.v2";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -150,6 +155,8 @@ impl ResolvedWorkflowVariableDefaults {
 pub struct WorkflowRunApplicationProjection {
     pub schema: String,
     pub final_output_step_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answer_step_ids: Vec<String>,
 }
 
 impl WorkflowRunApplicationProjection {
@@ -165,6 +172,21 @@ impl WorkflowRunApplicationProjection {
         let projection = Self {
             schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA.into(),
             final_output_step_id: output.id.clone(),
+            answer_step_ids: Vec::new(),
+        };
+        projection.validate(plan)?;
+        Ok(projection)
+    }
+
+    pub(crate) fn from_application_outputs(
+        plan: &WorkflowPlan,
+        final_output_step_id: String,
+        answer_step_ids: Vec<String>,
+    ) -> Result<Self, String> {
+        let projection = Self {
+            schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2.into(),
+            final_output_step_id,
+            answer_step_ids,
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -175,20 +197,50 @@ impl WorkflowRunApplicationProjection {
             "WorkflowRun Application final Output step",
             &self.final_output_step_id,
         )?;
+        for answer_step_id in &self.answer_step_ids {
+            super::validation::validate_identifier(
+                "WorkflowRun Application Answer step",
+                answer_step_id,
+            )?;
+        }
         let outputs = plan
             .steps
             .iter()
             .filter(|step| step.kind == WorkflowStepKind::Output)
             .collect::<Vec<_>>();
-        if self.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
-            || !matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id)
-        {
-            return Err(
-                "WorkflowRun Application projection drifted from its single final Output step"
+        match self.schema.as_str() {
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
+                if self.answer_step_ids.is_empty()
+                    && matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id) =>
+            {
+                Ok(())
+            }
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
+                if !self.answer_step_ids.is_empty()
+                    && outputs
+                        .iter()
+                        .any(|output| output.id == self.final_output_step_id)
+                    && outputs
+                        .iter()
+                        .filter(|output| output.id != self.final_output_step_id)
+                        .map(|output| output.id.as_str())
+                        .eq(self.answer_step_ids.iter().map(String::as_str)) =>
+            {
+                Ok(())
+            }
+            _ => Err(
+                "WorkflowRun Application projection drifted from its final Output and ordered Answer steps"
                     .into(),
-            );
+            ),
         }
-        Ok(())
+    }
+
+    pub fn is_answer_step(&self, step_id: &str) -> bool {
+        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
+            && self
+                .answer_step_ids
+                .iter()
+                .any(|answer_step_id| answer_step_id == step_id)
     }
 }
 
@@ -243,6 +295,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V8
                 | WORKFLOW_RUN_INPUT_SCHEMA_V9
                 | WORKFLOW_RUN_INPUT_SCHEMA_V10
+                | WORKFLOW_RUN_INPUT_SCHEMA_V11
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -494,7 +547,51 @@ impl WorkflowRunInput {
                     defaults,
                     regions,
                     Some(application_projection),
-                ) => {
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime, true)
+                }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V11,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+                    WORKFLOW_RUN_FLOW_VERSION_V11,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2 =>
+                {
                     application_projection.validate(&self.plan)?;
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {

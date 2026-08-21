@@ -6,13 +6,14 @@ use crate::modules::workflow::domain::{
     WorkflowRunApplicationProjection, WorkflowRunInput, WorkflowStepProjection,
     WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3,
     WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7,
-    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
-    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
+    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
+    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
@@ -144,15 +145,50 @@ impl WorkflowRunCompiler {
                 let composite_regions = contracts
                     .composite_regions()
                     .map(ResolvedWorkflowCompositeRegions::from_regions);
-                let application_projection = project_to_application
-                    .then(|| WorkflowRunApplicationProjection::from_plan(plan))
-                    .transpose()?;
+                let application_projection = if project_to_application {
+                    let outputs =
+                        contracts.application_output_steps(workflow_revision.contract.spec())?;
+                    let answer_step_ids = plan
+                        .steps
+                        .iter()
+                        .filter(|step| outputs.answer_step_ids.contains(&step.id))
+                        .map(|step| step.id.clone())
+                        .collect::<Vec<_>>();
+                    Some(if answer_step_ids.is_empty() {
+                        WorkflowRunApplicationProjection::from_plan(plan)?
+                    } else {
+                        WorkflowRunApplicationProjection::from_application_outputs(
+                            plan,
+                            outputs.final_output_step_id,
+                            answer_step_ids,
+                        )?
+                    })
+                } else {
+                    if contracts.has_application_owned_steps(workflow_revision.contract.spec())? {
+                        return Err(
+                            "WorkflowRun with Applications-owned steps requires Application composition"
+                                .into(),
+                        );
+                    }
+                    None
+                };
                 let (input_schema, runtime_revision, flow_version) = if project_to_application {
-                    (
-                        WORKFLOW_RUN_INPUT_SCHEMA_V10,
-                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-                        WORKFLOW_RUN_FLOW_VERSION_V10,
-                    )
+                    if application_projection
+                        .as_ref()
+                        .is_some_and(|projection| !projection.answer_step_ids.is_empty())
+                    {
+                        (
+                            WORKFLOW_RUN_INPUT_SCHEMA_V11,
+                            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+                            WORKFLOW_RUN_FLOW_VERSION_V11,
+                        )
+                    } else {
+                        (
+                            WORKFLOW_RUN_INPUT_SCHEMA_V10,
+                            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+                            WORKFLOW_RUN_FLOW_VERSION_V10,
+                        )
+                    }
                 } else {
                     match plan_schema {
                         WORKFLOW_PLAN_SCHEMA_V2 => {

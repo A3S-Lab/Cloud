@@ -12,8 +12,10 @@ use crate::modules::workflow::domain::{
     IWorkflowGoalRepository, IWorkflowRunRepository, WorkflowGoalCompiled, WorkflowGoalContract,
     WorkflowGoalRecord, WorkflowGoalSpec, WorkflowPlanCompiler, WorkflowRunCancellationRequested,
     WorkflowRunCompiler, WorkflowRunRecord, WorkflowRunRequested, WorkflowRunStatus,
-    WorkflowStepKind, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_INPUT_SCHEMA_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    WorkflowStepKind, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_FLOW_VERSION_V10,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -235,14 +237,9 @@ impl WorkflowApplicationRunService {
             .iter()
             .filter(|step| step.kind == WorkflowStepKind::Input)
             .collect::<Vec<_>>();
-        let outputs = plan
-            .steps
-            .iter()
-            .filter(|step| step.kind == WorkflowStepKind::Output)
-            .collect::<Vec<_>>();
-        let ([input_step], [output_step]) = (inputs.as_slice(), outputs.as_slice()) else {
+        let [input_step] = inputs.as_slice() else {
             return Err(ApplicationError::Internal(
-                "Application WorkflowRun lost its single Input or Output step".into(),
+                "Application WorkflowRun lost its single Input step".into(),
             ));
         };
         let application_projection = input.application_projection.as_ref().ok_or_else(|| {
@@ -253,6 +250,34 @@ impl WorkflowApplicationRunService {
         application_projection
             .validate(plan)
             .map_err(ApplicationError::Internal)?;
+        let output_step = plan
+            .steps
+            .iter()
+            .find(|step| step.id == application_projection.final_output_step_id)
+            .ok_or_else(|| {
+                ApplicationError::Internal(
+                    "Application WorkflowRun lost its final Output step".into(),
+                )
+            })?;
+        let version_matches = matches!(
+            (
+                application_projection.schema.as_str(),
+                input.schema.as_str(),
+                input.runtime_contract_revision.as_str(),
+                input.flow_workflow_version.as_str(),
+            ),
+            (
+                WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
+                WORKFLOW_RUN_INPUT_SCHEMA_V10,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+                WORKFLOW_RUN_FLOW_VERSION_V10,
+            ) | (
+                WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2,
+                WORKFLOW_RUN_INPUT_SCHEMA_V11,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+                WORKFLOW_RUN_FLOW_VERSION_V11,
+            )
+        );
         if run.organization_id != request.organization_id
             || run.project_id != request.project_id
             || run.id != request.workflow_run_id()
@@ -264,9 +289,7 @@ impl WorkflowApplicationRunService {
             || input.workflow_goal_id != request.workflow_goal_id()
             || input.plan_revision_id != request.plan_revision_id()
             || input.deadline_at != deadline_at
-            || input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V10
-            || input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
-            || input.flow_workflow_version != WORKFLOW_RUN_FLOW_VERSION_V10
+            || !version_matches
             || input.goal_input != request.input
             || plan.input_digest != request.input_digest
             || plan.workflow_definition_id != request.workflow.workflow_definition_id
@@ -435,5 +458,94 @@ impl IApplicationWorkflowRunPort for WorkflowApplicationRunService {
             })
             .await?;
         Self::evidence(request, &write.value).map(Some)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::applications::ApplicationWorkflowBinding;
+    use crate::modules::shared_kernel::domain::{
+        canonical_timestamp, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
+        ApplicationSessionId, PrincipalId,
+    };
+    use crate::modules::workflow::domain::{WorkflowRun, WorkflowRunRecord};
+    use crate::modules::workflow::test_support::application_answer_workflow_run_input;
+    use chrono::Duration;
+
+    #[test]
+    fn production_adapter_accepts_the_exact_v11_answer_record_and_rejects_version_aliases() {
+        let mut input =
+            application_answer_workflow_run_input().expect("Application Answer WorkflowRun input");
+        let requested_at = canonical_timestamp(Utc::now());
+        let requested_by = PrincipalId::new();
+        let final_output_step_id = input
+            .application_projection
+            .as_ref()
+            .expect("Application projection")
+            .final_output_step_id
+            .clone();
+        let input_schema_digest = input
+            .plan
+            .steps
+            .iter()
+            .find(|step| step.kind == WorkflowStepKind::Input)
+            .expect("Input step")
+            .output_schema_digest
+            .clone();
+        let output_schema_digest = input
+            .plan
+            .steps
+            .iter()
+            .find(|step| step.id == final_output_step_id)
+            .expect("final Output step")
+            .output_schema_digest
+            .clone();
+        let request = ApplicationWorkflowRunRequest {
+            organization_id: input.organization_id,
+            project_id: input.project_id,
+            application_id: ApplicationId::new(),
+            application_release_id: ApplicationReleaseId::new(),
+            application_release_digest: Sha256Digest::from_bytes(b"application-release"),
+            session_id: ApplicationSessionId::new(),
+            invocation_id: ApplicationInvocationId::new(),
+            workflow: ApplicationWorkflowBinding {
+                workflow_definition_id: input.plan.workflow_definition_id,
+                workflow_revision_id: input.plan.workflow_revision_id,
+                workflow_contract_digest: input.plan.workflow_digest.clone(),
+                workflow_payload_set_digest: input.plan.workflow_payload_set_digest.clone(),
+                workflow_semantic_contract_set_digest: input
+                    .plan
+                    .semantic_contract_set_digest
+                    .clone()
+                    .expect("semantic contract set digest"),
+                input_schema_digest,
+                output_schema_digest,
+            },
+            ontology_id: input.plan.ontology_id,
+            ontology_revision_id: input.plan.ontology_revision_id,
+            ontology_digest: input.plan.ontology_digest.clone(),
+            environment_id: input.plan.environment_id,
+            input: input.goal_input.clone(),
+            input_digest: input.plan.input_digest.clone(),
+            requested_by,
+            requested_at,
+            timeout_seconds: 3_600,
+        };
+        request.validate().expect("valid Application request");
+        input.workflow_run_id = request.workflow_run_id();
+        input.workflow_goal_id = request.workflow_goal_id();
+        input.plan_revision_id = request.plan_revision_id();
+        input.requested_at = requested_at;
+        input.deadline_at = requested_at + Duration::hours(1);
+        let (run, steps) = WorkflowRun::create(input, requested_by).expect("v11 WorkflowRun");
+        let record = WorkflowRunRecord { run, steps };
+
+        WorkflowApplicationRunService::validate_record(&request, &record)
+            .expect("production adapter accepts v11 Answer authority");
+
+        let mut aliased = record;
+        aliased.run.execution_input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V10.into();
+        assert!(WorkflowApplicationRunService::validate_record(&request, &aliased).is_err());
     }
 }

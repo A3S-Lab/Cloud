@@ -1,12 +1,48 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
-    connector_workflow_run_input_v6, human_decision_workflow_run_input,
-    routed_connector_workflow_run_input, routed_execution_workflow_run_input,
-    typed_variable_workflow_run_input, workflow_run_input, TEST_CONNECTOR_STEP_ID,
-    TEST_HUMAN_STEP_ID,
+    application_answer_workflow_run_input, application_workflow_run_input,
+    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
+    human_decision_workflow_run_input, routed_connector_workflow_run_input,
+    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
+    TEST_ANSWER_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v11_run_input_partitions_answer_from_final_output_without_reinterpreting_v10() {
+    let input = application_answer_workflow_run_input().expect("valid Answer WorkflowRun input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V11);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V11);
+    let projection = input
+        .application_projection
+        .as_ref()
+        .expect("Application projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
+    );
+    assert_eq!(projection.final_output_step_id, "output");
+    assert_eq!(projection.answer_step_ids, [TEST_ANSWER_STEP_ID]);
+    input.validate().expect("valid v11 input");
+
+    let mut v10_alias = input.clone();
+    v10_alias.schema = WORKFLOW_RUN_INPUT_SCHEMA_V10.into();
+    v10_alias.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10.into();
+    v10_alias.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V10.into();
+    assert!(v10_alias.validate().is_err());
+
+    let mut reordered = input;
+    reordered
+        .application_projection
+        .as_mut()
+        .expect("Application projection")
+        .answer_step_ids = vec!["output".into()];
+    assert!(reordered.validate().is_err());
+}
 
 #[test]
 fn v10_run_input_requires_exact_application_final_output_projection() {
@@ -27,6 +63,9 @@ fn v10_run_input_requires_exact_application_final_output_projection() {
     );
     assert_eq!(projection.final_output_step_id, "output");
     input.validate().expect("valid v10 input");
+    let canonical = String::from_utf8(input.canonical_bytes().expect("canonical v10 input"))
+        .expect("UTF-8 v10 input");
+    assert!(!canonical.contains("answer_step_ids"));
 
     let mut drifted = input.clone();
     drifted

@@ -52,14 +52,12 @@ pub(super) fn application_workflow_revision_evidence(
     revision.validate().map_err(|error| {
         ApplicationError::Internal(format!("stored Workflow revision is invalid: {error}"))
     })?;
-    let semantic_contract_set_digest = revision
-        .semantic_contract_set_digest()
-        .cloned()
-        .ok_or_else(|| {
-            ApplicationError::Invalid(
-                "Application publication requires Workflow semantic-contract authority".into(),
-            )
-        })?;
+    let semantic_contracts = revision.semantic_contracts.as_ref().ok_or_else(|| {
+        ApplicationError::Invalid(
+            "Application publication requires Workflow semantic-contract authority".into(),
+        )
+    })?;
+    let semantic_contract_set_digest = semantic_contracts.digest().clone();
     let input = revision
         .contract
         .spec()
@@ -69,18 +67,20 @@ pub(super) fn application_workflow_revision_evidence(
         .ok_or_else(|| {
             ApplicationError::Internal("stored Workflow input step is missing".into())
         })?;
-    let outputs = revision
+    let outputs = semantic_contracts
+        .application_output_steps(revision.contract.spec())
+        .map_err(ApplicationError::Invalid)?;
+    let output = revision
         .contract
         .spec()
         .steps
         .iter()
-        .filter(|step| step.kind == WorkflowStepKind::Output)
-        .collect::<Vec<_>>();
-    let [output] = outputs.as_slice() else {
-        return Err(ApplicationError::Invalid(
-            "Application publication requires exactly one Workflow Output step".into(),
-        ));
-    };
+        .find(|step| step.id == outputs.final_output_step_id)
+        .ok_or_else(|| {
+            ApplicationError::Internal(
+                "Application Workflow final Output semantic authority disappeared".into(),
+            )
+        })?;
     let evidence = ApplicationWorkflowRevisionEvidence {
         organization_id: revision.organization_id,
         project_id: revision.project_id,

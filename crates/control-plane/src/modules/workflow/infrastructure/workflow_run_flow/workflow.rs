@@ -2,8 +2,9 @@ use super::{
     decode_input, WorkflowLocalStepInput, WorkflowLocalStepResult, WORKFLOW_RUN_STEP_NAME,
 };
 use crate::modules::workflow::domain::{
-    flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
-    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
+    flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep,
+    WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
+    WorkflowEdgeSpec, WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
     WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
     WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepKind,
@@ -352,6 +353,62 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 }
             }
         }
+        if input
+            .application_projection
+            .as_ref()
+            .is_some_and(|projection| projection.is_answer_step(&step.plan.id))
+        {
+            let step_input = WorkflowLocalStepInput {
+                runtime_contract_revision: input.runtime_contract_revision.clone(),
+                typed_projection_authoritative,
+                step: (*step).clone(),
+                workflow_input: input.goal_input.clone(),
+                effective_input,
+                dependencies,
+                steps: all_steps,
+                composite_region_result: None,
+            };
+            let prepared = super::execution::execute_local_step(&step_input)
+                .map_err(FlowError::InvalidWorkflow)?;
+            let metadata = WorkflowApplicationAnswerHookMetadata::from_run_step(
+                &input,
+                step,
+                prepared.output.clone(),
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            if metadata.content_digest != prepared.output_digest {
+                return Err(FlowError::InvalidWorkflow(format!(
+                    "Workflow Application Answer step {:?} prepared a drifted output digest",
+                    step.plan.id
+                )));
+            }
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow Application Answer hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            if let Some(payload) = context.hook_payload(&hook_id) {
+                let result = application_answer_result(
+                    &invocation.run_id,
+                    &hook_id,
+                    step,
+                    &metadata,
+                    payload,
+                )?;
+                resolved.insert(
+                    step.plan.id.clone(),
+                    ResolvedState::Active(Box::new(result)),
+                );
+                continue;
+            }
+            return Ok(context.create_hook(
+                hook_id,
+                metadata.flow_hook_token(),
+                serde_json::to_value(metadata)?,
+            ));
+        }
         let durable_step_id = flow_step_id(&step.plan.id);
         if let Some(error) = context.step_failed(&durable_step_id) {
             return Ok(context.fail(format!("Workflow step {:?} failed: {error}", step.plan.id)));
@@ -639,6 +696,46 @@ pub(super) fn human_decision_result(
     Ok(result)
 }
 
+pub(super) fn application_answer_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowApplicationAnswerHookMetadata,
+    observed: &Value,
+) -> Result<WorkflowLocalStepResult, FlowError> {
+    let payload =
+        serde_json::from_value::<WorkflowApplicationAnswerResumePayload>(observed.clone())
+            .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+    payload
+        .validate(metadata)
+        .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+    if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+        return Err(application_answer_payload_drift(run_id, &step.plan.id));
+    }
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::Output,
+        output: metadata.content.clone(),
+        output_digest: metadata.content_digest.clone(),
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+    Ok(result)
+}
+
+fn application_answer_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow Application Answer step {step_id:?} received an invalid authority-bound payload"
+        ),
+    }
+}
+
 fn human_decision_payload_drift(run_id: &str, step_id: &str) -> FlowError {
     FlowError::NonDeterministic {
         run_id: run_id.into(),
@@ -722,6 +819,30 @@ fn resolved_workflow_output(
         .iter()
         .filter(|step| step.kind == WorkflowStepKind::Output)
         .collect::<Vec<_>>();
+    if let Some(projection) = input
+        .application_projection
+        .as_ref()
+        .filter(|projection| !projection.answer_step_ids.is_empty())
+    {
+        if outputs
+            .iter()
+            .any(|output| !resolved.contains_key(&output.id))
+        {
+            return Ok(None);
+        }
+        let final_output = resolved
+            .get(&projection.final_output_step_id)
+            .ok_or_else(|| "WorkflowRun lost its projected final Output step".to_owned())?;
+        return match final_output {
+            ResolvedState::Active(result) => {
+                super::execution::value_digest(&result.output, "WorkflowRun aggregate output")?;
+                Ok(Some(result.output.clone()))
+            }
+            ResolvedState::Inactive => {
+                Err("WorkflowRun resolved no reachable final Output step".into())
+            }
+        };
+    }
     let mut active = BTreeMap::new();
     for output in &outputs {
         match resolved.get(&output.id) {

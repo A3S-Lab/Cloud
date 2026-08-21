@@ -20,10 +20,11 @@ use crate::modules::workflow::domain::{
     descriptor_failure_output, ResolvedWorkflowRunStep, WorkflowRunInput,
     WorkflowStepDefaultOutputEvidence, WorkflowStepFailureOutput, WorkflowStepKind,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -80,6 +81,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
         (
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V10,
+        ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V11,
         ),
     ]
     .into_iter()
@@ -262,6 +267,7 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11
                 ) {
                     return Err(FlowError::Runtime(
                         "WorkflowRun step runtime contract revision is unsupported".into(),
@@ -302,22 +308,26 @@ fn decode_input(value: serde_json::Value) -> Result<WorkflowRunInput, FlowError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::{HumanTaskId, PrincipalId};
+    use crate::modules::shared_kernel::domain::{ApplicationMessageId, HumanTaskId, PrincipalId};
     use crate::modules::shared_kernel::domain::{Sha256Digest, WorkflowDecisionId};
     use crate::modules::workflow::domain::{
         flow_step_id, AssignmentPolicyRef, FlowResumePayload, HumanTask,
-        IWorkflowRunVariableReader, NewHumanTask, WorkflowCompositeFrameResolution,
+        IWorkflowRunVariableReader, NewHumanTask, WorkflowApplicationAnswerHookMetadata,
+        WorkflowApplicationAnswerResumePayload, WorkflowCompositeFrameResolution,
         WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy,
         WorkflowCompositeResumePayload, WorkflowDecision, WorkflowIterationFailureMode,
         WorkflowIterationRegionPolicy, WorkflowLoopRegionPolicy, WorkflowRun, WorkflowRunRecord,
         WorkflowRunVariableState, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
-        WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+        WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V2,
+        WORKFLOW_RUN_FLOW_VERSION_V3,
     };
     use crate::modules::workflow::test_support::{
-        accepted_submission, composite_workflow_run_input, digest,
+        accepted_submission, application_answer_workflow_run_input,
+        application_answers_workflow_run_input, composite_workflow_run_input, digest,
         exclusive_output_workflow_run_input, human_decision_form_release,
         human_decision_workflow_run_input, multi_output_workflow_run_input, timestamp,
-        typed_variable_workflow_run_input, workflow_run_input, TEST_HUMAN_STEP_ID,
+        typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
+        TEST_HUMAN_STEP_ID, TEST_SECOND_ANSWER_STEP_ID,
     };
     use a3s_flow::{
         FlowEngine, FlowEvent, HookStatus, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -367,6 +377,119 @@ mod tests {
             .start_with_id(run_id, spec, serde_json::to_value(drifted)?)
             .await
             .is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn v11_answer_waits_for_commit_evidence_and_keeps_final_output_unaggregated(
+    ) -> Result<(), FlowError> {
+        let mut input = application_answer_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let spec = WorkflowSpec::rust_embedded(
+            WORKFLOW_RUN_FLOW_NAME,
+            WORKFLOW_RUN_FLOW_VERSION_V11,
+            "cloud",
+            "workflow_run",
+        );
+        let encoded = serde_json::to_value(&input)?;
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
+        engine
+            .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
+            .await?;
+        let waiting = engine.snapshot(&run_id).await?;
+        assert_eq!(waiting.status, WorkflowRunStatus::Suspended);
+        let hook = waiting
+            .hooks
+            .values()
+            .find(|hook| hook.hook_id.starts_with("workflow-application-answer:"))
+            .expect("Answer hook");
+        assert_eq!(hook.status, HookStatus::Active);
+        let metadata =
+            serde_json::from_value::<WorkflowApplicationAnswerHookMetadata>(hook.metadata.clone())?;
+        metadata.validate().map_err(FlowError::Runtime)?;
+        let payload = WorkflowApplicationAnswerResumePayload::new(
+            &metadata,
+            ApplicationMessageId::new(),
+            2,
+            metadata.content_digest.clone(),
+        )
+        .map_err(FlowError::Runtime)?;
+        engine
+            .resume_hook(
+                &run_id,
+                &metadata.flow_hook_id(),
+                serde_json::to_value(payload)?,
+            )
+            .await?;
+        let completed = engine.snapshot(&run_id).await?;
+        assert_eq!(completed.status, WorkflowRunStatus::Completed);
+        assert_eq!(metadata.content, json!("HIGH T-42"));
+        assert_eq!(completed.output, Some(json!({"result": input.goal_input})));
+        assert!(!completed.steps.contains_key(&flow_step_id("answer")));
+
+        let history_length = engine.history(&run_id).await?.len();
+        engine.start_with_id(run_id.clone(), spec, encoded).await?;
+        assert_eq!(engine.history(&run_id).await?.len(), history_length);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn v11_answers_suspend_and_resume_in_immutable_plan_order() -> Result<(), FlowError> {
+        let mut input = application_answers_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let spec = WorkflowSpec::rust_embedded(
+            WORKFLOW_RUN_FLOW_NAME,
+            WORKFLOW_RUN_FLOW_VERSION_V11,
+            "cloud",
+            "workflow_run",
+        );
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
+        engine
+            .start_with_id(run_id.clone(), spec, serde_json::to_value(&input)?)
+            .await?;
+
+        for (expected_step_id, sequence) in
+            [(TEST_ANSWER_STEP_ID, 2), (TEST_SECOND_ANSWER_STEP_ID, 3)]
+        {
+            let waiting = engine.snapshot(&run_id).await?;
+            assert_eq!(waiting.status, WorkflowRunStatus::Suspended);
+            let active = waiting
+                .hooks
+                .values()
+                .filter(|hook| hook.status == HookStatus::Active)
+                .collect::<Vec<_>>();
+            let [hook] = active.as_slice() else {
+                panic!("expected one active Answer hook, got {active:#?}")
+            };
+            let metadata = serde_json::from_value::<WorkflowApplicationAnswerHookMetadata>(
+                hook.metadata.clone(),
+            )?;
+            assert_eq!(metadata.step_id, expected_step_id);
+            let payload = WorkflowApplicationAnswerResumePayload::new(
+                &metadata,
+                ApplicationMessageId::new(),
+                sequence,
+                metadata.content_digest.clone(),
+            )
+            .map_err(FlowError::Runtime)?;
+            engine
+                .resume_hook(
+                    &run_id,
+                    &metadata.flow_hook_id(),
+                    serde_json::to_value(payload)?,
+                )
+                .await?;
+        }
+
+        let completed = engine.snapshot(&run_id).await?;
+        assert_eq!(completed.status, WorkflowRunStatus::Completed);
+        assert_eq!(completed.output, Some(json!({"result": input.goal_input})));
         Ok(())
     }
 

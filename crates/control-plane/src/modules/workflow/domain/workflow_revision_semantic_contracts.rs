@@ -72,6 +72,12 @@ pub struct WorkflowRevisionSemanticContractRef<'a> {
     pub digest: &'a Sha256Digest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WorkflowApplicationOutputSteps {
+    pub final_output_step_id: String,
+    pub answer_step_ids: BTreeSet<String>,
+}
+
 impl WorkflowRevisionSemanticContracts {
     pub fn create(
         workflow: &WorkflowSpec,
@@ -316,6 +322,60 @@ impl WorkflowRevisionSemanticContracts {
 
     pub const fn descriptor_registry(&self) -> &WorkflowStepDescriptorRegistry {
         &self.descriptor_registry
+    }
+
+    pub(crate) fn has_application_owned_steps(
+        &self,
+        workflow: &WorkflowSpec,
+    ) -> Result<bool, String> {
+        self.validate(workflow)?;
+        for step in &workflow.steps {
+            if self.descriptor_for_step(&step.id)?.spec().owner == WorkflowStepOwner::Applications {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    pub(crate) fn application_output_steps(
+        &self,
+        workflow: &WorkflowSpec,
+    ) -> Result<WorkflowApplicationOutputSteps, String> {
+        self.validate(workflow)?;
+        let mut final_output_step_ids = Vec::new();
+        let mut answer_step_ids = BTreeSet::new();
+        for step in &workflow.steps {
+            let descriptor = self.descriptor_for_step(&step.id)?.spec();
+            if descriptor.owner == WorkflowStepOwner::Applications {
+                if !is_exact_application_answer_descriptor(descriptor) {
+                    return Err(format!(
+                        "Application Workflow step {:?} is not the supported application.answer port",
+                        step.id
+                    ));
+                }
+                answer_step_ids.insert(step.id.clone());
+                continue;
+            }
+            if step.kind == WorkflowStepKind::Output {
+                if !is_exact_application_final_output_descriptor(descriptor) {
+                    return Err(format!(
+                        "Application Workflow Output step {:?} is not the Workflow-owned workflow.output port",
+                        step.id
+                    ));
+                }
+                final_output_step_ids.push(step.id.clone());
+            }
+        }
+        let [final_output_step_id] = final_output_step_ids.as_slice() else {
+            return Err(
+                "Application Workflow requires exactly one Workflow-owned workflow.output step"
+                    .into(),
+            );
+        };
+        Ok(WorkflowApplicationOutputSteps {
+            final_output_step_id: final_output_step_id.clone(),
+            answer_step_ids,
+        })
     }
 
     pub(crate) fn failure_contract(
@@ -675,7 +735,8 @@ fn validate_supported_bindings(
         !matches!(
             binding,
             WorkflowStepBindingKind::CapabilityReference | WorkflowStepBindingKind::PlacementPolicy
-        )
+        ) && !(*binding == &WorkflowStepBindingKind::ReleaseReference
+            && is_exact_application_answer_descriptor(descriptor))
     }) {
         return Err(format!(
             "Workflow step {:?} descriptor requires unsupported {} binding",
@@ -684,6 +745,41 @@ fn validate_supported_bindings(
         ));
     }
     Ok(())
+}
+
+fn is_exact_application_answer_descriptor(descriptor: &super::WorkflowStepDescriptorSpec) -> bool {
+    descriptor.id == "application.answer"
+        && descriptor.semantic_profile == "application.answer"
+        && descriptor.owner == WorkflowStepOwner::Applications
+        && descriptor.kind == Some(WorkflowStepKind::Output)
+        && descriptor.execution_class == WorkflowStepExecutionClass::OwningApplicationPort
+        && descriptor.required_bindings == [WorkflowStepBindingKind::ReleaseReference]
+        && descriptor.allowed_capability_types.is_empty()
+        && descriptor.default_policy_digest.is_none()
+        && descriptor.failure.error_output.is_none()
+        && descriptor.failure.retry_classification == WorkflowStepRetryClassification::NotRetryable
+        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !descriptor.failure.failure_branch
+}
+
+fn is_exact_application_final_output_descriptor(
+    descriptor: &super::WorkflowStepDescriptorSpec,
+) -> bool {
+    descriptor.id == "workflow.output"
+        && descriptor.semantic_profile == "workflow.output"
+        && descriptor.owner == WorkflowStepOwner::Workflow
+        && descriptor.kind == Some(WorkflowStepKind::Output)
+        && descriptor.execution_class == WorkflowStepExecutionClass::WorkflowLocal
+        && descriptor
+            .required_bindings
+            .iter()
+            .all(|binding| *binding == WorkflowStepBindingKind::PlacementPolicy)
+        && descriptor.allowed_capability_types.is_empty()
+        && descriptor.default_policy_digest.is_none()
+        && descriptor.failure.error_output.is_none()
+        && descriptor.failure.retry_classification == WorkflowStepRetryClassification::NotRetryable
+        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !descriptor.failure.failure_branch
 }
 
 fn validate_capability_binding(

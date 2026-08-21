@@ -25,17 +25,19 @@ use crate::modules::workflow::domain::{
     WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
-    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
-    WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
-    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
-    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6,
-    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
+    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
+    WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
+    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -51,6 +53,8 @@ pub(crate) const TEST_HOOK_ID: &str = "human_review-2";
 pub(crate) const TEST_HUMAN_STEP_ID: &str = "human_review";
 pub(crate) const TEST_EXECUTION_STEP_ID: &str = "execute";
 pub(crate) const TEST_CONNECTOR_STEP_ID: &str = "invoke";
+pub(crate) const TEST_ANSWER_STEP_ID: &str = "answer";
+pub(crate) const TEST_SECOND_ANSWER_STEP_ID: &str = "answer_second";
 
 fn unsupported_failure_contract() -> WorkflowStepFailureContract {
     WorkflowStepFailureContract {
@@ -439,6 +443,108 @@ pub(crate) fn application_workflow_run_input() -> Result<WorkflowRunInput, Strin
     input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10.into();
     input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V10.into();
     input.application_projection = Some(WorkflowRunApplicationProjection::from_plan(&input.plan)?);
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn application_answer_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = typed_variable_workflow_run_input()?;
+    let output = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun test plan has no Output step".to_owned())?;
+    let mut answer = output;
+    answer.id = TEST_ANSWER_STEP_ID.into();
+    let descriptor = answer
+        .descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun test Answer has no descriptor binding".to_owned())?;
+    descriptor.step_id = TEST_ANSWER_STEP_ID.into();
+    descriptor.descriptor_id = "application.answer".into();
+    let output_index = input
+        .plan
+        .steps
+        .iter()
+        .position(|step| step.id == "output")
+        .ok_or_else(|| "WorkflowRun test plan has no Output position".to_owned())?;
+    input.plan.steps.insert(output_index, answer);
+    input.plan.edges.extend([
+        edge("high-answer", "high", TEST_ANSWER_STEP_ID, None),
+        edge("normal-answer", "normal", TEST_ANSWER_STEP_ID, None),
+    ]);
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V11.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V11.into();
+    input.application_projection =
+        Some(WorkflowRunApplicationProjection::from_application_outputs(
+            &input.plan,
+            "output".into(),
+            vec![TEST_ANSWER_STEP_ID.into()],
+        )?);
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn application_answers_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = application_answer_workflow_run_input()?;
+    let mut second_answer = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == TEST_ANSWER_STEP_ID)
+        .cloned()
+        .ok_or_else(|| "WorkflowRun test plan has no first Answer step".to_owned())?;
+    second_answer.id = TEST_SECOND_ANSWER_STEP_ID.into();
+    second_answer
+        .descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun test second Answer has no descriptor binding".to_owned())?
+        .step_id = TEST_SECOND_ANSWER_STEP_ID.into();
+    let output_index = input
+        .plan
+        .steps
+        .iter()
+        .position(|step| step.id == "output")
+        .ok_or_else(|| "WorkflowRun test plan has no Output position".to_owned())?;
+    input.plan.steps.insert(output_index, second_answer);
+    input.plan.edges.extend([
+        edge(
+            "high-answer-second",
+            "high",
+            TEST_SECOND_ANSWER_STEP_ID,
+            None,
+        ),
+        edge(
+            "normal-answer-second",
+            "normal",
+            TEST_SECOND_ANSWER_STEP_ID,
+            None,
+        ),
+    ]);
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun test plan",
+    )?))?;
+    input.application_projection =
+        Some(WorkflowRunApplicationProjection::from_application_outputs(
+            &input.plan,
+            "output".into(),
+            vec![
+                TEST_ANSWER_STEP_ID.into(),
+                TEST_SECOND_ANSWER_STEP_ID.into(),
+            ],
+        )?);
     input.validate()?;
     Ok(input)
 }

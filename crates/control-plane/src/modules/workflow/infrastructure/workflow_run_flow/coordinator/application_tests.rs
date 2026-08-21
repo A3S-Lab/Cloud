@@ -13,7 +13,7 @@ use crate::modules::applications::{
     WorkflowApplicationTerminalRequest, WorkflowApplicationVariableSnapshot,
     WorkflowApplicationVariableWriteRequest,
 };
-use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
     ApplicationSessionId, EnvironmentId, IdempotentWrite, OntologyId, OntologyRevisionId,
@@ -22,19 +22,23 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowRun, WorkflowRunFlowState, WorkflowRunRecord,
     WorkflowRunStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V10,
+    WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
-use crate::modules::workflow::test_support::{application_workflow_run_input, workflow_run_input};
+use crate::modules::workflow::test_support::{
+    application_answer_workflow_run_input, application_workflow_run_input, workflow_run_input,
+};
 use a3s_flow::{FlowEngine, RuntimeBuildCompatibility, RuntimeBuildId, WorkflowSpec};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RecordedApplicationEffect {
+    Answer(WorkflowApplicationMessageRequest),
     FinalOutput(WorkflowApplicationMessageRequest),
     Terminal(WorkflowApplicationTerminalRequest),
 }
@@ -42,6 +46,8 @@ enum RecordedApplicationEffect {
 struct RecordingApplicationEffects {
     inner: WorkflowApplicationEffectsService,
     calls: Mutex<Vec<RecordedApplicationEffect>>,
+    lose_answer_response_once: AtomicBool,
+    drift_answer_evidence_once: AtomicBool,
 }
 
 impl RecordingApplicationEffects {
@@ -49,6 +55,26 @@ impl RecordingApplicationEffects {
         Self {
             inner: WorkflowApplicationEffectsService::new(sessions),
             calls: Mutex::new(Vec::new()),
+            lose_answer_response_once: AtomicBool::new(false),
+            drift_answer_evidence_once: AtomicBool::new(false),
+        }
+    }
+
+    fn with_lost_answer_response(sessions: Arc<dyn IApplicationSessionRepository>) -> Self {
+        Self {
+            inner: WorkflowApplicationEffectsService::new(sessions),
+            calls: Mutex::new(Vec::new()),
+            lose_answer_response_once: AtomicBool::new(true),
+            drift_answer_evidence_once: AtomicBool::new(false),
+        }
+    }
+
+    fn with_drifted_answer_evidence(sessions: Arc<dyn IApplicationSessionRepository>) -> Self {
+        Self {
+            inner: WorkflowApplicationEffectsService::new(sessions),
+            calls: Mutex::new(Vec::new()),
+            lose_answer_response_once: AtomicBool::new(false),
+            drift_answer_evidence_once: AtomicBool::new(true),
         }
     }
 
@@ -70,7 +96,23 @@ impl IWorkflowApplicationEffectsPort for RecordingApplicationEffects {
         &self,
         request: &WorkflowApplicationMessageRequest,
     ) -> ApplicationResult<IdempotentWrite<ApplicationMessage>> {
-        self.inner.append_answer(request).await
+        self.calls
+            .lock()
+            .await
+            .push(RecordedApplicationEffect::Answer(request.clone()));
+        let mut write = self.inner.append_answer(request).await?;
+        if self.lose_answer_response_once.swap(false, Ordering::SeqCst) {
+            return Err(ApplicationError::Unavailable(
+                "injected loss after Answer commit".into(),
+            ));
+        }
+        if self
+            .drift_answer_evidence_once
+            .swap(false, Ordering::SeqCst)
+        {
+            write.value.created_at += Duration::milliseconds(1);
+        }
+        Ok(write)
     }
 
     async fn append_final_output(
@@ -259,6 +301,248 @@ async fn application_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, Princ
         .await
         .expect("start Application WorkflowRun Flow");
     (engine, record, actor)
+}
+
+async fn application_answer_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, PrincipalId) {
+    let mut input =
+        application_answer_workflow_run_input().expect("Application Answer WorkflowRun input");
+    let requested_at = canonical_timestamp(Utc::now());
+    input.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+    input.project_id = ProjectId::new();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = requested_at + Duration::hours(1);
+    input
+        .validate()
+        .expect("valid Application Answer WorkflowRun input");
+    let actor = PrincipalId::new();
+    let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-answer-test@1").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                WORKFLOW_RUN_FLOW_NAME,
+                WORKFLOW_RUN_FLOW_VERSION_V11,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start Application Answer WorkflowRun Flow");
+    (engine, record, actor)
+}
+
+#[tokio::test]
+async fn answer_commit_precedes_final_output_and_terminal_projection() {
+    let (engine, record, actor) = application_answer_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine, binding.effects.clone());
+
+    let completed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("Application Answer reconciliation")
+        .expect("completed WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let calls = binding.effects.calls().await;
+    assert!(matches!(
+        calls.as_slice(),
+        [
+            RecordedApplicationEffect::Answer(_),
+            RecordedApplicationEffect::FinalOutput(_),
+            RecordedApplicationEffect::Terminal(_),
+        ]
+    ));
+    let RecordedApplicationEffect::Answer(answer) = &calls[0] else {
+        unreachable!("ordered Answer call")
+    };
+    assert_eq!(answer.effect.step_id, "answer");
+    assert_eq!(answer.effect.step_attempt, 1);
+    assert_eq!(answer.effect.effect_ordinal, 0);
+    assert_eq!(answer.content, json!("HIGH T-42"));
+    assert_ne!(
+        answer.content,
+        completed.run.output.clone().expect("output")
+    );
+
+    let messages = binding
+        .sessions
+        .list_messages(
+            record.run.organization_id,
+            record.run.project_id,
+            binding.application_id,
+            binding.session_id,
+            0,
+            10,
+        )
+        .await
+        .expect("messages");
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[1].kind, ApplicationMessageKind::Answer);
+    assert_eq!(messages[2].kind, ApplicationMessageKind::FinalOutput);
+
+    let replayed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("lost-save replay")
+        .expect("replayed WorkflowRun projection");
+    assert_eq!(replayed, completed);
+    assert_eq!(binding.effects.calls().await.len(), 5);
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("replayed messages")
+            .len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn active_answer_fails_closed_without_the_application_effect_port() {
+    let (engine, record, _) = application_answer_workflow_fixture().await;
+    let error = FlowWorkflowRunCoordinator::new(engine.clone())
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect_err("missing Applications effect port");
+    assert!(error.to_string().contains("not configured"));
+    let snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Flow snapshot");
+    assert!(snapshot
+        .hooks
+        .values()
+        .any(|hook| hook.status == a3s_flow::HookStatus::Active));
+}
+
+#[tokio::test]
+async fn lost_answer_commit_response_replays_the_exact_effect_before_resuming_flow() {
+    let (engine, record, actor) = application_answer_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_lost_answer_response(
+        binding.sessions.clone(),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    let error = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect_err("lost Answer response");
+    assert!(error.to_string().contains("injected loss"));
+    let waiting = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("waiting Flow snapshot");
+    assert!(waiting
+        .hooks
+        .values()
+        .any(|hook| hook.status == a3s_flow::HookStatus::Active));
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("committed Answer")
+            .len(),
+        2
+    );
+
+    let completed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("Answer recovery")
+        .expect("completed WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let calls = effects.calls().await;
+    let [RecordedApplicationEffect::Answer(first), RecordedApplicationEffect::Answer(replay), RecordedApplicationEffect::FinalOutput(_), RecordedApplicationEffect::Terminal(_)] =
+        calls.as_slice()
+    else {
+        panic!("unexpected recovered effect order: {calls:?}")
+    };
+    assert_eq!(first, replay);
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("recovered messages")
+            .len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn drifted_answer_commit_evidence_leaves_the_flow_hook_unresolved() {
+    let (engine, record, actor) = application_answer_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_drifted_answer_evidence(
+        binding.sessions.clone(),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    let error = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect_err("drifted Answer evidence");
+    assert!(error.to_string().contains("commit evidence drifted"));
+    let waiting = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("waiting Flow snapshot");
+    assert!(waiting
+        .hooks
+        .values()
+        .any(|hook| hook.status == a3s_flow::HookStatus::Active));
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("committed Answer")
+            .len(),
+        2
+    );
 }
 
 #[tokio::test]
