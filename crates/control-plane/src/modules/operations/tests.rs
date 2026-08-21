@@ -9,9 +9,10 @@ use a3s_flow::{
     WorkflowInvocation, WorkflowSpec,
 };
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use serde_json::json;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[test]
@@ -55,14 +56,165 @@ fn operation_request(
     operation_id: OperationId,
     input: serde_json::Value,
 ) -> Result<OperationRequest, String> {
+    operation_request_at(operation_id, input, Utc::now())
+}
+
+fn operation_request_at(
+    operation_id: OperationId,
+    input: serde_json::Value,
+    requested_at: DateTime<Utc>,
+) -> Result<OperationRequest, String> {
     Ok(OperationRequest::new(
         operation_id,
         OrganizationId::new(),
         OperationSubject::new("deployment", Uuid::now_v7())?,
         WorkflowIdentity::new("cloud.deployment", "2")?,
         input,
-        Utc::now(),
+        requested_at,
     ))
+}
+
+fn operation_test_time(second: u32) -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 8, 21, 0, 0, second)
+        .single()
+        .expect("valid operation test time")
+}
+
+#[derive(Default)]
+struct RecordingOperationEngine {
+    inspected: Mutex<Vec<OperationId>>,
+}
+
+impl RecordingOperationEngine {
+    async fn inspected(&self) -> Vec<OperationId> {
+        self.inspected.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl IOperationEngine for RecordingOperationEngine {
+    async fn ensure(
+        &self,
+        request: &OperationRequest,
+    ) -> Result<OperationProjection, OperationEngineError> {
+        self.inspected.lock().await.push(request.id);
+        Ok(OperationProjection {
+            operation_id: request.id,
+            status: OperationStatus::Running,
+            last_sequence: 1,
+            output: None,
+            error: None,
+            updated_at: request.requested_at,
+        })
+    }
+
+    async fn projections(&self) -> Result<Vec<OperationProjection>, OperationEngineError> {
+        Ok(Vec::new())
+    }
+}
+
+#[tokio::test]
+async fn operation_reconciliation_starts_new_requests_while_rotating_active_operations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repository = Arc::new(InMemoryOperationRepository::new());
+    let mut active_ids = Vec::new();
+    for second in 0..3 {
+        let operation_id = OperationId::new();
+        let requested_at = operation_test_time(second);
+        repository
+            .enqueue(operation_request_at(
+                operation_id,
+                json!({"generation": second}),
+                requested_at,
+            )?)
+            .await?;
+        repository
+            .upsert_projection(OperationProjection {
+                operation_id,
+                status: OperationStatus::Running,
+                last_sequence: 1,
+                output: None,
+                error: None,
+                updated_at: requested_at,
+            })
+            .await?;
+        active_ids.push(operation_id);
+    }
+
+    let engine = Arc::new(RecordingOperationEngine::default());
+    let handler = ReconcileOperationsHandler::new(repository.clone(), engine.clone());
+    assert_eq!(handler.execute(1).await?.inspected, 1);
+
+    let new_operation_id = OperationId::new();
+    repository
+        .enqueue(operation_request_at(
+            new_operation_id,
+            json!({"generation": "new"}),
+            operation_test_time(10),
+        )?)
+        .await?;
+    let report = handler.execute(1).await?;
+    assert_eq!(
+        report.inspected, 2,
+        "one missing projection and one active projection have independent budgets"
+    );
+    assert!(
+        repository
+            .find_projection(new_operation_id)
+            .await?
+            .is_some(),
+        "old active Operations must not starve a newly committed request"
+    );
+
+    for _ in 0..2 {
+        handler.execute(1).await?;
+    }
+    let inspected = engine.inspected().await;
+    for operation_id in active_ids {
+        assert!(
+            inspected.contains(&operation_id),
+            "active refresh did not rotate through {operation_id}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn unchanged_operation_projection_preserves_its_visible_timestamp(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repository = InMemoryOperationRepository::new();
+    let operation_id = OperationId::new();
+    let requested_at = operation_test_time(20);
+    repository
+        .enqueue(operation_request_at(
+            operation_id,
+            json!({"generation": 1}),
+            requested_at,
+        )?)
+        .await?;
+    let projection = OperationProjection {
+        operation_id,
+        status: OperationStatus::Running,
+        last_sequence: 7,
+        output: Some(json!({"progress": 50})),
+        error: None,
+        updated_at: requested_at,
+    };
+    repository.upsert_projection(projection.clone()).await?;
+
+    repository
+        .upsert_projection(OperationProjection {
+            updated_at: requested_at + Duration::minutes(5),
+            ..projection.clone()
+        })
+        .await?;
+
+    assert_eq!(
+        repository.find_projection(operation_id).await?,
+        Some(projection),
+        "an unchanged Flow sequence and semantic projection must be a no-write replay"
+    );
+    Ok(())
 }
 
 fn flow_engine() -> Result<FlowEngine, FlowError> {
@@ -122,13 +274,18 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
     assert_eq!(report.inspected, 1);
     assert_eq!(report.rebuilt, 1);
     assert!(report.orphaned.is_empty());
+    let rebuilt_projection = rebuilt_repository
+        .find_projection(operation_id)
+        .await?
+        .ok_or("rebuilt projection was not written")?;
+    assert_eq!(rebuilt_projection.status, OperationStatus::Succeeded);
+    let replay = rebuilder.execute().await?;
+    assert_eq!(replay.inspected, 1);
+    assert_eq!(replay.rebuilt, 0);
     assert_eq!(
-        rebuilt_repository
-            .find_projection(operation_id)
-            .await?
-            .ok_or("rebuilt projection was not written")?
-            .status,
-        OperationStatus::Succeeded
+        rebuilt_repository.find_projection(operation_id).await?,
+        Some(rebuilt_projection),
+        "a projection rebuild replay must not advance the visible timestamp"
     );
     Ok(())
 }

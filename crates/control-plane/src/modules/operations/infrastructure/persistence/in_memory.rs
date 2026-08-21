@@ -1,7 +1,9 @@
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRecord, OperationRequest,
 };
-use crate::modules::operations::domain::repositories::{IOperationRepository, OperationListCursor};
+use crate::modules::operations::domain::repositories::{
+    IOperationRepository, OperationListCursor, OperationRefreshCursor,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
 };
@@ -56,16 +58,38 @@ impl IOperationRepository for InMemoryOperationRepository {
         let mut requests = state
             .requests
             .values()
-            .filter(|request| {
-                state
-                    .projections
-                    .get(&request.id)
-                    .is_none_or(|projection| !projection.status.is_terminal())
-            })
+            .filter(|request| !state.projections.contains_key(&request.id))
             .cloned()
             .collect::<Vec<_>>();
         requests.sort_by_key(|request| (request.requested_at, request.id));
         requests.truncate(limit);
+        Ok(requests)
+    }
+
+    async fn active_refreshes(
+        &self,
+        after: Option<OperationRefreshCursor>,
+        limit: usize,
+    ) -> Result<Vec<OperationRequest>, RepositoryError> {
+        let state = self.state.read().await;
+        let mut requests = state
+            .requests
+            .values()
+            .filter(|request| {
+                state
+                    .projections
+                    .get(&request.id)
+                    .is_some_and(|projection| !projection.status.is_terminal())
+                    && after.is_none_or(|after| {
+                        request.requested_at > after.requested_at
+                            || (request.requested_at == after.requested_at
+                                && request.id.as_uuid() > after.operation_id.as_uuid())
+                    })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        requests.sort_by_key(|request| (request.requested_at, request.id));
+        requests.truncate(limit.max(1));
         Ok(requests)
     }
 
@@ -79,7 +103,7 @@ impl IOperationRepository for InMemoryOperationRepository {
     async fn upsert_projection(
         &self,
         mut projection: OperationProjection,
-    ) -> Result<(), RepositoryError> {
+    ) -> Result<bool, RepositoryError> {
         projection.updated_at = canonical_timestamp(projection.updated_at);
         let mut state = self.state.write().await;
         if !state.requests.contains_key(&projection.operation_id) {
@@ -87,22 +111,24 @@ impl IOperationRepository for InMemoryOperationRepository {
         }
         if let Some(existing) = state.projections.get(&projection.operation_id) {
             if existing.last_sequence > projection.last_sequence {
-                return Ok(());
+                return Ok(false);
             }
-            if existing.last_sequence == projection.last_sequence
-                && (existing.status != projection.status
+            if existing.last_sequence == projection.last_sequence {
+                if existing.status != projection.status
                     || existing.output != projection.output
-                    || existing.error != projection.error)
-            {
-                return Err(RepositoryError::Storage(
-                    "operation projection changed without advancing its sequence".into(),
-                ));
+                    || existing.error != projection.error
+                {
+                    return Err(RepositoryError::Storage(
+                        "operation projection changed without advancing its sequence".into(),
+                    ));
+                }
+                return Ok(false);
             }
         }
         state
             .projections
             .insert(projection.operation_id, projection);
-        Ok(())
+        Ok(true)
     }
 
     async fn find_projection(

@@ -50,11 +50,14 @@ impl RebuildOperationProjectionsHandler {
                 report.orphaned.push(operation_id);
                 continue;
             }
-            self.repository
+            let rebuilt = self
+                .repository
                 .upsert_projection(projection)
                 .await
                 .map_err(|error| RebuildOperationProjectionsError::Repository(error.to_string()))?;
-            report.rebuilt += 1;
+            if rebuilt {
+                report.rebuilt += 1;
+            }
         }
         Ok(report)
     }

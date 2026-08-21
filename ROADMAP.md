@@ -275,6 +275,14 @@ second deployment or reconciliation engine.
 
 ### 3.4 Current in-progress gates
 
+The first shared-control-path convergence item is implemented. Operation
+requests without a Flow projection now have an independent bounded start scan,
+while active projections rotate through a stable keyset cursor. An unchanged
+Flow sequence and semantic projection is a true no-write replay, so polling
+cannot advance the user-visible Operation timestamp. In-memory fairness and
+rebuild tests plus the PostgreSQL foundation gate cover the same repository
+contract without another scheduler, queue, or reconciliation table.
+
 `BX0` is the release-blocking provider migration:
 
 1. `BX0.1` pins one certified Box/Runtime pair, adds closed `box` ACL

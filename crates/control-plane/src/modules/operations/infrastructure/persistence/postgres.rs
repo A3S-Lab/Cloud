@@ -8,7 +8,9 @@ use crate::infrastructure::{
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRecord, OperationRequest, OperationStatus,
 };
-use crate::modules::operations::domain::repositories::{IOperationRepository, OperationListCursor};
+use crate::modules::operations::domain::repositories::{
+    IOperationRepository, OperationListCursor, OperationRefreshCursor,
+};
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
@@ -126,14 +128,46 @@ impl IOperationRepository for PostgresOperationRepository {
                         OperationProjections::operation_id()
                             .eq_column(OperationRequests::operation_id()),
                     )
-                    .filter(
-                        OperationProjections::operation_id().is_null().or(
-                            OperationProjections::status()
-                                .ne("succeeded")
-                                .and(OperationProjections::status().ne("failed"))
-                                .and(OperationProjections::status().ne("cancelled")),
-                        ),
-                    )
+                    .filter(OperationProjections::operation_id().is_null())
+                    .order_by(OperationRequests::requested_at(), OrderDirection::Asc)
+                    .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
+                    .limit(limit.max(1) as u64),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .rows
+            .into_iter()
+            .map(decode_request)
+            .collect()
+    }
+
+    async fn active_refreshes(
+        &self,
+        after: Option<OperationRefreshCursor>,
+        limit: usize,
+    ) -> Result<Vec<OperationRequest>, RepositoryError> {
+        let mut query = operation_request_select()
+            .inner_join::<OperationProjections>(
+                OperationProjections::operation_id().eq_column(OperationRequests::operation_id()),
+            )
+            .filter(
+                OperationProjections::status()
+                    .ne("succeeded")
+                    .and(OperationProjections::status().ne("failed"))
+                    .and(OperationProjections::status().ne("cancelled")),
+            );
+        if let Some(after) = after {
+            query = query.filter(
+                OperationRequests::requested_at().gt(after.requested_at).or(
+                    OperationRequests::requested_at()
+                        .eq(after.requested_at)
+                        .and(OperationRequests::operation_id().gt(after.operation_id.as_uuid())),
+                ),
+            );
+        }
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_all_as(
+                query
                     .order_by(OperationRequests::requested_at(), OrderDirection::Asc)
                     .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
                     .limit(limit.max(1) as u64),
@@ -161,7 +195,7 @@ impl IOperationRepository for PostgresOperationRepository {
     async fn upsert_projection(
         &self,
         mut projection: OperationProjection,
-    ) -> Result<(), RepositoryError> {
+    ) -> Result<bool, RepositoryError> {
         projection.updated_at = canonical_timestamp(projection.updated_at);
         self.executor
             .transaction(move |transaction| {
@@ -171,17 +205,19 @@ impl IOperationRepository for PostgresOperationRepository {
                         find_projection_in_transaction(transaction, projection.operation_id).await?
                     {
                         if existing.last_sequence > projection.last_sequence {
-                            return Ok(());
+                            return Ok(false);
                         }
-                        if existing.last_sequence == projection.last_sequence
-                            && (existing.status != projection.status
+                        if existing.last_sequence == projection.last_sequence {
+                            if existing.status != projection.status
                                 || existing.output != projection.output
-                                || existing.error != projection.error)
-                        {
-                            return Err(PostgresPersistenceError::Invariant(
-                                "operation projection changed without advancing its sequence"
-                                    .into(),
-                            ));
+                                || existing.error != projection.error
+                            {
+                                return Err(PostgresPersistenceError::Invariant(
+                                    "operation projection changed without advancing its sequence"
+                                        .into(),
+                                ));
+                            }
+                            return Ok(false);
                         }
                     }
                     let written = execute(
@@ -208,7 +244,7 @@ impl IOperationRepository for PostgresOperationRepository {
                     )
                     .await;
                     match written {
-                        Ok(1) => Ok(()),
+                        Ok(1) => Ok(true),
                         Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
                             "projecting operation affected {rows} rows"
                         ))),

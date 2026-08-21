@@ -22,6 +22,21 @@ impl OperationListCursor {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OperationRefreshCursor {
+    pub requested_at: DateTime<Utc>,
+    pub operation_id: OperationId,
+}
+
+impl OperationRefreshCursor {
+    pub fn after(request: &OperationRequest) -> Self {
+        Self {
+            requested_at: request.requested_at,
+            operation_id: request.id,
+        }
+    }
+}
+
 #[async_trait]
 pub trait IOperationRepository: Send + Sync {
     async fn enqueue(
@@ -31,6 +46,13 @@ pub trait IOperationRepository: Send + Sync {
 
     async fn pending_starts(&self, limit: usize) -> Result<Vec<OperationRequest>, RepositoryError>;
 
+    /// Returns one stable ascending page of requests with non-terminal projections.
+    async fn active_refreshes(
+        &self,
+        after: Option<OperationRefreshCursor>,
+        limit: usize,
+    ) -> Result<Vec<OperationRequest>, RepositoryError>;
+
     async fn find_request(
         &self,
         operation_id: OperationId,
@@ -39,7 +61,7 @@ pub trait IOperationRepository: Send + Sync {
     async fn upsert_projection(
         &self,
         projection: OperationProjection,
-    ) -> Result<(), RepositoryError>;
+    ) -> Result<bool, RepositoryError>;
 
     async fn find_projection(
         &self,

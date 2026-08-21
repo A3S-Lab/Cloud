@@ -196,12 +196,15 @@ in the shared control path. Before opening implementation for another planned
 bounded context, close the following convergence work in order. These items
 change shared mechanisms only; they do not add a parallel platform gate.
 
-1. **Make Operation coordination fair and deterministic.** Requests without a
-   Flow projection are repaired independently from active projection refresh.
-   More than one scan batch of old running or suspended Operations cannot
-   starve a newly committed request. A Flow snapshot whose sequence and
-   semantic content did not change causes no projection write and cannot
-   advance a user-visible timestamp.
+1. **Make Operation coordination fair and deterministic — implemented.**
+   Requests without a Flow projection use an independent bounded start batch.
+   Active projections use a stable ascending keyset cursor that wraps after the
+   final page, so old running or suspended Operations cannot starve a newly
+   committed request or another active page. A Flow snapshot whose sequence and
+   semantic content did not change is an explicit no-write replay and cannot
+   advance the user-visible projection timestamp. The same repository contract
+   is enforced by the in-memory conformance tests and PostgreSQL foundation
+   gate without adding a scheduling table, timer, or second Flow worker.
 2. **Supervise every mandatory background worker once — implemented.** One
    process-level `JoinSet` observes every worker exit, returned error, and
    panic. An unexpected completion ends serving, broadcasts shutdown to the

@@ -27,8 +27,8 @@ use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
-    OperationStatus, OperationSubject, PostgresOperationRepository,
+    FlowOperationEngine, IOperationRepository, OperationProjection, OperationReconciler,
+    OperationRequest, OperationStatus, OperationSubject, PostgresOperationRepository,
     RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -4495,13 +4495,23 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .len(),
         3
     );
-    assert_eq!(
-        operation_repository
-            .find_projection(operation_id)
+    let terminal_projection = operation_repository
+        .find_projection(operation_id)
+        .await?
+        .ok_or("operation projection was not written")?;
+    assert_eq!(terminal_projection.status, OperationStatus::Succeeded);
+    assert!(
+        !operation_repository
+            .upsert_projection(OperationProjection {
+                updated_at: terminal_projection.updated_at + chrono::Duration::minutes(5),
+                ..terminal_projection.clone()
+            })
             .await?
-            .ok_or("operation projection was not written")?
-            .status,
-        OperationStatus::Succeeded
+    );
+    assert_eq!(
+        operation_repository.find_projection(operation_id).await?,
+        Some(terminal_projection),
+        "unchanged PostgreSQL projections must preserve the visible timestamp"
     );
     assert_eq!(reconciler.execute(10).await?.inspected, 0);
 
@@ -4530,6 +4540,59 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(flow_events, 3);
+
+    let active_operation_id = OperationId::new();
+    let pending_operation_id = OperationId::new();
+    let active_request = OperationRequest::new(
+        active_operation_id,
+        operation_request.organization_id,
+        OperationSubject::new("deployment", Uuid::now_v7())?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
+        json!({"generation": "active"}),
+        operation_request.requested_at - chrono::Duration::minutes(5),
+    );
+    operation_repository.enqueue(active_request.clone()).await?;
+    assert!(
+        operation_repository
+            .upsert_projection(OperationProjection {
+                operation_id: active_operation_id,
+                status: OperationStatus::Running,
+                last_sequence: 1,
+                output: None,
+                error: None,
+                updated_at: active_request.requested_at,
+            })
+            .await?
+    );
+    let pending_request = OperationRequest::new(
+        pending_operation_id,
+        operation_request.organization_id,
+        OperationSubject::new("deployment", Uuid::now_v7())?,
+        WorkflowIdentity::new("cloud.deployment", "2")?,
+        json!({"generation": "pending"}),
+        operation_request.requested_at + chrono::Duration::minutes(5),
+    );
+    operation_repository
+        .enqueue(pending_request.clone())
+        .await?;
+    assert_eq!(
+        operation_repository.pending_starts(1).await?,
+        vec![pending_request],
+        "an old active projection must not consume the missing-start budget"
+    );
+    assert_eq!(
+        operation_repository.active_refreshes(None, 1).await?,
+        vec![active_request],
+        "active refreshes must use their own stable page"
+    );
+    database
+        .execute(
+            sql_query::<()>("delete from operation_requests where operation_id = ")
+                .bind(active_operation_id.as_uuid())
+                .append(" or operation_id = ")
+                .bind(pending_operation_id.as_uuid()),
+        )
+        .await?;
 
     let memory_publisher = Arc::new(A3sEventPublisher::memory());
     let memory_bus = memory_publisher.bus();
