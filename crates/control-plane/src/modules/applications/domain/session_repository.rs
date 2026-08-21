@@ -283,7 +283,7 @@ pub trait IApplicationSessionRepository: Send + Sync {
     async fn close_session(
         &self,
         write: CloseApplicationSessionWrite,
-    ) -> Result<ApplicationSession, RepositoryError>;
+    ) -> Result<IdempotentWrite<ApplicationSession>, RepositoryError>;
 
     async fn find_end_user(
         &self,

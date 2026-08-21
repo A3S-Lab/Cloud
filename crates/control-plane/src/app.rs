@@ -9,13 +9,16 @@ use crate::modules::agents::{
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
 use crate::modules::applications::{
-    ApplicationsModule, CompileApplicationPresetWorkflowHandler,
-    ComposeApplicationInvocationWorkflowRunHandler, CreateApplicationHandler,
-    GetApplicationHandler, GetApplicationReleaseHandler, IApplicationPresetWorkflowPort,
+    ApplicationsModule, CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
+    CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
+    CreateApplicationHandler, GetApplicationHandler, GetApplicationInvocationHandler,
+    GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationPresetWorkflowPort,
     IApplicationRepository, IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
     IApplicationWorkflowRunPort, ListApplicationReleasesHandler, ListApplicationsHandler,
-    PublishApplicationReleaseHandler, WorkflowApplicationPresetCompiler,
-    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
+    OpenApplicationSessionHandler, PublishApplicationReleaseHandler,
+    ReplayApplicationSessionHandler, RequestApplicationInvocationHandler,
+    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
+    WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -1725,7 +1728,21 @@ fn build_management_application_with_health(
     let publish_applications = Arc::clone(&applications);
     let compile_application_presets = application_preset_workflows;
     let compose_application_invocations = Arc::clone(&applications);
-    let compose_application_sessions = application_sessions;
+    let compose_application_sessions = Arc::clone(&application_sessions);
+    let compose_application_workflow_runs = Arc::clone(&application_workflow_runs);
+    let open_application_releases = Arc::clone(&applications);
+    let open_application_session_records = Arc::clone(&application_sessions);
+    let close_application_releases = Arc::clone(&applications);
+    let close_application_session_records = Arc::clone(&application_sessions);
+    let request_application_releases = Arc::clone(&applications);
+    let request_application_invocation_records = Arc::clone(&application_sessions);
+    let request_application_workflow_runs = Arc::clone(&application_workflow_runs);
+    let cancel_application_releases = Arc::clone(&applications);
+    let cancel_application_invocation_records = Arc::clone(&application_sessions);
+    let cancel_application_workflow_runs = application_workflow_runs;
+    let get_application_sessions = Arc::clone(&application_sessions);
+    let get_application_invocations = Arc::clone(&application_sessions);
+    let replay_application_sessions = application_sessions;
     let list_applications = Arc::clone(&applications);
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
@@ -2181,13 +2198,39 @@ fn build_management_application_with_health(
                 >(CompileApplicationPresetWorkflowHandler::new(
                     compile_application_presets,
                 ))
+                .command_handler::<crate::modules::applications::OpenApplicationSession, _>(
+                    OpenApplicationSessionHandler::new(
+                        open_application_releases,
+                        open_application_session_records,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CloseApplicationSession, _>(
+                    CloseApplicationSessionHandler::new(
+                        close_application_releases,
+                        close_application_session_records,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::RequestApplicationInvocation, _>(
+                    RequestApplicationInvocationHandler::new(
+                        request_application_releases,
+                        request_application_invocation_records,
+                        request_application_workflow_runs,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CancelApplicationInvocation, _>(
+                    CancelApplicationInvocationHandler::new(
+                        cancel_application_releases,
+                        cancel_application_invocation_records,
+                        cancel_application_workflow_runs,
+                    ),
+                )
                 .command_handler::<
                     crate::modules::applications::ComposeApplicationInvocationWorkflowRun,
                     _,
                 >(ComposeApplicationInvocationWorkflowRunHandler::new(
                     compose_application_invocations,
                     compose_application_sessions,
-                    application_workflow_runs,
+                    compose_application_workflow_runs,
                 ))
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
@@ -2737,6 +2780,15 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::applications::GetApplicationRelease, _>(
                     GetApplicationReleaseHandler::new(get_application_releases),
+                )
+                .query_handler::<crate::modules::applications::GetApplicationSession, _>(
+                    GetApplicationSessionHandler::new(get_application_sessions),
+                )
+                .query_handler::<crate::modules::applications::GetApplicationInvocation, _>(
+                    GetApplicationInvocationHandler::new(get_application_invocations),
+                )
+                .query_handler::<crate::modules::applications::ReplayApplicationSession, _>(
+                    ReplayApplicationSessionHandler::new(replay_application_sessions),
                 )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),

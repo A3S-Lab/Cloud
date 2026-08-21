@@ -304,7 +304,7 @@ impl IApplicationSessionRepository for PostgresApplicationSessionRepository {
     async fn close_session(
         &self,
         write: CloseApplicationSessionWrite,
-    ) -> Result<ApplicationSession, RepositoryError> {
+    ) -> Result<IdempotentWrite<ApplicationSession>, RepositoryError> {
         write.session.validate().map_err(RepositoryError::Storage)?;
         self.executor
             .transaction(move |transaction| {
@@ -321,13 +321,19 @@ impl IApplicationSessionRepository for PostgresApplicationSessionRepository {
                     if current == write.session
                         && current.aggregate_version == write.expected_version.saturating_add(1)
                     {
-                        return Ok(current);
+                        return Ok(IdempotentWrite {
+                            value: current,
+                            replayed: true,
+                        });
                     }
                     write
                         .validate_against(&current)
                         .map_err(RepositoryError::Conflict)?;
                     update_session(transaction, &write.session, write.expected_version).await?;
-                    Ok(write.session)
+                    Ok(IdempotentWrite {
+                        value: write.session,
+                        replayed: false,
+                    })
                 })
             })
             .await

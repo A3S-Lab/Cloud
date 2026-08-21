@@ -12,6 +12,7 @@ use crate::modules::applications::domain::{
     ApplicationSession, ApplicationWorkflowBinding, ConversationVariableRevision,
     CreateApplicationWrite, IApplicationRepository, IApplicationSessionRepository,
     OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
+    APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS,
 };
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
@@ -343,7 +344,7 @@ async fn deterministic_workflow_identity_is_scoped_to_the_application_aggregate(
     );
 
     let mut unsupported_timeout = fixture.workflow_authority;
-    unsupported_timeout.timeout_seconds = u64::MAX;
+    unsupported_timeout.timeout_seconds = APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS + 1;
     assert!(ApplicationWorkflowRunRequest::from_invocation(
         &fixture.release,
         &fixture.session,

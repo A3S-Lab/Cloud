@@ -458,13 +458,19 @@ async fn stale_or_closed_session_writes_leave_no_partial_state() {
     let closed = session
         .close(1, release.created_at + Duration::seconds(1))
         .expect("closed session");
-    repository
-        .close_session(CloseApplicationSessionWrite {
-            session: closed.clone(),
-            expected_version: 1,
-        })
+    let close = CloseApplicationSessionWrite {
+        session: closed.clone(),
+        expected_version: 1,
+    };
+    let first_close = repository
+        .close_session(close.clone())
         .await
         .expect("persist close");
+    assert!(!first_close.replayed);
+    assert_eq!(first_close.value, closed);
+    let replayed_close = repository.close_session(close).await.expect("replay close");
+    assert!(replayed_close.replayed);
+    assert_eq!(replayed_close.value, closed);
 
     let invocation = ApplicationInvocation::request(
         ApplicationInvocationId::new(),

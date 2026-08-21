@@ -1189,6 +1189,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/126_application_invocation_workflow_authority.sql"
             )),
         ),
+        Migration::new(
+            "127",
+            "Application invocation timeout policy",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/127_application_invocation_timeout_policy.sql"
+            )),
+        ),
     ]
 }
 
@@ -2341,6 +2349,43 @@ mod application_invocation_workflow_authority_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 126 duplicated another authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_invocation_timeout_policy_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/127_application_invocation_timeout_policy.sql"
+    ));
+
+    #[test]
+    fn migration_127_matches_the_ordinary_workflow_run_timeout_bound() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "alter table application_invocation_workflow_authorities",
+            "application_invocation_workflow_authorities_timeout_policy",
+            "timeout_seconds <= 2592000",
+            "ordinary WorkflowRun 30-day admission bound",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "update application_invocation_workflow_authorities",
+            "delete from application_invocation_workflow_authorities",
+            "flow_history",
+            "provider_state",
+            "secret_material",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 127 duplicated or rewrote authority through {forbidden}"
             );
         }
     }

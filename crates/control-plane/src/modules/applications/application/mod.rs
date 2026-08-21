@@ -1,4 +1,7 @@
 mod commands;
+mod delivery_access;
+mod delivery_commands;
+mod delivery_queries;
 mod invocation_composition;
 mod preset_workflow;
 mod preset_workflow_port;
@@ -11,6 +14,19 @@ mod workflow_run_port;
 pub use commands::{
     CreateApplication, CreateApplicationHandler, PublishApplicationRelease,
     PublishApplicationReleaseHandler,
+};
+pub use delivery_commands::{
+    CancelApplicationInvocation, CancelApplicationInvocationHandler,
+    CancelApplicationInvocationResult, CloseApplicationSession, CloseApplicationSessionHandler,
+    CloseApplicationSessionResult, OpenApplicationSession, OpenApplicationSessionHandler,
+    OpenApplicationSessionResult, RequestApplicationInvocation,
+    RequestApplicationInvocationHandler, RequestApplicationInvocationResult,
+};
+pub use delivery_queries::{
+    GetApplicationInvocation, GetApplicationInvocationHandler, GetApplicationSession,
+    GetApplicationSessionHandler, GetApplicationSessionResult, ReplayApplicationSession,
+    ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
+    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 pub use invocation_composition::{
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
@@ -35,6 +51,8 @@ pub use workflow_run_port::{
     ApplicationWorkflowRunEvidence, ApplicationWorkflowRunRequest, IApplicationWorkflowRunPort,
 };
 
+#[cfg(test)]
+mod delivery_tests;
 #[cfg(test)]
 mod invocation_composition_tests;
 #[cfg(test)]

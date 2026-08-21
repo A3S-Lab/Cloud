@@ -130,15 +130,18 @@ The code on `main` separates implemented mechanics from released capability:
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-  tools. Component-only `APP0.2-C1/C2/C3/C4/C5` freezes and persists
+  tools. Component-only `APP0.2-C1/C2/C3/C4/C5/C6` freezes and persists
   release-pinned end users, sessions, invocation correlation, ordered messages,
   optimistic conversation variables, exactly-once Workflow semantic effects,
-  and immutable invocation execution authority through migrations `125`-`126`
+  and immutable invocation execution authority through migrations `125`-`127`
   and one production A3S ORM repository. It also compiles deterministic
   Model/Agent preset wrappers through Workflow's sole publication port,
   composes each exact invocation into one ordinary Workflow Goal, Plan, and
   Run, and recovers cancellation from persisted authority through the existing
-  Workflow state machine. Public delivery, monitoring, and the `APP0.6` parity
+  Workflow state machine. Project-authorized component commands now open and
+  close exact sessions, request and cancel invocations, and replay bounded
+  contiguous message cursors with ambiguous-commit recovery. Public delivery,
+  monitoring, and the `APP0.6` parity
   gate remain open.
   `K0.1-C1` now has a component-only Files admission
   foundation: one canonical UserFile ACL, bounded upload/scan/retention
@@ -359,14 +362,16 @@ creating their own control planes:
    persists sequence-fenced releases with atomic idempotency, audit, and
    Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
    REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-   tools all reuse that authority. Component-only `APP0.2-C1/C2/C3/C4/C5` adds and
+   tools all reuse that authority. Component-only `APP0.2-C1/C2/C3/C4/C5/C6` adds and
    persists the single release-pinned session/message/variable contract,
    deterministic Workflow-effect replay boundary, and immutable invocation
-   execution authority through migrations `125`-`126`. A typed internal port
+   execution authority through migrations `125`-`127`. A typed internal port
    creates or adopts the exact ordinary Workflow Goal, Plan, and Run and
    recovers cancellation, while deterministic Model/Agent preset wrappers use
    Workflow's shared publication authority. Neither adds another Flow history
-   or dispatch path.
+   or dispatch path. Authorization-first internal session, invocation,
+   cancellation, and bounded cursor CQRS recover exact persisted state; no
+   public delivery protocol is claimed.
    `K0.1-C1` now freezes the Files-owned canonical upload reference and
    admission state machine while reusing the shared immutable-object client;
    quota transactions, persistence, maintained interfaces, and the Knowledge

@@ -42,11 +42,12 @@ WorkflowRun cancellation from the same deterministic identity and never starts
 a new run. The same path repairs cancellation after process restart and the
 existing bind race.
 
-This record is not an authorization cache. It stores no credential, token,
-Membership, Resource Grant snapshot, Secret, Workflow graph, Plan, run state,
-attempt, event, or Flow history. Public invocation authorization remains part
-of the later APP0.2 delivery commands, and Gateway-routed delivery remains
-`APP0.3`.
+Decision 0036 adds the authorization-before-replay component delivery CQRS over
+this record without changing its ownership. This record is not an authorization
+cache. It stores no credential, token, Membership, Resource Grant snapshot,
+Secret, Workflow graph, Plan, run state, attempt, event, or Flow history.
+Public delivery interfaces remain part of the later APP0.2 work, and
+Gateway-routed delivery remains `APP0.3`.
 
 This decision supersedes only Decision 0033's use of transient composition
 fields. Its deterministic identities, typed request/evidence port, ordinary
@@ -62,6 +63,7 @@ Workflow repositories, and Flow ownership remain unchanged.
   retry remains restart-safe.
 - Workflow remains the sole Goal, Plan, WorkflowRun, and cancellation
   authority, and A3S Flow remains the sole durable execution-history authority.
-- `APP0.2-C5` remains component-only. Public session/invocation commands,
-  delivery protocols, remaining message/file/feedback records, and retained
-  delivery recovery evidence are still required before `APP0.2` is available.
+- `APP0.2-C5` remains component-only. Decision 0036 adds internal
+  session/invocation commands, while public delivery protocols, remaining
+  message/file/feedback records, and retained delivery recovery evidence are
+  still required before `APP0.2` is available.

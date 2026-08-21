@@ -368,7 +368,7 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
     async fn close_session(
         &self,
         write: CloseApplicationSessionWrite,
-    ) -> Result<ApplicationSession, RepositoryError> {
+    ) -> Result<IdempotentWrite<ApplicationSession>, RepositoryError> {
         write.session.validate().map_err(RepositoryError::Storage)?;
         let mut state = self.state.write().await;
         let key = session_key(&write.session);
@@ -380,13 +380,19 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
         if current == write.session
             && current.aggregate_version == write.expected_version.saturating_add(1)
         {
-            return Ok(current);
+            return Ok(IdempotentWrite {
+                value: current,
+                replayed: true,
+            });
         }
         write
             .validate_against(&current)
             .map_err(RepositoryError::Conflict)?;
         state.sessions.insert(key, write.session.clone());
-        Ok(write.session)
+        Ok(IdempotentWrite {
+            value: write.session,
+            replayed: false,
+        })
     }
 
     async fn find_end_user(

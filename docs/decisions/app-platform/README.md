@@ -40,7 +40,8 @@ AI application platform parity manifest.
 | [0033](0033-typed-application-workflow-run-composition.md) | Compose exact Application invocations into ordinary deterministic Workflow Goals, Plans, and Runs without bypassing Workflow or Flow |
 | [0034](0034-deterministic-application-preset-workflows.md) | Compile stable preset wrapper Workflows through Workflow's sole canonical ACL publication authority |
 | [0035](0035-durable-application-invocation-execution-authority.md) | Persist exact invocation execution authority atomically for restart-safe Workflow composition and cancellation |
+| [0036](0036-authorized-application-delivery-cqrs.md) | Authorize project-member session, invocation, cancellation, and cursor replay before adopting exact persisted state |
 
-All thirty-five decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All thirty-six decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.
