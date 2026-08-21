@@ -326,10 +326,16 @@ async fn prove_service_process_death_recovery(
         return Err(invalid(format!("Box Service exposed unsafe provider PID {pid}")).into());
     }
     let pid = i32::try_from(pid).map_err(|_| invalid("Box Service provider PID exceeds i32"))?;
-    // SAFETY: the PID comes from the dedicated Box state record, is checked
-    // against init and this test process, and the conformance home is isolated.
-    if unsafe { libc::kill(pid, libc::SIGKILL) } != 0 {
-        return Err(io::Error::last_os_error().into());
+    let kill = tokio::process::Command::new("kill")
+        .arg("-KILL")
+        .arg(pid.to_string())
+        .status()
+        .await?;
+    if !kill.success() {
+        return Err(invalid(format!(
+            "could not SIGKILL Box Service provider PID {pid}: {kill}"
+        ))
+        .into());
     }
 
     let deadline = Instant::now() + Duration::from_secs(30);
