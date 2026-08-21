@@ -96,8 +96,9 @@ exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses the
 canonical `cloud.notification.alert-policy.v1` ACL, admits the closed
 `edge.domain-claim-status.v1` source, rechecks Membership and Resource Grants,
 and projects rejection/recovery facts through the existing inbox and outbound
-delivery path. The CLI has no expression evaluator, event registry, incident
-state, timer, scheduler, or second configuration format.
+delivery path. REST contract `1.47.0` exposes this lifecycle. The CLI has no
+expression evaluator, event registry, incident state, timer, scheduler, or
+second configuration format.
 
 `notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]` and
 `notification-subscriptions get <subscription-id>` read only the authenticated

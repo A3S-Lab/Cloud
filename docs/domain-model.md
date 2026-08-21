@@ -1253,12 +1253,12 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Personal alert policy (`C0.3-N4a` architecture frozen)
+### 3.20 Personal alert policy (`C0.3-N4a` implemented)
 
 The first alert-policy slice is one immutable personal
-`cloud.notification.alert-policy.v1` A3S ACL. It binds the exact recipient
-Principal, one exact project/environment scope, the closed
-`edge.domain-claim-status.v1` source family, and a recovery preference. A new
+`cloud.notification.alert-policy.v1` A3S ACL. The policy binds the exact
+recipient Principal; its ACL binds one exact project/environment scope, the
+closed `edge.domain-claim-status.v1` source family, and a recovery preference. A new
 configuration creates a new policy and active-to-revoked is its only mutation.
 The recipient must be the creating Principal, and both management reads and
 mutations use the caller's current Membership and the shared Resource Grant
@@ -1284,6 +1284,13 @@ Notifications stores neither a duplicate claim state nor a mutable incident.
 The existing Notification repository is the recovery-history authority, and
 the existing outbound subscription, A3S Event, and C6 path handles any external
 delivery.
+
+Migration `130` persists the immutable revoke-only policy lifecycle and exact
+ACL/column projection. REST/OpenAPI `1.47.0`, the maintained client, CLI, and
+four Management MCP tools expose the same create/list/get/revoke CQRS. Focused
+domain, projection, cross-surface, contract, client, CLI, and PostgreSQL-test
+compilation gates pass; retained PostgreSQL 17 and NATS evidence is still
+pending.
 
 Future workload-health, certificate-expiry, backup, node-availability,
 operation-latency, and resource-signal families enter only as explicit bounded

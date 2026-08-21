@@ -308,6 +308,17 @@ references and digests. Route publication selects no port locally and sends
 the Service profile to the existing Edge-backed server command. The client
 adds no ACL parser, OCI/DNS validator, S0 lifecycle, scheduler, or state store.
 
+`listNotificationAlertPolicies`, `getNotificationAlertPolicy`,
+`createNotificationAlertPolicy`, and `revokeNotificationAlertPolicy` expose the
+personal alert-policy lifecycle added by REST contract `1.47.0`. Create sends
+one bounded canonical `cloud.notification.alert-policy.v1` A3S ACL; list/get
+reuse bounded personal pagination, and revoke carries one positive expected
+aggregate version. Cloud remains authoritative for the exact recipient,
+environment existence, current Resource Grants, closed typed source registry,
+projection, idempotency, Outbox, audit, and persistence. The client has no ACL
+parser, event expression evaluator, incident state, projector, or delivery
+mechanism.
+
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and
 `revokeOutboundNotificationSubscription` expose the recipient-bound lifecycle
