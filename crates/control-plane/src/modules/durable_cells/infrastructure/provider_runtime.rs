@@ -2,7 +2,7 @@ use crate::modules::durable_cells::domain::{
     DurableCellProviderBinding, DurableCellServiceProfile,
 };
 use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec_with_digest;
-use crate::modules::workloads::WorkloadRevision;
+use crate::modules::workloads::{DeploymentReplicaBinding, WorkloadRevision};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandEnvelope, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
     NodeDurableCellOperatorBindingV1, NodeDurableCellOperatorObservationV1,
@@ -238,6 +238,61 @@ pub fn admit_durable_cell_runtime_remove(
     let NodeCommandResult::RuntimeRemoved { removal } = result.as_ref() else {
         return Err("Durable Cell cleanup receipt is not a RuntimeRemove result".into());
     };
+    validate_runtime_evidence_time("removal", removal.removed_at_ms, command, acknowledgement)
+}
+
+/// Admits Runtime removal for a Workloads replica generation. The durable
+/// provider correlation still pins the exact revision and Service semantics,
+/// while Workloads remains authoritative for restart generations and their
+/// replica-specific Runtime unit identities.
+pub(crate) fn admit_durable_cell_replica_runtime_remove(
+    provider: &DurableCellProviderBinding,
+    service_profile: &DurableCellServiceProfile,
+    workload_revision: &WorkloadRevision,
+    replica_binding: &DeploymentReplicaBinding,
+    command: &NodeCommandEnvelope,
+    acknowledgement: &NodeCommandAck,
+) -> Result<(), String> {
+    provider.validate_workload_revision(service_profile, workload_revision)?;
+    let node_id = replica_binding
+        .node_id
+        .ok_or_else(|| "Durable Cell cleanup omitted its Workloads node binding".to_owned())?;
+    if replica_binding.workload_id != workload_revision.workload_id
+        || replica_binding.revision_id != workload_revision.id
+        || replica_binding.replica_generation == 0
+        || replica_binding.runtime_generation != replica_binding.replica_generation
+        || replica_binding.runtime_unit_id.trim().is_empty()
+    {
+        return Err("Durable Cell cleanup has an invalid Workloads replica binding".into());
+    }
+    validate_current_receipt(command, acknowledgement, "replica RuntimeRemove")?;
+    if command.node_id != node_id.as_uuid()
+        || command.aggregate_id != replica_binding.replica_id.as_uuid()
+    {
+        return Err("Durable Cell cleanup changed its Workloads replica identity".into());
+    }
+    let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
+        return Err(
+            "Durable Cell cleanup requires the existing Fleet RuntimeRemove command".into(),
+        );
+    };
+    if request.unit_id != replica_binding.runtime_unit_id
+        || request.generation != replica_binding.runtime_generation
+    {
+        return Err("Durable Cell RuntimeRemove changed the exact replica generation".into());
+    }
+    let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+        return Err("Durable Cell replica RuntimeRemove did not succeed".into());
+    };
+    let NodeCommandResult::RuntimeRemoved { removal } = result.as_ref() else {
+        return Err("Durable Cell replica cleanup receipt is not a RuntimeRemove result".into());
+    };
+    if removal.request_id != request.request_id
+        || removal.unit_id != request.unit_id
+        || removal.generation != request.generation
+    {
+        return Err("Durable Cell replica removal evidence changed identity".into());
+    }
     validate_runtime_evidence_time("removal", removal.removed_at_ms, command, acknowledgement)
 }
 

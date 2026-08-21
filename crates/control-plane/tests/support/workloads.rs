@@ -1992,15 +1992,18 @@ pub async fn exercise_replica_evacuation(
         })
         .await?;
     let fenced = repository
-        .record_replica_runtime_fenced(ReplicaRuntimeFence {
-            organization_id,
-            workload_id: source_binding.workload_id,
-            replica_id: source_binding.replica_id,
-            replica_generation: source_binding.replica_generation,
-            expected_replica_version: dispatched.aggregate_version,
-            command_id,
-            fenced_at: base + Duration::seconds(4),
-        })
+        .record_replica_runtime_fenced(
+            ReplicaRuntimeFence {
+                organization_id,
+                workload_id: source_binding.workload_id,
+                replica_id: source_binding.replica_id,
+                replica_generation: source_binding.replica_generation,
+                expected_replica_version: dispatched.aggregate_version,
+                command_id,
+                fenced_at: base + Duration::seconds(4),
+            },
+            None,
+        )
         .await?;
     let completion = ReplicaRetirementCompletion {
         organization_id,
@@ -2096,7 +2099,7 @@ pub async fn exercise_replica_evacuation(
     Ok(())
 }
 
-fn replica_set_write(
+pub(crate) fn replica_set_write(
     control: &WorkloadControl,
     desired_replicas: u32,
     idempotency_key: &str,

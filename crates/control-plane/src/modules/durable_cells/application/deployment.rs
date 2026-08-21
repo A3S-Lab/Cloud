@@ -757,9 +757,11 @@ mod tests {
         StartDurableCellApplication, StartDurableCellApplicationHandler,
         StopDurableCellApplication, StopDurableCellApplicationHandler,
     };
+    use super::super::writer_fence::DurableCellWriterFenceAdapter;
     use super::*;
     use crate::modules::data::{
         ObjectNamespaceCredentialBindingSpec, ObjectNamespaceRetentionPolicySpec,
+        SealObjectNamespaceOperationInput,
     };
     use crate::modules::durable_cells::domain::{
         CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
@@ -771,22 +773,30 @@ mod tests {
     use crate::modules::durable_cells::infrastructure::{
         InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
     };
+    use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
     use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+    use crate::modules::operations::InMemoryOperationRepository;
     use crate::modules::secrets::domain::{
         CreateSecretWrite, EncryptedSecretValue, ISecretRepository, Secret, SecretChanged,
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
-        BuildRunId, DurableCellApplicationRevisionId, SecretId, SecretVersionReference,
+        canonical_timestamp, BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId,
+        SecretId, SecretVersionReference,
     };
     use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
     use crate::modules::workloads::{
-        HttpHealthCheck, IWorkloadReplicaRetirementRepository, OciArtifact,
-        ReplicaRetirementCompletion, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceResources, WorkloadReplicaLifecycle,
+        HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadWriterFenceAdapter,
+        IWorkloadWriterFenceRepository, OciArtifact, ReplicaRetirementCompletion,
+        ReplicaRetirementDispatch, ReplicaRuntimeFence, SecretBinding, SecretBindingTarget,
+        ServicePort, ServiceResources, WorkloadReplicaLifecycle,
     };
     use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+    use a3s_cloud_contracts::{
+        NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    };
+    use a3s_runtime::contract::{RuntimeActionRequest, RuntimeRemoval};
     use serde::Serialize;
 
     #[tokio::test]
@@ -1087,6 +1097,35 @@ mod tests {
         assert_eq!(advanced_control.spec.placement_policy.generation(), 2);
         assert_eq!(advanced_control.aggregate_version, 2);
 
+        let placed_at = canonical_timestamp(Utc::now());
+        let resolving = workloads
+            .mark_resolving(
+                third.workload.deployment.id,
+                third.workload.deployment.aggregate_version,
+                placed_at,
+            )
+            .await
+            .expect("resolve third provider deployment");
+        let provider_node_id = NodeId::new();
+        let scheduled = workloads
+            .assign_node(
+                resolving.id,
+                resolving.aggregate_version,
+                provider_node_id,
+                placed_at,
+            )
+            .await
+            .expect("schedule third provider deployment");
+        workloads
+            .mark_dispatched(
+                scheduled.id,
+                scheduled.aggregate_version,
+                NodeCommandId::new(),
+                placed_at,
+            )
+            .await
+            .expect("dispatch third provider deployment");
+
         // Model process death after the Durable Cell desired-state transaction
         // commits but before the Workloads-owned replica transaction begins.
         let stop_key = "stop-deployed-counters";
@@ -1106,7 +1145,7 @@ mod tests {
             .request_state(
                 current_application.aggregate_version,
                 DurableCellApplicationDesiredState::Stopped,
-                Utc::now(),
+                placed_at + chrono::Duration::milliseconds(1),
             )
             .expect("stopped application intent");
         let stopped_record =
@@ -1190,31 +1229,151 @@ mod tests {
         );
         assert_eq!(workloads.outbox_events().await.len(), 3);
 
-        // The existing Workloads retirement authority performs cleanup. Once
-        // that exact cleanup is terminal, start reactivates the same replica;
-        // Durable Cells does not create a cleanup worker or a second rollout.
+        // The existing Workloads retirement authority performs cleanup. The
+        // Durable Cell adapter admits that exact RuntimeRemove receipt and
+        // contributes the S0 continuation to the same Runtime-fence commit.
         let mut retirements = workloads
             .pending_replica_retirements(10)
             .await
             .expect("pending retirement");
         assert_eq!(retirements.len(), 1);
         let retirement = retirements.remove(0);
-        assert!(retirement.member.node_id.is_none());
+        assert_eq!(retirement.member.node_id, Some(provider_node_id));
         assert!(retirement
             .deployment
             .as_ref()
-            .is_some_and(|deployment| deployment.command_id.is_none()));
+            .is_some_and(|deployment| deployment.command_id.is_some()));
+        let replica_binding = retirement
+            .replica_binding
+            .as_ref()
+            .expect("retiring provider replica binding");
+        let removal_command_id = NodeCommandId::new();
+        let removal_issued_at = placed_at + chrono::Duration::milliseconds(2);
+        let removal_completed_at = placed_at + chrono::Duration::milliseconds(3);
+        let removal_request = RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.into(),
+            request_id: format!("replica-retirement:{removal_command_id}:remove"),
+            unit_id: replica_binding.runtime_unit_id.clone(),
+            generation: replica_binding.runtime_generation,
+            deadline_at_ms: Some(
+                u64::try_from(
+                    (removal_completed_at + chrono::Duration::minutes(1)).timestamp_millis(),
+                )
+                .expect("positive Runtime deadline"),
+            ),
+        };
+        let removal_command = NodeCommand::issue(
+            NodeCommandDraft {
+                proposed_command_id: removal_command_id,
+                node_id: provider_node_id,
+                aggregate_id: retirement.replica.id.as_uuid(),
+                payload: NodeCommandPayload::RuntimeRemove {
+                    request: removal_request.clone(),
+                },
+                issued_at: removal_issued_at,
+                not_after: removal_completed_at + chrono::Duration::minutes(2),
+                correlation_id: third.correlation.projection.operation_id.as_uuid(),
+            },
+            1,
+        )
+        .expect("RuntimeRemove command");
+        let removal_acknowledgement = NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: removal_command.id.as_uuid(),
+            lease_id: Uuid::now_v7(),
+            node_id: provider_node_id.as_uuid(),
+            sequence: removal_command.sequence,
+            payload_digest: removal_command
+                .payload_digest()
+                .expect("RuntimeRemove digest"),
+            completed_at: removal_completed_at,
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeRemoved {
+                    removal: RuntimeRemoval {
+                        schema: RuntimeRemoval::SCHEMA.into(),
+                        request_id: removal_request.request_id.clone(),
+                        unit_id: removal_request.unit_id.clone(),
+                        generation: removal_request.generation,
+                        removed_at_ms: u64::try_from(removal_completed_at.timestamp_millis())
+                            .expect("positive Runtime removal time"),
+                        already_absent: false,
+                    },
+                }),
+            },
+        };
+        let dispatched_replica = workloads
+            .dispatch_replica_retirement(ReplicaRetirementDispatch {
+                organization_id,
+                workload_id: projection.workload_id,
+                replica_id: retirement.replica.id,
+                replica_generation: retirement.replica.generation,
+                expected_replica_version: retirement.replica.aggregate_version,
+                command_id: removal_command.id,
+                dispatched_at: removal_issued_at,
+            })
+            .await
+            .expect("dispatch provider RuntimeRemove");
+        let writer_fence = DurableCellWriterFenceAdapter::new(
+            applications.clone(),
+            deployments.clone(),
+            workloads.clone(),
+            workloads.clone(),
+            Arc::new(InMemoryOperationRepository::new()),
+        )
+        .prepare_replica_retirement(&retirement, &removal_command, &removal_acknowledgement)
+        .await
+        .expect("prepare Durable Cell writer fence")
+        .expect("stopped Durable Cell continuation");
+        let seal_input: SealObjectNamespaceOperationInput =
+            serde_json::from_value(writer_fence.operation.input.clone())
+                .expect("namespace seal input");
+        assert_eq!(seal_input.writer_epoch, retirement.replica.generation);
+        assert!(seal_input.previous_recovery_point.is_none());
+        assert_eq!(
+            seal_input.writer_fence_receipt_digest,
+            *writer_fence.receipt.digest()
+        );
+        let fenced = workloads
+            .record_replica_runtime_fenced(
+                ReplicaRuntimeFence {
+                    organization_id,
+                    workload_id: projection.workload_id,
+                    replica_id: retirement.replica.id,
+                    replica_generation: retirement.replica.generation,
+                    expected_replica_version: dispatched_replica.aggregate_version,
+                    command_id: removal_command.id,
+                    fenced_at: removal_completed_at,
+                },
+                Some(writer_fence.clone()),
+            )
+            .await
+            .expect("commit Durable Cell writer fence");
+        let stored_receipt = workloads
+            .latest_writer_fence(organization_id, projection.workload_id)
+            .await
+            .expect("load writer fence")
+            .expect("stored writer fence");
+        assert_eq!(stored_receipt, writer_fence.receipt);
+        assert_eq!(
+            workloads
+                .writer_fence_operation(stored_receipt.spec().continuation_operation_id)
+                .await,
+            Some(writer_fence.operation)
+        );
+
+        // Once the exact cleanup is terminal, start reactivates the same
+        // replica; Durable Cells does not create another rollout authority.
         let retired = workloads
             .complete_replica_retirement(ReplicaRetirementCompletion {
                 organization_id,
                 workload_id: projection.workload_id,
                 replica_id: retirement.replica.id,
                 replica_generation: retirement.replica.generation,
-                expected_replica_version: retirement.replica.aggregate_version,
+                expected_replica_version: fenced.aggregate_version,
                 member_id: retirement.member.id,
                 expected_member_version: retirement.member.aggregate_version,
-                fenced_node_id: None,
-                completed_at: Utc::now(),
+                fenced_node_id: Some(provider_node_id),
+                completed_at: removal_completed_at,
                 correlation_id: Uuid::now_v7(),
             })
             .await

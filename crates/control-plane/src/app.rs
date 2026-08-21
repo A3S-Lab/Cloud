@@ -57,12 +57,13 @@ use crate::modules::data::{
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
-    DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate, DurableCellsModule,
-    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
-    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
-    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
-    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
-    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+    DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
+    DurableCellWriterFenceAdapter, DurableCellsModule, GetDurableCellApplicationHandler,
+    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository, ListDurableCellApplicationRevisionsHandler,
+    ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -496,6 +497,7 @@ async fn build_api_worker_application(
     let replica_deployments = adapters.workloads.replica_deployments;
     let replica_evacuations = adapters.workloads.replica_evacuations;
     let replica_retirements = adapters.workloads.replica_retirements;
+    let writer_fences = adapters.workloads.writer_fences;
     let workload_targets = adapters.workloads.workload_targets;
     let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
     let resource_claims = adapters.workloads.resource_claims;
@@ -1261,6 +1263,13 @@ async fn build_api_worker_application(
             100,
         )
         .map_err(ControlPlaneStartupError::NodeControl)?;
+        let durable_cell_writer_fences = Arc::new(DurableCellWriterFenceAdapter::new(
+            Arc::clone(&durable_cell_applications),
+            Arc::clone(&durable_cell_deployments),
+            Arc::clone(&workloads),
+            writer_fences,
+            Arc::clone(&operation_repository),
+        ));
         let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
             replica_retirements,
             Arc::clone(&workload_runtime_control),
@@ -1271,7 +1280,8 @@ async fn build_api_worker_application(
             Duration::from_millis(config.deployments.cleanup_timeout_ms),
             100,
         )
-        .map_err(ControlPlaneStartupError::NodeControl)?;
+        .map_err(ControlPlaneStartupError::NodeControl)?
+        .with_writer_fence_adapter(durable_cell_writer_fences);
         let workload_reconciler = WorkloadRuntimeReconciler::new(
             workload_targets,
             workload_runtime_control,

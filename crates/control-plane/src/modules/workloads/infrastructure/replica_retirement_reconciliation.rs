@@ -10,9 +10,12 @@ use crate::modules::workloads::domain::repositories::{
     IResourceClaimRepository, IWorkloadReplicaRetirementRepository, ReplicaRetirementCompletion,
     ReplicaRetirementDispatch, ReplicaRuntimeFence, RetiringReplicaTarget,
 };
+use crate::modules::workloads::domain::services::{
+    IWorkloadWriterFenceAdapter, UnrestrictedWorkloadWriterFenceAdapter,
+};
 use a3s_cloud_contracts::{
-    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeResourceClaimBinding,
-    NodeResourceClaimRelease,
+    NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    NodeResourceClaimBinding, NodeResourceClaimRelease,
 };
 use a3s_runtime::contract::{RuntimeActionRequest, RuntimeRemoval};
 use chrono::{DateTime, Utc};
@@ -31,6 +34,7 @@ pub struct ReplicaRetirementReport {
     pub removal_commands: usize,
     pub release_commands: usize,
     pub runtime_fences: usize,
+    pub writer_fences: usize,
     pub claims_released: usize,
     pub retired: usize,
     pub evacuated: usize,
@@ -50,6 +54,7 @@ pub struct ReplicaRetirementReconciler {
     retirements: Arc<dyn IWorkloadReplicaRetirementRepository>,
     control: Arc<dyn IWorkloadRuntimeControl>,
     resource_claims: Arc<dyn IResourceClaimRepository>,
+    writer_fences: Arc<dyn IWorkloadWriterFenceAdapter>,
     reconcile_interval: Duration,
     command_ttl: chrono::Duration,
     runtime_remove_timeout: chrono::Duration,
@@ -82,6 +87,7 @@ impl ReplicaRetirementReconciler {
             retirements,
             control,
             resource_claims,
+            writer_fences: Arc::new(UnrestrictedWorkloadWriterFenceAdapter),
             reconcile_interval,
             command_ttl: chrono::Duration::from_std(command_ttl)
                 .map_err(|_| "replica retirement command TTL exceeds supported bounds")?,
@@ -91,6 +97,14 @@ impl ReplicaRetirementReconciler {
                 .map_err(|_| "replica Claim release horizon exceeds supported bounds")?,
             batch_size,
         })
+    }
+
+    pub fn with_writer_fence_adapter(
+        mut self,
+        writer_fences: Arc<dyn IWorkloadWriterFenceAdapter>,
+    ) -> Self {
+        self.writer_fences = writer_fences;
+        self
     }
 
     pub async fn run_once(
@@ -144,6 +158,7 @@ impl ReplicaRetirementReconciler {
                                 removal_commands = report.removal_commands,
                                 release_commands = report.release_commands,
                                 runtime_fences = report.runtime_fences,
+                                writer_fences = report.writer_fences,
                                 claims_released = report.claims_released,
                                 retired = report.retired,
                                 evacuated = report.evacuated,
@@ -179,23 +194,39 @@ impl ReplicaRetirementReconciler {
                     return Ok(());
                 }
                 RemovalProgress::Fenced {
-                    command_id,
-                    fenced_at,
+                    command,
+                    acknowledgement,
                 } => {
+                    let fenced_at = acknowledgement.completed_at.max(target.replica.updated_at);
+                    let writer_fence = if target.replica.evacuation_node_id.is_none() {
+                        self.writer_fences
+                            .prepare_replica_retirement(&target, &command, &acknowledgement)
+                            .await
+                            .map_err(repository_error(
+                                "prepare replica writer-fence continuation",
+                            ))?
+                    } else {
+                        None
+                    };
+                    let recorded_writer_fence = writer_fence.is_some();
                     target.replica = self
                         .retirements
-                        .record_replica_runtime_fenced(ReplicaRuntimeFence {
-                            organization_id: target.replica.organization_id,
-                            workload_id: target.replica.workload_id,
-                            replica_id: target.replica.id,
-                            replica_generation: target.replica.generation,
-                            expected_replica_version: target.replica.aggregate_version,
-                            command_id,
-                            fenced_at: fenced_at.max(target.replica.updated_at),
-                        })
+                        .record_replica_runtime_fenced(
+                            ReplicaRuntimeFence {
+                                organization_id: target.replica.organization_id,
+                                workload_id: target.replica.workload_id,
+                                replica_id: target.replica.id,
+                                replica_generation: target.replica.generation,
+                                expected_replica_version: target.replica.aggregate_version,
+                                command_id: command.id,
+                                fenced_at,
+                            },
+                            writer_fence,
+                        )
                         .await
                         .map_err(repository_error("persist replica Runtime fencing evidence"))?;
                     report.runtime_fences += 1;
+                    report.writer_fences += usize::from(recorded_writer_fence);
                     target
                         .replica
                         .runtime_fenced_at
@@ -318,7 +349,7 @@ impl ReplicaRetirementReconciler {
                 "load replica Runtime removal acknowledgement",
             ))?
         {
-            return match acknowledgement.outcome {
+            return match &acknowledgement.outcome {
                 NodeCommandOutcome::Succeeded { result } => {
                     let NodeCommandResult::RuntimeRemoved { removal } = result.as_ref() else {
                         return Err(
@@ -327,8 +358,8 @@ impl ReplicaRetirementReconciler {
                     };
                     validate_removal_result(removal, &command, target)?;
                     Ok(RemovalProgress::Fenced {
-                        command_id: command.id,
-                        fenced_at: acknowledgement.completed_at,
+                        command: Box::new(command),
+                        acknowledgement: Box::new(acknowledgement),
                     })
                 }
                 NodeCommandOutcome::Rejected { failure }
@@ -675,8 +706,8 @@ impl ReplicaRetirementReconciler {
 enum RemovalProgress {
     Pending,
     Fenced {
-        command_id: NodeCommandId,
-        fenced_at: DateTime<Utc>,
+        command: Box<NodeCommand>,
+        acknowledgement: Box<NodeCommandAck>,
     },
 }
 

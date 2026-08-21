@@ -1,13 +1,13 @@
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId, WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, SecretId, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, ManagedOwnerReference,
-    OciArtifact, Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplica,
-    WorkloadReplicaMember, WorkloadRevision,
+    OciArtifact, PlacementTopology, Workload, WorkloadControl, WorkloadControlSpec,
+    WorkloadReplica, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -160,6 +160,90 @@ pub struct ReplicaRuntimeFence {
     pub fenced_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadWriterFenceCommit {
+    pub receipt: WorkloadWriterFenceReceipt,
+    pub operation: OperationRequest,
+}
+
+impl WorkloadWriterFenceCommit {
+    pub fn validate(&self) -> Result<(), String> {
+        self.receipt.validate()?;
+        let receipt = self.receipt.spec();
+        if self.operation.id != receipt.continuation_operation_id
+            || self.operation.organization_id != receipt.organization_id
+            || self.operation.requested_at != receipt.fenced_at
+        {
+            return Err(
+                "Workload writer-fence continuation Operation changed its exact handoff".into(),
+            );
+        }
+        Ok(())
+    }
+
+    pub fn validate_replica_retirement(
+        &self,
+        fence: &ReplicaRuntimeFence,
+        control: &WorkloadControl,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+        binding: &DeploymentReplicaBinding,
+    ) -> Result<(), String> {
+        self.validate()?;
+        let receipt = self.receipt.spec();
+        if control.spec.placement_policy.desired_replicas() != 0
+            || control.spec.placement_policy.topology() != PlacementTopology::SingleNode
+            || control.spec.placement_policy.members_per_replica() != 1
+            || control.spec.managed_owner.as_ref() != Some(&receipt.managed_owner)
+            || control.organization_id != receipt.organization_id
+            || control.project_id != receipt.project_id
+            || control.environment_id != receipt.environment_id
+            || control.workload_id != receipt.workload_id
+            || replica.evacuation_node_id.is_some()
+            || replica.organization_id != receipt.organization_id
+            || replica.project_id != receipt.project_id
+            || replica.environment_id != receipt.environment_id
+            || replica.workload_id != receipt.workload_id
+            || replica.revision_id != receipt.workload_revision_id
+            || replica.revision_generation != receipt.workload_revision_generation
+            || replica.id != receipt.replica_id
+            || replica.ordinal != receipt.replica_ordinal
+            || replica.ordinal != 0
+            || replica.generation != receipt.writer_epoch
+            || member.id != receipt.member_id
+            || member.organization_id != receipt.organization_id
+            || member.project_id != receipt.project_id
+            || member.environment_id != receipt.environment_id
+            || member.workload_id != receipt.workload_id
+            || member.replica_id != receipt.replica_id
+            || member.ordinal != 0
+            || member.node_id != Some(receipt.node_id)
+            || member.placement_generation != receipt.placement_generation
+            || binding.organization_id != receipt.organization_id
+            || binding.project_id != receipt.project_id
+            || binding.environment_id != receipt.environment_id
+            || binding.workload_id != receipt.workload_id
+            || binding.revision_id != receipt.workload_revision_id
+            || binding.replica_id != receipt.replica_id
+            || binding.replica_generation != receipt.writer_epoch
+            || binding.member_id != receipt.member_id
+            || binding.node_id != Some(receipt.node_id)
+            || binding.placement_generation != receipt.placement_generation
+            || binding.runtime_unit_id != receipt.runtime_unit_id
+            || binding.runtime_generation != receipt.writer_epoch
+            || fence.organization_id != receipt.organization_id
+            || fence.workload_id != receipt.workload_id
+            || fence.replica_id != receipt.replica_id
+            || fence.replica_generation != receipt.writer_epoch
+            || fence.command_id != receipt.command_id
+            || canonical_timestamp(fence.fenced_at) != receipt.fenced_at
+        {
+            return Err("Workload writer-fence commit changed its exact Runtime authority".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplicaRetirementCompletion {
     pub organization_id: OrganizationId,
@@ -254,12 +338,22 @@ pub trait IWorkloadReplicaRetirementRepository: Send + Sync {
     async fn record_replica_runtime_fenced(
         &self,
         fence: ReplicaRuntimeFence,
+        writer_fence: Option<WorkloadWriterFenceCommit>,
     ) -> Result<WorkloadReplica, RepositoryError>;
 
     async fn complete_replica_retirement(
         &self,
         completion: ReplicaRetirementCompletion,
     ) -> Result<IdempotentWrite<WorkloadReplica>, RepositoryError>;
+}
+
+#[async_trait]
+pub trait IWorkloadWriterFenceRepository: Send + Sync {
+    async fn latest_writer_fence(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Option<WorkloadWriterFenceReceipt>, RepositoryError>;
 }
 
 #[async_trait]

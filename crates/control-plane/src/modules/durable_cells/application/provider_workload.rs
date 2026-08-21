@@ -1,9 +1,12 @@
 use crate::modules::artifacts::domain::{
     OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
-use crate::modules::data::{ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile};
+use crate::modules::data::{
+    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+    ObjectNamespaceProviderProfile,
+};
 use crate::modules::durable_cells::domain::{
-    DurableCellPublisherProfile, DurableCellServiceProfile,
+    DurableCellPublisherProfile, DurableCellServiceProfile, DurableCellStorageBinding,
 };
 use crate::modules::shared_kernel::domain::{SecretVersionReference, StorageNamespaceId};
 use crate::modules::workloads::{
@@ -195,6 +198,47 @@ pub(super) fn validate_publisher_secret_targets(
     publisher: &DurableCellPublisherProfile,
 ) -> Result<(), String> {
     validate_bindings(&template.secrets, publisher, None)
+}
+
+/// Reconstructs the exact plaintext-free S0 credential binding from the
+/// immutable Workload revision and its Durable Cell correlation. Secret
+/// material remains in Secrets; the stored S0 digest rejects substituted
+/// references, scope, generation, or provider identity.
+pub(crate) fn restore_publisher_storage_credentials(
+    storage: &DurableCellStorageBinding,
+    template: &ServiceTemplate,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<ObjectNamespaceCredentialBinding, String> {
+    storage.validate()?;
+    validate_publisher_secret_targets(template, publisher)?;
+    let reference = |name: &str| {
+        template
+            .secrets
+            .iter()
+            .find(|binding| binding.name == name)
+            .map(|binding| SecretVersionReference::new(binding.secret_id, binding.version))
+            .transpose()
+    };
+    let credentials = ObjectNamespaceCredentialBinding::restore(
+        ObjectNamespaceCredentialBindingSpec {
+            organization_id: storage.organization_id,
+            project_id: storage.project_id,
+            environment_id: storage.environment_id,
+            namespace_id: storage.storage_namespace_id,
+            generation: storage.credential_binding_generation,
+            provider_profile_digest: storage.provider_profile_digest.clone(),
+            access_key_id: reference(ACCESS_KEY_BINDING)?.ok_or_else(|| {
+                "Durable Cell provider template omitted its S0 access-key reference".to_owned()
+            })?,
+            secret_access_key: reference(SECRET_ACCESS_KEY_BINDING)?.ok_or_else(|| {
+                "Durable Cell provider template omitted its S0 secret-key reference".to_owned()
+            })?,
+            session_token: reference(SESSION_TOKEN_BINDING)?,
+        },
+        storage.credential_binding_digest.as_str(),
+    )?;
+    validate_publisher_storage_credentials(&credentials, template, publisher)?;
+    Ok(credentials)
 }
 
 fn validate_bindings(

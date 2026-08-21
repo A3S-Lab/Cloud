@@ -18,12 +18,13 @@ pub use workload_repository::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
     IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
-    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
-    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
-    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
-    SecretRotationReconciliation, WorkloadStopBundle,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, IWorkloadWriterFenceRepository,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
+    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
+    SecretRotation, SecretRotationCompletion, SecretRotationReconciliation, WorkloadStopBundle,
+    WorkloadWriterFenceCommit,
 };
 
 pub trait IDeploymentFlowWorkloadRepository:

@@ -8,6 +8,7 @@ mod queries;
 mod resource_access;
 mod result;
 mod route_publication;
+mod writer_fence;
 
 pub(crate) use bundle_publication::DurableCellBundlePublicationGate;
 pub use commands::{
@@ -35,6 +36,7 @@ pub use route_publication::{
     DurableCellRoutePublicationResult, PublishDurableCellApplicationRoute,
     PublishDurableCellApplicationRouteHandler,
 };
+pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 
 #[cfg(test)]
 mod tests;

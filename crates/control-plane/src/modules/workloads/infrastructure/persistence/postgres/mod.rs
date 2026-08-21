@@ -17,6 +17,7 @@ mod schema;
 mod secret_rotation_restarts;
 mod stop;
 mod transitions;
+mod writer_fences;
 
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
@@ -32,13 +33,14 @@ use crate::modules::workloads::domain::repositories::{
     ISecretRotationRestartRepository, IWorkloadPlacementGroupRepository,
     IWorkloadPlacementGroupSchedulingRepository, IWorkloadReplicaDeploymentRepository,
     IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, PlacementGroupCancellationWrite,
-    PlacementGroupMaterialization, PlacementGroupPlacement, PlacementGroupSchedulingWrite,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
-    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
-    SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, IWorkloadWriterFenceRepository,
+    PlacementGroupCancellationWrite, PlacementGroupMaterialization, PlacementGroupPlacement,
+    PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
+    WorkloadWriterFenceCommit,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -596,8 +598,9 @@ impl IWorkloadReplicaRetirementRepository for PostgresWorkloadRepository {
     async fn record_replica_runtime_fenced(
         &self,
         fence: ReplicaRuntimeFence,
+        writer_fence: Option<WorkloadWriterFenceCommit>,
     ) -> Result<WorkloadReplica, RepositoryError> {
-        replica_retirements::record_fence(&self.executor, fence).await
+        replica_retirements::record_fence(&self.executor, fence, writer_fence).await
     }
 
     async fn complete_replica_retirement(
@@ -608,6 +611,18 @@ impl IWorkloadReplicaRetirementRepository for PostgresWorkloadRepository {
         RepositoryError,
     > {
         replica_retirements::complete(&self.executor, completion).await
+    }
+}
+
+#[async_trait]
+impl IWorkloadWriterFenceRepository for PostgresWorkloadRepository {
+    async fn latest_writer_fence(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Option<crate::modules::workloads::WorkloadWriterFenceReceipt>, RepositoryError>
+    {
+        writer_fences::latest(&self.executor, organization_id, workload_id).await
     }
 }
 

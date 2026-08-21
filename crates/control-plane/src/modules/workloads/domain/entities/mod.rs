@@ -8,6 +8,7 @@ mod workload;
 mod workload_control;
 mod workload_replica;
 mod workload_revision;
+mod workload_writer_fence;
 
 pub use deployment::{Deployment, DeploymentStatus};
 pub use placement_group::{
@@ -40,4 +41,8 @@ pub use workload_revision::{
     McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
     ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
     WorkloadRevision,
+};
+pub use workload_writer_fence::{
+    WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
+    WORKLOAD_WRITER_FENCE_RECEIPT_SCHEMA,
 };

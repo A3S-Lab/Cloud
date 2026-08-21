@@ -209,6 +209,36 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct WorkloadWriterFenceReceipts => "workload_writer_fence_receipts" {
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        workload_id: Uuid => "workload_id",
+        workload_revision_id: Uuid => "workload_revision_id",
+        workload_revision_generation: u64 => "workload_revision_generation",
+        replica_id: Uuid => "replica_id",
+        replica_ordinal: u32 => "replica_ordinal",
+        writer_epoch: u64 => "writer_epoch",
+        member_id: Uuid => "member_id",
+        placement_generation: u64 => "placement_generation",
+        managed_owner_kind: String => "managed_owner_kind",
+        managed_owner_id: Uuid => "managed_owner_id",
+        managed_owner_generation: u64 => "managed_owner_generation",
+        managed_owner_spec_digest: String => "managed_owner_spec_digest",
+        node_id: Uuid => "node_id",
+        runtime_unit_id: String => "runtime_unit_id",
+        command_id: Uuid => "command_id",
+        command_kind: String => "command_kind",
+        command_payload_digest: String => "command_payload_digest",
+        acknowledgement_digest: String => "acknowledgement_digest",
+        continuation_operation_id: Uuid => "continuation_operation_id",
+        receipt_schema: String => "receipt_schema",
+        receipt_digest: String => "receipt_digest",
+        fenced_at: DateTime<Utc> => "fenced_at",
+    }
+}
+
+orm_table! {
     pub(super) struct WorkloadReplicaMembers => "workload_replica_members" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

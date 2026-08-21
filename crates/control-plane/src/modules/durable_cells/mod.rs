@@ -3,7 +3,6 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 
-pub(crate) use application::DurableCellBundlePublicationGate;
 pub use application::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
@@ -18,6 +17,7 @@ pub use application::{
     StopDurableCellApplicationHandler, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
     MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
+pub(crate) use application::{DurableCellBundlePublicationGate, DurableCellWriterFenceAdapter};
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
 pub use infrastructure::{
     admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
