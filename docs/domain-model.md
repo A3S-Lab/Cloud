@@ -661,8 +661,9 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7` freezes and persists the next
-Applications-owned records without making them available. `ApplicationEndUser`
+Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8` freezes and persists the next
+Applications-owned records and exposes only project-member management
+admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
 without creating Membership or grant authority. `ApplicationSession` pins one
 exact release and owns only a monotonic channel-message sequence plus an
@@ -714,12 +715,27 @@ variable lineage, message sequence, and invocation state machine remain the
 only write authorities. Workflow runtime dispatch over this port is not yet
 implemented, and no public availability is claimed.
 
+The C8 management admission boundary derives stable session and invocation
+identities from the Principal owner plus idempotency scope/key. Changed reuse
+reaches the same identity and conflicts instead of creating a second record.
+It resolves exact Ontology and optional Environment authority, supplies the
+current optimistic session version to C6, and retries bounded concurrent
+advances. Semantic persistence replay ignores server-owned timestamps and the
+allocated input-message sequence while still comparing release, input, and
+complete Workflow authority. Caller-owned session, invocation, and ordered
+message reads fail closed as not found for another Principal. REST/OpenAPI
+`1.43.0`, the maintained client, CLI, and five `application:write` Management
+MCP tools reuse these same commands, queries, and repository; they add no
+presentation-owned state.
+
 The preset compiler separately derives one stable wrapper Workflow identity per
 Application release, emits canonical three-step Model/Agent ACL and semantic
 material, and delegates creation to Workflow's shared publication port. It
 does not publish the owning Model/Agent profile or make a delivery route
-available. Remaining APP0.2 records and every public delivery interface remain
-open.
+available. Application-scoped or anonymous credentials, public close and
+cancellation interfaces, blocking/streaming answer delivery, remaining
+message/file/feedback records, Gateway delivery, and retained recovery evidence
+remain open.
 
 Classic Agent and New Agent are separate projections. Classic Agent compiles to
 an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and

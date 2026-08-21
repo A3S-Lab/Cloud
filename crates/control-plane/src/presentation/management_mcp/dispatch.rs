@@ -1,7 +1,8 @@
 use super::applications::{
-    ApplicationArguments, ApplicationReleaseArguments, CreateApplicationArguments,
-    ListApplicationReleasesArguments, ListApplicationsArguments,
-    PublishApplicationReleaseArguments,
+    ApplicationArguments, ApplicationInvocationArguments, ApplicationReleaseArguments,
+    ApplicationSessionArguments, CreateApplicationArguments, ListApplicationMessagesArguments,
+    ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
+    PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
 use super::arguments::{
     self, BuildRunArguments, BuildRunListArguments, BuildRunLogArguments, DeploymentArguments,
@@ -202,6 +203,67 @@ pub async fn execute(
             applications::get_release(
                 query_bus,
                 organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationSessionsOpen => {
+            let arguments = arguments::parse::<OpenApplicationSessionArguments>(arguments).ok()?;
+            applications::open_session(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationSessionsGet => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::get_session(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationInvocationsRequest => {
+            let arguments =
+                arguments::parse::<RequestApplicationInvocationArguments>(arguments).ok()?;
+            applications::request_invocation(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationInvocationsGet => {
+            let arguments = arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
+            applications::get_invocation(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessagesList => {
+            let arguments = arguments::parse::<ListApplicationMessagesArguments>(arguments).ok()?;
+            applications::list_messages(
+                query_bus,
+                organization_id,
+                actor_principal_id,
                 arguments,
                 resource_access,
                 request_id,

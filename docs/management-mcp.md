@@ -47,6 +47,11 @@ revision evidence adapter, single PostgreSQL repository, canonical A3S ACL,
 idempotency, audit, Outbox, and response DTOs used by REST contract `1.42.0`,
 the maintained client, and CLI. MCP owns no Application graph, Flow runtime,
 provider, session, Secret, Gateway route, repository, or authorization path.
+The `APP0.2-C6` slice adds five `application:write` tools for project-member
+session open/read, invocation request/read, and ordered message reads over REST
+contract `1.43.0`'s same commands, queries, caller ownership, and response
+DTOs. MCP owns no end-user credential, answer stream, cancellation lifecycle,
+Workflow/Flow state, provider, or Gateway delivery path.
 The Connector profile slice adds create/revise/profile-list/profile-get and
 revision-list/revision-get tools over the same environment-authorized CQRS,
 single PostgreSQL repository, canonical A3S ACL parser, response DTOs,
@@ -153,6 +158,11 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_application_releases_get` | Query | `cloud:read`; one exact immutable release and Workflow evidence |
 | `a3s_cloud_applications_create` | Command | `application:write`; Project Resource Grant, canonical release ACL, exact Workflow evidence, and idempotency required |
 | `a3s_cloud_application_releases_publish` | Command | `application:write`; Project Resource Grant, positive expected version, canonical release ACL, exact Workflow evidence, and idempotency required |
+| `a3s_cloud_application_sessions_open` | Command | `application:write`; exact `project_members` release, caller identity, bounded variables, and idempotency required |
+| `a3s_cloud_application_sessions_get` | Query | `application:write`; caller-owned project-member session only |
+| `a3s_cloud_application_invocations_request` | Command | `application:write`; caller-owned session, exact Ontology/Environment authority, bounded input, and idempotency required |
+| `a3s_cloud_application_invocations_get` | Query | `application:write`; caller-owned session and exact invocation only |
+| `a3s_cloud_application_messages_list` | Query | `application:write`; caller-owned session and bounded exclusive sequence cursor |
 | `a3s_cloud_connector_profiles_list` | Query | `cloud:read`; exact Environment Resource Grant enforcement occurs in Connectors |
 | `a3s_cloud_connector_profiles_get` | Query | `cloud:read`; returns the profile plus its current immutable revision |
 | `a3s_cloud_connector_revisions_list` | Query | `cloud:read`; bounded exact-profile revision history |
@@ -524,6 +534,30 @@ contain canonical release ACL and exact Workflow IDs/digests, but no graph,
 payload, Flow history, provider state, session/message state, Secret material,
 or Gateway route.
 
+## Project-member Application delivery admission
+
+`a3s_cloud_application_sessions_open` requires one exact Application/release,
+optional bounded initial variables, and an idempotency key. It admits only a
+`project_members` release, derives the end-user and session identities from the
+authenticated Principal and idempotency identity, and returns `201` or an exact
+`200` replay. The session read tool returns only that Principal's session.
+
+`a3s_cloud_application_invocations_request` additionally requires one
+caller-owned session, exact Ontology/revision, response mode, bounded input,
+optional exact Environment, optional bounded timeout, and an idempotency key.
+Applications atomically persists the input and immutable execution authority,
+then creates or adopts the ordinary deterministic Workflow Goal, Plan, and Run.
+Invocation and message reads remain caller-owned; message listing uses an
+exclusive sequence cursor and the 100/500 default/maximum bounds. All five tools require
+`application:write`, including reads, so a general `cloud:read` token cannot
+inspect conversation content.
+
+This is management-plane asynchronous admission. `blocking` and `streaming`
+are accepted release/invocation intents, but these tools do not wait for or
+stream an answer. They add no anonymous or authenticated-end-user application
+credential, cancellation command, SSE channel, provider execution path, or
+Gateway route.
+
 ## Immutable Connector profile lifecycle
 
 `a3s_cloud_connector_profiles_create` requires `projectId`, `environmentId`,
@@ -639,7 +673,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 117-tool administrator and 68-tool
+current focused source runner requires exact 122-tool administrator and 68-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

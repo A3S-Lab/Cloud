@@ -1,13 +1,17 @@
 mod commands;
 mod delivery_access;
 mod delivery_commands;
+mod delivery_identity;
 mod delivery_queries;
+mod invocation_commands;
 mod invocation_composition;
+mod ontology_revision_port;
 mod preset_workflow;
 mod preset_workflow_port;
 mod queries;
 mod resource_access;
 mod result;
+mod session_commands;
 mod workflow_effects;
 mod workflow_revision_port;
 mod workflow_run_port;
@@ -29,9 +33,16 @@ pub use delivery_queries::{
     ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
     DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
+pub use invocation_commands::{
+    AdmitApplicationInvocation, AdmitApplicationInvocationHandler,
+    ApplicationInvocationMutationResult,
+};
 pub use invocation_composition::{
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
     ComposeApplicationInvocationWorkflowRunResult,
+};
+pub use ontology_revision_port::{
+    ApplicationOntologyRevisionEvidence, IApplicationOntologyRevisionPort,
 };
 pub use preset_workflow::{
     CompileApplicationPresetWorkflow, CompileApplicationPresetWorkflowHandler,
@@ -47,6 +58,9 @@ pub use queries::{
     ListApplicationsHandler, DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
 };
 pub use result::ApplicationMutationResult;
+pub use session_commands::{
+    AdmitApplicationSession, AdmitApplicationSessionHandler, ApplicationSessionMutationResult,
+};
 pub use workflow_effects::{
     IWorkflowApplicationEffectsPort, WorkflowApplicationEffectRequest,
     WorkflowApplicationEffectsService, WorkflowApplicationMessageRequest,

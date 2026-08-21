@@ -67,11 +67,15 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
         }
 
         let end_user_key = end_user_key(&write.end_user);
-        if state
-            .end_users
-            .get(&end_user_key)
-            .is_some_and(|current| current != &write.end_user)
-        {
+        if state.end_users.get(&end_user_key).is_some_and(|current| {
+            current.organization_id != write.end_user.organization_id
+                || current.project_id != write.end_user.project_id
+                || current.application_id != write.end_user.application_id
+                || current.id != write.end_user.id
+                || current.audience != write.end_user.audience
+                || current.linked_principal_id != write.end_user.linked_principal_id
+                || current.created_by != write.end_user.created_by
+        }) {
             return Err(RepositoryError::Conflict(
                 "Application end-user identity is already in use".into(),
             ));

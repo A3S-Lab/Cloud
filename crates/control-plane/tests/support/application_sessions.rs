@@ -117,6 +117,34 @@ pub(super) async fn exercise_application_session_persistence(
             .await?
             .replayed
     );
+    let replayed_at = opened_at + Duration::seconds(10);
+    let replay_end_user =
+        ApplicationEndUser::create(end_user.id, &release, Some(actor), actor, replayed_at)?;
+    let replay_variables = ConversationVariableRevision::initial(
+        session_id,
+        &release,
+        initial_variables.values.clone(),
+        replayed_at,
+    )?;
+    let replay_session = ApplicationSession::create(
+        session_id,
+        &release,
+        &replay_end_user,
+        &replay_variables,
+        replayed_at,
+    )?;
+    assert!(
+        repository
+            .open_session(OpenApplicationSessionWrite {
+                release: release.clone(),
+                end_user: replay_end_user,
+                session: replay_session,
+                initial_variables: replay_variables,
+            })
+            .await?
+            .replayed,
+        "server clock drift must not turn one semantic session replay into a conflict"
+    );
 
     let invocation = ApplicationInvocation::request(
         ApplicationInvocationId::new(),
@@ -208,6 +236,44 @@ pub(super) async fn exercise_application_session_persistence(
             .request_invocation(request.clone())
             .await?
             .replayed
+    );
+    let advanced_session = repository
+        .find_session(organization_id, project_id, application.id, session.id)
+        .await?
+        .expect("Application session after input");
+    let replay_invocation = ApplicationInvocation::request(
+        invocation.id,
+        &advanced_session,
+        &release,
+        invocation.response_mode,
+        invocation.input.clone(),
+        replayed_at,
+    )?;
+    let replay_authority = ApplicationInvocationWorkflowAuthority::new(
+        &replay_invocation,
+        workflow_authority.ontology_id,
+        workflow_authority.ontology_revision_id,
+        workflow_authority.ontology_digest.clone(),
+        workflow_authority.environment_id,
+        workflow_authority.requested_by,
+        workflow_authority.timeout_seconds,
+    )?;
+    let replay_input = ApplicationMessage::input(
+        &advanced_session,
+        &replay_invocation,
+        replay_invocation.requested_at,
+    )?;
+    assert!(
+        repository
+            .request_invocation(RequestApplicationInvocationWrite {
+                invocation: replay_invocation,
+                workflow_authority: replay_authority,
+                input_message: replay_input,
+                expected_session_version: advanced_session.aggregate_version,
+            })
+            .await?
+            .replayed,
+        "server clock and message-sequence races must replay one semantic invocation"
     );
 
     let workflow_run_id = seeded_workflow.run_id;

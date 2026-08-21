@@ -67,3 +67,7 @@ Workflow repositories, and Flow ownership remain unchanged.
   session/invocation commands, while public delivery protocols, remaining
   message/file/feedback records, and retained delivery recovery evidence are
   still required before `APP0.2` is available.
+
+Decision 0038 subsequently adds the project-member management admission/read
+subset. Application-scoped credentials, cancellation, answer delivery, and the
+remaining public delivery/recovery contracts stay open.

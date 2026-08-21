@@ -193,6 +193,59 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
         document["paths"][format!("{base}/{{application_id}}/releases/{{release_id}}")]["get"]
             .is_object()
     );
+
+    let sessions = &document["paths"][format!("{base}/{{application_id}}/sessions")];
+    let session_schema = &sessions["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(session_schema["required"], json!(["releaseId"]));
+    assert_eq!(session_schema["properties"]["releaseId"]["format"], "uuid");
+    assert_eq!(
+        session_schema["properties"]["initialVariables"]["x-a3s-max-canonical-bytes"],
+        crate::modules::applications::APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES
+    );
+    assert!(sessions["post"]["responses"]["201"].is_object());
+
+    let invocation_path = format!("{base}/{{application_id}}/sessions/{{session_id}}/invocations");
+    let invocation = &document["paths"][&invocation_path];
+    let invocation_schema =
+        &invocation["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        invocation_schema["required"],
+        json!(["ontologyId", "ontologyRevisionId", "responseMode", "input"])
+    );
+    assert_eq!(
+        invocation_schema["properties"]["responseMode"]["enum"],
+        json!(["asynchronous", "blocking", "streaming"])
+    );
+    assert_eq!(
+        invocation_schema["properties"]["input"]["x-a3s-max-canonical-bytes"],
+        crate::modules::applications::APPLICATION_INVOCATION_INPUT_MAX_BYTES
+    );
+    assert!(invocation["post"]["responses"]["201"].is_object());
+    assert!(document["paths"][format!("{invocation_path}/{{invocation_id}}")]["get"].is_object());
+
+    let messages = &document["paths"]
+        [format!("{base}/{{application_id}}/sessions/{{session_id}}/messages")]["get"];
+    let message_limit = messages["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("Application message limit is missing".into()))?;
+    assert_eq!(
+        message_limit["schema"]["default"],
+        crate::modules::applications::DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT
+    );
+    assert_eq!(
+        message_limit["schema"]["maximum"],
+        crate::modules::applications::MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT
+    );
+    assert!(messages["parameters"].as_array().is_some_and(|parameters| {
+        parameters
+            .iter()
+            .any(|parameter| parameter["name"] == "afterSequence")
+    }));
     Ok(())
 }
 

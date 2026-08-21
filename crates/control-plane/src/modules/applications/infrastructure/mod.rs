@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod application_in_memory;
+mod ontology_revision;
 mod persistence;
 mod preset_workflow;
 #[cfg(test)]
@@ -11,6 +12,7 @@ mod workflow_run;
 
 #[cfg(test)]
 pub use application_in_memory::InMemoryApplicationRepository;
+pub use ontology_revision::WorkflowApplicationOntologyRevisionReader;
 pub use persistence::{PostgresApplicationRepository, PostgresApplicationSessionRepository};
 pub use preset_workflow::WorkflowApplicationPresetCompiler;
 #[cfg(test)]

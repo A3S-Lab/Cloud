@@ -9,16 +9,17 @@ use crate::modules::agents::{
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
 use crate::modules::applications::{
-    ApplicationsModule, CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
+    AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
+    CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
     CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
     CreateApplicationHandler, GetApplicationHandler, GetApplicationInvocationHandler,
-    GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationPresetWorkflowPort,
-    IApplicationRepository, IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
-    IApplicationWorkflowRunPort, ListApplicationReleasesHandler, ListApplicationsHandler,
-    OpenApplicationSessionHandler, PublishApplicationReleaseHandler,
+    GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationOntologyRevisionPort,
+    IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, ListApplicationReleasesHandler,
+    ListApplicationsHandler, OpenApplicationSessionHandler, PublishApplicationReleaseHandler,
     ReplayApplicationSessionHandler, RequestApplicationInvocationHandler,
-    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
-    WorkflowApplicationRunService,
+    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
+    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -1717,6 +1718,9 @@ fn build_management_application_with_health(
     let application_preset_workflows: Arc<dyn IApplicationPresetWorkflowPort> = Arc::new(
         WorkflowApplicationPresetCompiler::new(Arc::clone(&workflow_definition_publications)),
     );
+    let application_ontology_evidence: Arc<dyn IApplicationOntologyRevisionPort> = Arc::new(
+        WorkflowApplicationOntologyRevisionReader::new(Arc::clone(&ontologies)),
+    );
     let application_workflow_runs: Arc<dyn IApplicationWorkflowRunPort> =
         Arc::new(WorkflowApplicationRunService::new(
             Arc::clone(&workflow_definitions),
@@ -1739,7 +1743,13 @@ fn build_management_application_with_health(
     let request_application_workflow_runs = Arc::clone(&application_workflow_runs);
     let cancel_application_releases = Arc::clone(&applications);
     let cancel_application_invocation_records = Arc::clone(&application_sessions);
-    let cancel_application_workflow_runs = application_workflow_runs;
+    let cancel_application_workflow_runs = Arc::clone(&application_workflow_runs);
+    let admit_application_releases = Arc::clone(&applications);
+    let admit_application_sessions = Arc::clone(&application_sessions);
+    let admit_application_invocation_releases = Arc::clone(&applications);
+    let admit_application_invocation_sessions = Arc::clone(&application_sessions);
+    let admit_application_environments = Arc::clone(&environments);
+    let admit_application_workflow_runs = application_workflow_runs;
     let get_application_sessions = Arc::clone(&application_sessions);
     let get_application_invocations = Arc::clone(&application_sessions);
     let replay_application_sessions = application_sessions;
@@ -2232,6 +2242,21 @@ fn build_management_application_with_health(
                     compose_application_sessions,
                     compose_application_workflow_runs,
                 ))
+                .command_handler::<crate::modules::applications::AdmitApplicationSession, _>(
+                    AdmitApplicationSessionHandler::new(
+                        admit_application_releases,
+                        admit_application_sessions,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::AdmitApplicationInvocation, _>(
+                    AdmitApplicationInvocationHandler::new(
+                        admit_application_invocation_releases,
+                        admit_application_invocation_sessions,
+                        application_ontology_evidence,
+                        admit_application_environments,
+                        admit_application_workflow_runs,
+                    ),
+                )
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
                         create_durable_cell_environments,

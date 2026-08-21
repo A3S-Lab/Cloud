@@ -257,6 +257,21 @@ and commits immutable lineage, idempotency, audit, and Outbox facts. The client
 does not parse release ACL, resolve a mutable Workflow head, or create graph,
 Flow, provider, session, Secret, or Gateway state.
 
+`openApplicationSession`, `getApplicationSession`,
+`requestApplicationInvocation`, `getApplicationInvocation`, and
+`listApplicationMessages` expose the project-member management delivery slice
+added by REST contract `1.43.0`. Session and invocation creation require
+caller-owned idempotency keys; initial variables and invocation input are
+bounded JSON objects, and message reads use an exclusive sequence cursor with
+100/500 defaults and limits. Cloud derives stable Principal-bound identities,
+admits one exact release and Ontology revision, and creates or adopts the
+ordinary Workflow Goal, Plan, and Run through the existing Workflow authority.
+The client does not create an end-user credential, session store, Workflow
+runtime, answer stream, cancellation path, or Gateway route. Blocking and
+streaming response-mode values are retained as invocation intent only; this
+slice returns asynchronous admission evidence rather than a synchronous or SSE
+answer.
+
 `listConnectorProfiles`, `getConnectorProfile`, `createConnectorProfile`,
 `reviseConnectorProfile`, `listConnectorRevisions`, and
 `getConnectorRevision` expose the environment-scoped immutable Connector

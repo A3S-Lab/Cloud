@@ -51,7 +51,7 @@ That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The thirty-seven authority decisions are
+implementation is not a public capability. The thirty-eight authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -687,7 +687,8 @@ implementing a Cloud substitute is prohibited by this plan.
 | `APP0.2-C5` | Implemented; component-only | Migration `126` and the existing session repositories atomically retain one immutable invocation execution authority with exact release, Ontology revision/digest, optional Environment, requesting Principal, and bounded timeout alongside the invocation, input message, and session head. Composition commands now carry identity only and reconstruct every start/adopt or cancellation request from persisted authority. Exact authority reuse conflicts, failed foreign authority rolls the whole request back, and restart cancellation never starts a new WorkflowRun. No credential, grant, Secret, Workflow/Flow history, public delivery route, or second cancellation authority is added | `APP0.2-C3`, `APP0.2-C2`, protected `W0.3` WorkflowRun cancellation |
 | `APP0.2-C6` | Implemented; component-only | Project authorization precedes replay and validation for open/close session, request/cancel invocation, exact session/invocation reads, and bounded contiguous message-cursor replay. Stable caller session/invocation identities, deterministic Principal-linked ApplicationEndUsers, exact persisted-authority comparison, ambiguous-commit recovery, and the existing identity-only Workflow composition/cancellation ports prevent duplicate semantic writes or runs. Migration `127` aligns persisted timeout authority with WorkflowRun's 30-day maximum. The production CQRS process registers the handlers, but adds no REST/OpenAPI/client/CLI/MCP/browser/embed/SSE route, application credential, anonymous delivery, Gateway state, or second execution history | `APP0.2-C5`, `C0.1`, protected `W0.3` WorkflowRun composition and cancellation |
 | `APP0.2-C7` | Implemented; component-only | One typed internal Workflow consumer port resolves the sole bound invocation from Organization plus exact WorkflowRun, reads the Applications-owned variable snapshot and compare-and-swap version, and applies Answer, final-output, variable, and terminal observations through the existing repository. Stable effect-derived message/revision identities recover exact replay before or after ambiguous commits even when later session state advanced; stale versions, changed reuse, cross-kind claims, duplicate final output, late frames, and terminal drift fail closed. No migration, Workflow runtime dispatch, public protocol, credential, Gateway state, retry rail, or second execution history is added | `APP0.2-C6`, protected `W0.3` WorkflowRun and semantic step identity |
-| `APP0.2` | Complete preset authoring-profile publication over the deterministic C4 wrappers, Workflow runtime dispatch over the C7 semantic-effect port, public delivery interfaces over the C6 command/query boundary, message variants, file references, citations, feedback, annotations, blocking/streaming parity, and retained delivery recovery evidence over the C1/C2/C3/C4/C5/C6/C7 contract | `APP0.2-C4`, `APP0.2-C6`, `APP0.2-C7`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
+| `APP0.2-C8` | Implemented; management interface only | A thin project-member admission adapter reuses C6 as the sole delivery command/query authority. It admits only `project_members` releases under `application:write`, derives Principal-bound end-user/session/invocation UUIDv5 identities from the idempotency scope and key, resolves exact Ontology and optional Environment authority, and delegates session open plus invocation request to the existing C6 handlers. Caller-owned session, invocation, and bounded ordered-message reads are exposed through REST/OpenAPI `1.43.0`, the maintained client, CLI, and five Management MCP tools. It adds no second session, invocation, Workflow composition, cancellation, replay, credential, anonymous-delivery, provider, or Gateway authority | `APP0.2-C6`, `C0.2m`, protected `W0.3` WorkflowRun composition |
+| `APP0.2` | Complete preset authoring-profile publication over the deterministic C4 wrappers, Workflow runtime dispatch over the C7 semantic-effect port, application-scoped credential and anonymous/end-user admission, public close/cancel/replay interfaces, remaining message variants, file references, citations, feedback, annotations, blocking/streaming parity, and retained delivery recovery evidence over the C1/C2/C3/C4/C5/C6/C7/C8 contract | `APP0.2-C4`, `APP0.2-C6`, `APP0.2-C7`, `APP0.2-C8`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
 | `APP0.5` | Add run-history and monitor projections, token/usage/cost correlation, latency and failure diagnostics, feedback/annotation review, retention/redaction, external telemetry export, and operator alerts without a second run log | `APP0.3`, `I0.2c`, Operations and telemetry foundations |
@@ -749,7 +750,7 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All thirty-seven
+   reject inventory/schema drift and false public claims. All thirty-eight
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
@@ -767,9 +768,10 @@ The recommended sequence is:
    Application session authority and its atomic persistence, typed exact
    invocation-to-ordinary-WorkflowRun composition, deterministic preset
    wrapper Workflow publication, durable invocation execution authority, and
-   authorization-first component delivery CQRS, and the Run-resolved Workflow
-   semantic-effect consumer with deterministic ambiguous-commit recovery
-   are accepted and versioned.
+   authorization-first component delivery CQRS, the Run-resolved Workflow
+   semantic-effect consumer with deterministic ambiguous-commit recovery, and
+   the Principal-owned project-member management admission adapter are accepted
+   and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
@@ -781,14 +783,15 @@ The recommended sequence is:
    reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
    folding/evidence, and Plan v5 Connector failure routing; retain the
-   `APP0.2-C1/C2/C3/C4/C5/C6/C7` Applications-owned variable, Answer,
+   `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8` Applications-owned variable, Answer,
    final-output, terminal-effect, typed WorkflowRun composition, preset wrapper
    publication, and persisted execution-authority contracts, then complete
    Workflow Flow dispatch over that consumer and remaining non-Execution error
    branches and retained Flow replay tests. Prove any proposed Flow primitive
    is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Retain the implemented `APP0.1`
-   vertical slice and component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7`, and implement
+   vertical slice, component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7`, and the
+   `APP0.2-C8` management adapter, and implement
    `K0.1` and
    `AUT0.1` independently. Do not add provider behavior to these contract
    slices.

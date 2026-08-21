@@ -1,15 +1,28 @@
 import {
   type Application,
+  type ApplicationInvocation,
+  type ApplicationInvocationMutationResult,
+  type ApplicationMessage,
   type ApplicationMutationResult,
   type ApplicationRelease,
+  type ApplicationSession,
+  type ApplicationSessionMutationResult,
   type CreateApplicationInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
+  DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
+  type OpenApplicationSessionInput,
   type PublishApplicationReleaseInput,
+  type RequestApplicationInvocationInput,
   validateApplicationDescription,
   validateApplicationExpectedVersion,
+  validateApplicationInitialVariables,
+  validateApplicationInvocationInput,
+  validateApplicationInvocationTimeout,
   validateApplicationListLimit,
+  validateApplicationMessageList,
   validateApplicationName,
   validateApplicationReleaseAcl,
+  validateApplicationResponseMode,
 } from './applications';
 import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
 import {
@@ -253,7 +266,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.42.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.43.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1954,6 +1967,88 @@ export class CloudApi {
     );
   }
 
+  openApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    input: OpenApplicationSessionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    const initialVariables = input.initialVariables ?? {};
+    validateApplicationInitialVariables(initialVariables);
+    return this.postJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}/sessions`,
+      idempotencyKey,
+      { ...input, initialVariables },
+      signal
+    );
+  }
+
+  getApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationSession> {
+    return this.get(this.applicationSessionPath(organizationId, projectId, applicationId, sessionId), signal);
+  }
+
+  requestApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: RequestApplicationInvocationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationMutationResult> {
+    validateApplicationResponseMode(input.responseMode);
+    validateApplicationInvocationInput(input.input);
+    if (input.timeoutSeconds !== undefined) {
+      validateApplicationInvocationTimeout(input.timeoutSeconds);
+    }
+    return this.postJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/invocations`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocation> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}`,
+      signal
+    );
+  }
+
+  listApplicationMessages(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    afterSequence = 0,
+    limit = DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessage[]> {
+    validateApplicationMessageList(afterSequence, limit);
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/messages?afterSequence=${afterSequence}&limit=${limit}`,
+      signal
+    );
+  }
+
   listConnectorProfiles(
     organizationId: string,
     projectId: string,
@@ -3224,6 +3319,18 @@ export class CloudApi {
 
   private applicationPath(organizationId: string, projectId: string, applicationId: string): string {
     return `${this.applicationsPath(organizationId, projectId)}/${encodeURIComponent(applicationId)}`;
+  }
+
+  private applicationSessionPath(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string
+  ): string {
+    return (
+      `${this.applicationPath(organizationId, projectId, applicationId)}/sessions/` +
+      encodeURIComponent(sessionId)
+    );
   }
 
   private durableCellApplicationsPath(

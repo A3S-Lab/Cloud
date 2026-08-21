@@ -206,6 +206,9 @@ impl CommandHandler<OpenApplicationSession> for OpenApplicationSessionHandler {
                     initial_variables,
                     replayed: write.replayed,
                 })),
+                Ok(write) if write.replayed => {
+                    Ok(replay_open_session(sessions.as_ref(), &release, &command).await)
+                }
                 Ok(_) => Ok(Err(ApplicationError::Internal(
                     "Application session repository returned drifted open state".into(),
                 ))),
@@ -542,14 +545,27 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                         })
                         .await
                     {
-                        Ok(write) => {
-                            if !same_invocation_request(&write.value, &invocation) {
-                                return Ok(Err(ApplicationError::Internal(
-                                    "Application invocation repository returned drifted request"
-                                        .into(),
-                                )));
-                            }
+                        Ok(write) if same_invocation_request(&write.value, &invocation) => {
                             write.replayed
+                        }
+                        Ok(write) if write.replayed => {
+                            if let Err(error) = validate_invocation_replay(
+                                sessions.as_ref(),
+                                &release,
+                                &access.session,
+                                &write.value,
+                                &command,
+                            )
+                            .await
+                            {
+                                return Ok(Err(error));
+                            }
+                            true
+                        }
+                        Ok(_) => {
+                            return Ok(Err(ApplicationError::Internal(
+                                "Application invocation repository returned drifted request".into(),
+                            )))
                         }
                         Err(error) => {
                             let recovered = sessions

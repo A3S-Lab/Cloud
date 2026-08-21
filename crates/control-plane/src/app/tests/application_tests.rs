@@ -12,6 +12,10 @@ const APPLICATION_READ_TOKEN: &str =
     "a3s_3333333333333333333333333333333333333333333333333333333333333333";
 const APPLICATION_WRITE_TOKEN: &str =
     "a3s_4444444444444444444444444444444444444444444444444444444444444444";
+const APPLICATION_ONTOLOGY_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/w0.1/ontology.acl"
+));
 
 #[tokio::test]
 async fn applications_are_release_versioned_across_rest_client_contract_and_management_mcp(
@@ -129,6 +133,201 @@ async fn applications_are_release_versioned_across_rest_client_contract_and_mana
         &created["data"]["record"]["release"]["releaseId"],
         "Application release ID",
     )?;
+
+    let ontology = app
+        .call(post_acl(
+            format!("/api/v1/organizations/{organization}/projects/{project}/ontologies"),
+            "application-delivery-ontology",
+            APPLICATION_ONTOLOGY_ACL.as_bytes().to_vec(),
+        ))
+        .await?;
+    assert_eq!(ontology.status(), 201);
+    let ontology = response_json(&ontology)?;
+    let ontology_id = required_string(&ontology["data"]["ontology"]["id"], "Ontology ID")?;
+    let ontology_revision_id =
+        required_string(&ontology["data"]["revision"]["id"], "Ontology revision ID")?;
+
+    let sessions_path = format!("{applications_path}/{application_id}/sessions");
+    let opened = app
+        .call(post_json_as(
+            &sessions_path,
+            "application-session-open",
+            json!({
+                "releaseId": first_release_id,
+                "initialVariables": {"locale": "en-US"}
+            }),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(opened.status(), 201);
+    let opened = response_json(&opened)?;
+    assert_eq!(opened["data"]["replayed"], false);
+    assert_eq!(opened["data"]["session"]["applicationReleaseNumber"], 1);
+    let session_id = required_string(
+        &opened["data"]["session"]["sessionId"],
+        "Application session ID",
+    )?;
+
+    let invocations_path = format!("{sessions_path}/{session_id}/invocations");
+    let invocation_request = json!({
+        "ontologyId": ontology_id,
+        "ontologyRevisionId": ontology_revision_id,
+        "responseMode": "blocking",
+        "input": {"query": "hello"},
+        "timeoutSeconds": 300
+    });
+    let invoked = app
+        .call(post_json_as(
+            &invocations_path,
+            "application-invocation-request",
+            invocation_request.clone(),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(invoked.status(), 201);
+    let invoked = response_json(&invoked)?;
+    assert_eq!(invoked["data"]["replayed"], false);
+    assert_eq!(invoked["data"]["invocation"]["status"], "running");
+    assert_eq!(
+        invoked["data"]["invocation"]["workflowRunId"],
+        invoked["data"]["workflow"]["workflowRunId"]
+    );
+    let invocation_id = required_string(
+        &invoked["data"]["invocation"]["invocationId"],
+        "Application invocation ID",
+    )?;
+
+    let invocation_replay = app
+        .call(post_json_as(
+            &invocations_path,
+            "application-invocation-request",
+            invocation_request,
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(invocation_replay.status(), 200);
+    assert_eq!(response_json(&invocation_replay)?["data"]["replayed"], true);
+
+    let fetched_session = app
+        .call(get_as(
+            format!("{sessions_path}/{session_id}"),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fetched_session.status(), 200);
+    assert_eq!(
+        response_json(&fetched_session)?["data"]["lastMessageSequence"],
+        1
+    );
+    let fetched_invocation = app
+        .call(get_as(
+            format!("{invocations_path}/{invocation_id}"),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fetched_invocation.status(), 200);
+    assert_eq!(
+        response_json(&fetched_invocation)?["data"]["invocationId"],
+        invocation_id
+    );
+    let messages = app
+        .call(get_as(
+            format!("{sessions_path}/{session_id}/messages?afterSequence=0&limit=50"),
+            APPLICATION_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(messages.status(), 200);
+    let messages = response_json(&messages)?;
+    assert_eq!(messages["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(messages["data"][0]["kind"], "input");
+
+    let denied_delivery_read = app
+        .call(get_as(
+            format!("{sessions_path}/{session_id}"),
+            APPLICATION_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(denied_delivery_read.status(), 403);
+
+    let mcp_session = mcp_call(
+        &app,
+        20,
+        "a3s_cloud_application_sessions_open",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "releaseId": first_release_id,
+            "initialVariables": {"channel": "mcp"},
+            "idempotencyKey": "application-mcp-session-open"
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_session["code"], 201);
+    let mcp_session_id = required_string(
+        &mcp_session["data"]["session"]["sessionId"],
+        "MCP Application session ID",
+    )?;
+    let mcp_invocation = mcp_call(
+        &app,
+        21,
+        "a3s_cloud_application_invocations_request",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "ontologyId": ontology_id,
+            "ontologyRevisionId": ontology_revision_id,
+            "responseMode": "blocking",
+            "input": {"query": "from MCP"},
+            "timeoutSeconds": 300,
+            "idempotencyKey": "application-mcp-invocation"
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_invocation["code"], 201);
+    let mcp_invocation_id = required_string(
+        &mcp_invocation["data"]["invocation"]["invocationId"],
+        "MCP Application invocation ID",
+    )?;
+    let mcp_session_read = mcp_call(
+        &app,
+        22,
+        "a3s_cloud_application_sessions_get",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_session_read["data"]["lastMessageSequence"], 1);
+    let mcp_invocation_read = mcp_call(
+        &app,
+        23,
+        "a3s_cloud_application_invocations_get",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "invocationId": mcp_invocation_id
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_invocation_read["data"]["status"], "running");
+    let mcp_messages = mcp_call(
+        &app,
+        24,
+        "a3s_cloud_application_messages_list",
+        json!({
+            "projectId": project,
+            "applicationId": application_id,
+            "sessionId": mcp_session_id,
+            "afterSequence": 0,
+            "limit": 50
+        }),
+    )
+    .await?;
+    assert_eq!(mcp_messages["data"].as_array().map(Vec::len), Some(1));
 
     let replay = app
         .call(post_json(

@@ -35,8 +35,9 @@ CLI does not create a context or credential file. This is the caller credential;
 | `A3S_CLOUD_TIMEOUT_MS` | `--timeout` | Request timeout from 1 through 300000 ms |
 
 Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
-through 256, and an optional `--stream=stdout|stderr` filter. These options are
-rejected for commands that do not read logs.
+through 256, and an optional `--stream=stdout|stderr` filter. Non-log uses of
+`--cursor` and `--limit` are documented with their commands below; `--stream`
+remains log-only.
 
 `agent-conversations events` accepts an opaque `--cursor` up to 1024
 characters and a `--limit` from 1 through 200. It reads semantic execution
@@ -249,6 +250,11 @@ applications create <name> --file=<application-release.acl>
 applications publish <application-id> --file=<application-release.acl> --expected-version=<version>
 application-releases list <application-id>
 application-releases get <application-id> <release-id>
+application-sessions open <application-id> <release-id> [--file=<initial-variables.json>]
+application-sessions get <application-id> <session-id>
+application-invocations request <application-id> <session-id> --file=<invocation.json>
+application-invocations get <application-id> <session-id> <invocation-id>
+application-messages list <application-id> <session-id> [--cursor=<sequence>] [--limit=<1..500>]
 connector-profiles list
 connector-profiles get <profile-id>
 connector-profiles create <name> --file=<connector.acl>
@@ -483,6 +489,19 @@ exact Workflow definition/revision plus contract, payload-set,
 semantic-contract-set, input-schema, and output-schema evidence. The CLI does
 not parse the ACL, follow a mutable Workflow head, or create graph, Flow,
 provider, session, Secret, or Gateway state.
+
+`application-sessions`, `application-invocations`, and `application-messages`
+expose REST contract `1.43.0`'s caller-owned project-member management delivery
+slice. Session open optionally reads one bounded JSON object of initial
+variables; invocation request requires one bounded JSON object containing the
+exact Ontology revision, response mode, input, and optional Environment and
+timeout. Mutations use the normal caller-owned idempotency key. Cloud derives
+stable Principal-bound identities and creates or adopts the ordinary Workflow
+Goal, Plan, and Run; the CLI stores no session or Workflow state and does not
+provide application-scoped credentials, cancellation, synchronous/streaming
+answers, or Gateway delivery. Message reads use `--cursor` as the exclusive
+last observed session sequence and default to 100 records with a maximum of
+500.
 
 `connector-profiles` creates, revises, lists, and reads environment-scoped
 Connector profile heads; `connector-revisions` lists or reads their immutable

@@ -57,9 +57,28 @@ impl OpenApplicationSessionWrite {
             && current.end_user_id == self.session.end_user_id
             && current.id == self.session.id
             && current.interaction_mode == self.session.interaction_mode
-            && current.created_at == self.session.created_at
-            && end_user == &self.end_user
-            && initial_variables == &self.initial_variables)
+            && end_user.organization_id == self.end_user.organization_id
+            && end_user.project_id == self.end_user.project_id
+            && end_user.application_id == self.end_user.application_id
+            && end_user.id == self.end_user.id
+            && end_user.audience == self.end_user.audience
+            && end_user.linked_principal_id == self.end_user.linked_principal_id
+            && end_user.created_by == self.end_user.created_by
+            && initial_variables.organization_id == self.initial_variables.organization_id
+            && initial_variables.project_id == self.initial_variables.project_id
+            && initial_variables.application_id == self.initial_variables.application_id
+            && initial_variables.application_release_id
+                == self.initial_variables.application_release_id
+            && initial_variables.application_release_digest
+                == self.initial_variables.application_release_digest
+            && initial_variables.session_id == self.initial_variables.session_id
+            && initial_variables.id == self.initial_variables.id
+            && initial_variables.revision_number == self.initial_variables.revision_number
+            && initial_variables.parent_revision_id == self.initial_variables.parent_revision_id
+            && initial_variables.parent_digest == self.initial_variables.parent_digest
+            && initial_variables.values == self.initial_variables.values
+            && initial_variables.values_digest == self.initial_variables.values_digest
+            && initial_variables.source_effect == self.initial_variables.source_effect)
     }
 }
 
@@ -118,9 +137,20 @@ impl RequestApplicationInvocationWrite {
             && current.response_mode == self.invocation.response_mode
             && current.input == self.invocation.input
             && current.input_digest == self.invocation.input_digest
-            && current.requested_at == self.invocation.requested_at
             && workflow_authority == &self.workflow_authority
-            && input_message == &self.input_message)
+            && input_message.organization_id == self.input_message.organization_id
+            && input_message.project_id == self.input_message.project_id
+            && input_message.application_id == self.input_message.application_id
+            && input_message.application_release_id == self.input_message.application_release_id
+            && input_message.application_release_digest
+                == self.input_message.application_release_digest
+            && input_message.session_id == self.input_message.session_id
+            && input_message.invocation_id == self.input_message.invocation_id
+            && input_message.id == self.input_message.id
+            && input_message.kind == self.input_message.kind
+            && input_message.content == self.input_message.content
+            && input_message.content_digest == self.input_message.content_digest
+            && input_message.workflow_effect == self.input_message.workflow_effect)
     }
 }
 

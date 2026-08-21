@@ -83,6 +83,11 @@ Commands:
   applications publish ID Publish a version-checked immutable Application release
   application-releases list APP List immutable releases for one Application
   application-releases get APP RELEASE Get one exact immutable Application release
+  application-sessions open APP RELEASE Open an idempotent project-member session; optional variables JSON --file
+  application-sessions get APP SESSION Get one caller-owned Application session
+  application-invocations request APP SESSION Request an invocation from JSON --file
+  application-invocations get APP SESSION INVOCATION Get one caller-owned invocation
+  application-messages list APP SESSION List ordered channel messages after an optional sequence cursor
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision
   connector-profiles create NAME Create a Connector profile from A3S ACL
@@ -206,8 +211,8 @@ Global options:
   --environment <uuid>    Environment context
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
-  --cursor <cursor>       Opaque cursor for a log, Agent event, audit, notification, or subscription command
-  --limit <n>             Search, log, Agent event, audit, notification, or subscription page limit
+  --cursor <cursor>       Cursor for a log, message, Agent event, audit, notification, or subscription command
+  --limit <n>             Search, log, message, Agent event, audit, notification, or subscription page limit
   --unread-only           Filter notifications list to unread records
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation

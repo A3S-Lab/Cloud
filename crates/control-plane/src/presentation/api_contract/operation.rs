@@ -1,8 +1,10 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
-    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
+    DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -26,6 +28,9 @@ use crate::modules::projects::domain::value_objects::{
     BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
+};
+use crate::modules::workflow::{
+    WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
 };
 use crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES;
 use a3s_boot::{BootError, Result};
@@ -311,10 +316,18 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || is_connector_revision_collection_path(path)
             || is_application_collection_path(path)
             || is_application_release_collection_path(path)
+            || is_application_message_collection_path(path)
             || is_durable_cell_application_collection_path(path)
             || is_durable_cell_revision_collection_path(path))
     {
-        let schema = if is_application_collection_path(path)
+        let schema = if is_application_message_collection_path(path) {
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+                "default": DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT
+            })
+        } else if is_application_collection_path(path)
             || is_application_release_collection_path(path)
         {
             json!({
@@ -350,6 +363,18 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             json!({
                 "name": "limit", "in": "query", "required": false,
                 "schema": schema
+            }),
+        );
+    }
+    if method == "get" && is_application_message_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "afterSequence",
+                "in": "query",
+                "required": false,
+                "description": "Return messages strictly after this session sequence.",
+                "schema": {"type": "integer", "minimum": 0, "default": 0}
             }),
         );
     }
@@ -1364,7 +1389,10 @@ fn is_connector_revision_collection_path(path: &str) -> bool {
 }
 
 fn is_application_mutation_path(path: &str) -> bool {
-    is_application_collection_path(path) || is_application_release_collection_path(path)
+    is_application_collection_path(path)
+        || is_application_release_collection_path(path)
+        || is_application_session_collection_path(path)
+        || is_application_invocation_collection_path(path)
 }
 
 fn is_application_collection_path(path: &str) -> bool {
@@ -1373,6 +1401,20 @@ fn is_application_collection_path(path: &str) -> bool {
 
 fn is_application_release_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/") && path.ends_with("/releases")
+}
+
+fn is_application_session_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/") && path.ends_with("/sessions")
+}
+
+fn is_application_invocation_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/invocations")
+}
+
+fn is_application_message_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/messages")
 }
 
 fn application_request_schema(path: &str) -> Value {
@@ -1389,6 +1431,56 @@ fn application_request_schema(path: &str) -> Value {
             "properties": {
                 "expectedVersion": {"type": "integer", "minimum": 1},
                 "releaseAcl": release_acl
+            }
+        });
+    }
+    if is_application_session_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["releaseId"],
+            "properties": {
+                "releaseId": {"type": "string", "format": "uuid"},
+                "initialVariables": {
+                    "type": "object",
+                    "x-a3s-max-canonical-bytes": APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+                    "default": {}
+                }
+            }
+        });
+    }
+    if is_application_invocation_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "ontologyId",
+                "ontologyRevisionId",
+                "responseMode",
+                "input"
+            ],
+            "properties": {
+                "ontologyId": {"type": "string", "format": "uuid"},
+                "ontologyRevisionId": {"type": "string", "format": "uuid"},
+                "environmentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                },
+                "responseMode": {
+                    "type": "string",
+                    "enum": ["asynchronous", "blocking", "streaming"]
+                },
+                "input": {
+                    "type": "object",
+                    "x-a3s-max-canonical-bytes": APPLICATION_INVOCATION_INPUT_MAX_BYTES
+                },
+                "timeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                    "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+                }
             }
         });
     }

@@ -1,7 +1,9 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
 use crate::modules::applications::{
-    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
+    DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -29,6 +31,9 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
+use crate::modules::workflow::{
+    WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+};
 use crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES;
 use a3s_boot::AuthPrincipal;
 use a3s_use_extension::{
@@ -53,6 +58,11 @@ pub const APPLICATIONS_GET: &str = "a3s_cloud_applications_get";
 pub const APPLICATION_RELEASES_PUBLISH: &str = "a3s_cloud_application_releases_publish";
 pub const APPLICATION_RELEASES_LIST: &str = "a3s_cloud_application_releases_list";
 pub const APPLICATION_RELEASES_GET: &str = "a3s_cloud_application_releases_get";
+pub const APPLICATION_SESSIONS_OPEN: &str = "a3s_cloud_application_sessions_open";
+pub const APPLICATION_SESSIONS_GET: &str = "a3s_cloud_application_sessions_get";
+pub const APPLICATION_INVOCATIONS_REQUEST: &str = "a3s_cloud_application_invocations_request";
+pub const APPLICATION_INVOCATIONS_GET: &str = "a3s_cloud_application_invocations_get";
+pub const APPLICATION_MESSAGES_LIST: &str = "a3s_cloud_application_messages_list";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -169,6 +179,11 @@ pub enum ManagementTool {
     ApplicationReleasesPublish,
     ApplicationReleasesList,
     ApplicationReleasesGet,
+    ApplicationSessionsOpen,
+    ApplicationSessionsGet,
+    ApplicationInvocationsRequest,
+    ApplicationInvocationsGet,
+    ApplicationMessagesList,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -295,7 +310,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 117] = [
+    const ALL: [Self; 122] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -304,6 +319,11 @@ impl ManagementTool {
         Self::ApplicationReleasesPublish,
         Self::ApplicationReleasesList,
         Self::ApplicationReleasesGet,
+        Self::ApplicationSessionsOpen,
+        Self::ApplicationSessionsGet,
+        Self::ApplicationInvocationsRequest,
+        Self::ApplicationInvocationsGet,
+        Self::ApplicationMessagesList,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -449,6 +469,11 @@ impl ManagementTool {
             Self::ApplicationReleasesPublish => APPLICATION_RELEASES_PUBLISH,
             Self::ApplicationReleasesList => APPLICATION_RELEASES_LIST,
             Self::ApplicationReleasesGet => APPLICATION_RELEASES_GET,
+            Self::ApplicationSessionsOpen => APPLICATION_SESSIONS_OPEN,
+            Self::ApplicationSessionsGet => APPLICATION_SESSIONS_GET,
+            Self::ApplicationInvocationsRequest => APPLICATION_INVOCATIONS_REQUEST,
+            Self::ApplicationInvocationsGet => APPLICATION_INVOCATIONS_GET,
+            Self::ApplicationMessagesList => APPLICATION_MESSAGES_LIST,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -568,9 +593,13 @@ impl ManagementTool {
     const fn required_scope(self) -> Option<&'static str> {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
-            Self::ApplicationsCreate | Self::ApplicationReleasesPublish => {
-                Some(ApiTokenScope::APPLICATION_WRITE)
-            }
+            Self::ApplicationsCreate
+            | Self::ApplicationReleasesPublish
+            | Self::ApplicationSessionsOpen
+            | Self::ApplicationSessionsGet
+            | Self::ApplicationInvocationsRequest
+            | Self::ApplicationInvocationsGet
+            | Self::ApplicationMessagesList => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -757,6 +786,11 @@ impl ManagementTool {
             | Self::ApplicationReleasesPublish
             | Self::ApplicationReleasesList
             | Self::ApplicationReleasesGet
+            | Self::ApplicationSessionsOpen
+            | Self::ApplicationSessionsGet
+            | Self::ApplicationInvocationsRequest
+            | Self::ApplicationInvocationsGet
+            | Self::ApplicationMessagesList
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -892,6 +926,36 @@ impl ManagementTool {
                 "Get Application release",
                 "Get one exact immutable Application release and its Workflow revision evidence.",
                 application_release_schema(),
+                true,
+            ),
+            Self::ApplicationSessionsOpen => (
+                "Open Application session",
+                "Open or replay one caller-owned project-member session pinned to an exact Application release.",
+                open_application_session_schema(),
+                false,
+            ),
+            Self::ApplicationSessionsGet => (
+                "Get Application session",
+                "Get one caller-owned release-pinned Application session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationInvocationsRequest => (
+                "Request Application invocation",
+                "Persist one idempotent invocation and start or adopt its exact ordinary WorkflowRun.",
+                request_application_invocation_schema(),
+                false,
+            ),
+            Self::ApplicationInvocationsGet => (
+                "Get Application invocation",
+                "Get one caller-owned Application invocation and WorkflowRun correlation.",
+                application_invocation_schema(),
+                true,
+            ),
+            Self::ApplicationMessagesList => (
+                "List Application messages",
+                "List bounded ordered channel messages after one session sequence.",
+                list_application_messages_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -2044,6 +2108,112 @@ fn application_release_schema() -> Value {
             "releaseId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "applicationId", "releaseId"],
+        "additionalProperties": false
+    })
+}
+
+fn open_application_session_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "releaseId": {"type": "string", "format": "uuid"},
+            "initialVariables": {
+                "type": "object",
+                "x-a3s-max-canonical-bytes": APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+                "default": {}
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "applicationId", "releaseId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn application_session_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId"],
+        "additionalProperties": false
+    })
+}
+
+fn request_application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "ontologyId": {"type": "string", "format": "uuid"},
+            "ontologyRevisionId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "responseMode": {
+                "type": "string",
+                "enum": ["asynchronous", "blocking", "streaming"]
+            },
+            "input": {
+                "type": "object",
+                "x-a3s-max-canonical-bytes": APPLICATION_INVOCATION_INPUT_MAX_BYTES
+            },
+            "timeoutSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "ontologyId",
+            "ontologyRevisionId",
+            "responseMode",
+            "input",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "invocationId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_application_messages_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "afterSequence": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+                "default": DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT
+            }
+        },
+        "required": ["projectId", "applicationId", "sessionId"],
         "additionalProperties": false
     })
 }

@@ -48,6 +48,8 @@ pub use session_repository::{
 pub use workflow_binding::{ApplicationWorkflowBinding, ApplicationWorkflowRevisionEvidence};
 
 #[cfg(test)]
+mod admission_replay_tests;
+#[cfg(test)]
 mod repository_tests;
 #[cfg(test)]
 mod session_repository_tests;

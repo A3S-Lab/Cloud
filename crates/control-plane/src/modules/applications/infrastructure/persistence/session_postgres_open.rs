@@ -65,7 +65,16 @@ pub(super) async fn open_session(
                 }
 
                 match load_end_user(transaction, &write.end_user).await? {
-                    Some(current) if current != write.end_user => {
+                    Some(current)
+                        if current.organization_id != write.end_user.organization_id
+                            || current.project_id != write.end_user.project_id
+                            || current.application_id != write.end_user.application_id
+                            || current.id != write.end_user.id
+                            || current.audience != write.end_user.audience
+                            || current.linked_principal_id
+                                != write.end_user.linked_principal_id
+                            || current.created_by != write.end_user.created_by =>
+                    {
                         return Err(RepositoryError::Conflict(
                             "Application end-user identity is already in use".into(),
                         )

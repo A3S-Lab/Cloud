@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.42.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.43.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1269,6 +1269,48 @@ describe('CloudApi', () => {
       { expectedVersion: 2, releaseAcl },
       'application:publish'
     );
+    await api.openApplicationSession(
+      'organization / one',
+      'project / one',
+      'application / one',
+      { releaseId: 'release / one' },
+      'application:session-open'
+    );
+    await api.getApplicationSession(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one'
+    );
+    await api.requestApplicationInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      {
+        ontologyId: 'ontology / one',
+        ontologyRevisionId: 'ontology revision / one',
+        responseMode: 'blocking',
+        input: { query: 'hello' },
+        timeoutSeconds: 300,
+      },
+      'application:invoke'
+    );
+    await api.getApplicationInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one'
+    );
+    await api.listApplicationMessages(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      7,
+      25
+    );
 
     expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
       [
@@ -1292,6 +1334,26 @@ describe('CloudApi', () => {
         '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases',
         'POST',
       ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions',
+        'POST',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations',
+        'POST',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/messages?afterSequence=7&limit=25',
+        'GET',
+      ],
     ]);
     expect(calls[4]?.[1]).toEqual(
       expect.objectContaining({
@@ -1307,6 +1369,24 @@ describe('CloudApi', () => {
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'application:publish' }),
         body: JSON.stringify({ expectedVersion: 2, releaseAcl }),
+      })
+    );
+    expect(calls[6]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:session-open' }),
+        body: JSON.stringify({ releaseId: 'release / one', initialVariables: {} }),
+      })
+    );
+    expect(calls[8]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'application:invoke' }),
+        body: JSON.stringify({
+          ontologyId: 'ontology / one',
+          ontologyRevisionId: 'ontology revision / one',
+          responseMode: 'blocking',
+          input: { query: 'hello' },
+          timeoutSeconds: 300,
+        }),
       })
     );
 
@@ -1338,6 +1418,33 @@ describe('CloudApi', () => {
     expect(() => api.listApplications('organization', 'project', 201)).toThrow(
       'Application list limit must be between'
     );
+    expect(() =>
+      api.openApplicationSession(
+        'organization',
+        'project',
+        'application',
+        { releaseId: 'release', initialVariables: [] as unknown as Record<string, unknown> },
+        'application:invalid-session'
+      )
+    ).toThrow('Application initial variables must be a JSON object');
+    expect(() =>
+      api.requestApplicationInvocation(
+        'organization',
+        'project',
+        'application',
+        'session',
+        {
+          ontologyId: 'ontology',
+          ontologyRevisionId: 'revision',
+          responseMode: 'blocking',
+          input: [] as unknown as Record<string, unknown>,
+        },
+        'application:invalid-invocation'
+      )
+    ).toThrow('Application invocation input must be a JSON object');
+    expect(() =>
+      api.listApplicationMessages('organization', 'project', 'application', 'session', -1)
+    ).toThrow('afterSequence must be a non-negative');
   });
 
   it('exposes bounded ACL-native Connector profile and revision management', async () => {

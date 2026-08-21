@@ -2,6 +2,12 @@ export const MAX_APPLICATION_RELEASE_ACL_BYTES = 64 * 1024;
 export const MAX_APPLICATION_DESCRIPTION_CHARACTERS = 4_096;
 export const DEFAULT_APPLICATION_LIST_LIMIT = 50;
 export const MAX_APPLICATION_LIST_LIMIT = 200;
+export const MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES = 256 * 1024;
+export const MAX_APPLICATION_INVOCATION_INPUT_BYTES = 64 * 1024;
+export const DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT = 100;
+export const MAX_APPLICATION_MESSAGE_LIST_LIMIT = 500;
+export const DEFAULT_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 24 * 60 * 60;
+export const MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 
 export type ApplicationExperience =
   | 'chatbot'
@@ -79,6 +85,118 @@ export interface PublishApplicationReleaseInput {
   releaseAcl: string;
 }
 
+export type ApplicationSessionStatus = 'active' | 'closed';
+export type ApplicationInvocationStatus =
+  | 'requested'
+  | 'running'
+  | 'cancelling'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+export type ApplicationMessageKind = 'input' | 'answer' | 'final_output';
+
+export interface ApplicationSession {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseNumber: number;
+  applicationReleaseDigest: string;
+  endUserId: string;
+  sessionId: string;
+  interactionMode: ApplicationInteractionMode;
+  status: ApplicationSessionStatus;
+  lastMessageSequence: number;
+  currentVariableRevisionId: string;
+  currentVariableRevisionNumber: number;
+  currentVariableDigest: string;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+}
+
+export interface ApplicationSessionMutationResult {
+  session: ApplicationSession;
+  replayed: boolean;
+}
+
+export interface OpenApplicationSessionInput {
+  releaseId: string;
+  initialVariables?: Record<string, unknown>;
+}
+
+export interface ApplicationInvocation {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  invocationId: string;
+  responseMode: ApplicationResponseMode;
+  input: Record<string, unknown>;
+  inputDigest: string;
+  workflowRunId: string | null;
+  status: ApplicationInvocationStatus;
+  aggregateVersion: number;
+  requestedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface ApplicationWorkflowRunEvidence {
+  workflowRunId: string;
+  workflowGoalId: string;
+  planRevisionId: string;
+  planDigest: string;
+  ontologyId: string;
+  ontologyRevisionId: string;
+  ontologyDigest: string;
+  environmentId: string | null;
+  requestedAt: string;
+  deadlineAt: string;
+}
+
+export interface ApplicationInvocationMutationResult {
+  invocation: ApplicationInvocation;
+  workflow: ApplicationWorkflowRunEvidence;
+  replayed: boolean;
+}
+
+export interface RequestApplicationInvocationInput {
+  ontologyId: string;
+  ontologyRevisionId: string;
+  environmentId?: string;
+  responseMode: ApplicationResponseMode;
+  input: Record<string, unknown>;
+  timeoutSeconds?: number;
+}
+
+export interface ApplicationWorkflowEffect {
+  workflowRunId: string;
+  stepId: string;
+  attempt: number;
+  ordinal: number;
+}
+
+export interface ApplicationMessage {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  invocationId: string;
+  messageId: string;
+  sequence: number;
+  kind: ApplicationMessageKind;
+  content: unknown;
+  contentDigest: string;
+  workflowEffect: ApplicationWorkflowEffect | null;
+  createdAt: string;
+}
+
 export function validateApplicationName(name: string): void {
   const normalized = name.trim();
   if (
@@ -126,5 +244,65 @@ export function validateApplicationExpectedVersion(expectedVersion: number): voi
 export function validateApplicationListLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_APPLICATION_LIST_LIMIT) {
     throw new RangeError(`Application list limit must be between 1 and ${MAX_APPLICATION_LIST_LIMIT}`);
+  }
+}
+
+export function validateApplicationInitialVariables(value: unknown): void {
+  validateApplicationObject(
+    value,
+    'Application initial variables',
+    MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES
+  );
+}
+
+export function validateApplicationInvocationInput(value: unknown): void {
+  validateApplicationObject(value, 'Application invocation input', MAX_APPLICATION_INVOCATION_INPUT_BYTES);
+}
+
+export function validateApplicationResponseMode(value: string): void {
+  if (!['asynchronous', 'blocking', 'streaming'].includes(value)) {
+    throw new RangeError('Application response mode is unsupported');
+  }
+}
+
+export function validateApplicationInvocationTimeout(timeoutSeconds: number): void {
+  if (
+    !Number.isSafeInteger(timeoutSeconds) ||
+    timeoutSeconds < 1 ||
+    timeoutSeconds > MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS
+  ) {
+    throw new RangeError(
+      `Application invocation timeout must be between 1 and ${MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS} seconds`
+    );
+  }
+}
+
+export function validateApplicationMessageList(afterSequence: number, limit: number): void {
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+    throw new RangeError('Application message afterSequence must be a non-negative safe integer');
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_APPLICATION_MESSAGE_LIST_LIMIT) {
+    throw new RangeError(
+      `Application message list limit must be between 1 and ${MAX_APPLICATION_MESSAGE_LIST_LIMIT}`
+    );
+  }
+}
+
+function validateApplicationObject(value: unknown, label: string, maximumBytes: number): void {
+  if (value === null || Array.isArray(value) || typeof value !== 'object') {
+    throw new RangeError(`${label} must be a JSON object`);
+  }
+  let encoded: Uint8Array;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      throw new TypeError('JSON serialization returned no value');
+    }
+    encoded = new TextEncoder().encode(serialized);
+  } catch {
+    throw new RangeError(`${label} must be JSON serializable`);
+  }
+  if (encoded.byteLength > maximumBytes) {
+    throw new RangeError(`${label} must contain at most ${maximumBytes} UTF-8 bytes`);
   }
 }
