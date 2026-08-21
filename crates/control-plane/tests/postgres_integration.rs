@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 129;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "129";
+const CLOUD_MIGRATION_COUNT: i64 = 130;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "130";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -77,6 +77,8 @@ async fn migrate_for_test(
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/agent_code_recovery.rs"]
+mod agent_code_recovery_support;
 #[path = "support/application_delivery_recovery.rs"]
 mod application_delivery_recovery_support;
 #[path = "support/application_session_fixtures.rs"]
@@ -241,6 +243,19 @@ async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_bo
     )
     .await
     .expect("persistent Build Flow process-death gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_agent_code_recovery_survives_retention_runtime_and_control_plane_restarts() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        agent_code_recovery_support::exercise_agent_code_recovery,
+    )
+    .await
+    .expect("PostgreSQL Agent Code recovery gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -2437,6 +2452,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     for kind in [
+        "code_agent_command",
         "plugin_host_capabilities_inspect",
         "plugin_host_plan",
         "plugin_host_apply",

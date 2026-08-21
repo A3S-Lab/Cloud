@@ -246,6 +246,17 @@ async fn prove_service_generation_lifecycle(
         .into());
     }
     wait_for_log(&*recovered_runtime, &second_spec, "cloud-box-service-v2").await?;
+    let second_started_at_ms = second
+        .started_at_ms
+        .ok_or_else(|| invalid("second Box Service generation omitted process start time"))?;
+    prove_service_process_death_recovery(
+        home,
+        &*recovered_runtime,
+        &second_spec,
+        second_provider_id,
+        second_started_at_ms,
+    )
+    .await?;
 
     let inspection = recovered_executor
         .execute(command(
@@ -285,6 +296,96 @@ async fn prove_service_generation_lifecycle(
     expect_removed(&removed)?;
     expect_not_found(&*recovered_runtime, &unit_id).await?;
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn prove_service_process_death_recovery(
+    home: &Path,
+    runtime: &dyn RuntimeClient,
+    spec: &RuntimeUnitSpec,
+    provider_resource_id: &str,
+    first_started_at_ms: u64,
+) -> TestResult<()> {
+    let store = BoxStateStore::load_readonly(&home.join("boxes.json"))?;
+    let matching = store
+        .records()
+        .iter()
+        .filter(|record| record.id == provider_resource_id)
+        .collect::<Vec<_>>();
+    if matching.len() != 1 {
+        return Err(invalid(format!(
+            "Box state contained {} records for provider resource {provider_resource_id:?}",
+            matching.len()
+        ))
+        .into());
+    }
+    let pid = matching[0]
+        .pid
+        .ok_or_else(|| invalid("running Box Service omitted its provider process PID"))?;
+    if pid <= 1 || pid == std::process::id() {
+        return Err(invalid(format!("Box Service exposed unsafe provider PID {pid}")).into());
+    }
+    let pid = i32::try_from(pid).map_err(|_| invalid("Box Service provider PID exceeds i32"))?;
+    // SAFETY: the PID comes from the dedicated Box state record, is checked
+    // against init and this test process, and the conformance home is isolated.
+    if unsafe { libc::kill(pid, libc::SIGKILL) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match runtime.inspect(&spec.unit_id).await? {
+            RuntimeInspection::Found { observation, .. }
+                if observation.state == RuntimeUnitState::Running
+                    && observation.generation == spec.generation
+                    && observation.provider_resource_id.as_deref()
+                        == Some(provider_resource_id)
+                    && observation
+                        .started_at_ms
+                        .is_some_and(|started_at_ms| started_at_ms > first_started_at_ms) =>
+            {
+                let recovered_started_at_ms = observation
+                    .started_at_ms
+                    .ok_or_else(|| invalid("recovered Box Service omitted process start time"))?;
+                println!(
+                    "A3S_CLOUD_A1_RUNTIME_PROCESS_DEATH_CERTIFIED generation={} provider_resource_id={} first_started_at_ms={} recovered_started_at_ms={} state=running",
+                    spec.generation,
+                    provider_resource_id,
+                    first_started_at_ms,
+                    recovered_started_at_ms
+                );
+                return Ok(());
+            }
+            RuntimeInspection::NotFound { .. } => {
+                return Err(
+                    invalid("Box process death lost the stable Runtime Service identity").into(),
+                );
+            }
+            RuntimeInspection::Found { .. } => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(invalid(
+                "Box did not recover the killed Runtime Service process within 30 seconds",
+            )
+            .into());
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn prove_service_process_death_recovery(
+    _home: &Path,
+    _runtime: &dyn RuntimeClient,
+    _spec: &RuntimeUnitSpec,
+    _provider_resource_id: &str,
+    _first_started_at_ms: u64,
+) -> TestResult<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "real Box process-death validation requires Linux",
+    )
+    .into())
 }
 
 #[cfg(target_os = "linux")]

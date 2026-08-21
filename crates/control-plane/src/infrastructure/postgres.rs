@@ -1213,6 +1213,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/129_notification_outbound_suppression.sql"
             )),
         ),
+        Migration::new(
+            "130",
+            "durable Agent Code commands",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/130_agent_code_command_persistence.sql"
+            )),
+        ),
     ]
 }
 
@@ -1999,6 +2007,40 @@ mod notification_outbound_suppression_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 129 duplicated suppression or delivery authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_code_command_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/130_agent_code_command_persistence.sql"
+    ));
+
+    #[test]
+    fn migration_130_extends_the_existing_fleet_command_authority() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "drop constraint node_commands_command_kind_check",
+            "add constraint node_commands_command_kind_check",
+            "'runtime_apply'",
+            "'box_build_start'",
+            "'gateway_snapshot_install'",
+            "'plugin_host_plan_enablement'",
+            "'resource_claim_prepare'",
+            "'code_agent_command'",
+        ] {
+            assert!(
+                lower.contains(expected),
+                "migration 130 is missing {expected}"
+            );
+        }
+        for forbidden in ["create table", "agent_commands", "code_agent_commands"] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 130 duplicated Fleet command authority through {forbidden}"
             );
         }
     }
