@@ -71,8 +71,8 @@ use uuid::Uuid;
 const ANSWER_STEP_ID: &str = "answer";
 const VARIABLE_STEP_ID: &str = "assign_conversation";
 
-#[test]
-fn application_delivery_recovery_fixture_is_a_valid_semantic_revision() {
+#[tokio::test]
+async fn application_delivery_recovery_fixture_is_a_valid_semantic_revision() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition_id = WorkflowDefinitionId::new();
@@ -177,10 +177,33 @@ fn application_delivery_recovery_fixture_is_a_valid_semantic_revision() {
         .run
         .execution_input
         .application_projection
+        .as_ref()
         .expect("Application recovery projection");
     assert_eq!(projection.answer_step_ids, [ANSWER_STEP_ID]);
     assert_eq!(projection.variable_step_ids, [VARIABLE_STEP_ID]);
     assert_eq!(projection.variable_assignment_step_ids, [VARIABLE_STEP_ID]);
+    let record = WorkflowRunRecord {
+        run: compiled_run.run,
+        steps: compiled_run.steps,
+    };
+    let engine = start_flow(&record)
+        .await
+        .expect("start Application recovery fixture Flow");
+    let snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("Application recovery fixture Flow snapshot");
+    let active_hooks = snapshot
+        .hooks
+        .values()
+        .filter(|hook| hook.status == a3s_flow::HookStatus::Active)
+        .map(|hook| hook.hook_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        active_hooks,
+        ["workflow-application-answer:answer:1"],
+        "Application recovery fixture must preserve immutable Plan-order suspension"
+    );
 }
 
 pub(super) async fn exercise_application_delivery_recovery(
@@ -370,6 +393,34 @@ pub(super) async fn exercise_application_delivery_recovery(
             .len(),
         2
     );
+
+    let answer_recovery = Arc::new(RecoveringApplicationEffects::new(
+        Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
+        LostResponse::None,
+    ));
+    let waiting_for_snapshot = coordinator(engine.clone(), answer_recovery)
+        .reconcile(&record, record.run.requested_at)
+        .await?;
+    assert!(waiting_for_snapshot.is_none());
+
+    let snapshot_recovery = Arc::new(RecoveringApplicationEffects::new(
+        Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
+        LostResponse::None,
+    ));
+    let waiting_for_variable_write = coordinator(engine.clone(), snapshot_recovery)
+        .reconcile(&record, record.run.requested_at)
+        .await?;
+    assert!(waiting_for_variable_write.is_none());
+    let snapshotted_variables = WorkflowApplicationEffectsService::new(Arc::new(
+        PostgresApplicationSessionRepository::new(executor.clone()),
+    ))
+    .read_conversation_variables(&WorkflowApplicationRunReference {
+        organization_id,
+        workflow_run_id: record.run.id,
+    })
+    .await?;
+    assert_eq!(snapshotted_variables.version.revision_number, 1);
+    assert_eq!(snapshotted_variables.values, json!({"locale": "en-US"}));
 
     let variable_failure = Arc::new(RecoveringApplicationEffects::new(
         Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),

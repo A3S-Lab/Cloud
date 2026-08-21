@@ -1,6 +1,5 @@
 use super::{
-    ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationMessageId, OrganizationId, PlanRevisionId, ProjectId,
@@ -39,10 +38,7 @@ impl WorkflowApplicationAnswerHookMetadata {
         let projection = input.application_projection.as_ref().ok_or_else(|| {
             "Workflow Application Answer requires an immutable Application projection".to_owned()
         })?;
-        if projection.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
-            || !projection.is_answer_step(&step.plan.id)
-            || step.plan.kind != WorkflowStepKind::Output
-        {
+        if !projection.is_answer_step(&step.plan.id) || step.plan.kind != WorkflowStepKind::Output {
             return Err(
                 "Workflow Application Answer hook requires an exact projected Answer step".into(),
             );
