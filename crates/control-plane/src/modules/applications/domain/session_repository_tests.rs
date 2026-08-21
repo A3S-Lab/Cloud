@@ -220,6 +220,13 @@ async fn workflow_effects_are_once_only_across_messages_and_variables() {
         .await
         .expect("bind WorkflowRun");
     assert!(!advanced.replayed);
+    assert_eq!(
+        repository
+            .find_invocation_for_workflow_run(running.organization_id, run_id)
+            .await
+            .expect("find invocation by WorkflowRun"),
+        Some(running.clone())
+    );
     let replay = repository
         .advance_invocation(AdvanceApplicationInvocationWrite {
             invocation: running.clone(),
@@ -257,6 +264,18 @@ async fn workflow_effects_are_once_only_across_messages_and_variables() {
         .await
         .expect("append answer");
     assert!(!appended.replayed);
+    assert_eq!(
+        repository
+            .find_message(
+                answer.organization_id,
+                answer.project_id,
+                answer.application_id,
+                answer.id,
+            )
+            .await
+            .expect("find Answer by deterministic identity"),
+        Some(answer.clone())
+    );
     let replayed = repository
         .append_message(AppendApplicationMessageWrite {
             message: answer.clone(),

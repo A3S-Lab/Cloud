@@ -6,8 +6,9 @@ use crate::modules::applications::domain::{
     IApplicationSessionRepository, OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
-    ConversationVariableRevisionId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationSessionId, ConversationVariableRevisionId, IdempotentWrite, OrganizationId,
+    ProjectId, RepositoryError, WorkflowRunId,
 };
 use async_trait::async_trait;
 use tokio::sync::RwLock;
@@ -440,6 +441,43 @@ impl IApplicationSessionRepository for InMemoryApplicationSessionRepository {
             .await
             .invocations
             .get(&(organization_id, project_id, application_id, invocation_id))
+            .cloned())
+    }
+
+    async fn find_invocation_for_workflow_run(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+    ) -> Result<Option<ApplicationInvocation>, RepositoryError> {
+        let state = self.state.read().await;
+        let Some(key) = state.workflow_runs.get(&(organization_id, workflow_run_id)) else {
+            return Ok(None);
+        };
+        state
+            .invocations
+            .get(key)
+            .cloned()
+            .map(Some)
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Application WorkflowRun points to a missing invocation".into(),
+                )
+            })
+    }
+
+    async fn find_message(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        message_id: ApplicationMessageId,
+    ) -> Result<Option<ApplicationMessage>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .messages
+            .get(&(organization_id, project_id, application_id, message_id))
             .cloned())
     }
 

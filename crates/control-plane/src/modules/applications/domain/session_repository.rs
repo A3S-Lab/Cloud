@@ -4,8 +4,9 @@ use super::{
     ApplicationRelease, ApplicationSession, ApplicationSessionStatus, ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
-    ConversationVariableRevisionId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationSessionId, ConversationVariableRevisionId, IdempotentWrite, OrganizationId,
+    ProjectId, RepositoryError, WorkflowRunId,
 };
 use async_trait::async_trait;
 
@@ -308,6 +309,23 @@ pub trait IApplicationSessionRepository: Send + Sync {
         application_id: ApplicationId,
         invocation_id: ApplicationInvocationId,
     ) -> Result<Option<ApplicationInvocation>, RepositoryError>;
+
+    /// Resolve the sole Applications-owned invocation correlated to a
+    /// WorkflowRun. The partial unique database index and the in-memory
+    /// conformance map both enforce at most one result per organization.
+    async fn find_invocation_for_workflow_run(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+    ) -> Result<Option<ApplicationInvocation>, RepositoryError>;
+
+    async fn find_message(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        message_id: ApplicationMessageId,
+    ) -> Result<Option<ApplicationMessage>, RepositoryError>;
 
     async fn find_invocation_workflow_authority(
         &self,

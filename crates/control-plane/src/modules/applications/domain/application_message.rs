@@ -121,9 +121,7 @@ impl ApplicationMessage {
     ) -> Result<Self, String> {
         validate_session_invocation(session, invocation)?;
         workflow_effect.validate()?;
-        let Some(purpose) = kind.effect_purpose() else {
-            return Err("Workflow effect cannot append an Application input message".into());
-        };
+        let id = Self::workflow_frame_id(invocation.id, kind, &workflow_effect)?;
         if invocation.status == ApplicationInvocationStatus::Requested
             || invocation.workflow_run_id != Some(workflow_effect.workflow_run_id)
             || (kind == ApplicationMessageKind::FinalOutput
@@ -140,9 +138,6 @@ impl ApplicationMessage {
         if created_at < invocation.requested_at {
             return Err("Application Workflow frame cannot predate its invocation".into());
         }
-        let id = ApplicationMessageId::from_uuid(
-            workflow_effect.deterministic_uuid(invocation.id.as_uuid(), purpose)?,
-        );
         let value = Self {
             organization_id: session.organization_id,
             project_id: session.project_id,
@@ -161,6 +156,25 @@ impl ApplicationMessage {
         };
         value.validate()?;
         Ok(value)
+    }
+
+    /// Deterministic identity used to recover one Workflow-derived message
+    /// without depending on the session's later sequence head.
+    pub fn workflow_frame_id(
+        invocation_id: ApplicationInvocationId,
+        kind: ApplicationMessageKind,
+        workflow_effect: &ApplicationWorkflowEffect,
+    ) -> Result<ApplicationMessageId, String> {
+        if invocation_id.as_uuid().is_nil() {
+            return Err("Application invocation identity cannot be nil".into());
+        }
+        workflow_effect.validate()?;
+        let Some(purpose) = kind.effect_purpose() else {
+            return Err("Workflow effect cannot append an Application input message".into());
+        };
+        Ok(ApplicationMessageId::from_uuid(
+            workflow_effect.deterministic_uuid(invocation_id.as_uuid(), purpose)?,
+        ))
     }
 
     pub fn restore(mut self) -> Result<Self, String> {
@@ -194,11 +208,8 @@ impl ApplicationMessage {
             }
             (kind, Some(effect)) if kind != ApplicationMessageKind::Input => {
                 effect.validate()?;
-                let purpose = kind
-                    .effect_purpose()
-                    .ok_or_else(|| "Application message effect kind is invalid".to_owned())?;
-                let expected = effect.deterministic_uuid(self.invocation_id.as_uuid(), purpose)?;
-                if self.id.as_uuid() != expected {
+                let expected = Self::workflow_frame_id(self.invocation_id, kind, effect)?;
+                if self.id != expected {
                     return Err("Application Workflow message identity drifted".into());
                 }
             }

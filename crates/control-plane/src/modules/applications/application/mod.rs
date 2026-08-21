@@ -8,6 +8,7 @@ mod preset_workflow_port;
 mod queries;
 mod resource_access;
 mod result;
+mod workflow_effects;
 mod workflow_revision_port;
 mod workflow_run_port;
 
@@ -46,6 +47,13 @@ pub use queries::{
     ListApplicationsHandler, DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
 };
 pub use result::ApplicationMutationResult;
+pub use workflow_effects::{
+    IWorkflowApplicationEffectsPort, WorkflowApplicationEffectRequest,
+    WorkflowApplicationEffectsService, WorkflowApplicationMessageRequest,
+    WorkflowApplicationRunReference, WorkflowApplicationTerminalRequest,
+    WorkflowApplicationVariableSnapshot, WorkflowApplicationVariableVersion,
+    WorkflowApplicationVariableWriteRequest,
+};
 pub use workflow_revision_port::IApplicationWorkflowRevisionPort;
 pub use workflow_run_port::{
     ApplicationWorkflowRunEvidence, ApplicationWorkflowRunRequest, IApplicationWorkflowRunPort,
@@ -59,3 +67,5 @@ mod invocation_composition_tests;
 mod preset_workflow_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod workflow_effects_tests;

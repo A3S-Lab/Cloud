@@ -218,6 +218,12 @@ pub(super) async fn exercise_application_session_persistence(
         expected_version: 1,
     };
     assert!(!repository.advance_invocation(bind.clone()).await?.replayed);
+    assert_eq!(
+        repository
+            .find_invocation_for_workflow_run(organization_id, workflow_run_id)
+            .await?,
+        Some(running.clone())
+    );
     assert!(
         PostgresApplicationSessionRepository::new(executor.clone())
             .advance_invocation(bind)
@@ -247,6 +253,12 @@ pub(super) async fn exercise_application_session_persistence(
             .append_message(append_answer.clone())
             .await?
             .replayed
+    );
+    assert_eq!(
+        repository
+            .find_message(organization_id, project_id, application.id, answer.id)
+            .await?,
+        Some(answer.clone())
     );
     assert!(
         PostgresApplicationSessionRepository::new(executor.clone())

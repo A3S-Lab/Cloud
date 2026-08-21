@@ -24,10 +24,11 @@ use crate::modules::applications::infrastructure::{
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationReleaseId,
-    ApplicationSessionId, ConversationVariableRevisionId, EnvironmentId, IdempotencyRequest,
-    IdempotentWrite, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
-    RepositoryError, ResourceName, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
+    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId, EnvironmentId,
+    IdempotencyRequest, IdempotentWrite, OntologyId, OntologyRevisionId, OrganizationId,
+    PrincipalId, ProjectId, RepositoryError, ResourceName, Sha256Digest, WorkflowDefinitionId,
+    WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::WORKFLOW_RUN_MAX_TIMEOUT_SECONDS;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
@@ -287,6 +288,28 @@ impl IApplicationSessionRepository for AmbiguousCommitSessionRepository {
     ) -> Result<Option<ApplicationInvocation>, RepositoryError> {
         self.inner
             .find_invocation(organization_id, project_id, application_id, invocation_id)
+            .await
+    }
+
+    async fn find_invocation_for_workflow_run(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+    ) -> Result<Option<ApplicationInvocation>, RepositoryError> {
+        self.inner
+            .find_invocation_for_workflow_run(organization_id, workflow_run_id)
+            .await
+    }
+
+    async fn find_message(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        message_id: ApplicationMessageId,
+    ) -> Result<Option<ApplicationMessage>, RepositoryError> {
+        self.inner
+            .find_message(organization_id, project_id, application_id, message_id)
             .await
     }
 

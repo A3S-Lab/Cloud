@@ -88,10 +88,7 @@ impl ConversationVariableRevision {
         if created_at < parent.created_at {
             return Err("Conversation variable revision time regressed".into());
         }
-        let id = ConversationVariableRevisionId::from_uuid(
-            source_effect
-                .deterministic_uuid(parent.session_id.as_uuid(), "conversation-variables")?,
-        );
+        let id = Self::successor_id(parent.session_id, &source_effect)?;
         let value = Self {
             organization_id: parent.organization_id,
             project_id: parent.project_id,
@@ -113,6 +110,21 @@ impl ConversationVariableRevision {
         };
         value.validate()?;
         Ok(value)
+    }
+
+    /// Deterministic identity used to recover one optimistic Workflow write
+    /// even after the session variable head has advanced again.
+    pub fn successor_id(
+        session_id: ApplicationSessionId,
+        source_effect: &ApplicationWorkflowEffect,
+    ) -> Result<ConversationVariableRevisionId, String> {
+        if session_id.as_uuid().is_nil() {
+            return Err("Application session identity cannot be nil".into());
+        }
+        source_effect.validate()?;
+        Ok(ConversationVariableRevisionId::from_uuid(
+            source_effect.deterministic_uuid(session_id.as_uuid(), "conversation-variables")?,
+        ))
     }
 
     pub fn restore(mut self) -> Result<Self, String> {
@@ -161,9 +173,8 @@ impl ConversationVariableRevision {
                     && parent_digest != &self.values_digest =>
             {
                 effect.validate()?;
-                let expected = effect
-                    .deterministic_uuid(self.session_id.as_uuid(), "conversation-variables")?;
-                if self.id.as_uuid() != expected {
+                let expected = Self::successor_id(self.session_id, effect)?;
+                if self.id != expected {
                     return Err("Conversation variable effect identity drifted".into());
                 }
             }

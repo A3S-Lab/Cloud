@@ -3,8 +3,9 @@ use crate::modules::applications::domain::{
     ApplicationMessage, ApplicationSession, ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
-    ConversationVariableRevisionId, OrganizationId, ProjectId, RepositoryError,
+    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationSessionId, ConversationVariableRevisionId, OrganizationId, ProjectId,
+    RepositoryError, WorkflowRunId,
 };
 use a3s_orm::{Database, PostgresDialect, PostgresExecutor};
 
@@ -86,6 +87,50 @@ pub(super) async fn find_invocation(
         .await
         .map_err(database_error)?
         .map(decode_invocation)
+        .transpose()
+}
+
+pub(super) async fn find_invocation_for_workflow_run(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    workflow_run_id: WorkflowRunId,
+) -> Result<Option<ApplicationInvocation>, RepositoryError> {
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            invocation_select()
+                .append(" where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and workflow_run_id = ")
+                .bind(workflow_run_id.as_uuid()),
+        )
+        .await
+        .map_err(database_error)?
+        .map(decode_invocation)
+        .transpose()
+}
+
+pub(super) async fn find_message(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    application_id: ApplicationId,
+    message_id: ApplicationMessageId,
+) -> Result<Option<ApplicationMessage>, RepositoryError> {
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            message_select()
+                .append(" where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and project_id = ")
+                .bind(project_id.as_uuid())
+                .append(" and application_id = ")
+                .bind(application_id.as_uuid())
+                .append(" and id = ")
+                .bind(message_id.as_uuid()),
+        )
+        .await
+        .map_err(database_error)?
+        .map(decode_message)
         .transpose()
 }
 

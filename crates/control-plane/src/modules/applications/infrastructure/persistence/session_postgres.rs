@@ -7,8 +7,9 @@ use crate::modules::applications::domain::{
     OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationSessionId,
-    ConversationVariableRevisionId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
+    ApplicationSessionId, ConversationVariableRevisionId, IdempotentWrite, OrganizationId,
+    ProjectId, RepositoryError, WorkflowRunId,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -387,6 +388,32 @@ impl IApplicationSessionRepository for PostgresApplicationSessionRepository {
             project_id,
             application_id,
             invocation_id,
+        )
+        .await
+    }
+
+    async fn find_invocation_for_workflow_run(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+    ) -> Result<Option<ApplicationInvocation>, RepositoryError> {
+        reads::find_invocation_for_workflow_run(&self.executor, organization_id, workflow_run_id)
+            .await
+    }
+
+    async fn find_message(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+        message_id: ApplicationMessageId,
+    ) -> Result<Option<ApplicationMessage>, RepositoryError> {
+        reads::find_message(
+            &self.executor,
+            organization_id,
+            project_id,
+            application_id,
+            message_id,
         )
         .await
     }

@@ -661,7 +661,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-Component-only `APP0.2-C1/C2/C3/C4/C5/C6` freezes and persists the next
+Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7` freezes and persists the next
 Applications-owned records without making them available. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
 without creating Membership or grant authority. `ApplicationSession` pins one
@@ -700,6 +700,19 @@ the ordinary WorkflowRun 30-day timeout maximum to durable invocation
 authority. These commands and queries are registered internally but expose no
 public delivery protocol, application credential, anonymous route, or second
 Workflow/Flow history.
+
+The C7 internal Workflow consumer boundary accepts only Organization,
+WorkflowRun, stable step/attempt/ordinal effect identity, canonical occurrence
+time, and typed semantic payload. Applications resolves Project, Application,
+exact release, session, and invocation from the sole durable Run correlation.
+It returns the exact conversation-variable revision ID/number/digest for
+compare-and-swap, while session aggregate versions remain private. Answer,
+final-output, variable, and terminal writes recover their deterministic records
+before and after ambiguous commits, including after a later session advance.
+The existing cross-kind effect claim, single-final-output fence, immutable
+variable lineage, message sequence, and invocation state machine remain the
+only write authorities. Workflow runtime dispatch over this port is not yet
+implemented, and no public availability is claimed.
 
 The preset compiler separately derives one stable wrapper Workflow identity per
 Application release, emits canonical three-step Model/Agent ACL and semantic
