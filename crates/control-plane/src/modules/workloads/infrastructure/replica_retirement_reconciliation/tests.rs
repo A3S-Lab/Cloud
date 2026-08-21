@@ -291,11 +291,21 @@ async fn unplaced_retiring_replica_completes_once_without_commands(
     )
     .await?;
     let control = Arc::new(FakeControl::default());
+    let writer_fences = Arc::new(ScriptedWriterFence {
+        owner: ManagedOwnerReference::new(
+            ManagedOwnerKind::parse("durable-cell.application")?,
+            Uuid::now_v7(),
+            1,
+            format!("sha256:{}", "e".repeat(64)),
+        )?,
+        calls: AtomicUsize::new(0),
+    });
     let reconciler = reconciler(
         repository.clone(),
         control.clone(),
         Arc::new(InMemoryResourceClaimRepository::new()),
-    )?;
+    )?
+    .with_writer_fence_adapter(writer_fences.clone());
 
     let report = reconciler.run_once(now).await?;
     assert_eq!(report.targets, 1);
@@ -324,6 +334,7 @@ async fn unplaced_retiring_replica_completes_once_without_commands(
         1
     );
     assert_eq!(reconciler.run_once(now).await?.targets, 0);
+    assert_eq!(writer_fences.calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         repository
             .outbox_events()
@@ -701,7 +712,17 @@ async fn evacuation_fences_and_releases_the_old_generation_before_rematerializin
         target.replica.updated_at,
     )
     .await?;
-    let reconciler = reconciler(repository.clone(), control.clone(), claims.clone())?;
+    let writer_fences = Arc::new(ScriptedWriterFence {
+        owner: ManagedOwnerReference::new(
+            ManagedOwnerKind::parse("durable-cell.application")?,
+            Uuid::now_v7(),
+            1,
+            format!("sha256:{}", "f".repeat(64)),
+        )?,
+        calls: AtomicUsize::new(0),
+    });
+    let reconciler = reconciler(repository.clone(), control.clone(), claims.clone())?
+        .with_writer_fence_adapter(writer_fences.clone());
 
     reconciler
         .run_once(base + ChronoDuration::seconds(10))
@@ -752,6 +773,7 @@ async fn evacuation_fences_and_releases_the_old_generation_before_rematerializin
     assert_eq!(completed.claims_released, 1);
     assert_eq!(completed.evacuated, 1);
     assert_eq!(completed.retired, 0);
+    assert_eq!(writer_fences.calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         claims.find(claim.organization_id, claim.id).await?.state,
         ResourceClaimState::Released
