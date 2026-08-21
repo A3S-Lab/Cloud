@@ -23,7 +23,9 @@ mod workflow_human_decision_hook;
 mod workflow_node_catalog;
 mod workflow_payload;
 mod workflow_revision_semantic_contracts;
+mod workflow_run_application_projection;
 mod workflow_run_contract;
+mod workflow_run_variable_runtime;
 mod workflow_step_descriptor;
 mod workflow_step_descriptor_bindings;
 mod workflow_step_failure;
@@ -34,8 +36,9 @@ mod workflow_variable_materialization;
 pub(crate) use workflow_failure_routing::{
     descriptor_failure_output, has_connector_failure_route, validate_descriptor_failure_routes,
 };
-pub(crate) use workflow_run_contract::{
+pub(crate) use workflow_run_variable_runtime::{
     validate_application_runtime_variable_contract, validate_runtime_variable_contract,
+    validate_typed_projection_configurations,
 };
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
@@ -179,10 +182,11 @@ pub use workflow_revision_semantic_contracts::{
     WorkflowRevisionSemanticContractKind, WorkflowRevisionSemanticContractRef,
     WorkflowRevisionSemanticContracts,
 };
+pub use workflow_run_application_projection::WorkflowRunApplicationProjection;
 pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
     ResolvedWorkflowRunStep, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
-    WorkflowRunApplicationProjection, WorkflowRunInput, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
+    WorkflowRunInput, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
     WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3,
     WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
     WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
