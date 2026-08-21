@@ -182,9 +182,7 @@ async fn record_runtime_observation(
     agent_instance_id: Uuid,
     spec: &RuntimeUnitSpec,
     capabilities: &RuntimeCapabilities,
-    started_at_ms: u64,
-    observed_at_ms: u64,
-    received_at: DateTime<Utc>,
+    timing: RuntimeObservationTiming,
 ) -> TestResult {
     let mut claims = BTreeMap::new();
     for (index, port) in spec
@@ -209,12 +207,12 @@ async fn record_runtime_observation(
         state: RuntimeUnitState::Running,
         provider_resource_id: Some("agent-recovery-provider".into()),
         provider_build: Some(capabilities.provider_build.clone()),
-        observed_at_ms,
-        started_at_ms: Some(started_at_ms),
+        observed_at_ms: timing.observed_at_ms,
+        started_at_ms: Some(timing.started_at_ms),
         finished_at_ms: None,
         health: Some(RuntimeHealthObservation {
             state: RuntimeHealthState::Healthy,
-            checked_at_ms: observed_at_ms,
+            checked_at_ms: timing.observed_at_ms,
             message: None,
         }),
         outputs: Vec::new(),
@@ -235,27 +233,33 @@ async fn record_runtime_observation(
                 schema: NodeObservationBatch::SCHEMA.into(),
                 node_id: node_id.as_uuid(),
                 agent_instance_id,
-                sent_at: received_at,
+                sent_at: timing.received_at,
                 heartbeat: NodeHeartbeat {
                     schema: NodeHeartbeat::SCHEMA.into(),
                     node_id: node_id.as_uuid(),
                     agent_instance_id,
-                    observed_at: received_at,
+                    observed_at: timing.received_at,
                     agent_version: "0.1.0-test".into(),
                     runtime_capabilities: capabilities.clone(),
                 },
                 observations: vec![RuntimeObservationReport {
                     report_id: Uuid::now_v7(),
                     command_id: None,
-                    observed_at: received_at,
+                    observed_at: timing.received_at,
                     observation,
                 }],
             }
             .into(),
-            received_at,
+            timing.received_at,
         )
         .await?;
     Ok(())
+}
+
+struct RuntimeObservationTiming {
+    started_at_ms: u64,
+    observed_at_ms: u64,
+    received_at: DateTime<Utc>,
 }
 
 fn flow_runtime(

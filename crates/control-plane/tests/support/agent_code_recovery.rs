@@ -147,9 +147,11 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         state.agent_instance_id,
         &state.runtime_spec,
         &state.runtime_capabilities,
-        restarted_started_at_ms,
-        restarted_observed_at_ms,
-        restarted_received_at,
+        RuntimeObservationTiming {
+            started_at_ms: restarted_started_at_ms,
+            observed_at_ms: restarted_observed_at_ms,
+            received_at: restarted_received_at,
+        },
     )
     .await?;
 

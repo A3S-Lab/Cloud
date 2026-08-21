@@ -179,9 +179,11 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         agent_instance_id,
         &runtime_spec,
         &runtime_capabilities,
-        initial_runtime_started_at_ms,
-        provider_observed_at_ms,
-        initial_runtime_received_at,
+        RuntimeObservationTiming {
+            started_at_ms: initial_runtime_started_at_ms,
+            observed_at_ms: provider_observed_at_ms,
+            received_at: initial_runtime_received_at,
+        },
     )
     .await?;
 
