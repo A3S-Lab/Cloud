@@ -102,5 +102,8 @@ public delivery surface, or non-ACL product configuration is added.
   stale snapshot is never silently refreshed into a different effect.
 - v1-v11 histories and v10/v11 Application composition preserve their exact
   bytes and behavior.
-- Public blocking/streaming delivery, repeated-frame Answer ordinals, and real
-  PostgreSQL C6-C11 recovery evidence remain later `APP0.2` gates.
+- The [retained PostgreSQL 17 C6-C11 recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32474020740/job/96746540732)
+  proves production-composed Answer and variable commit-before-response loss,
+  exact replay, final-output/terminal replay, and durable cardinalities.
+- Public blocking/streaming delivery and repeated-frame Answer ordinals remain
+  later `APP0.2` gates.
