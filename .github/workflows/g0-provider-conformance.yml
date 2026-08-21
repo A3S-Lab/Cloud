@@ -11,8 +11,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  provider-configuration:
+    name: Operator provider configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      G0_GITHUB_APP_CLIENT_ID: ${{ secrets.G0_GITHUB_APP_CLIENT_ID }}
+      G0_GITHUB_APP_PRIVATE_KEY: ${{ secrets.G0_GITHUB_APP_PRIVATE_KEY }}
+      G0_GITHUB_INSTALLATION_ID: ${{ secrets.G0_GITHUB_INSTALLATION_ID }}
+      G0_GITHUB_PRIVATE_BRANCH: ${{ secrets.G0_GITHUB_PRIVATE_BRANCH }}
+      G0_GITHUB_PRIVATE_REPOSITORY: ${{ secrets.G0_GITHUB_PRIVATE_REPOSITORY }}
+      G0_REGISTRY_URL: ${{ secrets.G0_REGISTRY_URL }}
+      G0_REGISTRY_REPOSITORY_PREFIX: ${{ secrets.G0_REGISTRY_REPOSITORY_PREFIX }}
+      G0_REGISTRY_USERNAME: ${{ secrets.G0_REGISTRY_USERNAME }}
+      G0_REGISTRY_PASSWORD: ${{ secrets.G0_REGISTRY_PASSWORD }}
+      G0_VAULT_ADDR: ${{ secrets.G0_VAULT_ADDR }}
+      G0_VAULT_TOKEN: ${{ secrets.G0_VAULT_TOKEN }}
+      G0_VAULT_TRANSIT_MOUNT: ${{ secrets.G0_VAULT_TRANSIT_MOUNT }}
+      G0_VAULT_BUILD_EVIDENCE_KEY: ${{ secrets.G0_VAULT_BUILD_EVIDENCE_KEY }}
+    steps:
+      - name: Validate required provider secrets before provisioning
+        run: |
+          required=(
+            G0_GITHUB_APP_CLIENT_ID
+            G0_GITHUB_APP_PRIVATE_KEY
+            G0_GITHUB_INSTALLATION_ID
+            G0_GITHUB_PRIVATE_BRANCH
+            G0_GITHUB_PRIVATE_REPOSITORY
+            G0_REGISTRY_URL
+            G0_REGISTRY_REPOSITORY_PREFIX
+            G0_REGISTRY_USERNAME
+            G0_REGISTRY_PASSWORD
+            G0_VAULT_ADDR
+            G0_VAULT_TOKEN
+            G0_VAULT_TRANSIT_MOUNT
+            G0_VAULT_BUILD_EVIDENCE_KEY
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z ${!name:-} ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            for name in "${missing[@]}"; do
+              printf '%s\n' \
+                "::error title=Missing G0 provider configuration::Required Actions secret is not configured: $name"
+            done
+            exit 1
+          fi
+          printf 'All %d required G0 provider secret bindings are present.\n' \
+            "${#required[@]}"
+
   external-release-provider:
     name: Private source to published Workload
+    needs: provider-configuration
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     services:

@@ -46,6 +46,15 @@ The same workflow requires these operator-owned provider secrets:
 | `G0_VAULT_TRANSIT_MOUNT` | Transit mount name, commonly `transit` |
 | `G0_VAULT_BUILD_EVIDENCE_KEY` | Existing Ed25519 Transit key name |
 
+Before provisioning PostgreSQL or compiling the pinned providers, the workflow
+runs a lightweight configuration job that requires all thirteen bindings. A
+missing binding fails that job while reporting only the missing Actions secret
+name; secret values are never printed. The provider steps repeat the relevant
+checks before consuming either the private-source or Registry/Vault boundary.
+Presence is only a preflight check: the real provider tests remain responsible
+for proving credential scope, endpoint behavior, publication, recovery, and
+cleanup.
+
 The job passes the exact production source Artifact through the real Linux Box
 adapter, process-death replay, immediate-parent cache hydration, and
 authoritative removal. It then admits the returned OCI graph, publishes and
