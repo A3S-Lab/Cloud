@@ -283,6 +283,25 @@ jobs:
             >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt")" -eq 1
 
+      - name: Isolate the Cloud lifecycle rootfs cache
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          r17_cache="$A3S_HOME/cache/rootfs"
+          retired_cache="$A3S_HOME/cache/r17-rootfs"
+          test -d "$r17_cache"
+          test ! -e "$retired_cache"
+          # The provider conformance suite and the Cloud lifecycle suite share
+          # exact binaries and OCI content, but each owns its rootfs generations.
+          # Start Cloud cold from the pinned OCI image, then let the Cloud suite
+          # prove cache and restart behavior inside its own lifecycle boundary.
+          sudo mv -- "$r17_cache" "$retired_cache"
+          test ! -e "$r17_cache"
+          test -d "$retired_cache"
+          printf '%s\n' \
+            'R17 and Cloud rootfs cache generations isolated' \
+            >"$EVIDENCE_DIR/rootfs-cache-boundary.txt"
+
       - name: Prove Cloud recovery, allocation, endpoints, health, cancellation, and interruption cleanup through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
