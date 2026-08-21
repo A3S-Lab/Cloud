@@ -39,7 +39,7 @@ pub async fn exercise_atomic_writer_fence_commit(
             .fetch_one_as(
                 sql_query::<Uuid>("select id from nodes where organization_id = ")
                     .bind(organization_uuid)
-                    .append(" order by id asc limit 1"),
+                    .append(" and state = 'ready' order by id asc limit 1"),
             )
             .await?,
     );
