@@ -1225,8 +1225,12 @@ digest-only. Notifications now retains PostgreSQL 17 plus real NATS evidence
 for its first Event-consumer-to-C6 composition. The
 [N3a H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32503892384/job/96839623052)
 also verifies migration `128`, immutable versioned budgets, exact-bound
-Exhausted settlement, durable delivery, and terminal ACK-only replay;
-`N3b` implements a subscription-v3-only immutable `suppress_before` cutoff.
+Exhausted settlement, durable delivery, and terminal ACK-only replay. The
+[N3b H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32516778570/job/96880061349)
+also verifies migration `129`, cutoff enforcement, inbox-only suppression,
+forged-delivery rejection, equality admission, and the unchanged delivery-v2
+consumer contract. `N3b` owns a subscription-v3-only immutable
+`suppress_before` cutoff.
 It filters solely on the source notification's immutable event time, retains
 the personal inbox row, treats equality as deliverable, and never releases a
 suppressed fact later. The cutoff is bounded to 30 days from subscription
