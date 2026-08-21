@@ -2352,10 +2352,30 @@ node.
   verified recipient contact reference and may not infer email from OIDC claims.
   Provider outage must not block unrelated integration events, replay the
   business command, or create another provider/configuration authority.
-- Add tenant-scoped alert policies over authoritative workload health,
-  certificate expiry, backup status, node availability, operation latency, and
-  resource signals. Alert evaluation has bounded missing-data and recovery
-  semantics and emits notifications without mutating the monitored resource.
+- Frozen as `C0.3-N4a`: add one immutable personal
+  `cloud.notification.alert-policy.v1` A3S ACL over the first closed registered
+  source family, `edge.domain-claim-status.v1`. The ACL binds its exact
+  recipient, one exact project/environment scope, and whether recovery is
+  wanted. Only typed schema-v1 `edge.domain-claim.rejected` and
+  `edge.domain-claim.verified` owner facts are admitted. A rejection produces a
+  warning; a verification produces informational recovery only when that same
+  recipient and claim has a most-recent policy-covered projected rejection
+  after the policy was created. Initial success, pre-policy history, malformed
+  payloads, revoked Memberships, and currently unauthorized scopes stay silent.
+  Creation and projection both reuse the shared Resource Grant evaluator;
+  create/list/get/revoke use the same repository, idempotency, Outbox, audit,
+  REST/client/CLI/MCP, and canonical ACL boundaries as the personal outbound
+  subscription. Edge remains the sole claim-transition authority and the
+  existing Outbox-to-inbox-to-outbound path remains the sole delivery path.
+  There is no arbitrary event selector, JSON-path/expression evaluator, metrics
+  store, mutable incident/counter, poller, timer, scheduler, queue, second event
+  rail, or configuration parser.
+- In later `C0.3-N4` slices, extend the closed source registry over authoritative
+  workload health, certificate expiry, backup status, node availability,
+  operation latency, and resource signals only after each owning context or its
+  existing reconciler emits bounded typed missing-data, firing, and recovery
+  transitions. Notifications may project those facts but never poll telemetry,
+  infer health from silence, or mutate the monitored resource.
 - Add a tenant-scoped security investigation projection that correlates
   authorized Gateway denials/policy revisions, Agent semantic events,
   Runtime/Box and host evidence, shared audit records, and AnySentry or

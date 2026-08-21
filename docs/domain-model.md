@@ -1253,7 +1253,51 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a` implemented; `C4b` gate staged)
+### 3.20 Personal alert policy (`C0.3-N4a` architecture frozen)
+
+The first alert-policy slice is one immutable personal
+`cloud.notification.alert-policy.v1` A3S ACL. It binds the exact recipient
+Principal, one exact project/environment scope, the closed
+`edge.domain-claim-status.v1` source family, and a recovery preference. A new
+configuration creates a new policy and active-to-revoked is its only mutation.
+The recipient must be the creating Principal, and both management reads and
+mutations use the caller's current Membership and the shared Resource Grant
+evaluator.
+
+The source registry is compile-time closed and version exact. Its first entry
+accepts only typed `edge.domain-claim.rejected` and
+`edge.domain-claim.verified` schema-v1 Outbox facts whose organization, claim,
+project, environment, state, aggregate identity, and version agree with the
+event envelope. A rejection maps to one warning notification. Verification
+maps to one informational recovery only when recovery is enabled and the same
+recipient and claim has a most-recent policy-covered projected rejection after
+that policy's creation. Consequently an initial verification, an old rejection
+from before policy creation, or a duplicate transition cannot invent a recovery.
+Source-event-plus-recipient notification identity retains exact replay
+deduplication even when active policies overlap.
+
+The Outbox projector rechecks the recipient's active Membership and reconstructs
+the current Resource Grant evaluator before projection. A delayed owner fact
+after Membership revocation or scope loss creates no inbox record or outbound
+authorization. Edge remains the only DomainClaim transition authority;
+Notifications stores neither a duplicate claim state nor a mutable incident.
+The existing Notification repository is the recovery-history authority, and
+the existing outbound subscription, A3S Event, and C6 path handles any external
+delivery.
+
+Future workload-health, certificate-expiry, backup, node-availability,
+operation-latency, and resource-signal families enter only as explicit bounded
+firing, missing-data, and recovery facts from their owning context or existing
+reconciler. Notifications never polls telemetry or interprets silence. The
+policy language has no arbitrary event key, JSON path, expression evaluator,
+metric query, mutable counter, timer, scheduler, queue, second event rail, or
+non-ACL configuration.
+
+Primary record:
+
+- `NotificationAlertPolicy`
+
+### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
