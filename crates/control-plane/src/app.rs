@@ -9,10 +9,12 @@ use crate::modules::agents::{
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
 };
 use crate::modules::applications::{
-    ApplicationsModule, ComposeApplicationInvocationWorkflowRunHandler, CreateApplicationHandler,
-    GetApplicationHandler, GetApplicationReleaseHandler, IApplicationRepository,
-    IApplicationSessionRepository, IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort,
-    ListApplicationReleasesHandler, ListApplicationsHandler, PublishApplicationReleaseHandler,
+    ApplicationsModule, CompileApplicationPresetWorkflowHandler,
+    ComposeApplicationInvocationWorkflowRunHandler, CreateApplicationHandler,
+    GetApplicationHandler, GetApplicationReleaseHandler, IApplicationPresetWorkflowPort,
+    IApplicationRepository, IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
+    IApplicationWorkflowRunPort, ListApplicationReleasesHandler, ListApplicationsHandler,
+    PublishApplicationReleaseHandler, WorkflowApplicationPresetCompiler,
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
@@ -190,14 +192,15 @@ use crate::modules::workflow::{
     GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
     GetWorkflowRunVariablesHandler, HumanTaskCoordinator, HumanTaskResumeWorker,
     HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
-    IWorkflowCompositeExecutionPort, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
-    IWorkflowRunVariableReader, ListHumanTasksHandler, ListOntologiesHandler,
-    ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler,
-    ListWorkflowRevisionsHandler, ListWorkflowRunsHandler, ReviseOntologyHandler,
-    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
-    WaitWorkflowRunHandler, WorkflowCompositeExecutionApplicationService, WorkflowModule,
-    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
+    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
+    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
+    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    ListWorkflowRunsHandler, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
+    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler,
+    WorkflowCompositeExecutionApplicationService, WorkflowDefinitionPublicationService,
+    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
     WorkflowRunVariableReader,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -1700,8 +1703,16 @@ fn build_management_application_with_health(
     let get_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_revisions = Arc::clone(&connector_profiles);
     let get_connector_revisions = connector_profiles;
+    let workflow_definition_publications: Arc<dyn IWorkflowDefinitionPublicationPort> =
+        Arc::new(WorkflowDefinitionPublicationService::new(
+            Arc::clone(&projects),
+            Arc::clone(&workflow_definitions),
+        ));
     let application_workflow_evidence: Arc<dyn IApplicationWorkflowRevisionPort> = Arc::new(
         WorkflowApplicationReleaseEvidenceReader::new(Arc::clone(&workflow_definitions)),
+    );
+    let application_preset_workflows: Arc<dyn IApplicationPresetWorkflowPort> = Arc::new(
+        WorkflowApplicationPresetCompiler::new(Arc::clone(&workflow_definition_publications)),
     );
     let application_workflow_runs: Arc<dyn IApplicationWorkflowRunPort> =
         Arc::new(WorkflowApplicationRunService::new(
@@ -1712,6 +1723,7 @@ fn build_management_application_with_health(
         ));
     let create_applications = Arc::clone(&applications);
     let publish_applications = Arc::clone(&applications);
+    let compile_application_presets = application_preset_workflows;
     let compose_application_invocations = Arc::clone(&applications);
     let compose_application_sessions = application_sessions;
     let list_applications = Arc::clone(&applications);
@@ -1762,9 +1774,8 @@ fn build_management_application_with_health(
     let get_ontology_revisions = Arc::clone(&ontologies);
     let list_ontology_revisions = Arc::clone(&ontologies);
     let diff_ontology_revisions = Arc::clone(&ontologies);
-    let create_workflow_projects = Arc::clone(&projects);
     let get_workflow_node_catalog_projects = Arc::clone(&projects);
-    let create_workflow_definitions = Arc::clone(&workflow_definitions);
+    let create_workflow_definition_publications = workflow_definition_publications;
     let revise_workflow_definitions = Arc::clone(&workflow_definitions);
     let get_workflow_definitions = Arc::clone(&workflow_definitions);
     let list_workflow_definitions = Arc::clone(&workflow_definitions);
@@ -2165,6 +2176,12 @@ fn build_management_application_with_health(
                     ),
                 )
                 .command_handler::<
+                    crate::modules::applications::CompileApplicationPresetWorkflow,
+                    _,
+                >(CompileApplicationPresetWorkflowHandler::new(
+                    compile_application_presets,
+                ))
+                .command_handler::<
                     crate::modules::applications::ComposeApplicationInvocationWorkflowRun,
                     _,
                 >(ComposeApplicationInvocationWorkflowRunHandler::new(
@@ -2224,8 +2241,7 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::workflow::CreateWorkflowDefinition, _>(
                     CreateWorkflowDefinitionHandler::new(
-                        create_workflow_projects,
-                        create_workflow_definitions,
+                        create_workflow_definition_publications,
                     ),
                 )
                 .command_handler::<crate::modules::workflow::ReviseWorkflowDefinition, _>(

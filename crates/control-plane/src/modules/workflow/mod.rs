@@ -72,11 +72,13 @@ pub use application::queries::wait_workflow_run::{
     WaitWorkflowRun, WaitWorkflowRunHandler, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 pub use application::{
-    HumanTaskMutationResult, IWorkflowCompositeExecutionPort, OntologyMutationResult,
-    WorkflowCompositeExecutionApplicationService, WorkflowCompositeExecutionRequest,
-    WorkflowDefinitionMutationResult, WorkflowGoalMutationResult, WorkflowPayloadAcl,
-    WorkflowRunMutationResult, WorkflowRunReconcileFailure, WorkflowRunReconcileReport,
-    WorkflowRunReconciler, WorkflowSemanticContractAcls,
+    HumanTaskMutationResult, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
+    OntologyMutationResult, WorkflowCompositeExecutionApplicationService,
+    WorkflowCompositeExecutionRequest, WorkflowDefinitionMutationResult,
+    WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
+    WorkflowGoalMutationResult, WorkflowPayloadAcl, WorkflowRunMutationResult,
+    WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
+    WorkflowSemanticContractAcls,
 };
 
 pub use domain::{

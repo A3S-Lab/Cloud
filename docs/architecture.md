@@ -1304,6 +1304,15 @@ profile through a wrapper Workflow revision. Chatflow and Workflow use
 user-authored revisions. All six execute through one WorkflowRun, Operation,
 and Flow path.
 
+The component `APP0.2-C4` wrapper compiler derives stable Workflow definition
+and initial-revision identities from Organization, Project, Application, and
+release number, then emits canonical Input -> exact Model/Agent capability ->
+Output ACL plus complete payload, descriptor, and variable material. It calls
+the same Workflow-owned definition-publication application port as public
+Workflow creation; Applications never writes Workflow tables. Chatflow and
+Workflow fail closed to user-authored revisions, and generated wrappers do not
+make their later Inference/Agent execution ports publicly available.
+
 Classic Agent and New Agent remain different product projections. The classic
 form compiles prompt/model/strategy/Tool policy to an exact A0/A1 profile. New
 Agent owns reusable capability releases, Skills, permanent files, build-chat

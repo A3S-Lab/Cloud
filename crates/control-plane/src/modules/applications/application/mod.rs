@@ -1,5 +1,7 @@
 mod commands;
 mod invocation_composition;
+mod preset_workflow;
+mod preset_workflow_port;
 mod queries;
 mod resource_access;
 mod result;
@@ -14,6 +16,14 @@ pub use invocation_composition::{
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
     ComposeApplicationInvocationWorkflowRunResult,
 };
+pub use preset_workflow::{
+    CompileApplicationPresetWorkflow, CompileApplicationPresetWorkflowHandler,
+};
+pub use preset_workflow_port::{
+    ApplicationPresetAgentRelease, ApplicationPresetModelRevision, ApplicationPresetTarget,
+    ApplicationPresetWorkflowRequest, ApplicationPresetWorkflowResult,
+    IApplicationPresetWorkflowPort,
+};
 pub use queries::{
     GetApplication, GetApplicationHandler, GetApplicationRelease, GetApplicationReleaseHandler,
     ListApplicationReleases, ListApplicationReleasesHandler, ListApplications,
@@ -27,5 +37,7 @@ pub use workflow_run_port::{
 
 #[cfg(test)]
 mod invocation_composition_tests;
+#[cfg(test)]
+mod preset_workflow_tests;
 #[cfg(test)]
 mod tests;

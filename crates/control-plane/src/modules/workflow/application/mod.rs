@@ -5,11 +5,18 @@ pub(crate) mod resource_access;
 mod workflow_composite_execution_port;
 #[cfg(test)]
 mod workflow_composite_execution_port_tests;
+mod workflow_definition_publication;
+#[cfg(test)]
+mod workflow_definition_publication_tests;
 mod workflow_run_reconciler;
 
 pub use workflow_composite_execution_port::{
     IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionApplicationService,
     WorkflowCompositeExecutionRequest,
+};
+pub use workflow_definition_publication::{
+    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationRequest,
+    WorkflowDefinitionPublicationService,
 };
 pub use workflow_run_reconciler::{
     WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,

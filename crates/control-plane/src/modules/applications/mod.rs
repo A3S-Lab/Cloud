@@ -26,7 +26,8 @@ pub use infrastructure::InMemoryApplicationRepository;
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
     PostgresApplicationRepository, PostgresApplicationSessionRepository,
-    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
+    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
+    WorkflowApplicationRunService,
 };
 pub use presentation::{
     ApplicationMutationResponse, ApplicationRecordResponse, ApplicationReleaseResponse,
