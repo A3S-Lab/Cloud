@@ -1,11 +1,63 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
-    human_decision_workflow_run_input, routed_connector_workflow_run_input,
-    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
-    TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
+    application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
+    connector_workflow_run_input_v6, human_decision_workflow_run_input,
+    routed_connector_workflow_run_input, routed_execution_workflow_run_input,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_CONNECTOR_STEP_ID,
+    TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v10_run_input_requires_exact_application_final_output_projection() {
+    let input = application_workflow_run_input().expect("valid Application WorkflowRun input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V10);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V10);
+    let projection = input
+        .application_projection
+        .as_ref()
+        .expect("Application projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
+    );
+    assert_eq!(projection.final_output_step_id, "output");
+    input.validate().expect("valid v10 input");
+
+    let mut drifted = input.clone();
+    drifted
+        .application_projection
+        .as_mut()
+        .expect("Application projection")
+        .final_output_step_id = "input".into();
+    assert!(drifted.validate().is_err());
+
+    let mut missing = input;
+    missing.application_projection = None;
+    assert!(missing.validate().is_err());
+}
+
+#[test]
+fn v10_application_generation_composes_connector_and_non_connector_plans() {
+    let mut connector = connector_workflow_run_input().expect("Connector input");
+    connector.schema = WORKFLOW_RUN_INPUT_SCHEMA_V10.into();
+    connector.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10.into();
+    connector.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V10.into();
+    connector.application_projection = Some(
+        WorkflowRunApplicationProjection::from_plan(&connector.plan)
+            .expect("Connector final Output"),
+    );
+    connector.validate().expect("v10 Connector input");
+
+    application_workflow_run_input()
+        .expect("non-Connector Application input")
+        .validate()
+        .expect("v10 non-Connector input");
+}
 
 #[test]
 fn v8_run_input_admits_only_exact_connector_service_authority() {
@@ -168,6 +220,7 @@ fn v1_run_input_remains_byte_stable_without_v2_contract_fields() {
         String::from_utf8(input.canonical_bytes().expect("canonical v1 input")).expect("UTF-8");
     assert!(!encoded.contains("variable_contract"));
     assert!(!encoded.contains("composite_regions"));
+    assert!(!encoded.contains("application_projection"));
     assert!(encoded.contains("\"schema\":\"cloud.workflow-run.input.v1\""));
     assert!(encoded.contains("\"flow_workflow_version\":\"1\""));
 }

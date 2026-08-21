@@ -1,8 +1,8 @@
 use super::{
     CapabilityType, ResolvedWorkflowRunStep, WorkflowPolicyMode, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepKind, WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V8,
-    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V6,
+    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, ConnectorProfileId,
@@ -94,9 +94,9 @@ impl WorkflowConnectorHookMetadata {
         )?;
         let value = Self {
             schema: match input.schema.as_str() {
-                WORKFLOW_RUN_INPUT_SCHEMA_V8 | WORKFLOW_RUN_INPUT_SCHEMA_V9 => {
-                    WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into()
-                }
+                WORKFLOW_RUN_INPUT_SCHEMA_V8
+                | WORKFLOW_RUN_INPUT_SCHEMA_V9
+                | WORKFLOW_RUN_INPUT_SCHEMA_V10 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
                 WORKFLOW_RUN_INPUT_SCHEMA_V6 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into(),
                 _ => WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
             },
@@ -869,6 +869,10 @@ fn zero_digest() -> Result<Sha256Digest, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::workflow::domain::{
+        WorkflowRunApplicationProjection, WORKFLOW_RUN_FLOW_VERSION_V10,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    };
     use crate::modules::workflow::test_support::connector_workflow_run_input;
 
     fn authority() -> (WorkflowConnectorHookMetadata, Uuid, Sha256Digest, u64) {
@@ -907,6 +911,33 @@ mod tests {
         drifted = metadata;
         drifted.effective_input["ticketId"] = serde_json::json!("changed");
         assert!(drifted.validate().is_err());
+    }
+
+    #[test]
+    fn application_v10_connector_keeps_typed_response_authority() {
+        let mut input = connector_workflow_run_input().expect("Connector WorkflowRun input");
+        input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V10.into();
+        input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10.into();
+        input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V10.into();
+        input.application_projection =
+            Some(WorkflowRunApplicationProjection::from_plan(&input.plan).expect("final Output"));
+        input.validate().expect("Application Connector input");
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == "invoke")
+            .expect("Connector step");
+        let metadata = WorkflowConnectorHookMetadata::from_run_step(
+            &input,
+            &step,
+            input.goal_input.clone(),
+            1,
+            1,
+        )
+        .expect("metadata");
+        assert_eq!(metadata.schema, WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3);
+        assert!(metadata.requires_typed_response());
     }
 
     #[test]

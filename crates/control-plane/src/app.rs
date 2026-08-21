@@ -15,9 +15,10 @@ use crate::modules::applications::{
     CreateApplicationHandler, GetApplicationHandler, GetApplicationInvocationHandler,
     GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationOntologyRevisionPort,
     IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
-    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, ListApplicationReleasesHandler,
-    ListApplicationsHandler, OpenApplicationSessionHandler, PublishApplicationReleaseHandler,
-    ReplayApplicationSessionHandler, RequestApplicationInvocationHandler,
+    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IWorkflowApplicationEffectsPort,
+    ListApplicationReleasesHandler, ListApplicationsHandler, OpenApplicationSessionHandler,
+    PublishApplicationReleaseHandler, ReplayApplicationSessionHandler,
+    RequestApplicationInvocationHandler, WorkflowApplicationEffectsService,
     WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
@@ -890,13 +891,18 @@ async fn build_api_worker_application(
                     )
                 })?,
             )));
-        let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
-            Arc::new(FlowWorkflowRunCoordinator::with_all_ports(
+        let workflow_application_effects: Arc<dyn IWorkflowApplicationEffectsPort> = Arc::new(
+            WorkflowApplicationEffectsService::new(Arc::clone(&application_sessions)),
+        );
+        let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> = Arc::new(
+            FlowWorkflowRunCoordinator::with_all_ports_and_application_effects(
                 flow.engine(),
                 workflow_execution_port,
                 workflow_composite_port,
                 workflow_connector_port,
-            ));
+                workflow_application_effects,
+            ),
+        );
         let workflow_run_reconciler = WorkflowRunReconciler::new(
             Arc::clone(&workflow_runs),
             workflow_run_coordinator,

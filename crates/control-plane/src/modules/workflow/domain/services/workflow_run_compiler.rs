@@ -3,14 +3,16 @@ use crate::modules::workflow::domain::{
     validate_runtime_variable_contract, workflow_run_timeout_seconds, PlanRevision,
     ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload, ResolvedWorkflowVariableContract,
     ResolvedWorkflowVariableDefaults, WorkflowGoal, WorkflowRevision, WorkflowRun,
-    WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
+    WorkflowRunApplicationProjection, WorkflowRunInput, WorkflowStepProjection,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3,
+    WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V2,
     WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7,
     WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
@@ -36,6 +38,51 @@ impl WorkflowRunCompiler {
         timeout_seconds: Option<u64>,
         requested_by: PrincipalId,
         requested_at: DateTime<Utc>,
+    ) -> Result<CompiledWorkflowRun, String> {
+        Self::compile_with_projection(
+            workflow_run_id,
+            goal,
+            plan_revision,
+            workflow_revision,
+            timeout_seconds,
+            requested_by,
+            requested_at,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compile_for_application(
+        workflow_run_id: WorkflowRunId,
+        goal: &WorkflowGoal,
+        plan_revision: &PlanRevision,
+        workflow_revision: &WorkflowRevision,
+        timeout_seconds: Option<u64>,
+        requested_by: PrincipalId,
+        requested_at: DateTime<Utc>,
+    ) -> Result<CompiledWorkflowRun, String> {
+        Self::compile_with_projection(
+            workflow_run_id,
+            goal,
+            plan_revision,
+            workflow_revision,
+            timeout_seconds,
+            requested_by,
+            requested_at,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn compile_with_projection(
+        workflow_run_id: WorkflowRunId,
+        goal: &WorkflowGoal,
+        plan_revision: &PlanRevision,
+        workflow_revision: &WorkflowRevision,
+        timeout_seconds: Option<u64>,
+        requested_by: PrincipalId,
+        requested_at: DateTime<Utc>,
+        project_to_application: bool,
     ) -> Result<CompiledWorkflowRun, String> {
         goal.validate(plan_revision)?;
         workflow_revision.validate()?;
@@ -67,14 +114,16 @@ impl WorkflowRunCompiler {
             variable_contract,
             variable_defaults,
             composite_regions,
+            application_projection,
         ) = match (
             plan.schema.as_str(),
             workflow_revision.semantic_contracts.as_ref(),
         ) {
-            (WORKFLOW_PLAN_SCHEMA, None) => (
+            (WORKFLOW_PLAN_SCHEMA, None) if !project_to_application => (
                 WORKFLOW_RUN_INPUT_SCHEMA,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
                 WORKFLOW_RUN_FLOW_VERSION,
+                None,
                 None,
                 None,
                 None,
@@ -95,14 +144,25 @@ impl WorkflowRunCompiler {
                 let composite_regions = contracts
                     .composite_regions()
                     .map(ResolvedWorkflowCompositeRegions::from_regions);
-                let (input_schema, runtime_revision, flow_version) = match plan_schema {
-                    WORKFLOW_PLAN_SCHEMA_V2 => {
-                        plan_v2_runtime_contract(plan, composite_regions.is_some())
+                let application_projection = project_to_application
+                    .then(|| WorkflowRunApplicationProjection::from_plan(plan))
+                    .transpose()?;
+                let (input_schema, runtime_revision, flow_version) = if project_to_application {
+                    (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V10,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+                        WORKFLOW_RUN_FLOW_VERSION_V10,
+                    )
+                } else {
+                    match plan_schema {
+                        WORKFLOW_PLAN_SCHEMA_V2 => {
+                            plan_v2_runtime_contract(plan, composite_regions.is_some())
+                        }
+                        WORKFLOW_PLAN_SCHEMA_V3 => plan_v3_runtime_contract(plan),
+                        WORKFLOW_PLAN_SCHEMA_V4 => plan_v4_runtime_contract(plan),
+                        WORKFLOW_PLAN_SCHEMA_V5 => plan_v5_runtime_contract(),
+                        _ => unreachable!("guarded Workflow Plan schema"),
                     }
-                    WORKFLOW_PLAN_SCHEMA_V3 => plan_v3_runtime_contract(plan),
-                    WORKFLOW_PLAN_SCHEMA_V4 => plan_v4_runtime_contract(plan),
-                    WORKFLOW_PLAN_SCHEMA_V5 => plan_v5_runtime_contract(),
-                    _ => unreachable!("guarded Workflow Plan schema"),
                 };
                 (
                     input_schema,
@@ -115,6 +175,7 @@ impl WorkflowRunCompiler {
                         .variable_defaults()
                         .map(ResolvedWorkflowVariableDefaults::from_defaults),
                     composite_regions,
+                    application_projection,
                 )
             }
             _ => {
@@ -154,6 +215,7 @@ impl WorkflowRunCompiler {
             variable_contract,
             variable_defaults,
             composite_regions,
+            application_projection,
             requested_at,
             deadline_at,
         };

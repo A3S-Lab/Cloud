@@ -260,6 +260,7 @@ fn workflow_run_input(
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };
@@ -376,6 +377,7 @@ fn execution_workflow_run_input(
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };

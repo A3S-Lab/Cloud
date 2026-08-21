@@ -47,6 +47,11 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V8: &str = "8";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V9: &str = "cloud.workflow-run.input.v9";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9: &str = "cloud.workflow-run-runtime.v9";
 pub const WORKFLOW_RUN_FLOW_VERSION_V9: &str = "9";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V10: &str = "cloud.workflow-run.input.v10";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10: &str = "cloud.workflow-run-runtime.v10";
+pub const WORKFLOW_RUN_FLOW_VERSION_V10: &str = "10";
+pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
+    "cloud.workflow-run.application-projection.v1";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -142,6 +147,53 @@ impl ResolvedWorkflowVariableDefaults {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct WorkflowRunApplicationProjection {
+    pub schema: String,
+    pub final_output_step_id: String,
+}
+
+impl WorkflowRunApplicationProjection {
+    pub fn from_plan(plan: &WorkflowPlan) -> Result<Self, String> {
+        let outputs = plan
+            .steps
+            .iter()
+            .filter(|step| step.kind == WorkflowStepKind::Output)
+            .collect::<Vec<_>>();
+        let [output] = outputs.as_slice() else {
+            return Err("Application WorkflowRun requires exactly one final Output step".into());
+        };
+        let projection = Self {
+            schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA.into(),
+            final_output_step_id: output.id.clone(),
+        };
+        projection.validate(plan)?;
+        Ok(projection)
+    }
+
+    pub fn validate(&self, plan: &WorkflowPlan) -> Result<(), String> {
+        super::validation::validate_identifier(
+            "WorkflowRun Application final Output step",
+            &self.final_output_step_id,
+        )?;
+        let outputs = plan
+            .steps
+            .iter()
+            .filter(|step| step.kind == WorkflowStepKind::Output)
+            .collect::<Vec<_>>();
+        if self.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
+            || !matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id)
+        {
+            return Err(
+                "WorkflowRun Application projection drifted from its single final Output step"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkflowRunInput {
     pub schema: String,
     pub runtime_contract_revision: String,
@@ -162,6 +214,8 @@ pub struct WorkflowRunInput {
     pub variable_defaults: Option<ResolvedWorkflowVariableDefaults>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub composite_regions: Option<ResolvedWorkflowCompositeRegions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application_projection: Option<WorkflowRunApplicationProjection>,
     pub requested_at: DateTime<Utc>,
     pub deadline_at: DateTime<Utc>,
 }
@@ -188,6 +242,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V7
                 | WORKFLOW_RUN_INPUT_SCHEMA_V8
                 | WORKFLOW_RUN_INPUT_SCHEMA_V9
+                | WORKFLOW_RUN_INPUT_SCHEMA_V10
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -212,12 +267,14 @@ impl WorkflowRunInput {
                 self.variable_contract.as_ref(),
                 self.variable_defaults.as_ref(),
                 self.composite_regions.as_ref(),
+                self.application_projection.as_ref(),
             ) {
                 (
                     WORKFLOW_RUN_INPUT_SCHEMA,
                     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
                     WORKFLOW_RUN_FLOW_VERSION,
                     WORKFLOW_PLAN_SCHEMA,
+                    None,
                     None,
                     None,
                     None,
@@ -230,6 +287,7 @@ impl WorkflowRunInput {
                     Some(resolved),
                     defaults,
                     regions,
+                    None,
                 ) => {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -265,6 +323,7 @@ impl WorkflowRunInput {
                     Some(resolved),
                     defaults,
                     Some(resolved_regions),
+                    None,
                 ) => {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -293,6 +352,7 @@ impl WorkflowRunInput {
                     Some(resolved),
                     defaults,
                     regions,
+                    None,
                 ) => {
                     let contract = resolved.restore()?;
                     if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -343,6 +403,7 @@ impl WorkflowRunInput {
                     Some(resolved),
                     defaults,
                     regions,
+                    None,
                 ) if matches!(
                     (schema, runtime, flow),
                     (
@@ -420,6 +481,46 @@ impl WorkflowRunInput {
                         composite_runtime,
                         connector_runtime_capable,
                     )
+                }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V10,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+                    WORKFLOW_RUN_FLOW_VERSION_V10,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    Some(application_projection),
+                ) => {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime, true)
                 }
                 _ => {
                     return Err(

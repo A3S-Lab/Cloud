@@ -720,6 +720,26 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
 }
 
 #[test]
+fn workflow_worker_injects_the_single_applications_effect_authority() {
+    let application = include_str!("../../app.rs");
+    let worker = application
+        .split_once("let worker_workflow = if let Some(flow) = flow.as_ref() {")
+        .and_then(|(_, tail)| tail.split_once("\n    let worker_gateway ="))
+        .map(|(body, _)| body)
+        .expect("Workflow worker composition root");
+    for required in [
+        "WorkflowApplicationEffectsService::new(Arc::clone(&application_sessions))",
+        "FlowWorkflowRunCoordinator::with_all_ports_and_application_effects(",
+        "workflow_application_effects,",
+    ] {
+        assert!(
+            worker.contains(required),
+            "Workflow worker lost its Applications semantic-effect authority: {required}"
+        );
+    }
+}
+
+#[test]
 fn process_roles_have_one_closed_capability_matrix() {
     for (role, management, workers, relay, events) in [
         (ProcessRole::All, true, true, true, true),

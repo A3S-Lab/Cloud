@@ -13,28 +13,29 @@ use crate::modules::workflow::domain::{
     WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
     WorkflowDataSchema, WorkflowDataType, WorkflowDefaultOutput, WorkflowEdgeSpec, WorkflowPayload,
     WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
-    WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepConfiguration,
-    WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
-    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
-    WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableContractSpec,
-    WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableRead,
-    WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
-    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
-    WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_COMPILER_REVISION_V4,
-    WORKFLOW_PLAN_COMPILER_REVISION_V5, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
-    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WorkflowRetryPolicy, WorkflowRunApplicationProjection, WorkflowRunInput,
+    WorkflowStepConfiguration, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding,
+    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort,
+    WorkflowStepPortCardinality, WorkflowStepRetryClassification, WorkflowVariableContract,
+    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
+    WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
+    WorkflowVariableStorageClass, WORKFLOW_PLAN_COMPILER_REVISION,
+    WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_COMPILER_REVISION_V3,
+    WORKFLOW_PLAN_COMPILER_REVISION_V4, WORKFLOW_PLAN_COMPILER_REVISION_V5,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
     WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4,
     WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7,
     WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
-    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6,
+    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -355,6 +356,7 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -427,6 +429,16 @@ pub(crate) fn typed_variable_workflow_run_input() -> Result<WorkflowRunInput, St
     input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V2.into();
     input.variable_contract =
         Some(super::domain::ResolvedWorkflowVariableContract::from_contract(&variables));
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn application_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = typed_variable_workflow_run_input()?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V10.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V10.into();
+    input.application_projection = Some(WorkflowRunApplicationProjection::from_plan(&input.plan)?);
     input.validate()?;
     Ok(input)
 }
@@ -577,6 +589,7 @@ pub(crate) fn composite_workflow_run_input(
         ),
         variable_defaults: None,
         composite_regions: Some(ResolvedWorkflowCompositeRegions::from_regions(&regions)),
+        application_projection: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -733,6 +746,7 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
         ),
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -967,6 +981,7 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -1079,6 +1094,7 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };

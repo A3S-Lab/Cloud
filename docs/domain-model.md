@@ -661,7 +661,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8` freezes and persists the next
+`APP0.2-C1/C2/C3/C4/C5/C6/C7/C8/C9` freezes and persists the next
 Applications-owned records and exposes only project-member management
 admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
@@ -712,8 +712,21 @@ final-output, variable, and terminal writes recover their deterministic records
 before and after ambiguous commits, including after a later session advance.
 The existing cross-kind effect claim, single-final-output fence, immutable
 variable lineage, message sequence, and invocation state machine remain the
-only write authorities. Workflow runtime dispatch over this port is not yet
-implemented, and no public availability is claimed.
+only write authorities.
+
+C9 gives Application composition its own immutable WorkflowRun
+input/runtime/Flow v10 generation. Its
+`cloud.workflow-run.application-projection.v1` material contains only the
+compiler-derived single final Output step ID; all Application, release,
+session, and invocation authority remains behind C7. After exact Flow replay,
+the Workflow coordinator appends the aggregate final output before observing a
+successful terminal invocation, maps failed/time-out and cancellation outcomes
+to their closed Application terminal states, and only then returns the
+WorkflowRun projection for persistence. A missing port or effect failure blocks
+that save, so retry regenerates the same effect identity and timestamp. Inputs
+v1-v9 never probe Applications. Descriptor-bound Answer and
+Application-variable step dispatch are not yet implemented, and no public
+availability is claimed.
 
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse

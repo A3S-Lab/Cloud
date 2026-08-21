@@ -1,5 +1,9 @@
 use super::project_workflow_run_record;
 use super::projection::{execution_hook, verify_flow_authority};
+use crate::modules::applications::{
+    ApplicationInvocationStatus, IWorkflowApplicationEffectsPort, WorkflowApplicationEffectRequest,
+    WorkflowApplicationMessageRequest, WorkflowApplicationTerminalRequest,
+};
 use crate::modules::executions::{
     Execution, ExecutionOutcome, IWorkflowExecutionPort, WorkflowExecutionRequest,
     EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
@@ -10,7 +14,8 @@ use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowExecutionChildReferenceMetadata,
     WorkflowExecutionHookMetadata, WorkflowExecutionOutcome, WorkflowExecutionResumePayload,
     WorkflowExecutionStepOutput, WorkflowRunCoordinationError, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepKind, WORKFLOW_EXECUTION_RESULT_SCHEMA,
+    WorkflowRunStatus, WorkflowStepKind, WorkflowStepProjectionStatus,
+    WORKFLOW_EXECUTION_RESULT_SCHEMA,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -29,6 +34,7 @@ pub struct FlowWorkflowRunCoordinator {
     executions: Option<Arc<dyn IWorkflowExecutionPort>>,
     composites: Option<Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>>,
     connectors: Option<Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>>,
+    application_effects: Option<Arc<dyn IWorkflowApplicationEffectsPort>>,
 }
 
 impl FlowWorkflowRunCoordinator {
@@ -38,6 +44,7 @@ impl FlowWorkflowRunCoordinator {
             executions: None,
             composites: None,
             connectors: None,
+            application_effects: None,
         }
     }
 
@@ -50,6 +57,7 @@ impl FlowWorkflowRunCoordinator {
             executions: Some(executions),
             composites: None,
             connectors: None,
+            application_effects: None,
         }
     }
 
@@ -63,6 +71,7 @@ impl FlowWorkflowRunCoordinator {
             executions: Some(executions),
             composites: Some(composites),
             connectors: None,
+            application_effects: None,
         }
     }
 
@@ -77,6 +86,23 @@ impl FlowWorkflowRunCoordinator {
             executions: Some(executions),
             composites: Some(composites),
             connectors: Some(connectors),
+            application_effects: None,
+        }
+    }
+
+    pub fn with_all_ports_and_application_effects(
+        engine: FlowEngine,
+        executions: Arc<dyn IWorkflowExecutionPort>,
+        composites: Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>,
+        connectors: Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>,
+        application_effects: Arc<dyn IWorkflowApplicationEffectsPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: Some(executions),
+            composites: Some(composites),
+            connectors: Some(connectors),
+            application_effects: Some(application_effects),
         }
     }
 
@@ -90,6 +116,7 @@ impl FlowWorkflowRunCoordinator {
             executions: None,
             composites: Some(composites),
             connectors: None,
+            application_effects: None,
         }
     }
 
@@ -103,7 +130,45 @@ impl FlowWorkflowRunCoordinator {
             executions: None,
             composites: None,
             connectors: Some(connectors),
+            application_effects: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_application_effects(
+        engine: FlowEngine,
+        application_effects: Arc<dyn IWorkflowApplicationEffectsPort>,
+    ) -> Self {
+        Self {
+            engine,
+            executions: None,
+            composites: None,
+            connectors: None,
+            application_effects: Some(application_effects),
+        }
+    }
+
+    async fn apply_application_lifecycle_projection(
+        &self,
+        record: &WorkflowRunRecord,
+    ) -> Result<(), WorkflowRunCoordinationError> {
+        let Some(projection) = application_lifecycle_projection(record)? else {
+            return Ok(());
+        };
+        let port = self.application_effects.as_ref().ok_or_else(|| {
+            WorkflowRunCoordinationError::Unavailable(
+                "Workflow Applications semantic-effect coordination is not configured".into(),
+            )
+        })?;
+        if let Some(final_output) = projection.final_output.as_ref() {
+            port.append_final_output(final_output)
+                .await
+                .map_err(|error| application_effect_unavailable("append final output", error))?;
+        }
+        port.observe_terminal(&projection.terminal)
+            .await
+            .map_err(|error| application_effect_unavailable("observe terminal state", error))?;
+        Ok(())
     }
 
     async fn coordinate_active_execution(
@@ -403,11 +468,104 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
             .history(&record.run.flow_run_id)
             .await
             .map_err(|error| unavailable_at("refresh WorkflowRun history", error))?;
-        match project_workflow_run_record(record, &snapshot, &history) {
-            Ok(projected) => Ok(projected),
-            Err(error) => project_drift(record, &snapshot, &history, error).map(Some),
+        let projected = match project_workflow_run_record(record, &snapshot, &history) {
+            Ok(projected) => projected,
+            Err(error) => Some(project_drift(record, &snapshot, &history, error)?),
+        };
+        if let Some(projected) = projected.as_ref() {
+            self.apply_application_lifecycle_projection(projected)
+                .await?;
         }
+        Ok(projected)
     }
+}
+
+struct ApplicationLifecycleProjection {
+    final_output: Option<WorkflowApplicationMessageRequest>,
+    terminal: WorkflowApplicationTerminalRequest,
+}
+
+fn application_lifecycle_projection(
+    record: &WorkflowRunRecord,
+) -> Result<Option<ApplicationLifecycleProjection>, WorkflowRunCoordinationError> {
+    let Some(application) = record.run.execution_input.application_projection.as_ref() else {
+        return Ok(None);
+    };
+    let status = match record.run.status {
+        WorkflowRunStatus::Completed => ApplicationInvocationStatus::Succeeded,
+        WorkflowRunStatus::Failed | WorkflowRunStatus::TimedOut => {
+            ApplicationInvocationStatus::Failed
+        }
+        WorkflowRunStatus::Cancelled => ApplicationInvocationStatus::Cancelled,
+        WorkflowRunStatus::Pending
+        | WorkflowRunStatus::Running
+        | WorkflowRunStatus::Waiting
+        | WorkflowRunStatus::Cancelling => return Ok(None),
+    };
+    application
+        .validate(&record.run.execution_input.plan)
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+    let completed_at = record.run.finished_at.ok_or_else(|| {
+        WorkflowRunCoordinationError::Unavailable(
+            "terminal Application WorkflowRun has no finish time".into(),
+        )
+    })?;
+    let final_output = if status == ApplicationInvocationStatus::Succeeded {
+        let step = record
+            .steps
+            .iter()
+            .find(|step| step.step_id == application.final_output_step_id)
+            .ok_or_else(|| {
+                WorkflowRunCoordinationError::Unavailable(
+                    "Application WorkflowRun lost its final Output projection".into(),
+                )
+            })?;
+        let output = record.run.output.clone().ok_or_else(|| {
+            WorkflowRunCoordinationError::Unavailable(
+                "completed Application WorkflowRun lost its final output".into(),
+            )
+        })?;
+        if step.kind != WorkflowStepKind::Output
+            || step.status != WorkflowStepProjectionStatus::Completed
+            || step.attempt_generation == 0
+            || step.result.as_ref() != Some(&output)
+        {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "Application WorkflowRun final Output projection drifted".into(),
+            ));
+        }
+        Some(WorkflowApplicationMessageRequest {
+            effect: WorkflowApplicationEffectRequest {
+                organization_id: record.run.organization_id,
+                workflow_run_id: record.run.id,
+                step_id: application.final_output_step_id.clone(),
+                step_attempt: step.attempt_generation,
+                effect_ordinal: 0,
+                occurred_at: completed_at,
+            },
+            content: output,
+        })
+    } else {
+        None
+    };
+    let terminal = WorkflowApplicationTerminalRequest {
+        organization_id: record.run.organization_id,
+        workflow_run_id: record.run.id,
+        status,
+        completed_at,
+    };
+    final_output
+        .as_ref()
+        .map(WorkflowApplicationMessageRequest::validate)
+        .transpose()
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+    terminal
+        .validate()
+        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+    Ok(Some(ApplicationLifecycleProjection {
+        final_output,
+        terminal,
+    }))
 }
 
 #[derive(Debug, Clone)]
@@ -527,6 +685,15 @@ fn application_unavailable(error: ApplicationError) -> WorkflowRunCoordinationEr
     WorkflowRunCoordinationError::Unavailable(error.to_string())
 }
 
+fn application_effect_unavailable(
+    operation: &str,
+    error: ApplicationError,
+) -> WorkflowRunCoordinationError {
+    WorkflowRunCoordinationError::Unavailable(format!(
+        "could not {operation} for Application WorkflowRun: {error}"
+    ))
+}
+
 fn project_drift(
     record: &WorkflowRunRecord,
     snapshot: &a3s_flow::WorkflowRunSnapshot,
@@ -590,6 +757,8 @@ fn unavailable_at(operation: &str, error: FlowError) -> WorkflowRunCoordinationE
     WorkflowRunCoordinationError::Unavailable(format!("could not {operation}: {error}"))
 }
 
+#[cfg(test)]
+mod application_tests;
 #[cfg(test)]
 mod connector_tests;
 #[cfg(test)]

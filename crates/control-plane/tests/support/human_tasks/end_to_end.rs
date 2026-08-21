@@ -1140,6 +1140,7 @@ fn human_decision_input(
         variable_contract: None,
         variable_defaults: None,
         composite_regions: None,
+        application_projection: None,
         requested_at,
         deadline_at: requested_at + ChronoDuration::hours(1),
     };

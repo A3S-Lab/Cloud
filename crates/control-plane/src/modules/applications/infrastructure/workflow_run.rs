@@ -12,7 +12,8 @@ use crate::modules::workflow::domain::{
     IWorkflowGoalRepository, IWorkflowRunRepository, WorkflowGoalCompiled, WorkflowGoalContract,
     WorkflowGoalRecord, WorkflowGoalSpec, WorkflowPlanCompiler, WorkflowRunCancellationRequested,
     WorkflowRunCompiler, WorkflowRunRecord, WorkflowRunRequested, WorkflowRunStatus,
-    WorkflowStepKind,
+    WorkflowStepKind, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_INPUT_SCHEMA_V10,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -244,6 +245,14 @@ impl WorkflowApplicationRunService {
                 "Application WorkflowRun lost its single Input or Output step".into(),
             ));
         };
+        let application_projection = input.application_projection.as_ref().ok_or_else(|| {
+            ApplicationError::Internal(
+                "Application WorkflowRun lost its immutable projection contract".into(),
+            )
+        })?;
+        application_projection
+            .validate(plan)
+            .map_err(ApplicationError::Internal)?;
         if run.organization_id != request.organization_id
             || run.project_id != request.project_id
             || run.id != request.workflow_run_id()
@@ -255,6 +264,9 @@ impl WorkflowApplicationRunService {
             || input.workflow_goal_id != request.workflow_goal_id()
             || input.plan_revision_id != request.plan_revision_id()
             || input.deadline_at != deadline_at
+            || input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V10
+            || input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
+            || input.flow_workflow_version != WORKFLOW_RUN_FLOW_VERSION_V10
             || input.goal_input != request.input
             || plan.input_digest != request.input_digest
             || plan.workflow_definition_id != request.workflow.workflow_definition_id
@@ -265,6 +277,7 @@ impl WorkflowApplicationRunService {
                 != Some(&request.workflow.workflow_semantic_contract_set_digest)
             || input_step.output_schema_digest != request.workflow.input_schema_digest
             || output_step.output_schema_digest != request.workflow.output_schema_digest
+            || application_projection.final_output_step_id != output_step.id
             || plan.ontology_id != request.ontology_id
             || plan.ontology_revision_id != request.ontology_revision_id
             || plan.ontology_digest != request.ontology_digest
@@ -324,7 +337,7 @@ impl IApplicationWorkflowRunPort for WorkflowApplicationRunService {
             return Self::evidence(request, &record);
         }
         let (goal, revision) = self.compile_goal(request).await?;
-        let compiled = WorkflowRunCompiler::compile(
+        let compiled = WorkflowRunCompiler::compile_for_application(
             request.workflow_run_id(),
             &goal.goal,
             &goal.plan_revision,

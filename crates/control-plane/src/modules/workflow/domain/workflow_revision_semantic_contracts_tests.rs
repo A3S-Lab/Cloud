@@ -755,7 +755,7 @@ fn semantic_revision_lineage_cannot_downgrade_to_legacy_authority() {
 }
 
 #[test]
-fn compiler_emits_plan_v2_and_pins_its_variable_contract_into_a_v2_run() {
+fn compiler_preserves_standalone_v2_and_emits_application_projection_v10() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition_id = WorkflowDefinitionId::new();
@@ -975,6 +975,36 @@ fn compiler_emits_plan_v2_and_pins_its_variable_contract_into_a_v2_run() {
         .execution_input
         .validate()
         .expect("valid v2 run input");
+
+    let application_run = WorkflowRunCompiler::compile_for_application(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("compiled Application run");
+    let application_input = &application_run.run.execution_input;
+    assert_eq!(application_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V10);
+    assert_eq!(
+        application_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
+    );
+    assert_eq!(
+        application_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V10
+    );
+    assert_eq!(
+        application_input
+            .application_projection
+            .as_ref()
+            .expect("Application projection")
+            .final_output_step_id,
+        "output"
+    );
+    application_input.validate().expect("valid v10 run input");
 }
 
 mod execution_fallback;
