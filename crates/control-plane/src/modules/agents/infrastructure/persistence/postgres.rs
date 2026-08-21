@@ -1,3 +1,4 @@
+mod code_agent_writes;
 mod queries;
 mod rows;
 mod schema;
@@ -9,7 +10,8 @@ use crate::modules::agents::domain::{
     AgentConversationWriteReference, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
     AgentExecutionEventsWrite, AgentExecutionWrite, AgentExecutionWriteReference,
     AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
-    IAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    IAgentRepository, RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite,
+    StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -67,11 +69,18 @@ impl IAgentRepository for PostgresAgentRepository {
         writes::bind_code_run(&self.executor, write).await
     }
 
+    async fn recover_code_run(
+        &self,
+        write: RecoverAgentCodeRunWrite,
+    ) -> Result<AgentCodeRunWrite, RepositoryError> {
+        code_agent_writes::recover_code_run(&self.executor, write).await
+    }
+
     async fn accept_code_event_batch(
         &self,
         write: AcceptAgentCodeEventBatchWrite,
     ) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError> {
-        writes::accept_code_event_batch(&self.executor, write).await
+        code_agent_writes::accept_code_event_batch(&self.executor, write).await
     }
 
     async fn replay_conversation(

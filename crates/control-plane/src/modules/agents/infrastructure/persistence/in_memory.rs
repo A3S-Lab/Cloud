@@ -5,7 +5,7 @@ use crate::modules::agents::domain::{
     AgentExecutionEventKind, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
     AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
     BindAgentCodeRunWrite, CreateAgentConversationWrite, IAgentRepository,
-    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -398,6 +398,30 @@ impl IAgentRepository for InMemoryAgentRepository {
         })
     }
 
+    async fn recover_code_run(
+        &self,
+        write: RecoverAgentCodeRunWrite,
+    ) -> Result<AgentCodeRunWrite, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        let key = (write.organization_id, write.execution_id);
+        let mut execution = state
+            .executions
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let changed = execution
+            .recover_code_run(&write.expected_binding, write.recovered_at)
+            .map_err(RepositoryError::Conflict)?;
+        if changed {
+            state.executions.insert(key, execution.clone());
+        }
+        Ok(AgentCodeRunWrite {
+            execution,
+            replayed: !changed,
+        })
+    }
+
     async fn accept_code_event_batch(
         &self,
         write: AcceptAgentCodeEventBatchWrite,
@@ -430,23 +454,54 @@ impl IAgentRepository for InMemoryAgentRepository {
             .get(&conversation_key)
             .cloned()
             .ok_or_else(|| corrupt("Agent execution conversation is missing"))?;
-        let binding = execution.code.as_ref().ok_or(RepositoryError::NotFound)?;
+        let binding = execution
+            .code
+            .as_ref()
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
         if binding.node_id() != write.authenticated_node_id {
             return Err(RepositoryError::NotFound);
         }
         if binding.node_runtime_binding(execution.id.as_uuid()) != write.batch.binding {
+            if binding
+                .can_settle_recovery_predecessor_runtime_binding(&write.batch.binding, execution.id)
+            {
+                let receipt = write.receipt(false).map_err(corrupt)?;
+                store_replay(
+                    &mut state,
+                    write.idempotency,
+                    IdempotencyResponse::CodeEvents(receipt.clone()),
+                );
+                return Ok(receipt);
+            }
             return Err(RepositoryError::Conflict(
                 "Code Agent event batch changed its bound Runtime or run identity".into(),
             ));
         }
 
         let projected_at = write.accepted_at.max(execution.updated_at);
-        let drafts =
-            AgentExecutionEventDraft::semantic_from_code_page(&write.batch.page, projected_at)
-                .map_err(invalid_repository_write)?;
-        execution
-            .accept_code_event_page(&write.batch.page, projected_at, &drafts)
-            .map_err(RepositoryError::Conflict)?;
+        let drafts = if write.batch.page.retention_gap {
+            if write.batch.change_set.is_some() {
+                return Err(RepositoryError::Conflict(
+                    "Code Agent retention gap cannot carry a terminal change set".into(),
+                ));
+            }
+            binding
+                .validate_recovery_page(&write.batch.page)
+                .map_err(RepositoryError::Conflict)?;
+            execution
+                .recover_code_run(&binding, projected_at)
+                .map_err(RepositoryError::Conflict)?;
+            Vec::new()
+        } else {
+            let drafts =
+                AgentExecutionEventDraft::semantic_from_code_page(&write.batch.page, projected_at)
+                    .map_err(invalid_repository_write)?;
+            execution
+                .accept_code_event_page(&write.batch.page, projected_at, &drafts)
+                .map_err(RepositoryError::Conflict)?;
+            drafts
+        };
 
         let events = if drafts.is_empty() {
             Vec::new()
@@ -485,27 +540,7 @@ impl IAgentRepository for InMemoryAgentRepository {
             }
         }
 
-        let receipt = NodeCodeAgentEventReceiptV1 {
-            schema: NodeCodeAgentEventReceiptV1::SCHEMA.into(),
-            batch_id: write.batch.batch_id,
-            node_id: write.batch.node_id,
-            execution_id: write.batch.binding.execution_id,
-            identity: write.batch.page.identity.clone(),
-            page_digest: write
-                .batch
-                .page
-                .digest()
-                .map_err(|error| invalid_repository_write(error.to_string()))?,
-            accepted_after_event_sequence: write.batch.page.next_after_event_sequence,
-            accepted_state: write.batch.page.state,
-            accepted_events: u16::try_from(write.batch.page.events.len())
-                .map_err(|_| corrupt("Code Agent event count exceeds receipt bounds"))?,
-            accepted_at_ms: write.accepted_at_ms().map_err(invalid_repository_write)?,
-            replayed: false,
-        };
-        receipt
-            .validate_for(&write.batch)
-            .map_err(|error| corrupt(format!("Code Agent event receipt is invalid: {error}")))?;
+        let receipt = write.receipt(false).map_err(corrupt)?;
 
         let change_set = write
             .batch

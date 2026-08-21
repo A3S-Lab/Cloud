@@ -373,7 +373,11 @@ creating their own control planes:
    remaining providers, recovery evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
-   `A1.1` is implemented; native Code integration verification remains.
+   `A1.1` is implemented. Local native Code `A1.2` now carries start,
+   run-scoped cancellation, deterministic recovery, event pages, retention
+   gaps, and same-generation provider-process restart recovery through the
+   existing Flow/Fleet/Runtime/node-journal path; dependency publication and
+   clean Linux PostgreSQL/Runtime verification remain.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

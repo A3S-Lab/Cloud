@@ -1,3 +1,4 @@
+mod recovery;
 mod runtime;
 mod types;
 mod workflow;

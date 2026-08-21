@@ -1,3 +1,4 @@
+use super::recovery;
 use super::types::{
     AgentExecutionFlowInput, CompletedAgentExecution, DispatchInput, DispatchOutput,
     DispatchedAgentExecution, ObserveInput, ObserveOutput, PrepareOutput, PreparedAgentExecution,
@@ -6,6 +7,7 @@ use super::{flow_error, AgentExecutionFlowRuntime};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
     AgentExecutionEventKind, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
+    RecoverAgentCodeRunWrite,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
@@ -49,6 +51,7 @@ pub(super) async fn prepare(
                 organization_id: execution.organization_id,
                 execution_id: execution.id,
                 binding,
+                runtime_started_at_ms: None,
             }),
         });
     }
@@ -106,12 +109,13 @@ pub(super) async fn prepare(
         .await;
     }
 
-    let readiness = match ready_binding(runtime, &execution, &target, now).await {
-        Ok(binding) => binding,
-        Err(reason) => {
-            return pending_or_fail(runtime, execution, &reason, now, deadline_at).await;
-        }
-    };
+    let (readiness, runtime_started_at_ms) =
+        match ready_binding(runtime, &execution, &target, now).await {
+            Ok(readiness) => readiness,
+            Err(reason) => {
+                return pending_or_fail(runtime, execution, &reason, now, deadline_at).await;
+            }
+        };
     let write = runtime
         .agents
         .bind_code_run(BindAgentCodeRunWrite {
@@ -128,6 +132,7 @@ pub(super) async fn prepare(
             binding: write.execution.code.ok_or_else(|| {
                 FlowError::Runtime("bound Agent execution omitted its A3S Code identity".into())
             })?,
+            runtime_started_at_ms: Some(runtime_started_at_ms),
         }),
     })
 }
@@ -199,6 +204,7 @@ pub(super) async fn dispatch(
             prepared: input.prepared,
             command_id,
             acknowledgement_deadline: command.not_after,
+            recovery_checkpoint_run_id: None,
         }),
     })
 }
@@ -210,12 +216,24 @@ pub(super) async fn observe(
 ) -> a3s_flow::Result<ObserveOutput> {
     let flow = flow_input(&input.dispatched.prepared);
     let execution = load_execution(runtime, run_id, &flow).await?;
-    validate_prepared(&execution, &input.dispatched.prepared)?;
     if execution.status.is_terminal() {
         return Ok(ObserveOutput::Terminal {
             completed: completed(&execution)?,
         });
     }
+    let current = execution
+        .code
+        .as_ref()
+        .ok_or_else(|| FlowError::Runtime("Agent execution lost its A3S Code binding".into()))?;
+    if !current.has_same_run_binding(&input.dispatched.prepared.binding) {
+        if current.is_recovery_successor_of(&input.dispatched.prepared.binding, execution.id) {
+            return recovery::begin(runtime, execution, *input.dispatched).await;
+        }
+        return Err(FlowError::Runtime(
+            "prepared Agent execution changed its durable identity".into(),
+        ));
+    }
+    validate_prepared(&execution, &input.dispatched.prepared)?;
     let node_id = input.dispatched.prepared.binding.node_id();
     let command = runtime
         .node_control
@@ -223,17 +241,16 @@ pub(super) async fn observe(
         .await
         .map_err(|error| flow_error("could not load A3S Code command", error))?
         .ok_or_else(|| FlowError::Runtime("A3S Code command no longer exists".into()))?;
-    let expected = start_command(runtime, &execution).await?;
-    validate_start_command(&execution, &input.dispatched.prepared, &expected, &command)?;
+    let expected = dispatched_command(runtime, &execution, &input.dispatched).await?;
+    validate_dispatched_command(&execution, &input.dispatched, &expected, &command)?;
     if command.not_after != input.dispatched.acknowledgement_deadline {
         return Err(FlowError::Runtime(
             "A3S Code command acknowledgement deadline changed".into(),
         ));
     }
-    if execution.status == crate::modules::agents::domain::AgentExecutionStatus::Cancelling {
-        return observe_cancellation(runtime, execution, &input.dispatched.prepared).await;
-    }
-    if let Some(acknowledgement) = runtime
+    let cancelling =
+        execution.status == crate::modules::agents::domain::AgentExecutionStatus::Cancelling;
+    let acknowledged = if let Some(acknowledgement) = runtime
         .node_control
         .command_acknowledgement(node_id, input.dispatched.command_id)
         .await
@@ -266,6 +283,7 @@ pub(super) async fn observe(
                 .await
             }
         }
+        true
     } else if Utc::now() >= input.dispatched.acknowledgement_deadline {
         return fail_observation(
             runtime,
@@ -274,12 +292,73 @@ pub(super) async fn observe(
             input.dispatched.acknowledgement_deadline,
         )
         .await;
+    } else {
+        false
+    };
+
+    if acknowledged || cancelling {
+        let process = recovery::active_runtime_process(
+            runtime,
+            &input.dispatched.prepared.binding,
+            Utc::now().max(execution.updated_at),
+        )
+        .await?;
+        if process.is_none() && acknowledged && !cancelling {
+            return observe_pending(
+                runtime,
+                "waiting for the bound A3S Code Harness process to become ready",
+                None,
+            );
+        }
+        match (input.dispatched.prepared.runtime_started_at_ms, process) {
+            (None, Some(process)) if !cancelling => {
+                let mut dispatched = *input.dispatched;
+                dispatched.prepared.runtime_started_at_ms = Some(process.started_at_ms);
+                return observe_pending(
+                    runtime,
+                    "recorded the bound A3S Code Harness process incarnation",
+                    Some(dispatched),
+                );
+            }
+            (Some(started_at_ms), Some(process)) if started_at_ms != process.started_at_ms => {
+                let write = runtime
+                    .agents
+                    .recover_code_run(RecoverAgentCodeRunWrite {
+                        organization_id: execution.organization_id,
+                        execution_id: execution.id,
+                        expected_binding: input.dispatched.prepared.binding.clone(),
+                        recovered_at: process.received_at.max(execution.updated_at),
+                    })
+                    .await
+                    .map_err(|error| {
+                        flow_error("could not recover the restarted A3S Code provider", error)
+                    })?;
+                return recovery::begin(runtime, write.execution, *input.dispatched).await;
+            }
+            _ => {}
+        }
     }
+    if cancelling {
+        return observe_cancellation(runtime, execution, &input.dispatched.prepared).await;
+    }
+    observe_pending(
+        runtime,
+        "waiting for the Code-owned run to reach a terminal state",
+        None,
+    )
+}
+
+pub(super) fn observe_pending(
+    runtime: &AgentExecutionFlowRuntime,
+    reason: &str,
+    dispatched: Option<DispatchedAgentExecution>,
+) -> a3s_flow::Result<ObserveOutput> {
     Ok(ObserveOutput::Pending {
-        reason: "waiting for the Code-owned run to reach a terminal state".into(),
+        reason: reason.into(),
         next_poll_at: Utc::now()
             .checked_add_signed(runtime.config.observation_poll)
             .ok_or_else(|| FlowError::Runtime("Agent observation poll time overflowed".into()))?,
+        dispatched: dispatched.map(Box::new),
     })
 }
 
@@ -288,8 +367,8 @@ async fn observe_cancellation(
     execution: AgentExecution,
     prepared: &PreparedAgentExecution,
 ) -> a3s_flow::Result<ObserveOutput> {
-    let command_id = cancel_command_id(execution.id);
     let expected = cancel_command(&execution)?;
+    let command_id = cancel_command_id(execution.id, &expected.identity().run_id);
     let node_id = prepared.binding.node_id();
     let command = match runtime
         .node_control
@@ -376,6 +455,7 @@ async fn observe_cancellation(
         next_poll_at: Utc::now()
             .checked_add_signed(runtime.config.observation_poll)
             .ok_or_else(|| FlowError::Runtime("Agent cancellation poll time overflowed".into()))?,
+        dispatched: None,
     })
 }
 
@@ -384,7 +464,7 @@ async fn ready_binding(
     execution: &AgentExecution,
     target: &ActiveRuntimeTarget,
     now: DateTime<Utc>,
-) -> Result<AgentCodeRunBinding, String> {
+) -> Result<(AgentCodeRunBinding, u64), String> {
     let node_id = target
         .replica_binding
         .node_id
@@ -426,8 +506,12 @@ async fn ready_binding(
     if endpoint.protocol != TransportProtocol::Tcp {
         return Err("A3S Code Harness Runtime endpoint is not TCP".into());
     }
+    let runtime_started_at_ms = observation
+        .observation
+        .started_at_ms
+        .ok_or_else(|| "A3S Code Harness Runtime has no process start time".to_owned())?;
     let spec_digest = Sha256Digest::parse(spec.digest()?)?;
-    AgentCodeRunBinding::new(
+    let binding = AgentCodeRunBinding::new(
         node_id,
         target.workload.id,
         target.revision.id,
@@ -445,7 +529,8 @@ async fn ready_binding(
             run_id: format!("agent-execution-{}", execution.id),
         },
         now,
-    )
+    )?;
+    Ok((binding, runtime_started_at_ms))
 }
 
 async fn start_command(
@@ -490,6 +575,17 @@ async fn start_command(
     Ok(command)
 }
 
+async fn dispatched_command(
+    runtime: &AgentExecutionFlowRuntime,
+    execution: &AgentExecution,
+    dispatched: &DispatchedAgentExecution,
+) -> a3s_flow::Result<AgentProtocolCommandV1> {
+    match dispatched.recovery_checkpoint_run_id.as_deref() {
+        Some(checkpoint_run_id) => recovery::command(execution, checkpoint_run_id),
+        None => start_command(runtime, execution).await,
+    }
+}
+
 fn cancel_command(execution: &AgentExecution) -> a3s_flow::Result<AgentProtocolCommandV1> {
     let identity = execution
         .code
@@ -500,7 +596,10 @@ fn cancel_command(execution: &AgentExecution) -> a3s_flow::Result<AgentProtocolC
     let command = AgentProtocolCommandV1::Cancel {
         request: AgentProtocolRunCancelV1 {
             schema: AgentProtocolRunCancelV1::SCHEMA.into(),
-            request_id: format!("agent-execution-{}-cancel", execution.id),
+            request_id: format!(
+                "agent-cancel-{}",
+                cancel_command_id(execution.id, &identity.run_id)
+            ),
             identity,
             reason: "Cloud Agent execution cancellation requested".into(),
         },
@@ -546,6 +645,24 @@ fn validate_start_command(
     Ok(())
 }
 
+fn validate_dispatched_command(
+    execution: &AgentExecution,
+    dispatched: &DispatchedAgentExecution,
+    expected: &AgentProtocolCommandV1,
+    command: &NodeCommand,
+) -> a3s_flow::Result<()> {
+    match dispatched.recovery_checkpoint_run_id.as_deref() {
+        Some(checkpoint_run_id) => recovery::validate_command(
+            execution,
+            &dispatched.prepared,
+            checkpoint_run_id,
+            expected,
+            command,
+        ),
+        None => validate_start_command(execution, &dispatched.prepared, expected, command),
+    }
+}
+
 fn validate_cancel_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
@@ -561,7 +678,7 @@ fn validate_cancel_command(
             "Agent execution cancellation is not an A3S Code command".into(),
         ));
     };
-    if command.id != cancel_command_id(execution.id)
+    if command.id != cancel_command_id(execution.id, &expected.identity().run_id)
         || command.node_id != prepared.binding.node_id()
         || command.aggregate_id != execution.id.as_uuid()
         || command.correlation_id != execution.operation_id.as_uuid()
@@ -580,10 +697,11 @@ fn validate_cancel_command(
 
 fn cancel_command_id(
     execution_id: crate::modules::shared_kernel::domain::AgentExecutionId,
+    run_id: &str,
 ) -> NodeCommandId {
     NodeCommandId::from_uuid(uuid::Uuid::new_v5(
         &execution_id.as_uuid(),
-        b"a3s-code-cancel-v1",
+        format!("a3s-code-cancel-v1:{run_id}").as_bytes(),
     ))
 }
 

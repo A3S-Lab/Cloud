@@ -522,6 +522,119 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
 }
 
 #[tokio::test]
+async fn retention_gap_replays_once_drains_the_checkpoint_and_accepts_the_recovered_binding() {
+    let directory = tempfile::tempdir().expect("state directory");
+    let node_id = Uuid::now_v7();
+    let checkpoint = binding();
+    let mut recovered = checkpoint.clone();
+    recovered.code_run_identity.run_id = "execution-1-attempt-2".into();
+    let (observation, endpoint) = runtime_fixture(&checkpoint);
+    let observed_at_ms = now_ms();
+    let first = page(
+        &checkpoint.code_run_identity,
+        None,
+        1,
+        AgentProtocolRunStateV1::Executing,
+        observed_at_ms,
+        false,
+        vec![event(&checkpoint.code_run_identity, 0, observed_at_ms)],
+    );
+    let gap_observed_at_ms = observed_at_ms.saturating_add(2);
+    let gap = AgentProtocolEventPageV1 {
+        schema: AgentProtocolEventPageV1::SCHEMA.into(),
+        identity: checkpoint.code_run_identity.clone(),
+        after_event_sequence: Some(0),
+        first_available_sequence: Some(2),
+        latest_sequence_exclusive: 3,
+        next_after_event_sequence: Some(2),
+        state: AgentProtocolRunStateV1::Executing,
+        observed_at_ms: gap_observed_at_ms,
+        retention_gap: true,
+        has_more: false,
+        events: vec![event(&checkpoint.code_run_identity, 2, gap_observed_at_ms)],
+    };
+    gap.validate().expect("retention-gap page");
+    let recovered_page = page(
+        &recovered.code_run_identity,
+        None,
+        0,
+        AgentProtocolRunStateV1::Planning,
+        gap_observed_at_ms.saturating_add(1),
+        false,
+        Vec::new(),
+    );
+    let runtime = Arc::new(EventRuntime {
+        calls: AtomicUsize::new(0),
+        observation,
+    });
+    let harness = Arc::new(PageHarness {
+        calls: AtomicUsize::new(0),
+        requests: Mutex::new(Vec::new()),
+        pages: Mutex::new(VecDeque::from([first, gap, recovered_page])),
+        change_requests: Mutex::new(Vec::new()),
+        change_sets: Mutex::new(VecDeque::new()),
+        endpoint,
+    });
+    let transport = Arc::new(EventTransport::new(0));
+    let shipper = shipper(
+        directory.path(),
+        node_id,
+        Arc::clone(&runtime),
+        Arc::clone(&harness),
+        Arc::clone(&transport),
+    );
+
+    assert!(shipper
+        .ship_once(std::slice::from_ref(&checkpoint))
+        .await
+        .expect("ship checkpoint page"));
+    transport.failures.store(1, Ordering::SeqCst);
+    let interrupted = shipper.ship_once(std::slice::from_ref(&checkpoint)).await;
+    assert!(matches!(
+        interrupted,
+        Err(CodeEventShippingError::ControlPlane(
+            NodeControlClientError::Transport(_)
+        ))
+    ));
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
+
+    let restarted = shipper(
+        directory.path(),
+        node_id,
+        Arc::clone(&runtime),
+        Arc::clone(&harness),
+        Arc::clone(&transport),
+    );
+    assert!(restarted
+        .ship_once(std::slice::from_ref(&checkpoint))
+        .await
+        .expect("replay retention gap"));
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
+    assert!(!restarted
+        .ship_once(std::slice::from_ref(&checkpoint))
+        .await
+        .expect("checkpoint cursor is recovery-drained"));
+    assert!(restarted
+        .ship_once(std::slice::from_ref(&recovered))
+        .await
+        .expect("ship recovered run"));
+
+    let requests = harness.requests.lock().await.clone();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[0].after_event_sequence, None);
+    assert_eq!(requests[1].after_event_sequence, Some(0));
+    assert_eq!(requests[2].identity, recovered.code_run_identity);
+    assert_eq!(requests[2].after_event_sequence, None);
+    assert_eq!(harness.change_requests.lock().await.len(), 0);
+    let batches = transport.batches.lock().await.clone();
+    assert_eq!(batches.len(), 4);
+    assert!(batches[1].page.retention_gap);
+    assert_eq!(batches[1], batches[2]);
+    assert_eq!(batches[1].batch_id, batches[2].batch_id);
+    assert_eq!(batches[3].binding, recovered);
+}
+
+#[tokio::test]
 async fn empty_page_projects_a_state_change_once_without_fabricating_events() {
     let directory = tempfile::tempdir().expect("state directory");
     let node_id = Uuid::now_v7();

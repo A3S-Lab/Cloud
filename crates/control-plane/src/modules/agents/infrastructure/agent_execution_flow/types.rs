@@ -16,6 +16,8 @@ pub(super) struct PreparedAgentExecution {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
     pub binding: AgentCodeRunBinding,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_started_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,8 @@ pub(super) struct DispatchedAgentExecution {
     pub prepared: Box<PreparedAgentExecution>,
     pub command_id: NodeCommandId,
     pub acknowledgement_deadline: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_checkpoint_run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +75,8 @@ pub(super) enum ObserveOutput {
     Pending {
         reason: String,
         next_poll_at: DateTime<Utc>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dispatched: Option<Box<DispatchedAgentExecution>>,
     },
     Terminal {
         completed: CompletedAgentExecution,

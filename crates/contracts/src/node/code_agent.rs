@@ -111,7 +111,8 @@ impl NodeCodeAgentEventBatchV1 {
             change_set
                 .validate()
                 .map_err(|error| format!("invalid A3S Code change set ({})", error.code()))?;
-            if !self.page.state.is_terminal()
+            if self.page.retention_gap
+                || !self.page.state.is_terminal()
                 || self.page.has_more
                 || change_set.identity != self.binding.code_run_identity
                 || change_set.state != self.page.state

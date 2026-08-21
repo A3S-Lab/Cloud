@@ -3401,9 +3401,26 @@ Current `A1.2` transport foundation (in progress):
 - the Node Agent uses the shared durable pending-batch/receipt primitive to
   ship exact Code event pages, while Cloud advances one contiguous Code cursor
   and derives only `model_output` plus terminal semantic facts; raw Code event
-  records remain exclusively Code-owned; and
-- the native root CLI Harness HTTP entrypoint is implemented locally; dependency
-  publication, cancel/recover orchestration, clean Linux PostgreSQL
+  records remain exclusively Code-owned;
+- a Code retention gap rotates the existing execution binding to a
+  deterministic UUIDv5 successor and marks the old node cursor
+  recovery-drained only after the exact gap batch receives its durable Cloud
+  receipt;
+- Flow persists the observed Runtime process `started_at_ms`, detects provider
+  replacement inside the same generation, and sends Code Core's native
+  `Recover` with the prior run ID as its checkpoint through the same Fleet and
+  node-journal path;
+- cancellation uses a deterministic command identity scoped to the current
+  Code run, so a recovery/cancellation race first recovers the successor and
+  then cancels that exact run without colliding with the predecessor command;
+- an old batch already durable on the node when Cloud rotates the binding is
+  receipt-settled without semantic projection, allowing the shared outbound
+  journal to adopt the journal-authorized successor without fabricating or
+  silently discarding events;
+- Code event timestamps are compared only with prior Code timestamps, while
+  recovery and aggregate mutation use Cloud receipt time; and
+- the native root CLI Harness HTTP entrypoint and cancel/recover orchestration
+  are implemented locally. Dependency publication, clean Linux PostgreSQL
   verification, and real Runtime/process-death gates remain open before
   `A1.2` is complete.
 

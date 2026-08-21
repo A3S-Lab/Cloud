@@ -189,6 +189,28 @@ pub struct AgentCodeRunWrite {
 }
 
 #[derive(Debug, Clone)]
+pub struct RecoverAgentCodeRunWrite {
+    pub organization_id: OrganizationId,
+    pub execution_id: AgentExecutionId,
+    pub expected_binding: AgentCodeRunBinding,
+    pub recovered_at: DateTime<Utc>,
+}
+
+impl RecoverAgentCodeRunWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        self.expected_binding.validate()?;
+        if self.organization_id.as_uuid().is_nil()
+            || self.execution_id.as_uuid().is_nil()
+            || self.recovered_at != canonical_timestamp(self.recovered_at)
+            || self.recovered_at < self.expected_binding.bound_at()
+        {
+            return Err("Agent Code run recovery write is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AcceptAgentCodeEventBatchWrite {
     pub organization_id: OrganizationId,
     pub authenticated_node_id: NodeId,
@@ -248,6 +270,31 @@ impl AcceptAgentCodeEventBatchWrite {
             .map_err(|_| "Code Agent event acceptance time is invalid".to_owned())
     }
 
+    pub fn receipt(&self, replayed: bool) -> Result<NodeCodeAgentEventReceiptV1, String> {
+        let receipt = NodeCodeAgentEventReceiptV1 {
+            schema: NodeCodeAgentEventReceiptV1::SCHEMA.into(),
+            batch_id: self.batch.batch_id,
+            node_id: self.batch.node_id,
+            execution_id: self.batch.binding.execution_id,
+            identity: self.batch.page.identity.clone(),
+            page_digest: self
+                .batch
+                .page
+                .digest()
+                .map_err(|error| error.to_string())?,
+            accepted_after_event_sequence: self.batch.page.next_after_event_sequence,
+            accepted_state: self.batch.page.state,
+            accepted_events: u16::try_from(self.batch.page.events.len())
+                .map_err(|_| "Code Agent event count exceeds receipt bounds".to_owned())?,
+            accepted_at_ms: self.accepted_at_ms()?,
+            replayed,
+        };
+        receipt
+            .validate_for(&self.batch)
+            .map_err(|error| format!("Code Agent event receipt is invalid: {error}"))?;
+        Ok(receipt)
+    }
+
     fn idempotency_scope(organization_id: OrganizationId, node_id: NodeId) -> String {
         format!("organizations/{organization_id}/nodes/{node_id}/code-agent-event-batches")
     }
@@ -299,6 +346,11 @@ pub trait IAgentRepository: Send + Sync {
     async fn bind_code_run(
         &self,
         write: BindAgentCodeRunWrite,
+    ) -> Result<AgentCodeRunWrite, RepositoryError>;
+
+    async fn recover_code_run(
+        &self,
+        write: RecoverAgentCodeRunWrite,
     ) -> Result<AgentCodeRunWrite, RepositoryError>;
 
     async fn accept_code_event_batch(
