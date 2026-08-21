@@ -11,6 +11,12 @@ pub use object_namespace_probe::ObjectNamespaceConformanceProbe;
 pub use object_namespace_recovery::{
     ObjectNamespaceAccess, ObjectNamespaceRecoveryExecutor, ObjectNamespaceRecoveryStore,
 };
+pub(crate) use object_namespace_recovery::{
+    ObjectNamespaceCleanupPageCheckpoint, ObjectNamespaceManifestPageCheckpoint,
+    ObjectNamespaceObservationPageCheckpoint, ObjectNamespaceRecoveryAnchorCheckpoint,
+    ObjectNamespaceSealPageCheckpoint, OBJECT_NAMESPACE_MAXIMUM_CHECKPOINT_PAGES,
+};
+pub(crate) use object_namespace_recovery_operation::LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION;
 pub use object_namespace_recovery_operation::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,

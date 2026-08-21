@@ -1,5 +1,5 @@
 use super::*;
-use crate::infrastructure::ImmutableObjectClient;
+use crate::infrastructure::{ImmutableObjectClient, BOUNDED_STEP_RETRY_PATCH_ID};
 use crate::modules::data::application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     ObjectNamespaceAccess, ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
@@ -21,7 +21,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, InMemoryEventStore,
-    WorkflowRunStatus, WorkflowSpec,
+    WorkflowPatchId, WorkflowRunStatus, WorkflowSpec,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -29,6 +29,8 @@ use object_store::memory::InMemory;
 use object_store::ObjectStore;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+
+mod process_death;
 
 #[derive(Default)]
 struct InMemoryAccessResolver {
@@ -111,8 +113,14 @@ impl IObjectNamespaceAccessResolver for InMemoryAccessResolver {
 async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecycle(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    put(&fixture.source_namespace, "cells/alpha.sqlite", b"sqlite").await?;
-    put(&fixture.source_namespace, "alarms/alpha", b"alarm").await?;
+    for index in 0..33 {
+        put(
+            &fixture.source_namespace,
+            &format!("state/{index:04}.bin"),
+            format!("value-{index:04}").as_bytes(),
+        )
+        .await?;
+    }
     let engine = FlowEngine::in_memory(Arc::new(fixture.runtime()));
     let sealed_at = canonical_timestamp(Utc::now());
 
@@ -130,6 +138,17 @@ async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecy
     start(&engine, &seal_request).await?;
     let sealed: SealObjectNamespaceOperationOutput = output(&engine, seal_operation_id).await?;
     assert_eq!(sealed.recovery_point.spec().writer_epoch, 7);
+    assert_eq!(
+        created_step_ids(&engine, seal_operation_id).await?,
+        vec![
+            "seal-snapshot-0000",
+            "seal-snapshot-0001",
+            "seal-verify-0000",
+            "seal-verify-0001",
+            "seal-finalize",
+        ],
+        "a namespace-sized seal must persist one bounded checkpoint per page"
+    );
 
     let retention_policy = retention_policy()?;
     let restore_plan = ObjectNamespaceRestorePlan::for_recovery_point(
@@ -157,7 +176,22 @@ async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecy
         .restore_evidence
         .validate_for(&restore_plan)
         .expect("exact restore evidence");
-    assert_eq!(fixture.target_namespace.list(None, 8, 1024).await?.len(), 2);
+    assert_eq!(
+        fixture.target_namespace.list(None, 64, 8192).await?.len(),
+        33
+    );
+    assert_eq!(
+        created_step_ids(&engine, restore_operation_id).await?,
+        vec![
+            "restore-preflight-0000",
+            "restore-apply-0000",
+            "restore-apply-0001",
+            "restore-verify-0000",
+            "restore-verify-0001",
+            "restore-finalize",
+        ],
+        "restore must preflight, apply, and verify bounded pages"
+    );
 
     let deletion_requested_at = restored.restore_evidence.verified_at + Duration::seconds(1);
     let deletion_plan = ObjectNamespaceDeletionPlan::after_verified_restore(
@@ -191,8 +225,8 @@ async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecy
         WorkflowRunStatus::Suspended
     );
     assert_eq!(
-        fixture.source_namespace.list(None, 8, 1024).await?.len(),
-        2,
+        fixture.source_namespace.list(None, 64, 8192).await?.len(),
+        33,
         "Flow must not execute deletion before its durable grace wait"
     );
 
@@ -207,7 +241,7 @@ async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecy
         .expect("exact deletion evidence");
     assert!(fixture
         .source_namespace
-        .list(None, 8, 1024)
+        .list(None, 64, 8192)
         .await?
         .is_empty());
     assert!(fixture
@@ -215,7 +249,32 @@ async fn operations_flow_seals_restores_waits_and_deletes_without_another_lifecy
         .list(None, 16, 16 * 1024)
         .await?
         .is_empty());
-    assert_eq!(fixture.target_namespace.list(None, 8, 1024).await?.len(), 2);
+    assert_eq!(
+        fixture.target_namespace.list(None, 64, 8192).await?.len(),
+        33
+    );
+    assert_eq!(
+        created_step_ids(&engine, delete_operation_id).await?,
+        vec![
+            "delete-retained-preflight-0000",
+            "delete-retained-preflight-0001",
+            "delete-source-preflight-0000",
+            "delete-source-preflight-0001",
+            "delete-mark",
+            "delete-source-0000",
+            "delete-source-0001",
+            "delete-source-absence",
+            "delete-recovery-plan-0000",
+            "delete-recovery-0000",
+            "delete-recovery-plan-0001",
+            "delete-recovery-0001",
+            "delete-retained-postflight-0000",
+            "delete-retained-postflight-0001",
+            "delete-recovery-anchor",
+            "delete-finalize",
+        ],
+        "delete must checkpoint exact source, recovery, and retained-restore pages"
+    );
     Ok(())
 }
 
@@ -235,7 +294,7 @@ async fn flow_completion_loss_replays_the_exact_provider_manifest(
             writer_fence_receipt_digest: digest('d'),
             sealed_at: canonical_timestamp(Utc::now()),
         })?;
-    let store = Arc::new(FailStepCompletionStore::new("execute"));
+    let store = Arc::new(FailStepCompletionStore::new("seal-snapshot-0000"));
     let runtime = Arc::new(fixture.runtime());
     let engine = FlowEngine::new(store.clone(), runtime.clone());
     let failure = engine
@@ -248,7 +307,11 @@ async fn flow_completion_loss_replays_the_exact_provider_manifest(
         .expect_err("injected Flow completion loss");
     assert!(matches!(failure, FlowError::Store(_)));
     let before = fixture.recovery_namespace.list(None, 8, 16 * 1024).await?;
-    assert_eq!(before.len(), 2, "one snapshot plus one manifest");
+    assert_eq!(
+        before.len(),
+        1,
+        "the lost page completion must not publish the manifest early"
+    );
 
     drop(engine);
     let engine = FlowEngine::new(store, runtime);
@@ -261,10 +324,49 @@ async fn flow_completion_loss_replays_the_exact_provider_manifest(
         .await?;
     let replayed: SealObjectNamespaceOperationOutput = output(&engine, operation_id).await?;
     assert_eq!(replayed.recovery_point.spec().sequence, 1);
+    let after = fixture.recovery_namespace.list(None, 8, 16 * 1024).await?;
+    assert_eq!(after.len(), 2, "one exact snapshot plus the final manifest");
+    assert!(
+        before.iter().all(|entry| after.contains(entry)),
+        "replay must adopt the exact immutable snapshot bytes"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn legacy_version_one_remains_explicitly_replayable() -> Result<(), Box<dyn std::error::Error>>
+{
+    let fixture = Fixture::new()?;
+    put(&fixture.source_namespace, "legacy/state", b"one").await?;
+    let operation_id = OperationId::new();
+    let request =
+        ObjectNamespaceRecoveryOperationRequest::seal(SealObjectNamespaceOperationInput {
+            operation_id,
+            organization_id: fixture.organization_id,
+            source: fixture.source_binding.clone(),
+            previous_recovery_point: None,
+            writer_epoch: 1,
+            writer_fence_receipt_digest: digest('7'),
+            sealed_at: canonical_timestamp(Utc::now()),
+        })?;
+    let engine = FlowEngine::in_memory(Arc::new(fixture.runtime()));
+    engine
+        .start_with_id(
+            operation_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
+                LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+                "a3s-cloud",
+                "main",
+            ),
+            request.input,
+        )
+        .await?;
+    let sealed: SealObjectNamespaceOperationOutput = output(&engine, operation_id).await?;
+    assert_eq!(sealed.recovery_point.spec().sequence, 1);
     assert_eq!(
-        fixture.recovery_namespace.list(None, 8, 16 * 1024).await?,
-        before,
-        "replay must adopt the exact immutable provider bytes"
+        created_step_ids(&engine, operation_id).await?,
+        vec!["execute"]
     );
     Ok(())
 }
@@ -403,7 +505,7 @@ impl Fixture {
     fn runtime(&self) -> ObjectNamespaceRecoveryFlowRuntime {
         ObjectNamespaceRecoveryFlowRuntime::with_resolver(
             self.resolver.clone(),
-            ObjectNamespaceRecoveryExecutor::new(32, 1024, 8192, 8192)
+            ObjectNamespaceRecoveryExecutor::new(64, 1024, 8192, 8192)
                 .expect("test recovery bounds"),
         )
     }
@@ -484,6 +586,25 @@ fn workflow_spec(request: &crate::modules::operations::OperationRequest) -> Work
         "a3s-cloud",
         "main",
     )
+    .with_patch_marker(
+        WorkflowPatchId::new(BOUNDED_STEP_RETRY_PATCH_ID)
+            .expect("bounded retry patch ID must remain valid"),
+    )
+}
+
+async fn created_step_ids(
+    engine: &FlowEngine,
+    operation_id: OperationId,
+) -> Result<Vec<String>, FlowError> {
+    Ok(engine
+        .history(&operation_id.to_string())
+        .await?
+        .into_iter()
+        .filter_map(|envelope| match envelope.event {
+            FlowEvent::StepCreated { step_id, .. } => Some(step_id),
+            _ => None,
+        })
+        .collect())
 }
 
 async fn output<T: serde::de::DeserializeOwned>(
@@ -566,7 +687,8 @@ impl FlowEventStore for FailStepCompletionStore {
 
 #[test]
 fn workflow_identity_constants_remain_distinct_and_versioned() {
-    assert_eq!(OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, "1");
+    assert_eq!(LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, "1");
+    assert_eq!(OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, "2");
     assert_eq!(
         [
             OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
@@ -578,4 +700,5 @@ fn workflow_identity_constants_remain_distinct_and_versioned() {
         .len(),
         3
     );
+    assert_eq!(flow_workflow_identities().count(), 6);
 }

@@ -141,6 +141,21 @@ async fn runtime_router_preserves_all_production_workflow_identities() -> Result
             "1",
             "object_namespace_recovery",
         ),
+        (
+            "cloud.object-namespace.seal",
+            "2",
+            "object_namespace_recovery",
+        ),
+        (
+            "cloud.object-namespace.restore",
+            "2",
+            "object_namespace_recovery",
+        ),
+        (
+            "cloud.object-namespace.delete",
+            "2",
+            "object_namespace_recovery",
+        ),
     ] {
         assert_eq!(
             router().run_workflow(workflow(name, version)).await?,

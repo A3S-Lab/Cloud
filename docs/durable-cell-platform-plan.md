@@ -271,21 +271,25 @@ composition, fault evidence, and certification remain open.
 `S0.1-C4` now supplies the provider-neutral execution
 primitive without moving storage lifecycle into Durable Cells. The sole
 `IObjectNamespace` / `ImmutableObjectClient` path gains exact bounded listing;
-an S0-owned executor seals a canonical immutable manifest only with an exact
-writer-fence receipt, restores it into a distinct namespace, re-observes source
-and target, and consumes an already-authorized deletion plan only after its
-grace period. Exact partial creates/deletes are replayed, the newest manifest
-binds its exact predecessor, and a temporary deterministic deletion-intent
-anchor makes pre-existing state loss distinguishable from an interrupted
-cleanup. The manifest stays until cleanup is otherwise complete,
-cross-namespace/profile substitution fails before mutation, and the isolated
-restore is observed again after cleanup. Three exact
-`cloud.object-namespace.*@1` operation contracts now route the executor through
-the existing Operation request, A3S Flow runtime/router, retry/wait primitives,
-and just-in-time Secrets materializer. Completion-loss replay returns the exact
-manifest without another provider mutation. This is component execution, not
-an availability claim: production of the Workloads fence receipt, owning-
-aggregate durable enqueue, and a retained S3-compatible fault pass remain.
+an S0-owned executor seals, restores, verifies, and cleans up through
+deterministic Flow pages of at most 32 objects or 64 MiB. It publishes a
+canonical immutable manifest only with an exact writer-fence receipt, restores
+it into a distinct namespace, re-observes source and target, and consumes an
+already-authorized deletion plan only after its grace period. Exact partial
+creates/deletes are replayed, the newest manifest binds its exact predecessor,
+and a temporary deterministic deletion-intent anchor makes pre-existing state
+loss distinguishable from an interrupted cleanup. Recovery cleanup freezes an
+exact plan before deletion, and the manifest stays through retained postflight
+verification. Cross-namespace/profile substitution fails before mutation, and
+the isolated restore is observed again after cleanup. Current
+`cloud.object-namespace.*@2` operation contracts route the executor through the
+existing Operation request, A3S Flow runtime/router, retry/wait primitives, and
+just-in-time Secrets materializer; exact `@1` one-step histories remain
+replayable. Completion-loss tests adopt exact page effects, and a PostgreSQL 17
+CI gate reconstructs fresh runtimes after worker termination at three
+second-page boundaries. This is component execution, not an availability
+claim: production of the Workloads fence receipt, owning-aggregate durable
+enqueue, and a retained S3-compatible fault pass remain.
 
 Component-only `CELL0.5-C1` adds S0's canonical, non-secret
 `cloud.object-namespace.provider-profile.v1` ACL contract. It freezes one HTTPS

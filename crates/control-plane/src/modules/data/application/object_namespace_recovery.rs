@@ -1,3 +1,5 @@
+mod pages;
+
 use crate::modules::data::domain::{
     IObjectNamespace, ObjectNamespaceDeletionEvidence, ObjectNamespaceDeletionPlan,
     ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceRead, ObjectNamespaceRecoveryPoint,
@@ -10,6 +12,12 @@ use crate::modules::shared_kernel::domain::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+pub(crate) use pages::{
+    ObjectNamespaceCleanupPageCheckpoint, ObjectNamespaceManifestPageCheckpoint,
+    ObjectNamespaceObservationPageCheckpoint, ObjectNamespaceRecoveryAnchorCheckpoint,
+    ObjectNamespaceSealPageCheckpoint, OBJECT_NAMESPACE_MAXIMUM_CHECKPOINT_PAGES,
+};
 
 const RECOVERY_MANIFEST_SCHEMA: &str = "a3s.s0.object-namespace.recovery-manifest.v1";
 
@@ -1591,7 +1599,15 @@ mod tests {
     #[test]
     fn recovery_executor_reuses_s0_and_owning_workflow_boundaries() {
         let source = include_str!("object_namespace_recovery.rs");
-        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let production = [
+            source.split("#[cfg(test)]").next().unwrap_or(source),
+            include_str!("object_namespace_recovery/pages.rs"),
+            include_str!("object_namespace_recovery/pages/delete.rs"),
+            include_str!("object_namespace_recovery/pages/restore.rs"),
+            include_str!("object_namespace_recovery/pages/seal.rs"),
+            include_str!("object_namespace_recovery/pages/support.rs"),
+        ]
+        .join("\n");
         for forbidden in [
             "object_store::",
             "ImmutableObjectClient",

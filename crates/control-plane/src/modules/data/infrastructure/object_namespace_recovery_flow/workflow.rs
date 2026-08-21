@@ -6,7 +6,7 @@ use crate::modules::data::application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
-    OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+    LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME,
     OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
@@ -19,7 +19,7 @@ pub(super) fn replay(
     runtime: &ObjectNamespaceRecoveryFlowRuntime,
     invocation: WorkflowInvocation,
 ) -> a3s_flow::Result<RuntimeCommand> {
-    if invocation.spec.version != OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION {
+    if invocation.spec.version != LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION {
         return Err(unknown_workflow(&invocation));
     }
     let context = invocation.context();

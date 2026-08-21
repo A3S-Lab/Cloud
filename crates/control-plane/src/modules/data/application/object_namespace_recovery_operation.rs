@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 pub const OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME: &str = "cloud.object-namespace.seal";
 pub const OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME: &str = "cloud.object-namespace.restore";
 pub const OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME: &str = "cloud.object-namespace.delete";
-pub const OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION: &str = "1";
+pub(crate) const LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION: &str = "1";
+pub const OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION: &str = "2";
 
 /// Exact non-secret provider and credential-reference input persisted by
 /// Operations/Flow. Secret plaintext is materialized only inside an S0 step.

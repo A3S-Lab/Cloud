@@ -425,30 +425,37 @@ port, credential parser, or lifecycle.
 
 `S0.1-C4` extends `IObjectNamespace` and the same
 `ImmutableObjectClient` with exact, canonically ordered, count/byte-bounded
-listing. `ObjectNamespaceRecoveryExecutor` uses only that port to seal a
-writer-fence-receipted immutable manifest, restore it into a distinct exact
-namespace, re-observe the sealed source and restored state, and execute an
+listing. `ObjectNamespaceRecoveryExecutor` uses only that port and divides
+seal, restore, verification, and cleanup into deterministic pages of at most
+32 objects or 64 MiB, with no more than 4,096 page checkpoints. It seals a
+writer-fence-receipted immutable manifest, restores it into a distinct exact
+namespace, re-observes the sealed source and restored state, and executes an
 already-authorized deletion only after its positive grace period. Exact
 partial creates and deletes are adopted after interruption; foreign
 namespace/profile bindings, extra target state, changed bytes, premature
 deletion, or loss of the retained restore fail closed. The latest manifest is
 digest-bound to its exact predecessor. Deletion first writes a deterministic
-temporary intent anchor, so a partial source is accepted only after this
-executor started cleanup; the latest manifest is removed last, so it remains
-the replay anchor until source and recovery cleanup are complete.
+temporary intent anchor and freezes the exact recovery cleanup plan before any
+recovery-object mutation, so a partial source is accepted only after this
+executor started cleanup; the latest manifest is removed last, after retained
+postflight verification, so it remains the replay anchor throughout cleanup.
 Operations/Flow still owns the long-running operation and retry schedule,
 Workloads supplies writer-fence receipts, and no recovery repository, worker,
 object client, or evidence store is introduced.
 
-Three exact operation contracts—`cloud.object-namespace.seal@1`,
-`cloud.object-namespace.restore@1`, and `cloud.object-namespace.delete@1`—now
-bind those commands to the existing `OperationRequest`, A3S Flow runtime/router,
-retry policy, and durable `wait_until` primitive. Each step validates the exact
+Three current operation contracts—`cloud.object-namespace.seal@2`,
+`cloud.object-namespace.restore@2`, and `cloud.object-namespace.delete@2`—bind
+those commands to the existing `OperationRequest`, A3S Flow runtime/router,
+retry policy, and durable `wait_until` primitive. The router also retains the
+three exact `@1` one-step contracts for replay. Each page validates the exact
 tenant/project/environment/profile/namespace/evidence binding and materializes
 the referenced Secret version just in time through the sole Secrets-owned
 materializer before constructing the shared S3 client. Flow completion-loss
-tests replay the exact manifest and provider mutation. No new operation table,
-queue, worker, client registry, credential cache, or provider lifecycle exists.
+tests adopt exact page effects, and a PostgreSQL 17 process-death gate kills a
+worker before the second seal, restore, and recovery-cleanup page completions,
+then reconstructs each run from a fresh runtime and durable event store. No new
+operation table, checkpoint repository, queue, worker, client registry,
+credential cache, or provider lifecycle exists.
 
 Managed database/volume/backup aggregates, persistence, production provider
 certification through retained `S0.1-C3/C4` passes, the owning Workloads

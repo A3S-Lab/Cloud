@@ -51,9 +51,9 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@14` and the
+  New Operations pin replay generation `a3s-cloud-workflows@15` and the
   `cloud.flow.bounded-step-retries-v1` marker. Their infrastructure steps use
-  eight attempts with a 30-second capped backoff; `@1` through `@13` retain
+  eight attempts with a 30-second capped backoff; `@1` through `@14` retain
   their exact replay policy through the explicit Flow compatibility set, which
   readiness exposes with the remaining unpinned migration switch. Cloud and
   Code resolve one exact Flow revision. The
@@ -122,11 +122,14 @@ The code on `main` separates implemented mechanics from released capability:
   Executions, Workloads, Fleet, outbound Node Agent control, Edge snapshots,
   Runtime, and Box already compose. Current Box/Gateway real-provider
   recertification remains open.
-- **Implemented component / storage recovery** — exact
-  `cloud.object-namespace.seal@1`, `restore@1`, and `delete@1` Operations/Flow
-  workflows use an isolated recovery scope, durable grace wait, and
-  just-in-time Secret materialization. Workloads writer-fence enqueue and a
-  retained real-S3 pass remain.
+- **Implemented component / storage recovery** — current
+  `cloud.object-namespace.seal@2`, `restore@2`, and `delete@2` Operations/Flow
+  workflows checkpoint deterministic pages of at most 32 objects or 64 MiB,
+  use an isolated recovery scope, durable grace wait, and just-in-time Secret
+  materialization. Exact `@1` histories retain their one-step replay contract.
+  A PostgreSQL 17 CI gate kills the worker before the second seal, restore, and
+  recovery-cleanup page completions and reconstructs each run from durable Flow
+  history. Workloads writer-fence enqueue and a retained real-S3 pass remain.
 - **Implemented backend / Durable Cell interfaces** — application and revision
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint

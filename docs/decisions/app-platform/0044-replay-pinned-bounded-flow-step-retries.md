@@ -23,7 +23,7 @@ delay, and deterministic full jitter derived from immutable run, step, and
 failed-attempt identities. Its fixed policy retains the previous serialized
 shape.
 
-Every newly created Operation pins runtime build `a3s-cloud-workflows@14` and
+Every newly created Operation pins runtime build `a3s-cloud-workflows@15` and
 workflow patch marker `cloud.flow.bounded-step-retries-v1`. One shared Cloud
 adapter maps that marker to eight total attempts, clamps the configured initial
 delay to 30 seconds, caps exponential progression at 30 seconds, and asks Flow
@@ -33,7 +33,7 @@ compensation path.
 
 An unmarked history receives the exact former
 `RetryPolicy::fixed(u32::MAX, configured_delay)` value with the default
-fail-run exhaustion action. Runtime generations `@1` through `@13` remain
+fail-run exhaustion action. Runtime generations `@1` through `@14` remain
 explicitly replay-compatible, and legacy unpinned histories remain visible
 migration debt. The policy branch is based only on the immutable marker.
 
@@ -48,7 +48,15 @@ failures spread deterministically below a bounded delay. Final failure remains
 visible in Flow history before the product workflow chooses its existing
 terminal behavior. Historical `step_created` events replay byte-for-byte.
 
-This decision completes the finite retry portion of the durable-activity
-convergence item only. Object namespace recovery can still process a bounded
-but namespace-sized payload in one step; deterministic page checkpoints and
-process-death evidence remain required before that item is complete.
+Runtime build `@15` also makes object-namespace recovery v2 the current
+contract. Seal, restore, verification, and cleanup are deterministic Flow
+pages capped at 32 objects or 64 MiB, with 4,096 checkpoints as the hard upper
+bound. Delete freezes its exact recovery cleanup plan before mutation and
+removes the latest manifest replay anchor only after retained-restore
+verification. Workflow v1 remains a distinct exact one-step replay path.
+
+A PostgreSQL 17 CI gate terminates the worker before `StepCompleted` at the
+second seal, restore, and recovery-cleanup pages, then reconstructs each run
+with a fresh runtime and event store. This closes the object-namespace portion
+of the durable-activity convergence item without introducing another
+checkpoint repository or lifecycle authority.

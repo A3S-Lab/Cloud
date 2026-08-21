@@ -68,6 +68,12 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Certify bounded object namespace pages across process death
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane --lib
+          modules::data::infrastructure::object_namespace_recovery_flow::tests::process_death::postgres_object_namespace_pages_survive_process_death
+          -- --exact --nocapture --test-threads=1
+
       - name: Migrate and verify stable replica sets
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

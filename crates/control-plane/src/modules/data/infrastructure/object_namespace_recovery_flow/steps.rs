@@ -1,12 +1,10 @@
-use super::{encode, ObjectNamespaceRecoveryFlowRuntime, RecoveryStepOutput};
+use super::{encode, resolve, ObjectNamespaceRecoveryFlowRuntime, RecoveryStepOutput};
 use crate::modules::data::application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
 };
-use crate::modules::data::domain::ObjectNamespaceError;
 use crate::modules::shared_kernel::domain::canonical_timestamp;
-use a3s_flow::FlowError;
 use chrono::Utc;
 
 pub(super) async fn seal(
@@ -114,26 +112,4 @@ pub(super) async fn delete(
 
 fn rejected<T>(reason: String) -> RecoveryStepOutput<T> {
     RecoveryStepOutput::Rejected { reason }
-}
-
-fn resolve<T: serde::Serialize>(
-    error: ObjectNamespaceError,
-) -> a3s_flow::Result<serde_json::Value> {
-    match error {
-        ObjectNamespaceError::Unavailable(message) => Err(FlowError::Runtime(format!(
-            "object namespace provider is temporarily unavailable: {message}"
-        ))),
-        ObjectNamespaceError::Invalid(message) => encode(rejected::<T>(format!(
-            "invalid object namespace recovery request: {message}"
-        ))),
-        ObjectNamespaceError::Precondition(message) => encode(rejected::<T>(format!(
-            "object namespace recovery precondition failed: {message}"
-        ))),
-        ObjectNamespaceError::Corrupt(message) => encode(rejected::<T>(format!(
-            "object namespace recovery evidence is corrupt: {message}"
-        ))),
-        ObjectNamespaceError::Unsupported(message) => encode(rejected::<T>(format!(
-            "object namespace provider is unsupported: {message}"
-        ))),
-    }
 }
