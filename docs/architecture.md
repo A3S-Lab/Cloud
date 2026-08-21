@@ -607,9 +607,10 @@ with at most 4,096 checkpoints. Each completed page is immutable Flow history;
 delete freezes its exact recovery cleanup plan before mutation and removes the
 latest manifest replay anchor only after retained-restore verification. The
 router keeps v1's exact one-step replay path rather than aliasing old histories
-to the new step graph. PostgreSQL CI exercises process death before the second
-seal, restore, and recovery-cleanup page completions and reconstructs each run
-with a fresh runtime and store.
+to the new step graph. PostgreSQL CI uses a checksum-pinned, process-shared
+S3-compatible fixture, exercises process death before the second seal, restore,
+and recovery-cleanup page completions, and reconstructs each run with a fresh
+runtime and durable store.
 
 Workflow also owns the implemented immutable descriptor and typed-variable
 domain contracts. They define semantic metadata, typed value ownership,

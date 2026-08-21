@@ -223,8 +223,9 @@ change shared mechanisms only; they do not add a parallel platform gate.
    recovery v2 checkpoints deterministic pages of at most 32 objects or 64 MiB
    in Flow history, freezes recovery cleanup plans before mutation, and retains
    v1's exact one-step replay path. A checked-in PostgreSQL process-death gate
-   kills the worker at three second-page boundaries and reconstructs the run
-   from the durable store. Other large activities must adopt the same bounded
+   uses one process-shared S3-compatible namespace, kills the worker at three
+   second-page boundaries, and reconstructs the run from the durable store.
+   Other large activities must adopt the same bounded
    pattern when introduced. No context adds a retry table, sleep loop, random
    state, or queue.
 5. **Keep event delivery reconstructible from PostgreSQL.** A3S Event remains

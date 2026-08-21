@@ -20,6 +20,11 @@ jobs:
     timeout-minutes: 45
     env:
       A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+      A3S_CLOUD_TEST_S3_ACCESS_KEY_ID: a3s-cloud-test
+      A3S_CLOUD_TEST_S3_BUCKET: a3s-cloud-object-pages
+      A3S_CLOUD_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      A3S_CLOUD_TEST_S3_REGION: us-east-1
+      A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY: a3s-cloud-test-secret
       RUST_MIN_STACK: 33554432
     services:
       postgres:
@@ -68,6 +73,30 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Start checksum-pinned S3-compatible object fixture
+        run: |
+          docker run --detach --rm \
+            --name a3s-cloud-object-pages-minio \
+            --publish 127.0.0.1:9000:9000 \
+            --env MINIO_ROOT_USER=a3s-cloud-test \
+            --env MINIO_ROOT_PASSWORD=a3s-cloud-test-secret \
+            quay.io/minio/minio@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e \
+            server /data --address :9000
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 60 ]]; then
+              docker logs a3s-cloud-object-pages-minio
+              exit 1
+            fi
+            sleep 1
+          done
+          docker run --rm --network host \
+            --env MC_HOST_local=http://a3s-cloud-test:a3s-cloud-test-secret@127.0.0.1:9000 \
+            quay.io/minio/mc@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3 \
+            mb --ignore-existing local/a3s-cloud-object-pages
+
       - name: Certify bounded object namespace pages across process death
         run: |
           log="$RUNNER_TEMP/a3s-cloud-object-namespace-pages.log"
@@ -82,6 +111,10 @@ jobs:
           detail=${detail//$'\n'/'%0A'}
           echo "::error title=Object namespace page process-death gate failed::$detail"
           exit 1
+
+      - name: Stop S3-compatible object fixture
+        if: always()
+        run: docker rm --force a3s-cloud-object-pages-minio || true
 
       - name: Migrate and verify stable replica sets
         run: >-

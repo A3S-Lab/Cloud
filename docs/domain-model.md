@@ -451,10 +451,11 @@ three exact `@1` one-step contracts for replay. Each page validates the exact
 tenant/project/environment/profile/namespace/evidence binding and materializes
 the referenced Secret version just in time through the sole Secrets-owned
 materializer before constructing the shared S3 client. Flow completion-loss
-tests adopt exact page effects, and a PostgreSQL 17 process-death gate kills a
-worker before the second seal, restore, and recovery-cleanup page completions,
-then reconstructs each run from a fresh runtime and durable event store. No new
-operation table, checkpoint repository, queue, worker, client registry,
+tests adopt exact page effects, and a PostgreSQL 17 process-death gate uses one
+process-shared S3-compatible namespace, kills a worker before the second seal,
+restore, and recovery-cleanup page completions, then reconstructs each run from
+a fresh runtime and durable event store. No new operation table, checkpoint
+repository, queue, worker, client registry,
 credential cache, or provider lifecycle exists.
 
 Managed database/volume/backup aggregates, persistence, production provider

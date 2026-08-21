@@ -1,6 +1,6 @@
 use super::*;
 use crate::infrastructure::{
-    cloud_runtime_build_compatibility, CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID,
+    cloud_runtime_build_compatibility, DisposableS3TestContext, CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID,
 };
 use a3s_flow::{PostgresEventStore, RuntimeBuildId, WorkflowRunSnapshot};
 use a3s_orm::PostgresExecutor;
@@ -14,7 +14,6 @@ use uuid::Uuid;
 const POSTGRES_ENV: &str = "A3S_CLOUD_TEST_POSTGRES_URL";
 const PROBE_PARENT_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_PARENT";
 const PROBE_POSTGRES_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_POSTGRES_URL";
-const PROBE_STATE_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_STATE";
 const PROBE_DOCUMENT_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_DOCUMENT";
 const PROBE_TARGET_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_TARGET";
 const PROBE_MARKER_ENV: &str = "A3S_CLOUD_OBJECT_PAGE_PROBE_MARKER";
@@ -27,12 +26,15 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ProbeDocument {
     run_id: String,
+    storage_id: Uuid,
     spec: WorkflowSpec,
     input: serde_json::Value,
 }
 
 struct PersistentFixture {
     state_dir: tempfile::TempDir,
+    storage: DisposableS3TestContext,
+    storage_id: Uuid,
     organization_id: OrganizationId,
     target_namespace_id: StorageNamespaceId,
     source_binding: ObjectNamespaceFlowBinding,
@@ -45,6 +47,10 @@ struct PersistentFixture {
 impl PersistentFixture {
     fn new() -> TestResult<Self> {
         let state_dir = tempfile::tempdir()?;
+        let storage_id = Uuid::now_v7();
+        let storage =
+            DisposableS3TestContext::from_environment_with_id("object-pages", storage_id)?;
+        let object_root = storage.client();
         let organization_id = OrganizationId::new();
         let project_id = ProjectId::new();
         let environment_id = EnvironmentId::new();
@@ -72,11 +78,13 @@ impl PersistentFixture {
             environment_id,
             target_namespace_id,
         )?;
-        let source_namespace = persistent_namespace(state_dir.path(), "live/source")?;
-        let recovery_namespace = persistent_namespace(state_dir.path(), "recovery/source")?;
-        let target_namespace = persistent_namespace(state_dir.path(), "live/target")?;
+        let source_namespace = persistent_namespace(&object_root, "live/source")?;
+        let recovery_namespace = persistent_namespace(&object_root, "recovery/source")?;
+        let target_namespace = persistent_namespace(&object_root, "live/target")?;
         Ok(Self {
             state_dir,
+            storage,
+            storage_id,
             organization_id,
             target_namespace_id,
             source_binding,
@@ -88,7 +96,7 @@ impl PersistentFixture {
     }
 
     fn runtime(&self, document: &ProbeDocument) -> TestResult<ObjectNamespaceRecoveryFlowRuntime> {
-        runtime_for_document(self.state_dir.path(), document)
+        runtime_for_document(document)
     }
 }
 
@@ -145,15 +153,25 @@ async fn postgres_object_namespace_pages_survive_process_death() {
     let Some(admin_url) = std::env::var(POSTGRES_ENV).ok() else {
         return;
     };
+    let fixture = PersistentFixture::new().expect("create persistent object-page fixture");
     let database = IsolatedFlowDatabase::create(&admin_url)
         .await
         .expect("create isolated object-page Flow database");
-    let result = exercise_process_death_pages(&database.database_url).await;
-    let cleanup = database.cleanup().await;
+    let result = exercise_process_death_pages(&database.database_url, &fixture).await;
+    let object_cleanup = fixture.storage.remove_all().await;
+    let database_cleanup = database.cleanup().await;
     if let Err(error) = result {
         panic!("object namespace page process-death gate failed: {error}");
     }
-    cleanup.expect("clean isolated object-page Flow database");
+    let removed_objects = object_cleanup.expect("clean persistent object-page namespace");
+    assert_eq!(
+        removed_objects, 33,
+        "object namespace page gate retained unexpected objects"
+    );
+    database_cleanup.expect("clean isolated object-page Flow database");
+    println!(
+        "A3S_CLOUD_OBJECT_NAMESPACE_PAGE_PROCESS_DEATH_CERTIFIED boundaries=3 sigkills=3 objects=33 flow_store=postgresql object_store=s3-compatible cleanup=verified"
+    );
 }
 
 #[tokio::test]
@@ -164,8 +182,10 @@ async fn object_namespace_page_process_death_probe() {
         .expect("run object namespace page process-death probe");
 }
 
-async fn exercise_process_death_pages(postgres_url: &str) -> TestResult {
-    let fixture = PersistentFixture::new()?;
+async fn exercise_process_death_pages(
+    postgres_url: &str,
+    fixture: &PersistentFixture,
+) -> TestResult {
     for index in 0..33 {
         put(
             &fixture.source_namespace,
@@ -188,7 +208,7 @@ async fn exercise_process_death_pages(postgres_url: &str) -> TestResult {
         })?;
     let sealed: SealObjectNamespaceOperationOutput = crash_and_recover(
         postgres_url,
-        &fixture,
+        fixture,
         &seal_request,
         "seal-snapshot-0001",
         false,
@@ -216,7 +236,7 @@ async fn exercise_process_death_pages(postgres_url: &str) -> TestResult {
         })?;
     let restored: RestoreObjectNamespaceOperationOutput = crash_and_recover(
         postgres_url,
-        &fixture,
+        fixture,
         &restore_request,
         "restore-apply-0001",
         false,
@@ -247,7 +267,7 @@ async fn exercise_process_death_pages(postgres_url: &str) -> TestResult {
         })?;
     let _: DeleteObjectNamespaceOperationOutput = crash_and_recover(
         postgres_url,
-        &fixture,
+        fixture,
         &delete_request,
         "delete-recovery-0001",
         true,
@@ -268,9 +288,6 @@ async fn exercise_process_death_pages(postgres_url: &str) -> TestResult {
     {
         return Err("object namespace process-death recovery lost final state invariants".into());
     }
-    println!(
-        "A3S_CLOUD_OBJECT_NAMESPACE_PAGE_PROCESS_DEATH_CERTIFIED boundaries=3 sigkills=3 objects=33 store=postgresql"
-    );
     Ok(())
 }
 
@@ -283,6 +300,7 @@ async fn crash_and_recover<T: serde::de::DeserializeOwned>(
 ) -> TestResult<T> {
     let document = ProbeDocument {
         run_id: request.id.to_string(),
+        storage_id: fixture.storage_id,
         spec: process_death_workflow_spec(request)?,
         input: request.input.clone(),
     };
@@ -312,7 +330,6 @@ async fn crash_and_recover<T: serde::de::DeserializeOwned>(
     assert_completion_count(postgres_url, &document.run_id, target, 0).await?;
     let mut probe = CrashProbe::start(
         postgres_url,
-        fixture.state_dir.path(),
         &document_path,
         target,
         &marker,
@@ -349,7 +366,6 @@ async fn run_probe() -> TestResult {
         return Err("object namespace crash probe requires its private parent marker".into());
     }
     let postgres_url = required_env(PROBE_POSTGRES_ENV)?;
-    let state_dir = PathBuf::from(required_env(PROBE_STATE_ENV)?);
     let document = serde_json::from_slice::<ProbeDocument>(&std::fs::read(required_env(
         PROBE_DOCUMENT_ENV,
     )?)?)?;
@@ -360,7 +376,7 @@ async fn run_probe() -> TestResult {
         target.clone(),
         marker,
     );
-    let engine = FlowEngine::builder(Arc::new(runtime_for_document(&state_dir, &document)?))
+    let engine = FlowEngine::builder(Arc::new(runtime_for_document(&document)?))
         .with_store(Arc::new(store))
         .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
         .build();
@@ -394,27 +410,29 @@ async fn recovery_engine(
 }
 
 fn runtime_for_document(
-    root: &Path,
     document: &ProbeDocument,
 ) -> TestResult<ObjectNamespaceRecoveryFlowRuntime> {
+    let object_root =
+        DisposableS3TestContext::from_environment_with_id("object-pages", document.storage_id)?
+            .client();
     let resolver = Arc::new(InMemoryAccessResolver::default());
     match document.spec.name.as_str() {
         OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME => {
             let input: SealObjectNamespaceOperationInput =
                 serde_json::from_value(document.input.clone())?;
-            register_source(root, &resolver, &input.source)?;
+            register_source(&object_root, &resolver, &input.source)?;
         }
         OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME => {
             let input: RestoreObjectNamespaceOperationInput =
                 serde_json::from_value(document.input.clone())?;
-            register_source(root, &resolver, &input.source)?;
-            register_target(root, &resolver, &input.target)?;
+            register_source(&object_root, &resolver, &input.source)?;
+            register_target(&object_root, &resolver, &input.target)?;
         }
         OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME => {
             let input: DeleteObjectNamespaceOperationInput =
                 serde_json::from_value(document.input.clone())?;
-            register_source(root, &resolver, &input.source)?;
-            register_target(root, &resolver, &input.retained_restore)?;
+            register_source(&object_root, &resolver, &input.source)?;
+            register_target(&object_root, &resolver, &input.retained_restore)?;
         }
         name => return Err(format!("unknown object namespace probe workflow {name}").into()),
     }
@@ -425,7 +443,7 @@ fn runtime_for_document(
 }
 
 fn register_source(
-    root: &Path,
+    root: &ImmutableObjectClient,
     resolver: &InMemoryAccessResolver,
     binding: &ObjectNamespaceFlowBinding,
 ) -> TestResult {
@@ -436,7 +454,7 @@ fn register_source(
 }
 
 fn register_target(
-    root: &Path,
+    root: &ImmutableObjectClient,
     resolver: &InMemoryAccessResolver,
     binding: &ObjectNamespaceFlowBinding,
 ) -> TestResult {
@@ -447,8 +465,11 @@ fn register_target(
     Ok(())
 }
 
-fn persistent_namespace(root: &Path, prefix: &str) -> TestResult<Arc<dyn IObjectNamespace>> {
-    Ok(Arc::new(ImmutableObjectClient::local(root, prefix)?))
+fn persistent_namespace(
+    root: &ImmutableObjectClient,
+    prefix: &str,
+) -> TestResult<Arc<dyn IObjectNamespace>> {
+    Ok(Arc::new(root.subnamespace(prefix)?))
 }
 
 async fn postgres_store(postgres_url: &str) -> TestResult<PostgresEventStore> {
@@ -571,10 +592,8 @@ impl FlowEventStore for CrashBeforeCompletionStore {
 struct CrashProbe(Option<Child>);
 
 impl CrashProbe {
-    #[allow(clippy::too_many_arguments)]
     fn start(
         postgres_url: &str,
-        state_dir: &Path,
         document: &Path,
         target: &str,
         marker: &Path,
@@ -589,7 +608,6 @@ impl CrashProbe {
                 .arg("--test-threads=1")
                 .env(PROBE_PARENT_ENV, "1")
                 .env(PROBE_POSTGRES_ENV, postgres_url)
-                .env(PROBE_STATE_ENV, state_dir)
                 .env(PROBE_DOCUMENT_ENV, document)
                 .env(PROBE_TARGET_ENV, target)
                 .env(PROBE_MARKER_ENV, marker)
