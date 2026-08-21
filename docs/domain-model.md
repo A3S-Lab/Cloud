@@ -661,7 +661,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-`APP0.2-C1` through `C11` freezes and persists the next
+`APP0.2-C1` through `C13` freezes and persists the next
 Applications-owned records and exposes only project-member management
 admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
@@ -746,6 +746,16 @@ from the same redacted Flow history, while independent composite regions may
 coexist only when they do not read, assign, or export Application values.
 Historic v1-v11 behavior remains unchanged, and no public availability is
 claimed.
+
+C13 binds repeated composite child Answers back to the sole root invocation.
+Composite Application roots use Run v13 projection v5; each semantic child
+uses projection v4 with immutable tenant, root, parent Plan, region, child,
+logical-path, execution-path, frame-digest, and zero-based ordinal authority.
+Sibling frames share one logical-path-derived Answer step while their ordinals
+remain distinct; nested outer execution paths prevent collisions. Children do
+not emit Application final-output or terminal lifecycle, and Application-
+scoped variables remain prohibited in frames. Historic v1-v12 inputs and
+semantic-free child compilation retain their prior behavior.
 
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse

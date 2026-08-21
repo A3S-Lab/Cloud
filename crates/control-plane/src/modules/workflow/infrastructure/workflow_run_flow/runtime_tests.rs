@@ -13,18 +13,20 @@ use crate::modules::workflow::domain::{
     WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
     WorkflowDecision, WorkflowIterationFailureMode, WorkflowIterationRegionPolicy,
     WorkflowLoopRegionPolicy, WorkflowRun, WorkflowRunRecord, WorkflowRunVariableState,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WorkflowStepProjectionStatus, WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2,
+    WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::workflow::test_support::{
     accepted_submission, application_answer_workflow_run_input,
-    application_answers_workflow_run_input, application_variable_workflow_run_input,
-    composite_workflow_run_input, digest, exclusive_output_workflow_run_input,
-    human_decision_form_release, human_decision_workflow_run_input,
-    multi_output_workflow_run_input, timestamp, typed_variable_workflow_run_input,
-    workflow_run_input, TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_HUMAN_STEP_ID,
-    TEST_SECOND_ANSWER_STEP_ID,
+    application_answers_workflow_run_input, application_frame_answer_workflow_run_input,
+    application_variable_workflow_run_input, composite_workflow_run_input, digest,
+    exclusive_output_workflow_run_input, human_decision_form_release,
+    human_decision_workflow_run_input, multi_output_workflow_run_input, timestamp,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
+    TEST_APPLICATION_VARIABLE_STEP_ID, TEST_HUMAN_STEP_ID, TEST_SECOND_ANSWER_STEP_ID,
 };
 use a3s_flow::{
     FlowEngine, FlowEvent, HookStatus, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -131,6 +133,84 @@ async fn v11_answer_waits_for_commit_evidence_and_keeps_final_output_unaggregate
     assert_eq!(completed.output, Some(json!({"result": input.goal_input})));
     assert!(!completed.steps.contains_key(&flow_step_id("answer")));
 
+    let history_length = engine.history(&run_id).await?.len();
+    engine.start_with_id(run_id.clone(), spec, encoded).await?;
+    assert_eq!(engine.history(&run_id).await?.len(), history_length);
+    Ok(())
+}
+
+#[tokio::test]
+async fn v13_frame_answer_retains_root_application_authority_and_ordinal() -> Result<(), FlowError>
+{
+    let (parent, frame, mut input) =
+        application_frame_answer_workflow_run_input(1).map_err(FlowError::Runtime)?;
+    input.requested_at = chrono::Utc::now();
+    input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+    input.validate().map_err(FlowError::Runtime)?;
+    let run_id = input.workflow_run_id.to_string();
+    let spec = WorkflowSpec::rust_embedded(
+        WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION_V13,
+        "cloud",
+        "workflow_run",
+    );
+    let encoded = serde_json::to_value(&input)?;
+    let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
+    engine
+        .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
+        .await?;
+
+    let waiting = engine.snapshot(&run_id).await?;
+    assert_eq!(waiting.status, WorkflowRunStatus::Suspended);
+    let hook = waiting
+        .hooks
+        .values()
+        .find(|hook| hook.hook_id.starts_with("workflow-application-answer:"))
+        .expect("frame Answer hook");
+    assert_eq!(hook.status, HookStatus::Active);
+    let metadata =
+        serde_json::from_value::<WorkflowApplicationAnswerHookMetadata>(hook.metadata.clone())?;
+    metadata.validate().map_err(FlowError::Runtime)?;
+    assert_eq!(metadata.schema, WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2);
+    assert_eq!(metadata.workflow_run_id, frame.child_workflow_run_id());
+    assert_eq!(metadata.effect_workflow_run_id(), parent.workflow_run_id);
+    assert_eq!(metadata.effect_ordinal(), 1);
+    assert_eq!(metadata.flow_hook_id(), hook.hook_id);
+    let effect_step_id = metadata.effect_step_id().map_err(FlowError::Runtime)?;
+    assert!(effect_step_id.starts_with("frame-answer-"));
+    assert_ne!(effect_step_id, TEST_ANSWER_STEP_ID);
+    let authority = metadata
+        .frame_authority
+        .as_ref()
+        .expect("frame Answer authority");
+    authority
+        .validate_for_frame(&frame)
+        .map_err(FlowError::Runtime)?;
+
+    let payload = WorkflowApplicationAnswerResumePayload::new(
+        &metadata,
+        ApplicationMessageId::new(),
+        2,
+        metadata.content_digest.clone(),
+    )
+    .map_err(FlowError::Runtime)?;
+    assert_eq!(payload.schema, WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2);
+    assert_eq!(payload.frame_authority, metadata.frame_authority);
+    engine
+        .resume_hook(
+            &run_id,
+            &metadata.flow_hook_id(),
+            serde_json::to_value(payload)?,
+        )
+        .await?;
+
+    let completed = engine.snapshot(&run_id).await?;
+    assert_eq!(completed.status, WorkflowRunStatus::Completed);
+    assert_eq!(metadata.content, json!("HIGH T-42"));
+    assert_eq!(completed.output, Some(json!({"result": input.goal_input})));
+    assert!(!completed
+        .steps
+        .contains_key(&flow_step_id(TEST_ANSWER_STEP_ID)));
     let history_length = engine.history(&run_id).await?.len();
     engine.start_with_id(run_id.clone(), spec, encoded).await?;
     assert_eq!(engine.history(&run_id).await?.len(), history_length);

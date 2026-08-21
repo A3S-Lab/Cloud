@@ -1,4 +1,73 @@
 use super::*;
+use crate::modules::shared_kernel::domain::canonical_json_bounded;
+use crate::modules::workflow::test_support::application_frame_answer_workflow_run_input;
+use std::collections::BTreeMap;
+
+fn frame_authority_for_compiled_plan(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    child_plan: &WorkflowPlan,
+    child_input: serde_json::Value,
+) -> (WorkflowCompositeFrame, WorkflowApplicationFrameAuthority) {
+    let (mut parent, _, _) =
+        application_frame_answer_workflow_run_input(0).expect("Application frame parent fixture");
+    parent.organization_id = organization_id;
+    parent.project_id = project_id;
+    let capability = parent
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "iteration")
+        .and_then(|step| step.capability.as_mut())
+        .expect("Application frame child capability");
+    capability.resource_id = child_plan.workflow_definition_id.as_uuid();
+    capability.revision = child_plan.workflow_revision_id.to_string();
+    capability.digest = child_plan.workflow_digest.clone();
+    parent.plan.validate().expect("rewired parent Plan");
+    parent.plan_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(
+            &parent.plan,
+            WORKFLOW_PLAN_MAX_BYTES,
+            "Application frame compiler parent Plan",
+        )
+        .expect("canonical parent Plan"),
+    );
+    parent.validate().expect("rewired Application frame parent");
+    let variables = parent
+        .variable_contract
+        .as_ref()
+        .expect("parent variable contract")
+        .restore()
+        .expect("restore parent variables");
+    let regions = parent
+        .composite_regions
+        .as_ref()
+        .expect("parent composite regions")
+        .restore()
+        .expect("restore parent regions");
+    let frame = WorkflowCompositeFrame::open(
+        WorkflowCompositeFrameRequest {
+            organization_id,
+            project_id,
+            workflow_run_id: parent.workflow_run_id,
+            plan_revision_id: parent.plan_revision_id,
+            plan_digest: parent.plan_digest.clone(),
+            region_step_id: "iteration".into(),
+            ordinal: 0,
+            effective_input: child_input,
+            available_variables: BTreeMap::from([("request".into(), parent.goal_input.clone())]),
+        },
+        &parent.plan,
+        &regions,
+        &variables,
+        None,
+    )
+    .expect("exact Application frame");
+    let authority = WorkflowApplicationFrameAuthority::from_parent(&parent, &frame)
+        .expect("derive Application frame authority")
+        .expect("Application frame projection");
+    (frame, authority)
+}
 
 #[test]
 fn compiler_preserves_standalone_v2_and_emits_application_projection_v10() {
@@ -500,6 +569,50 @@ fn compiler_emits_v11_only_for_exact_application_answer_and_rejects_standalone_d
     assert_eq!(projection.final_output_step_id, "output");
     assert_eq!(projection.answer_step_ids, ["answer"]);
     input.validate().expect("valid v11 input");
+
+    let (frame, frame_authority) = frame_authority_for_compiled_plan(
+        organization_id,
+        project_id,
+        &compiled.plan_revision.plan,
+        compiled.goal.contract.spec().input.clone(),
+    );
+    let frame_run = WorkflowRunCompiler::compile_for_application_frame(
+        frame.child_workflow_run_id(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+        frame_authority.clone(),
+    )
+    .expect("Application frame Answer run");
+    let frame_input = &frame_run.run.execution_input;
+    assert_eq!(frame_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V13);
+    assert_eq!(
+        frame_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+    );
+    assert_eq!(
+        frame_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V13
+    );
+    let frame_projection = frame_input
+        .application_projection
+        .as_ref()
+        .expect("Application frame projection");
+    assert_eq!(
+        frame_projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+    );
+    assert_eq!(frame_projection.answer_step_ids, ["answer"]);
+    assert_eq!(
+        frame_projection.frame_authority.as_ref(),
+        Some(&frame_authority)
+    );
+    assert!(!frame_projection.projects_application_lifecycle());
+    assert!(frame_projection.supports_application_frames());
+    frame_input.validate().expect("valid v13 frame input");
 }
 
 #[test]
@@ -816,6 +929,24 @@ fn compiler_emits_v12_only_for_exact_application_variable_port() {
         now,
     )
     .expect("compiled goal");
+    let (frame, frame_authority) = frame_authority_for_compiled_plan(
+        organization_id,
+        project_id,
+        &compiled.plan_revision.plan,
+        compiled.goal.contract.spec().input.clone(),
+    );
+    let frame_error = WorkflowRunCompiler::compile_for_application_frame(
+        frame.child_workflow_run_id(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+        frame_authority,
+    )
+    .expect_err("Application variable access inside a composite frame");
+    assert!(frame_error.contains("cannot access Application-scoped variables"));
     let standalone_error = WorkflowRunCompiler::compile(
         WorkflowRunId::new(),
         &compiled.goal,

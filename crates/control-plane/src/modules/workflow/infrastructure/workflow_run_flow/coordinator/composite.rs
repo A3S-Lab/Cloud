@@ -1,9 +1,10 @@
 use super::FlowWorkflowRunCoordinator;
 use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::workflow::domain::{
-    WorkflowCompositeChildReferenceMetadata, WorkflowCompositeFrameResolution,
-    WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
-    WorkflowRunCoordinationError, WorkflowRunRecord, WorkflowRunStatus,
+    WorkflowApplicationFrameAuthority, WorkflowCompositeChildReferenceMetadata,
+    WorkflowCompositeFrameResolution, WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeResumePayload, WorkflowRunCoordinationError, WorkflowRunRecord,
+    WorkflowRunStatus,
 };
 use crate::modules::workflow::WorkflowCompositeExecutionRequest;
 use a3s_flow::{ChildOperationReference, FlowError, FlowEvent, HookStatus, WorkflowRunSnapshot};
@@ -455,6 +456,11 @@ fn composite_request(
         ontology_revision_id: input.plan.ontology_revision_id,
         ontology_digest: input.plan.ontology_digest.clone(),
         environment_id: input.plan.environment_id,
+        application_frame: WorkflowApplicationFrameAuthority::from_parent(
+            input,
+            &hook.metadata.frame,
+        )
+        .map_err(WorkflowRunCoordinationError::Unavailable)?,
         requested_by: record.run.requested_by,
         requested_at: hook.created_at,
         timeout_seconds,

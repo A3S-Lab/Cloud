@@ -14,10 +14,12 @@ use crate::modules::workflow::domain::{
     WorkflowRunCompiler, WorkflowRunRecord, WorkflowRunRequested, WorkflowRunStatus,
     WorkflowStepKind, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA,
     WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5, WORKFLOW_RUN_FLOW_VERSION_V10,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13,
     WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+    WORKFLOW_RUN_INPUT_SCHEMA_V13, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -283,6 +285,11 @@ impl WorkflowApplicationRunService {
                 WORKFLOW_RUN_INPUT_SCHEMA_V12,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
                 WORKFLOW_RUN_FLOW_VERSION_V12,
+            ) | (
+                WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5,
+                WORKFLOW_RUN_INPUT_SCHEMA_V13,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+                WORKFLOW_RUN_FLOW_VERSION_V13,
             )
         );
         if run.organization_id != request.organization_id
@@ -478,7 +485,8 @@ mod tests {
     };
     use crate::modules::workflow::domain::{WorkflowRun, WorkflowRunRecord};
     use crate::modules::workflow::test_support::{
-        application_answer_workflow_run_input, application_variable_workflow_run_input,
+        application_answer_workflow_run_input, application_frame_answer_workflow_run_input,
+        application_variable_workflow_run_input,
     };
     use chrono::Duration;
 
@@ -634,6 +642,85 @@ mod tests {
         aliased.run.execution_input.runtime_contract_revision =
             WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11.into();
         aliased.run.execution_input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V11.into();
+        assert!(WorkflowApplicationRunService::validate_record(&request, &aliased).is_err());
+    }
+
+    #[test]
+    fn production_adapter_accepts_exact_v13_composite_authority_and_rejects_v12_alias() {
+        let (mut input, _, _) = application_frame_answer_workflow_run_input(0)
+            .expect("Application composite WorkflowRun input");
+        let requested_at = canonical_timestamp(Utc::now());
+        let requested_by = PrincipalId::new();
+        let final_output_step_id = input
+            .application_projection
+            .as_ref()
+            .expect("Application projection")
+            .final_output_step_id
+            .clone();
+        let input_schema_digest = input
+            .plan
+            .steps
+            .iter()
+            .find(|step| step.kind == WorkflowStepKind::Input)
+            .expect("Input step")
+            .output_schema_digest
+            .clone();
+        let output_schema_digest = input
+            .plan
+            .steps
+            .iter()
+            .find(|step| step.id == final_output_step_id)
+            .expect("final Output step")
+            .output_schema_digest
+            .clone();
+        let request = ApplicationWorkflowRunRequest {
+            organization_id: input.organization_id,
+            project_id: input.project_id,
+            application_id: ApplicationId::new(),
+            application_release_id: ApplicationReleaseId::new(),
+            application_release_digest: Sha256Digest::from_bytes(b"application-release"),
+            session_id: ApplicationSessionId::new(),
+            invocation_id: ApplicationInvocationId::new(),
+            workflow: ApplicationWorkflowBinding {
+                workflow_definition_id: input.plan.workflow_definition_id,
+                workflow_revision_id: input.plan.workflow_revision_id,
+                workflow_contract_digest: input.plan.workflow_digest.clone(),
+                workflow_payload_set_digest: input.plan.workflow_payload_set_digest.clone(),
+                workflow_semantic_contract_set_digest: input
+                    .plan
+                    .semantic_contract_set_digest
+                    .clone()
+                    .expect("semantic contract set digest"),
+                input_schema_digest,
+                output_schema_digest,
+            },
+            ontology_id: input.plan.ontology_id,
+            ontology_revision_id: input.plan.ontology_revision_id,
+            ontology_digest: input.plan.ontology_digest.clone(),
+            environment_id: input.plan.environment_id,
+            input: input.goal_input.clone(),
+            input_digest: input.plan.input_digest.clone(),
+            requested_by,
+            requested_at,
+            timeout_seconds: 3_600,
+        };
+        request.validate().expect("valid Application request");
+        input.workflow_run_id = request.workflow_run_id();
+        input.workflow_goal_id = request.workflow_goal_id();
+        input.plan_revision_id = request.plan_revision_id();
+        input.requested_at = requested_at;
+        input.deadline_at = requested_at + Duration::hours(1);
+        let (run, steps) = WorkflowRun::create(input, requested_by).expect("v13 WorkflowRun");
+        let record = WorkflowRunRecord { run, steps };
+
+        WorkflowApplicationRunService::validate_record(&request, &record)
+            .expect("production adapter accepts v13 composite authority");
+
+        let mut aliased = record;
+        aliased.run.execution_input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V12.into();
+        aliased.run.execution_input.runtime_contract_revision =
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12.into();
+        aliased.run.execution_input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V12.into();
         assert!(WorkflowApplicationRunService::validate_record(&request, &aliased).is_err());
     }
 }

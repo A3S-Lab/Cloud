@@ -1,8 +1,12 @@
 use super::workflow_run_contract::{
     WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2,
-    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3, WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4,
+    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5,
 };
-use super::{WorkflowPlan, WorkflowStepKind, WorkflowVariableContract, WorkflowVariableScope};
+use super::{
+    WorkflowApplicationFrameAuthority, WorkflowPlan, WorkflowStepKind, WorkflowVariableContract,
+    WorkflowVariableScope,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,6 +20,8 @@ pub struct WorkflowRunApplicationProjection {
     pub variable_step_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variable_assignment_step_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_authority: Option<WorkflowApplicationFrameAuthority>,
 }
 
 impl WorkflowRunApplicationProjection {
@@ -34,6 +40,7 @@ impl WorkflowRunApplicationProjection {
             answer_step_ids: Vec::new(),
             variable_step_ids: Vec::new(),
             variable_assignment_step_ids: Vec::new(),
+            frame_authority: None,
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -50,6 +57,7 @@ impl WorkflowRunApplicationProjection {
             answer_step_ids,
             variable_step_ids: Vec::new(),
             variable_assignment_step_ids: Vec::new(),
+            frame_authority: None,
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -68,6 +76,50 @@ impl WorkflowRunApplicationProjection {
             answer_step_ids,
             variable_step_ids,
             variable_assignment_step_ids,
+            frame_authority: None,
+        };
+        projection.validate(plan)?;
+        Ok(projection)
+    }
+
+    pub(crate) fn from_application_frame(
+        plan: &WorkflowPlan,
+        final_output_step_id: String,
+        answer_step_ids: Vec<String>,
+        frame_authority: WorkflowApplicationFrameAuthority,
+    ) -> Result<Self, String> {
+        frame_authority.validate_for_child(
+            frame_authority.organization_id,
+            frame_authority.project_id,
+            frame_authority.child_workflow_run_id,
+            plan,
+        )?;
+        let projection = Self {
+            schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4.into(),
+            final_output_step_id,
+            answer_step_ids,
+            variable_step_ids: Vec::new(),
+            variable_assignment_step_ids: Vec::new(),
+            frame_authority: Some(frame_authority),
+        };
+        projection.validate(plan)?;
+        Ok(projection)
+    }
+
+    pub(crate) fn from_application_composite(
+        plan: &WorkflowPlan,
+        final_output_step_id: String,
+        answer_step_ids: Vec<String>,
+        variable_step_ids: Vec<String>,
+        variable_assignment_step_ids: Vec<String>,
+    ) -> Result<Self, String> {
+        let projection = Self {
+            schema: WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5.into(),
+            final_output_step_id,
+            answer_step_ids,
+            variable_step_ids,
+            variable_assignment_step_ids,
+            frame_authority: None,
         };
         projection.validate(plan)?;
         Ok(projection)
@@ -106,6 +158,7 @@ impl WorkflowRunApplicationProjection {
                 if self.answer_step_ids.is_empty()
                     && self.variable_step_ids.is_empty()
                     && self.variable_assignment_step_ids.is_empty()
+                    && self.frame_authority.is_none()
                     && matches!(outputs.as_slice(), [output] if output.id == self.final_output_step_id)
                     && plan_step_uses_descriptor(
                         plan,
@@ -120,6 +173,7 @@ impl WorkflowRunApplicationProjection {
                 if !self.answer_step_ids.is_empty()
                     && self.variable_step_ids.is_empty()
                     && self.variable_assignment_step_ids.is_empty()
+                    && self.frame_authority.is_none()
                     && outputs
                         .iter()
                         .any(|output| output.id == self.final_output_step_id)
@@ -147,6 +201,94 @@ impl WorkflowRunApplicationProjection {
             }
             WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
                 if !self.variable_step_ids.is_empty()
+                    && self.frame_authority.is_none()
+                    && outputs
+                        .iter()
+                        .any(|output| output.id == self.final_output_step_id)
+                    && outputs
+                        .iter()
+                        .filter(|output| output.id != self.final_output_step_id)
+                        .map(|output| output.id.as_str())
+                        .eq(self.answer_step_ids.iter().map(String::as_str))
+                    && plan
+                        .steps
+                        .iter()
+                        .filter(|step| self.variable_step_ids.contains(&step.id))
+                        .map(|step| step.id.as_str())
+                        .eq(self.variable_step_ids.iter().map(String::as_str))
+                    && plan
+                        .steps
+                        .iter()
+                        .filter(|step| self.variable_assignment_step_ids.contains(&step.id))
+                        .map(|step| step.id.as_str())
+                        .eq(self.variable_assignment_step_ids.iter().map(String::as_str))
+                    && self
+                        .variable_assignment_step_ids
+                        .iter()
+                        .all(|step_id| self.variable_step_ids.contains(step_id))
+                    && plan_step_uses_descriptor(
+                        plan,
+                        &self.final_output_step_id,
+                        WorkflowStepKind::Output,
+                        "workflow.output",
+                    )
+                    && self.answer_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Output,
+                            "application.answer",
+                        )
+                    })
+                    && self.variable_assignment_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Service,
+                            "application.conversation-variable-assign",
+                        )
+                    })
+                    && self.variable_step_ids.iter().all(|step_id| {
+                        self.variable_assignment_step_ids.contains(step_id)
+                            || self.answer_step_ids.contains(step_id)
+                    }) =>
+            {
+                Ok(())
+            }
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+                if self.variable_step_ids.is_empty()
+                    && self.variable_assignment_step_ids.is_empty()
+                    && self.frame_authority.is_some()
+                    && outputs
+                        .iter()
+                        .any(|output| output.id == self.final_output_step_id)
+                    && outputs
+                        .iter()
+                        .filter(|output| output.id != self.final_output_step_id)
+                        .map(|output| output.id.as_str())
+                        .eq(self.answer_step_ids.iter().map(String::as_str))
+                    && plan_step_uses_descriptor(
+                        plan,
+                        &self.final_output_step_id,
+                        WorkflowStepKind::Output,
+                        "workflow.output",
+                    )
+                    && self.answer_step_ids.iter().all(|step_id| {
+                        plan_step_uses_descriptor(
+                            plan,
+                            step_id,
+                            WorkflowStepKind::Output,
+                            "application.answer",
+                        )
+                    }) =>
+            {
+                self.frame_authority
+                    .as_ref()
+                    .expect("guarded frame authority")
+                    .validate()
+            }
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+                if self.frame_authority.is_none()
                     && outputs
                         .iter()
                         .any(|output| output.id == self.final_output_step_id)
@@ -210,9 +352,14 @@ impl WorkflowRunApplicationProjection {
         contract: &WorkflowVariableContract,
     ) -> Result<(), String> {
         self.validate(plan)?;
-        if self.schema != WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3 {
+        if !matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) {
             return Err(
-                "WorkflowRun Application variable material requires projection schema v3".into(),
+                "WorkflowRun Application variable material requires a variable-capable projection"
+                    .into(),
             );
         }
         let application_variables = contract
@@ -318,6 +465,8 @@ impl WorkflowRunApplicationProjection {
             self.schema.as_str(),
             WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
                 | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
         ) && self
             .answer_step_ids
             .iter()
@@ -325,19 +474,43 @@ impl WorkflowRunApplicationProjection {
     }
 
     pub fn is_variable_step(&self, step_id: &str) -> bool {
-        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
-            && self
-                .variable_step_ids
-                .iter()
-                .any(|variable_step_id| variable_step_id == step_id)
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) && self
+            .variable_step_ids
+            .iter()
+            .any(|variable_step_id| variable_step_id == step_id)
     }
 
     pub fn is_variable_assignment_step(&self, step_id: &str) -> bool {
-        self.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
-            && self
-                .variable_assignment_step_ids
-                .iter()
-                .any(|assignment_step_id| assignment_step_id == step_id)
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) && self
+            .variable_assignment_step_ids
+            .iter()
+            .any(|assignment_step_id| assignment_step_id == step_id)
+    }
+
+    pub fn projects_application_lifecycle(&self) -> bool {
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        ) && self.frame_authority.is_none()
+    }
+
+    pub fn supports_application_frames(&self) -> bool {
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+                | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+        )
     }
 }
 

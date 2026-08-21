@@ -1,5 +1,59 @@
 use super::*;
 
+#[test]
+fn v5_application_variable_projection_reuses_exact_snapshot_and_write_authority() {
+    let mut input =
+        application_variable_workflow_run_input().expect("Application variable WorkflowRun input");
+    let projection = input
+        .application_projection
+        .as_mut()
+        .expect("Application projection");
+    projection.schema =
+        crate::modules::workflow::domain::WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5.into();
+    projection
+        .validate(&input.plan)
+        .expect("valid v5 variable projection");
+    let step = input
+        .resolved_steps()
+        .expect("resolved steps")
+        .into_iter()
+        .find(|step| step.plan.id == TEST_APPLICATION_VARIABLE_STEP_ID)
+        .expect("Application variable step");
+    let snapshot_metadata =
+        WorkflowApplicationVariableSnapshotHookMetadata::from_run_step(&input, &step)
+            .expect("v5 snapshot metadata");
+    let values = json!({"locale": "en-US"});
+    let values_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(
+            &values,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow Application v5 variable snapshot",
+        )
+        .expect("canonical snapshot"),
+    );
+    let snapshot = WorkflowApplicationVariableSnapshotResumePayload::new(
+        &snapshot_metadata,
+        ApplicationId::new(),
+        ApplicationReleaseId::new(),
+        Sha256Digest::parse(digest('a')).expect("release digest"),
+        ApplicationSessionId::new(),
+        ApplicationInvocationId::new(),
+        ConversationVariableRevisionId::new(),
+        1,
+        values_digest,
+        values,
+    )
+    .expect("snapshot payload");
+    let assigned = json!({"conversation_topic": "high", "locale": "en-US"});
+    let write = WorkflowApplicationVariableWriteHookMetadata::from_run_step(
+        &input, &step, &snapshot, &assigned,
+    )
+    .expect("v5 write metadata");
+    write
+        .validate_run_step(&input, &step, &snapshot)
+        .expect("exact v5 write authority");
+}
+
 #[tokio::test]
 async fn v12_application_variable_assignment_requires_snapshot_then_exact_commit_evidence(
 ) -> Result<(), FlowError> {

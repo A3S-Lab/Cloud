@@ -105,5 +105,5 @@ public delivery surface, or non-ACL product configuration is added.
 - The [retained PostgreSQL 17 C6-C11 recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32474020740/job/96746540732)
   proves production-composed Answer and variable commit-before-response loss,
   exact replay, final-output/terminal replay, and durable cardinalities.
-- Public blocking/streaming delivery and repeated-frame Answer ordinals remain
-  later `APP0.2` gates.
+- Decision 0043 supplies repeated-frame Answer ordinals. Public
+  blocking/streaming delivery remains a later `APP0.2` gate.

@@ -49,8 +49,9 @@ Plan v1-v3 and Run inputs v1-v6 retain their exact bytes and replay behavior.
 
 This is conformance for the existing finite Execution port only. It adds no
 retry engine, error queue, node-run table, provider lifecycle, or Flow history.
-Answer frames, compensation, and other provider error branches remain
-unavailable.
+Application composite Answer frames are implemented by `APP0.2-C13` without
+changing this finite-Execution contract. Compensation and other provider error
+branches remain unavailable.
 
 ## Typed variable scopes
 

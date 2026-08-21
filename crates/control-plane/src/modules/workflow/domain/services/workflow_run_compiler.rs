@@ -3,18 +3,20 @@ use crate::modules::workflow::domain::{
     validate_application_runtime_variable_contract, validate_runtime_variable_contract,
     workflow_run_timeout_seconds, PlanRevision, ResolvedWorkflowCompositeRegions,
     ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
-    WorkflowGoal, WorkflowRevision, WorkflowRun, WorkflowRunApplicationProjection,
-    WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
-    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V2,
+    WorkflowApplicationFrameAuthority, WorkflowGoal, WorkflowRevision, WorkflowRun,
+    WorkflowRunApplicationProjection, WorkflowRunInput, WorkflowStepProjection,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3,
+    WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
+    WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V2,
     WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V7,
     WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA,
     WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12,
-    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
+    WORKFLOW_RUN_INPUT_SCHEMA_V13, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V3,
+    WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
@@ -50,6 +52,7 @@ impl WorkflowRunCompiler {
             requested_by,
             requested_at,
             false,
+            None,
         )
     }
 
@@ -72,6 +75,31 @@ impl WorkflowRunCompiler {
             requested_by,
             requested_at,
             true,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compile_for_application_frame(
+        workflow_run_id: WorkflowRunId,
+        goal: &WorkflowGoal,
+        plan_revision: &PlanRevision,
+        workflow_revision: &WorkflowRevision,
+        timeout_seconds: Option<u64>,
+        requested_by: PrincipalId,
+        requested_at: DateTime<Utc>,
+        frame_authority: WorkflowApplicationFrameAuthority,
+    ) -> Result<CompiledWorkflowRun, String> {
+        Self::compile_with_projection(
+            workflow_run_id,
+            goal,
+            plan_revision,
+            workflow_revision,
+            timeout_seconds,
+            requested_by,
+            requested_at,
+            true,
+            Some(frame_authority),
         )
     }
 
@@ -85,6 +113,7 @@ impl WorkflowRunCompiler {
         requested_by: PrincipalId,
         requested_at: DateTime<Utc>,
         project_to_application: bool,
+        application_frame: Option<WorkflowApplicationFrameAuthority>,
     ) -> Result<CompiledWorkflowRun, String> {
         goal.validate(plan_revision)?;
         workflow_revision.validate()?;
@@ -108,6 +137,14 @@ impl WorkflowRunCompiler {
                 "WorkflowRun authorities do not match the exact Goal, Plan, and Workflow revision"
                     .into(),
             );
+        }
+        if let Some(frame) = application_frame.as_ref() {
+            frame.validate_for_child(
+                goal.organization_id,
+                goal.project_id,
+                workflow_run_id,
+                plan,
+            )?;
         }
         let (
             input_schema,
@@ -156,6 +193,12 @@ impl WorkflowRunCompiler {
                     .as_ref()
                     .is_some_and(|outputs| !outputs.variable_step_ids.is_empty())
                 {
+                    if application_frame.is_some() {
+                        return Err(
+                            "Workflow Application composite frame cannot access Application-scoped variables"
+                                .into(),
+                        );
+                    }
                     validate_application_runtime_variable_contract(
                         contracts.variable_contract(),
                         contracts.variable_defaults(),
@@ -187,7 +230,22 @@ impl WorkflowRunCompiler {
                         .filter(|step| outputs.variable_assignment_step_ids.contains(&step.id))
                         .map(|step| step.id.clone())
                         .collect::<Vec<_>>();
-                    Some(if !variable_step_ids.is_empty() {
+                    Some(if let Some(frame_authority) = application_frame.clone() {
+                        WorkflowRunApplicationProjection::from_application_frame(
+                            plan,
+                            outputs.final_output_step_id,
+                            answer_step_ids,
+                            frame_authority,
+                        )?
+                    } else if composite_regions.is_some() {
+                        WorkflowRunApplicationProjection::from_application_composite(
+                            plan,
+                            outputs.final_output_step_id,
+                            answer_step_ids,
+                            variable_step_ids,
+                            variable_assignment_step_ids,
+                        )?
+                    } else if !variable_step_ids.is_empty() {
                         WorkflowRunApplicationProjection::from_application_variables(
                             plan,
                             outputs.final_output_step_id,
@@ -209,6 +267,15 @@ impl WorkflowRunCompiler {
                 };
                 let (input_schema, runtime_revision, flow_version) = if project_to_application {
                     if application_projection
+                        .as_ref()
+                        .is_some_and(WorkflowRunApplicationProjection::supports_application_frames)
+                    {
+                        (
+                            WORKFLOW_RUN_INPUT_SCHEMA_V13,
+                            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+                            WORKFLOW_RUN_FLOW_VERSION_V13,
+                        )
+                    } else if application_projection
                         .as_ref()
                         .is_some_and(|projection| !projection.variable_step_ids.is_empty())
                     {

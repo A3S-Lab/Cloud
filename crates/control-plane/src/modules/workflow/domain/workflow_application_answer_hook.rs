@@ -1,5 +1,6 @@
 use super::{
-    ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    ResolvedWorkflowRunStep, WorkflowApplicationFrameAuthority, WorkflowRunInput, WorkflowStepKind,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationMessageId, OrganizationId, PlanRevisionId, ProjectId,
@@ -9,8 +10,12 @@ use serde::{Deserialize, Serialize};
 
 pub const WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA: &str =
     "cloud.workflow.application-answer-hook.v1";
+pub const WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2: &str =
+    "cloud.workflow.application-answer-hook.v2";
 pub const WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA: &str =
     "cloud.workflow.application-answer-resume.v1";
+pub const WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2: &str =
+    "cloud.workflow.application-answer-resume.v2";
 pub const WORKFLOW_APPLICATION_ANSWER_STEP_ATTEMPT: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +32,8 @@ pub struct WorkflowApplicationAnswerHookMetadata {
     pub configuration_digest: Sha256Digest,
     pub content: serde_json::Value,
     pub content_digest: Sha256Digest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_authority: Option<WorkflowApplicationFrameAuthority>,
 }
 
 impl WorkflowApplicationAnswerHookMetadata {
@@ -44,8 +51,13 @@ impl WorkflowApplicationAnswerHookMetadata {
             );
         }
         let content_digest = value_digest(&content)?;
+        let frame_authority = projection.frame_authority.clone();
         let value = Self {
-            schema: WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA.into(),
+            schema: if frame_authority.is_some() {
+                WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA.into()
+            },
             organization_id: input.organization_id,
             project_id: input.project_id,
             workflow_run_id: input.workflow_run_id,
@@ -56,13 +68,24 @@ impl WorkflowApplicationAnswerHookMetadata {
             configuration_digest: step.plan.configuration_digest.clone(),
             content,
             content_digest,
+            frame_authority,
         };
         value.validate()?;
         Ok(value)
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA
+        let frame_valid = match (self.schema.as_str(), self.frame_authority.as_ref()) {
+            (WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA, None) => true,
+            (WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2, Some(authority)) => {
+                authority.validate().is_ok()
+                    && authority.organization_id == self.organization_id
+                    && authority.project_id == self.project_id
+                    && authority.child_workflow_run_id == self.workflow_run_id
+            }
+            _ => false,
+        };
+        if !frame_valid
             || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.workflow_run_id.as_uuid().is_nil()
@@ -91,10 +114,40 @@ impl WorkflowApplicationAnswerHookMetadata {
     }
 
     pub fn flow_hook_token(&self) -> String {
-        format!(
-            "workflow-application-answer:{}:{}:{}",
-            self.workflow_run_id, self.step_id, self.step_attempt
+        match self.frame_authority.as_ref() {
+            Some(authority) => format!(
+                "workflow-application-answer:{}:{}:{}:{}",
+                self.workflow_run_id,
+                self.step_id,
+                self.step_attempt,
+                authority.execution_path_digest
+            ),
+            None => format!(
+                "workflow-application-answer:{}:{}:{}",
+                self.workflow_run_id, self.step_id, self.step_attempt
+            ),
+        }
+    }
+
+    pub fn effect_workflow_run_id(&self) -> WorkflowRunId {
+        self.frame_authority
+            .as_ref()
+            .map_or(self.workflow_run_id, |authority| {
+                authority.application_workflow_run_id
+            })
+    }
+
+    pub fn effect_step_id(&self) -> Result<String, String> {
+        self.frame_authority.as_ref().map_or_else(
+            || Ok(self.step_id.clone()),
+            |authority| authority.answer_effect_step_id(&self.step_id),
         )
+    }
+
+    pub fn effect_ordinal(&self) -> u32 {
+        self.frame_authority
+            .as_ref()
+            .map_or(0, |authority| authority.frame_ordinal)
     }
 }
 
@@ -112,6 +165,8 @@ pub struct WorkflowApplicationAnswerResumePayload {
     pub message_id: ApplicationMessageId,
     pub message_sequence: u64,
     pub content_digest: Sha256Digest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_authority: Option<WorkflowApplicationFrameAuthority>,
 }
 
 impl WorkflowApplicationAnswerResumePayload {
@@ -122,7 +177,11 @@ impl WorkflowApplicationAnswerResumePayload {
         content_digest: Sha256Digest,
     ) -> Result<Self, String> {
         let value = Self {
-            schema: WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA.into(),
+            schema: if metadata.frame_authority.is_some() {
+                WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA.into()
+            },
             organization_id: metadata.organization_id,
             project_id: metadata.project_id,
             workflow_run_id: metadata.workflow_run_id,
@@ -133,6 +192,7 @@ impl WorkflowApplicationAnswerResumePayload {
             message_id,
             message_sequence,
             content_digest,
+            frame_authority: metadata.frame_authority.clone(),
         };
         value.validate(metadata)?;
         Ok(value)
@@ -140,7 +200,12 @@ impl WorkflowApplicationAnswerResumePayload {
 
     pub fn validate(&self, metadata: &WorkflowApplicationAnswerHookMetadata) -> Result<(), String> {
         metadata.validate()?;
-        if self.schema != WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA
+        let schema_matches = matches!(
+            (self.schema.as_str(), metadata.frame_authority.as_ref()),
+            (WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA, None)
+                | (WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2, Some(_))
+        );
+        if !schema_matches
             || self.organization_id != metadata.organization_id
             || self.project_id != metadata.project_id
             || self.workflow_run_id != metadata.workflow_run_id
@@ -151,6 +216,7 @@ impl WorkflowApplicationAnswerResumePayload {
             || self.message_id.as_uuid().is_nil()
             || self.message_sequence == 0
             || self.content_digest != metadata.content_digest
+            || self.frame_authority != metadata.frame_authority
         {
             return Err("Workflow Application Answer resume authority is invalid".into());
         }

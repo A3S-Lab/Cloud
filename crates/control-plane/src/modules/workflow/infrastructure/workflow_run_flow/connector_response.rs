@@ -8,8 +8,8 @@ use crate::modules::workflow::domain::{
     flow_step_id, CapabilityType, ResolvedWorkflowRunStep, WorkflowConnectorAttemptEvidence,
     WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorStepOutput,
     WorkflowStepKind, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -54,6 +54,7 @@ impl WorkflowConnectorResponseStepInput {
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
             )
             || self.step.plan.kind != WorkflowStepKind::Service
             || self.step.plan.id != self.metadata.step_id
@@ -351,5 +352,77 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
             }
         }
         Ok(StrictJsonValue(Value::Object(values)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::Sha256Digest;
+    use crate::modules::workflow::domain::{
+        WorkflowConnectorResponseObjectReference, WORKFLOW_RUN_INPUT_SCHEMA_V13,
+    };
+    use crate::modules::workflow::test_support::{connector_workflow_run_input, timestamp};
+
+    #[test]
+    fn v13_connector_response_step_retains_typed_object_authority() {
+        let mut input = connector_workflow_run_input().expect("Connector WorkflowRun input");
+        input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V13.into();
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == "invoke")
+            .expect("Connector step");
+        let metadata = WorkflowConnectorHookMetadata::from_run_step(
+            &input,
+            &step,
+            input.goal_input.clone(),
+            1,
+            1,
+        )
+        .expect("Connector metadata");
+        let authority = super::super::connector::attempt_authority(&metadata)
+            .expect("Connector attempt authority");
+        let body = br#"{"accepted":true}"#;
+        let response_digest = Sha256Digest::from_bytes(body);
+        let hexadecimal = response_digest
+            .as_str()
+            .strip_prefix("sha256:")
+            .expect("response digest");
+        let response_object = WorkflowConnectorResponseObjectReference::new(
+            authority.attempt_id,
+            format!(
+                "attempts/{}/sha256/{hexadecimal}/body",
+                authority.attempt_id
+            ),
+            response_digest.clone(),
+            body.len() as u64,
+        )
+        .expect("response object");
+        let evidence = WorkflowConnectorAttemptEvidence::restore_with_response_object(
+            authority.attempt_id,
+            authority.request_digest,
+            authority.request_body_bytes,
+            WorkflowConnectorAttemptOutcome::Accepted,
+            Some(200),
+            Some(response_digest),
+            Some(body.len() as u64),
+            Some(response_object),
+            None,
+            timestamp(8, 1),
+            timestamp(8, 2),
+        )
+        .expect("accepted Connector evidence");
+
+        WorkflowConnectorResponseStepInput::new(
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+            &step,
+            &metadata,
+            &evidence,
+        )
+        .expect("v13 typed response step")
+        .validate()
+        .expect("valid v13 response authority");
     }
 }

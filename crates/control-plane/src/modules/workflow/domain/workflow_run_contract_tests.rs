@@ -1,13 +1,202 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    application_answer_workflow_run_input, application_variable_workflow_run_input,
+    application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
+    application_nested_frame_answer_authorities, application_variable_workflow_run_input,
     application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
     connector_workflow_run_input_v6, human_decision_workflow_run_input,
     routed_connector_workflow_run_input, routed_execution_workflow_run_input,
     typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
     TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v13_application_frames_pin_root_path_and_repeated_answer_ordinals() {
+    let (parent, frames) = application_frame_answer_workflow_run_inputs()
+        .expect("valid repeated Application Answer frames");
+    assert_eq!(parent.schema, WORKFLOW_RUN_INPUT_SCHEMA_V13);
+    assert_eq!(
+        parent.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+    );
+    assert_eq!(parent.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V13);
+    let parent_projection = parent
+        .application_projection
+        .as_ref()
+        .expect("root Application projection");
+    assert_eq!(
+        parent_projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+    );
+    assert!(parent_projection.projects_application_lifecycle());
+    assert!(parent_projection.supports_application_frames());
+    assert!(parent_projection.frame_authority.is_none());
+    parent.validate().expect("valid v13 Application root");
+
+    let [(frame_zero, child_zero), (frame_one, child_one)] = frames.as_slice() else {
+        panic!("expected two repeated Application frames, got {frames:#?}")
+    };
+    let mut effect_step_ids = Vec::new();
+    for (expected_ordinal, frame, child) in [(0, frame_zero, child_zero), (1, frame_one, child_one)]
+    {
+        assert_eq!(frame.ordinal, expected_ordinal);
+        assert_eq!(child.schema, WORKFLOW_RUN_INPUT_SCHEMA_V13);
+        assert_eq!(
+            child.runtime_contract_revision,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+        );
+        assert_eq!(child.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V13);
+        let projection = child
+            .application_projection
+            .as_ref()
+            .expect("frame Application projection");
+        assert_eq!(
+            projection.schema,
+            WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+        );
+        assert!(!projection.projects_application_lifecycle());
+        assert!(projection.supports_application_frames());
+        assert_eq!(projection.answer_step_ids, [TEST_ANSWER_STEP_ID]);
+        let authority = projection
+            .frame_authority
+            .as_ref()
+            .expect("frame authority");
+        authority
+            .validate_for_frame(frame)
+            .expect("exact parent frame authority");
+        authority
+            .validate_for_child(
+                child.organization_id,
+                child.project_id,
+                child.workflow_run_id,
+                &child.plan,
+            )
+            .expect("exact child authority");
+        assert_eq!(
+            authority.application_workflow_run_id,
+            parent.workflow_run_id
+        );
+        assert_eq!(authority.parent_workflow_run_id, parent.workflow_run_id);
+        assert_eq!(authority.frame_ordinal, expected_ordinal);
+        assert_eq!(authority.child_workflow_run_id, child.workflow_run_id);
+        effect_step_ids.push(
+            authority
+                .answer_effect_step_id(TEST_ANSWER_STEP_ID)
+                .expect("stable frame Answer step"),
+        );
+        child.validate().expect("valid v13 Application frame");
+    }
+    assert_eq!(effect_step_ids[0], effect_step_ids[1]);
+    assert!(effect_step_ids[0].starts_with("frame-answer-"));
+    assert_ne!(frame_zero.frame_digest, frame_one.frame_digest);
+    assert_ne!(child_zero.workflow_run_id, child_one.workflow_run_id);
+    let authority_zero = child_zero
+        .application_projection
+        .as_ref()
+        .and_then(|projection| projection.frame_authority.as_ref())
+        .expect("frame zero authority");
+    let authority_one = child_one
+        .application_projection
+        .as_ref()
+        .and_then(|projection| projection.frame_authority.as_ref())
+        .expect("frame one authority");
+    assert_eq!(
+        authority_zero.logical_path_digest,
+        authority_one.logical_path_digest
+    );
+    assert_ne!(
+        authority_zero.execution_path_digest,
+        authority_one.execution_path_digest
+    );
+
+    let mut legacy_alias = child_zero.clone();
+    legacy_alias.schema = WORKFLOW_RUN_INPUT_SCHEMA_V12.into();
+    legacy_alias.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12.into();
+    legacy_alias.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V12.into();
+    assert!(legacy_alias.validate().is_err());
+
+    let mut missing_authority = child_one.clone();
+    missing_authority
+        .application_projection
+        .as_mut()
+        .expect("frame projection")
+        .frame_authority = None;
+    assert!(missing_authority.validate().is_err());
+
+    let mut cross_tenant = child_zero.clone();
+    cross_tenant.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+    assert!(cross_tenant.validate().is_err());
+}
+
+#[test]
+fn v13_nested_application_frames_partition_outer_execution_paths() {
+    let [outer_zero_inner_zero, outer_zero_inner_one, outer_one_inner_zero] =
+        application_nested_frame_answer_authorities()
+            .expect("valid nested Application Answer authorities");
+    for authority in [
+        &outer_zero_inner_zero,
+        &outer_zero_inner_one,
+        &outer_one_inner_zero,
+    ] {
+        authority.validate().expect("valid nested frame authority");
+        assert_eq!(
+            authority.application_workflow_run_id,
+            outer_zero_inner_zero.application_workflow_run_id
+        );
+    }
+    assert_eq!(outer_zero_inner_zero.frame_ordinal, 0);
+    assert_eq!(outer_zero_inner_one.frame_ordinal, 1);
+    assert_eq!(
+        outer_zero_inner_zero.logical_path_digest,
+        outer_zero_inner_one.logical_path_digest
+    );
+    assert_eq!(
+        outer_zero_inner_zero
+            .answer_effect_step_id(TEST_ANSWER_STEP_ID)
+            .expect("outer-zero inner-zero Answer step"),
+        outer_zero_inner_one
+            .answer_effect_step_id(TEST_ANSWER_STEP_ID)
+            .expect("outer-zero inner-one Answer step")
+    );
+    assert_ne!(
+        outer_zero_inner_zero.execution_path_digest,
+        outer_zero_inner_one.execution_path_digest
+    );
+
+    assert_eq!(outer_one_inner_zero.frame_ordinal, 0);
+    assert_ne!(
+        outer_zero_inner_zero.parent_execution_path_digest,
+        outer_one_inner_zero.parent_execution_path_digest
+    );
+    assert_ne!(
+        outer_zero_inner_zero.logical_path_digest,
+        outer_one_inner_zero.logical_path_digest
+    );
+    assert_ne!(
+        outer_zero_inner_zero
+            .answer_effect_step_id(TEST_ANSWER_STEP_ID)
+            .expect("outer-zero Answer step"),
+        outer_one_inner_zero
+            .answer_effect_step_id(TEST_ANSWER_STEP_ID)
+            .expect("outer-one Answer step")
+    );
+}
+
+#[test]
+fn legacy_application_answer_projection_remains_frame_free() {
+    let input = application_answer_workflow_run_input().expect("valid v11 Answer input");
+    let projection = input
+        .application_projection
+        .as_ref()
+        .expect("legacy Application projection");
+    assert!(projection.projects_application_lifecycle());
+    assert!(!projection.supports_application_frames());
+    assert!(projection.frame_authority.is_none());
+    let canonical = String::from_utf8(input.canonical_bytes().expect("canonical v11 input"))
+        .expect("UTF-8 v11 input");
+    assert!(!canonical.contains("frame_authority"));
+    assert!(!canonical.contains("application-frame-authority"));
+}
 
 #[test]
 fn v12_run_input_pins_exact_application_variable_projection_without_aliasing_v11() {

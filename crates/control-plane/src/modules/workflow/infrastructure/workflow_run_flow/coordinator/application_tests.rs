@@ -23,12 +23,13 @@ use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowRun, WorkflowRunFlowState, WorkflowRunRecord,
     WorkflowRunStatus, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
     WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
-    WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
-    application_answer_workflow_run_input, application_variable_workflow_run_input,
-    application_workflow_run_input, workflow_run_input, TEST_APPLICATION_VARIABLE_STEP_ID,
+    application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
+    application_variable_workflow_run_input, application_workflow_run_input, workflow_run_input,
+    TEST_APPLICATION_VARIABLE_STEP_ID,
 };
 use a3s_flow::{FlowEngine, RuntimeBuildCompatibility, RuntimeBuildId, WorkflowSpec};
 use async_trait::async_trait;
@@ -215,6 +216,14 @@ async fn bind_application_invocation(
     record: &WorkflowRunRecord,
     actor: PrincipalId,
 ) -> ApplicationBindingFixture {
+    bind_application_invocation_to(record, record.run.id, actor).await
+}
+
+async fn bind_application_invocation_to(
+    record: &WorkflowRunRecord,
+    application_workflow_run_id: WorkflowRunId,
+    actor: PrincipalId,
+) -> ApplicationBindingFixture {
     let organization_id = record.run.organization_id;
     let project_id = record.run.project_id;
     let application_id = ApplicationId::new();
@@ -308,7 +317,11 @@ async fn bind_application_invocation(
         .await
         .expect("request invocation");
     let running = invocation
-        .bind_workflow_run(invocation.aggregate_version, record.run.id, requested_at)
+        .bind_workflow_run(
+            invocation.aggregate_version,
+            application_workflow_run_id,
+            requested_at,
+        )
         .expect("bind WorkflowRun");
     sessions
         .advance_invocation(AdvanceApplicationInvocationWrite {
@@ -397,6 +410,48 @@ async fn application_answer_workflow_fixture() -> (FlowEngine, WorkflowRunRecord
         .await
         .expect("start Application Answer WorkflowRun Flow");
     (engine, record, actor)
+}
+
+async fn application_frame_answer_workflow_fixture() -> (
+    FlowEngine,
+    WorkflowRunId,
+    Vec<WorkflowRunRecord>,
+    PrincipalId,
+) {
+    let (parent, frames) = application_frame_answer_workflow_run_inputs()
+        .expect("repeated Application Answer WorkflowRun inputs");
+    let requested_at = canonical_timestamp(Utc::now());
+    let actor = PrincipalId::new();
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-frame-answer-test@1").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    let mut records = Vec::new();
+    for (_, mut input) in frames {
+        input.requested_at = requested_at;
+        input.deadline_at = requested_at + Duration::hours(1);
+        input
+            .validate()
+            .expect("valid Application frame Answer WorkflowRun input");
+        let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+        records.push(WorkflowRunRecord { run, steps });
+        engine
+            .start_with_id(
+                input.workflow_run_id.to_string(),
+                WorkflowSpec::rust_embedded(
+                    WORKFLOW_RUN_FLOW_NAME,
+                    WORKFLOW_RUN_FLOW_VERSION_V13,
+                    "a3s-cloud",
+                    "main",
+                )
+                .with_runtime_build(runtime_build_id.clone()),
+                serde_json::to_value(input).expect("encoded WorkflowRun input"),
+            )
+            .await
+            .expect("start Application frame Answer WorkflowRun Flow");
+    }
+    (engine, parent.workflow_run_id, records, actor)
 }
 
 async fn application_variable_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, PrincipalId) {
@@ -706,6 +761,203 @@ async fn answer_commit_precedes_final_output_and_terminal_projection() {
             .expect("replayed messages")
             .len(),
         3
+    );
+}
+
+#[tokio::test]
+async fn repeated_frame_answers_use_root_run_and_stable_zero_based_ordinals() {
+    let (engine, application_workflow_run_id, records, actor) =
+        application_frame_answer_workflow_fixture().await;
+    let [record_zero, record_one] = records.as_slice() else {
+        panic!("expected two Application frame WorkflowRuns, got {records:#?}")
+    };
+    let binding =
+        bind_application_invocation_to(record_zero, application_workflow_run_id, actor).await;
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine, binding.effects.clone());
+
+    for record in [record_zero, record_one] {
+        let completed = coordinator
+            .reconcile(record, record.run.requested_at)
+            .await
+            .expect("Application frame Answer reconciliation")
+            .expect("completed child WorkflowRun projection");
+        assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    }
+
+    let calls = binding.effects.calls().await;
+    let [RecordedApplicationEffect::Answer(frame_zero), RecordedApplicationEffect::Answer(frame_one)] =
+        calls.as_slice()
+    else {
+        panic!("child lifecycle leaked into Applications effects: {calls:#?}")
+    };
+    assert_eq!(
+        frame_zero.effect.workflow_run_id,
+        application_workflow_run_id
+    );
+    assert_eq!(
+        frame_one.effect.workflow_run_id,
+        application_workflow_run_id
+    );
+    assert_eq!(frame_zero.effect.step_id, frame_one.effect.step_id);
+    assert!(frame_zero.effect.step_id.starts_with("frame-answer-"));
+    assert_eq!(frame_zero.effect.step_attempt, 1);
+    assert_eq!(frame_one.effect.step_attempt, 1);
+    assert_eq!(frame_zero.effect.effect_ordinal, 0);
+    assert_eq!(frame_one.effect.effect_ordinal, 1);
+
+    let messages = binding
+        .sessions
+        .list_messages(
+            record_zero.run.organization_id,
+            record_zero.run.project_id,
+            binding.application_id,
+            binding.session_id,
+            0,
+            10,
+        )
+        .await
+        .expect("repeated frame messages");
+    assert_eq!(messages.len(), 3);
+    assert_eq!(
+        messages
+            .iter()
+            .map(|message| message.sequence)
+            .collect::<Vec<_>>(),
+        [1, 2, 3]
+    );
+    assert_eq!(messages[1].kind, ApplicationMessageKind::Answer);
+    assert_eq!(messages[2].kind, ApplicationMessageKind::Answer);
+    assert_eq!(
+        messages[1]
+            .workflow_effect
+            .as_ref()
+            .expect("frame zero effect")
+            .ordinal,
+        0
+    );
+    assert_eq!(
+        messages[2]
+            .workflow_effect
+            .as_ref()
+            .expect("frame one effect")
+            .ordinal,
+        1
+    );
+    let invocation = binding
+        .sessions
+        .find_invocation_for_workflow_run(
+            record_zero.run.organization_id,
+            application_workflow_run_id,
+        )
+        .await
+        .expect("invocation read")
+        .expect("root-bound invocation");
+    assert_eq!(invocation.status, ApplicationInvocationStatus::Running);
+
+    for record in [record_zero, record_one] {
+        coordinator
+            .reconcile(record, record.run.requested_at)
+            .await
+            .expect("Application frame lost-save replay")
+            .expect("replayed child WorkflowRun projection");
+    }
+    assert_eq!(
+        binding.effects.calls().await.len(),
+        2,
+        "completed child replay must emit no Answer or lifecycle effect"
+    );
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record_zero.run.organization_id,
+                record_zero.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("replayed frame messages")
+            .len(),
+        3
+    );
+}
+
+#[tokio::test]
+async fn lost_frame_answer_response_replays_exact_root_ordinal_without_child_lifecycle() {
+    let (engine, application_workflow_run_id, records, actor) =
+        application_frame_answer_workflow_fixture().await;
+    let record = records.get(1).expect("ordinal-one frame WorkflowRun");
+    let binding = bind_application_invocation_to(record, application_workflow_run_id, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_lost_answer_response(
+        binding.sessions.clone(),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    let error = coordinator
+        .reconcile(record, record.run.requested_at)
+        .await
+        .expect_err("lost frame Answer response");
+    assert!(error.to_string().contains("injected loss"));
+    let waiting = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("waiting frame Flow snapshot");
+    assert!(waiting
+        .hooks
+        .values()
+        .any(|hook| hook.status == a3s_flow::HookStatus::Active));
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("committed frame Answer")
+            .len(),
+        2
+    );
+
+    let completed = coordinator
+        .reconcile(record, record.run.requested_at)
+        .await
+        .expect("frame Answer recovery")
+        .expect("completed frame WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let calls = effects.calls().await;
+    let [RecordedApplicationEffect::Answer(first), RecordedApplicationEffect::Answer(replay)] =
+        calls.as_slice()
+    else {
+        panic!("frame recovery leaked lifecycle effects: {calls:#?}")
+    };
+    assert_eq!(first, replay);
+    assert_eq!(first.effect.workflow_run_id, application_workflow_run_id);
+    assert_eq!(first.effect.effect_ordinal, 1);
+    assert!(first.effect.step_id.starts_with("frame-answer-"));
+    assert_eq!(
+        binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("recovered frame messages")
+            .len(),
+        2
     );
 }
 

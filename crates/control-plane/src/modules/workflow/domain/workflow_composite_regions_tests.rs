@@ -282,6 +282,40 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         WORKFLOW_RUN_FLOW_VERSION_V3
     );
 
+    let application_run = WorkflowRunCompiler::compile_for_application(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("runtime v13 Application composite input");
+    let application_input = &application_run.run.execution_input;
+    assert_eq!(application_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V13);
+    assert_eq!(
+        application_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+    );
+    assert_eq!(
+        application_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V13
+    );
+    let application_projection = application_input
+        .application_projection
+        .as_ref()
+        .expect("Application composite projection");
+    assert_eq!(
+        application_projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+    );
+    assert!(application_projection.projects_application_lifecycle());
+    assert!(application_projection.supports_application_frames());
+    application_input
+        .validate()
+        .expect("valid runtime v13 Application composite input");
+
     let mut downgraded = compiled_run.run.execution_input;
     downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V2.into();
     downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2.into();

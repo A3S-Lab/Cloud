@@ -57,12 +57,19 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V11: &str = "11";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V12: &str = "cloud.workflow-run.input.v12";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12: &str = "cloud.workflow-run-runtime.v12";
 pub const WORKFLOW_RUN_FLOW_VERSION_V12: &str = "12";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V13: &str = "cloud.workflow-run.input.v13";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13: &str = "cloud.workflow-run-runtime.v13";
+pub const WORKFLOW_RUN_FLOW_VERSION_V13: &str = "13";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
     "cloud.workflow-run.application-projection.v2";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3: &str =
     "cloud.workflow-run.application-projection.v3";
+pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4: &str =
+    "cloud.workflow-run.application-projection.v4";
+pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5: &str =
+    "cloud.workflow-run.application-projection.v5";
 /// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
 /// with four MiB reserved for the goal value, identities, and JSON framing.
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
@@ -209,6 +216,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V10
                 | WORKFLOW_RUN_INPUT_SCHEMA_V11
                 | WORKFLOW_RUN_INPUT_SCHEMA_V12
+                | WORKFLOW_RUN_INPUT_SCHEMA_V13
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -224,7 +232,7 @@ impl WorkflowRunInput {
             composite_regions,
             composite_runtime,
             connector_runtime_capable,
-        ) =
+        ) = {
             match (
                 self.schema.as_str(),
                 self.runtime_contract_revision.as_str(),
@@ -579,13 +587,116 @@ impl WorkflowRunInput {
                     let composite_runtime = regions.is_some();
                     (Some(contract), defaults, regions, composite_runtime, true)
                 }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V13,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+                    WORKFLOW_RUN_FLOW_VERSION_V13,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4 =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    application_projection
+                        .frame_authority
+                        .as_ref()
+                        .ok_or_else(|| {
+                            "WorkflowRun Application frame projection lost its authority".to_owned()
+                        })?
+                        .validate_for_child(
+                            self.organization_id,
+                            self.project_id,
+                            self.workflow_run_id,
+                            &self.plan,
+                        )?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime, true)
+                }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V13,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+                    WORKFLOW_RUN_FLOW_VERSION_V13,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5,
+                    Some(resolved),
+                    defaults,
+                    Some(resolved_regions),
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5 =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    if application_projection.variable_step_ids.is_empty() {
+                        validate_runtime_variable_contract(
+                            &contract,
+                            defaults.as_ref(),
+                            &self.plan,
+                        )?;
+                    } else {
+                        validate_application_runtime_variable_contract(
+                            &contract,
+                            defaults.as_ref(),
+                            &self.plan,
+                        )?;
+                        application_projection.validate_variable_contract(&self.plan, &contract)?;
+                    }
+                    let regions = resolved_regions.restore()?;
+                    if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
+                        return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        );
+                    }
+                    (Some(contract), defaults, Some(regions), true, true)
+                }
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
                             .into(),
                     )
                 }
-            };
+            }
+        };
         if self.flow_workflow_name != WORKFLOW_RUN_FLOW_NAME
             || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
@@ -600,7 +711,11 @@ impl WorkflowRunInput {
         if let Some(contract) = variable_contract.as_ref() {
             let workflow = self.plan.workflow_spec()?;
             if let Some(application) = self.application_projection.as_ref().filter(|projection| {
-                projection.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                matches!(
+                    projection.schema.as_str(),
+                    WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+                        | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
+                ) && !projection.variable_step_ids.is_empty()
             }) {
                 let application_ports = application
                     .variable_step_ids

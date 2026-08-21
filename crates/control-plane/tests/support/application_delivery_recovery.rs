@@ -11,11 +11,11 @@ use a3s_cloud_control_plane::modules::applications::{
     IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
     IWorkflowApplicationEffectsPort, PostgresApplicationRepository,
     PostgresApplicationSessionRepository, ReplayApplicationSession,
-    ReplayApplicationSessionHandler, WorkflowApplicationEffectsService,
-    WorkflowApplicationMessageRequest, WorkflowApplicationOntologyRevisionReader,
-    WorkflowApplicationRunReference, WorkflowApplicationRunService,
-    WorkflowApplicationTerminalRequest, WorkflowApplicationVariableSnapshot,
-    WorkflowApplicationVariableWriteRequest,
+    ReplayApplicationSessionHandler, WorkflowApplicationEffectRequest,
+    WorkflowApplicationEffectsService, WorkflowApplicationMessageRequest,
+    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationRunReference,
+    WorkflowApplicationRunService, WorkflowApplicationTerminalRequest,
+    WorkflowApplicationVariableSnapshot, WorkflowApplicationVariableWriteRequest,
 };
 use a3s_cloud_control_plane::modules::connectors::{
     IWorkflowConnectorPort, WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
@@ -95,7 +95,7 @@ async fn application_delivery_recovery_fixture_is_a_valid_semantic_revision() {
     );
     revision
         .validate()
-        .expect("valid Application C6-C11 recovery Workflow revision");
+        .expect("valid Application C6-C12 recovery Workflow revision");
     let definition = WorkflowDefinition::create(
         organization_id,
         project_id,
@@ -384,7 +384,7 @@ pub(super) async fn exercise_application_delivery_recovery(
     let application = Application::create(
         release.application_id,
         ResourceName::parse("PostgreSQL recovery application")?,
-        "C6-C11 command and Flow effect recovery over one Applications authority".into(),
+        "C6-C12 command and Flow effect recovery over one Applications authority".into(),
         &release,
     )?;
     let application_request_id = Uuid::now_v7();
@@ -506,6 +506,50 @@ pub(super) async fn exercise_application_delivery_recovery(
     assert_eq!(projection.variable_step_ids, [VARIABLE_STEP_ID]);
     assert_eq!(projection.variable_assignment_step_ids, [VARIABLE_STEP_ID]);
 
+    // C12 reuses the existing Applications effect identity: the logical frame
+    // Answer step stays stable while the zero-based frame ordinal distinguishes
+    // repeated commits. Exercise that exact persistence boundary before the
+    // root invocation reaches its terminal fence.
+    let frame_answer = |effect_ordinal| WorkflowApplicationMessageRequest {
+        effect: WorkflowApplicationEffectRequest {
+            organization_id,
+            workflow_run_id: record.run.id,
+            step_id: "frame-answer-00000000-0000-5000-8000-000000000012".into(),
+            step_attempt: 1,
+            effect_ordinal,
+            occurred_at: record.run.requested_at,
+        },
+        content: json!({"frameOrdinal": effect_ordinal}),
+    };
+    let frame_zero = frame_answer(0);
+    let frame_one = frame_answer(1);
+    assert_eq!(frame_zero.effect.step_id, frame_one.effect.step_id);
+    let frame_effects = WorkflowApplicationEffectsService::new(Arc::new(
+        PostgresApplicationSessionRepository::new(executor.clone()),
+    ));
+    let frame_zero_write = frame_effects.append_answer(&frame_zero).await?;
+    assert!(!frame_zero_write.replayed);
+    assert_eq!(frame_zero_write.value.sequence, 2);
+    let lost_frame_one = RecoveringApplicationEffects::new(
+        Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
+        LostResponse::Answer,
+    );
+    let lost_frame_error = lost_frame_one
+        .append_answer(&frame_one)
+        .await
+        .expect_err("lost repeated-frame Answer response after PostgreSQL commit");
+    assert!(lost_frame_error
+        .to_string()
+        .contains("lost Answer response"));
+    let frame_one_replay = WorkflowApplicationEffectsService::new(Arc::new(
+        PostgresApplicationSessionRepository::new(executor.clone()),
+    ))
+    .append_answer(&frame_one)
+    .await?;
+    assert!(frame_one_replay.replayed);
+    assert_eq!(frame_one_replay.value.sequence, 3);
+    assert_ne!(frame_zero_write.value.id, frame_one_replay.value.id);
+
     let engine = start_flow(&record).await?;
     let answer_failure = Arc::new(RecoveringApplicationEffects::new(
         Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
@@ -520,7 +564,7 @@ pub(super) async fn exercise_application_delivery_recovery(
         persisted_messages(&executor, &record, application.id)
             .await?
             .len(),
-        2
+        4
     );
 
     let answer_recovery = Arc::new(RecoveringApplicationEffects::new(
@@ -619,11 +663,15 @@ pub(super) async fn exercise_application_delivery_recovery(
     )
     .await?
     .map_err(|error| format!("replay completed Application session: {error}"))?;
-    assert_eq!(messages.messages.len(), 3);
+    assert_eq!(messages.messages.len(), 5);
     assert_eq!(messages.messages[0].kind, ApplicationMessageKind::Input);
     assert_eq!(messages.messages[1].kind, ApplicationMessageKind::Answer);
+    assert_eq!(messages.messages[1].content, json!({"frameOrdinal": 0}));
+    assert_eq!(messages.messages[2].kind, ApplicationMessageKind::Answer);
+    assert_eq!(messages.messages[2].content, json!({"frameOrdinal": 1}));
+    assert_eq!(messages.messages[3].kind, ApplicationMessageKind::Answer);
     assert_eq!(
-        messages.messages[2].kind,
+        messages.messages[4].kind,
         ApplicationMessageKind::FinalOutput
     );
 
@@ -664,7 +712,7 @@ pub(super) async fn exercise_application_delivery_recovery(
             .append(")"),
         )
         .await?;
-    assert_eq!(counts, (3, 2, 3, 1, 1));
+    assert_eq!(counts, (5, 2, 5, 1, 1));
     Ok(())
 }
 
