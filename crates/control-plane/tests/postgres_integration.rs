@@ -821,7 +821,8 @@ async fn exercise_postgres_replica_set_foundation(
         project_id,
         environment_id,
     )
-    .await?;
+    .await
+    .map_err(|error| format!("writer-fence PostgreSQL gate failed: {error}"))?;
     workloads_support::exercise_workload_node_pool_selection(
         &executor,
         organization_id,
