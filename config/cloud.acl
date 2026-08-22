@@ -71,6 +71,21 @@ events {
   retry_max_ms = 30000
 }
 
+smtp {
+  provider = "disabled"
+  host = "smtp.example.com"
+  port = 465
+  tls = "implicit"
+  hello_name = "cloud.example.com"
+  ca_certificate_file = ""
+  username_env = "A3S_CLOUD_SMTP_USERNAME"
+  password_env = "A3S_CLOUD_SMTP_PASSWORD"
+  sender = "no-reply@example.com"
+  connect_timeout_ms = 5000
+  command_timeout_ms = 10000
+  reservation_lease_ms = 60000
+}
+
 operations {
   reconcile_interval_ms = 5000
   lease_ms = 30000

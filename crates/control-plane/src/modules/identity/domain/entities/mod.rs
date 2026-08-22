@@ -7,6 +7,7 @@ mod oidc_flow;
 mod organization;
 mod recipient_contact;
 mod recipient_contact_verification;
+mod recipient_contact_verification_delivery;
 mod resource_grant;
 
 pub use api_token::{
@@ -28,5 +29,10 @@ pub use recipient_contact_verification::{
     RecipientContactVerification, RecipientContactVerificationClaims,
     RecipientContactVerificationStatus, MAX_RECIPIENT_CONTACT_VERIFICATION_LIFETIME,
     MIN_RECIPIENT_CONTACT_VERIFICATION_LIFETIME,
+};
+pub use recipient_contact_verification_delivery::{
+    RecipientContactVerificationDeliveryFact, RecipientContactVerificationDeliveryOutcome,
+    RecipientContactVerificationDeliveryRecord, RecipientContactVerificationDeliveryReservation,
+    RecipientContactVerificationDeliveryStatus,
 };
 pub use resource_grant::ResourceGrant;

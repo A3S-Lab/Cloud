@@ -132,8 +132,8 @@ use crate::modules::identity::infrastructure::{
     ApiTokenVerifier, HmacRecipientContactProofService, VaultRecipientContactProofService,
 };
 use crate::modules::identity::{
-    AcceptMembershipInvitationHandler, BeginOidcFlowHandler,
-    BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
+    A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
+    BeginOidcFlowHandler, BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
     ChangeMembershipRoleHandler, CompleteOidcFlowHandler,
     CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
     CreateMembershipInvitationHandler, CreateOrganizationHandler, CreateResourceGrantHandler,
@@ -141,8 +141,12 @@ use crate::modules::identity::{
     GetRecipientContactHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
     ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
     ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
-    OpenIdConnectProviderService, RevokeApiTokenHandler, RevokeMembershipHandler,
-    RevokeMembershipInvitationHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
+    OpenIdConnectProviderService, RecipientContactVerificationDeliveryDispatcher,
+    RevokeApiTokenHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
+    RevokeRecipientContactHandler, RevokeResourceGrantHandler,
+    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
+    SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
+    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay,
@@ -244,7 +248,7 @@ use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
     config::{
         EventProviderKind, ObjectStorageProviderKind, ProcessRole, SecurityProfile,
-        SecurityProviderKind,
+        SecurityProviderKind, SmtpProviderKind, SmtpTlsMode,
     },
     infrastructure::{
         bind_infrastructure, connect_postgres, postgres_health, FlowReadInfrastructure,
@@ -285,6 +289,8 @@ pub enum ControlPlaneStartupError {
     Connector(String),
     #[error("could not initialize outbound notification delivery: {0}")]
     Notification(String),
+    #[error("could not initialize recipient contact verification delivery: {0}")]
+    Smtp(String),
     #[error("could not initialize security providers: {0}")]
     Security(String),
     #[error("could not initialize Edge providers: {0}")]
@@ -465,6 +471,8 @@ async fn build_api_worker_application(
     let resource_grants = adapters.identity.resource_grants;
     let oidc_identity = adapters.identity.oidc_identity;
     let recipient_contacts = adapters.identity.recipient_contacts;
+    let recipient_contact_verification_deliveries =
+        adapters.identity.recipient_contact_verification_deliveries;
     let resource_authorization_decisions = adapters.identity.resource_authorization_decisions;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
@@ -586,6 +594,67 @@ async fn build_api_worker_application(
         } else {
             None
         };
+    let recipient_contact_verification_consumer = if run_operations
+        && config.events.provider == EventProviderKind::Nats
+        && config.smtp.provider == SmtpProviderKind::Relay
+    {
+        let event_publisher = event_publisher.as_ref().ok_or_else(|| {
+            ControlPlaneStartupError::Framework(BootError::Internal(
+                "worker process is missing its event publisher".into(),
+            ))
+        })?;
+        let credentials = config.smtp_credentials()?.ok_or_else(|| {
+            ControlPlaneStartupError::Smtp("SMTP credentials were not resolved".into())
+        })?;
+        let sender = crate::modules::identity::domain::value_objects::RecipientEmailAddress::parse(
+            &config.smtp.sender,
+        )
+        .map_err(ControlPlaneStartupError::Smtp)?;
+        let tls_policy = match config.smtp.tls {
+            SmtpTlsMode::RequiredStartTls => {
+                SmtpRecipientContactVerificationTlsPolicy::RequiredStartTls
+            }
+            SmtpTlsMode::Implicit => SmtpRecipientContactVerificationTlsPolicy::Implicit,
+        };
+        let delivery_service = Arc::new(
+            SmtpRecipientContactVerificationDeliveryService::new(
+                SmtpRecipientContactVerificationDeliveryOptions {
+                    host: config.smtp.host.clone(),
+                    port: config.smtp.port,
+                    tls_policy,
+                    hello_name: config.smtp.hello_name.clone(),
+                    ca_certificate_file: config.smtp.ca_certificate_file.clone(),
+                    sender,
+                    credentials: SmtpRecipientContactVerificationCredentials {
+                        username: credentials.username,
+                        password: credentials.password,
+                    },
+                    connect_timeout: Duration::from_millis(config.smtp.connect_timeout_ms),
+                    command_timeout: Duration::from_millis(config.smtp.command_timeout_ms),
+                },
+            )
+            .map_err(ControlPlaneStartupError::Smtp)?,
+        );
+        let dispatcher = Arc::new(
+            RecipientContactVerificationDeliveryDispatcher::new(
+                recipient_contact_verification_deliveries,
+                Arc::clone(&recipient_contact_proof),
+                delivery_service,
+                chrono_duration(config.smtp.reservation_lease_ms)?,
+            )
+            .map_err(ControlPlaneStartupError::Smtp)?,
+        );
+        Some(
+            A3sEventRecipientContactVerificationConsumer::new(
+                event_publisher.bus(),
+                event_publisher.subject(RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY),
+                dispatcher,
+            )
+            .map_err(ControlPlaneStartupError::Smtp)?,
+        )
+    } else {
+        None
+    };
     let sources = adapters.sources.sources;
     let source_webhooks = adapters.sources.webhooks;
     let source_subscriptions = adapters.sources.subscriptions;
@@ -1363,6 +1432,7 @@ async fn build_api_worker_application(
             log_retention_worker,
             log_compaction_worker,
             outbound_notification_consumer,
+            recipient_contact_verification_consumer,
         ))
     } else {
         None

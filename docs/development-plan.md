@@ -2596,9 +2596,10 @@ node.
   completion, redacted evidence, active verified resolution, and terminal
   revocation. Each challenge stays pinned to its initiating organization for
   Outbox/audit correlation while the contact remains Principal-global.
-  The follow-on N5b supplies production proof-provider wiring. SMTP challenge
-  delivery, public interfaces, and notification subscription/dispatch
-  composition remain open. No email inference, second directory,
+  N5b supplies production proof-provider wiring, and N5c now supplies the
+  one-shot Worker-owned SMTP challenge delivery component. Public interfaces
+  and notification subscription/dispatch composition remain open. No email
+  inference, second directory,
   plaintext proof persistence, provider configuration, queue, scheduler,
   retry counter, or SMTP client is authorized by this slice.
 - Implemented as `C0.3-N5b`: the N5a signer/verifier is wired into real
@@ -2627,10 +2628,11 @@ node.
   mailbox/proof persistence, SMTP transport, public interface, notification
   subscription, provider profile, Secret record, queue, scheduler, retry
   mechanism, or second configuration language is authorized by this slice.
-- Frozen for implementation as `C0.3-N5c`: Identity consumes only its exact
+- Implemented with retained CI verification pending as `C0.3-N5c`: Identity
+  consumes only its exact
   `identity.recipient-contact.verification-requested` transactional Outbox fact
   through a Worker-owned A3S Event durable/manual-ack subscription. Migration
-  `137` may retain one deterministic challenge/event delivery identity, a
+  `137` retains one deterministic challenge/event delivery identity, a
   lease-fenced pre-dispatch reservation, the durable `dispatching` boundary,
   and only `delivered`, `rejected`, `indeterminate`, or `obsolete` terminal
   outcomes. It must never retain the canonical mailbox, proof, message bytes,
@@ -2655,6 +2657,14 @@ node.
   template/configuration language, queue, scheduler, retry counter, public
   recipient-contact surface, general Notification SMTP subscription, or
   widening of the HTTP-specific Connector revision/execution contract.
+  In-process protocol fixtures prove implicit TLS, explicit trust, EHLO/AUTH,
+  one SMTP envelope/message submission, permanent rejection, lost final reply,
+  and required-STARTTLS downgrade rejection. Repository, dispatcher, event
+  consumer, configuration, composition, and migration tests pass together with
+  the full workspace suite, strict Clippy, formatting, and documentation. A
+  digest-pinned authenticated required-STARTTLS Mailpit test and the extended
+  PostgreSQL/NATS H0 fixture are wired into CI; this text does not claim those
+  retained provider gates until their first successful run is linked.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its

@@ -71,6 +71,21 @@ events {
   retry_max_ms = 30000
 }
 
+smtp {
+  provider = "relay"
+  host = "smtp.example.invalid"
+  port = 587
+  tls = "required_starttls"
+  hello_name = "cloud.example.invalid"
+  ca_certificate_file = ""
+  username_env = "A3S_CLOUD_SMTP_USERNAME"
+  password_env = "A3S_CLOUD_SMTP_PASSWORD"
+  sender = "no-reply@example.invalid"
+  connect_timeout_ms = 5000
+  command_timeout_ms = 10000
+  reservation_lease_ms = 60000
+}
+
 operations {
   reconcile_interval_ms = 5000
   lease_ms = 30000

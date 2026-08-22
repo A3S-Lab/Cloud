@@ -34,7 +34,8 @@ use crate::modules::forms::{IFormRepository, PostgresFormRepository};
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
     IOidcIdentityRepository, IOrganizationRepository, IRecipientContactRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository,
 };
 use crate::modules::identity::PostgresIdentityRepository;
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
@@ -193,6 +194,8 @@ pub(super) struct IdentityPostgresAdapters {
     pub(super) resource_grants: Arc<dyn IResourceGrantRepository>,
     pub(super) oidc_identity: Arc<dyn IOidcIdentityRepository>,
     pub(super) recipient_contacts: Arc<dyn IRecipientContactRepository>,
+    pub(super) recipient_contact_verification_deliveries:
+        Arc<dyn IRecipientContactVerificationDeliveryRepository>,
     pub(super) resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
 }
 
@@ -207,6 +210,7 @@ impl IdentityPostgresAdapters {
             resource_grants: repository.clone(),
             oidc_identity: repository.clone(),
             recipient_contacts: repository.clone(),
+            recipient_contact_verification_deliveries: repository.clone(),
             resource_authorization_decisions: repository,
         }
     }

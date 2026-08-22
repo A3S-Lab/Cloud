@@ -89,6 +89,71 @@ jobs:
           echo "::error title=Verified recipient-contact authority gate failed::$detail"
           exit 1
 
+      - name: Start digest-pinned authenticated TLS Mailpit fixture
+        env:
+          MAILPIT_IMAGE: ghcr.io/axllent/mailpit@sha256:7f33095f80e901f6ad08028f06ca284aa58fe84942be5496008d041d3b9f4d4d
+        run: |
+          cert_dir="$RUNNER_TEMP/a3s-cloud-mailpit-tls"
+          install -d -m 0755 "$cert_dir"
+          openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 1 \
+            -keyout "$cert_dir/key.pem" \
+            -out "$cert_dir/cert.pem" \
+            -subj '/CN=127.0.0.1' \
+            -addext 'subjectAltName=IP:127.0.0.1' >/dev/null 2>&1
+          chmod 0644 "$cert_dir/key.pem" "$cert_dir/cert.pem"
+          docker run --detach --name a3s-cloud-n5c-mailpit \
+            --publish 127.0.0.1:1025:1025 \
+            --publish 127.0.0.1:8025:8025 \
+            --volume "$cert_dir:/cert:ro" \
+            --env 'MP_SMTP_AUTH=a3s-cloud:test-password' \
+            --env MP_SMTP_TLS_CERT=/cert/cert.pem \
+            --env MP_SMTP_TLS_KEY=/cert/key.pem \
+            --env MP_SMTP_REQUIRE_STARTTLS=true \
+            --env MP_SMTP_STRICT_RFC_HEADERS=true \
+            --env MP_SMTP_DISABLE_RDNS=true \
+            --env MP_DISABLE_VERSION_CHECK=true \
+            "$MAILPIT_IMAGE" >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8025/api/v1/info >/dev/null; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' a3s-cloud-n5c-mailpit 2>/dev/null |
+              grep --quiet true; then
+              docker logs a3s-cloud-n5c-mailpit
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs a3s-cloud-n5c-mailpit
+          exit 1
+
+      - name: Certify real authenticated required-STARTTLS recipient delivery
+        env:
+          A3S_CLOUD_TEST_MAILPIT_API: http://127.0.0.1:8025
+          A3S_CLOUD_TEST_SMTP_CA_FILE: ${{ runner.temp }}/a3s-cloud-mailpit-tls/cert.pem
+          A3S_CLOUD_TEST_SMTP_HOST: 127.0.0.1
+          A3S_CLOUD_TEST_SMTP_PASSWORD: test-password
+          A3S_CLOUD_TEST_SMTP_PORT: "1025"
+          A3S_CLOUD_TEST_SMTP_USERNAME: a3s-cloud
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-n5c-mailpit.log"
+          cargo test --locked -p a3s-cloud-control-plane \
+            --test smtp_recipient_contact \
+            real_mailpit_accepts_one_authenticated_required_starttls_submission \
+            -- --ignored --exact --nocapture --test-threads=1 2>&1 | tee "$log"
+          grep --fixed-strings \
+            'A3S_CLOUD_C0_3_N5C_MAILPIT_CERTIFIED tls=required_starttls auth=plain submissions=1 outcome=delivered' \
+            "$log" >/dev/null
+
+      - name: Upload recipient-delivery provider evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c0-3-n5c-mailpit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-n5c-mailpit.log
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Start checksum-pinned S3-compatible object fixture
         env:
           MINIO_CLIENT_SHA256: ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f
@@ -302,11 +367,20 @@ jobs:
       - name: Certify the closed worker process composition
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
+          A3S_CLOUD_TEST_SMTP_CA_FILE: ${{ runner.temp }}/a3s-cloud-mailpit-tls/cert.pem
+          A3S_CLOUD_TEST_SMTP_HOST: 127.0.0.1
+          A3S_CLOUD_TEST_SMTP_PASSWORD: test-password
+          A3S_CLOUD_TEST_SMTP_PORT: "1025"
+          A3S_CLOUD_TEST_SMTP_USERNAME: a3s-cloud
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
           postgres_worker_role_has_only_its_owned_dependencies_and_routes
           -- --exact --nocapture --test-threads=1
+
+      - name: Stop digest-pinned authenticated TLS Mailpit fixture
+        if: always()
+        run: docker rm --force a3s-cloud-n5c-mailpit >/dev/null 2>&1 || true
 
       - name: Stop checksum-pinned NATS notification fixture
         if: always()

@@ -8,7 +8,7 @@ use a3s_cloud_control_plane::config::{
     EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
     ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig, PostgresConfig, ProcessRole,
     RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
-    SourcesConfig,
+    SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
@@ -1017,6 +1017,10 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
     let state = tempfile::tempdir()?;
     let mut relay_config = config();
     configure_split_role(&mut relay_config, state.path(), ProcessRole::Relay, "RELAY");
+    let (unused_smtp_username, unused_smtp_password) =
+        configure_unresolved_smtp(&mut relay_config, "RELAY");
+    assert!(std::env::var_os(&unused_smtp_username).is_none());
+    assert!(std::env::var_os(&unused_smtp_password).is_none());
 
     let relay = build_application(relay_config).await?;
     assert_split_role_surface(&relay, "relay", &["events", "postgres"]).await
@@ -1029,6 +1033,8 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
     let state = tempfile::tempdir()?;
     let mut api_config = config();
     configure_split_role(&mut api_config, state.path(), ProcessRole::Api, "API");
+    let (unused_smtp_username, unused_smtp_password) =
+        configure_unresolved_smtp(&mut api_config, "API");
     api_config.auth.bootstrap_token_env = BOOTSTRAP_ENV.into();
     let shared_object_dir = api_config.objects.local_dir.clone();
     let unused_nats_env = format!(
@@ -1040,6 +1046,8 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
         std::env::var_os(&unused_nats_env).is_none(),
         "API composition gate requires an unresolved NATS URL"
     );
+    assert!(std::env::var_os(&unused_smtp_username).is_none());
+    assert!(std::env::var_os(&unused_smtp_password).is_none());
 
     let api =
         build_application_with_source_resolver(api_config, Arc::new(OfflineCommitSourceResolver))
@@ -1131,6 +1139,19 @@ async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std
         Uuid::new_v4().simple().to_string().to_uppercase()
     );
     worker_config.sources.github_webhook_secret_env = unused_webhook_env.clone();
+    if let (Ok(host), Ok(port), Ok(ca_certificate_file)) = (
+        std::env::var("A3S_CLOUD_TEST_SMTP_HOST"),
+        std::env::var("A3S_CLOUD_TEST_SMTP_PORT"),
+        std::env::var("A3S_CLOUD_TEST_SMTP_CA_FILE"),
+    ) {
+        worker_config.smtp.provider = SmtpProviderKind::Relay;
+        worker_config.smtp.host = host;
+        worker_config.smtp.port = port.parse()?;
+        worker_config.smtp.tls = SmtpTlsMode::RequiredStartTls;
+        worker_config.smtp.ca_certificate_file = ca_certificate_file;
+        worker_config.smtp.username_env = "A3S_CLOUD_TEST_SMTP_USERNAME".into();
+        worker_config.smtp.password_env = "A3S_CLOUD_TEST_SMTP_PASSWORD".into();
+    }
     assert!(
         std::env::var_os(&unused_bootstrap_env).is_none(),
         "worker composition gate requires an unresolved bootstrap credential"
@@ -1194,6 +1215,16 @@ fn configure_split_role(
     config.builds.input_staging_dir = state.join("worker/build-inputs").display().to_string();
     config.builds.output_staging_dir = state.join("worker/build-outputs").display().to_string();
     unused_bootstrap_env
+}
+
+fn configure_unresolved_smtp(config: &mut CloudConfig, label: &str) -> (String, String) {
+    let suffix = Uuid::new_v4().simple().to_string().to_uppercase();
+    let username = format!("A3S_CLOUD_{label}_UNUSED_SMTP_USERNAME_{suffix}");
+    let password = format!("A3S_CLOUD_{label}_UNUSED_SMTP_PASSWORD_{suffix}");
+    config.smtp.provider = SmtpProviderKind::Relay;
+    config.smtp.username_env = username.clone();
+    config.smtp.password_env = password.clone();
+    (username, password)
 }
 
 async fn assert_api_role_surface(

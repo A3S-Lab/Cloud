@@ -1,10 +1,14 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    RecipientContactStatus, RecipientContactVerificationStatus,
+    RecipientContactStatus, RecipientContactVerificationDeliveryFact,
+    RecipientContactVerificationDeliveryOutcome, RecipientContactVerificationDeliveryStatus,
+    RecipientContactVerificationStatus,
 };
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     BeginRecipientContactVerificationWrite, CompleteRecipientContactVerificationWrite,
-    IRecipientContactRepository, RevokeRecipientContactWrite,
+    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
+    RecipientContactVerificationDeliveryAdmission, RecipientContactVerificationDispatchStart,
+    RevokeRecipientContactWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::IRecipientContactProofService;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
@@ -19,10 +23,16 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use zeroize::Zeroizing;
 
 const IDEMPOTENCY_SCOPE: &str = "tests/recipient-contacts";
+const DELIVERY_IDEMPOTENCY_SCOPE: &str = "tests/recipient-contact-deliveries";
 
 fn idempotency(key: &str) -> IdempotencyRequest {
     IdempotencyRequest::new(IDEMPOTENCY_SCOPE, key, key.as_bytes())
         .expect("recipient-contact test idempotency")
+}
+
+fn delivery_idempotency(key: &str) -> IdempotencyRequest {
+    IdempotencyRequest::new(DELIVERY_IDEMPOTENCY_SCOPE, key, key.as_bytes())
+        .expect("recipient-contact delivery test idempotency")
 }
 
 async fn seed_identity_authority(
@@ -92,7 +102,7 @@ pub async fn exercise_recipient_contact_persistence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
     let database = Database::new(PostgresDialect, executor.clone());
-    let repository = PostgresIdentityRepository::new(executor);
+    let repository = PostgresIdentityRepository::new(executor.clone());
     let organization_id = OrganizationId::new();
     let principal_id = PrincipalId::new();
     let other_principal_id = PrincipalId::new();
@@ -170,6 +180,32 @@ pub async fn exercise_recipient_contact_persistence(
         invalidated.status_at(second_requested_at),
         RecipientContactVerificationStatus::Invalidated
     );
+    let obsolete_fence = Uuid::now_v7();
+    let obsolete_fact = RecipientContactVerificationDeliveryFact {
+        organization_id,
+        verification: first.value.verification.clone(),
+    };
+    assert_eq!(
+        repository
+            .reserve_recipient_contact_verification_delivery(
+                &obsolete_fact,
+                obsolete_fence,
+                second_requested_at + chrono::Duration::milliseconds(100),
+                second_requested_at + chrono::Duration::seconds(60),
+            )
+            .await?,
+        RecipientContactVerificationDeliveryAdmission::Terminal(
+            RecipientContactVerificationDeliveryStatus::Obsolete
+        )
+    );
+    assert_eq!(
+        repository
+            .find_recipient_contact_verification_delivery(first.value.verification.id)
+            .await?
+            .expect("obsolete delivery evidence")
+            .status,
+        RecipientContactVerificationDeliveryStatus::Obsolete
+    );
     let stale_claims = proof_service
         .verify(
             &first_proof,
@@ -221,6 +257,146 @@ pub async fn exercise_recipient_contact_persistence(
         .await;
     assert!(matches!(service_begin, Err(RepositoryError::Forbidden(_))));
 
+    let second_delivery_fact = RecipientContactVerificationDeliveryFact {
+        organization_id,
+        verification: second.value.verification.clone(),
+    };
+    let second_delivery_fence = Uuid::now_v7();
+    let second_delivery_reserved_at =
+        second.value.verification.issued_at + chrono::Duration::milliseconds(100);
+    let second_delivery = repository
+        .reserve_recipient_contact_verification_delivery(
+            &second_delivery_fact,
+            second_delivery_fence,
+            second_delivery_reserved_at,
+            second_delivery_reserved_at + chrono::Duration::minutes(1),
+        )
+        .await?;
+    let reservation = match second_delivery {
+        RecipientContactVerificationDeliveryAdmission::Reserved(value) => value,
+        other => return Err(format!("expected delivery reservation, got {other:?}").into()),
+    };
+    assert_eq!(reservation.fence_token, second_delivery_fence);
+    assert_eq!(reservation.address.as_str(), canonical_address);
+    assert!(!format!("{reservation:?}").contains(&canonical_address));
+    assert_eq!(
+        repository
+            .start_recipient_contact_verification_dispatch(
+                &second_delivery_fact,
+                second_delivery_fence,
+                second_delivery_reserved_at + chrono::Duration::milliseconds(100),
+            )
+            .await?,
+        RecipientContactVerificationDispatchStart::Authorized
+    );
+
+    let restarted_repository = PostgresIdentityRepository::new(executor.clone());
+    assert_eq!(
+        restarted_repository
+            .reserve_recipient_contact_verification_delivery(
+                &second_delivery_fact,
+                Uuid::now_v7(),
+                second_delivery_reserved_at + chrono::Duration::milliseconds(200),
+                second_delivery_reserved_at + chrono::Duration::seconds(61),
+            )
+            .await?,
+        RecipientContactVerificationDeliveryAdmission::Terminal(
+            RecipientContactVerificationDeliveryStatus::Indeterminate
+        )
+    );
+    assert_eq!(
+        restarted_repository
+            .settle_recipient_contact_verification_delivery(
+                second.value.verification.id,
+                second_delivery_fence,
+                RecipientContactVerificationDeliveryOutcome::Indeterminate,
+                second_delivery_reserved_at + chrono::Duration::milliseconds(300),
+            )
+            .await?
+            .status,
+        RecipientContactVerificationDeliveryStatus::Indeterminate
+    );
+    assert!(matches!(
+        restarted_repository
+            .settle_recipient_contact_verification_delivery(
+                second.value.verification.id,
+                second_delivery_fence,
+                RecipientContactVerificationDeliveryOutcome::Delivered,
+                second_delivery_reserved_at + chrono::Duration::milliseconds(400),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let delivered_requested_at = second_requested_at + chrono::Duration::seconds(10);
+    let delivered = repository
+        .begin_recipient_contact_verification(BeginRecipientContactVerificationWrite {
+            organization_id,
+            actor_principal_id: other_principal_id,
+            contact_id: RecipientContactId::new(),
+            verification_id: RecipientContactVerificationId::new(),
+            address: RecipientEmailAddress::parse("delivery-target@example.com")?,
+            signing_key_id: signing_key_id.clone(),
+            requested_at: delivered_requested_at,
+            expires_at: delivered_requested_at + chrono::Duration::minutes(10),
+            request_id: Uuid::now_v7(),
+            idempotency: delivery_idempotency("begin-delivered"),
+        })
+        .await?;
+    let delivered_fact = RecipientContactVerificationDeliveryFact {
+        organization_id,
+        verification: delivered.value.verification.clone(),
+    };
+    let delivered_fence = Uuid::now_v7();
+    let delivered_reserved_at =
+        delivered.value.verification.issued_at + chrono::Duration::milliseconds(100);
+    assert!(matches!(
+        repository
+            .reserve_recipient_contact_verification_delivery(
+                &delivered_fact,
+                delivered_fence,
+                delivered_reserved_at,
+                delivered_reserved_at + chrono::Duration::minutes(1),
+            )
+            .await?,
+        RecipientContactVerificationDeliveryAdmission::Reserved(_)
+    ));
+    assert_eq!(
+        repository
+            .start_recipient_contact_verification_dispatch(
+                &delivered_fact,
+                delivered_fence,
+                delivered_reserved_at + chrono::Duration::milliseconds(100),
+            )
+            .await?,
+        RecipientContactVerificationDispatchStart::Authorized
+    );
+    assert_eq!(
+        repository
+            .settle_recipient_contact_verification_delivery(
+                delivered.value.verification.id,
+                delivered_fence,
+                RecipientContactVerificationDeliveryOutcome::Delivered,
+                delivered_reserved_at + chrono::Duration::milliseconds(200),
+            )
+            .await?
+            .status,
+        RecipientContactVerificationDeliveryStatus::Delivered
+    );
+    assert_eq!(
+        restarted_repository
+            .reserve_recipient_contact_verification_delivery(
+                &delivered_fact,
+                Uuid::now_v7(),
+                delivered_reserved_at + chrono::Duration::milliseconds(300),
+                delivered_reserved_at + chrono::Duration::seconds(61),
+            )
+            .await?,
+        RecipientContactVerificationDeliveryAdmission::Terminal(
+            RecipientContactVerificationDeliveryStatus::Delivered
+        )
+    );
+
     let second_proof = proof_service.issue(&second.value.verification).await?;
     let completed_at = second.value.verification.issued_at + chrono::Duration::minutes(1);
     let complete_write = CompleteRecipientContactVerificationWrite {
@@ -266,6 +442,24 @@ pub async fn exercise_recipient_contact_persistence(
                 .bind("changed@example.com")
                 .append(" where id = ")
                 .bind(completed.value.id.as_uuid()),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "update recipient_contact_verification_deliveries set state = 'reserved', dispatch_started_at = null, settled_at = null where verification_id = ",
+            )
+            .bind(delivered.value.verification.id.as_uuid()),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "delete from recipient_contact_verification_deliveries where verification_id = ",
+            )
+            .bind(delivered.value.verification.id.as_uuid()),
         )
         .await
         .is_err());
@@ -367,11 +561,24 @@ pub async fn exercise_recipient_contact_persistence(
             .bind(mailbox_pattern.as_str())
             .append("), (select count(*) from idempotency_records where response::text like ")
             .bind(mailbox_pattern.as_str())
-            .append("), (select count(*) from (select payload::text as material from outbox_events union all select details::text from audit_records union all select response::text from idempotency_records union all select to_jsonb(recipient_contact_verifications)::text from recipient_contact_verifications) as persisted_material where material like ")
+            .append("), (select count(*) from (select payload::text as material from outbox_events union all select details::text from audit_records union all select response::text from idempotency_records union all select to_jsonb(recipient_contact_verifications)::text from recipient_contact_verifications union all select to_jsonb(recipient_contact_verification_deliveries)::text from recipient_contact_verification_deliveries) as persisted_material where material like ")
             .bind(proof_pattern.as_str())
             .append(")"),
         )
         .await?;
     assert_eq!(evidence, (1, 4, 4, 4, 0, 0, 0, 0));
+    let delivery_target_pattern = "%delivery-target@example.com%";
+    let delivery_evidence = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64)>(
+                "select count(*), count(*) filter (where to_jsonb(recipient_contact_verification_deliveries)::text like ",
+            )
+            .bind(delivery_target_pattern)
+            .append("), count(*) filter (where to_jsonb(recipient_contact_verification_deliveries)::text like ")
+            .bind(proof_pattern.as_str())
+            .append(") from recipient_contact_verification_deliveries"),
+        )
+        .await?;
+    assert_eq!(delivery_evidence, (3, 0, 0));
     Ok(())
 }

@@ -1,6 +1,6 @@
 use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
 use crate::modules::identity::domain::value_objects::{
-    OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId,
+    OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId, RecipientEmailAddress,
 };
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::Path;
 use url::Url;
+use zeroize::Zeroizing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessRole {
@@ -184,6 +185,58 @@ pub struct EventsConfig {
     pub publish_timeout_ms: u64,
     pub retry_initial_ms: u64,
     pub retry_max_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtpProviderKind {
+    Disabled,
+    Relay,
+}
+
+impl SmtpProviderKind {
+    fn parse(value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "disabled" => Ok(Self::Disabled),
+            "relay" => Ok(Self::Relay),
+            _ => Err(ConfigError::Invalid(format!(
+                "smtp.provider {value:?} must be disabled or relay"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtpTlsMode {
+    RequiredStartTls,
+    Implicit,
+}
+
+impl SmtpTlsMode {
+    fn parse(value: &str) -> Result<Self, ConfigError> {
+        match value {
+            "required_starttls" => Ok(Self::RequiredStartTls),
+            "implicit" => Ok(Self::Implicit),
+            _ => Err(ConfigError::Invalid(format!(
+                "smtp.tls {value:?} must be required_starttls or implicit"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmtpConfig {
+    pub provider: SmtpProviderKind,
+    pub host: String,
+    pub port: u16,
+    pub tls: SmtpTlsMode,
+    pub hello_name: String,
+    pub ca_certificate_file: String,
+    pub username_env: String,
+    pub password_env: String,
+    pub sender: String,
+    pub connect_timeout_ms: u64,
+    pub command_timeout_ms: u64,
+    pub reservation_lease_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -424,6 +477,7 @@ pub struct CloudConfig {
     pub postgres: PostgresConfig,
     pub auth: AuthConfig,
     pub events: EventsConfig,
+    pub smtp: SmtpConfig,
     pub operations: OperationsConfig,
     pub human_tasks: HumanTasksConfig,
     pub deployments: DeploymentsConfig,
@@ -528,6 +582,24 @@ impl CloudConfig {
                 "publish_timeout_ms",
                 "retry_initial_ms",
                 "retry_max_ms",
+            ],
+        )?;
+        let smtp = one_block(&document, "smtp")?;
+        validate_block(
+            smtp,
+            &[
+                "provider",
+                "host",
+                "port",
+                "tls",
+                "hello_name",
+                "ca_certificate_file",
+                "username_env",
+                "password_env",
+                "sender",
+                "connect_timeout_ms",
+                "command_timeout_ms",
+                "reservation_lease_ms",
             ],
         )?;
         let operations = one_block(&document, "operations")?;
@@ -768,6 +840,20 @@ impl CloudConfig {
                 publish_timeout_ms: integer(events, "publish_timeout_ms")?,
                 retry_initial_ms: integer(events, "retry_initial_ms")?,
                 retry_max_ms: integer(events, "retry_max_ms")?,
+            },
+            smtp: SmtpConfig {
+                provider: SmtpProviderKind::parse(&string(smtp, "provider")?)?,
+                host: string(smtp, "host")?,
+                port: integer(smtp, "port")?,
+                tls: SmtpTlsMode::parse(&string(smtp, "tls")?)?,
+                hello_name: string(smtp, "hello_name")?,
+                ca_certificate_file: string(smtp, "ca_certificate_file")?,
+                username_env: string(smtp, "username_env")?,
+                password_env: string(smtp, "password_env")?,
+                sender: string(smtp, "sender")?,
+                connect_timeout_ms: integer(smtp, "connect_timeout_ms")?,
+                command_timeout_ms: integer(smtp, "command_timeout_ms")?,
+                reservation_lease_ms: integer(smtp, "reservation_lease_ms")?,
             },
             operations: OperationsConfig {
                 reconcile_interval_ms: integer(operations, "reconcile_interval_ms")?,
@@ -1186,6 +1272,36 @@ impl CloudConfig {
             return Err(ConfigError::Invalid(
                 "events.provider memory is allowed only for the development all-in-one process or an API process that does not own event transport; every event-owning production or split role requires nats"
                     .into(),
+            ));
+        }
+        let smtp_preparation_bound = self
+            .smtp
+            .command_timeout_ms
+            .checked_mul(2)
+            .and_then(|commands| self.smtp.connect_timeout_ms.checked_add(commands));
+        if !valid_smtp_host(&self.smtp.host)
+            || self.smtp.port == 0
+            || !valid_smtp_hello_name(&self.smtp.hello_name)
+            || !valid_optional_file_path(&self.smtp.ca_certificate_file)
+            || !valid_env_name(&self.smtp.username_env)
+            || !valid_env_name(&self.smtp.password_env)
+            || self.smtp.username_env == self.smtp.password_env
+            || RecipientEmailAddress::parse(&self.smtp.sender).is_err()
+            || !(1..=60_000).contains(&self.smtp.connect_timeout_ms)
+            || !(1..=60_000).contains(&self.smtp.command_timeout_ms)
+            || !(30_000..=300_000).contains(&self.smtp.reservation_lease_ms)
+            || smtp_preparation_bound.is_none_or(|bound| self.smtp.reservation_lease_ms <= bound)
+        {
+            return Err(ConfigError::Invalid(
+                "smtp requires a bounded relay host/port and EHLO name, optional safe CA file, distinct credential environment references, canonical sender, 1-60000 ms connection/command timeouts, and a 30-300 second reservation lease longer than preparation"
+                    .into(),
+            ));
+        }
+        if self.security.profile == SecurityProfile::Production
+            && self.smtp.provider != SmtpProviderKind::Relay
+        {
+            return Err(ConfigError::Invalid(
+                "production security requires the external SMTP relay provider".into(),
             ));
         }
         if self.operations.reconcile_interval_ms == 0
@@ -1695,6 +1811,36 @@ impl CloudConfig {
             session_token,
         }))
     }
+
+    pub(crate) fn smtp_credentials(&self) -> Result<Option<SmtpCredentials>, ConfigError> {
+        if self.smtp.provider == SmtpProviderKind::Disabled {
+            return Ok(None);
+        }
+        let username = Zeroizing::new(required_environment(&self.smtp.username_env)?);
+        let password = Zeroizing::new(required_environment(&self.smtp.password_env)?);
+        if !valid_credential(username.as_str(), 1024) || !valid_credential(password.as_str(), 8192)
+        {
+            return Err(ConfigError::Invalid(
+                "SMTP credential environment variables contain invalid values".into(),
+            ));
+        }
+        Ok(Some(SmtpCredentials { username, password }))
+    }
+}
+
+pub(crate) struct SmtpCredentials {
+    pub(crate) username: Zeroizing<String>,
+    pub(crate) password: Zeroizing<String>,
+}
+
+impl std::fmt::Debug for SmtpCredentials {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SmtpCredentials")
+            .field("username", &"[REDACTED]")
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 pub(crate) struct ObjectStorageCredentials {
@@ -1735,6 +1881,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "registry",
         "security",
         "server",
+        "smtp",
         "sources",
     ];
     if document
@@ -1757,6 +1904,58 @@ fn valid_data_path(value: &str) -> bool {
         && !path
             .components()
             .any(|component| matches!(component, std::path::Component::ParentDir))
+}
+
+fn valid_optional_file_path(value: &str) -> bool {
+    value.is_empty()
+        || (value.len() <= 4096
+            && value.trim() == value
+            && !value.contains(['\0', '\r', '\n'])
+            && !Path::new(value)
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir)))
+}
+
+fn valid_smtp_host(value: &str) -> bool {
+    if value.is_empty()
+        || value.len() > 253
+        || !value.is_ascii()
+        || value.contains(['\0', '\r', '\n', '/', '@', ':', '[', ']'])
+    {
+        return false;
+    }
+    Url::parse(&format!("https://{value}/"))
+        .ok()
+        .is_some_and(|url| {
+            url.host_str()
+                .is_some_and(|host| host.eq_ignore_ascii_case(value))
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.port().is_none()
+                && url.path() == "/"
+                && url.query().is_none()
+                && url.fragment().is_none()
+        })
+}
+
+fn valid_smtp_hello_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 253
+        && value.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .last()
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric())
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
 }
 
 fn validate_unique_repositories(label: &str, values: &[String]) -> Result<(), ConfigError> {
@@ -2170,6 +2369,20 @@ events {
   retry_initial_ms = 500
   retry_max_ms = 30000
 }
+smtp {
+  provider = "disabled"
+  host = "smtp.example.test"
+  port = 465
+  tls = "implicit"
+  hello_name = "cloud.example.test"
+  ca_certificate_file = ""
+  username_env = "A3S_CLOUD_SMTP_USERNAME"
+  password_env = "A3S_CLOUD_SMTP_PASSWORD"
+  sender = "no-reply@example.test"
+  connect_timeout_ms = 5000
+  command_timeout_ms = 10000
+  reservation_lease_ms = 60000
+}
 operations { reconcile_interval_ms = 5000 lease_ms = 30000 }
 human_tasks {
   coordination_poll_interval_ms = 1000
@@ -2346,6 +2559,9 @@ security {
             "https://identity.example.test"
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.smtp.provider, SmtpProviderKind::Disabled);
+        assert_eq!(config.smtp.tls, SmtpTlsMode::Implicit);
+        assert_eq!(config.smtp.sender, "no-reply@example.test");
         assert_eq!(config.human_tasks.coordination_batch_size, 100);
         assert_eq!(config.human_tasks.flow_operation_timeout_ms, 5_000);
         assert_eq!(config.builds.cache_max_bytes, 536_870_912);
@@ -2575,6 +2791,74 @@ security {
     }
 
     #[test]
+    fn smtp_configuration_and_credentials_are_closed_and_redacted() {
+        const USERNAME_ENV: &str = "A3S_CLOUD_TEST_SMTP_USERNAME_MUST_BE_UNSET";
+        const PASSWORD_ENV: &str = "A3S_CLOUD_TEST_SMTP_PASSWORD_MUST_BE_UNSET";
+        assert!(std::env::var_os(USERNAME_ENV).is_none());
+        assert!(std::env::var_os(PASSWORD_ENV).is_none());
+
+        let disabled = CloudConfig::parse(VALID).expect("disabled development SMTP");
+        assert!(disabled
+            .smtp_credentials()
+            .expect("disabled SMTP credential resolution")
+            .is_none());
+        let relay = CloudConfig::parse(
+            &VALID
+                .replace("provider = \"disabled\"", "provider = \"relay\"")
+                .replace("A3S_CLOUD_SMTP_USERNAME", USERNAME_ENV)
+                .replace("A3S_CLOUD_SMTP_PASSWORD", PASSWORD_ENV),
+        )
+        .expect("development SMTP relay");
+        assert!(matches!(
+            relay.smtp_credentials(),
+            Err(ConfigError::Invalid(message)) if message.contains(USERNAME_ENV)
+        ));
+
+        for invalid in [
+            VALID.replace("tls = \"implicit\"", "tls = \"plaintext\""),
+            VALID.replace(
+                "password_env = \"A3S_CLOUD_SMTP_PASSWORD\"",
+                "password_env = \"A3S_CLOUD_SMTP_USERNAME\"",
+            ),
+            VALID.replace(
+                "host = \"smtp.example.test\"",
+                "host = \"https://smtp.example.test\"",
+            ),
+            VALID.replace(
+                "host = \"smtp.example.test\"",
+                "host = \"smtp.example.test:2525\"",
+            ),
+            VALID.replace(
+                "host = \"smtp.example.test\"",
+                "host = \"smtp.example.test?mode=test\"",
+            ),
+            VALID.replace(
+                "sender = \"no-reply@example.test\"",
+                "sender = \"not-an-address\"",
+            ),
+            VALID.replace(
+                "ca_certificate_file = \"\"",
+                "ca_certificate_file = \"../smtp-ca.pem\"",
+            ),
+            VALID.replace(
+                "reservation_lease_ms = 60000",
+                "reservation_lease_ms = 25000",
+            ),
+            VALID.replace("command_timeout_ms = 10000", "command_timeout_ms = 30000"),
+        ] {
+            assert!(CloudConfig::parse(&invalid).is_err());
+        }
+
+        let credentials = SmtpCredentials {
+            username: Zeroizing::new("private-smtp-user".into()),
+            password: Zeroizing::new("private-smtp-password".into()),
+        };
+        let rendered = format!("{credentials:?}");
+        assert!(!rendered.contains("private-smtp-user"));
+        assert!(!rendered.contains("private-smtp-password"));
+    }
+
+    #[test]
     fn rejects_unknown_fields_and_unsafe_timing() {
         assert!(CloudConfig::parse(
             &VALID.replace("role = \"all\"", "role = \"all\" debug = true")
@@ -2764,6 +3048,7 @@ security {
                 "recipient_contact_proof = \"local\"",
                 "recipient_contact_proof = \"vault\"",
             )
+            .replace("provider = \"disabled\"", "provider = \"relay\"")
             .replace("provider = \"local\"", "provider = \"s3\"")
             .replace(
                 "insecure_hosts = [\"127.0.0.1:5000\"]",
@@ -2782,6 +3067,10 @@ security {
                 "publication_allow_anonymous = false",
             );
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(
+            &production_s3.replace("provider = \"relay\"", "provider = \"disabled\"")
+        )
+        .is_err());
         assert!(CloudConfig::parse(&production_s3.replace(
             "recipient_contact_proof = \"vault\"",
             "recipient_contact_proof = \"local\""

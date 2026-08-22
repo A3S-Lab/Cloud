@@ -36,7 +36,7 @@ and contain:
 - `/bin/sh` plus `wget` for the checked-in health probes.
 
 Edit `cloud.acl` before deployment to name the real HTTPS S3-compatible
-endpoint, bucket, Registry, Vault roles, and source policy. The example
+endpoint, bucket, Registry, Vault roles, authenticated TLS SMTP relay, and source policy. The example
 `.invalid` hosts deliberately fail closed. Production Cloud admission requires
 external HTTPS S3, authenticated HTTPS Registry publication, and Vault-backed
 PKI, encryption, and evidence signing.
@@ -112,6 +112,8 @@ export A3S_CLOUD_VAULT_ADDR='https://vault.example.com'
 export A3S_CLOUD_VAULT_TOKEN='<vault-token>'
 export A3S_CLOUD_S3_ACCESS_KEY_ID='<access-key>'
 export A3S_CLOUD_S3_SECRET_ACCESS_KEY='<secret-key>'
+export A3S_CLOUD_SMTP_USERNAME='<smtp-user>'
+export A3S_CLOUD_SMTP_PASSWORD='<smtp-password>'
 export A3S_CLOUD_REGISTRY_CREDENTIAL='<registry-credential>'
 export A3S_CLOUD_BOOTSTRAP_TOKEN='<at-least-32-safe-bytes>'
 export A3S_CLOUD_GITHUB_WEBHOOK_SECRET='<webhook-secret>'
@@ -120,8 +122,9 @@ export A3S_CLOUD_GITHUB_WEBHOOK_SECRET='<webhook-secret>'
 The PostgreSQL initialization unit receives the three role passwords only for
 a new volume. The migrator receives only
 `A3S_CLOUD_POSTGRES_MIGRATION_URL`. API, Worker, and Relay receive only
-`A3S_CLOUD_POSTGRES_URL`; the API has no NATS credential, and the Relay has no
-Vault, S3, Registry, bootstrap, or source credential.
+`A3S_CLOUD_POSTGRES_URL`; SMTP credentials are projected only to the Worker,
+the API has no NATS or SMTP credential, and the Relay has no SMTP, Vault, S3,
+Registry, bootstrap, or source credential.
 
 ## Validate and converge
 

@@ -4,7 +4,7 @@ use crate::config::{
     EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
     ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig, PostgresConfig, ProcessRole,
     RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
-    SourcesConfig,
+    SmtpConfig, SourcesConfig,
 };
 use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
@@ -912,6 +912,20 @@ fn config() -> CloudConfig {
             publish_timeout_ms: 3_000,
             retry_initial_ms: 500,
             retry_max_ms: 30_000,
+        },
+        smtp: SmtpConfig {
+            provider: SmtpProviderKind::Disabled,
+            host: "smtp.example.test".into(),
+            port: 465,
+            tls: SmtpTlsMode::Implicit,
+            hello_name: "cloud.example.test".into(),
+            ca_certificate_file: String::new(),
+            username_env: "A3S_CLOUD_SMTP_USERNAME".into(),
+            password_env: "A3S_CLOUD_SMTP_PASSWORD".into(),
+            sender: "no-reply@example.test".into(),
+            connect_timeout_ms: 5_000,
+            command_timeout_ms: 10_000,
+            reservation_lease_ms: 60_000,
         },
         operations: OperationsConfig {
             reconcile_interval_ms: 1_000,

@@ -8,6 +8,7 @@ use crate::modules::edge::{
 };
 use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
+use crate::modules::identity::A3sEventRecipientContactVerificationConsumer;
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::notifications::A3sEventOutboundNotificationConsumer;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
@@ -60,6 +61,7 @@ struct WorkerProcesses {
     log_retention_worker: LogRetentionWorker,
     log_compaction_worker: LogCompactionWorker,
     outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
+    recipient_contact_verification_consumer: Option<A3sEventRecipientContactVerificationConsumer>,
 }
 
 impl ControlPlaneWorkers {
@@ -95,6 +97,9 @@ impl ControlPlaneWorkers {
         log_retention_worker: LogRetentionWorker,
         log_compaction_worker: LogCompactionWorker,
         outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
+        recipient_contact_verification_consumer: Option<
+            A3sEventRecipientContactVerificationConsumer,
+        >,
     ) -> Self {
         Self {
             worker: Some(WorkerProcesses {
@@ -121,6 +126,7 @@ impl ControlPlaneWorkers {
                 log_retention_worker,
                 log_compaction_worker,
                 outbound_notification_consumer,
+                recipient_contact_verification_consumer,
             }),
             ..Self::default()
         }
@@ -276,6 +282,7 @@ impl ControlPlane {
                 log_retention_worker,
                 log_compaction_worker,
                 outbound_notification_consumer,
+                recipient_contact_verification_consumer,
             } = worker_processes;
             spawn_worker(
                 &mut workers,
@@ -413,6 +420,14 @@ impl ControlPlane {
                 spawn_fallible_worker(
                     &mut workers,
                     "outbound notification A3S Event consumer",
+                    shutdown_receiver.clone(),
+                    move |shutdown| consumer.run(shutdown),
+                );
+            }
+            if let Some(consumer) = recipient_contact_verification_consumer {
+                spawn_fallible_worker(
+                    &mut workers,
+                    "recipient contact verification A3S Event consumer",
                     shutdown_receiver.clone(),
                     move |shutdown| consumer.run(shutdown),
                 );

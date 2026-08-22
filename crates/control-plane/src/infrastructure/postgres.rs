@@ -1269,6 +1269,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/136_identity_recipient_contacts.sql"
             )),
         ),
+        Migration::new(
+            "137",
+            "Identity recipient-contact verification delivery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/137_identity_recipient_contact_verification_delivery.sql"
+            )),
+        ),
     ]
 }
 
@@ -2290,6 +2298,53 @@ mod identity_recipient_contact_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 136 contains forbidden recipient-contact schema material {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod identity_recipient_contact_verification_delivery_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/137_identity_recipient_contact_verification_delivery.sql"
+    ));
+
+    #[test]
+    fn migration_137_enforces_one_shot_redacted_smtp_evidence() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "create table recipient_contact_verification_deliveries",
+            "verification_id uuid primary key references recipient_contact_verifications(id)",
+            "'reserved', 'dispatching', 'delivered', 'rejected', 'indeterminate', 'obsolete'",
+            "fence_token <> '00000000-0000-0000-0000-000000000000'",
+            "lease_expires_at > reserved_at",
+            "dispatch_started_at < lease_expires_at",
+            "delivery must begin before dispatch",
+            "reservation renewal is invalid",
+            "dispatch fence changed",
+            "terminal state is immutable",
+            "reject_recipient_contact_verification_delivery_delete",
+            "mailbox, proof, message bytes, credentials, and provider response text are forbidden",
+        ] {
+            assert!(
+                lower.contains(expected),
+                "migration 137 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "canonical_address",
+            "proof text",
+            "message_body",
+            "smtp_password",
+            "provider_response",
+            "retry_count",
+            "create table notification",
+            "create table connector",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 137 persists forbidden material through {forbidden}"
             );
         }
     }

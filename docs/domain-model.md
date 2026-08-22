@@ -166,9 +166,9 @@ Primary aggregates:
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
   adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
-  production proof-provider and API/Worker composition; `C0.3-N5c` freezes the
-  SMTP verification-delivery state machine, while its implementation and public
-  surfaces remain gated)
+  production proof-provider and API/Worker composition; `C0.3-N5c` implements
+  the Worker-only SMTP verification-delivery state machine, while retained CI
+  provider evidence and public surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -214,8 +214,9 @@ proves migration `136`, exact ownership, reissue invalidation, single-use
 completion, redacted evidence, active verified resolution, and terminal
 revocation. Challenges retain their initiating organization for
 Outbox/audit correlation even though contact identity remains Principal-global.
-N5b supplies production proof-provider wiring. SMTP delivery, public
-REST/client/CLI/MCP surfaces, and Notifications composition remain open. This
+N5b supplies production proof-provider wiring and N5c supplies one-shot SMTP
+challenge delivery. Public REST/client/CLI/MCP surfaces and Notifications
+composition remain open. This
 boundary adds no directory, email inference, plaintext proof store, provider
 configuration, queue, scheduler, retry counter, or SMTP client.
 
@@ -236,7 +237,7 @@ no new aggregate, table, migration, SMTP client or delivery fact, presentation
 surface, notification subscription, provider profile, Secret record, queue,
 scheduler, retry mechanism, or configuration language.
 
-`C0.3-N5c` freezes one Identity-owned verification-delivery component. Its
+`C0.3-N5c` implements one Identity-owned verification-delivery component. Its
 deterministic identity is the existing challenge/event ID. A delivery moves
 from a lease-fenced pre-dispatch reservation to `dispatching`, then exactly one
 of `delivered`, `rejected`, `indeterminate`, or `obsolete`. Before
@@ -250,16 +251,21 @@ new challenge. A reissued, consumed, expired, revoked, drifted, or disabled-
 Principal challenge becomes `obsolete` without SMTP access. Terminal state is
 durable before A3S Event ACK, so ACK loss is ACK-only replay.
 
-Migration `137` may retain only the opaque challenge/event identity, fence and
+Migration `137` retains only the opaque challenge/event identity, fence and
 lease, closed state, and timestamps. The canonical mailbox, proof, full message,
 SMTP credentials, and provider response text remain memory-only and are absent
 from database rows, Outbox, audit details, logs, and `Debug`. One top-level
 `smtp` A3S ACL chooses `disabled` or an external relay and pins a canonical
 sender, implicit TLS or required STARTTLS, optional explicit trust root,
 environment-backed paired credentials, and bounded timeouts. Production rejects
-disabled or downgrade-prone delivery. N5c is not a general Notifications SMTP
-channel, an HTTP Connector subtype, a second queue/retry/scheduler authority, a
-template system, or a public recipient-contact interface.
+disabled or downgrade-prone delivery. In-process protocol fixtures cover
+TLS/authentication, one submission, permanent rejection, ambiguous final
+response loss, and downgrade rejection; repository, event-consumer,
+configuration, composition, and migration coverage pass locally. Digest-pinned
+Mailpit and PostgreSQL/NATS retained gates are wired into CI but not yet claimed
+as successful. N5c is not a general Notifications SMTP channel, an HTTP
+Connector subtype, a second queue/retry/scheduler authority, a template system,
+or a public recipient-contact interface.
 
 ### 3.2 Projects
 

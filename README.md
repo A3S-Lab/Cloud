@@ -82,7 +82,7 @@ The code on `main` separates implemented mechanics from released capability:
   over exact Edge-owned expiring/resolved facts, with no new endpoint, policy
   lifecycle, or evaluation engine. Broader
   enterprise `C0` gates remain.
-- **Verified recipient-contact authority / implemented production proof provider** — Identity
+- **Verified recipient-contact authority / implemented proof and SMTP delivery** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal
   revocation, and an internal active-verified exact-owner resolver. Migration
@@ -96,9 +96,15 @@ The code on `main` separates implemented mechanics from released capability:
   existing `security` A3S ACL. The
   [successful Rust 1.88 CI job](https://github.com/A3S-Lab/Cloud/actions/runs/32586365680/job/97063223412)
   covers the local/Vault protocol, configuration, composition, strict Clippy,
-  and full workspace gates. This is still not an externally usable email
-  capability: asynchronous SMTP challenge delivery, REST/client/CLI/MCP
-  surfaces, and Notifications composition remain gated.
+  and full workspace gates. N5c now adds migration `137`, an exact-subject
+  Worker-only A3S Event consumer, a lease/fence-backed one-shot dispatch state
+  machine, and authenticated implicit-TLS or required-STARTTLS relay delivery.
+  Mailbox, proof, message, credential, and provider text remain outside durable
+  and diagnostic evidence; ambiguous post-fence outcomes are terminal and never
+  auto-resend. Its retained PostgreSQL/NATS and real Mailpit CI gates are wired
+  but not yet claimed as successful. This is still not a public email
+  capability: REST/client/CLI/MCP surfaces and Notifications composition remain
+  gated.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

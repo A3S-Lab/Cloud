@@ -3,6 +3,11 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 
+pub use application::{
+    IRecipientContactVerificationDispatcher, RecipientContactVerificationDeliveryDispatcher,
+    RecipientContactVerificationDispatchResult,
+};
+
 pub use application::commands::accept_membership_invitation::{
     AcceptMembershipInvitation, AcceptMembershipInvitationHandler,
 };
@@ -75,13 +80,20 @@ pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
 pub use domain::repositories::{
-    IOidcIdentityRepository, IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
+    IOidcIdentityRepository, IRecipientContactRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
 };
 pub use domain::services::{
-    IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
-    OidcProviderError, ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest,
-    VerifiedOidcIdentity,
+    IOidcProviderService, IRecipientContactVerificationDeliveryService, OidcAuthorization,
+    OidcAuthorizationRequest, OidcCodeVerificationRequest, OidcProviderError,
+    ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest, VerifiedOidcIdentity,
 };
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use infrastructure::OpenIdConnectProviderService;
+pub use infrastructure::{
+    A3sEventRecipientContactVerificationConsumer, SmtpRecipientContactVerificationCredentials,
+    SmtpRecipientContactVerificationDeliveryOptions,
+    SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
+    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
+};
 pub use presentation::IdentityModule;

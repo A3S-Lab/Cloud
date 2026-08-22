@@ -112,6 +112,8 @@ fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
             "A3S_CLOUD_REGISTRY_CREDENTIAL",
             "A3S_CLOUD_S3_ACCESS_KEY_ID",
             "A3S_CLOUD_S3_SECRET_ACCESS_KEY",
+            "A3S_CLOUD_SMTP_PASSWORD",
+            "A3S_CLOUD_SMTP_USERNAME",
             "A3S_CLOUD_VAULT_TOKEN",
         ],
         "Worker Secret projection widened"
@@ -481,6 +483,9 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
         );
     }
     assert!(adapters.contains("recipient_contacts: Arc<dyn IRecipientContactRepository>"));
+    assert!(adapters.contains(
+        "recipient_contact_verification_deliveries:\n        Arc<dyn IRecipientContactVerificationDeliveryRepository>"
+    ));
     assert_eq!(
         adapters
             .matches("recipient_contacts: repository.clone()")
@@ -488,6 +493,25 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
         1,
         "the existing Identity repository must remain the sole recipient-contact adapter"
     );
+    assert_eq!(
+        adapters
+            .matches("recipient_contact_verification_deliveries: repository.clone()")
+            .count(),
+        1,
+        "the existing Identity repository must remain the sole verification-delivery adapter"
+    );
+    for required in [
+        "SmtpRecipientContactVerificationDeliveryService::new(",
+        "RecipientContactVerificationDeliveryDispatcher::new(",
+        "A3sEventRecipientContactVerificationConsumer::new(",
+        "config.smtp_credentials()?",
+    ] {
+        assert_eq!(
+            composition.matches(required).count(),
+            1,
+            "recipient-contact SMTP composition drifted for {required}"
+        );
+    }
     let relay = adapters
         .split("pub(super) struct RelayPostgresAdapters")
         .nth(1)

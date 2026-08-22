@@ -1,7 +1,7 @@
 use crate::modules::identity::domain::entities::{
     ApiToken, AuthenticatedApiToken, ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal,
     Membership, MembershipInvitation, OidcFlow, Organization, RecipientContact,
-    RecipientContactVerification, ResourceGrant,
+    RecipientContactVerification, RecipientContactVerificationDeliveryRecord, ResourceGrant,
 };
 use crate::modules::identity::domain::repositories::{
     CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
@@ -47,6 +47,8 @@ pub(super) struct State {
         BTreeMap<RecipientContactVerificationId, RecipientContactVerification>,
     pub(super) recipient_contact_verification_organizations:
         BTreeMap<RecipientContactVerificationId, OrganizationId>,
+    pub(super) recipient_contact_verification_deliveries:
+        BTreeMap<RecipientContactVerificationId, RecipientContactVerificationDeliveryRecord>,
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
     pub(super) token_digests: BTreeMap<String, ApiTokenId>,

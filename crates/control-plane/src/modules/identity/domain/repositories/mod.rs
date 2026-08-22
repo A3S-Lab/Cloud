@@ -4,6 +4,7 @@ mod membership_repository;
 mod oidc_identity_repository;
 mod organization_repository;
 mod recipient_contact_repository;
+mod recipient_contact_verification_delivery_repository;
 mod resource_authorization_decision_repository;
 mod resource_grant_repository;
 
@@ -25,6 +26,10 @@ pub use recipient_contact_repository::{
     BeginRecipientContactVerificationResult, BeginRecipientContactVerificationWrite,
     CompleteRecipientContactVerificationWrite, IRecipientContactRepository,
     ResolvedRecipientContact, RevokeRecipientContactWrite,
+};
+pub use recipient_contact_verification_delivery_repository::{
+    IRecipientContactVerificationDeliveryRepository, RecipientContactVerificationDeliveryAdmission,
+    RecipientContactVerificationDispatchStart,
 };
 pub use resource_authorization_decision_repository::IResourceAuthorizationDecisionRepository;
 pub use resource_grant_repository::{
