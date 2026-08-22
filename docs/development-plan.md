@@ -2442,7 +2442,8 @@ node.
   Edge remains the sole renewal authority, and this slice adds no policy
   version, endpoint, tool, certificate state, incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, or configuration parser.
-- Frozen as `C0.3-N4d`: Workloads first supplies bounded rollout-health owner
+- Implemented as `C0.3-N4d`; retained PostgreSQL 17 evidence remains open:
+  Workloads supplies bounded rollout-health owner
   facts through its existing deployment state machine. A desired deployment
   that first reaches `Failed` from `Queued`, `Resolving`, `Scheduled`,
   `Applying`, or `Verifying` emits schema-v1 `workload.deployment.failed`; the
@@ -2456,12 +2457,18 @@ node.
   the closed availability impact `unavailable` or
   `previous_revision_retained`; raw deployment failure text, Runtime/provider
   diagnostics, commands, observations, and Secret material are excluded.
-  Cancellation, `Cancelled`, `Orphaned`, retirement completion/failure, stop,
-  replay, and every nonparticipating transition are silent. In particular,
+  Additional replica materializations or failures for an already selected
+  revision, cancellation, `Cancelled`, `Orphaned`, retirement
+  completion/failure, stop, replay, and every nonparticipating transition are
+  silent. In particular,
   orphan cleanup cannot be inferred as recovered by a later healthy revision;
   it needs an explicit owner resolution fact before a future source covers it.
   The state mutation and fact commit atomically through the existing Workloads
-  repository and transactional Outbox. A later `C0.3-N4e` may register only the
+  repository and transactional Outbox; an Outbox failure rolls both mutations
+  back. In-memory coverage proves exact typed payloads, replay deduplication,
+  same-revision silence, and private-error exclusion. The PostgreSQL foundation
+  additionally injects failed and healthy Outbox writes and verifies complete
+  rollback before exact retry. A later `C0.3-N4e` may register only the
   closed `workload.deployment-health.v1` source and treat `healthy` as recovery
   after a policy-covered failure; initial and routine health remain silent.
   This prerequisite adds no alert policy version, health table, incident state,

@@ -35,7 +35,9 @@ use crate::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadWriterFenceAdapter,
     IWorkloadWriterFenceRepository, OciArtifact, ReplicaRetirementCompletion,
     ReplicaRetirementDispatch, ReplicaRuntimeFence, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceResources, WorkloadReplicaLifecycle,
+    ServicePort, ServiceResources, WorkloadDeploymentAvailabilityImpact,
+    WorkloadDeploymentFailurePhase, WorkloadDeploymentHealthChanged,
+    WorkloadDeploymentHealthStatus, WorkloadReplicaLifecycle,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
@@ -323,7 +325,35 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     assert!(!third.replayed);
     assert_eq!(third.correlation.projection.application_revision_number, 3);
     assert_eq!(third.correlation.provider.workload_generation, 2);
-    assert_eq!(workloads.outbox_events().await.len(), 2);
+    let rollout_outbox = workloads.outbox_events().await;
+    assert_eq!(rollout_outbox.len(), 3);
+    let failed_fact = rollout_outbox
+        .iter()
+        .find(|event| event.event_key == "workload.deployment.failed")
+        .expect("failed managed Workload rollout fact");
+    assert_eq!(failed_fact.aggregate_id, projection.workload_id.as_uuid());
+    assert_eq!(failed_fact.aggregate_version, 1);
+    assert_eq!(
+        failed_fact.correlation_id,
+        projection.operation_id.as_uuid()
+    );
+    let failed_payload: WorkloadDeploymentHealthChanged =
+        serde_json::from_value(failed_fact.payload.clone()).expect("typed rollout failure fact");
+    assert_eq!(
+        failed_payload.status,
+        WorkloadDeploymentHealthStatus::Failed
+    );
+    assert_eq!(
+        failed_payload.failure_phase,
+        Some(WorkloadDeploymentFailurePhase::Queued)
+    );
+    assert_eq!(
+        failed_payload.availability_impact,
+        Some(WorkloadDeploymentAvailabilityImpact::Unavailable)
+    );
+    assert!(!serde_json::to_string(&rollout_outbox)
+        .expect("rollout Outbox JSON")
+        .contains("complete the first fixture generation"));
     let advanced_control = workloads
         .find_workload_control(organization_id, projection.workload_id)
         .await
@@ -422,7 +452,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
             .desired_replicas(),
         1
     );
-    assert_eq!(workloads.outbox_events().await.len(), 2);
+    assert_eq!(workloads.outbox_events().await.len(), 3);
 
     let stop_command = StopDurableCellApplication {
         organization_id,
@@ -458,7 +488,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         stopped_replicas[0].lifecycle,
         WorkloadReplicaLifecycle::Retiring
     );
-    assert_eq!(workloads.outbox_events().await.len(), 3);
+    assert_eq!(workloads.outbox_events().await.len(), 4);
     assert!(
         stop_handler
             .execute(stop_command, CqrsContext::new(ModuleRef::new()),)
@@ -467,7 +497,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
             .expect("exact stop replay")
             .replayed
     );
-    assert_eq!(workloads.outbox_events().await.len(), 3);
+    assert_eq!(workloads.outbox_events().await.len(), 4);
 
     // The existing Workloads retirement authority performs cleanup. The
     // Durable Cell adapter admits that exact RuntimeRemove receipt and
@@ -616,7 +646,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         .await
         .expect("complete existing Workloads retirement");
     assert_eq!(retired.value.lifecycle, WorkloadReplicaLifecycle::Retired);
-    assert_eq!(workloads.outbox_events().await.len(), 4);
+    assert_eq!(workloads.outbox_events().await.len(), 5);
 
     let start_command = StartDurableCellApplication {
         organization_id,
@@ -658,7 +688,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         restarted_replicas[0].lifecycle,
         WorkloadReplicaLifecycle::Desired
     );
-    assert_eq!(workloads.outbox_events().await.len(), 5);
+    assert_eq!(workloads.outbox_events().await.len(), 6);
     assert!(
         start_handler
             .execute(start_command, CqrsContext::new(ModuleRef::new()),)
@@ -667,7 +697,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
             .expect("exact start replay")
             .replayed
     );
-    assert_eq!(workloads.outbox_events().await.len(), 5);
+    assert_eq!(workloads.outbox_events().await.len(), 6);
 
     let denied = handler
         .execute(

@@ -37,9 +37,10 @@ pub use domain::entities::{
     MAX_WORKLOAD_REPLICAS, WORKLOAD_WRITER_FENCE_RECEIPT_SCHEMA,
 };
 pub use domain::events::{
-    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaEvacuated,
-    WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired, WorkloadReplicaSetReconfigured,
-    WorkloadStopRequested,
+    DeploymentCancellationRequested, DeploymentRequested, WorkloadDeploymentAvailabilityImpact,
+    WorkloadDeploymentFailurePhase, WorkloadDeploymentHealthChanged,
+    WorkloadDeploymentHealthStatus, WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested,
+    WorkloadReplicaRetired, WorkloadReplicaSetReconfigured, WorkloadStopRequested,
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
