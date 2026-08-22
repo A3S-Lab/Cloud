@@ -12,8 +12,10 @@ use a3s_cloud_control_plane::modules::connectors::{
     SettleConnectorExecutionAttempt,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
-    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
-    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+    certificate_expiry_aggregate_version, renewal_subject_id, DomainClaimChanged,
+    GatewayCertificateExpiryChanged, GatewayCertificateExpiryStatus,
+    GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
+    GatewayCertificateRenewalStatus,
 };
 use a3s_cloud_control_plane::modules::edge::domain::DomainClaimState;
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
@@ -165,6 +167,21 @@ pub(super) async fn exercise_notification_persistence(
         (
             1,
             "Workload deployment-health notification alert source".into()
+        )
+    );
+    let certificate_expiry_alert_source_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("135"),
+        )
+        .await?;
+    assert_eq!(
+        certificate_expiry_alert_source_migration_state,
+        (
+            1,
+            "Gateway certificate-expiry notification alert source".into()
         )
     );
 

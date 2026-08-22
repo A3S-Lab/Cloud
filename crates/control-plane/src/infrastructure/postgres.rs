@@ -1253,6 +1253,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/134_notification_alert_policy_workload_source.sql"
             )),
         ),
+        Migration::new(
+            "135",
+            "Gateway certificate-expiry notification alert source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/135_notification_alert_policy_certificate_expiry_source.sql"
+            )),
+        ),
     ]
 }
 
@@ -2172,6 +2180,53 @@ mod notification_alert_policy_workload_source_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 134 duplicated alert authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_alert_policy_certificate_expiry_source_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/135_notification_alert_policy_certificate_expiry_source.sql"
+    ));
+
+    #[test]
+    fn migration_135_only_widens_the_closed_alert_source_registry() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "drop constraint notification_alert_policies_source_check",
+            "add constraint notification_alert_policies_source_check",
+            "edge.domain-claim-status.v1",
+            "edge.gateway-certificate-renewal-status.v1",
+            "workload.deployment-health.v1",
+            "edge.gateway-certificate-expiry-status.v1",
+            "not valid",
+            "validate constraint notification_alert_policies_source_check",
+            "compile-time closed typed owner-event source registry",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "migration 135 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "create index",
+            "create trigger",
+            "json_path",
+            "jsonpath",
+            "metric_value",
+            "incident_state",
+            "firing_count",
+            "clock_timestamp",
+            "pg_sleep",
+            "next_evaluation",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 135 duplicated alert authority through {forbidden}"
             );
         }
     }

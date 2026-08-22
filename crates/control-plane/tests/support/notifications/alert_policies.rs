@@ -175,12 +175,55 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .await?,
         vec![workload_policy.clone()]
     );
+
+    let certificate_expiry_definition =
+        NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+            source: NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1,
+            project_id,
+            environment_id,
+            notify_on_recovery: true,
+        })?;
+    let certificate_expiry_policy = NotificationAlertPolicy::create(
+        organization_id,
+        NotificationAlertPolicyId::new(),
+        recipient,
+        certificate_expiry_definition,
+        recipient,
+        policy.created_at + ChronoDuration::milliseconds(3),
+    )?;
+    let certificate_expiry_create_write = notification_alert_policy_create_write(
+        &certificate_expiry_policy,
+        "postgres:certificate-expiry-alert:create",
+    )?;
+    let certificate_expiry_created = repository
+        .create_alert_policy(certificate_expiry_create_write.clone())
+        .await?;
+    assert!(!certificate_expiry_created.replayed);
+    assert_eq!(certificate_expiry_created.value, certificate_expiry_policy);
+    assert!(
+        repository
+            .create_alert_policy(certificate_expiry_create_write)
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .list_active_alert_policies_for_source(
+                organization_id,
+                NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1,
+                project_id,
+                environment_id,
+                certificate_expiry_policy.created_at,
+            )
+            .await?,
+        vec![certificate_expiry_policy.clone()]
+    );
     assert_eq!(
         repository
             .list_alert_policy_page(organization_id, recipient, None, 50)
             .await?
             .len(),
-        3
+        4
     );
     assert_rejected(
         database
@@ -525,6 +568,144 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             && !notification.body.contains("provider-private")
     }));
 
+    let expiry_route_id = RouteId::new();
+    let expiry_node_id = NodeId::new();
+    let previous_certificate_id = GatewayCertificateId::new();
+    let replacement_certificate_id = GatewayCertificateId::new();
+    let initial_expiry_resolution = notification_gateway_certificate_expiry_message(
+        organization_id,
+        project_id,
+        environment_id,
+        expiry_route_id,
+        expiry_node_id,
+        previous_certificate_id,
+        replacement_certificate_id,
+        GatewayCertificateExpiryStatus::Resolved,
+        3,
+        3,
+        policy.created_at + ChronoDuration::seconds(14),
+    )?;
+    persist_outbox_message(database, &initial_expiry_resolution).await?;
+    projector.project(&initial_expiry_resolution).await?;
+
+    let expiry_firing = notification_gateway_certificate_expiry_message(
+        organization_id,
+        project_id,
+        environment_id,
+        expiry_route_id,
+        expiry_node_id,
+        previous_certificate_id,
+        replacement_certificate_id,
+        GatewayCertificateExpiryStatus::Expiring,
+        3,
+        5,
+        policy.created_at + ChronoDuration::seconds(15),
+    )?;
+    persist_outbox_message(database, &expiry_firing).await?;
+    projector.project(&expiry_firing).await?;
+    projector.project(&expiry_firing).await?;
+
+    let peer_expiry_resolution = notification_gateway_certificate_expiry_message(
+        organization_id,
+        project_id,
+        environment_id,
+        expiry_route_id,
+        NodeId::new(),
+        previous_certificate_id,
+        replacement_certificate_id,
+        GatewayCertificateExpiryStatus::Resolved,
+        5,
+        5,
+        policy.created_at + ChronoDuration::seconds(16),
+    )?;
+    persist_outbox_message(database, &peer_expiry_resolution).await?;
+    projector.project(&peer_expiry_resolution).await?;
+
+    let expiry_resolution = notification_gateway_certificate_expiry_message(
+        organization_id,
+        project_id,
+        environment_id,
+        expiry_route_id,
+        expiry_node_id,
+        previous_certificate_id,
+        replacement_certificate_id,
+        GatewayCertificateExpiryStatus::Resolved,
+        5,
+        5,
+        policy.created_at + ChronoDuration::seconds(17),
+    )?;
+    persist_outbox_message(database, &expiry_resolution).await?;
+    projector.project(&expiry_resolution).await?;
+    projector.project(&expiry_resolution).await?;
+
+    let next_expiry_firing = notification_gateway_certificate_expiry_message(
+        organization_id,
+        project_id,
+        environment_id,
+        expiry_route_id,
+        expiry_node_id,
+        replacement_certificate_id,
+        GatewayCertificateId::new(),
+        GatewayCertificateExpiryStatus::Expiring,
+        5,
+        7,
+        policy.created_at + ChronoDuration::seconds(18),
+    )?;
+    persist_outbox_message(database, &next_expiry_firing).await?;
+    projector.project(&next_expiry_firing).await?;
+    projector.project(&next_expiry_firing).await?;
+
+    let expiry_notifications = repository
+        .list_page(organization_id, recipient, false, None, 50)
+        .await?
+        .into_iter()
+        .filter(|notification| {
+            matches!(
+                notification.source_event_key.as_str(),
+                "edge.gateway-certificate.expiring" | "edge.gateway-certificate.expiry-resolved"
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(expiry_notifications.len(), 3);
+    assert_eq!(
+        expiry_notifications
+            .iter()
+            .map(|notification| (
+                notification.source_event_key.as_str(),
+                notification.severity,
+                notification.source_aggregate_version,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "edge.gateway-certificate.expiring",
+                NotificationSeverity::Warning,
+                10,
+            ),
+            (
+                "edge.gateway-certificate.expiry-resolved",
+                NotificationSeverity::Information,
+                9,
+            ),
+            (
+                "edge.gateway-certificate.expiring",
+                NotificationSeverity::Warning,
+                6,
+            ),
+        ]
+    );
+    assert!(expiry_notifications.iter().all(|notification| {
+        notification.scope
+            == NotificationScope::Environment {
+                project_id,
+                environment_id,
+            }
+            && notification.body.contains("postgres-expiry.example.com")
+            && notification.body.contains(&expiry_route_id.to_string())
+            && notification.body.contains(&expiry_node_id.to_string())
+            && !notification.body.contains("private")
+    }));
+
     assert_rejected(
         database
             .execute(
@@ -567,10 +748,10 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .bind(organization_id.as_uuid())
             .append(" and recipient_principal_id = ")
             .bind(recipient.as_uuid())
-            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed', 'workload.deployment.failed', 'workload.deployment.healthy'))"),
+            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed', 'workload.deployment.failed', 'workload.deployment.healthy', 'edge.gateway-certificate.expiring', 'edge.gateway-certificate.expiry-resolved'))"),
         )
         .await?;
-    assert_eq!(evidence, (3, 3, 1, 4, 7));
+    assert_eq!(evidence, (4, 4, 1, 5, 10));
     Ok(())
 }
 
@@ -679,6 +860,70 @@ fn notification_gateway_certificate_renewal_message(
             active_certificate_expires_at,
             status,
             failure_kind,
+        })?,
+        delivery_attempts: 1,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn notification_gateway_certificate_expiry_message(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    route_id: RouteId,
+    node_id: NodeId,
+    previous_certificate_id: GatewayCertificateId,
+    replacement_certificate_id: GatewayCertificateId,
+    status: GatewayCertificateExpiryStatus,
+    certificate_gateway_revision: u64,
+    renewal_gateway_revision: u64,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<OutboxMessage, Box<dyn std::error::Error>> {
+    let (event_key, active_certificate_id) = match status {
+        GatewayCertificateExpiryStatus::Expiring => {
+            ("edge.gateway-certificate.expiring", previous_certificate_id)
+        }
+        GatewayCertificateExpiryStatus::Resolved => (
+            "edge.gateway-certificate.expiry-resolved",
+            replacement_certificate_id,
+        ),
+    };
+    let raw_expiry = occurred_at + ChronoDuration::days(30);
+    let active_certificate_expires_at = raw_expiry
+        - ChronoDuration::nanoseconds(i64::from(raw_expiry.timestamp_subsec_nanos() % 1_000));
+    let aggregate_id = renewal_subject_id(route_id, node_id);
+    Ok(OutboxMessage {
+        event_id: Uuid::new_v5(
+            &aggregate_id,
+            format!("{event_key}:{active_certificate_id}").as_bytes(),
+        ),
+        event_key: event_key.into(),
+        schema_version: 1,
+        organization_id: organization_id.as_uuid(),
+        aggregate_id,
+        aggregate_version: certificate_expiry_aggregate_version(
+            certificate_gateway_revision,
+            status,
+        )?,
+        occurred_at,
+        correlation_id: Uuid::now_v7(),
+        causation_id: None,
+        payload: serde_json::to_value(GatewayCertificateExpiryChanged {
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            workload_id: WorkloadId::new(),
+            node_id,
+            hostname: "postgres-expiry.example.com".into(),
+            path_prefix: "/service".into(),
+            certificate_gateway_revision,
+            renewal_gateway_revision,
+            previous_certificate_id,
+            replacement_certificate_id,
+            active_certificate_id,
+            active_certificate_expires_at,
+            status,
         })?,
         delivery_attempts: 1,
     })
