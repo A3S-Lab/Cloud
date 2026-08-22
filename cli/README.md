@@ -96,9 +96,10 @@ exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses the
 canonical `cloud.notification.alert-policy.v1` ACL, admits the closed
 `edge.domain-claim-status.v1` and
 `edge.gateway-certificate-renewal-status.v1` sources plus
-`workload.deployment-health.v1`, rechecks Membership and Resource Grants, and
+`workload.deployment-health.v1` and
+`edge.gateway-certificate-expiry-status.v1`, rechecks Membership and Resource Grants, and
 projects their typed failure/recovery facts through the existing inbox and
-outbound delivery path. REST contract `1.50.0` exposes the same lifecycle. The
+outbound delivery path. REST contract `1.51.0` exposes the same lifecycle. The
 CLI has no
 expression evaluator, event registry, incident state, timer, scheduler, or
 second configuration format.

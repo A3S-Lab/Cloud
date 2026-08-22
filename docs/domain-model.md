@@ -1539,7 +1539,7 @@ text. No certificate or incident table, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API belongs to this prerequisite.
 
-#### Gateway certificate-expiry alert source (`C0.3-N4g` frozen)
+#### Gateway certificate-expiry alert source (`C0.3-N4g` implemented)
 
 Notifications extends the existing immutable
 `cloud.notification.alert-policy.v1` source union with only
@@ -1572,10 +1572,11 @@ The existing policy lookup, active Membership and current Resource Grant
 revalidation, personal inbox repository, transactional Outbox, outbound
 subscription, A3S Event durable/manual-ack consumer, and C6 delivery evidence
 remain the only policy, projection, event, and delivery authorities. Migration
-`135` may widen only the closed persisted source constraint. REST/OpenAPI
+`135` widens only the closed persisted source constraint. REST/OpenAPI
 `1.51.0`, the maintained client, CLI, and four existing Management MCP
-operations may expose the enum without a new endpoint or tool. Implementation
-and retained PostgreSQL/NATS evidence remain open. Edge remains the sole expiry
+operations expose the enum without a new endpoint or tool. Focused domain,
+projection, malformed-payload, migration, contract, client, and CLI gates pass;
+retained PostgreSQL/NATS evidence remains open. Edge remains the sole expiry
 authority; Notifications does not poll certificates, interpret time or silence,
 or add a configurable threshold, severity rule, certificate state, incident
 table, arbitrary selector, payload expression, timer, scheduler, queue, second

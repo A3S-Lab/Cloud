@@ -332,12 +332,14 @@ configuration document.
 
 ## Personal notification alert policies
 
-REST contract `1.50.0` retains the four
+REST contract `1.51.0` retains the four
 `a3s_cloud_notification_alert_policies_*` tools. Create accepts only one bounded
 canonical `cloud.notification.alert-policy.v1` ACL for the closed typed
 `edge.domain-claim-status.v1`,
 `edge.gateway-certificate-renewal-status.v1`, or
-`workload.deployment-health.v1` source and an exact project/environment scope.
+`workload.deployment-health.v1`, or
+`edge.gateway-certificate-expiry-status.v1` source and an exact
+project/environment scope.
 List and exact get apply current Resource Grants; revoke requires the current
 aggregate version and a caller-owned idempotency key. Recipient identity always
 comes from the authenticated credential.

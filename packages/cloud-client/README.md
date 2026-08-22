@@ -321,7 +321,9 @@ mechanism. Contract `1.49.0` extends the closed source union with
 `edge.gateway-certificate-renewal-status.v1` without adding another client
 operation or configuration format. Contract `1.50.0` adds
 `workload.deployment-health.v1` through those same four operations and keeps
-Workloads as the rollout-health authority.
+Workloads as the rollout-health authority. Contract `1.51.0` adds
+`edge.gateway-certificate-expiry-status.v1` through the same operations while
+Edge remains the certificate-expiry authority.
 
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and

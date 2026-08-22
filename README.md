@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.50.0" src="https://img.shields.io/badge/REST_contract-1.50.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.51.0" src="https://img.shields.io/badge/REST_contract-1.51.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,7 +61,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.50.0`](openapi/v1.json), maintained
+  [OpenAPI `1.51.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. The contract includes immutable v1 fixed-eight and v2
@@ -77,7 +77,10 @@ The code on `main` separates implemented mechanics from released capability:
   failure/recovery facts; it adds no endpoint, policy lifecycle, queue, or
   evaluation engine. Contract `1.50.0` adds the closed
   `workload.deployment-health.v1` source over exact Workloads-owned failure and
-  healthy facts through that same lifecycle and delivery path. Broader
+  healthy facts through that same lifecycle and delivery path. Contract
+  `1.51.0` adds the closed `edge.gateway-certificate-expiry-status.v1` source
+  over exact Edge-owned expiring/resolved facts, with no new endpoint, policy
+  lifecycle, or evaluation engine. Broader
   enterprise `C0` gates remain.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
