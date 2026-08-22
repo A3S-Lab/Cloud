@@ -1491,7 +1491,7 @@ lifecycle, arbitrary selector, payload expression, health or incident table,
 counter, poller, timer, scheduler, queue, event rail, configuration format,
 endpoint, or tool is introduced.
 
-#### Edge certificate-expiry fact (`C0.3-N4f` frozen)
+#### Edge certificate-expiry fact (`C0.3-N4f` implemented; PostgreSQL H0 pending)
 
 Edge remains the certificate lifecycle and expiry authority. When the existing
 Gateway certificate reconciler stages the first
@@ -1505,9 +1505,11 @@ replacement leaves the firing fact open; its separate renewal-status fact
 continues to describe the failed attempt.
 
 The fact subject is the deterministic pair of logical `Route` and physical
-Gateway `Node`. The firing aggregate version is the active certificate's own
-Gateway revision, while resolution uses the replacement certificate's strictly
-later Gateway revision. One fact per retained Route therefore carries one exact
+Gateway `Node`. The firing aggregate version is twice the active certificate's
+Gateway revision. Resolution uses twice the replacement certificate's strictly
+later Gateway revision minus one, so a resolution is strictly later than its
+firing and strictly earlier than the next firing for that now-active
+certificate. One fact per retained Route therefore carries one exact
 organization, project, environment, Route, Workload, node, hostname/path,
 previous certificate, replacement certificate, active certificate,
 active-certificate expiry, certificate revision, renewal revision, and closed
@@ -1517,14 +1519,19 @@ failure details. Replica-local subjects prevent one healthy Gateway from
 resolving another Gateway's expiry fact.
 
 The firing event has deterministic identity derived from its Route-plus-node
-subject and active certificate. The Edge repository compares an existing event
-with that exact envelope before treating a retry as silent, so repeated renewal
-attempts cannot duplicate a firing fact and the first retry after an upgrade is
-not mistaken for an already published fact. The convergence stage and every
-new firing fact commit in one existing Edge transaction and Outbox. The applied
+subject, event key, and active certificate. The Edge repository decodes any
+existing Outbox row and compares its stable typed owner/certificate binding
+before treating a retry as silent; replacement identity, renewal revision,
+correlation, and occurrence time may change across attempts. Repeated attempts
+therefore cannot duplicate a firing fact, while the first retry after an
+upgrade still publishes when no row exists. The convergence stage and every new
+firing fact commit in one existing Edge transaction and Outbox. The applied
 terminal transition and every resolution fact commit through the existing
 acknowledgement transaction. Outbox failure rolls back the owning mutation, and
-terminal replay remains silent. No certificate or incident table, mutable
+terminal replay remains silent. Local formatting, strict Clippy, focused
+expiry/replica regressions, and the full workspace test suite pass; the
+checksum-pinned PostgreSQL 17.5 transaction fixture remains the CI H0 release
+gate. No certificate or incident table, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API belongs to this prerequisite.
 

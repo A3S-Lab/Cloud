@@ -9,7 +9,7 @@ use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
     PostgresPersistenceError,
 };
-use crate::modules::edge::domain::events::GatewayCertificateRenewalChanged;
+use crate::modules::edge::domain::events::GatewayCertificateExpiryChanged;
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayCertificateRouteStatus, StageGatewayCertificateConvergence,
@@ -598,6 +598,20 @@ async fn stage_inner(
                 active.sort_by_key(|route| route.id);
                 validate_convergence_routes(transaction, convergence, &active).await?;
                 validate_active_certificate(previous.id, &active)?;
+                let retained_routes = retained_routes(&active, convergence)?;
+                let expected_expiry_events = GatewayCertificateExpiryChanged::envelopes(
+                    convergence,
+                    &bundle.publication,
+                    &previous,
+                    &retained_routes,
+                )
+                .map_err(PostgresPersistenceError::Invariant)?;
+                if bundle.expiry_events != expected_expiry_events {
+                    return Err(RepositoryError::Conflict(
+                        "Gateway certificate expiry firing facts are inconsistent".into(),
+                    )
+                    .into());
+                }
                 if convergence.reason == GatewayCertificateConvergenceReason::SnapshotRenewal
                     && managed.is_none()
                 {
@@ -694,6 +708,9 @@ async fn stage_inner(
                     .await?;
                 }
                 store_outbox(transaction, &bundle.event).await?;
+                for event in &bundle.expiry_events {
+                    store_expiry_event_once(transaction, event).await?;
+                }
                 Ok(GatewayCertificateConvergenceResult {
                     convergence: bundle.convergence,
                     certificate: bundle.certificate,
@@ -956,171 +973,16 @@ pub(super) async fn lock_by_gateway_identity(
     .map_err(Into::into)
 }
 
-pub(super) async fn persist_acknowledgement(
-    transaction: &PostgresTransaction,
-    convergence: &GatewayCertificateConvergence,
-    publication: &GatewayPublication,
-) -> Result<(), PostgresPersistenceError> {
-    let events = renewal_events(transaction, convergence, publication).await?;
-    if convergence.state == GatewayCertificateConvergenceState::Applied {
-        persist_route_convergence(transaction, convergence).await?;
-    }
-    require_one_row(
-        "Gateway certificate convergence acknowledgement",
-        execute(
-            transaction,
-            update_table::<GatewayCertificateConvergences>()
-                .set(
-                    GatewayCertificateConvergences::state(),
-                    convergence.state.as_str(),
-                )
-                .set(
-                    GatewayCertificateConvergences::failure(),
-                    convergence.failure.clone(),
-                )
-                .set(
-                    GatewayCertificateConvergences::acknowledged_at(),
-                    convergence.acknowledged_at,
-                )
-                .filter(GatewayCertificateConvergences::node_id().eq(convergence.node_id.as_uuid()))
-                .filter(
-                    GatewayCertificateConvergences::gateway_revision()
-                        .eq(convergence.gateway_revision),
-                )
-                .filter(GatewayCertificateConvergences::state().eq("pending")),
-        )
-        .await?,
-    )?;
-    for event in events {
-        store_outbox(transaction, &event).await?;
-    }
-    Ok(())
-}
-
-async fn renewal_events(
-    transaction: &PostgresTransaction,
-    convergence: &GatewayCertificateConvergence,
-    publication: &GatewayPublication,
-) -> Result<Vec<a3s_cloud_contracts::DomainEventEnvelope>, PostgresPersistenceError> {
-    if convergence.reason != GatewayCertificateConvergenceReason::Renewal {
-        return Ok(Vec::new());
-    }
-    let active_certificate_id = match convergence.state {
-        GatewayCertificateConvergenceState::Applied => convergence.replacement_certificate_id,
-        GatewayCertificateConvergenceState::Rejected
-        | GatewayCertificateConvergenceState::Unavailable => {
-            Some(convergence.previous_certificate_id)
-        }
-        GatewayCertificateConvergenceState::Pending => return Ok(Vec::new()),
-    }
-    .ok_or_else(|| {
-        PostgresPersistenceError::Invariant(
-            "Gateway certificate renewal omitted its active certificate".into(),
-        )
-    })?;
-    let active_certificate = fetch_optional::<CertificateRow, _>(
-        transaction,
-        select_from::<GatewayCertificates>()
-            .select(CertificateSelection)
-            .filter(GatewayCertificates::id().eq(active_certificate_id.as_uuid()))
-            .for_update(),
-    )
-    .await?
-    .ok_or_else(|| {
-        PostgresPersistenceError::Invariant("active Gateway renewal certificate disappeared".into())
-    })?
-    .certificate()?;
-    let mut routes = Vec::with_capacity(convergence.retained_routes.len());
-    for version in &convergence.retained_routes {
-        let route = match super::postgres_rollout_routes::route_projection(
-            transaction,
-            version.route_id,
-            convergence.node_id,
-        )
-        .await?
-        {
-            Some(route) => route,
-            None => fetch_optional::<RouteRow, _>(
-                transaction,
-                select_from::<Routes>()
-                    .select(RouteSelection)
-                    .filter(Routes::id().eq(version.route_id.as_uuid()))
-                    .for_update(),
-            )
-            .await?
-            .ok_or_else(|| {
-                PostgresPersistenceError::Invariant(
-                    "Gateway certificate renewal Route disappeared".into(),
-                )
-            })?
-            .route()?,
-        };
-        routes.push(route);
-    }
-    GatewayCertificateRenewalChanged::envelopes(
-        convergence,
-        publication,
-        &active_certificate,
-        &routes,
-    )
-    .map_err(PostgresPersistenceError::Invariant)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn bind_active_routes_to_certificate(
-    transaction: &PostgresTransaction,
-    node_id: NodeId,
-    revision: u64,
-    command_id: NodeCommandId,
-    snapshot_digest: &str,
-    certificate_id: GatewayCertificateId,
-    acknowledged_at: DateTime<Utc>,
-) -> Result<(), PostgresPersistenceError> {
-    let routes = fetch_all::<RouteRow, _>(
-        transaction,
-        select_from::<Routes>()
-            .select(RouteSelection)
-            .filter(Routes::gateway_node_id().eq(node_id.as_uuid()))
-            .filter(Routes::state().eq("active"))
-            .order_by(Routes::id(), OrderDirection::Asc)
-            .for_update(),
-    )
-    .await?
-    .into_iter()
-    .map(RouteRow::route)
-    .collect::<Result<Vec<_>, _>>()?;
-    for mut route in routes {
-        let expected_version = route.aggregate_version;
-        if route
-            .bind_gateway_certificate(
-                revision,
-                command_id,
-                snapshot_digest.into(),
-                certificate_id,
-                acknowledged_at,
-            )
-            .map_err(RepositoryError::Conflict)?
-        {
-            update_route(transaction, &route, expected_version).await?;
-        }
-    }
-    super::postgres_rollout_routes::bind_active_to_certificate(
-        transaction,
-        node_id,
-        revision,
-        command_id,
-        snapshot_digest,
-        certificate_id,
-        acknowledged_at,
-    )
-    .await?;
-    Ok(())
-}
-
+mod facts;
+mod route_binding;
 mod support;
 
+pub(super) use facts::persist_acknowledgement;
+use facts::{retained_routes, store_expiry_event_once};
+pub(super) use route_binding::bind_active_routes_to_certificate;
+
 use support::{
-    decode, insert_convergence, load_result, load_target, persist_route_convergence, storage,
-    stored, update_route, validate_active_certificate, validate_convergence_routes, validate_limit,
+    decode, insert_convergence, load_result, load_target, storage, stored,
+    validate_active_certificate, validate_convergence_routes, validate_limit,
     validate_replacement_claims, validate_scope,
 };

@@ -5,7 +5,9 @@ use super::{
     IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
     StageManagedGatewayCertificateConvergence,
 };
-use crate::modules::edge::domain::events::GatewayCertificateConvergenceStaged;
+use crate::modules::edge::domain::events::{
+    GatewayCertificateConvergenceStaged, GatewayCertificateExpiryChanged,
+};
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, IEdgeRepository,
     StageGatewayCertificateConvergence,
@@ -494,12 +496,20 @@ impl GatewayCertificateReconciler {
         .map_err(RepositoryError::Conflict)?;
         let event = GatewayCertificateConvergenceStaged::envelope(&convergence, &publication)
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+        let expiry_events = GatewayCertificateExpiryChanged::envelopes(
+            &convergence,
+            &publication,
+            &target.certificate,
+            &retained_routes,
+        )
+        .map_err(RepositoryError::Storage)?;
         Ok(StageGatewayCertificateConvergence {
             convergence,
             certificate,
             publication,
             expected_scope_version: target.scope.aggregate_version,
             event,
+            expiry_events,
         })
     }
 
@@ -724,12 +734,20 @@ impl GatewayCertificateReconciler {
         .map_err(RepositoryError::Conflict)?;
         let event = GatewayCertificateConvergenceStaged::envelope(&convergence, &publication)
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+        let expiry_events = GatewayCertificateExpiryChanged::envelopes(
+            &convergence,
+            &publication,
+            &previous_certificate,
+            &retained_routes,
+        )
+        .map_err(RepositoryError::Storage)?;
         let ordinary = StageGatewayCertificateConvergence {
             convergence,
             certificate,
             publication,
             expected_scope_version: target.scope.aggregate_version,
             event,
+            expiry_events,
         };
         let composition = GatewayManagedSnapshotComposition::new(
             candidate,

@@ -1,6 +1,7 @@
 use super::*;
 use crate::modules::edge::domain::events::{
-    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateExpiryChanged,
+    GatewayCertificateExpiryStatus, GatewayCertificateRenewalChanged,
     GatewayCertificateRenewalStatus,
 };
 use crate::modules::edge::domain::repositories::{
@@ -284,6 +285,54 @@ async fn replicated_certificate_renewal_and_domain_revocation_are_node_local() {
         assert_eq!(payload.route_id, route_id);
         assert_eq!(payload.node_id, node_id);
         assert_eq!(payload.status, GatewayCertificateRenewalStatus::Renewed);
+    }
+    let expiry_facts = repository
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event.event_key.as_str(),
+                "edge.gateway-certificate.expiring" | "edge.gateway-certificate.expiry-resolved"
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(expiry_facts.len(), members.len() * 2);
+    for node_id in members {
+        let subject_id = renewal_subject_id(route_id, node_id);
+        let expiring = expiry_facts
+            .iter()
+            .find(|event| {
+                event.aggregate_id == subject_id
+                    && event.event_key == "edge.gateway-certificate.expiring"
+            })
+            .expect("node-local replicated expiry firing fact");
+        let resolved = expiry_facts
+            .iter()
+            .find(|event| {
+                event.aggregate_id == subject_id
+                    && event.event_key == "edge.gateway-certificate.expiry-resolved"
+            })
+            .expect("node-local replicated expiry resolution fact");
+        assert!(resolved.aggregate_version > expiring.aggregate_version);
+        let expiring_payload: GatewayCertificateExpiryChanged =
+            serde_json::from_value(expiring.payload.clone())
+                .expect("replicated expiry firing payload");
+        let resolved_payload: GatewayCertificateExpiryChanged =
+            serde_json::from_value(resolved.payload.clone())
+                .expect("replicated expiry resolution payload");
+        assert_eq!(expiring_payload.route_id, route_id);
+        assert_eq!(expiring_payload.node_id, node_id);
+        assert_eq!(
+            expiring_payload.status,
+            GatewayCertificateExpiryStatus::Expiring
+        );
+        assert_eq!(resolved_payload.route_id, route_id);
+        assert_eq!(resolved_payload.node_id, node_id);
+        assert_eq!(
+            resolved_payload.status,
+            GatewayCertificateExpiryStatus::Resolved
+        );
     }
 
     let verified_claim_version = domain_claim.aggregate_version;

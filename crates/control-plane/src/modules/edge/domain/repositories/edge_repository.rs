@@ -44,6 +44,7 @@ pub struct StageGatewayCertificateConvergence {
     pub publication: GatewayPublication,
     pub expected_scope_version: u64,
     pub event: DomainEventEnvelope,
+    pub expiry_events: Vec<DomainEventEnvelope>,
 }
 
 #[derive(Debug, Clone)]

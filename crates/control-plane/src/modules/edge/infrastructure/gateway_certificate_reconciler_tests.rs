@@ -3,9 +3,10 @@ use super::gateway_certificate_reconciler::{
 };
 use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata};
 use crate::modules::edge::domain::events::{
-    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
-    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus, GatewayScopeCreated,
-    RoutePublicationStaged,
+    certificate_expiry_aggregate_version, renewal_subject_id, DomainClaimChanged,
+    GatewayCertificateExpiryChanged, GatewayCertificateExpiryStatus,
+    GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
+    GatewayCertificateRenewalStatus, GatewayScopeCreated, RoutePublicationStaged,
 };
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
@@ -494,6 +495,22 @@ async fn renewal_facts(
             matches!(
                 event.event_key.as_str(),
                 "edge.gateway-certificate.renewal-failed" | "edge.gateway-certificate.renewed"
+            )
+        })
+        .collect()
+}
+
+async fn expiry_facts(
+    repository: &InMemoryEdgeRepository,
+) -> Vec<a3s_cloud_contracts::DomainEventEnvelope> {
+    repository
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event.event_key.as_str(),
+                "edge.gateway-certificate.expiring" | "edge.gateway-certificate.expiry-resolved"
             )
         })
         .collect()

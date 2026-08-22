@@ -203,7 +203,7 @@ pub(super) async fn project(
         convergence
             .acknowledge(&acknowledgement)
             .map_err(RepositoryError::Conflict)?;
-        let renewal_events = if convergence.reason
+        let certificate_events = if convergence.reason
             == crate::modules::edge::domain::GatewayCertificateConvergenceReason::Renewal
         {
             let active_certificate = match convergence.state {
@@ -229,7 +229,7 @@ pub(super) async fn project(
                     ))
                 }
             };
-            certificate_convergence::renewal_events(
+            certificate_convergence::certificate_events(
                 &state,
                 convergence,
                 &publication,
@@ -244,7 +244,7 @@ pub(super) async fn project(
         state
             .certificate_convergences
             .insert(convergence_key, convergence.clone());
-        state.outbox.extend(renewal_events);
+        state.outbox.extend(certificate_events);
     } else if let Some(cutover_id) = cutover_id {
         let mut cutover = state
             .cutovers

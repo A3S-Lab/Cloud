@@ -2508,8 +2508,8 @@ node.
   selector, expression evaluator, health or incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, configuration parser,
   endpoint, or tool.
-- Freeze `C0.3-N4f` as the Edge owner-fact prerequisite for certificate-expiry
-  alerts. The existing Gateway certificate reconciler emits
+- Implement `C0.3-N4f` as the Edge owner-fact prerequisite for
+  certificate-expiry alerts. The existing Gateway certificate reconciler emits
   `edge.gateway-certificate.expiring` exactly once per retained logical Route
   and physical Node when the first `Renewal` convergence is staged for a
   still-active certificate. A later applied replacement emits
@@ -2518,17 +2518,23 @@ node.
   Route, Workload, node, hostname/path, previous/replacement/active certificate
   identities, active-certificate expiry, certificate revision, renewal
   revision, and closed status. The deterministic Route-plus-node subject and
-  active/replacement certificate revisions provide strict per-replica ordering.
-  A deterministic firing-event identity and exact existing-Outbox comparison
-  make retries for the same active certificate silent without suppressing the
-  first fact after an upgrade. Firing commits with convergence staging;
+  phase-encoded aggregate versions use twice the active certificate revision
+  for firing and twice the replacement revision minus one for resolution. This
+  orders each resolution before the next firing for that now-active certificate.
+  A deterministic firing-event identity and typed comparison of its stable
+  owner/certificate binding make retries for the same active certificate silent
+  even when a later attempt has a different replacement, renewal revision,
+  correlation, or occurrence time, without suppressing the first fact after an
+  upgrade. Firing commits with convergence staging;
   resolution commits with the existing terminal acknowledgement transaction.
   Rejected Routes, snapshot renewal, revocation, projection repair, and every
   non-renewal path remain silent. Certificate material, provider responses,
   acknowledgement text, and private failure details are excluded. This slice
   adds no certificate or incident table, mutable counter, poller, timer,
   scheduler, queue, second event rail, migration, configuration parser, or
-  public surface.
+  public surface. Local formatting, strict Clippy, focused expiry/replica
+  regressions, and the full workspace test suite pass; the checksum-pinned
+  PostgreSQL 17.5 transaction fixture remains the CI H0 release gate.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   certificate expiry only after `C0.3-N4f` is verified, and cover backup status,
   node availability,

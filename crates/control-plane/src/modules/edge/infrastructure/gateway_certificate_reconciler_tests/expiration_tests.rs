@@ -126,6 +126,228 @@ async fn expired_convergence_preserves_installed_state_and_retries_a_new_revisio
         .expect("obsolete certificates")
         .is_empty());
     assert_eq!(queue.publications.lock().await.len(), 2);
+    assert!(expiry_facts(fixture.repository.as_ref()).await.is_empty());
+}
+
+#[tokio::test]
+async fn certificate_expiry_firing_is_scoped_and_retry_safe() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture.verified_claim("firing.example.com", base).await;
+    let previous_expires_at = base + Duration::days(30);
+    let (route, previous) = fixture
+        .activate_route(
+            &claim,
+            "firing.example.com",
+            base + Duration::seconds(1),
+            previous_expires_at,
+        )
+        .await;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue, authority);
+    let staged_at = base + Duration::days(24);
+
+    reconciler
+        .run_once(staged_at)
+        .await
+        .expect("stage certificate renewal");
+    let first = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending certificate renewal")
+        .pop()
+        .expect("certificate renewal");
+    let replacement_certificate_id = first
+        .convergence
+        .replacement_certificate_id
+        .expect("replacement certificate");
+    let facts = expiry_facts(fixture.repository.as_ref()).await;
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].event_key, "edge.gateway-certificate.expiring");
+    assert_eq!(
+        facts[0].aggregate_id,
+        renewal_subject_id(route.id, fixture.node_id)
+    );
+    assert_eq!(
+        facts[0].aggregate_version,
+        certificate_expiry_aggregate_version(
+            previous.gateway_revision,
+            GatewayCertificateExpiryStatus::Expiring
+        )
+        .expect("expiry firing aggregate version")
+    );
+    assert_eq!(facts[0].occurred_at, canonical_timestamp(staged_at));
+    assert_eq!(
+        facts[0].correlation_id,
+        first.publication.command_correlation_id
+    );
+    let payload: GatewayCertificateExpiryChanged =
+        serde_json::from_value(facts[0].payload.clone()).expect("expiry firing payload");
+    assert_eq!(payload.organization_id, fixture.organization_id);
+    assert_eq!(payload.project_id, fixture.project_id);
+    assert_eq!(payload.environment_id, fixture.environment_id);
+    assert_eq!(payload.route_id, route.id);
+    assert_eq!(payload.workload_id, fixture.workload_id);
+    assert_eq!(payload.node_id, fixture.node_id);
+    assert_eq!(payload.hostname, "firing.example.com");
+    assert_eq!(payload.path_prefix, "/");
+    assert_eq!(
+        payload.certificate_gateway_revision,
+        previous.gateway_revision
+    );
+    assert_eq!(
+        payload.renewal_gateway_revision,
+        first.convergence.gateway_revision
+    );
+    assert_eq!(payload.previous_certificate_id, previous.id);
+    assert_eq!(
+        payload.replacement_certificate_id,
+        replacement_certificate_id
+    );
+    assert_eq!(payload.active_certificate_id, previous.id);
+    assert_eq!(
+        payload.active_certificate_expires_at,
+        canonical_timestamp(previous_expires_at)
+    );
+    assert_eq!(payload.status, GatewayCertificateExpiryStatus::Expiring);
+    assert!(!facts[0].payload.to_string().contains("certificate_pem"));
+
+    reconciler
+        .run_once(first.publication.command_not_after)
+        .await
+        .expect("expire and retry certificate renewal");
+    let retries = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("retry certificate renewal");
+    assert_eq!(retries.len(), 1);
+    assert!(retries[0].convergence.gateway_revision > first.convergence.gateway_revision);
+    assert_eq!(retries[0].convergence.previous_certificate_id, previous.id);
+    let retried_facts = expiry_facts(fixture.repository.as_ref()).await;
+    assert_eq!(retried_facts.len(), 1);
+    assert_eq!(retried_facts[0].event_id, facts[0].event_id);
+    let retry_candidate = GatewayCertificateExpiryChanged::envelopes(
+        &retries[0].convergence,
+        &retries[0].publication,
+        &previous,
+        std::slice::from_ref(&route),
+    )
+    .expect("retry expiry firing candidate")
+    .pop()
+    .expect("retry expiry firing fact");
+    assert_eq!(retry_candidate.event_id, facts[0].event_id);
+    assert_ne!(retry_candidate.payload, facts[0].payload);
+    assert!(
+        GatewayCertificateExpiryChanged::same_firing_identity(&facts[0], &retry_candidate)
+            .expect("same certificate retry identity")
+    );
+    let mut forged = facts[0].clone();
+    forged.payload["active_certificate_id"] = serde_json::json!(GatewayCertificateId::new());
+    assert!(
+        GatewayCertificateExpiryChanged::same_firing_identity(&forged, &retry_candidate).is_err()
+    );
+}
+
+#[tokio::test]
+async fn applied_certificate_renewal_resolves_the_expiry_fact() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture.verified_claim("resolved.example.com", base).await;
+    let previous_expires_at = base + Duration::days(30);
+    let (route, previous) = fixture
+        .activate_route(
+            &claim,
+            "resolved.example.com",
+            base + Duration::seconds(1),
+            previous_expires_at,
+        )
+        .await;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue, authority);
+    let staged_at = base + Duration::days(24);
+    reconciler
+        .run_once(staged_at)
+        .await
+        .expect("stage certificate renewal");
+    let renewal = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending certificate renewal")
+        .pop()
+        .expect("certificate renewal");
+    let replacement = renewal
+        .certificate
+        .as_ref()
+        .expect("replacement certificate");
+    let replacement_expires_at = base + Duration::days(120);
+    issue_certificate(
+        fixture.repository.as_ref(),
+        replacement,
+        staged_at + Duration::seconds(1),
+        replacement_expires_at,
+    )
+    .await;
+    let acknowledged_at = staged_at + Duration::seconds(2);
+    apply_convergence(
+        fixture.repository.as_ref(),
+        &renewal.publication,
+        acknowledged_at,
+    )
+    .await;
+
+    let facts = expiry_facts(fixture.repository.as_ref()).await;
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0].event_key, "edge.gateway-certificate.expiring");
+    assert_eq!(
+        facts[1].event_key,
+        "edge.gateway-certificate.expiry-resolved"
+    );
+    assert_eq!(facts[1].aggregate_id, facts[0].aggregate_id);
+    assert_eq!(
+        facts[1].aggregate_id,
+        renewal_subject_id(route.id, fixture.node_id)
+    );
+    assert_eq!(
+        facts[0].aggregate_version,
+        certificate_expiry_aggregate_version(
+            previous.gateway_revision,
+            GatewayCertificateExpiryStatus::Expiring
+        )
+        .expect("expiry firing aggregate version")
+    );
+    assert_eq!(
+        facts[1].aggregate_version,
+        certificate_expiry_aggregate_version(
+            replacement.gateway_revision,
+            GatewayCertificateExpiryStatus::Resolved
+        )
+        .expect("expiry resolution aggregate version")
+    );
+    assert!(facts[1].aggregate_version > facts[0].aggregate_version);
+    assert_eq!(facts[1].occurred_at, canonical_timestamp(acknowledged_at));
+    let payload: GatewayCertificateExpiryChanged =
+        serde_json::from_value(facts[1].payload.clone()).expect("expiry resolution payload");
+    assert_eq!(payload.status, GatewayCertificateExpiryStatus::Resolved);
+    assert_eq!(payload.previous_certificate_id, previous.id);
+    assert_eq!(payload.replacement_certificate_id, replacement.id);
+    assert_eq!(payload.active_certificate_id, replacement.id);
+    assert_eq!(
+        payload.active_certificate_expires_at,
+        canonical_timestamp(replacement_expires_at)
+    );
+    assert_eq!(
+        payload.certificate_gateway_revision,
+        replacement.gateway_revision
+    );
+    assert_eq!(
+        payload.renewal_gateway_revision,
+        renewal.convergence.gateway_revision
+    );
 }
 
 #[tokio::test]

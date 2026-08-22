@@ -1,5 +1,7 @@
 use super::State;
-use crate::modules::edge::domain::events::GatewayCertificateRenewalChanged;
+use crate::modules::edge::domain::events::{
+    GatewayCertificateExpiryChanged, GatewayCertificateRenewalChanged,
+};
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayCertificateRouteStatus, StageGatewayCertificateConvergence,
@@ -170,6 +172,35 @@ pub(super) fn stage(
     }
     validate_convergence_routes(state, convergence)?;
     validate_active_certificate(state, convergence, previous.id)?;
+    let retained_routes = retained_routes(state, convergence)?;
+    let expected_expiry_events = GatewayCertificateExpiryChanged::envelopes(
+        convergence,
+        &bundle.publication,
+        previous,
+        &retained_routes,
+    )
+    .map_err(RepositoryError::Conflict)?;
+    if bundle.expiry_events != expected_expiry_events {
+        return Err(RepositoryError::Conflict(
+            "Gateway certificate expiry firing facts are inconsistent".into(),
+        ));
+    }
+    for candidate in &bundle.expiry_events {
+        if let Some(existing) = state
+            .outbox
+            .iter()
+            .find(|event| event.event_id == candidate.event_id)
+        {
+            let matches =
+                GatewayCertificateExpiryChanged::same_firing_identity(existing, candidate)
+                    .map_err(RepositoryError::Conflict)?;
+            if !matches {
+                return Err(RepositoryError::Conflict(
+                    "Gateway certificate expiry firing event identity already exists".into(),
+                ));
+            }
+        }
+    }
     if convergence.reason
         == crate::modules::edge::domain::GatewayCertificateConvergenceReason::SnapshotRenewal
     {
@@ -239,6 +270,15 @@ pub(super) fn stage(
         },
     );
     state.outbox.push(bundle.event);
+    for event in bundle.expiry_events {
+        if !state
+            .outbox
+            .iter()
+            .any(|existing| existing.event_id == event.event_id)
+        {
+            state.outbox.push(event);
+        }
+    }
     Ok(result)
 }
 
@@ -329,7 +369,7 @@ pub(super) fn mark_unavailable(
             .ok_or_else(|| {
                 RepositoryError::Storage("active Gateway renewal certificate disappeared".into())
             })?;
-        renewal_events(state, &convergence, &publication, active_certificate)?
+        certificate_events(state, &convergence, &publication, active_certificate)?
     } else {
         Vec::new()
     };
@@ -350,32 +390,51 @@ pub(super) fn mark_unavailable(
     })
 }
 
-pub(super) fn renewal_events(
+pub(super) fn certificate_events(
     state: &State,
     convergence: &GatewayCertificateConvergence,
     publication: &GatewayPublication,
     active_certificate: &GatewayCertificate,
 ) -> Result<Vec<a3s_cloud_contracts::DomainEventEnvelope>, RepositoryError> {
-    let active = active_routes_for_node(state, convergence.node_id)
-        .into_iter()
-        .map(|route| (route.id, route))
-        .collect::<BTreeMap<_, _>>();
-    let routes = convergence
-        .retained_routes
-        .iter()
-        .map(|version| {
-            active.get(&version.route_id).cloned().ok_or_else(|| {
-                RepositoryError::Storage("Gateway certificate renewal Route disappeared".into())
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    GatewayCertificateRenewalChanged::envelopes(
+    let routes = retained_routes(state, convergence)?;
+    let mut events = GatewayCertificateRenewalChanged::envelopes(
         convergence,
         publication,
         active_certificate,
         &routes,
     )
-    .map_err(RepositoryError::Storage)
+    .map_err(RepositoryError::Storage)?;
+    events.extend(
+        GatewayCertificateExpiryChanged::envelopes(
+            convergence,
+            publication,
+            active_certificate,
+            &routes,
+        )
+        .map_err(RepositoryError::Storage)?,
+    );
+    Ok(events)
+}
+
+fn retained_routes(
+    state: &State,
+    convergence: &GatewayCertificateConvergence,
+) -> Result<Vec<Route>, RepositoryError> {
+    let active = active_routes_for_node(state, convergence.node_id)
+        .into_iter()
+        .map(|route| (route.id, route))
+        .collect::<BTreeMap<_, _>>();
+    convergence
+        .retained_routes
+        .iter()
+        .map(|version| {
+            active.get(&version.route_id).cloned().ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Gateway certificate convergence retained Route disappeared".into(),
+                )
+            })
+        })
+        .collect()
 }
 
 pub(super) fn obsolete(

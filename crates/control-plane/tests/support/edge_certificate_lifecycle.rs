@@ -1,7 +1,9 @@
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use a3s_cloud_control_plane::modules::edge::domain::events::{
-    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
-    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+    certificate_expiry_aggregate_version, renewal_subject_id, DomainClaimChanged,
+    GatewayCertificateExpiryChanged, GatewayCertificateExpiryStatus,
+    GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
+    GatewayCertificateRenewalStatus,
 };
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, IEdgeRepository, TransitionDomainClaim,
@@ -200,6 +202,41 @@ pub async fn exercise(
     );
     let scope_before = repository.gateway_scope(scenario.node_id).await?;
 
+    let connection = executor.pool().get().await?;
+    connection
+        .batch_execute(
+            "alter table outbox_events add constraint gateway_certificate_expiry_outbox_failure_probe check (event_key <> 'edge.gateway-certificate.expiring')",
+        )
+        .await?;
+    drop(connection);
+    let rolled_back_stage = reconciler.run_once(scenario.started_at).await?;
+    assert_eq!(rolled_back_stage.convergence_targets, 1);
+    assert_eq!(rolled_back_stage.staged_convergences, 0);
+    assert_eq!(rolled_back_stage.failures.len(), 1);
+    assert_eq!(rolled_back_stage.failures[0].operation, "stage");
+    assert_eq!(
+        repository.gateway_scope(scenario.node_id).await?,
+        scope_before
+    );
+    assert!(repository
+        .find_gateway_certificate_convergence(scenario.node_id, scope_before.next_revision()?,)
+        .await?
+        .is_none());
+    assert!(
+        expiry_fact_rows(&database, scenario.organization_id, scenario.node_id)
+            .await?
+            .as_array()
+            .ok_or("rolled-back certificate expiry facts are not an array")?
+            .is_empty()
+    );
+    let connection = executor.pool().get().await?;
+    connection
+        .batch_execute(
+            "alter table outbox_events drop constraint gateway_certificate_expiry_outbox_failure_probe",
+        )
+        .await?;
+    drop(connection);
+
     let first_report = reconciler.run_once(scenario.started_at).await?;
     assert_eq!(first_report.convergence_targets, 1);
     assert_eq!(first_report.staged_convergences, 1);
@@ -220,6 +257,15 @@ pub async fn exercise(
             .state,
         GatewayCertificateState::Ready
     );
+    let first_expiry_facts =
+        expiry_fact_rows(&database, scenario.organization_id, scenario.node_id).await?;
+    let first_expiry_facts = first_expiry_facts
+        .as_array()
+        .ok_or("certificate expiry firing facts are not an array")?;
+    assert_eq!(first_expiry_facts.len(), before_renewal.len());
+    assert!(first_expiry_facts
+        .iter()
+        .all(|fact| fact["eventKey"] == "edge.gateway-certificate.expiring"));
     issue_certificate(
         repository.as_ref(),
         first
@@ -317,6 +363,14 @@ pub async fn exercise(
         renewal.convergence.reason,
         GatewayCertificateConvergenceReason::Renewal
     );
+    assert_eq!(
+        expiry_fact_rows(&database, scenario.organization_id, scenario.node_id)
+            .await?
+            .as_array()
+            .ok_or("retried certificate expiry facts are not an array")?
+            .len(),
+        before_renewal.len()
+    );
     let replacement = renewal
         .certificate
         .as_ref()
@@ -371,6 +425,13 @@ pub async fn exercise(
         .material
         .ok_or("renewed certificate lost its material")?
         .expires_at;
+    let expiry_facts =
+        expiry_fact_rows(&database, scenario.organization_id, scenario.node_id).await?;
+    let expiry_facts = expiry_facts
+        .as_array()
+        .ok_or("certificate expiry facts are not an array")?;
+    assert_eq!(expiry_facts.len(), before_renewal.len() * 2);
+    assert!(!serde_json::to_string(expiry_facts)?.contains("reload rejected"));
     for route in &before_renewal {
         let subject_id = renewal_subject_id(route.id, scenario.node_id);
         let subject_facts = renewal_facts
@@ -434,6 +495,89 @@ pub async fn exercise(
         assert_eq!(renewed_payload.active_certificate_id, replacement.id);
         assert_eq!(
             renewed_payload.active_certificate_expires_at,
+            replacement_expires_at
+        );
+
+        let subject_expiry_facts = expiry_facts
+            .iter()
+            .filter(|event| event["aggregateId"] == subject_id.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(subject_expiry_facts.len(), 2);
+        let expiring_fact = subject_expiry_facts
+            .iter()
+            .find(|event| event["eventKey"] == "edge.gateway-certificate.expiring")
+            .ok_or("route certificate expiry firing fact is missing")?;
+        let resolved_fact = subject_expiry_facts
+            .iter()
+            .find(|event| event["eventKey"] == "edge.gateway-certificate.expiry-resolved")
+            .ok_or("route certificate expiry resolution fact is missing")?;
+        assert_eq!(expiring_fact["schemaVersion"], 1);
+        assert_eq!(
+            expiring_fact["aggregateVersion"],
+            certificate_expiry_aggregate_version(
+                previous_certificate.gateway_revision,
+                GatewayCertificateExpiryStatus::Expiring,
+            )?
+        );
+        assert_eq!(
+            expiring_fact["correlationId"],
+            first.publication.command_correlation_id.to_string()
+        );
+        assert_eq!(resolved_fact["schemaVersion"], 1);
+        assert_eq!(
+            resolved_fact["aggregateVersion"],
+            certificate_expiry_aggregate_version(
+                replacement.gateway_revision,
+                GatewayCertificateExpiryStatus::Resolved,
+            )?
+        );
+        assert_eq!(
+            resolved_fact["correlationId"],
+            renewal.publication.command_correlation_id.to_string()
+        );
+        let expiring_payload: GatewayCertificateExpiryChanged =
+            serde_json::from_value(expiring_fact["payload"].clone())?;
+        let resolved_payload: GatewayCertificateExpiryChanged =
+            serde_json::from_value(resolved_fact["payload"].clone())?;
+        assert_eq!(expiring_payload.route_id, route.id);
+        assert_eq!(expiring_payload.project_id, route.project_id);
+        assert_eq!(expiring_payload.environment_id, route.environment_id);
+        assert_eq!(expiring_payload.node_id, scenario.node_id);
+        assert_eq!(
+            expiring_payload.status,
+            GatewayCertificateExpiryStatus::Expiring
+        );
+        assert_eq!(
+            expiring_payload.certificate_gateway_revision,
+            previous_certificate.gateway_revision
+        );
+        assert_eq!(
+            expiring_payload.renewal_gateway_revision,
+            first.publication.revision
+        );
+        assert_eq!(
+            expiring_payload.active_certificate_id,
+            previous_certificate_id
+        );
+        assert_eq!(
+            expiring_payload.active_certificate_expires_at,
+            previous_expires_at
+        );
+        assert_eq!(
+            resolved_payload.status,
+            GatewayCertificateExpiryStatus::Resolved
+        );
+        assert_eq!(resolved_payload.active_certificate_id, replacement.id);
+        assert_eq!(
+            resolved_payload.certificate_gateway_revision,
+            replacement.gateway_revision
+        );
+        assert_eq!(
+            resolved_payload.renewal_gateway_revision,
+            renewal.publication.revision
+        );
+        assert_eq!(
+            resolved_payload.active_certificate_expires_at,
             replacement_expires_at
         );
     }
@@ -718,6 +862,24 @@ async fn renewal_fact_rows(
             .append(" and payload ->> 'node_id' = ")
             .bind(node_id.to_string())
             .append(" and event_key in ('edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed')"),
+        )
+        .await?)
+}
+
+async fn expiry_fact_rows(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    Ok(database
+        .fetch_one_as(
+            sql_query::<serde_json::Value>(
+                "select coalesce(jsonb_agg(jsonb_build_object('eventId', event_id::text, 'eventKey', event_key, 'schemaVersion', schema_version, 'aggregateId', aggregate_id::text, 'aggregateVersion', aggregate_version, 'correlationId', correlation_id::text, 'payload', payload) order by aggregate_version, aggregate_id, event_key), '[]'::jsonb) from outbox_events where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and payload ->> 'node_id' = ")
+            .bind(node_id.to_string())
+            .append(" and event_key in ('edge.gateway-certificate.expiring', 'edge.gateway-certificate.expiry-resolved')"),
         )
         .await?)
 }
