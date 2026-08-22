@@ -2397,9 +2397,10 @@ node.
   node-local revision, hostname/path, Workload, previous/replacement/active
   certificate identity, active-certificate expiry, and closed public outcome;
   provider-private failure text is excluded. Its deterministic Route-plus-node
-  subject prevents one replica from recovering another. `C0.3-N4c` may later
-  register `edge.gateway-certificate-renewal-status.v1`; a routine `renewed`
-  fact remains silent unless the same policy-covered subject previously fired.
+  subject prevents one replica from recovering another. The frozen `C0.3-N4c`
+  slice below registers `edge.gateway-certificate-renewal-status.v1`; a routine
+  `renewed` fact remains silent unless the same policy-covered subject previously
+  fired.
   This owner-fact prerequisite adds no alert policy version, certificate state,
   incident table, poller, timer, scheduler, queue, event rail, migration,
   configuration parser, or public surface. The
@@ -2410,6 +2411,26 @@ node.
   [successful Rust 1.88 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381665)
   proves independent subjects across two Gateway replicas, while the H0 job's
   separate durable NATS/manual-ack gate also remains green.
+- Frozen as `C0.3-N4c`: register only
+  `edge.gateway-certificate-renewal-status.v1` in the existing compile-time
+  alert source registry and preserve `cloud.notification.alert-policy.v1`.
+  The source admits exact schema-v1 `edge.gateway-certificate.renewal-failed`
+  and `edge.gateway-certificate.renewed` owner facts and decodes the bounded
+  Edge payload rather than selecting arbitrary keys or fields. A rejected
+  replacement projects one warning and an unavailable replacement one critical
+  notification. A renewed fact projects informational recovery only when the
+  policy opts in and its recipient has a most-recent covered failure for the
+  same deterministic Route-plus-node subject after policy creation. Routine or
+  initial success, stale pre-policy history, and another physical Gateway
+  member's success remain silent. Projection rechecks active Membership and
+  current Resource Grants before using the existing personal inbox and outbound
+  delivery path. One migration may widen only the closed policy-source check;
+  REST/OpenAPI `1.48.0` and the maintained client may expose the new value
+  through the existing create/list/get/revoke REST, CLI, and Management MCP
+  operations.
+  Edge remains the sole renewal authority, and this slice adds no policy
+  version, endpoint, tool, certificate state, incident table, mutable counter,
+  poller, timer, scheduler, queue, second event rail, or configuration parser.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   workload health, certificate expiry, backup status, node availability,
   operation latency, and resource signals only after each owning context or its
