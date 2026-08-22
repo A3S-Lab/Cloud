@@ -3,6 +3,7 @@ mod bundle_publication;
 mod commands;
 mod deployment;
 mod managed_replica_lifecycle;
+mod prior_writer_seal;
 mod provider_workload;
 mod queries;
 mod resource_access;
@@ -21,6 +22,7 @@ pub use deployment::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
     DurableCellDeploymentMutationResult,
 };
+pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 #[doc(hidden)]
 pub use provider_workload::compose_pinned_celld_service_process;
 pub use queries::{

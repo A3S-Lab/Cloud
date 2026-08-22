@@ -134,8 +134,12 @@ The code on `main` separates implemented mechanics from released capability:
   history. Migration `131` now lets Workloads bind the stopped current
   single-replica Durable Cell's exact successful `RuntimeRemove` acknowledgement
   to an immutable writer-fence receipt and atomically enqueue
-  `cloud.object-namespace.seal@2` with the Runtime fence. Successful seal
-  admission before start/rollout/rollback and a retained real-S3 pass remain.
+  `cloud.object-namespace.seal@2` with the Runtime fence. Component-only C5b
+  now makes every later Durable Cell Deployment generation wait in the existing
+  pre-start gate until that exact receipt-bound seal has a successful,
+  lineage-valid Operations projection; queued seals wait, failed seals fail
+  closed, and stale Deployment generations cannot bypass the gate. A retained
+  real-S3 lifecycle/fault pass remains.
 - **Implemented backend / Durable Cell interfaces** — application and revision
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint

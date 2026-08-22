@@ -167,7 +167,7 @@ impl ExecutionCreator {
         )
         .map_err(ApplicationError::Invalid)?;
         if let Some(replay) = self.executions.replay(&idempotency).await? {
-            validate_bound_replay(&request, &replay)?;
+            validate_bound_execution(&request, &replay)?;
             return Ok(CreateExecutionResult {
                 execution: replay,
                 replayed: true,
@@ -194,7 +194,7 @@ impl ExecutionCreator {
                 event,
             })
             .await?;
-        validate_bound_replay(&request, &write.execution)?;
+        validate_bound_execution(&request, &write.execution)?;
         Ok(CreateExecutionResult {
             execution: write.execution,
             replayed: write.replayed,
@@ -219,7 +219,7 @@ impl ExecutionCreator {
     }
 }
 
-fn validate_bound_replay(
+pub(crate) fn validate_bound_execution(
     request: &BoundExecutionCreation,
     execution: &Execution,
 ) -> ApplicationResult<()> {

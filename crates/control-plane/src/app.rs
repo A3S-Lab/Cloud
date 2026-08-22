@@ -58,12 +58,12 @@ use crate::modules::data::{
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
     DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
-    DurableCellWriterFenceAdapter, DurableCellsModule, GetDurableCellApplicationHandler,
-    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
-    IDurableCellDeploymentRepository, ListDurableCellApplicationRevisionsHandler,
-    ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
-    StopDurableCellApplicationHandler,
+    DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter, DurableCellsModule,
+    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
+    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
+    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
+    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -498,6 +498,7 @@ async fn build_api_worker_application(
     let replica_evacuations = adapters.workloads.replica_evacuations;
     let replica_retirements = adapters.workloads.replica_retirements;
     let writer_fences = adapters.workloads.writer_fences;
+    let operation_repository = adapters.operations;
     let workload_targets = adapters.workloads.workload_targets;
     let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
     let resource_claims = adapters.workloads.resource_claims;
@@ -765,6 +766,10 @@ async fn build_api_worker_application(
                 Arc::clone(&durable_cell_deployments),
                 Arc::clone(&builds),
                 Arc::clone(&workloads),
+                DurableCellPriorWriterSeal::new(
+                    Arc::clone(&writer_fences),
+                    Arc::clone(&operation_repository),
+                ),
                 Arc::clone(&environments),
                 Arc::clone(&executions),
             ));
@@ -1105,7 +1110,6 @@ async fn build_api_worker_application(
     } else {
         None
     };
-    let operation_repository = adapters.operations;
     let outbox_relay = if run_relay {
         Some(build_outbox_relay(
             &config,

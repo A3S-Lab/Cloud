@@ -442,8 +442,12 @@ postflight verification, so it remains the replay anchor throughout cleanup.
 Operations/Flow still owns the long-running operation and retry schedule.
 `CELL0.5-C5a` lets Workloads supply the immutable receipt and atomically
 enqueue the seal Operation only for the stopped current canonical single
-replica; no recovery repository, worker, object client, or evidence store is
-introduced.
+replica. Component-only `C5b` consumes that receipt through the existing
+Workload pre-start gate: it validates the exact Operations request and its
+canonical credential binding, the current provider digest, terminal projection,
+and monotonic recovery point before
+any later writer generation is applied. No recovery repository, worker, object
+client, evidence store, or second rollout lifecycle is introduced.
 
 Three current operation contracts—`cloud.object-namespace.seal@2`,
 `cloud.object-namespace.restore@2`, and `cloud.object-namespace.delete@2`—bind
@@ -461,9 +465,8 @@ repository, queue, worker, client registry,
 credential cache, or provider lifecycle exists.
 
 Managed database/volume/backup aggregates, persistence, production provider
-certification through retained `S0.1-C3/C4` passes, successful seal admission
-before start/rollout/rollback or any new writer, and retained real-provider
-fault evidence remain planned. This boundary prevents stateful behavior from
+certification through retained `S0.1-C3/C4` passes, and retained real-provider
+writer-admission/fault evidence remain planned. This boundary prevents stateful behavior from
 being hidden in workload metadata or provider-specific configuration.
 
 ### 3.11 Inference platform (planned I0)
@@ -1346,7 +1349,7 @@ notification-silent. This prerequisite owns no alert policy, incident, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API.
 
-### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a` implemented; `C4b` gate staged)
+### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -1530,9 +1533,19 @@ Runtime fence, receipt, and deterministic
 `cloud.object-namespace.seal@2` request in one PostgreSQL transaction.
 Ordinary Workloads, evacuation, unplaced replicas, and old-revision
 rollout/rollback retirement remain ordinary Workloads paths. The receipt is a
-handoff, not proof that the seal succeeded; start, rollout, rollback, and any
-new writer still need to fail closed until Operations/Flow reports the prior
-seal successful.
+handoff, not proof that the seal succeeded. Component-only `CELL0.5-C5b`
+therefore extends the existing Durable Cell Workload pre-start adapter with one
+prior-writer admission. The first writer is admitted only when no receipt
+exists. Every later canonical replica generation validates its current managed
+owner and generation-derived Deployment binding, then waits while the exact
+continuation Operation is active, fails closed when it fails or is cancelled,
+and proceeds only when `cloud.object-namespace.seal@2` succeeds with the exact
+receipt digest, namespace, canonical seal credential binding, current provider
+digest, writer epoch, and
+monotonic recovery point. A stale Deployment generation cannot reuse that
+success. Start, rollout, rollback, and secret-driven replacement already share
+this Deployment Flow v4 gate; the active-runtime reconciler cannot see the new
+writer until the gated Deployment becomes active.
 
 The staged component-only `CELL0.5-C4b` gate extends that same manual path before
 whole-prefix cleanup. It projects that exact validated template through the
@@ -3051,7 +3064,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, shared `S0.1-C4` Operations/Flow recovery composition, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates. `CELL0.5-C1/C2` bind the exact provider profile and use migration `118` to persist one signed typed output on the existing BuildRun, with exact successful application admission and no new bundle authority. Component-only `CELL0.5-C3a/C3b` use migrations `119`-`120` to add exact-node Artifact/Secret-bound inputs to the existing Execution aggregate and a generic Workload Deployment Flow v4 pre-start gate that deterministically composes the pinned publisher after placement, waits for its existing lifecycle, and preserves historic Flow replay. Component-only `CELL0.5-C4a` pins the ordinary Service to the same exact storage/provider semantics. Component-only `CELL0.5-C5a` uses migration `131` to persist the Workloads-owned exact-`RuntimeRemove` writer-fence receipt and atomically enqueue the deterministic namespace seal only for the stopped current canonical single replica. The real-Box runtime-only gate is retained, while successful seal before another writer, retained real bundle publication, and real storage recovery/application evidence remain open |
+| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, shared `S0.1-C4` Operations/Flow recovery composition, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates. `CELL0.5-C1/C2` bind the exact provider profile and use migration `118` to persist one signed typed output on the existing BuildRun, with exact successful application admission and no new bundle authority. Component-only `CELL0.5-C3a/C3b` use migrations `119`-`120` to add exact-node Artifact/Secret-bound inputs to the existing Execution aggregate and a generic Workload Deployment Flow v4 pre-start gate that deterministically composes the pinned publisher after placement, waits for its existing lifecycle, and preserves historic Flow replay. Component-only `CELL0.5-C4a` pins the ordinary Service to the same exact storage/provider semantics. Component-only `CELL0.5-C5a` uses migration `131` to persist the Workloads-owned exact-`RuntimeRemove` writer-fence receipt and atomically enqueue the deterministic namespace seal only for the stopped current canonical single replica; `C5b` reuses the existing pre-start gate to validate that exact Operations/Flow seal and recovery-point lineage before every later writer generation. The real-Box runtime-only gate is retained, while retained real seal admission, bundle publication, and storage recovery/application evidence remain open |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
@@ -3090,7 +3103,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | The one deployment-level immutable-object root selected by typed ACL; filesystem is development-only and production requires shared HTTPS S3-compatible storage |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port, and its three exact operation contracts are routed through the existing Operations/Flow runtime with JIT Secrets. `CELL0.5-C5a` implements Workloads-owned receipt production and atomic durable seal enqueue for the stopped current single replica through migration `131`; Operations/Flow still owns seal execution and the durable lifecycle, and activation/rollout/rollback must still wait for successful prior seal. There is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
+| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port, and its three exact operation contracts are routed through the existing Operations/Flow runtime with JIT Secrets. `CELL0.5-C5a` implements Workloads-owned receipt production and atomic durable seal enqueue for the stopped current single replica through migration `131`; Operations/Flow still owns seal execution and the durable lifecycle, while component-only `C5b` makes the existing pre-start gate wait for the exact successful prior seal before activation/rollout/rollback of a later writer generation. There is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |

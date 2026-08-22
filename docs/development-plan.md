@@ -4074,10 +4074,19 @@ Runtime class, node channel, object client, or per-Cell desired-state store.
   revision, writer epoch, member placement, managed owner, Runtime node/unit,
   command payload, and acknowledgement; ordinary Workloads, evacuation,
   unplaced, and old-revision rollout/rollback retirements do not enter this
-  adapter. C4b/C4c and the remaining C5 work must still make one real
+  adapter. Component-only C5b reuses the existing Workload Deployment
+  pre-start gate for every later canonical writer generation. It admits the
+  first writer when no receipt exists, waits for queued/running seal state,
+  fails closed on terminal failure or stale lineage, and admits start,
+  rollout, or rollback only after the exact receipt-bound
+  `cloud.object-namespace.seal@2` projection succeeds with a matching recovery
+  point. It recognizes generation-derived Workload Deployments through their
+  exact managed owner, replica binding, and current writer epoch rather than
+  adding another lifecycle. C4b/C4c and the remaining C5 evidence must still
+  make one real
   single-node application prove named state, alarms, WebSockets, idle
-  recovery, RPO=0 process death, successful seal before any new writer,
-  rollout/rollback, restore, complete stop, deletion, and exact cleanup. No
+  recovery, RPO=0 process death, rollout/rollback, restore, complete stop,
+  deletion, exact cleanup, and retained seal-before-writer behavior. No
   duplicate build, artifact, Secret, object-store, task, scheduler, Workload,
   route, or lifecycle mechanism is permitted.
 - `CELL0.6` adds multi-node acquisition, peer forwarding, takeover, partition,
