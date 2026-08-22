@@ -2508,8 +2508,9 @@ node.
   selector, expression evaluator, health or incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, configuration parser,
   endpoint, or tool.
-- Implement `C0.3-N4f` as the Edge owner-fact prerequisite for
-  certificate-expiry alerts. The existing Gateway certificate reconciler emits
+- Verified as `C0.3-N4f` on PostgreSQL 17.5 in CI: the Edge owner-fact
+  prerequisite for certificate-expiry alerts uses the existing Gateway
+  certificate reconciler to emit
   `edge.gateway-certificate.expiring` exactly once per retained logical Route
   and physical Node when the first `Renewal` convergence is staged for a
   still-active certificate. A later applied replacement emits
@@ -2533,8 +2534,13 @@ node.
   adds no certificate or incident table, mutable counter, poller, timer,
   scheduler, queue, second event rail, migration, configuration parser, or
   public surface. Local formatting, strict Clippy, focused expiry/replica
-  regressions, and the full workspace test suite pass; the checksum-pinned
-  PostgreSQL 17.5 transaction fixture remains the CI H0 release gate.
+  regressions, and the full workspace test suite pass. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32569725403/job/97023376773)
+  proves on checksum-pinned PostgreSQL 17.5 that an injected firing-Outbox
+  failure rolls back the scope, convergence, and every fact; an exact retry
+  then commits one firing fact per Route, later failed-attempt retry stays
+  silent, and applied replacement commits the exact resolution facts without
+  private acknowledgement text.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   certificate expiry only after `C0.3-N4f` is verified, and cover backup status,
   node availability,

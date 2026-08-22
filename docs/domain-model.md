@@ -1491,7 +1491,7 @@ lifecycle, arbitrary selector, payload expression, health or incident table,
 counter, poller, timer, scheduler, queue, event rail, configuration format,
 endpoint, or tool is introduced.
 
-#### Edge certificate-expiry fact (`C0.3-N4f` implemented; PostgreSQL H0 pending)
+#### Edge certificate-expiry fact (`C0.3-N4f` verified on PostgreSQL 17.5 in CI)
 
 Edge remains the certificate lifecycle and expiry authority. When the existing
 Gateway certificate reconciler stages the first
@@ -1529,9 +1529,13 @@ firing fact commit in one existing Edge transaction and Outbox. The applied
 terminal transition and every resolution fact commit through the existing
 acknowledgement transaction. Outbox failure rolls back the owning mutation, and
 terminal replay remains silent. Local formatting, strict Clippy, focused
-expiry/replica regressions, and the full workspace test suite pass; the
-checksum-pinned PostgreSQL 17.5 transaction fixture remains the CI H0 release
-gate. No certificate or incident table, mutable
+expiry/replica regressions, and the full workspace test suite pass. The
+[successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32569725403/job/97023376773)
+proves on checksum-pinned PostgreSQL 17.5 that an injected firing-Outbox failure
+rolls back the scope, convergence, and every fact; exact retry then commits one
+firing fact per Route, retry after a failed attempt stays silent, and applied
+replacement commits exact resolution facts without private acknowledgement
+text. No certificate or incident table, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API belongs to this prerequisite.
 
