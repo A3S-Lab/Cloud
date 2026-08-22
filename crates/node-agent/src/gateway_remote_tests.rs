@@ -235,7 +235,6 @@ impl Drop for LoopbackHttpUpstream {
 async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> TestResult {
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
-    let (traffic_port, management_port) = unused_ports();
     let gateway_id = uuid::Uuid::now_v7();
     let workload_id = uuid::Uuid::now_v7();
     let initial_revision_id = uuid::Uuid::now_v7();
@@ -252,6 +251,10 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     );
     let initial_upstream = LoopbackHttpUpstream::start(INITIAL_UPSTREAM_BODY).await?;
     let replacement_upstream = LoopbackHttpUpstream::start(REPLACEMENT_UPSTREAM_BODY).await?;
+    // Keep the loopback upstreams bound before selecting Gateway ports. Otherwise a port that
+    // `unused_ports` just released can be reused by either upstream before the first snapshot is
+    // applied, making the real-Gateway gate reject an otherwise valid snapshot intermittently.
+    let (traffic_port, management_port) = unused_ports();
     let managed_state_file = directory.path().join("managed-snapshot.json");
     let bootstrap = management_gateway_acl(management_port, gateway_id, &managed_state_file);
     let config_path = directory.path().join("gateway.acl");
@@ -279,11 +282,9 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             &initial_target,
         ),
     )?;
-    if !matches!(
-        installer.install(&first).await?,
-        GatewaySnapshotInstallOutcome::Applied { .. }
-    ) {
-        return Err("real Gateway did not apply the first snapshot".into());
+    let outcome = installer.install(&first).await?;
+    if !matches!(&outcome, GatewaySnapshotInstallOutcome::Applied { .. }) {
+        return Err(format!("real Gateway did not apply the first snapshot: {outcome:?}").into());
     }
     let traffic_url = format!("http://127.0.0.1:{traffic_port}/fixture");
     let traffic_client = reqwest::Client::builder().no_proxy().build()?;
@@ -310,11 +311,9 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             &replacement_target,
         ),
     )?;
-    if !matches!(
-        installer.install(&second).await?,
-        GatewaySnapshotInstallOutcome::Applied { .. }
-    ) {
-        return Err("real Gateway did not apply the second snapshot".into());
+    let outcome = installer.install(&second).await?;
+    if !matches!(&outcome, GatewaySnapshotInstallOutcome::Applied { .. }) {
+        return Err(format!("real Gateway did not apply the second snapshot: {outcome:?}").into());
     }
     let response = wait_for_http(&traffic_client, &traffic_url, &mut gateway.child).await?;
     if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
@@ -361,11 +360,9 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     if renewal.snapshot_digest != second.snapshot_digest {
         return Err("Gateway validity renewal changed the exact ACL digest".into());
     }
-    if !matches!(
-        installer.install(&renewal).await?,
-        GatewaySnapshotInstallOutcome::Applied { .. }
-    ) {
-        return Err("real Gateway did not apply the validity renewal".into());
+    let outcome = installer.install(&renewal).await?;
+    if !matches!(&outcome, GatewaySnapshotInstallOutcome::Applied { .. }) {
+        return Err(format!("real Gateway did not apply the validity renewal: {outcome:?}").into());
     }
     let renewed = control.readiness(&renewal).await?;
     if renewed.state != ManagedSnapshotState::Applied
@@ -402,6 +399,9 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
 async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> TestResult {
     let binary = required_gateway_binary()?;
     let directory = tempfile::tempdir()?;
+    let initial_upstream = LoopbackHttpUpstream::start(INITIAL_UPSTREAM_BODY).await?;
+    // Reserve Gateway ports only after the upstream is bound so the OS cannot hand the released
+    // TLS port to this fixture before the first managed snapshot is applied.
     let (tls_port, management_port) = unused_ports();
     let node_id = uuid::Uuid::now_v7();
     let workload_id = uuid::Uuid::now_v7();
@@ -437,7 +437,6 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
         return Err("Gateway TLS port was available before snapshot reload".into());
     }
 
-    let initial_upstream = LoopbackHttpUpstream::start(INITIAL_UPSTREAM_BODY).await?;
     let initial_certificate_id = uuid::Uuid::now_v7();
     let dns_names = vec![TLS_HOSTNAME.to_owned()];
     let certificate_root = directory.path().join("managed-certificates");
@@ -493,11 +492,11 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     {
         return Err("initial snapshot omitted the typed Cloud target identity".into());
     }
-    if !matches!(
-        initial_installer.install(&initial_snapshot).await?,
-        GatewaySnapshotInstallOutcome::Applied { .. }
-    ) {
-        return Err("real Gateway did not apply the managed TLS snapshot".into());
+    let outcome = initial_installer.install(&initial_snapshot).await?;
+    if !matches!(&outcome, GatewaySnapshotInstallOutcome::Applied { .. }) {
+        return Err(
+            format!("real Gateway did not apply the managed TLS snapshot: {outcome:?}").into(),
+        );
     }
     if initial_signer.calls.load(Ordering::SeqCst) != 1 {
         return Err("managed TLS fixture did not perform exactly one signing request".into());
@@ -567,11 +566,12 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     {
         return Err("replacement snapshot omitted the typed Cloud target identity".into());
     }
-    if !matches!(
-        replacement_installer.install(&replacement_snapshot).await?,
-        GatewaySnapshotInstallOutcome::Applied { .. }
-    ) {
-        return Err("real Gateway did not apply the replacement TLS snapshot".into());
+    let outcome = replacement_installer.install(&replacement_snapshot).await?;
+    if !matches!(&outcome, GatewaySnapshotInstallOutcome::Applied { .. }) {
+        return Err(format!(
+            "real Gateway did not apply the replacement TLS snapshot: {outcome:?}"
+        )
+        .into());
     }
     if replacement_signer.calls.load(Ordering::SeqCst) != 1
         || initial_signer.calls.load(Ordering::SeqCst) != 1
