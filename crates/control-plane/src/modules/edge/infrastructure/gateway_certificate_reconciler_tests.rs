@@ -36,6 +36,8 @@ use uuid::Uuid;
 
 #[path = "gateway_certificate_reconciler_tests/expiration_tests.rs"]
 mod expiration_tests;
+#[path = "gateway_certificate_reconciler_tests/expiry_risk_tests.rs"]
+mod expiry_risk_tests;
 
 #[derive(Default)]
 struct RecordingGatewayQueue {

@@ -1,10 +1,10 @@
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, GatewayReplicaRecoveryState, GatewayReplicaRolloutState,
-    GatewayRollout, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
-    GatewayRouteCutover, GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route,
-    RouteState,
+    GatewayCertificateConvergenceState, GatewayCertificateExpiryRisk, GatewayCertificateState,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRecoveryState,
+    GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutRollback,
+    GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayScope, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
@@ -329,6 +329,30 @@ pub struct GatewayCertificateConvergenceTarget {
     pub routes: Vec<GatewayCertificateRouteStatus>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayCertificateExpiryRiskTarget {
+    pub route: Route,
+    pub certificate: GatewayCertificate,
+}
+
+impl GatewayCertificateExpiryRiskTarget {
+    pub fn validate(&self, risk_before: DateTime<Utc>) -> Result<(), String> {
+        let material = self.certificate.material.as_ref().ok_or_else(|| {
+            "Gateway certificate expiry-risk target omitted certificate material".to_owned()
+        })?;
+        if self.route.state != RouteState::Active
+            || self.route.gateway_certificate_id != Some(self.certificate.id)
+            || self.route.organization_id != self.certificate.organization_id
+            || self.route.gateway_node_id != self.certificate.node_id
+            || self.certificate.state != GatewayCertificateState::Ready
+            || material.expires_at > risk_before
+        {
+            return Err("Gateway certificate expiry-risk target is inconsistent".into());
+        }
+        Ok(())
+    }
+}
+
 impl GatewayCertificateConvergenceTarget {
     pub fn validate(&self) -> Result<(), String> {
         let installed_revision = self
@@ -531,6 +555,27 @@ pub trait IEdgeRepository: Send + Sync {
         snapshot_renew_before: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<GatewayCertificateConvergenceTarget>, RepositoryError>;
+
+    async fn gateway_certificate_expiry_risk_targets(
+        &self,
+        risk_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateExpiryRiskTarget>, RepositoryError>;
+
+    async fn mark_gateway_certificate_expiry_at_risk(
+        &self,
+        organization_id: OrganizationId,
+        route_id: RouteId,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, RepositoryError>;
+
+    async fn find_gateway_certificate_expiry_risk(
+        &self,
+        route_id: RouteId,
+        node_id: NodeId,
+    ) -> Result<Option<GatewayCertificateExpiryRisk>, RepositoryError>;
 
     async fn pending_gateway_certificate_convergences(
         &self,

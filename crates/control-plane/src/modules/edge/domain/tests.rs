@@ -43,6 +43,7 @@ fn route(now: chrono::DateTime<Utc>) -> Route {
     .expect("route")
 }
 
+mod gateway_certificate_expiry_risk_tests;
 mod gateway_rollout_tests;
 
 #[test]

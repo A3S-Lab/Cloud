@@ -819,7 +819,7 @@ fn validate_active_certificate(
     Ok(())
 }
 
-fn active_routes_for_node(state: &State, node_id: NodeId) -> Vec<Route> {
+pub(super) fn active_routes_for_node(state: &State, node_id: NodeId) -> Vec<Route> {
     let projected_route_ids = state
         .rollout_route_projections
         .values()

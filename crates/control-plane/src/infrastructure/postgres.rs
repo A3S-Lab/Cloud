@@ -1253,6 +1253,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/134_notification_alert_policy_workload_source.sql"
             )),
         ),
+        Migration::new(
+            "135",
+            "Gateway certificate expiry-risk projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/135_gateway_certificate_expiry_risks.sql"
+            )),
+        ),
     ]
 }
 
@@ -2172,6 +2180,53 @@ mod notification_alert_policy_workload_source_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 134 duplicated alert authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod gateway_certificate_expiry_risk_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/135_gateway_certificate_expiry_risks.sql"
+    ));
+
+    #[test]
+    fn migration_135_adds_only_the_edge_owned_expiry_risk_projection() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "create table gateway_certificate_expiry_risks",
+            "organization_id uuid not null references organizations(id)",
+            "primary key (route_id, node_id)",
+            "foreign key (organization_id, node_id)",
+            "foreign key (node_id, gateway_revision)",
+            "state in ('at_risk', 'clear')",
+            "active_certificate_expires_at <= updated_at + interval '24 hours'",
+            "active_certificate_expires_at > updated_at + interval '24 hours'",
+            "previous_at_risk_certificate_id <> active_certificate_id",
+            "generation bigint not null check (generation > 0)",
+            "edge-owned monotonic route-plus-node certificate expiry-risk transition projection",
+        ] {
+            assert!(
+                lower.contains(expected),
+                "migration 135 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create trigger",
+            "notification_alert_policies",
+            "notification_incident",
+            "configurable_threshold",
+            "next_evaluation",
+            "clock_timestamp",
+            "pg_sleep",
+            "json_path",
+            "jsonpath",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 135 duplicated authority through {forbidden}"
             );
         }
     }

@@ -2,6 +2,7 @@ mod in_memory;
 mod postgres;
 mod postgres_acknowledgement;
 mod postgres_certificate_convergence;
+mod postgres_certificate_expiry_risks;
 mod postgres_cutovers;
 mod postgres_gateway_scopes;
 mod postgres_mcp_credential_lifecycle;

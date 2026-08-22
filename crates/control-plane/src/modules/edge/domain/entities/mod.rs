@@ -1,6 +1,7 @@
 mod domain_claim;
 mod gateway_certificate;
 mod gateway_certificate_convergence;
+mod gateway_certificate_expiry_risk;
 mod gateway_publication;
 mod gateway_replica_recovery;
 mod gateway_rollout;
@@ -19,6 +20,10 @@ pub use gateway_certificate::{
 pub use gateway_certificate_convergence::{
     GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayRouteVersion,
+};
+pub use gateway_certificate_expiry_risk::{
+    expiry_risk_deadline, GatewayCertificateExpiryRisk, GatewayCertificateExpiryRiskState,
+    GATEWAY_CERTIFICATE_EXPIRY_RISK_WINDOW_SECONDS,
 };
 pub use gateway_publication::{GatewayPublication, GatewayPublicationState, GatewayScopeState};
 pub use gateway_replica_recovery::{GatewayReplicaRecovery, GatewayReplicaRecoveryState};

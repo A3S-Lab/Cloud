@@ -1,5 +1,6 @@
 mod domain_claim_changed;
 mod gateway_certificate_convergence_staged;
+mod gateway_certificate_expiry_risk_changed;
 mod gateway_certificate_renewal_changed;
 mod gateway_rollout_staged;
 mod gateway_route_cutover_staged;
@@ -11,6 +12,9 @@ mod route_publication_staged;
 
 pub use domain_claim_changed::DomainClaimChanged;
 pub use gateway_certificate_convergence_staged::GatewayCertificateConvergenceStaged;
+pub use gateway_certificate_expiry_risk_changed::{
+    expiry_risk_subject_id, GatewayCertificateExpiryRiskChanged,
+};
 pub use gateway_certificate_renewal_changed::{
     renewal_subject_id, GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
     GatewayCertificateRenewalStatus,

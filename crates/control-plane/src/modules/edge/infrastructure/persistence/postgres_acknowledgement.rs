@@ -1,5 +1,6 @@
 use super::postgres::{PublicationRow, PublicationSelection, RouteRow, RouteSelection};
 use super::postgres_certificate_convergence;
+use super::postgres_certificate_expiry_risks;
 use super::postgres_cutovers;
 use super::postgres_mcp_gateway_snapshots;
 use super::postgres_rollout_routes;
@@ -134,6 +135,14 @@ pub(super) async fn project(
                                 acknowledgement.acknowledged_at,
                             )
                             .await?;
+                            postgres_certificate_expiry_risks::observe_applied_certificate(
+                                transaction,
+                                NodeId::from_uuid(acknowledgement.node_id),
+                                certificate_id,
+                                acknowledgement.acknowledged_at,
+                                publication.command_correlation_id,
+                            )
+                            .await?;
                         } else if has_active_routes(
                             transaction,
                             NodeId::from_uuid(acknowledgement.node_id),
@@ -248,6 +257,14 @@ pub(super) async fn project(
                                 &acknowledgement.snapshot_digest,
                                 certificate_id,
                                 acknowledgement.acknowledged_at,
+                            )
+                            .await?;
+                            postgres_certificate_expiry_risks::observe_applied_certificate(
+                                transaction,
+                                NodeId::from_uuid(acknowledgement.node_id),
+                                certificate_id,
+                                acknowledgement.acknowledged_at,
+                                publication.command_correlation_id,
                             )
                             .await?;
                         } else if has_active_routes(
@@ -420,6 +437,14 @@ pub(super) async fn project(
                             &acknowledgement.snapshot_digest,
                             certificate_id,
                             acknowledgement.acknowledged_at,
+                        )
+                        .await?;
+                        postgres_certificate_expiry_risks::observe_applied_certificate(
+                            transaction,
+                            NodeId::from_uuid(acknowledgement.node_id),
+                            certificate_id,
+                            acknowledgement.acknowledged_at,
+                            publication.command_correlation_id,
                         )
                         .await?;
                     } else if has_active_routes(

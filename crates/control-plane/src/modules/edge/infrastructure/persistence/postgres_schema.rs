@@ -130,6 +130,23 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct GatewayCertificateExpiryRisks => "gateway_certificate_expiry_risks" {
+        organization_id: Uuid => "organization_id",
+        route_id: Uuid => "route_id",
+        node_id: Uuid => "node_id",
+        state: String => "state",
+        active_certificate_id: Uuid => "active_certificate_id",
+        active_certificate_expires_at: DateTime<Utc> => "active_certificate_expires_at",
+        gateway_revision: u64 => "gateway_revision",
+        generation: u64 => "generation",
+        previous_at_risk_certificate_id: Option<Uuid> => "previous_at_risk_certificate_id",
+        previous_at_risk_certificate_expires_at: Option<DateTime<Utc>> => "previous_at_risk_certificate_expires_at",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+    }
+}
+
+orm_table! {
     pub(super) struct GatewayRouteScopes => "gateway_route_scopes" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

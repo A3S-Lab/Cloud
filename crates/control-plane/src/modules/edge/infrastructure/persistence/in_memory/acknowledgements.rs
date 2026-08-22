@@ -1,4 +1,6 @@
-use super::{certificate_convergence, validate_applied_cutover_routes, State};
+use super::{
+    certificate_convergence, certificate_expiry_risks, validate_applied_cutover_routes, State,
+};
 use crate::modules::edge::domain::{
     GatewayCertificateConvergenceState, GatewayPublicationState, GatewayRollout,
     GatewayRouteCutoverState, Route, RouteState,
@@ -98,6 +100,13 @@ pub(super) async fn project(
                     &acknowledgement.snapshot_digest,
                     certificate_id,
                     acknowledgement.acknowledged_at,
+                )?;
+                certificate_expiry_risks::observe_applied_certificate(
+                    &mut state,
+                    node_id,
+                    certificate_id,
+                    acknowledgement.acknowledged_at,
+                    publication.command_correlation_id,
                 )?;
             } else if certificate_convergence::has_active_routes(&state, node_id) {
                 return Err(RepositoryError::Storage(
@@ -287,6 +296,7 @@ pub(super) async fn project(
     if let Some(certificate) = certificate {
         state.certificates.insert(certificate.id, certificate);
     }
+    let command_correlation_id = publication.command_correlation_id;
     state.publications.insert((node_id, revision), publication);
     if acknowledgement.state == GatewayAckState::Applied {
         if let Some(certificate_id) = active_certificate_id {
@@ -298,6 +308,13 @@ pub(super) async fn project(
                 &acknowledgement.snapshot_digest,
                 certificate_id,
                 acknowledgement.acknowledged_at,
+            )?;
+            certificate_expiry_risks::observe_applied_certificate(
+                &mut state,
+                node_id,
+                certificate_id,
+                acknowledgement.acknowledged_at,
+                command_correlation_id,
             )?;
         } else if certificate_convergence::has_active_routes(&state, node_id) {
             return Err(RepositoryError::Storage(

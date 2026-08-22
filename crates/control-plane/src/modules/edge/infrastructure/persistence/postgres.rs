@@ -5,16 +5,16 @@ use crate::infrastructure::{
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget, GatewayRolloutResult,
-    GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
+    GatewayCertificateExpiryRiskTarget, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
+    GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
     StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
     StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
-    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayPublication,
-    GatewayPublicationState, GatewayRollout, GatewayRolloutRollback, GatewayRouteCutover,
-    GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
-    RouteTarget, UpstreamEndpoint,
+    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateExpiryRisk,
+    GatewayPublication, GatewayPublicationState, GatewayRollout, GatewayRolloutRollback,
+    GatewayRouteCutover, GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath,
+    RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedRoutePublication,
@@ -41,8 +41,8 @@ use super::postgres_schema::{
 };
 use super::postgres_tls::{self as tls, insert_certificate};
 use super::{
-    postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes,
-    postgres_rollout_routes, postgres_rollouts,
+    postgres_certificate_convergence, postgres_certificate_expiry_risks, postgres_cutovers,
+    postgres_gateway_scopes, postgres_rollout_routes, postgres_rollouts,
 };
 
 #[derive(Clone)]
@@ -445,6 +445,41 @@ impl IEdgeRepository for PostgresEdgeRepository {
         limit: usize,
     ) -> Result<Vec<GatewayCertificate>, RepositoryError> {
         postgres_certificate_convergence::obsolete_certificates(&self.executor, limit).await
+    }
+
+    async fn gateway_certificate_expiry_risk_targets(
+        &self,
+        risk_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateExpiryRiskTarget>, RepositoryError> {
+        postgres_certificate_expiry_risks::targets(&self.executor, risk_before, limit).await
+    }
+
+    async fn mark_gateway_certificate_expiry_at_risk(
+        &self,
+        organization_id: OrganizationId,
+        route_id: RouteId,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, RepositoryError> {
+        postgres_certificate_expiry_risks::mark_at_risk(
+            &self.executor,
+            organization_id,
+            route_id,
+            node_id,
+            certificate_id,
+            observed_at,
+        )
+        .await
+    }
+
+    async fn find_gateway_certificate_expiry_risk(
+        &self,
+        route_id: RouteId,
+        node_id: NodeId,
+    ) -> Result<Option<GatewayCertificateExpiryRisk>, RepositoryError> {
+        postgres_certificate_expiry_risks::find(&self.executor, route_id, node_id).await
     }
 
     async fn find_gateway_route_cutover(

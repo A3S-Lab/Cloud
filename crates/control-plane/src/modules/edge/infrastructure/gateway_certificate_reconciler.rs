@@ -14,7 +14,7 @@ use crate::modules::edge::domain::services::{
     GatewayCertificateAuthorityError, IGatewayCertificateAuthority, IGatewayCommandQueue,
 };
 use crate::modules::edge::domain::{
-    DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
+    expiry_risk_deadline, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateState, GatewayPublication,
     GatewayRouteVersion,
 };
@@ -41,6 +41,8 @@ pub struct GatewayCertificateReconciliationFailure {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCertificateReconciliationReport {
+    pub expiry_risk_targets: usize,
+    pub projected_expiry_risks: usize,
     pub pending_convergences: usize,
     pub unavailable_convergences: usize,
     pub convergence_targets: usize,
@@ -156,6 +158,37 @@ impl GatewayCertificateReconciler {
                 )
             })?;
         let mut report = GatewayCertificateReconciliationReport::default();
+
+        let risk_before = expiry_risk_deadline(now).map_err(RepositoryError::Conflict)?;
+        let risk_targets = self
+            .repository
+            .gateway_certificate_expiry_risk_targets(risk_before, self.batch_size)
+            .await?;
+        report.expiry_risk_targets = risk_targets.len();
+        for target in risk_targets {
+            let route = target.route;
+            let certificate = target.certificate;
+            match self
+                .repository
+                .mark_gateway_certificate_expiry_at_risk(
+                    route.organization_id,
+                    route.id,
+                    route.gateway_node_id,
+                    certificate.id,
+                    now,
+                )
+                .await
+            {
+                Ok(true) => report.projected_expiry_risks += 1,
+                Ok(false) => {}
+                Err(_) => report.failures.push(failure(
+                    route.gateway_node_id,
+                    certificate.id,
+                    "observe-expiry-risk",
+                    "Gateway certificate expiry-risk projection failed",
+                )),
+            }
+        }
 
         let pending = self
             .repository

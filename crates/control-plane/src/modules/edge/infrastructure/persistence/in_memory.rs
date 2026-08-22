@@ -1,15 +1,16 @@
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
-    GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget, GatewayRolloutResult,
-    GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
+    GatewayCertificateExpiryRiskTarget, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
+    GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRouteCutoverResult, IEdgeRepository,
     StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
     StageGatewayRouteCutover, StageRoutePublication, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayPublication, GatewayPublicationState, GatewayRollout, GatewayRolloutRollback,
-    GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential, Route, RouteState,
+    GatewayCertificateExpiryRisk, GatewayPublication, GatewayPublicationState, GatewayRollout,
+    GatewayRolloutRollback, GatewayRouteCutover, GatewayScope, GatewayScopeState, McpCredential,
+    Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
@@ -24,6 +25,7 @@ use tokio::sync::RwLock;
 
 mod acknowledgements;
 mod certificate_convergence;
+mod certificate_expiry_risks;
 mod certificates;
 mod gateway_scopes;
 mod mcp_credentials;
@@ -53,6 +55,7 @@ struct State {
     publications: BTreeMap<(NodeId, u64), GatewayPublication>,
     certificates: BTreeMap<GatewayCertificateId, GatewayCertificate>,
     certificate_convergences: BTreeMap<(NodeId, u64), GatewayCertificateConvergence>,
+    certificate_expiry_risks: BTreeMap<(RouteId, NodeId), GatewayCertificateExpiryRisk>,
     cutovers: BTreeMap<DeploymentId, GatewayRouteCutover>,
     commands: BTreeMap<(NodeId, NodeCommandId), u64>,
     idempotency: BTreeMap<(String, String), (String, EdgeRoutePublicationResult)>,
@@ -784,6 +787,48 @@ impl IEdgeRepository for InMemoryEdgeRepository {
             snapshot_renew_before,
             limit,
         )
+    }
+
+    async fn gateway_certificate_expiry_risk_targets(
+        &self,
+        risk_before: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<GatewayCertificateExpiryRiskTarget>, RepositoryError> {
+        let state = self.state.read().await;
+        certificate_expiry_risks::targets(&state, risk_before, limit)
+    }
+
+    async fn mark_gateway_certificate_expiry_at_risk(
+        &self,
+        organization_id: OrganizationId,
+        route_id: RouteId,
+        node_id: NodeId,
+        certificate_id: GatewayCertificateId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, RepositoryError> {
+        let mut state = self.state.write().await;
+        certificate_expiry_risks::mark_at_risk(
+            &mut state,
+            organization_id,
+            route_id,
+            node_id,
+            certificate_id,
+            observed_at,
+        )
+    }
+
+    async fn find_gateway_certificate_expiry_risk(
+        &self,
+        route_id: RouteId,
+        node_id: NodeId,
+    ) -> Result<Option<GatewayCertificateExpiryRisk>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .certificate_expiry_risks
+            .get(&(route_id, node_id))
+            .cloned())
     }
 
     async fn pending_gateway_certificate_convergences(
