@@ -2662,9 +2662,10 @@ node.
   and required-STARTTLS downgrade rejection. Repository, dispatcher, event
   consumer, configuration, composition, and migration tests pass together with
   the full workspace suite, strict Clippy, formatting, and documentation. A
-  digest-pinned authenticated required-STARTTLS Mailpit test and the extended
-  PostgreSQL/NATS H0 fixture are wired into CI; this text does not claim those
-  retained provider gates until their first successful run is linked.
+  checksum-pinned official Mailpit `1.30.6` authenticated required-STARTTLS
+  test and the extended PostgreSQL/NATS H0 fixture are wired into CI; this text
+  does not claim those retained provider gates until their first successful run
+  is linked.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its
