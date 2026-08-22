@@ -81,7 +81,8 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                         "type": "string",
                         "enum": [
                             "edge.domain-claim-status.v1",
-                            "edge.gateway-certificate-renewal-status.v1"
+                            "edge.gateway-certificate-renewal-status.v1",
+                            "workload.deployment-health.v1"
                         ]
                     },
                     "projectId": { "type": "string", "format": "uuid" },

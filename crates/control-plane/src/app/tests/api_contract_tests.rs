@@ -347,7 +347,8 @@ fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Re
         response["properties"]["source"]["enum"],
         json!([
             "edge.domain-claim-status.v1",
-            "edge.gateway-certificate-renewal-status.v1"
+            "edge.gateway-certificate-renewal-status.v1",
+            "workload.deployment-health.v1"
         ])
     );
     assert_eq!(

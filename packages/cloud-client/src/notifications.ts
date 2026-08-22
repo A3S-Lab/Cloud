@@ -42,7 +42,8 @@ export interface NotificationQuery {
 
 export type NotificationAlertSource =
   | 'edge.domain-claim-status.v1'
-  | 'edge.gateway-certificate-renewal-status.v1';
+  | 'edge.gateway-certificate-renewal-status.v1'
+  | 'workload.deployment-health.v1';
 export type NotificationAlertPolicyState = 'active' | 'revoked';
 
 export interface NotificationAlertPolicy {

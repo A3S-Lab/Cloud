@@ -757,7 +757,7 @@ async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface
     assert_eq!(created["data"]["policy"]["state"], "active");
     assert_eq!(
         created["data"]["policy"]["source"],
-        "edge.domain-claim-status.v1"
+        "workload.deployment-health.v1"
     );
     assert_eq!(
         created["data"]["policy"]["definitionSchema"],
@@ -968,7 +968,7 @@ fn notification_alert_policy_acl(
             .map_err(|error| BootError::Internal(format!("invalid {label}: {error}")))
     };
     NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
-        source: NotificationAlertSource::EdgeDomainClaimStatusV1,
+        source: NotificationAlertSource::WorkloadDeploymentHealthV1,
         project_id: ProjectId::from_uuid(parse(project_id, "project ID")?),
         environment_id: EnvironmentId::from_uuid(parse(environment_id, "environment ID")?),
         notify_on_recovery,
