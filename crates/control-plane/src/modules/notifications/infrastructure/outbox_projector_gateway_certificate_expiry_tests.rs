@@ -191,14 +191,10 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
         .await
         .expect("replay resolution");
 
-    let next_firing = GatewayCertificateExpiryFixture::new(
-        organization_id,
-        project_id,
-        environment_id,
-        route_id,
-        node_id,
-    )
-    .message(
+    let mut next_lifecycle = lifecycle.clone();
+    next_lifecycle.previous_certificate_id = lifecycle.replacement_certificate_id;
+    next_lifecycle.replacement_certificate_id = GatewayCertificateId::new();
+    let next_firing = next_lifecycle.message(
         GatewayCertificateExpiryStatus::Expiring,
         5,
         7,
