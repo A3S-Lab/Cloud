@@ -2442,7 +2442,7 @@ node.
   Edge remains the sole renewal authority, and this slice adds no policy
   version, endpoint, tool, certificate state, incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, or configuration parser.
-- Implemented as `C0.3-N4d`; retained PostgreSQL 17 evidence remains open:
+- Verified as `C0.3-N4d` on PostgreSQL 17.5 in CI:
   Workloads supplies bounded rollout-health owner
   facts through its existing deployment state machine. A desired deployment
   that first reaches `Failed` from `Queued`, `Resolving`, `Scheduled`,
@@ -2468,7 +2468,11 @@ node.
   back. In-memory coverage proves exact typed payloads, replay deduplication,
   same-revision silence, and private-error exclusion. The PostgreSQL foundation
   additionally injects failed and healthy Outbox writes and verifies complete
-  rollback before exact retry. A later `C0.3-N4e` may register only the
+  rollback before exact retry. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32557820241/job/96994701683)
+  proves those rollback boundaries, exact persisted failed/healthy facts,
+  replay deduplication, same-revision silence, and private-error exclusion on
+  checksum-pinned PostgreSQL 17.5. A later `C0.3-N4e` may register only the
   closed `workload.deployment-health.v1` source and treat `healthy` as recovery
   after a policy-covered failure; initial and routine health remain silent.
   This prerequisite adds no alert policy version, health table, incident state,
