@@ -1,4 +1,5 @@
 use super::components::install_components;
+use super::documentation::install_documentation;
 use super::operation::describe_operation;
 use super::route::openapi_info;
 use super::{
@@ -20,6 +21,7 @@ pub fn generate_openapi_contract(application: &BootApplication) -> Result<Value>
     let public_operations = public_operations(application);
     normalize_and_describe_paths(&mut document, &public_operations)?;
     install_components(&mut document)?;
+    install_documentation(&mut document)?;
     Ok(document)
 }
 

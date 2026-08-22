@@ -444,8 +444,11 @@ supersede those claims rather than acting as a second live status source.
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
 
-The current REST/OpenAPI contract is `1.47.0`. It adds immutable personal alert
-policy create/list/get/revoke over the first closed typed DomainClaim status
+The current REST/OpenAPI contract is `1.48.0`. It adds complete human-readable
+operation, tag, parameter, request, response, example, authentication, and
+compatibility documentation for the entire REST surface. It also retains
+`1.47.0`'s immutable personal alert policy create/list/get/revoke over the
+first closed typed DomainClaim status
 source while retaining `1.46.0`'s nullable immutable outbound-notification
 event-time suppression and the caller-owned
 Application session close and invocation cancellation plus complete bounded
@@ -1733,7 +1736,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.29.0`. Focused tests regenerate the
+  and every API response pin the current contract `1.48.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic

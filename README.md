@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.47.0" src="https://img.shields.io/badge/REST_contract-1.47.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.48.0" src="https://img.shields.io/badge/REST_contract-1.48.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,14 +61,18 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.47.0`](openapi/v1.json), maintained
+  [OpenAPI `1.48.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. The contract includes immutable v1 fixed-eight and v2
   user-selected one-through-eight outbound-notification provider-attempt
   budgets, plus v3's bounded immutable event-time suppression cutoff. Contract
   `1.47.0` also exposes immutable personal alert policies over the first closed
-  typed DomainClaim rejection/recovery source. Broader enterprise `C0` gates
+  typed DomainClaim rejection/recovery source.
+  Contract `1.48.0` completes the human-readable OpenAPI catalog for every
+  public REST operation, documents all parameters and request examples, and
+  replaces legacy unconstrained mutation inputs with the exact fail-closed DTO
+  schemas already enforced by the control plane. Broader enterprise `C0` gates
   remain.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
@@ -341,7 +345,7 @@ written to a CLI context file.
 
 | Surface | Contract | Start here |
 | --- | --- | --- |
-| REST/OpenAPI | Versioned `/api/v1`, common envelopes, request IDs, idempotency, and committed contract snapshot | [`openapi/v1.json`](openapi/v1.json) |
+| REST/OpenAPI | Versioned `/api/v1`, complete operation documentation, common envelopes, request IDs, idempotency, and committed contract snapshot | [Guide](docs/openapi.md) · [`openapi/v1.json`](openapi/v1.json) |
 | TypeScript client | Maintained adapter over the same REST contract; no presentation-owned lifecycle | [`packages/cloud-client`](packages/cloud-client) |
 | CLI | Scriptable automation with structured JSON output and no token argument | [`cli/README.md`](cli/README.md) |
 | Management MCP | Sessionless, tenant-authorized tools over the same application commands and queries | [`docs/management-mcp.md`](docs/management-mcp.md) |

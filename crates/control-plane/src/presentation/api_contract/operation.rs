@@ -1,4 +1,6 @@
 use super::components::response_ref;
+use super::documentation::describe_operation_documentation;
+use super::request_schema::closed_json_request_schema;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
@@ -53,11 +55,8 @@ pub(super) fn describe_operation(
     })?;
     let operation_id = operation_id(method, path);
     operation.insert("operationId".into(), json!(operation_id));
-    operation.insert(
-        "summary".into(),
-        json!(format!("{} {path}", method.to_ascii_uppercase())),
-    );
-    operation.insert("tags".into(), json!([operation_tag(path)]));
+    let tag = operation_tag(path);
+    operation.insert("tags".into(), json!([tag]));
     operation.insert("x-a3s-stability".into(), json!("stable"));
     operation.insert(
         "x-a3s-api-contract-version".into(),
@@ -71,14 +70,14 @@ pub(super) fn describe_operation(
             json!([{ "bearerAuth": [] }])
         },
     );
-    if let Some(description) = oidc_operation_description(method, path) {
-        operation.insert("description".into(), json!(description));
+    if path.contains("/identity/oidc/") {
         operation.insert("x-a3s-oauth-cookie-bound".into(), json!(true));
     }
 
     describe_parameters(operation, method, path)?;
-    describe_request_body(operation, method, path);
+    describe_request_body(operation, method, path)?;
     operation.insert("responses".into(), responses(method, path, is_public));
+    describe_operation_documentation(operation, method, path, tag, is_public)?;
     Ok(())
 }
 
@@ -605,9 +604,13 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
     }
 }
 
-fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path: &str) {
+fn describe_request_body(
+    operation: &mut Map<String, Value>,
+    method: &str,
+    path: &str,
+) -> Result<()> {
     if method != "post" || request_has_no_body(path) {
-        return;
+        return Ok(());
     }
     if let Some(media_type) = asset_git_request_media_type(path) {
         let mut content = Map::new();
@@ -622,7 +625,7 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 "content": content
             }),
         );
-        return;
+        return Ok(());
     }
     let mut content = Map::new();
     if let Some(schema) = plugin_catalog_read_request_schema(path) {
@@ -1029,17 +1032,18 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
-    } else {
-        content.insert(
-            "application/json".into(),
-            json!({ "schema": { "type": "object", "additionalProperties": true } }),
-        );
+    } else if let Some(schema) = closed_json_request_schema(path) {
+        content.insert("application/json".into(), json!({ "schema": schema }));
         if accepts_acl(path) {
             content.insert(
                 "application/vnd.a3s.acl".into(),
                 json!({ "schema": { "type": "string", "minLength": 1 } }),
             );
         }
+    } else {
+        return Err(BootError::Internal(format!(
+            "OpenAPI request schema is missing for `POST {path}`"
+        )));
     }
     operation.insert(
         "requestBody".into(),
@@ -1048,6 +1052,7 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
             "content": content
         }),
     );
+    Ok(())
 }
 
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
@@ -1320,21 +1325,6 @@ fn request_has_no_body(path: &str) -> bool {
         || is_form_release_mutation_path(path)
         || is_human_task_assignment_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
-}
-
-fn oidc_operation_description(method: &str, path: &str) -> Option<&'static str> {
-    match (method, path) {
-        ("get", "/identity/oidc/{provider_key}/login") => Some(
-            "Starts a public OIDC login and redirects to the configured provider. State, nonce, and S256 PKCE bind the one-time flow; nonce and verifier are held only in Secure HttpOnly callback cookies.",
-        ),
-        ("post", "/organizations/{organization_id}/identity/oidc/{provider_key}/link") => Some(
-            "Starts an authenticated human-principal OIDC link flow. Returns the provider authorization URL and sets Secure HttpOnly callback cookies; the caller should navigate the browser to authorizationUrl.",
-        ),
-        ("get", "/identity/oidc/{provider_key}/callback") => Some(
-            "Completes one OIDC login or link flow using the query state and callback-only HttpOnly cookies. Login credentials are returned once in JSON and never placed in a redirect URL.",
-        ),
-        _ => None,
-    }
 }
 
 fn asynchronous_mutation(path: &str) -> bool {

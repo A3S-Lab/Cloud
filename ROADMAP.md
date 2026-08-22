@@ -569,11 +569,14 @@ transport.
   applies the tenant guard before a bounded A3S ORM query, while the shared
   client and CLI use the same endpoint without broad local reads; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
-  at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.9.0`; route-snapshot tests and a PR-base semantic checker reject removed
-  operations, new required inputs, removed responses or schema fields, missing
-  version increments, and deprecations without a replacement and a 180-day
-  minimum sunset window; and
+  at `/api/v1/openapi.json`. Contract `1.48.0` documents all resolved operations,
+  tags, authentication rules, parameters, closed mutation inputs, examples,
+  responses, envelopes, and compatibility metadata. The shared client and
+  response headers pin the same version; route-snapshot and whole-surface
+  documentation tests plus a PR-base semantic checker reject undocumented
+  routes, unconstrained mutation inputs, removed operations, new required
+  inputs, removed responses or schema fields, missing version increments, and
+  deprecations without a replacement and a 180-day minimum sunset window; and
 - the real `C0.1` conformance gate runs raw REST, the exact shared client import
   used by the maintained client and compiled CLI against one control-plane process and
   PostgreSQL 17. It proves cross-surface idempotency replay, stable conflicts,

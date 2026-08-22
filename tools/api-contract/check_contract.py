@@ -61,6 +61,7 @@ def validate_document(document: dict[str, Any], today: date | None = None) -> li
     if not isinstance(info, dict):
         violations.append("info must be an object")
         return violations
+    _validate_info_documentation(info, document, violations)
     version = parse_version(info.get("version"), "info.version", violations)
     extension_version = parse_version(
         document.get("x-a3s-api-contract-version"),
@@ -83,6 +84,7 @@ def validate_document(document: dict[str, Any], today: date | None = None) -> li
         violations.append("paths must contain at least one operation")
         return violations
     operation_ids: dict[str, tuple[str, str]] = {}
+    declared_tags = _declared_tags(document, violations)
     for (path, method), operation in contract_operations.items():
         location = f"{method.upper()} {path}"
         operation_id = operation.get("operationId")
@@ -98,10 +100,15 @@ def validate_document(document: dict[str, Any], today: date | None = None) -> li
             operation_ids[operation_id] = (path, method)
         if not isinstance(operation.get("tags"), list) or not operation["tags"]:
             violations.append(f"{location} must have at least one tag")
+        else:
+            for tag in operation["tags"]:
+                if not isinstance(tag, str) or tag not in declared_tags:
+                    violations.append(f"{location} uses undeclared tag {tag!r}")
         if not isinstance(operation.get("security"), list):
             violations.append(f"{location} must declare security explicitly")
         if not isinstance(operation.get("responses"), dict) or not operation["responses"]:
             violations.append(f"{location} must declare responses")
+        _validate_operation_documentation(operation, location, violations)
         _validate_deprecation(operation, location, version, operation_ids, today, violations)
 
     for (path, method), operation in contract_operations.items():
@@ -115,6 +122,114 @@ def validate_document(document: dict[str, Any], today: date | None = None) -> li
                 f"{method.upper()} {path} replacement operation {replacement!r} does not exist"
             )
     return violations
+
+
+def _validate_info_documentation(
+    info: dict[str, Any], document: dict[str, Any], violations: list[str]
+) -> None:
+    for field in ("title", "description"):
+        if not _nonempty_text(info.get(field)):
+            violations.append(f"info.{field} must be a non-empty string")
+    contact = info.get("contact")
+    if not isinstance(contact, dict) or not _nonempty_text(contact.get("url")):
+        violations.append("info.contact.url must document the API owner")
+    license_info = info.get("license")
+    if not isinstance(license_info, dict) or not _nonempty_text(license_info.get("name")):
+        violations.append("info.license.name must document the API license")
+    external_docs = document.get("externalDocs")
+    if not isinstance(external_docs, dict) or not _nonempty_text(external_docs.get("url")):
+        violations.append("externalDocs.url must link to the API usage guide")
+    security_schemes = document.get("components", {}).get("securitySchemes", {})
+    bearer = security_schemes.get("bearerAuth") if isinstance(security_schemes, dict) else None
+    if not isinstance(bearer, dict) or not _nonempty_text(bearer.get("description")):
+        violations.append("components.securitySchemes.bearerAuth must have a description")
+
+
+def _declared_tags(document: dict[str, Any], violations: list[str]) -> set[str]:
+    tags = document.get("tags")
+    if not isinstance(tags, list) or not tags:
+        violations.append("tags must contain the documented API tag catalog")
+        return set()
+    declared: set[str] = set()
+    for index, tag in enumerate(tags):
+        if not isinstance(tag, dict):
+            violations.append(f"tags[{index}] must be an object")
+            continue
+        name = tag.get("name")
+        if not _nonempty_text(name):
+            violations.append(f"tags[{index}].name must be a non-empty string")
+            continue
+        if name in declared:
+            violations.append(f"tag {name!r} is declared more than once")
+        declared.add(name)
+        if not _nonempty_text(tag.get("description")):
+            violations.append(f"tag {name!r} must have a description")
+    return declared
+
+
+def _validate_operation_documentation(
+    operation: dict[str, Any], location: str, violations: list[str]
+) -> None:
+    summary = operation.get("summary")
+    if not _nonempty_text(summary):
+        violations.append(f"{location} must have a human-readable summary")
+    elif isinstance(summary, str) and summary.startswith(
+        ("GET /", "POST /", "PUT /", "PATCH /", "DELETE /")
+    ):
+        violations.append(f"{location} summary cannot repeat the HTTP route")
+    if not _nonempty_text(operation.get("description")):
+        violations.append(f"{location} must have a description")
+    if not _nonempty_text(operation.get("x-a3s-response-data")):
+        violations.append(f"{location} must describe its response data")
+
+    parameters = operation.get("parameters", [])
+    if isinstance(parameters, list):
+        for parameter in parameters:
+            if not isinstance(parameter, dict) or "$ref" in parameter:
+                continue
+            identity = f"{parameter.get('in', 'parameter')} {parameter.get('name', 'unknown')}"
+            if not _nonempty_text(parameter.get("description")):
+                violations.append(f"{location} {identity} must have a description")
+            schema = parameter.get("schema", {})
+            has_example = "example" in parameter or (
+                isinstance(schema, dict) and ("example" in schema or "default" in schema)
+            )
+            if not has_example:
+                violations.append(f"{location} {identity} must have an example or default")
+
+    request_body = operation.get("requestBody")
+    if not isinstance(request_body, dict) or "$ref" in request_body:
+        return
+    if not _nonempty_text(request_body.get("description")):
+        violations.append(f"{location} requestBody must have a description")
+    content = request_body.get("content")
+    if not isinstance(content, dict) or not content:
+        violations.append(f"{location} requestBody must declare content")
+        return
+    for media_type, media in content.items():
+        if not isinstance(media, dict):
+            violations.append(f"{location} request content {media_type} must be an object")
+            continue
+        schema = media.get("schema")
+        if not isinstance(schema, dict):
+            violations.append(f"{location} request content {media_type} must have a schema")
+            continue
+        if _is_unconstrained_object(schema):
+            violations.append(f"{location} request content {media_type} cannot be unconstrained")
+        if "example" not in media and "examples" not in media:
+            violations.append(f"{location} request content {media_type} must have an example")
+
+
+def _is_unconstrained_object(schema: dict[str, Any]) -> bool:
+    return (
+        schema.get("type") == "object"
+        and schema.get("additionalProperties") is True
+        and not any(key in schema for key in ("properties", "oneOf", "allOf", "$ref"))
+    )
+
+
+def _nonempty_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _validate_deprecation(
@@ -417,6 +532,13 @@ def _compare_schema(
         return False
     if not isinstance(baseline, dict) or not isinstance(candidate, dict):
         violations.append(f"{location} changed schema shape")
+        return True
+    if (
+        direction == "input"
+        and _is_unconstrained_object(baseline)
+        and candidate.get("x-a3s-contract-correction")
+        == "documents-existing-runtime-validation"
+    ):
         return True
     if baseline.get("type") != candidate.get("type"):
         violations.append(f"{location} changed type from {baseline.get('type')} to {candidate.get('type')}")

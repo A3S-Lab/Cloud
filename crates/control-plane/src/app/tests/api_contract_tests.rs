@@ -545,6 +545,152 @@ fn committed_openapi_snapshot_matches_the_resolved_route_contract() -> Result<()
 }
 
 #[test]
+fn generated_openapi_is_complete_human_readable_documentation() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+
+    assert_eq!(document["info"]["license"]["name"], "MIT");
+    assert_eq!(
+        document["info"]["contact"]["url"],
+        "https://github.com/A3S-Lab/Cloud"
+    );
+    assert_eq!(
+        document["externalDocs"]["url"],
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/openapi.md"
+    );
+    assert!(
+        document["components"]["securitySchemes"]["bearerAuth"]["description"]
+            .as_str()
+            .is_some_and(|description| description.len() >= 20)
+    );
+    for (name, schema) in document["components"]["schemas"]
+        .as_object()
+        .ok_or_else(|| BootError::Internal("OpenAPI component schemas are missing".into()))?
+    {
+        assert!(
+            schema["description"]
+                .as_str()
+                .is_some_and(|description| description.len() >= 20),
+            "component schema {name} has no description"
+        );
+        assert!(
+            !schema["example"].is_null(),
+            "component schema {name} has no example"
+        );
+    }
+    for (name, response) in document["components"]["responses"]
+        .as_object()
+        .ok_or_else(|| BootError::Internal("OpenAPI component responses are missing".into()))?
+    {
+        for (header_name, header) in response["headers"].as_object().into_iter().flatten() {
+            assert!(
+                header["description"]
+                    .as_str()
+                    .is_some_and(|description| description.len() >= 10),
+                "component response {name} header {header_name} has no description"
+            );
+        }
+        for (media_type, media) in response["content"].as_object().into_iter().flatten() {
+            assert!(
+                !media["example"].is_null() || !media["examples"].is_null(),
+                "component response {name} media type {media_type} has no example"
+            );
+        }
+    }
+
+    let declared_tags = document["tags"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("OpenAPI tag catalog is missing".into()))?;
+    let declared_tags = declared_tags
+        .iter()
+        .map(|tag| {
+            let name = tag["name"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("OpenAPI tag name is missing".into()))?;
+            assert!(tag["description"]
+                .as_str()
+                .is_some_and(|description| description.len() >= 20));
+            Ok(name.to_owned())
+        })
+        .collect::<Result<BTreeSet<_>>>()?;
+
+    let paths = document["paths"]
+        .as_object()
+        .ok_or_else(|| BootError::Internal("OpenAPI paths are missing".into()))?;
+    for (path, path_item) in paths {
+        for method in ["delete", "get", "patch", "post", "put"] {
+            let Some(operation) = path_item.get(method) else {
+                continue;
+            };
+            let location = format!("{} {path}", method.to_ascii_uppercase());
+            let summary = operation["summary"].as_str().ok_or_else(|| {
+                BootError::Internal(format!("{location} has no human-readable summary"))
+            })?;
+            assert!(
+                !summary.contains(path) && summary.len() >= 8,
+                "{location} has a generated rather than human-readable summary"
+            );
+            assert!(operation["description"]
+                .as_str()
+                .is_some_and(|description| description.len() >= 40));
+            assert!(operation["x-a3s-response-data"]
+                .as_str()
+                .is_some_and(|description| description.len() >= 10));
+            for tag in operation["tags"]
+                .as_array()
+                .ok_or_else(|| BootError::Internal(format!("{location} has no tags")))?
+            {
+                assert!(tag.as_str().is_some_and(|tag| declared_tags.contains(tag)));
+            }
+
+            for parameter in operation["parameters"].as_array().into_iter().flatten() {
+                let name = parameter["name"].as_str().unwrap_or("unknown");
+                assert!(
+                    parameter["description"]
+                        .as_str()
+                        .is_some_and(|description| description.len() >= 10),
+                    "{location} parameter {name} has no description"
+                );
+                assert!(
+                    !parameter["example"].is_null()
+                        || !parameter["schema"]["example"].is_null()
+                        || !parameter["schema"]["default"].is_null(),
+                    "{location} parameter {name} has no example or default"
+                );
+            }
+
+            let Some(request_body) = operation.get("requestBody") else {
+                continue;
+            };
+            assert!(request_body["description"]
+                .as_str()
+                .is_some_and(|description| description.len() >= 20));
+            for (media_type, media) in request_body["content"]
+                .as_object()
+                .ok_or_else(|| BootError::Internal(format!("{location} has no request content")))?
+            {
+                let schema = &media["schema"];
+                let unconstrained_object = schema["type"] == "object"
+                    && schema["additionalProperties"] == true
+                    && schema.get("properties").is_none()
+                    && schema.get("oneOf").is_none()
+                    && schema.get("allOf").is_none()
+                    && schema.get("$ref").is_none();
+                assert!(
+                    !unconstrained_object,
+                    "{location} {media_type} request schema is unconstrained"
+                );
+                assert!(
+                    !media["example"].is_null() || !media["examples"].is_null(),
+                    "{location} {media_type} request has no example"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
