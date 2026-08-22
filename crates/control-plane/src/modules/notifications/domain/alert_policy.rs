@@ -18,6 +18,7 @@ const NOTIFICATION_ALERT_POLICY_BLOCK: &str = "notification_alert_policy";
 pub enum NotificationAlertSource {
     EdgeDomainClaimStatusV1,
     EdgeGatewayCertificateRenewalStatusV1,
+    WorkloadDeploymentHealthV1,
 }
 
 impl NotificationAlertSource {
@@ -27,6 +28,7 @@ impl NotificationAlertSource {
             Self::EdgeGatewayCertificateRenewalStatusV1 => {
                 "edge.gateway-certificate-renewal-status.v1"
             }
+            Self::WorkloadDeploymentHealthV1 => "workload.deployment-health.v1",
         }
     }
 
@@ -36,6 +38,7 @@ impl NotificationAlertSource {
             "edge.gateway-certificate-renewal-status.v1" => {
                 Ok(Self::EdgeGatewayCertificateRenewalStatusV1)
             }
+            "workload.deployment-health.v1" => Ok(Self::WorkloadDeploymentHealthV1),
             _ => Err("notification alert source is unsupported".into()),
         }
     }
@@ -49,6 +52,9 @@ impl NotificationAlertSource {
                 "edge.gateway-certificate.renewal-failed",
                 "edge.gateway-certificate.renewed",
             ],
+            Self::WorkloadDeploymentHealthV1 => {
+                &["workload.deployment.failed", "workload.deployment.healthy"]
+            }
         }
     }
 }
@@ -407,6 +413,11 @@ mod tests {
                     "edge.gateway-certificate.renewal-failed",
                     "edge.gateway-certificate.renewed",
                 ][..],
+            ),
+            (
+                NotificationAlertSource::WorkloadDeploymentHealthV1,
+                "workload.deployment-health.v1",
+                &["workload.deployment.failed", "workload.deployment.healthy"][..],
             ),
         ] {
             assert_eq!(source.as_str(), name);

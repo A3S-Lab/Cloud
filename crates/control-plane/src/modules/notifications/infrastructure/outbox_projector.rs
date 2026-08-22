@@ -16,6 +16,11 @@ use crate::modules::notifications::domain::{
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    ResourceName,
+};
+use crate::modules::workloads::domain::events::{
+    WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentHealthChanged,
+    WorkloadDeploymentHealthStatus,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -83,6 +88,9 @@ impl OutboxNotificationProjector {
                 return self
                     .gateway_certificate_renewal_notifications(message)
                     .await;
+            }
+            "workload.deployment.failed" | "workload.deployment.healthy" => {
+                return self.workload_deployment_health_notifications(message).await;
             }
             _ => return Ok(Vec::new()),
         };
@@ -185,6 +193,32 @@ impl OutboxNotificationProjector {
         Ok(authorized)
     }
 
+    async fn recovery_follows_projected_failure(
+        &self,
+        policy: &NotificationAlertPolicy,
+        source: NotificationAlertSource,
+        message: &OutboxMessage,
+        failure_event_key: &str,
+    ) -> Result<bool, RepositoryError> {
+        if !policy.definition.spec().notify_on_recovery {
+            return Ok(false);
+        }
+        Ok(self
+            .notifications
+            .latest_alert_source_projection(
+                policy.organization_id,
+                policy.recipient_principal_id,
+                source,
+                message.aggregate_id,
+                policy.created_at,
+                message.aggregate_version,
+            )
+            .await?
+            .as_ref()
+            .map(|notification| notification.source_event_key.as_str())
+            == Some(failure_event_key))
+    }
+
     async fn domain_claim_notifications(
         &self,
         message: &OutboxMessage,
@@ -210,24 +244,14 @@ impl OutboxNotificationProjector {
                     ),
                 ),
                 DomainClaimState::Verified => {
-                    if !policy.definition.spec().notify_on_recovery {
-                        continue;
-                    }
-                    let latest = self
-                        .notifications
-                        .latest_alert_source_projection(
-                            policy.organization_id,
-                            policy.recipient_principal_id,
+                    if !self
+                        .recovery_follows_projected_failure(
+                            &policy,
                             source,
-                            message.aggregate_id,
-                            policy.created_at,
-                            message.aggregate_version,
+                            message,
+                            "edge.domain-claim.rejected",
                         )
-                        .await?;
-                    if latest
-                        .as_ref()
-                        .map(|notification| notification.source_event_key.as_str())
-                        != Some("edge.domain-claim.rejected")
+                        .await?
                     {
                         continue;
                     }
@@ -308,24 +332,14 @@ impl OutboxNotificationProjector {
                     }
                 },
                 GatewayCertificateRenewalStatus::Renewed => {
-                    if !policy.definition.spec().notify_on_recovery {
-                        continue;
-                    }
-                    let latest = self
-                        .notifications
-                        .latest_alert_source_projection(
-                            policy.organization_id,
-                            policy.recipient_principal_id,
+                    if !self
+                        .recovery_follows_projected_failure(
+                            &policy,
                             source,
-                            message.aggregate_id,
-                            policy.created_at,
-                            message.aggregate_version,
+                            message,
+                            "edge.gateway-certificate.renewal-failed",
                         )
-                        .await?;
-                    if latest
-                        .as_ref()
-                        .map(|notification| notification.source_event_key.as_str())
-                        != Some("edge.gateway-certificate.renewal-failed")
+                        .await?
                     {
                         continue;
                     }
@@ -335,6 +349,90 @@ impl OutboxNotificationProjector {
                         format!(
                             "Certificate renewal for {} (Route {}) recovered on Gateway node {}. The active certificate now expires at {}.",
                             payload.hostname, payload.route_id, payload.node_id, expires_at
+                        ),
+                    )
+                }
+            };
+            notifications.push(
+                Notification::project(
+                    policy.organization_id,
+                    policy.recipient_principal_id,
+                    message.event_id,
+                    message.event_key.clone(),
+                    message.schema_version,
+                    message.aggregate_id,
+                    message.aggregate_version,
+                    message.correlation_id,
+                    severity,
+                    title,
+                    body,
+                    scope,
+                    message.occurred_at,
+                    message.occurred_at,
+                )
+                .map_err(RepositoryError::Storage)?,
+            );
+        }
+        Ok(notifications)
+    }
+
+    async fn workload_deployment_health_notifications(
+        &self,
+        message: &OutboxMessage,
+    ) -> Result<Vec<Notification>, RepositoryError> {
+        let payload = decode_workload_deployment_health(message)?;
+        let source = NotificationAlertSource::WorkloadDeploymentHealthV1;
+        let policies = self
+            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .await?;
+        let scope = NotificationScope::Environment {
+            project_id: payload.project_id,
+            environment_id: payload.environment_id,
+        };
+        let mut notifications = Vec::with_capacity(policies.len());
+        for policy in policies {
+            let (severity, title, body) = match payload.status {
+                WorkloadDeploymentHealthStatus::Failed => match payload.availability_impact {
+                    Some(WorkloadDeploymentAvailabilityImpact::Unavailable) => (
+                        NotificationSeverity::Critical,
+                        "Workload deployment unavailable".to_owned(),
+                        format!(
+                            "Workload {} could not activate revision {} (generation {}); no revision is active.",
+                            payload.workload_name, payload.revision_id, payload.revision_generation
+                        ),
+                    ),
+                    Some(WorkloadDeploymentAvailabilityImpact::PreviousRevisionRetained) => (
+                        NotificationSeverity::Warning,
+                        "Workload deployment failed".to_owned(),
+                        format!(
+                            "Workload {} could not activate revision {} (generation {}); the previous revision remains active.",
+                            payload.workload_name, payload.revision_id, payload.revision_generation
+                        ),
+                    ),
+                    None => {
+                        return Err(RepositoryError::Storage(
+                            "notification Workload deployment failure impact is missing".into(),
+                        ));
+                    }
+                },
+                WorkloadDeploymentHealthStatus::Healthy => {
+                    if !self
+                        .recovery_follows_projected_failure(
+                            &policy,
+                            source,
+                            message,
+                            "workload.deployment.failed",
+                        )
+                        .await?
+                    {
+                        continue;
+                    }
+                    (
+                        NotificationSeverity::Information,
+                        "Workload deployment recovered".to_owned(),
+                        format!(
+                            "Workload {} activated revision {} (generation {}).",
+                            payload.workload_name, payload.revision_id, payload.revision_generation
                         ),
                     )
                 }
@@ -475,6 +573,64 @@ fn decode_gateway_certificate_renewal(
     {
         return Err(RepositoryError::Storage(
             "notification source Gateway certificate renewal payload identity is inconsistent"
+                .into(),
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_workload_deployment_health(
+    message: &OutboxMessage,
+) -> Result<WorkloadDeploymentHealthChanged, RepositoryError> {
+    let payload: WorkloadDeploymentHealthChanged = serde_json::from_value(message.payload.clone())
+        .map_err(|error| {
+            RepositoryError::Storage(format!(
+                "notification source Workload deployment health payload is invalid: {error}"
+            ))
+        })?;
+    let expected_status = match message.event_key.as_str() {
+        "workload.deployment.failed" => WorkloadDeploymentHealthStatus::Failed,
+        "workload.deployment.healthy" => WorkloadDeploymentHealthStatus::Healthy,
+        _ => {
+            return Err(RepositoryError::Storage(
+                "notification Workload deployment health source key is unsupported".into(),
+            ));
+        }
+    };
+    let valid_details = match expected_status {
+        WorkloadDeploymentHealthStatus::Failed => {
+            payload.failure_phase.is_some() && payload.availability_impact.is_some()
+        }
+        WorkloadDeploymentHealthStatus::Healthy => {
+            payload.failure_phase.is_none() && payload.availability_impact.is_none()
+        }
+    };
+    let canonical_name = ResourceName::parse(payload.workload_name.clone()).map_err(|_| {
+        RepositoryError::Storage("notification Workload deployment name is invalid".into())
+    })?;
+    if message.event_id.is_nil()
+        || payload.organization_id.as_uuid().is_nil()
+        || payload.organization_id.as_uuid() != message.organization_id
+        || payload.project_id.as_uuid().is_nil()
+        || payload.environment_id.as_uuid().is_nil()
+        || payload.workload_id.as_uuid().is_nil()
+        || payload.workload_id.as_uuid() != message.aggregate_id
+        || payload.deployment_id.as_uuid().is_nil()
+        || payload.revision_id.as_uuid().is_nil()
+        || payload.operation_id.as_uuid().is_nil()
+        || payload.operation_id.as_uuid() != message.correlation_id
+        || payload
+            .node_id
+            .is_some_and(|node_id| node_id.as_uuid().is_nil())
+        || message.causation_id.is_some_and(|id| id.is_nil())
+        || payload.revision_generation == 0
+        || payload.revision_generation != message.aggregate_version
+        || canonical_name.as_str() != payload.workload_name
+        || payload.status != expected_status
+        || !valid_details
+    {
+        return Err(RepositoryError::Storage(
+            "notification source Workload deployment health payload identity is inconsistent"
                 .into(),
         ));
     }
