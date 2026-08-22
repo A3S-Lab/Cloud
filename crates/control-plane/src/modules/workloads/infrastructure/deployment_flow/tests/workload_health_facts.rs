@@ -259,7 +259,7 @@ async fn workload_repository_emits_bounded_rollout_health_facts_once(
     assert_eq!(failed_payload.project_id, workload.project_id);
     assert_eq!(failed_payload.environment_id, workload.environment_id);
     assert_eq!(failed_payload.workload_id, workload.id);
-    assert_eq!(failed_payload.workload_name, "rollout-health-facts");
+    assert_eq!(failed_payload.workload_name, workload.name.as_str());
     assert_eq!(failed_payload.deployment_id, first_deployment_id);
     assert_eq!(failed_payload.revision_id, first_revision_id);
     assert_eq!(failed_payload.revision_generation, 1);
@@ -323,7 +323,7 @@ async fn workload_repository_emits_bounded_rollout_health_facts_once(
     assert_eq!(healthy_payload.project_id, workload.project_id);
     assert_eq!(healthy_payload.environment_id, workload.environment_id);
     assert_eq!(healthy_payload.workload_id, workload.id);
-    assert_eq!(healthy_payload.workload_name, "rollout-health-facts");
+    assert_eq!(healthy_payload.workload_name, workload.name.as_str());
     assert_eq!(healthy_payload.deployment_id, second_deployment_id);
     assert_eq!(healthy_payload.failure_phase, None);
     assert_eq!(healthy_payload.availability_impact, None);
