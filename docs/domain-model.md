@@ -1316,7 +1316,7 @@ Primary record:
 
 - `NotificationAlertPolicy`
 
-#### Edge certificate-renewal fact (`C0.3-N4b` implemented; retained PostgreSQL 17 evidence pending)
+#### Edge certificate-renewal fact (`C0.3-N4b` verified)
 
 Edge remains the certificate lifecycle authority. Its existing Gateway
 certificate reconciler may emit renewal status only for a
@@ -1348,6 +1348,16 @@ failure for the same subject. An initial or routine successful renewal remains
 notification-silent. This prerequisite owns no alert policy, incident, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API.
+
+The [retained PostgreSQL 17.5 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381856)
+proves terminal-transition and Outbox rollback under an injected fact-write
+failure, exact per-Route failed/renewed payloads, exclusion of private Gateway
+failure text, terminal replay deduplication, node-local projection identity,
+and silence for non-`Renewal` convergence paths. The
+[successful Rust 1.88 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381665)
+proves independent subjects across two Gateway replicas. The H0 job's separate
+NATS gate confirms that the existing durable/manual-ack event rail remains
+unchanged.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
