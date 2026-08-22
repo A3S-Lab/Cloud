@@ -118,7 +118,10 @@ jobs:
             -keyout "$cert_dir/key.pem" \
             -out "$cert_dir/cert.pem" \
             -subj '/CN=127.0.0.1' \
-            -addext 'subjectAltName=IP:127.0.0.1' >/dev/null 2>&1
+            -addext 'subjectAltName=IP:127.0.0.1' \
+            -addext 'basicConstraints=critical,CA:FALSE' \
+            -addext 'keyUsage=critical,digitalSignature,keyEncipherment' \
+            -addext 'extendedKeyUsage=serverAuth' >/dev/null 2>&1
           chmod 0600 "$cert_dir/key.pem"
           chmod 0644 "$cert_dir/cert.pem"
           MP_DISABLE_VERSION_CHECK=true \
