@@ -41,7 +41,8 @@ pub async fn exercise_atomic_writer_fence_commit(
                     .bind(organization_uuid)
                     .append(" and state = 'ready' order by id asc limit 1"),
             )
-            .await?,
+            .await
+            .map_err(|error| format!("select writer-fence test node: {error}"))?,
     );
     let now = Utc::now();
     let owner = ManagedOwnerReference::new(
@@ -62,7 +63,10 @@ pub async fn exercise_atomic_writer_fence_commit(
     bundle.control = WorkloadControlSpec::managed_replica_set(owner.clone(), 1, 1)?;
     let deployment = bundle.deployment.clone();
     let revision = bundle.revision.clone();
-    repository.create_deployment(bundle).await?;
+    repository
+        .create_deployment(bundle)
+        .await
+        .map_err(|error| format!("create writer-fence deployment: {error}"))?;
     let apply_id = NodeCommandId::from_uuid(deployment.id.as_uuid());
     let apply_deadline = now + Duration::minutes(5);
     PostgresNodeRepository::new(executor.clone())
@@ -83,14 +87,16 @@ pub async fn exercise_atomic_writer_fence_commit(
             not_after: apply_deadline,
             correlation_id: deployment.operation_id.as_uuid(),
         })
-        .await?;
+        .await
+        .map_err(|error| format!("enqueue writer-fence RuntimeApply: {error}"))?;
     let resolving = repository
         .mark_resolving(
             deployment.id,
             deployment.aggregate_version,
             now + Duration::seconds(1),
         )
-        .await?;
+        .await
+        .map_err(|error| format!("mark writer-fence deployment resolving: {error}"))?;
     let scheduled = repository
         .assign_node(
             deployment.id,
@@ -98,7 +104,8 @@ pub async fn exercise_atomic_writer_fence_commit(
             node_id,
             now + Duration::seconds(2),
         )
-        .await?;
+        .await
+        .map_err(|error| format!("assign writer-fence deployment node: {error}"))?;
     repository
         .mark_dispatched(
             deployment.id,
@@ -106,10 +113,12 @@ pub async fn exercise_atomic_writer_fence_commit(
             apply_id,
             now + Duration::seconds(3),
         )
-        .await?;
+        .await
+        .map_err(|error| format!("mark writer-fence deployment dispatched: {error}"))?;
     let control = repository
         .find_workload_control(organization_id, workload.id)
-        .await?;
+        .await
+        .map_err(|error| format!("load writer-fence Workload control: {error}"))?;
     repository
         .reconfigure_replica_set(replica_set_write(
             &control,
@@ -117,10 +126,12 @@ pub async fn exercise_atomic_writer_fence_commit(
             "postgres-writer-fence-stop",
             now + Duration::seconds(4),
         )?)
-        .await?;
+        .await
+        .map_err(|error| format!("retire writer-fence replica set: {error}"))?;
     let target = repository
         .pending_replica_retirements(100)
-        .await?
+        .await
+        .map_err(|error| format!("list writer-fence retirement targets: {error}"))?
         .into_iter()
         .find(|target| target.replica.workload_id == workload.id)
         .ok_or("writer-fence retirement target")?;
@@ -148,7 +159,8 @@ pub async fn exercise_atomic_writer_fence_commit(
             not_after: removal_deadline,
             correlation_id: deployment.operation_id.as_uuid(),
         })
-        .await?
+        .await
+        .map_err(|error| format!("enqueue writer-fence RuntimeRemove: {error}"))?
         .value;
     let dispatched = repository
         .dispatch_replica_retirement(ReplicaRetirementDispatch {
@@ -160,7 +172,8 @@ pub async fn exercise_atomic_writer_fence_commit(
             command_id,
             dispatched_at: command.issued_at,
         })
-        .await?;
+        .await
+        .map_err(|error| format!("dispatch writer-fence retirement: {error}"))?;
     let fenced_at = now + Duration::seconds(6);
     let operation_id = OperationId::new();
     let receipt = WorkloadWriterFenceReceipt::issue(WorkloadWriterFenceReceiptSpec {
@@ -184,6 +197,7 @@ pub async fn exercise_atomic_writer_fence_commit(
         continuation_operation_id: operation_id,
         fenced_at,
     })?;
+    let fenced_at = receipt.spec().fenced_at;
     let commit = WorkloadWriterFenceCommit {
         operation: OperationRequest::new(
             operation_id,
@@ -223,7 +237,8 @@ pub async fn exercise_atomic_writer_fence_commit(
     ));
     let unchanged = repository
         .find_workload_replica(organization_id, workload.id, target.replica.id)
-        .await?;
+        .await
+        .map_err(|error| format!("reload rolled-back writer-fence replica: {error}"))?;
     assert_eq!(unchanged.aggregate_version, dispatched.aggregate_version);
     assert_eq!(unchanged.runtime_fenced_at, None);
     assert_eq!(
@@ -259,12 +274,14 @@ pub async fn exercise_atomic_writer_fence_commit(
 
     let fenced = repository
         .record_replica_runtime_fenced(fence, Some(commit.clone()))
-        .await?;
+        .await
+        .map_err(|error| format!("commit writer-fence receipt: {error}"))?;
     assert_eq!(fenced.runtime_fenced_at, Some(fenced_at));
     assert_eq!(
         repository
             .latest_writer_fence(organization_id, workload.id)
-            .await?,
+            .await
+            .map_err(|error| format!("reload writer-fence receipt: {error}"))?,
         Some(commit.receipt.clone())
     );
     assert_eq!(
@@ -281,7 +298,8 @@ pub async fn exercise_atomic_writer_fence_commit(
     assert_eq!(
         repository
             .record_replica_runtime_fenced(fence, Some(commit))
-            .await?,
+            .await
+            .map_err(|error| format!("replay writer-fence receipt: {error}"))?,
         fenced
     );
     Ok(())
