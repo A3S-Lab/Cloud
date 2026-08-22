@@ -180,6 +180,13 @@ jobs:
           postgres_oidc_http_flow_survives_restart_and_commits_exactly_once
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify verified recipient-contact authority
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_recipient_contacts_are_exact_single_use_redacted_and_terminal
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify tenant audit query persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
