@@ -1,5 +1,8 @@
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
-use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
+use a3s_cloud_control_plane::modules::edge::domain::events::{
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+};
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, IEdgeRepository, TransitionDomainClaim,
 };
@@ -17,7 +20,7 @@ use a3s_cloud_control_plane::modules::edge::{
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     IdempotencyRequest, NodeId, OrganizationId, RepositoryError,
 };
-use a3s_orm::PostgresExecutor;
+use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,6 +105,7 @@ pub async fn exercise(
     executor: &PostgresExecutor,
     mut scenario: GatewayCertificateLifecycleScenario,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let database = Database::new(PostgresDialect, executor.clone());
     let repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let edge: Arc<dyn IEdgeRepository> = repository.clone();
     let queue = Arc::new(RecordingGatewayQueue::default());
@@ -216,7 +220,6 @@ pub async fn exercise(
             .state,
         GatewayCertificateState::Ready
     );
-
     issue_certificate(
         repository.as_ref(),
         first
@@ -231,6 +234,42 @@ pub async fn exercise(
         GatewayAckState::Rejected,
         scenario.started_at + Duration::milliseconds(200),
     );
+    let connection = executor.pool().get().await?;
+    connection
+        .batch_execute(
+            "alter table outbox_events add constraint gateway_certificate_renewal_outbox_failure_probe check (event_key <> 'edge.gateway-certificate.renewal-failed')",
+        )
+        .await?;
+    drop(connection);
+    assert!(repository
+        .project_gateway_acknowledgement(
+            &rejected,
+            rejected.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        repository
+            .find_gateway_certificate_convergence(scenario.node_id, first.publication.revision)
+            .await?
+            .ok_or("rolled-back convergence disappeared")?
+            .state,
+        GatewayCertificateConvergenceState::Pending
+    );
+    assert!(
+        renewal_fact_rows(&database, scenario.organization_id, scenario.node_id,)
+            .await?
+            .as_array()
+            .ok_or("rolled-back certificate renewal facts are not an array")?
+            .is_empty()
+    );
+    let connection = executor.pool().get().await?;
+    connection
+        .batch_execute(
+            "alter table outbox_events drop constraint gateway_certificate_renewal_outbox_failure_probe",
+        )
+        .await?;
+    drop(connection);
     repository
         .project_gateway_acknowledgement(
             &rejected,
@@ -263,6 +302,12 @@ pub async fn exercise(
             .state,
         GatewayCertificateState::Ready
     );
+    repository
+        .project_gateway_acknowledgement(
+            &rejected,
+            rejected.acknowledged_at + Duration::milliseconds(1),
+        )
+        .await?;
 
     let retry_at = scenario.started_at + Duration::seconds(1);
     let retry_report = reconciler.run_once(retry_at).await?;
@@ -307,6 +352,91 @@ pub async fn exercise(
             .state,
         GatewayCertificateState::Ready
     );
+
+    let renewal_facts =
+        renewal_fact_rows(&database, scenario.organization_id, scenario.node_id).await?;
+    let renewal_facts = renewal_facts
+        .as_array()
+        .ok_or("certificate renewal facts are not an array")?;
+    assert_eq!(renewal_facts.len(), before_renewal.len() * 2);
+    assert!(!serde_json::to_string(renewal_facts)?.contains("reload rejected"));
+    let previous_expires_at = previous_certificate
+        .material
+        .as_ref()
+        .ok_or("installed certificate lost its material")?
+        .expires_at;
+    let replacement_expires_at = repository
+        .find_gateway_certificate(scenario.node_id, replacement.id)
+        .await?
+        .material
+        .ok_or("renewed certificate lost its material")?
+        .expires_at;
+    for route in &before_renewal {
+        let subject_id = renewal_subject_id(route.id, scenario.node_id);
+        let subject_facts = renewal_facts
+            .iter()
+            .filter(|event| event["aggregateId"] == subject_id.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(subject_facts.len(), 2);
+        let failed_fact = subject_facts
+            .iter()
+            .find(|event| event["eventKey"] == "edge.gateway-certificate.renewal-failed")
+            .ok_or("route renewal failure fact is missing")?;
+        let renewed_fact = subject_facts
+            .iter()
+            .find(|event| event["eventKey"] == "edge.gateway-certificate.renewed")
+            .ok_or("route renewal recovery fact is missing")?;
+        assert_eq!(failed_fact["schemaVersion"], 1);
+        assert_eq!(failed_fact["aggregateVersion"], first.publication.revision);
+        assert_eq!(
+            failed_fact["correlationId"],
+            first.publication.command_correlation_id.to_string()
+        );
+        assert_eq!(renewed_fact["schemaVersion"], 1);
+        assert_eq!(
+            renewed_fact["aggregateVersion"],
+            renewal.publication.revision
+        );
+        assert_eq!(
+            renewed_fact["correlationId"],
+            renewal.publication.command_correlation_id.to_string()
+        );
+        let failed_payload: GatewayCertificateRenewalChanged =
+            serde_json::from_value(failed_fact["payload"].clone())?;
+        let renewed_payload: GatewayCertificateRenewalChanged =
+            serde_json::from_value(renewed_fact["payload"].clone())?;
+        assert_eq!(failed_payload.route_id, route.id);
+        assert_eq!(failed_payload.project_id, route.project_id);
+        assert_eq!(failed_payload.environment_id, route.environment_id);
+        assert_eq!(failed_payload.node_id, scenario.node_id);
+        assert_eq!(
+            failed_payload.status,
+            GatewayCertificateRenewalStatus::Failed
+        );
+        assert_eq!(
+            failed_payload.failure_kind,
+            Some(GatewayCertificateRenewalFailureKind::Rejected)
+        );
+        assert_eq!(
+            failed_payload.active_certificate_id,
+            previous_certificate_id
+        );
+        assert_eq!(
+            failed_payload.active_certificate_expires_at,
+            previous_expires_at
+        );
+        assert_eq!(renewed_payload.route_id, route.id);
+        assert_eq!(
+            renewed_payload.status,
+            GatewayCertificateRenewalStatus::Renewed
+        );
+        assert_eq!(renewed_payload.failure_kind, None);
+        assert_eq!(renewed_payload.active_certificate_id, replacement.id);
+        assert_eq!(
+            renewed_payload.active_certificate_expires_at,
+            replacement_expires_at
+        );
+    }
 
     authority.fail_revoke.store(true, Ordering::SeqCst);
     let failed_revocation = reconciler
@@ -562,8 +692,34 @@ pub async fn exercise(
         .lock()
         .await
         .contains(&filtered_replacement_serial));
+    assert_eq!(
+        renewal_fact_rows(&database, scenario.organization_id, scenario.node_id,)
+            .await?
+            .as_array()
+            .ok_or("final certificate renewal facts are not an array")?
+            .len(),
+        before_renewal.len() * 2
+    );
     assert!(!queue.publications.lock().await.is_empty());
     Ok(())
+}
+
+async fn renewal_fact_rows(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    Ok(database
+        .fetch_one_as(
+            sql_query::<serde_json::Value>(
+                "select coalesce(jsonb_agg(jsonb_build_object('eventKey', event_key, 'schemaVersion', schema_version, 'aggregateId', aggregate_id::text, 'aggregateVersion', aggregate_version, 'correlationId', correlation_id::text, 'payload', payload) order by aggregate_version, aggregate_id), '[]'::jsonb) from outbox_events where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and payload ->> 'node_id' = ")
+            .bind(node_id.to_string())
+            .append(" and event_key in ('edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed')"),
+        )
+        .await?)
 }
 
 fn compiler() -> Result<GatewaySnapshotCompiler, String> {

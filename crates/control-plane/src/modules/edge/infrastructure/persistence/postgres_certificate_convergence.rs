@@ -9,6 +9,7 @@ use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
     PostgresPersistenceError,
 };
+use crate::modules::edge::domain::events::GatewayCertificateRenewalChanged;
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayCertificateRouteStatus, StageGatewayCertificateConvergence,
@@ -16,8 +17,8 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{
     DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
-    GatewayCertificateState, GatewayPublicationState, GatewayRouteVersion, GatewayScopeState,
-    Route, RouteState,
+    GatewayCertificateState, GatewayPublication, GatewayPublicationState, GatewayRouteVersion,
+    GatewayScopeState, Route, RouteState,
 };
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedGatewayCertificateConvergence,
@@ -842,7 +843,7 @@ pub(super) async fn mark_unavailable(
                         )
                         .await?,
                     )?;
-                    persist_acknowledgement(transaction, &convergence).await?;
+                    persist_acknowledgement(transaction, &convergence, &publication).await?;
                 }
                 if certificate_changed {
                     update_certificate(
@@ -958,10 +959,12 @@ pub(super) async fn lock_by_gateway_identity(
 pub(super) async fn persist_acknowledgement(
     transaction: &PostgresTransaction,
     convergence: &GatewayCertificateConvergence,
+    publication: &GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
     if convergence.state == GatewayCertificateConvergenceState::Applied {
         persist_route_convergence(transaction, convergence).await?;
     }
+    let events = renewal_events(transaction, convergence, publication).await?;
     require_one_row(
         "Gateway certificate convergence acknowledgement",
         execute(
@@ -987,7 +990,71 @@ pub(super) async fn persist_acknowledgement(
                 .filter(GatewayCertificateConvergences::state().eq("pending")),
         )
         .await?,
+    )?;
+    for event in events {
+        store_outbox(transaction, &event).await?;
+    }
+    Ok(())
+}
+
+async fn renewal_events(
+    transaction: &PostgresTransaction,
+    convergence: &GatewayCertificateConvergence,
+    publication: &GatewayPublication,
+) -> Result<Vec<a3s_cloud_contracts::DomainEventEnvelope>, PostgresPersistenceError> {
+    if convergence.reason != GatewayCertificateConvergenceReason::Renewal {
+        return Ok(Vec::new());
+    }
+    let active_certificate_id = match convergence.state {
+        GatewayCertificateConvergenceState::Applied => convergence.replacement_certificate_id,
+        GatewayCertificateConvergenceState::Rejected
+        | GatewayCertificateConvergenceState::Unavailable => {
+            Some(convergence.previous_certificate_id)
+        }
+        GatewayCertificateConvergenceState::Pending => return Ok(Vec::new()),
+    }
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "Gateway certificate renewal omitted its active certificate".into(),
+        )
+    })?;
+    let active_certificate = fetch_optional::<CertificateRow, _>(
+        transaction,
+        select_from::<GatewayCertificates>()
+            .select(CertificateSelection)
+            .filter(GatewayCertificates::id().eq(active_certificate_id.as_uuid()))
+            .for_update(),
     )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("active Gateway renewal certificate disappeared".into())
+    })?
+    .certificate()?;
+    let mut routes = Vec::with_capacity(convergence.retained_routes.len());
+    for version in &convergence.retained_routes {
+        let route = fetch_optional::<RouteRow, _>(
+            transaction,
+            select_from::<Routes>()
+                .select(RouteSelection)
+                .filter(Routes::id().eq(version.route_id.as_uuid()))
+                .for_update(),
+        )
+        .await?
+        .ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "Gateway certificate renewal logical Route disappeared".into(),
+            )
+        })?
+        .route()?;
+        routes.push(route);
+    }
+    GatewayCertificateRenewalChanged::envelopes(
+        convergence,
+        publication,
+        &active_certificate,
+        &routes,
+    )
+    .map_err(PostgresPersistenceError::Invariant)
 }
 
 #[allow(clippy::too_many_arguments)]

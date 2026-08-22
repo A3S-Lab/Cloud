@@ -380,6 +380,7 @@ pub(super) async fn project(
                     postgres_certificate_convergence::persist_acknowledgement(
                         transaction,
                         &convergence,
+                        &publication,
                     )
                     .await?;
                 } else if let Some(cutover) = cutover {

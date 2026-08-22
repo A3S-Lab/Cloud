@@ -203,12 +203,48 @@ pub(super) async fn project(
         convergence
             .acknowledge(&acknowledgement)
             .map_err(RepositoryError::Conflict)?;
+        let renewal_events = if convergence.reason
+            == crate::modules::edge::domain::GatewayCertificateConvergenceReason::Renewal
+        {
+            let active_certificate = match convergence.state {
+                GatewayCertificateConvergenceState::Applied => {
+                    certificate.as_ref().ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "applied Gateway renewal certificate disappeared".into(),
+                        )
+                    })?
+                }
+                GatewayCertificateConvergenceState::Rejected => state
+                    .certificates
+                    .get(&convergence.previous_certificate_id)
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "active Gateway renewal certificate disappeared".into(),
+                        )
+                    })?,
+                GatewayCertificateConvergenceState::Pending
+                | GatewayCertificateConvergenceState::Unavailable => {
+                    return Err(RepositoryError::Storage(
+                        "Gateway acknowledgement produced an invalid renewal outcome".into(),
+                    ))
+                }
+            };
+            certificate_convergence::renewal_events(
+                &state,
+                convergence,
+                &publication,
+                active_certificate,
+            )?
+        } else {
+            Vec::new()
+        };
         if convergence.state == GatewayCertificateConvergenceState::Applied {
             certificate_convergence::apply(&mut state, convergence, &acknowledgement)?;
         }
         state
             .certificate_convergences
             .insert(convergence_key, convergence.clone());
+        state.outbox.extend(renewal_events);
     } else if let Some(cutover_id) = cutover_id {
         let mut cutover = state
             .cutovers
