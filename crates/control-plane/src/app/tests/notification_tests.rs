@@ -660,7 +660,7 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
     );
     assert_eq!(
         suppressed["data"]["subscription"]["suppressBefore"],
-        suppress_before.to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+        serde_json::json!(suppress_before)
     );
     assert_eq!(
         suppressed["data"]["subscription"]["definitionAcl"],
