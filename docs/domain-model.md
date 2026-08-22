@@ -1359,7 +1359,7 @@ proves independent subjects across two Gateway replicas. The H0 job's separate
 NATS gate confirms that the existing durable/manual-ack event rail remains
 unchanged.
 
-#### Gateway certificate-renewal alert source (`C0.3-N4c` implemented; retained evidence open)
+#### Gateway certificate-renewal alert source (`C0.3-N4c` verified)
 
 Notifications registers `edge.gateway-certificate-renewal-status.v1` as a
 second closed source of the existing immutable
@@ -1390,12 +1390,17 @@ Migration `133` widens only the database's closed source constraint, and
 REST/OpenAPI `1.49.0`, the maintained client, CLI, and four Management MCP
 operations expose the added enum value without a new route or tool. Focused
 domain, projection, malformed-payload, migration, contract, client, and CLI
-gates pass; retained PostgreSQL 17 and NATS evidence remains open. The
-existing Outbox relay, outbound subscription, A3S Event durable/manual-ack
-consumer, and C6 evidence path remain the only delivery authorities. This
-source adds no arbitrary event selector, JSON-path/expression evaluator,
-certificate lifecycle, incident table, counter, poller, timer, scheduler,
-queue, second event rail, or non-ACL product configuration.
+gates pass. The
+[retained PostgreSQL 17 and NATS H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32552766140/job/96982067518)
+proves migration `133`, coexistence of both closed policy sources in one scope,
+unknown-source rejection, initial-success silence, critical unavailable
+projection, peer-replica silence, same-node informational recovery, replay
+deduplication, and the unchanged durable/manual-ack delivery and terminal-replay
+path. The existing Outbox relay, outbound subscription, A3S Event consumer,
+and C6 evidence path remain the only delivery authorities. This source adds no
+arbitrary event selector, JSON-path/expression evaluator, certificate
+lifecycle, incident table, counter, poller, timer, scheduler, queue, second
+event rail, or non-ACL product configuration.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 

@@ -2413,7 +2413,7 @@ node.
   [successful Rust 1.88 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381665)
   proves independent subjects across two Gateway replicas, while the H0 job's
   separate durable NATS/manual-ack gate also remains green.
-- Implemented as `C0.3-N4c`; retained PostgreSQL/NATS evidence remains open:
+- Verified as `C0.3-N4c` on PostgreSQL 17 and NATS JetStream in CI:
   register only
   `edge.gateway-certificate-renewal-status.v1` in the existing compile-time
   alert source registry and preserve `cloud.notification.alert-policy.v1`.
@@ -2432,6 +2432,13 @@ node.
   through the existing create/list/get/revoke REST, CLI, and Management MCP
   operations. Focused domain, projection, malformed-payload, migration,
   REST/OpenAPI snapshot, maintained-client, and CLI gates pass.
+  The
+  [retained H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32552766140/job/96982067518)
+  proves migration `133`, coexistence of both closed policy sources in one
+  scope, unknown-source rejection, initial-success silence, critical
+  unavailable projection, peer-replica silence, same-node informational
+  recovery, replay deduplication, and the unchanged durable NATS/manual-ack
+  delivery and terminal-replay path.
   Edge remains the sole renewal authority, and this slice adds no policy
   version, endpoint, tool, certificate state, incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, or configuration parser.
