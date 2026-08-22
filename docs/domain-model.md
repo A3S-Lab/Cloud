@@ -165,7 +165,7 @@ Primary aggregates:
 - `ResourceGrant`
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
-  adapter, and retained PostgreSQL evidence are implemented; production proof
+  adapter, and verified PostgreSQL evidence are implemented; production proof
   key wiring, SMTP verification delivery, and public surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
@@ -206,8 +206,11 @@ owns proof cryptography; later SMTP challenge delivery must use the existing
 Outbox/A3S Event and fenced provider evidence rather than a synchronous
 presentation side effect. Migration `136`, the in-memory and PostgreSQL
 repositories, begin/complete/revoke commands, exact-owner queries, the
-HMAC-SHA-256 token adapter, focused application tests, and retained PostgreSQL
-evidence are implemented. Challenges retain their initiating organization for
+HMAC-SHA-256 token adapter, and focused application tests are implemented. The
+[successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32583260303/job/97055668058)
+proves migration `136`, exact ownership, reissue invalidation, single-use
+completion, redacted evidence, active verified resolution, and terminal
+revocation. Challenges retain their initiating organization for
 Outbox/audit correlation even though contact identity remains Principal-global.
 Production proof-key wiring, SMTP delivery, public REST/client/CLI/MCP surfaces,
 and Notifications composition remain open. This boundary adds no directory,

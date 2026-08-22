@@ -2590,9 +2590,13 @@ node.
   cryptography. Migration `136`, in-memory and PostgreSQL repositories,
   begin/complete/revoke commands, exact-owner queries, the HMAC-SHA-256 adapter,
   redacted transactional evidence, the internal active-verified resolver, and
-  focused plus retained PostgreSQL tests are implemented. Each challenge stays
-  pinned to its initiating organization for Outbox/audit correlation while the
-  contact remains Principal-global. Production proof-key wiring, SMTP challenge
+  focused tests are implemented. The
+  [successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32583260303/job/97055668058)
+  proves migration `136`, exact ownership, reissue invalidation, one-time
+  completion, redacted evidence, active verified resolution, and terminal
+  revocation. Each challenge stays pinned to its initiating organization for
+  Outbox/audit correlation while the contact remains Principal-global.
+  Production proof-key wiring, SMTP challenge
   delivery, public interfaces, and notification subscription/dispatch
   composition remain open. No email inference, second directory,
   plaintext proof persistence, provider configuration, queue, scheduler,

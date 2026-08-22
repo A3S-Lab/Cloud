@@ -87,7 +87,8 @@ The code on `main` separates implemented mechanics from released capability:
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal
   revocation, and an internal active-verified exact-owner resolver. Migration
   `136`, in-memory/PostgreSQL repositories, CQRS commands and queries, redacted
-  records, transactional Outbox/audit facts, and retained PostgreSQL evidence
+  records, transactional Outbox/audit facts, and the
+  [successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32583260303/job/97055668058)
   enforce reissue invalidation, single consumption, organization-pinned
   challenges, and mailbox/proof exclusion outside the Identity table. This is
   not yet an externally usable email capability: production proof-key wiring,
