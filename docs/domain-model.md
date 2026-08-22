@@ -1491,7 +1491,7 @@ lifecycle, arbitrary selector, payload expression, health or incident table,
 counter, poller, timer, scheduler, queue, event rail, configuration format,
 endpoint, or tool is introduced.
 
-#### Gateway certificate expiry-risk fact (`C0.3-N4f` frozen)
+#### Gateway certificate expiry-risk fact (`C0.3-N4f` verified)
 
 Edge remains the certificate-expiry authority. The existing Gateway certificate
 reconciler evaluates a fixed 24-hour emergency window after ordinary renewal
@@ -1536,17 +1536,18 @@ Risk entry, terminal Applied clearing, optimistic projection generation, and
 their existing transactional Outbox facts commit atomically. A stale or
 concurrent scan fails closed and then observes the committed state; it cannot
 emit a duplicate. Outbox failure rolls back both projection and owning Edge
-mutation. Migration `135` may add only this projection and its scope, state,
-generation, certificate, and timestamp constraints. Implementation and
-retained PostgreSQL 17.5 evidence remain open for exact threshold equality,
-outside-window and normal-renewal silence, independent Routes and nodes,
-same-certificate replay and concurrent scan deduplication, an applied
-short-lived replacement, Applied-only recovery, private-data exclusion, and
-injected at-risk/clear Outbox rollback. This slice adds no Notification policy
-or source, incident authority, configurable threshold, new poller, timer,
+mutation. Migration `135` adds only this projection and its scope, state,
+generation, certificate, and timestamp constraints. The
+[successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32568019126/job/97019385911)
+proves exact threshold equality, outside-window and normal-renewal silence,
+independent Routes and nodes, same-certificate replay and concurrent scan
+deduplication, an applied short-lived replacement, Applied-only recovery,
+private-data exclusion, and injected at-risk/clear Outbox rollback on
+checksum-pinned PostgreSQL 17.5. This slice adds no Notification policy or
+source, incident authority, configurable threshold, new poller, timer,
 scheduler, queue, event rail, configuration parser, public endpoint, or tool.
-The later Notifications slice may register only
-`edge.gateway-certificate-expiry-risk.v1` after these owner facts are verified.
+A later Notifications slice may register only
+`edge.gateway-certificate-expiry-risk.v1` through the existing policy lifecycle.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 

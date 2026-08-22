@@ -2508,7 +2508,8 @@ node.
   selector, expression evaluator, health or incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, configuration parser,
   endpoint, or tool.
-- Frozen as `C0.3-N4f`: keep certificate-expiry risk with Edge and extend the
+- Verified as `C0.3-N4f` on PostgreSQL 17.5 in CI: keep certificate-expiry risk
+  with Edge and extend the
   existing Gateway certificate reconciler with a fixed 24-hour emergency
   window. Normal renewal should complete before that window and remain silent.
   For every active logical Route and physical Gateway node, derive one
@@ -2529,11 +2530,12 @@ node.
   risk evidence. PEM, credentials, provider/acknowledgement text, commands, and
   private failures are forbidden. Entry and Applied-only clearing persist the
   risk generation and existing Outbox fact atomically under optimistic
-  concurrency. Migration `135` may add only this projection. Implementation
-  and retained PostgreSQL 17.5 evidence remain open for threshold equality,
-  normal-renewal and outside-window silence, Route/node isolation,
-  concurrent/replay deduplication, short-lived replacement behavior,
-  Applied-only clearing, private-data exclusion, and injected Outbox rollback.
+  concurrency. Migration `135` adds only this projection. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32568019126/job/97019385911)
+  proves threshold equality, normal-renewal and outside-window silence,
+  Route/node isolation, concurrent and replay deduplication, short-lived
+  Applied replacement behavior, Applied-only clearing, private-data exclusion,
+  and injected at-risk/clear Outbox rollback on checksum-pinned PostgreSQL 17.5.
   This owner-fact slice adds no Notification source or policy, incident,
   configurable threshold, poller, timer, scheduler, queue, second event rail,
   configuration parser, endpoint, or tool. A later slice may register only
