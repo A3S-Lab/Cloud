@@ -41,12 +41,18 @@ fi
 
 install -d -m 0755 "$install_root"
 archive="$install_root/$BOX_ARCHIVE"
+download_headers=(
+  --header 'Accept: application/octet-stream'
+  --header 'X-GitHub-Api-Version: 2022-11-28'
+  --header 'User-Agent: a3s-cloud-box-installer'
+)
+if [[ -n ${GH_TOKEN:-} ]]; then
+  download_headers+=(--header "Authorization: Bearer $GH_TOKEN")
+fi
 curl --fail --location --silent --show-error \
   --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
   --connect-timeout 15 \
-  --header 'Accept: application/octet-stream' \
-  --header 'X-GitHub-Api-Version: 2022-11-28' \
-  --header 'User-Agent: a3s-cloud-box-installer' \
+  "${download_headers[@]}" \
   "https://api.github.com/repos/A3S-Lab/Box/releases/assets/$BOX_ARCHIVE_ASSET_ID" \
   --output "$archive"
 printf '%s  %s\n' "$BOX_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict

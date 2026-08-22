@@ -283,6 +283,25 @@ jobs:
             >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt")" -eq 1
 
+      - name: Isolate the Cloud lifecycle rootfs cache
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          r17_cache="$A3S_HOME/cache/rootfs"
+          retired_cache="$A3S_HOME/cache/r17-rootfs"
+          test -d "$r17_cache"
+          test ! -e "$retired_cache"
+          # The provider conformance suite and the Cloud lifecycle suite share
+          # exact binaries and OCI content, but each owns its rootfs generations.
+          # Start Cloud cold from the pinned OCI image, then let the Cloud suite
+          # prove cache and restart behavior inside its own lifecycle boundary.
+          sudo mv -- "$r17_cache" "$retired_cache"
+          test ! -e "$r17_cache"
+          test -d "$retired_cache"
+          printf '%s\n' \
+            'R17 and Cloud rootfs cache generations isolated' \
+            >"$EVIDENCE_DIR/rootfs-cache-boundary.txt"
+
       - name: Prove Cloud recovery, allocation, endpoints, health, cancellation, and interruption cleanup through Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
@@ -338,6 +357,11 @@ jobs:
             "$EVIDENCE_DIR/cloud-lifecycle.log" \
             >"$EVIDENCE_DIR/allocation-evidence-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/allocation-evidence-certification.txt")" -eq 1
+          grep --fixed-strings \
+            'A3S_CLOUD_A1_RUNTIME_PROCESS_DEATH_CERTIFIED generation=' \
+            "$EVIDENCE_DIR/cloud-lifecycle.log" \
+            >"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt")" -eq 1
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
@@ -442,6 +466,83 @@ jobs:
             "$EVIDENCE_DIR/cloud-artifact-volume-output.log" \
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
+
+      - name: Certify Agent Code PostgreSQL and Runtime recovery
+        env:
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --test postgres_integration \
+              postgres_agent_code_recovery_survives_retention_runtime_and_control_plane_restarts \
+              -- --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/agent-code-postgres-recovery.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_A1_POSTGRES_RECOVERY_CERTIFIED store=postgresql commands=4 acknowledgements=4 semantic_events=3 run_rotations=2 control_plane_restarts=1 ' \
+            "$EVIDENCE_DIR/agent-code-postgres-recovery.log" \
+            >"$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt")" -eq 1
+          jq -n \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            --rawfile runtimeCertification "$EVIDENCE_DIR/agent-runtime-process-death-certification.txt" \
+            --rawfile postgresCertification "$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt" \
+            '{
+              schema: "a3s.cloud.a1-agent-recovery-evidence.v1",
+              cloudRevision: $cloud,
+              boxRevision: $box,
+              postgresqlMajor: 17,
+              postgresImage: "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4",
+              runtimeCertification: ($runtimeCertification | rtrimstr("\n")),
+              postgresCertification: ($postgresCertification | rtrimstr("\n")),
+              checks: {
+                realProviderProcessDeath: true,
+                stableRuntimeGeneration: true,
+                newerProcessIncarnation: true,
+                durableFleetCommands: true,
+                retentionGapRecovery: true,
+                staleBatchSettlement: true,
+                receiptReplay: true,
+                controlPlaneReconnect: true,
+                nativeCodeRecovery: true,
+                recoverBeforeCancel: true,
+                noDuplicateSemanticProjection: true
+              }
+            }' >"$EVIDENCE_DIR/agent-recovery.json"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            '.schema == "a3s.cloud.a1-agent-recovery-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .postgresqlMajor == 17
+             and .postgresImage == "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4"
+             and ([.checks[]] | all)' \
+            "$EVIDENCE_DIR/agent-recovery.json" >/dev/null
+          (
+            cd "$EVIDENCE_DIR"
+            sha256sum \
+              agent-runtime-process-death-certification.txt \
+              agent-code-postgres-recovery.log \
+              agent-code-postgres-recovery-certification.txt \
+              agent-recovery.json \
+              >agent-recovery-sha256.txt
+          )
 
       - name: Verify the pinned celld release supply chain
         working-directory: apps/cloud
