@@ -37,6 +37,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         typed_success_response_schema("#/components/schemas/NotificationAlertPolicyPage");
     let alert_policy_mutation_success =
         typed_success_response_schema("#/components/schemas/NotificationAlertPolicyMutation");
+    let recipient_contact_success =
+        typed_success_response_schema("#/components/schemas/RecipientContact");
+    let recipient_contact_list_success =
+        typed_success_response_schema("#/components/schemas/RecipientContactList");
+    let recipient_contact_mutation_success =
+        typed_success_response_schema("#/components/schemas/RecipientContactMutation");
     components.insert(
         "schemas".into(),
         json!({
@@ -65,6 +71,15 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "timestamp": { "type": "string", "format": "date-time" }
                 }
             },
+            "RecipientContact": recipient_contact_schema(false),
+            "RecipientContactList": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/RecipientContact" }
+            },
+            "RecipientContactMutation": recipient_contact_schema(true),
+            "RecipientContactSuccessResponse": recipient_contact_success,
+            "RecipientContactListSuccessResponse": recipient_contact_list_success,
+            "RecipientContactMutationSuccessResponse": recipient_contact_mutation_success,
             "NotificationAlertPolicy": {
                 "type": "object",
                 "additionalProperties": false,
@@ -245,6 +260,26 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     response_components.insert(
+        "RecipientContactSuccess200".into(),
+        response_component(200, "#/components/schemas/RecipientContactSuccessResponse"),
+    );
+    response_components.insert(
+        "RecipientContactListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/RecipientContactListSuccessResponse",
+        ),
+    );
+    for status in [200, 202] {
+        response_components.insert(
+            format!("RecipientContactMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/RecipientContactMutationSuccessResponse",
+            ),
+        );
+    }
+    response_components.insert(
         "NotificationAlertPolicySuccess200".into(),
         response_component(
             200,
@@ -346,6 +381,51 @@ fn typed_success_response_schema(data_schema_ref: &str) -> Value {
                 }
             }
         ]
+    })
+}
+
+fn recipient_contact_schema(include_replayed: bool) -> Value {
+    let mut required = vec![
+        "id",
+        "principalId",
+        "addressDigest",
+        "addressHint",
+        "aggregateVersion",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "verifiedAt",
+        "revokedAt",
+    ];
+    let mut properties = json!({
+        "id": { "type": "string", "format": "uuid" },
+        "principalId": { "type": "string", "format": "uuid" },
+        "addressDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "addressHint": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 257,
+            "pattern": "^\\*\\*\\*@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+        },
+        "aggregateVersion": { "type": "integer", "minimum": 1 },
+        "status": { "type": "string", "enum": ["pending", "verified", "revoked"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "verifiedAt": { "type": "string", "format": "date-time", "nullable": true },
+        "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+    });
+    if include_replayed {
+        required.push("replayed");
+        properties["replayed"] = json!({ "type": "boolean" });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
     })
 }
 

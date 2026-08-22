@@ -23,6 +23,15 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/memberships/{membership_id}/role" => {
             membership_role_schema()
         }
+        "/organizations/{organization_id}/recipient-contacts" => {
+            recipient_contact_verification_request_schema()
+        }
+        "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification" => {
+            recipient_contact_verification_completion_schema()
+        }
+        "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation" => {
+            expected_version_schema("expectedVersion")
+        }
         "/organizations/{organization_id}/mcp-credentials/{credential_id}/revoke" => {
             expected_version_schema("expectedAggregateVersion")
         }
@@ -244,6 +253,36 @@ fn membership_role_schema() -> Value {
         json!({
             "role": { "type": "string", "enum": ["owner", "admin", "member", "restricted"] },
             "expectedVersion": positive_integer_schema()
+        }),
+    )
+}
+
+fn recipient_contact_verification_request_schema() -> Value {
+    object(
+        &["address"],
+        json!({
+            "address": {
+                "type": "string",
+                "format": "email",
+                "minLength": 3,
+                "maxLength": 254,
+                "writeOnly": true
+            }
+        }),
+    )
+}
+
+fn recipient_contact_verification_completion_schema() -> Value {
+    object(
+        &["proof"],
+        json!({
+            "proof": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^a3srcv1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                "writeOnly": true
+            }
         }),
     )
 }

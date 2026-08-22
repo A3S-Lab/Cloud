@@ -1058,23 +1058,26 @@ fn describe_request_body(
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
     for status in success_statuses(method, path) {
-        let component = if let Some(component) =
-            notification_alert_policy_success_component(method, path, status)
-        {
-            component
-        } else if let Some(component) =
-            notification_outbound_subscription_success_component(method, path, status)
-        {
-            component
-        } else if let Some(component) = asset_git_success_component(path) {
-            component.to_owned()
-        } else if path.ends_with("/stream") {
-            "SseSuccess200".to_owned()
-        } else if path == "/node-control/enroll" {
-            format!("RawSuccess{status}")
-        } else {
-            format!("Success{status}")
-        };
+        let component =
+            if let Some(component) = recipient_contact_success_component(method, path, status) {
+                component
+            } else if let Some(component) =
+                notification_alert_policy_success_component(method, path, status)
+            {
+                component
+            } else if let Some(component) =
+                notification_outbound_subscription_success_component(method, path, status)
+            {
+                component
+            } else if let Some(component) = asset_git_success_component(path) {
+                component.to_owned()
+            } else if path.ends_with("/stream") {
+                "SseSuccess200".to_owned()
+            } else if path == "/node-control/enroll" {
+                format!("RawSuccess{status}")
+            } else {
+                format!("Success{status}")
+            };
         responses.insert(status.to_string(), response_ref(&component));
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
@@ -1088,6 +1091,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_mcp_route_policy_mutation_path(path)
                 || is_application_request_body_path(path)
                 || is_durable_cell_mutation_path(path)
+                || is_recipient_contact_mutation_path(path)
                 || is_notification_alert_policy_collection_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
     {
@@ -1123,6 +1127,9 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     }
     if method == "post" && is_durable_cell_state_mutation_path(path) {
         return vec![200];
+    }
+    if method == "post" && is_recipient_contact_collection_path(path) {
+        return vec![200, 202];
     }
     if method == "post"
         && (is_application_mutation_path(path)
@@ -1194,6 +1201,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("memberships")
         || path.contains("membership-invitations")
         || path.contains("resource-grants")
+        || path.contains("recipient-contacts")
         || path.contains("/identity/oidc")
     {
         "Identity"
@@ -1335,6 +1343,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || path.ends_with("/stop")
         || path.ends_with("/retry")
         || path.ends_with("/verify")
+        || is_recipient_contact_collection_path(path)
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
@@ -1384,6 +1393,41 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/releases")
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+}
+
+fn is_recipient_contact_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/recipient-contacts"
+}
+
+fn is_recipient_contact_item_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}"
+}
+
+fn is_recipient_contact_verification_path(path: &str) -> bool {
+    path
+        == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
+}
+
+fn is_recipient_contact_revocation_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation"
+}
+
+fn is_recipient_contact_mutation_path(path: &str) -> bool {
+    is_recipient_contact_collection_path(path)
+        || is_recipient_contact_verification_path(path)
+        || is_recipient_contact_revocation_path(path)
+}
+
+fn recipient_contact_success_component(method: &str, path: &str, status: u16) -> Option<String> {
+    if method == "get" && is_recipient_contact_collection_path(path) {
+        Some("RecipientContactListSuccess200".into())
+    } else if method == "get" && is_recipient_contact_item_path(path) {
+        Some("RecipientContactSuccess200".into())
+    } else if method == "post" && is_recipient_contact_mutation_path(path) {
+        Some(format!("RecipientContactMutationSuccess{status}"))
+    } else {
+        None
+    }
 }
 
 fn is_project_attribution_mutation_path(path: &str) -> bool {

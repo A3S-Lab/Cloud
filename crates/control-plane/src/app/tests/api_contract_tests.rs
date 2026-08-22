@@ -528,6 +528,95 @@ async fn openapi_contract_is_public_raw_and_versioned() -> Result<()> {
 }
 
 #[test]
+fn recipient_contact_contract_is_exact_owner_bounded_and_redacted() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection = &document["paths"]["/organizations/{organization_id}/recipient-contacts"];
+    assert_eq!(collection["get"]["tags"], json!(["Identity"]));
+    assert_eq!(
+        collection["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/RecipientContactListSuccess200"
+    );
+    let begin = &collection["post"];
+    assert_eq!(begin["summary"], "Request recipient contact verification");
+    assert_eq!(
+        begin["responses"]["202"]["$ref"],
+        "#/components/responses/RecipientContactMutationSuccess202"
+    );
+    assert_eq!(
+        begin["responses"]["200"]["$ref"],
+        "#/components/responses/RecipientContactMutationSuccess200"
+    );
+    let begin_schema = &begin["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(begin_schema["additionalProperties"], false);
+    assert_eq!(begin_schema["required"], json!(["address"]));
+    assert_eq!(begin_schema["properties"]["address"]["maxLength"], 254);
+    assert_eq!(begin_schema["properties"]["address"]["writeOnly"], true);
+    assert!(begin_schema["properties"].get("principalId").is_none());
+
+    let item = &document["paths"]
+        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}"]["get"];
+    assert_eq!(
+        item["responses"]["200"]["$ref"],
+        "#/components/responses/RecipientContactSuccess200"
+    );
+    let verification = &document["paths"]
+        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"]
+        ["post"];
+    let proof_schema = &verification["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(proof_schema["additionalProperties"], false);
+    assert_eq!(proof_schema["required"], json!(["proof"]));
+    assert_eq!(proof_schema["properties"]["proof"]["maxLength"], 4096);
+    assert_eq!(proof_schema["properties"]["proof"]["writeOnly"], true);
+    assert_eq!(verification["responses"]["202"], Value::Null);
+
+    let revocation = &document["paths"]
+        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation"]
+        ["post"];
+    assert_eq!(
+        revocation["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedVersion"]["minimum"],
+        1
+    );
+    for operation in [begin, verification, revocation] {
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+    }
+
+    let response = &document["components"]["schemas"]["RecipientContact"];
+    assert_eq!(response["additionalProperties"], false);
+    for forbidden in ["address", "proof", "challengeId", "verificationId"] {
+        assert!(response["properties"].get(forbidden).is_none());
+    }
+    assert_eq!(
+        response["properties"]["addressDigest"]["pattern"],
+        "^sha256:[0-9a-f]{64}$"
+    );
+    assert_eq!(
+        document["components"]["schemas"]["RecipientContactMutation"]["required"],
+        json!([
+            "id",
+            "principalId",
+            "addressDigest",
+            "addressHint",
+            "aggregateVersion",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "verifiedAt",
+            "revokedAt",
+            "replayed"
+        ])
+    );
+    Ok(())
+}
+
+#[test]
 fn committed_openapi_snapshot_matches_the_resolved_route_contract() -> Result<()> {
     let app = contract_test_application()?;
     let generated = generate_openapi_contract(&app)?;

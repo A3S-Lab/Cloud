@@ -147,6 +147,16 @@ fn component_schema_description(name: &str) -> String {
             "Standard A3S error envelope with a stable business error code and correlation data."
                 .into()
         }
+        "RecipientContact" => {
+            "Exact-owner recipient contact projection with a redacted mailbox hint and digest."
+                .into()
+        }
+        "RecipientContactList" => {
+            "Recipient contacts owned by the authenticated human Principal.".into()
+        }
+        "RecipientContactMutation" => {
+            "Redacted recipient contact mutation result with idempotent replay state.".into()
+        }
         "NotificationAlertPolicy" => {
             "Immutable personal alert policy over a closed notification source family.".into()
         }
@@ -550,6 +560,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         }
     }
     if method == "post" {
+        if path == "/organizations/{organization_id}/recipient-contacts" {
+            return "Request recipient contact verification".into();
+        }
         if let Some(summary) = mutation_action_summary(path) {
             return summary.into();
         }
@@ -650,6 +663,14 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke a resource grant",
         ),
         (
+            "/recipient-contacts/{recipient_contact_id}/verification",
+            "Verify a recipient contact",
+        ),
+        (
+            "/recipient-contacts/{recipient_contact_id}/revocation",
+            "Revoke a recipient contact",
+        ),
+        (
             "/memberships/{membership_id}/role",
             "Change a membership role",
         ),
@@ -743,6 +764,7 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "membership-invitations" => ("membership invitation", "membership invitations"),
         "memberships" => ("membership", "memberships"),
         "resource-grants" => ("resource grant", "resource grants"),
+        "recipient-contacts" => ("recipient contact", "recipient contacts"),
         "node-pools" => ("node pool", "node pools"),
         "nodes" => ("node", "nodes"),
         "notification-alert-policies" => {

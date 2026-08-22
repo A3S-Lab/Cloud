@@ -8,7 +8,8 @@ mod resource_access;
 pub use dto::{
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
-    ResourceGrantMutationResponse, ResourceGrantResponse, ResourceGrantScopeDto,
+    RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
+    ResourceGrantResponse, ResourceGrantScopeDto,
 };
 pub use guards::{
     with_deferred_resource_scope, BootstrapGuard, DeferredResourceScope,
