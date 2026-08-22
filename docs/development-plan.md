@@ -2508,8 +2508,30 @@ node.
   selector, expression evaluator, health or incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, configuration parser,
   endpoint, or tool.
+- Freeze `C0.3-N4f` as the Edge owner-fact prerequisite for certificate-expiry
+  alerts. The existing Gateway certificate reconciler emits
+  `edge.gateway-certificate.expiring` exactly once per retained logical Route
+  and physical Node when the first `Renewal` convergence is staged for a
+  still-active certificate. A later applied replacement emits
+  `edge.gateway-certificate.expiry-resolved` for the same subjects. Both facts
+  are schema version 1 and carry only exact organization/project/environment,
+  Route, Workload, node, hostname/path, previous/replacement/active certificate
+  identities, active-certificate expiry, certificate revision, renewal
+  revision, and closed status. The deterministic Route-plus-node subject and
+  active/replacement certificate revisions provide strict per-replica ordering.
+  A deterministic firing-event identity and exact existing-Outbox comparison
+  make retries for the same active certificate silent without suppressing the
+  first fact after an upgrade. Firing commits with convergence staging;
+  resolution commits with the existing terminal acknowledgement transaction.
+  Rejected Routes, snapshot renewal, revocation, projection repair, and every
+  non-renewal path remain silent. Certificate material, provider responses,
+  acknowledgement text, and private failure details are excluded. This slice
+  adds no certificate or incident table, mutable counter, poller, timer,
+  scheduler, queue, second event rail, migration, configuration parser, or
+  public surface.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
-  certificate expiry, backup status, node availability,
+  certificate expiry only after `C0.3-N4f` is verified, and cover backup status,
+  node availability,
   operation latency, and resource signals only after each owning context or its
   existing reconciler emits bounded typed missing-data, firing, and recovery
   transitions. Notifications may project those facts but never poll telemetry,

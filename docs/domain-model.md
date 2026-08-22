@@ -1491,6 +1491,43 @@ lifecycle, arbitrary selector, payload expression, health or incident table,
 counter, poller, timer, scheduler, queue, event rail, configuration format,
 endpoint, or tool is introduced.
 
+#### Edge certificate-expiry fact (`C0.3-N4f` frozen)
+
+Edge remains the certificate lifecycle and expiry authority. When the existing
+Gateway certificate reconciler stages the first
+`GatewayCertificateConvergence` whose reason is exactly `Renewal` for a
+still-active certificate, it emits schema-v1
+`edge.gateway-certificate.expiring`. A later terminal `Applied` renewal emits
+schema-v1 `edge.gateway-certificate.expiry-resolved`. Rejected Routes,
+snapshot-validity renewal, domain or certificate revocation, projection repair,
+and every non-renewal convergence emit neither fact. A rejected or unavailable
+replacement leaves the firing fact open; its separate renewal-status fact
+continues to describe the failed attempt.
+
+The fact subject is the deterministic pair of logical `Route` and physical
+Gateway `Node`. The firing aggregate version is the active certificate's own
+Gateway revision, while resolution uses the replacement certificate's strictly
+later Gateway revision. One fact per retained Route therefore carries one exact
+organization, project, environment, Route, Workload, node, hostname/path,
+previous certificate, replacement certificate, active certificate,
+active-certificate expiry, certificate revision, renewal revision, and closed
+`expiring` or `resolved` status. It never carries certificate material,
+provider responses, Gateway acknowledgement text, credentials, or private
+failure details. Replica-local subjects prevent one healthy Gateway from
+resolving another Gateway's expiry fact.
+
+The firing event has deterministic identity derived from its Route-plus-node
+subject and active certificate. The Edge repository compares an existing event
+with that exact envelope before treating a retry as silent, so repeated renewal
+attempts cannot duplicate a firing fact and the first retry after an upgrade is
+not mistaken for an already published fact. The convergence stage and every
+new firing fact commit in one existing Edge transaction and Outbox. The applied
+terminal transition and every resolution fact commit through the existing
+acknowledgement transaction. Outbox failure rolls back the owning mutation, and
+terminal replay remains silent. No certificate or incident table, mutable
+counter, poller, timer, scheduler, queue, second event rail, migration,
+configuration parser, or public API belongs to this prerequisite.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
