@@ -1402,7 +1402,7 @@ arbitrary event selector, JSON-path/expression evaluator, certificate
 lifecycle, incident table, counter, poller, timer, scheduler, queue, second
 event rail, or non-ACL product configuration.
 
-#### Workload rollout-health fact (`C0.3-N4d` implemented; retained gate pending)
+#### Workload rollout-health fact (`C0.3-N4d` verified)
 
 Workloads remains the deployment and rollout authority. A desired Deployment
 emits `workload.deployment.failed` only when it first enters terminal `Failed`
@@ -1438,7 +1438,11 @@ bounded resolution fact.
 The failed/active-selection mutation and its fact commit in one existing
 Workloads repository transaction and transactional Outbox. A lost response
 after commit is an exact replay and adds no fact; an Outbox write failure rolls
-back the state transition. No new lifecycle record is needed. A later
+back the state transition. The
+[successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32557820241/job/96994701683)
+proves failed and healthy Outbox rollback before exact retry, typed persisted
+facts, replay deduplication, same-revision silence, and private-error exclusion
+on checksum-pinned PostgreSQL 17.5. No new lifecycle record is needed. A later
 `C0.3-N4e` Notifications slice may register the closed
 `workload.deployment-health.v1` source and interpret `healthy` as recovery only
 after a covered failed fact for the same Workload. Initial and routine healthy
