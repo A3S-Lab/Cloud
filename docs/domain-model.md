@@ -1450,6 +1450,42 @@ activation remain notification-silent. This prerequisite adds no health table,
 incident state, mutable counter, poller, timer, scheduler, queue, second event
 rail, migration, configuration parser, or public API.
 
+#### Workload deployment-health alert source (`C0.3-N4e` frozen)
+
+Notifications extends the existing immutable
+`cloud.notification.alert-policy.v1` source union with only
+`workload.deployment-health.v1`. The source accepts schema-v1
+`workload.deployment.failed` and `workload.deployment.healthy` facts only after
+decoding `WorkloadDeploymentHealthChanged` and validating the event key,
+organization, logical Workload subject, WorkloadRevision generation, Operation
+correlation, bounded Workload name, Deployment and revision identities,
+optional Node identity, closed status, and exact failure-only phase and
+availability-impact fields. Unknown fields, unsupported keys, malformed or
+cross-tenant identities, zero identifiers or generations, status/key drift,
+and invalid failed/healthy field combinations fail closed.
+
+An `unavailable` failure becomes a critical personal notification; a
+`previous_revision_retained` failure becomes a warning. `healthy` becomes an
+informational recovery only when the policy enables recovery and the latest
+already-projected fact for the same recipient, source family, and logical
+Workload after policy creation and before the new generation is
+`workload.deployment.failed`. Initial or routine health, a stale pre-policy
+failure, health after an already projected recovery, and another Workload's
+health remain silent. This uses immutable inbox projection history rather than
+a mutable incident record.
+
+The existing policy lookup, active Membership and current Resource Grant
+revalidation, personal inbox repository, transactional Outbox, outbound
+subscription, A3S Event durable/manual-ack consumer, and C6 delivery evidence
+remain the only policy, projection, event, and delivery authorities. Migration
+`134` may widen only the closed persisted source constraint, and REST/OpenAPI
+`1.50.0`, the maintained client, CLI, and four existing Management MCP
+operations may expose the new enum value. Implementation and retained
+PostgreSQL/NATS evidence remain open. No second policy lifecycle, arbitrary
+selector, payload expression, health or incident table, counter, poller, timer,
+scheduler, queue, event rail, configuration format, endpoint, or tool is
+introduced.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical

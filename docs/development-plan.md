@@ -2478,6 +2478,28 @@ node.
   This prerequisite adds no alert policy version, health table, incident state,
   counter, poller, timer, scheduler, queue, second event rail, migration,
   configuration parser, or public surface.
+- Frozen as `C0.3-N4e`: register only
+  `workload.deployment-health.v1` in the existing compile-time alert source
+  registry and preserve `cloud.notification.alert-policy.v1`. Admit only exact
+  schema-v1 `workload.deployment.failed` and `workload.deployment.healthy`
+  owner facts after decoding the bounded Workloads payload and validating its
+  envelope identity, logical Workload subject, revision generation, status,
+  failure phase, and availability impact. An `unavailable` failure projects
+  one critical notification, while `previous_revision_retained` projects one
+  warning. A healthy fact projects informational recovery only when the policy
+  opts in and the same recipient has a most-recent covered failed projection
+  for the same Workload after policy creation. Initial or routine health, stale
+  pre-policy history, post-recovery health, another Workload's health, malformed
+  payloads, and unsupported events remain silent or fail closed as appropriate.
+  Projection rechecks active Membership and current Resource Grants before
+  reusing the existing personal inbox and outbound delivery path. Migration
+  `134` may widen only the persisted closed source check; REST/OpenAPI `1.50.0`,
+  the maintained client, CLI, and the four existing Management MCP operations
+  may expose the new source value without another interface. Implementation and
+  retained PostgreSQL 17/NATS evidence remain open. Workloads retains rollout
+  authority, and this slice adds no arbitrary selector, expression evaluator,
+  health or incident table, mutable counter, poller, timer, scheduler, queue,
+  second event rail, configuration parser, endpoint, or tool.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   certificate expiry, backup status, node availability,
   operation latency, and resource signals only after each owning context or its
