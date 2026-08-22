@@ -166,8 +166,9 @@ Primary aggregates:
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
   adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
-  production proof-provider and API/Worker composition, while SMTP verification
-  delivery and public surfaces remain gated)
+  production proof-provider and API/Worker composition; `C0.3-N5c` freezes the
+  SMTP verification-delivery state machine, while its implementation and public
+  surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -234,6 +235,31 @@ using the one configured proof provider. This slice owns
 no new aggregate, table, migration, SMTP client or delivery fact, presentation
 surface, notification subscription, provider profile, Secret record, queue,
 scheduler, retry mechanism, or configuration language.
+
+`C0.3-N5c` freezes one Identity-owned verification-delivery component. Its
+deterministic identity is the existing challenge/event ID. A delivery moves
+from a lease-fenced pre-dispatch reservation to `dispatching`, then exactly one
+of `delivered`, `rejected`, `indeterminate`, or `obsolete`. Before
+`dispatching`, Identity resolves the exact still-current pending challenge and
+its canonical mailbox, issues the N5b proof, and prepares the external relay's
+TLS and authentication session. The repository rechecks the challenge and
+persists the dispatch fence before the first SMTP envelope or message command.
+Once that fence exists, no replay can authorize another provider call: a lost
+or unknown result becomes `indeterminate`, and recovery requires an explicit
+new challenge. A reissued, consumed, expired, revoked, drifted, or disabled-
+Principal challenge becomes `obsolete` without SMTP access. Terminal state is
+durable before A3S Event ACK, so ACK loss is ACK-only replay.
+
+Migration `137` may retain only the opaque challenge/event identity, fence and
+lease, closed state, and timestamps. The canonical mailbox, proof, full message,
+SMTP credentials, and provider response text remain memory-only and are absent
+from database rows, Outbox, audit details, logs, and `Debug`. One top-level
+`smtp` A3S ACL chooses `disabled` or an external relay and pins a canonical
+sender, implicit TLS or required STARTTLS, optional explicit trust root,
+environment-backed paired credentials, and bounded timeouts. Production rejects
+disabled or downgrade-prone delivery. N5c is not a general Notifications SMTP
+channel, an HTTP Connector subtype, a second queue/retry/scheduler authority, a
+template system, or a public recipient-contact interface.
 
 ### 3.2 Projects
 

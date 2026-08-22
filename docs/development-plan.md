@@ -2627,6 +2627,34 @@ node.
   mailbox/proof persistence, SMTP transport, public interface, notification
   subscription, provider profile, Secret record, queue, scheduler, retry
   mechanism, or second configuration language is authorized by this slice.
+- Frozen for implementation as `C0.3-N5c`: Identity consumes only its exact
+  `identity.recipient-contact.verification-requested` transactional Outbox fact
+  through a Worker-owned A3S Event durable/manual-ack subscription. Migration
+  `137` may retain one deterministic challenge/event delivery identity, a
+  lease-fenced pre-dispatch reservation, the durable `dispatching` boundary,
+  and only `delivered`, `rejected`, `indeterminate`, or `obsolete` terminal
+  outcomes. It must never retain the canonical mailbox, proof, message bytes,
+  SMTP credentials, or provider response text. Before crossing the dispatch
+  fence, the application re-resolves the exact current pending challenge and
+  Identity-owned mailbox, issues the N5b proof, and prepares the relay TCP/TLS,
+  EHLO, and optional AUTH session. The repository atomically rechecks that exact
+  challenge immediately before persisting `dispatching`; only then may the
+  adapter issue its first `MAIL`, `RCPT`, or `DATA` command. One challenge
+  authorizes at most one SMTP submission. A clear acceptance or rejection is
+  settled before ACK, while any timeout, process death, or lost outcome after
+  the fence is terminal `indeterminate`; replay may settle or ACK it but may
+  never resend it. Pre-fence unavailability leaves the event unacknowledged and
+  only an expired reservation may be reacquired. Reissue, consumption, expiry,
+  revocation, payload drift, or Principal disablement settles `obsolete`
+  without provider access. The sole top-level `smtp` A3S ACL selects `disabled`
+  or an external relay, pins implicit TLS or required STARTTLS, one canonical
+  sender, optional explicit CA file, bounded connection/command timeouts, and
+  environment-variable names for paired credentials. Production fails closed
+  on a disabled relay, missing credentials, plaintext/opportunistic TLS, or an
+  invalid trust policy. This slice uses a fixed bounded text message and adds no
+  template/configuration language, queue, scheduler, retry counter, public
+  recipient-contact surface, general Notification SMTP subscription, or
+  widening of the HTTP-specific Connector revision/execution contract.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its
