@@ -2541,9 +2541,32 @@ node.
   then commits one firing fact per Route, later failed-attempt retry stays
   silent, and applied replacement commits the exact resolution facts without
   private acknowledgement text.
+- Frozen as `C0.3-N4g`: register only
+  `edge.gateway-certificate-expiry-status.v1` in the existing compile-time
+  alert source registry while preserving `cloud.notification.alert-policy.v1`.
+  Admit exact schema-v1 `edge.gateway-certificate.expiring` and
+  `edge.gateway-certificate.expiry-resolved` owner facts only after decoding
+  `GatewayCertificateExpiryChanged` and validating key/status, tenant and
+  project/environment scope, deterministic Route-plus-node subject,
+  phase-encoded aggregate version, hostname/path, certificate identities and
+  revisions, canonical expiry, and envelope correlation. An `expiring` fact is
+  a warning. Resolution is informational only when the policy opts in and the
+  same recipient has a most-recent policy-covered projected firing for that
+  exact subject after policy creation. Stale pre-policy firing, initial or
+  repeated resolution, another Route or node's resolution, replay, malformed
+  payload, unsupported key, and schema drift stay silent or fail closed as
+  appropriate; a later certificate lifecycle may warn again at its higher
+  phase. Recheck active Membership and current Resource Grants before reusing
+  the personal inbox and outbound path. Migration `135` may widen only the
+  persisted closed source constraint; REST/OpenAPI `1.51.0`, the maintained
+  client, CLI, and four existing Management MCP operations may expose the enum
+  without another interface. Edge remains the expiry authority. Implementation
+  and retained PostgreSQL/NATS evidence remain open. This adds no second policy
+  lifecycle, certificate or incident state, configurable threshold or severity,
+  arbitrary selector, payload expression, poller, timer, scheduler, queue,
+  second event rail, configuration parser, endpoint, or tool.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
-  certificate expiry only after `C0.3-N4f` is verified, and cover backup status,
-  node availability,
+  backup status, node availability,
   operation latency, and resource signals only after each owning context or its
   existing reconciler emits bounded typed missing-data, firing, and recovery
   transitions. Notifications may project those facts but never poll telemetry,

@@ -1539,6 +1539,48 @@ text. No certificate or incident table, mutable
 counter, poller, timer, scheduler, queue, second event rail, migration,
 configuration parser, or public API belongs to this prerequisite.
 
+#### Gateway certificate-expiry alert source (`C0.3-N4g` frozen)
+
+Notifications extends the existing immutable
+`cloud.notification.alert-policy.v1` source union with only
+`edge.gateway-certificate-expiry-status.v1`. The source accepts schema-v1
+`edge.gateway-certificate.expiring` and
+`edge.gateway-certificate.expiry-resolved` facts only after decoding
+`GatewayCertificateExpiryChanged`. Validation pins the event key to the closed
+status, organization and project/environment scope, deterministic Route-plus-node
+subject, phase-encoded aggregate version, bounded canonical hostname/path,
+previous/replacement/active certificate identities, certificate and renewal
+Gateway revisions, canonical active-certificate expiry, and non-nil envelope
+correlation. An expiring payload must keep the previous certificate active and
+place its certificate revision before the staged renewal revision; a resolved
+payload must make the replacement active at that renewal revision. Unknown
+fields, cross-tenant or nil identities, key/status or phase drift, malformed
+paths or timestamps, and inconsistent certificate bindings fail closed.
+
+An `expiring` fact becomes one warning for each matching personal policy. An
+`expiry-resolved` fact becomes an informational recovery only when the policy
+enables recovery and the latest already-projected fact for the same recipient,
+source family, and Route-plus-node subject after policy creation and before the
+resolution phase is `edge.gateway-certificate.expiring`. Initial resolution,
+resolution after stale pre-policy firing, repeated resolution, and another
+Route or Gateway node's resolution remain silent. The next certificate's
+higher firing phase may create a new warning. Source-event identity keeps relay
+replay idempotent, and immutable inbox history supplies recovery ordering
+without a mutable incident or copied certificate projection.
+
+The existing policy lookup, active Membership and current Resource Grant
+revalidation, personal inbox repository, transactional Outbox, outbound
+subscription, A3S Event durable/manual-ack consumer, and C6 delivery evidence
+remain the only policy, projection, event, and delivery authorities. Migration
+`135` may widen only the closed persisted source constraint. REST/OpenAPI
+`1.51.0`, the maintained client, CLI, and four existing Management MCP
+operations may expose the enum without a new endpoint or tool. Implementation
+and retained PostgreSQL/NATS evidence remain open. Edge remains the sole expiry
+authority; Notifications does not poll certificates, interpret time or silence,
+or add a configurable threshold, severity rule, certificate state, incident
+table, arbitrary selector, payload expression, timer, scheduler, queue, second
+event rail, or configuration format.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
