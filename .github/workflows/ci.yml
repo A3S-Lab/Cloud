@@ -73,6 +73,22 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Certify verified recipient-contact authority
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-recipient-contact-authority.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_recipient_contacts_are_exact_single_use_redacted_and_terminal \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Verified recipient-contact authority gate failed::$detail"
+          exit 1
+
       - name: Start checksum-pinned S3-compatible object fixture
         env:
           MINIO_CLIENT_SHA256: ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f
@@ -178,13 +194,6 @@ jobs:
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
           postgres_oidc_http_flow_survives_restart_and_commits_exactly_once
-          -- --exact --nocapture --test-threads=1
-
-      - name: Certify verified recipient-contact authority
-        run: >-
-          cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
-          postgres_recipient_contacts_are_exact_single_use_redacted_and_terminal
           -- --exact --nocapture --test-threads=1
 
       - name: Certify tenant audit query persistence

@@ -561,11 +561,11 @@ impl IRecipientContactRepository for PostgresIdentityRepository {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(
                 sql_query::<RecipientContactRow>(contact_select())
-                    .append(" as contact join identity_principals as principal on principal.id = contact.principal_id where contact.principal_id = ")
+                    .append(" join identity_principals as principal on principal.id = recipient_contacts.principal_id where recipient_contacts.principal_id = ")
                     .bind(principal_id.as_uuid())
-                    .append(" and contact.id = ")
+                    .append(" and recipient_contacts.id = ")
                     .bind(contact_id.as_uuid())
-                    .append(" and contact.state = 'verified' and principal.kind = 'human' and principal.disabled_at is null"),
+                    .append(" and recipient_contacts.state = 'verified' and principal.kind = 'human' and principal.disabled_at is null"),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?

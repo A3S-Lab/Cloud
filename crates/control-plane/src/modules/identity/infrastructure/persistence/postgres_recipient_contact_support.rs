@@ -79,7 +79,7 @@ impl FromRow for RecipientContactVerificationRow {
 }
 
 pub(super) fn contact_select() -> &'static str {
-    "select id, principal_id, canonical_address, address_digest, aggregate_version, state, created_at, updated_at, verified_at, revoked_at from recipient_contacts"
+    "select recipient_contacts.id, recipient_contacts.principal_id, recipient_contacts.canonical_address, recipient_contacts.address_digest, recipient_contacts.aggregate_version, recipient_contacts.state, recipient_contacts.created_at, recipient_contacts.updated_at, recipient_contacts.verified_at, recipient_contacts.revoked_at from recipient_contacts"
 }
 
 pub(super) fn verification_select() -> &'static str {
