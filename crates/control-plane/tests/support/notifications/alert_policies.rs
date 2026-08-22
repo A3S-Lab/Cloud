@@ -134,12 +134,53 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .await?,
         vec![certificate_policy.clone()]
     );
+
+    let workload_definition =
+        NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+            source: NotificationAlertSource::WorkloadDeploymentHealthV1,
+            project_id,
+            environment_id,
+            notify_on_recovery: true,
+        })?;
+    let workload_policy = NotificationAlertPolicy::create(
+        organization_id,
+        NotificationAlertPolicyId::new(),
+        recipient,
+        workload_definition,
+        recipient,
+        policy.created_at + ChronoDuration::milliseconds(2),
+    )?;
+    let workload_create_write =
+        notification_alert_policy_create_write(&workload_policy, "postgres:workload-alert:create")?;
+    let workload_created = repository
+        .create_alert_policy(workload_create_write.clone())
+        .await?;
+    assert!(!workload_created.replayed);
+    assert_eq!(workload_created.value, workload_policy);
+    assert!(
+        repository
+            .create_alert_policy(workload_create_write)
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .list_active_alert_policies_for_source(
+                organization_id,
+                NotificationAlertSource::WorkloadDeploymentHealthV1,
+                project_id,
+                environment_id,
+                workload_policy.created_at,
+            )
+            .await?,
+        vec![workload_policy.clone()]
+    );
     assert_eq!(
         repository
             .list_alert_policy_page(organization_id, recipient, None, 50)
             .await?
             .len(),
-        2
+        3
     );
     assert_rejected(
         database
@@ -359,6 +400,131 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             && notification.body.contains(&node_id.to_string())
     }));
 
+    let workload_id = WorkloadId::new();
+    let initial_workload_health = notification_workload_deployment_health_message(
+        organization_id,
+        project_id,
+        environment_id,
+        workload_id,
+        "workload.deployment.healthy",
+        WorkloadDeploymentHealthStatus::Healthy,
+        None,
+        None,
+        1,
+        policy.created_at + ChronoDuration::seconds(9),
+    )?;
+    persist_outbox_message(database, &initial_workload_health).await?;
+    projector.project(&initial_workload_health).await?;
+
+    let retained_workload_failure = notification_workload_deployment_health_message(
+        organization_id,
+        project_id,
+        environment_id,
+        workload_id,
+        "workload.deployment.failed",
+        WorkloadDeploymentHealthStatus::Failed,
+        Some(WorkloadDeploymentFailurePhase::Verifying),
+        Some(WorkloadDeploymentAvailabilityImpact::PreviousRevisionRetained),
+        2,
+        policy.created_at + ChronoDuration::seconds(10),
+    )?;
+    persist_outbox_message(database, &retained_workload_failure).await?;
+    projector.project(&retained_workload_failure).await?;
+    projector.project(&retained_workload_failure).await?;
+
+    let peer_workload_health = notification_workload_deployment_health_message(
+        organization_id,
+        project_id,
+        environment_id,
+        WorkloadId::new(),
+        "workload.deployment.healthy",
+        WorkloadDeploymentHealthStatus::Healthy,
+        None,
+        None,
+        3,
+        policy.created_at + ChronoDuration::seconds(11),
+    )?;
+    persist_outbox_message(database, &peer_workload_health).await?;
+    projector.project(&peer_workload_health).await?;
+
+    let recovered_workload = notification_workload_deployment_health_message(
+        organization_id,
+        project_id,
+        environment_id,
+        workload_id,
+        "workload.deployment.healthy",
+        WorkloadDeploymentHealthStatus::Healthy,
+        None,
+        None,
+        3,
+        policy.created_at + ChronoDuration::seconds(12),
+    )?;
+    persist_outbox_message(database, &recovered_workload).await?;
+    projector.project(&recovered_workload).await?;
+    projector.project(&recovered_workload).await?;
+
+    let unavailable_workload = notification_workload_deployment_health_message(
+        organization_id,
+        project_id,
+        environment_id,
+        workload_id,
+        "workload.deployment.failed",
+        WorkloadDeploymentHealthStatus::Failed,
+        Some(WorkloadDeploymentFailurePhase::Scheduled),
+        Some(WorkloadDeploymentAvailabilityImpact::Unavailable),
+        4,
+        policy.created_at + ChronoDuration::seconds(13),
+    )?;
+    persist_outbox_message(database, &unavailable_workload).await?;
+    projector.project(&unavailable_workload).await?;
+    projector.project(&unavailable_workload).await?;
+
+    let workload_notifications = repository
+        .list_page(organization_id, recipient, false, None, 50)
+        .await?
+        .into_iter()
+        .filter(|notification| {
+            notification
+                .source_event_key
+                .starts_with("workload.deployment.")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(workload_notifications.len(), 3);
+    assert_eq!(
+        workload_notifications[0].source_event_key,
+        "workload.deployment.failed"
+    );
+    assert_eq!(
+        workload_notifications[0].severity,
+        NotificationSeverity::Critical
+    );
+    assert_eq!(
+        workload_notifications[1].source_event_key,
+        "workload.deployment.healthy"
+    );
+    assert_eq!(
+        workload_notifications[1].severity,
+        NotificationSeverity::Information
+    );
+    assert_eq!(
+        workload_notifications[2].source_event_key,
+        "workload.deployment.failed"
+    );
+    assert_eq!(
+        workload_notifications[2].severity,
+        NotificationSeverity::Warning
+    );
+    assert!(workload_notifications.iter().all(|notification| {
+        notification.scope
+            == NotificationScope::Environment {
+                project_id,
+                environment_id,
+            }
+            && notification.source_aggregate_id == workload_id.as_uuid()
+            && notification.body.contains("postgres-checkout-api")
+            && !notification.body.contains("provider-private")
+    }));
+
     assert_rejected(
         database
             .execute(
@@ -401,10 +567,10 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .bind(organization_id.as_uuid())
             .append(" and recipient_principal_id = ")
             .bind(recipient.as_uuid())
-            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed'))"),
+            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed', 'workload.deployment.failed', 'workload.deployment.healthy'))"),
         )
         .await?;
-    assert_eq!(evidence, (2, 2, 1, 3, 4));
+    assert_eq!(evidence, (3, 3, 1, 4, 7));
     Ok(())
 }
 
@@ -513,6 +679,49 @@ fn notification_gateway_certificate_renewal_message(
             active_certificate_expires_at,
             status,
             failure_kind,
+        })?,
+        delivery_attempts: 1,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn notification_workload_deployment_health_message(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    workload_id: WorkloadId,
+    event_key: &str,
+    status: WorkloadDeploymentHealthStatus,
+    failure_phase: Option<WorkloadDeploymentFailurePhase>,
+    availability_impact: Option<WorkloadDeploymentAvailabilityImpact>,
+    aggregate_version: u64,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<OutboxMessage, Box<dyn std::error::Error>> {
+    let operation_id = OperationId::new();
+    Ok(OutboxMessage {
+        event_id: Uuid::now_v7(),
+        event_key: event_key.into(),
+        schema_version: 1,
+        organization_id: organization_id.as_uuid(),
+        aggregate_id: workload_id.as_uuid(),
+        aggregate_version,
+        occurred_at,
+        correlation_id: operation_id.as_uuid(),
+        causation_id: None,
+        payload: serde_json::to_value(WorkloadDeploymentHealthChanged {
+            organization_id,
+            project_id,
+            environment_id,
+            workload_id,
+            workload_name: "postgres-checkout-api".into(),
+            deployment_id: DeploymentId::new(),
+            revision_id: WorkloadRevisionId::new(),
+            revision_generation: aggregate_version,
+            operation_id,
+            node_id: Some(NodeId::new()),
+            status,
+            failure_phase,
+            availability_impact,
         })?,
         delivery_attempts: 1,
     })

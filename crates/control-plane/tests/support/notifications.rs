@@ -41,10 +41,14 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::{
     ApplicationError, ApplicationResult,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, DomainClaimId, EnvironmentId, GatewayCertificateId,
-    IdempotencyRequest, MembershipId, NodeId, NotificationAlertPolicyId,
-    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    ResourceName, RouteId, Sha256Digest, WorkloadId,
+    ConnectorProfileId, ConnectorRevisionId, DeploymentId, DomainClaimId, EnvironmentId,
+    GatewayCertificateId, IdempotencyRequest, MembershipId, NodeId, NotificationAlertPolicyId,
+    NotificationSubscriptionId, OperationId, OrganizationId, PrincipalId, ProjectId,
+    RepositoryError, ResourceName, RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+};
+use a3s_cloud_control_plane::modules::workloads::{
+    WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentFailurePhase,
+    WorkloadDeploymentHealthChanged, WorkloadDeploymentHealthStatus,
 };
 use a3s_event::{Event, NatsConfig, StorageType};
 use a3s_orm::{DatabaseError, Executor, PostgresError, PostgresTransaction, Query};
@@ -146,6 +150,21 @@ pub(super) async fn exercise_notification_persistence(
         (
             1,
             "Gateway certificate-renewal notification alert source".into()
+        )
+    );
+    let workload_alert_source_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("134"),
+        )
+        .await?;
+    assert_eq!(
+        workload_alert_source_migration_state,
+        (
+            1,
+            "Workload deployment-health notification alert source".into()
         )
     );
 
