@@ -363,7 +363,7 @@ dependencies = [
 [[package]]
 name = "a3s-form-core"
 version = "0.1.0"
-source = "git+https://github.com/A3S-Lab/UI.git?rev=b0446169548aacfcb95117de42728d6e273fc843#b0446169548aacfcb95117de42728d6e273fc843"
+source = "git+https://github.com/A3S-Lab/UI.git?rev=3c5499cba6dc116230b859fac6a8e32653024a8f#3c5499cba6dc116230b859fac6a8e32653024a8f"
 dependencies = [
  "regress",
  "ryu-js",
