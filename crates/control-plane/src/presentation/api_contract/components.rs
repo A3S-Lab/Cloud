@@ -79,7 +79,10 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "policyId": { "type": "string", "format": "uuid" },
                     "source": {
                         "type": "string",
-                        "enum": ["edge.domain-claim-status.v1"]
+                        "enum": [
+                            "edge.domain-claim-status.v1",
+                            "edge.gateway-certificate-renewal-status.v1"
+                        ]
                     },
                     "projectId": { "type": "string", "format": "uuid" },
                     "environmentId": { "type": "string", "format": "uuid" },

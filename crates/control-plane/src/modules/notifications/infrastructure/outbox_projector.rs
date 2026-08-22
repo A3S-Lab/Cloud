@@ -1,5 +1,8 @@
-use crate::modules::edge::domain::events::DomainClaimChanged;
-use crate::modules::edge::domain::{DomainClaimState, DomainNamePattern};
+use crate::modules::edge::domain::events::{
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+};
+use crate::modules::edge::domain::{DomainClaimState, DomainNamePattern, RouteHostname, RoutePath};
 use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
     IMembershipRepository, IResourceGrantRepository,
@@ -9,9 +12,11 @@ use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, INotificationRepository, Notification,
-    NotificationAlertSource, NotificationScope, NotificationSeverity,
+    NotificationAlertPolicy, NotificationAlertSource, NotificationScope, NotificationSeverity,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -74,6 +79,11 @@ impl OutboxNotificationProjector {
             "edge.domain-claim.rejected" | "edge.domain-claim.verified" => {
                 return self.domain_claim_notifications(message).await;
             }
+            "edge.gateway-certificate.renewal-failed" | "edge.gateway-certificate.renewed" => {
+                return self
+                    .gateway_certificate_renewal_notifications(message)
+                    .await;
+            }
             _ => return Ok(Vec::new()),
         };
 
@@ -123,31 +133,32 @@ impl OutboxNotificationProjector {
         .map_err(RepositoryError::Storage)
     }
 
-    async fn domain_claim_notifications(
+    async fn authorized_alert_policies(
         &self,
         message: &OutboxMessage,
-    ) -> Result<Vec<Notification>, RepositoryError> {
+        source: NotificationAlertSource,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
         let (Some(alert_policies), Some(resource_grants)) =
             (&self.alert_policies, &self.resource_grants)
         else {
             return Ok(Vec::new());
         };
-        let payload = decode_domain_claim(message)?;
-        let source = NotificationAlertSource::EdgeDomainClaimStatusV1;
         let policies = alert_policies
             .list_active_alert_policies_for_source(
                 OrganizationId::from_uuid(message.organization_id),
                 source,
-                payload.project_id,
-                payload.environment_id,
+                project_id,
+                environment_id,
                 message.occurred_at,
             )
             .await?;
         let scope = NotificationScope::Environment {
-            project_id: payload.project_id,
-            environment_id: payload.environment_id,
+            project_id,
+            environment_id,
         };
-        let mut notifications = Vec::with_capacity(policies.len());
+        let mut authorized = Vec::with_capacity(policies.len());
         for policy in policies {
             let Some(membership) = self
                 .memberships
@@ -169,7 +180,26 @@ impl OutboxNotificationProjector {
             if !scope.is_visible_to(&access) {
                 continue;
             }
+            authorized.push(policy);
+        }
+        Ok(authorized)
+    }
 
+    async fn domain_claim_notifications(
+        &self,
+        message: &OutboxMessage,
+    ) -> Result<Vec<Notification>, RepositoryError> {
+        let payload = decode_domain_claim(message)?;
+        let source = NotificationAlertSource::EdgeDomainClaimStatusV1;
+        let policies = self
+            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .await?;
+        let scope = NotificationScope::Environment {
+            project_id: payload.project_id,
+            environment_id: payload.environment_id,
+        };
+        let mut notifications = Vec::with_capacity(policies.len());
+        for policy in policies {
             let (severity, title, body) = match payload.state {
                 DomainClaimState::Rejected => (
                     NotificationSeverity::Warning,
@@ -211,6 +241,102 @@ impl OutboxNotificationProjector {
                     return Err(RepositoryError::Storage(
                         "notification domain claim source state is unsupported".into(),
                     ));
+                }
+            };
+            notifications.push(
+                Notification::project(
+                    policy.organization_id,
+                    policy.recipient_principal_id,
+                    message.event_id,
+                    message.event_key.clone(),
+                    message.schema_version,
+                    message.aggregate_id,
+                    message.aggregate_version,
+                    message.correlation_id,
+                    severity,
+                    title,
+                    body,
+                    scope,
+                    message.occurred_at,
+                    message.occurred_at,
+                )
+                .map_err(RepositoryError::Storage)?,
+            );
+        }
+        Ok(notifications)
+    }
+
+    async fn gateway_certificate_renewal_notifications(
+        &self,
+        message: &OutboxMessage,
+    ) -> Result<Vec<Notification>, RepositoryError> {
+        let payload = decode_gateway_certificate_renewal(message)?;
+        let source = NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1;
+        let policies = self
+            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .await?;
+        let scope = NotificationScope::Environment {
+            project_id: payload.project_id,
+            environment_id: payload.environment_id,
+        };
+        let expires_at = payload.active_certificate_expires_at.to_rfc3339();
+        let mut notifications = Vec::with_capacity(policies.len());
+        for policy in policies {
+            let (severity, title, body) = match payload.status {
+                GatewayCertificateRenewalStatus::Failed => match payload.failure_kind {
+                    Some(GatewayCertificateRenewalFailureKind::Rejected) => (
+                        NotificationSeverity::Warning,
+                        "Gateway certificate renewal rejected".to_owned(),
+                        format!(
+                            "Certificate renewal for {} (Route {}) was rejected on Gateway node {}. The active certificate expires at {}.",
+                            payload.hostname, payload.route_id, payload.node_id, expires_at
+                        ),
+                    ),
+                    Some(GatewayCertificateRenewalFailureKind::Unavailable) => (
+                        NotificationSeverity::Critical,
+                        "Gateway certificate renewal unavailable".to_owned(),
+                        format!(
+                            "Certificate renewal for {} (Route {}) is unavailable on Gateway node {}. The active certificate expires at {}.",
+                            payload.hostname, payload.route_id, payload.node_id, expires_at
+                        ),
+                    ),
+                    None => {
+                        return Err(RepositoryError::Storage(
+                            "notification Gateway certificate renewal failure kind is missing"
+                                .into(),
+                        ));
+                    }
+                },
+                GatewayCertificateRenewalStatus::Renewed => {
+                    if !policy.definition.spec().notify_on_recovery {
+                        continue;
+                    }
+                    let latest = self
+                        .notifications
+                        .latest_alert_source_projection(
+                            policy.organization_id,
+                            policy.recipient_principal_id,
+                            source,
+                            message.aggregate_id,
+                            policy.created_at,
+                            message.aggregate_version,
+                        )
+                        .await?;
+                    if latest
+                        .as_ref()
+                        .map(|notification| notification.source_event_key.as_str())
+                        != Some("edge.gateway-certificate.renewal-failed")
+                    {
+                        continue;
+                    }
+                    (
+                        NotificationSeverity::Information,
+                        "Gateway certificate renewal recovered".to_owned(),
+                        format!(
+                            "Certificate renewal for {} (Route {}) recovered on Gateway node {}. The active certificate now expires at {}.",
+                            payload.hostname, payload.route_id, payload.node_id, expires_at
+                        ),
+                    )
                 }
             };
             notifications.push(
@@ -289,6 +415,72 @@ fn decode_domain_claim(message: &OutboxMessage) -> Result<DomainClaimChanged, Re
     Ok(payload)
 }
 
+fn decode_gateway_certificate_renewal(
+    message: &OutboxMessage,
+) -> Result<GatewayCertificateRenewalChanged, RepositoryError> {
+    let payload: GatewayCertificateRenewalChanged = serde_json::from_value(message.payload.clone())
+        .map_err(|error| {
+            RepositoryError::Storage(format!(
+                "notification source Gateway certificate renewal payload is invalid: {error}"
+            ))
+        })?;
+    let (expected_status, expected_failure_kind) = match message.event_key.as_str() {
+        "edge.gateway-certificate.renewal-failed" => (
+            GatewayCertificateRenewalStatus::Failed,
+            Some(payload.failure_kind.ok_or_else(|| {
+                RepositoryError::Storage(
+                    "notification Gateway certificate renewal failure kind is missing".into(),
+                )
+            })?),
+        ),
+        "edge.gateway-certificate.renewed" => (GatewayCertificateRenewalStatus::Renewed, None),
+        _ => {
+            return Err(RepositoryError::Storage(
+                "notification Gateway certificate renewal source key is unsupported".into(),
+            ));
+        }
+    };
+    let hostname = RouteHostname::parse(payload.hostname.clone()).map_err(|_| {
+        RepositoryError::Storage(
+            "notification Gateway certificate renewal hostname is invalid".into(),
+        )
+    })?;
+    let path_prefix = RoutePath::parse(payload.path_prefix.clone()).map_err(|_| {
+        RepositoryError::Storage("notification Gateway certificate renewal path is invalid".into())
+    })?;
+    let expected_active_certificate_id = match expected_status {
+        GatewayCertificateRenewalStatus::Failed => payload.previous_certificate_id,
+        GatewayCertificateRenewalStatus::Renewed => payload.replacement_certificate_id,
+    };
+    if payload.organization_id.as_uuid() != message.organization_id
+        || payload.project_id.as_uuid().is_nil()
+        || payload.environment_id.as_uuid().is_nil()
+        || payload.route_id.as_uuid().is_nil()
+        || payload.workload_id.as_uuid().is_nil()
+        || payload.node_id.as_uuid().is_nil()
+        || payload.previous_certificate_id.as_uuid().is_nil()
+        || payload.replacement_certificate_id.as_uuid().is_nil()
+        || payload.active_certificate_id.as_uuid().is_nil()
+        || payload.previous_certificate_id == payload.replacement_certificate_id
+        || payload.gateway_revision == 0
+        || payload.gateway_revision != message.aggregate_version
+        || renewal_subject_id(payload.route_id, payload.node_id) != message.aggregate_id
+        || hostname.as_str() != payload.hostname
+        || path_prefix.as_str() != payload.path_prefix
+        || payload.active_certificate_expires_at
+            != canonical_timestamp(payload.active_certificate_expires_at)
+        || payload.status != expected_status
+        || payload.failure_kind != expected_failure_kind
+        || payload.active_certificate_id != expected_active_certificate_id
+    {
+        return Err(RepositoryError::Storage(
+            "notification source Gateway certificate renewal payload identity is inconsistent"
+                .into(),
+        ));
+    }
+    Ok(payload)
+}
+
 fn decode_membership(message: &OutboxMessage) -> Result<MembershipChanged, RepositoryError> {
     let payload: MembershipChanged =
         serde_json::from_value(message.payload.clone()).map_err(|error| {
@@ -346,8 +538,9 @@ mod tests {
         NotificationAlertPolicySpec, RevokeNotificationAlertPolicyWrite,
     };
     use crate::modules::shared_kernel::domain::{
-        DomainClaimId, EnvironmentId, IdempotencyRequest, IdempotentWrite, MembershipId,
-        NotificationAlertPolicyId, ProjectId, ResourceGrantId, ResourceName,
+        DomainClaimId, EnvironmentId, GatewayCertificateId, IdempotencyRequest, IdempotentWrite,
+        MembershipId, NodeId, NotificationAlertPolicyId, ProjectId, ResourceGrantId, ResourceName,
+        RouteId, WorkloadId,
     };
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
@@ -532,9 +725,33 @@ mod tests {
         notify_on_recovery: bool,
         created_at: DateTime<Utc>,
     ) -> NotificationAlertPolicy {
+        create_alert_policy_for_source(
+            notifications,
+            organization_id,
+            recipient,
+            NotificationAlertSource::EdgeDomainClaimStatusV1,
+            project_id,
+            environment_id,
+            notify_on_recovery,
+            created_at,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn create_alert_policy_for_source(
+        notifications: &InMemoryNotificationRepository,
+        organization_id: OrganizationId,
+        recipient: PrincipalId,
+        source: NotificationAlertSource,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        notify_on_recovery: bool,
+        created_at: DateTime<Utc>,
+    ) -> NotificationAlertPolicy {
         let definition =
             NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
-                source: NotificationAlertSource::EdgeDomainClaimStatusV1,
+                source,
                 project_id,
                 environment_id,
                 notify_on_recovery,
@@ -638,6 +855,59 @@ mod tests {
                 failure: failure.map(str::to_owned),
             })
             .expect("domain claim payload"),
+            delivery_attempts: 1,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gateway_certificate_renewal_message(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        route_id: RouteId,
+        node_id: NodeId,
+        event_key: &str,
+        status: GatewayCertificateRenewalStatus,
+        failure_kind: Option<GatewayCertificateRenewalFailureKind>,
+        aggregate_version: u64,
+        occurred_at: DateTime<Utc>,
+    ) -> OutboxMessage {
+        let previous_certificate_id = GatewayCertificateId::new();
+        let replacement_certificate_id = GatewayCertificateId::new();
+        let active_certificate_id = match status {
+            GatewayCertificateRenewalStatus::Failed => previous_certificate_id,
+            GatewayCertificateRenewalStatus::Renewed => replacement_certificate_id,
+        };
+        OutboxMessage {
+            event_id: Uuid::now_v7(),
+            event_key: event_key.into(),
+            schema_version: 1,
+            organization_id: organization_id.as_uuid(),
+            aggregate_id: renewal_subject_id(route_id, node_id),
+            aggregate_version,
+            occurred_at,
+            correlation_id: Uuid::now_v7(),
+            causation_id: None,
+            payload: serde_json::to_value(GatewayCertificateRenewalChanged {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id,
+                workload_id: WorkloadId::new(),
+                node_id,
+                hostname: "managed-tls.example.com".into(),
+                path_prefix: "/service".into(),
+                gateway_revision: aggregate_version,
+                previous_certificate_id,
+                replacement_certificate_id,
+                active_certificate_id,
+                active_certificate_expires_at: canonical_timestamp(
+                    occurred_at + chrono::Duration::days(30),
+                ),
+                status,
+                failure_kind,
+            })
+            .expect("Gateway certificate renewal payload"),
             delivery_attempts: 1,
         }
     }
@@ -1302,6 +1572,318 @@ mod tests {
             .await
             .expect("notifications")
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn gateway_certificate_failures_and_recovery_are_node_local_projections() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let recipient = PrincipalId::new();
+        let membership_id = MembershipId::new();
+        let route_id = RouteId::new();
+        let node_id = NodeId::new();
+        let peer_node_id = NodeId::new();
+        let created_at = Utc::now();
+        let notifications = Arc::new(InMemoryNotificationRepository::new());
+        create_alert_policy_for_source(
+            notifications.as_ref(),
+            organization_id,
+            recipient,
+            NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
+            project_id,
+            environment_id,
+            true,
+            created_at,
+        )
+        .await;
+        let projector = OutboxNotificationProjector::new(
+            notifications.clone(),
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+        )
+        .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+
+        let historical_failure = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewal-failed",
+            GatewayCertificateRenewalStatus::Failed,
+            Some(GatewayCertificateRenewalFailureKind::Rejected),
+            1,
+            created_at - chrono::Duration::seconds(1),
+        );
+        projector
+            .project(&historical_failure)
+            .await
+            .expect("pre-policy renewal failure is silent");
+
+        let initial_success = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewed",
+            GatewayCertificateRenewalStatus::Renewed,
+            None,
+            1,
+            created_at + chrono::Duration::seconds(1),
+        );
+        projector
+            .project(&initial_success)
+            .await
+            .expect("routine initial renewal is silent");
+
+        let rejected = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewal-failed",
+            GatewayCertificateRenewalStatus::Failed,
+            Some(GatewayCertificateRenewalFailureKind::Rejected),
+            2,
+            created_at + chrono::Duration::seconds(2),
+        );
+        projector
+            .project(&rejected)
+            .await
+            .expect("project rejected renewal");
+        projector
+            .project(&rejected)
+            .await
+            .expect("replay rejected renewal");
+
+        let peer_success = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            peer_node_id,
+            "edge.gateway-certificate.renewed",
+            GatewayCertificateRenewalStatus::Renewed,
+            None,
+            3,
+            created_at + chrono::Duration::seconds(3),
+        );
+        projector
+            .project(&peer_success)
+            .await
+            .expect("peer renewal cannot recover another node");
+
+        let unavailable = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewal-failed",
+            GatewayCertificateRenewalStatus::Failed,
+            Some(GatewayCertificateRenewalFailureKind::Unavailable),
+            3,
+            created_at + chrono::Duration::seconds(4),
+        );
+        projector
+            .project(&unavailable)
+            .await
+            .expect("project unavailable renewal");
+
+        let recovered = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewed",
+            GatewayCertificateRenewalStatus::Renewed,
+            None,
+            4,
+            created_at + chrono::Duration::seconds(5),
+        );
+        projector
+            .project(&recovered)
+            .await
+            .expect("project covered recovery");
+        projector
+            .project(&recovered)
+            .await
+            .expect("replay covered recovery");
+
+        let routine_success = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewed",
+            GatewayCertificateRenewalStatus::Renewed,
+            None,
+            5,
+            created_at + chrono::Duration::seconds(6),
+        );
+        projector
+            .project(&routine_success)
+            .await
+            .expect("success after recovery is silent");
+
+        let projected = notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("certificate notifications");
+        assert_eq!(projected.len(), 3);
+        assert_eq!(
+            projected
+                .iter()
+                .map(|notification| (
+                    notification.source_event_key.as_str(),
+                    notification.severity
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    "edge.gateway-certificate.renewed",
+                    NotificationSeverity::Information
+                ),
+                (
+                    "edge.gateway-certificate.renewal-failed",
+                    NotificationSeverity::Critical
+                ),
+                (
+                    "edge.gateway-certificate.renewal-failed",
+                    NotificationSeverity::Warning
+                ),
+            ]
+        );
+        assert!(projected.iter().all(|notification| notification.scope
+            == NotificationScope::Environment {
+                project_id,
+                environment_id,
+            }));
+        assert!(projected.iter().all(|notification| notification
+            .body
+            .contains(&route_id.to_string())
+            && notification.body.contains(&node_id.to_string())
+            && !notification.body.contains("private")));
+    }
+
+    #[tokio::test]
+    async fn gateway_certificate_recovery_respects_policy_opt_out() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let recipient = PrincipalId::new();
+        let membership_id = MembershipId::new();
+        let route_id = RouteId::new();
+        let node_id = NodeId::new();
+        let created_at = Utc::now();
+        let notifications = Arc::new(InMemoryNotificationRepository::new());
+        create_alert_policy_for_source(
+            notifications.as_ref(),
+            organization_id,
+            recipient,
+            NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
+            project_id,
+            environment_id,
+            false,
+            created_at,
+        )
+        .await;
+        let projector = OutboxNotificationProjector::new(
+            notifications.clone(),
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+        )
+        .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+
+        projector
+            .project(&gateway_certificate_renewal_message(
+                organization_id,
+                project_id,
+                environment_id,
+                route_id,
+                node_id,
+                "edge.gateway-certificate.renewal-failed",
+                GatewayCertificateRenewalStatus::Failed,
+                Some(GatewayCertificateRenewalFailureKind::Rejected),
+                1,
+                created_at + chrono::Duration::seconds(1),
+            ))
+            .await
+            .expect("project certificate failure");
+        projector
+            .project(&gateway_certificate_renewal_message(
+                organization_id,
+                project_id,
+                environment_id,
+                route_id,
+                node_id,
+                "edge.gateway-certificate.renewed",
+                GatewayCertificateRenewalStatus::Renewed,
+                None,
+                2,
+                created_at + chrono::Duration::seconds(2),
+            ))
+            .await
+            .expect("recovery opt-out is silent");
+
+        let projected = notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("certificate notifications");
+        assert_eq!(projected.len(), 1);
+        assert_eq!(
+            projected[0].source_event_key,
+            "edge.gateway-certificate.renewal-failed"
+        );
+        assert_eq!(projected[0].severity, NotificationSeverity::Warning);
+    }
+
+    #[test]
+    fn malformed_gateway_certificate_renewal_payloads_fail_closed() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let route_id = RouteId::new();
+        let node_id = NodeId::new();
+        let occurred_at = Utc::now();
+        let message = gateway_certificate_renewal_message(
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            node_id,
+            "edge.gateway-certificate.renewal-failed",
+            GatewayCertificateRenewalStatus::Failed,
+            Some(GatewayCertificateRenewalFailureKind::Rejected),
+            2,
+            occurred_at,
+        );
+        assert!(decode_gateway_certificate_renewal(&message).is_ok());
+
+        let mut unexpected = message.clone();
+        unexpected.payload["providerPrivateFailure"] = serde_json::json!("secret");
+        assert!(decode_gateway_certificate_renewal(&unexpected).is_err());
+
+        let mut wrong_subject = message.clone();
+        wrong_subject.aggregate_id = Uuid::now_v7();
+        assert!(decode_gateway_certificate_renewal(&wrong_subject).is_err());
+
+        let mut wrong_revision = message.clone();
+        wrong_revision.payload["gateway_revision"] = serde_json::json!(3);
+        assert!(decode_gateway_certificate_renewal(&wrong_revision).is_err());
+
+        let mut wrong_status = message.clone();
+        wrong_status.payload["status"] = serde_json::json!("renewed");
+        wrong_status.payload["failure_kind"] = serde_json::Value::Null;
+        assert!(decode_gateway_certificate_renewal(&wrong_status).is_err());
+
+        let mut wrong_active_certificate = message;
+        wrong_active_certificate.payload["active_certificate_id"] =
+            wrong_active_certificate.payload["replacement_certificate_id"].clone();
+        assert!(decode_gateway_certificate_renewal(&wrong_active_certificate).is_err());
     }
 
     #[test]

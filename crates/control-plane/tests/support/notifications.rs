@@ -11,7 +11,10 @@ use a3s_cloud_control_plane::modules::connectors::{
     PostgresConnectorProfileRepository, ReserveConnectorExecutionAttempt,
     SettleConnectorExecutionAttempt,
 };
-use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
+use a3s_cloud_control_plane::modules::edge::domain::events::{
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+};
 use a3s_cloud_control_plane::modules::edge::domain::DomainClaimState;
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -38,9 +41,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::{
     ApplicationError, ApplicationResult,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, DomainClaimId, EnvironmentId, IdempotencyRequest,
-    MembershipId, NotificationAlertPolicyId, NotificationSubscriptionId, OrganizationId,
-    PrincipalId, ProjectId, RepositoryError, ResourceName, Sha256Digest,
+    ConnectorProfileId, ConnectorRevisionId, DomainClaimId, EnvironmentId, GatewayCertificateId,
+    IdempotencyRequest, MembershipId, NodeId, NotificationAlertPolicyId,
+    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    ResourceName, RouteId, Sha256Digest, WorkloadId,
 };
 use a3s_event::{Event, NatsConfig, StorageType};
 use a3s_orm::{DatabaseError, Executor, PostgresError, PostgresTransaction, Query};
@@ -128,6 +132,21 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(
         alert_policy_migration_state,
         (1, "immutable personal notification alert policies".into())
+    );
+    let certificate_alert_source_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("133"),
+        )
+        .await?;
+    assert_eq!(
+        certificate_alert_source_migration_state,
+        (
+            1,
+            "Gateway certificate-renewal notification alert source".into()
+        )
     );
 
     let organization_id = OrganizationId::new();
@@ -701,6 +720,69 @@ async fn exercise_notification_alert_policy_persistence(
         Err(RepositoryError::Conflict(_))
     ));
 
+    let certificate_definition =
+        NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+            source: NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
+            project_id,
+            environment_id,
+            notify_on_recovery: true,
+        })?;
+    let certificate_policy = NotificationAlertPolicy::create(
+        organization_id,
+        NotificationAlertPolicyId::new(),
+        recipient,
+        certificate_definition,
+        recipient,
+        policy.created_at + ChronoDuration::milliseconds(1),
+    )?;
+    let certificate_create_write = notification_alert_policy_create_write(
+        &certificate_policy,
+        "postgres:certificate-alert:create",
+    )?;
+    let certificate_created = repository
+        .create_alert_policy(certificate_create_write.clone())
+        .await?;
+    assert!(!certificate_created.replayed);
+    assert_eq!(certificate_created.value, certificate_policy);
+    assert!(
+        repository
+            .create_alert_policy(certificate_create_write)
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .list_active_alert_policies_for_source(
+                organization_id,
+                NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
+                project_id,
+                environment_id,
+                certificate_policy.created_at,
+            )
+            .await?,
+        vec![certificate_policy.clone()]
+    );
+    assert_eq!(
+        repository
+            .list_alert_policy_page(organization_id, recipient, None, 50)
+            .await?
+            .len(),
+        2
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("insert into notification_alert_policies (organization_id, id, recipient_principal_id, source, project_id, environment_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) select organization_id, ")
+                    .bind(Uuid::now_v7())
+                    .append(", recipient_principal_id, 'edge.unreviewed-event.v1', project_id, environment_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_alert_policies where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(certificate_policy.id.as_uuid()),
+            )
+            .await,
+        "persist an unregistered notification alert source",
+    );
+
     let identity = Arc::new(PostgresIdentityRepository::new(executor));
     let projector = OutboxNotificationProjector::new(repository.clone(), identity.clone())
         .with_alert_policies(repository.clone(), identity);
@@ -803,6 +885,108 @@ async fn exercise_notification_alert_policy_persistence(
         2
     );
 
+    let route_id = RouteId::new();
+    let node_id = NodeId::new();
+    let initial_renewal = notification_gateway_certificate_renewal_message(
+        organization_id,
+        project_id,
+        environment_id,
+        route_id,
+        node_id,
+        "edge.gateway-certificate.renewed",
+        GatewayCertificateRenewalStatus::Renewed,
+        None,
+        10,
+        policy.created_at + ChronoDuration::seconds(5),
+    )?;
+    persist_outbox_message(database, &initial_renewal).await?;
+    projector.project(&initial_renewal).await?;
+
+    let unavailable = notification_gateway_certificate_renewal_message(
+        organization_id,
+        project_id,
+        environment_id,
+        route_id,
+        node_id,
+        "edge.gateway-certificate.renewal-failed",
+        GatewayCertificateRenewalStatus::Failed,
+        Some(GatewayCertificateRenewalFailureKind::Unavailable),
+        11,
+        policy.created_at + ChronoDuration::seconds(6),
+    )?;
+    persist_outbox_message(database, &unavailable).await?;
+    projector.project(&unavailable).await?;
+    projector.project(&unavailable).await?;
+
+    let peer_recovery = notification_gateway_certificate_renewal_message(
+        organization_id,
+        project_id,
+        environment_id,
+        route_id,
+        NodeId::new(),
+        "edge.gateway-certificate.renewed",
+        GatewayCertificateRenewalStatus::Renewed,
+        None,
+        12,
+        policy.created_at + ChronoDuration::seconds(7),
+    )?;
+    persist_outbox_message(database, &peer_recovery).await?;
+    projector.project(&peer_recovery).await?;
+
+    let renewed = notification_gateway_certificate_renewal_message(
+        organization_id,
+        project_id,
+        environment_id,
+        route_id,
+        node_id,
+        "edge.gateway-certificate.renewed",
+        GatewayCertificateRenewalStatus::Renewed,
+        None,
+        12,
+        policy.created_at + ChronoDuration::seconds(8),
+    )?;
+    persist_outbox_message(database, &renewed).await?;
+    projector.project(&renewed).await?;
+    projector.project(&renewed).await?;
+
+    let certificate_notifications = repository
+        .list_page(organization_id, recipient, false, None, 50)
+        .await?
+        .into_iter()
+        .filter(|notification| {
+            notification
+                .source_event_key
+                .starts_with("edge.gateway-certificate.")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(certificate_notifications.len(), 2);
+    assert_eq!(
+        certificate_notifications[0].source_event_key,
+        "edge.gateway-certificate.renewed"
+    );
+    assert_eq!(
+        certificate_notifications[0].severity,
+        NotificationSeverity::Information
+    );
+    assert_eq!(
+        certificate_notifications[1].source_event_key,
+        "edge.gateway-certificate.renewal-failed"
+    );
+    assert_eq!(
+        certificate_notifications[1].severity,
+        NotificationSeverity::Critical
+    );
+    assert!(certificate_notifications.iter().all(|notification| {
+        notification.scope
+            == NotificationScope::Environment {
+                project_id,
+                environment_id,
+            }
+            && notification.body.contains("postgres-tls.example.com")
+            && notification.body.contains(&route_id.to_string())
+            && notification.body.contains(&node_id.to_string())
+    }));
+
     assert_rejected(
         database
             .execute(
@@ -845,10 +1029,10 @@ async fn exercise_notification_alert_policy_persistence(
             .bind(organization_id.as_uuid())
             .append(" and recipient_principal_id = ")
             .bind(recipient.as_uuid())
-            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified'))"),
+            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed'))"),
         )
         .await?;
-    assert_eq!(evidence, (1, 1, 1, 2, 2));
+    assert_eq!(evidence, (2, 2, 1, 3, 4));
     Ok(())
 }
 
@@ -904,6 +1088,59 @@ fn notification_domain_claim_message(
             pattern: "postgres.example.com".into(),
             state,
             failure: failure.map(str::to_owned),
+        })?,
+        delivery_attempts: 1,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn notification_gateway_certificate_renewal_message(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    route_id: RouteId,
+    node_id: NodeId,
+    event_key: &str,
+    status: GatewayCertificateRenewalStatus,
+    failure_kind: Option<GatewayCertificateRenewalFailureKind>,
+    aggregate_version: u64,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<OutboxMessage, Box<dyn std::error::Error>> {
+    let previous_certificate_id = GatewayCertificateId::new();
+    let replacement_certificate_id = GatewayCertificateId::new();
+    let active_certificate_id = match status {
+        GatewayCertificateRenewalStatus::Failed => previous_certificate_id,
+        GatewayCertificateRenewalStatus::Renewed => replacement_certificate_id,
+    };
+    let raw_expiry = occurred_at + ChronoDuration::days(30);
+    let active_certificate_expires_at = raw_expiry
+        - ChronoDuration::nanoseconds(i64::from(raw_expiry.timestamp_subsec_nanos() % 1_000));
+    Ok(OutboxMessage {
+        event_id: Uuid::now_v7(),
+        event_key: event_key.into(),
+        schema_version: 1,
+        organization_id: organization_id.as_uuid(),
+        aggregate_id: renewal_subject_id(route_id, node_id),
+        aggregate_version,
+        occurred_at,
+        correlation_id: Uuid::now_v7(),
+        causation_id: None,
+        payload: serde_json::to_value(GatewayCertificateRenewalChanged {
+            organization_id,
+            project_id,
+            environment_id,
+            route_id,
+            workload_id: WorkloadId::new(),
+            node_id,
+            hostname: "postgres-tls.example.com".into(),
+            path_prefix: "/service".into(),
+            gateway_revision: aggregate_version,
+            previous_certificate_id,
+            replacement_certificate_id,
+            active_certificate_id,
+            active_certificate_expires_at,
+            status,
+            failure_kind,
         })?,
         delivery_attempts: 1,
     })

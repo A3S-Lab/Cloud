@@ -94,9 +94,11 @@ Principal's currently authorized personal policies. `notification-alert-policies
 create --file=<policy.acl>` requires `--idempotency-key`; revoke requires the
 exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses the
 canonical `cloud.notification.alert-policy.v1` ACL, admits the closed
-`edge.domain-claim-status.v1` source, rechecks Membership and Resource Grants,
-and projects rejection/recovery facts through the existing inbox and outbound
-delivery path. REST contract `1.47.0` exposes this lifecycle. The CLI has no
+`edge.domain-claim-status.v1` and
+`edge.gateway-certificate-renewal-status.v1` sources, rechecks Membership and
+Resource Grants, and projects their typed failure/recovery facts through the
+existing inbox and outbound delivery path. REST contract `1.49.0` exposes the
+same lifecycle. The CLI has no
 expression evaluator, event registry, incident state, timer, scheduler, or
 second configuration format.
 

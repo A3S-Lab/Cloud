@@ -17,18 +17,25 @@ const NOTIFICATION_ALERT_POLICY_BLOCK: &str = "notification_alert_policy";
 #[serde(rename_all = "snake_case")]
 pub enum NotificationAlertSource {
     EdgeDomainClaimStatusV1,
+    EdgeGatewayCertificateRenewalStatusV1,
 }
 
 impl NotificationAlertSource {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::EdgeDomainClaimStatusV1 => "edge.domain-claim-status.v1",
+            Self::EdgeGatewayCertificateRenewalStatusV1 => {
+                "edge.gateway-certificate-renewal-status.v1"
+            }
         }
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "edge.domain-claim-status.v1" => Ok(Self::EdgeDomainClaimStatusV1),
+            "edge.gateway-certificate-renewal-status.v1" => {
+                Ok(Self::EdgeGatewayCertificateRenewalStatusV1)
+            }
             _ => Err("notification alert source is unsupported".into()),
         }
     }
@@ -38,6 +45,10 @@ impl NotificationAlertSource {
             Self::EdgeDomainClaimStatusV1 => {
                 &["edge.domain-claim.rejected", "edge.domain-claim.verified"]
             }
+            Self::EdgeGatewayCertificateRenewalStatusV1 => &[
+                "edge.gateway-certificate.renewal-failed",
+                "edge.gateway-certificate.renewed",
+            ],
         }
     }
 }
@@ -379,6 +390,42 @@ mod tests {
             environment_id: EnvironmentId::new(),
             notify_on_recovery: true,
         }
+    }
+
+    #[test]
+    fn alert_source_registry_is_closed_and_exact() {
+        for (source, name, event_keys) in [
+            (
+                NotificationAlertSource::EdgeDomainClaimStatusV1,
+                "edge.domain-claim-status.v1",
+                &["edge.domain-claim.rejected", "edge.domain-claim.verified"][..],
+            ),
+            (
+                NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
+                "edge.gateway-certificate-renewal-status.v1",
+                &[
+                    "edge.gateway-certificate.renewal-failed",
+                    "edge.gateway-certificate.renewed",
+                ][..],
+            ),
+        ] {
+            assert_eq!(source.as_str(), name);
+            assert_eq!(NotificationAlertSource::parse(name), Ok(source));
+            assert_eq!(source.event_keys(), event_keys);
+
+            let definition =
+                NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+                    source,
+                    ..spec()
+                })
+                .expect("registered source definition");
+            assert!(definition.canonical_acl().contains(name));
+            assert_eq!(
+                NotificationAlertPolicyDefinition::parse_acl(definition.canonical_acl()),
+                Ok(definition)
+            );
+        }
+        assert!(NotificationAlertSource::parse("edge.gateway-certificate.anything.v1").is_err());
     }
 
     #[test]

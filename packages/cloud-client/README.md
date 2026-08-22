@@ -317,7 +317,9 @@ aggregate version. Cloud remains authoritative for the exact recipient,
 environment existence, current Resource Grants, closed typed source registry,
 projection, idempotency, Outbox, audit, and persistence. The client has no ACL
 parser, event expression evaluator, incident state, projector, or delivery
-mechanism.
+mechanism. Contract `1.49.0` extends the closed source union with
+`edge.gateway-certificate-renewal-status.v1` without adding another client
+operation or configuration format.
 
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and

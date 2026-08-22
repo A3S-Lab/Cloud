@@ -345,7 +345,10 @@ fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Re
     let response = &document["components"]["schemas"]["NotificationAlertPolicy"];
     assert_eq!(
         response["properties"]["source"]["enum"],
-        json!(["edge.domain-claim-status.v1"])
+        json!([
+            "edge.domain-claim-status.v1",
+            "edge.gateway-certificate-renewal-status.v1"
+        ])
     );
     assert_eq!(
         response["properties"]["definitionSchema"]["enum"],

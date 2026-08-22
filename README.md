@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.48.0" src="https://img.shields.io/badge/REST_contract-1.48.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.49.0" src="https://img.shields.io/badge/REST_contract-1.49.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,7 +61,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.48.0`](openapi/v1.json), maintained
+  [OpenAPI `1.49.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. The contract includes immutable v1 fixed-eight and v2
@@ -72,8 +72,10 @@ The code on `main` separates implemented mechanics from released capability:
   Contract `1.48.0` completes the human-readable OpenAPI catalog for every
   public REST operation, documents all parameters and request examples, and
   replaces legacy unconstrained mutation inputs with the exact fail-closed DTO
-  schemas already enforced by the control plane. Broader enterprise `C0` gates
-  remain.
+  schemas already enforced by the control plane. Contract `1.49.0` extends
+  the same personal alert-policy lifecycle to exact Gateway certificate-renewal
+  failure/recovery facts; it adds no endpoint, policy lifecycle, queue, or
+  evaluation engine. Broader enterprise `C0` gates remain.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

@@ -40,7 +40,9 @@ export interface NotificationQuery {
   limit?: number;
 }
 
-export type NotificationAlertSource = 'edge.domain-claim-status.v1';
+export type NotificationAlertSource =
+  | 'edge.domain-claim-status.v1'
+  | 'edge.gateway-certificate-renewal-status.v1';
 export type NotificationAlertPolicyState = 'active' | 'revoked';
 
 export interface NotificationAlertPolicy {

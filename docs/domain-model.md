@@ -1359,9 +1359,9 @@ proves independent subjects across two Gateway replicas. The H0 job's separate
 NATS gate confirms that the existing durable/manual-ack event rail remains
 unchanged.
 
-#### Gateway certificate-renewal alert source (`C0.3-N4c` frozen)
+#### Gateway certificate-renewal alert source (`C0.3-N4c` implemented; retained evidence open)
 
-Notifications may register `edge.gateway-certificate-renewal-status.v1` as a
+Notifications registers `edge.gateway-certificate-renewal-status.v1` as a
 second closed source of the existing immutable
 `cloud.notification.alert-policy.v1` A3S ACL. Its only members are schema-v1
 `edge.gateway-certificate.renewal-failed` and
@@ -1386,9 +1386,11 @@ mutable incident or certificate state is copied into Notifications.
 Every projection rechecks the recipient's active organization Membership and
 current Resource Grants for the exact project/environment before writing the
 existing deterministic personal inbox. A persisted policy remains revoke-only.
-One forward migration may widen only the database's closed source constraint,
-and REST/OpenAPI `1.48.0`, the maintained client, CLI, and four Management MCP
-operations may expose the added enum value without a new route or tool. The
+Migration `133` widens only the database's closed source constraint, and
+REST/OpenAPI `1.49.0`, the maintained client, CLI, and four Management MCP
+operations expose the added enum value without a new route or tool. Focused
+domain, projection, malformed-payload, migration, contract, client, and CLI
+gates pass; retained PostgreSQL 17 and NATS evidence remains open. The
 existing Outbox relay, outbound subscription, A3S Event durable/manual-ack
 consumer, and C6 evidence path remain the only delivery authorities. This
 source adds no arbitrary event selector, JSON-path/expression evaluator,
