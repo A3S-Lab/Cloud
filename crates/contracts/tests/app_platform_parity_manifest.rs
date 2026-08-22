@@ -184,8 +184,8 @@ fn parser_rejects_schema_drift_incomplete_inventory_and_false_public_claims() {
     assert!(AppPlatformParityManifest::parse_acl(&unknown_reference).is_err());
 
     let changed_source = manifest.replacen(
-        "https://docs.dify.ai/llms.txt",
-        "https://docs.dify.ai/other",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/ai-application-platform-plan.md",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/domain-model.md",
         1,
     );
     assert_ne!(changed_source, manifest);
@@ -199,14 +199,14 @@ fn parser_rejects_noncanonical_acl_bytes() {
 
 #[test]
 fn every_advertised_public_capability_requires_verified_gates_and_test_evidence() {
-    let source = r#"parity_manifest "dify-commercial-core-2026-08-13" {
+    let source = r#"parity_manifest "application-platform-core-2026-08-13" {
   baseline = "2026-08-13"
   parity_claim = false
   public_claim_gate = "APP0.6"
   schema = "a3s.cloud.app-platform.parity-manifest.v1"
   reference "workflow-chatflow" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0009-workflow-node-catalog-projection.md"
   }
   gate "APP0.6" {
     evidence = ["doc:ROADMAP.md"]

@@ -131,10 +131,10 @@ The architecture reference capability register is also additive. TokenHub-style
 model-gateway governance remains assigned to `C0.3` and `I0.2` through optional
 `I0.6`; Google AX-style distributed Harness outcomes remain assigned to
 `A1.1` through `A1.6`; cross-layer security investigation remains assigned to
-`C0.3` over the shared evidence and audit foundations; Dify-style public core
-application outcomes remain assigned to `APP0`, `K0`, and `AUT0` over `W0` and
-the existing provider gates. Removing a reference name does not retire those
-outcomes or authorize a replacement mechanism.
+`C0.3` over the shared evidence and audit foundations; commercial
+application-platform core outcomes remain assigned to `APP0`, `K0`, and
+`AUT0` over `W0` and the existing provider gates. Removing a reference name
+does not retire those outcomes or authorize a replacement mechanism.
 
 A3S Box is the sole node-local execution and image-build provider. A3S Power is
 the required inference serving boundary and runs as an ordinary Box-hosted
@@ -2528,8 +2528,8 @@ protocol and recovery gate.
 A product gate is complete only when:
 
 - the documentation capability-preservation check retains the native Cloud,
-  TokenHub-inspired, Google AX-inspired, Dify-inspired public core, and
-  cross-layer security outcomes or records an explicit reviewed retirement
+  TokenHub-inspired, Google AX-inspired, commercial application-platform core,
+  and cross-layer security outcomes or records an explicit reviewed retirement
   migration;
 - an `APP0`, `K0`, or `AUT0` claim is backed by the versioned ACL capability
   manifest, and every required application mode including classic/New Agent,

@@ -5,10 +5,11 @@
 This document is the detailed delivery authority for the A3S Cloud AI
 application platform. It defines the `APP0`, `K0`, and `AUT0` boundaries,
 their relationship to `W0`, and the evidence required before A3S Cloud may
-claim parity with the public core capability set of Dify's commercial product.
+claim completion of the public commercial application-platform capability
+baseline.
 
-The comparison baseline was recorded on 2026-08-13 from Dify's public
-documentation. It includes:
+The capability baseline was recorded on 2026-08-13 from cross-product public
+research and normalized into A3S-owned outcomes. It includes:
 
 - six current application experiences: Chatbot, Text Generator, classic Agent
   (`agent-chat`), New Agent Beta (`agent`), Chatflow, and Workflow;
@@ -35,19 +36,11 @@ documentation. It includes:
   PII redaction, data residency/BYOK, isolation, quotas, high availability,
   air-gapped recovery, and branding.
 
-The auditable seed is Dify's public
-[documentation index](https://docs.dify.ai/llms.txt), including its
-[Workflow/Chatflow](https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow),
-[New Agent](https://docs.dify.ai/en/self-host/use-dify/build/new-agent/overview),
-[publication](https://docs.dify.ai/en/cloud/use-dify/publish/README),
-[monitoring](https://docs.dify.ai/en/cloud/use-dify/monitor/analysis),
-[Knowledge Pipeline](https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration),
-and [plugin-type](https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type)
-inventories, plus the public
-[enterprise comparison](https://dify.ai/pricing/dify-enterprise). The ACL
-capability manifest pins individual source URLs and the observation date so
-later reference-product changes cannot silently alter a verified A3S release.
-That manifest is now frozen at
+The auditable seed is the A3S-owned capability register in this plan, together
+with the architecture, roadmap, development plan, accepted authority
+decisions, and Workflow evolution plan. The ACL capability manifest pins those
+source URLs and the observation date so later planning changes cannot silently
+alter a verified A3S release. That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
@@ -128,7 +121,7 @@ prohibited duplicate.
 | Durable run history, replay, step scheduling, retries, timers inside an existing run, hooks, cancellation, timeout, progress, and child-operation links | A3S Flow plus Cloud Operations projection | Cloud-local run journal, retry daemon, timer queue, or node executor |
 | Application identity, immutable release, delivery mode, session, message, conversation variable, feedback, annotation, and publication policy | Cloud `Applications` | Six separate application runtimes, Workflow-owned conversations, or presentation-owned state |
 | Application toolkit admission and message policy | Applications pins opener/follow-up/file/citation/moderation/annotation-reply/variant/voice policy; Files, Knowledge, Inference, Connectors, and Workflow execute through typed ports | A toolkit runtime, direct model/moderation client, or presentation-only policy |
-| Application template/catalog lifecycle and authorized global discovery | Applications owns immutable A3S-native template revisions; Search owns rebuildable grant-filtered discovery | A Dify package/DSL compatibility store, second catalog index, or public listing that bypasses grants/review |
+| Application template/catalog lifecycle and authorized global discovery | Applications owns immutable A3S-native template revisions; Search owns rebuildable grant-filtered discovery | A third-party package/DSL compatibility store, second catalog index, or public listing that bypasses grants/review |
 | Published application end-user identity and delivery audience | Applications `ApplicationEndUser`, optionally linked to an Identity Principal without copying membership or grants | Treating an arbitrary caller string as a workspace Principal, or an application-local RBAC evaluator |
 | Knowledge Base, document, chunk, metadata, ingestion intent, index policy, retrieval policy, and external-Knowledge binding | Cloud `Knowledge` | Workflow-owned corpus tables, Search as corpus truth, or a plugin-owned Knowledge Base |
 | Knowledge ingestion and transformation orchestration | An immutable `KnowledgePipelineRelease` binding to an exact `WorkflowRevision`, executed by Flow | A Knowledge worker DAG, ingestion queue, or second pipeline engine |
