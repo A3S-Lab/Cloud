@@ -23,6 +23,8 @@ const MCP_FORM_MEMBER_TOKEN: &str =
     "a3s_4444444444444444444444444444444444444444444444444444444444444444";
 const MCP_INVITEE_TOKEN: &str =
     "a3s_5555555555555555555555555555555555555555555555555555555555555555";
+const MCP_RECIPIENT_TOKEN: &str =
+    "a3s_8888888888888888888888888888888888888888888888888888888888888888";
 const MCP_ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"
@@ -375,6 +377,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
             "a3s_cloud_my_membership_invitations_list",
+            "a3s_cloud_recipient_contacts_list",
+            "a3s_cloud_recipient_contacts_get",
             "a3s_cloud_projects_list",
             "a3s_cloud_project_attribution_get",
             "a3s_cloud_forms_get",
@@ -531,6 +535,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_resource_grants_get",
             "a3s_cloud_resource_grants_create",
             "a3s_cloud_resource_grants_revoke",
+            "a3s_cloud_recipient_contacts_list",
+            "a3s_cloud_recipient_contacts_get",
+            "a3s_cloud_recipient_contacts_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
             "a3s_cloud_project_attribution_get",
@@ -639,6 +646,33 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             .map(Vec::len),
         Some(3)
     );
+    let get_recipient_contact =
+        listed_tool(&administrator_tools, "a3s_cloud_recipient_contacts_get")?;
+    assert_eq!(
+        get_recipient_contact["inputSchema"]["required"],
+        json!(["recipientContactId"])
+    );
+    assert_eq!(get_recipient_contact["annotations"]["readOnlyHint"], true);
+    let revoke_recipient_contact =
+        listed_tool(&administrator_tools, "a3s_cloud_recipient_contacts_revoke")?;
+    assert_eq!(
+        revoke_recipient_contact["inputSchema"]["required"],
+        json!(["recipientContactId", "expectedVersion", "idempotencyKey"])
+    );
+    assert_eq!(
+        revoke_recipient_contact["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        revoke_recipient_contact["annotations"]["destructiveHint"],
+        true
+    );
+    for forbidden in [
+        "a3s_cloud_recipient_contacts_request",
+        "a3s_cloud_recipient_contacts_verify",
+    ] {
+        assert!(!tool_names(&administrator_tools).contains(&forbidden));
+    }
     let create_execution_template =
         listed_tool(&administrator_tools, "a3s_cloud_execution_templates_create")?;
     assert_eq!(
@@ -1653,6 +1687,162 @@ async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency()
 }
 
 #[tokio::test]
+async fn management_mcp_exposes_only_redacted_self_recipient_reads_and_revocation() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-recipient-contacts", "Acme").await?;
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "mcp-recipient-human",
+            json!({
+                "principalKind": "human",
+                "name": "Recipient owner",
+                "role": "member"
+            }),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let principal_id = response_json(&membership)?["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP recipient Principal has no ID".into()))?
+        .to_owned();
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "mcp-recipient-token",
+            json!({
+                "name": "recipient-self-service",
+                "token": MCP_RECIPIENT_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::IDENTITY_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let mailbox = "private.mcp@example.test";
+    let begun = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization}/recipient-contacts"),
+            "mcp-recipient-begin",
+            json!({"address": mailbox}),
+            MCP_RECIPIENT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(begun.status(), 202);
+    let contact_id = response_json(&begun)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP recipient contact has no ID".into()))?
+        .to_owned();
+
+    let listed = app
+        .call(mcp_request(
+            Some(MCP_RECIPIENT_TOKEN),
+            tool_call(1, "a3s_cloud_recipient_contacts_list", json!({})),
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed = response_json(&listed)?;
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"][0]["addressHint"],
+        "***@example.test"
+    );
+    assert!(!listed.to_string().contains(mailbox));
+
+    let fetched = app
+        .call(mcp_request(
+            Some(MCP_RECIPIENT_TOKEN),
+            tool_call(
+                2,
+                "a3s_cloud_recipient_contacts_get",
+                json!({"recipientContactId": contact_id}),
+            ),
+        ))
+        .await?;
+    let fetched = response_json(&fetched)?;
+    assert_eq!(
+        fetched["result"]["structuredContent"]["data"]["id"],
+        contact_id
+    );
+    assert!(!fetched.to_string().contains(mailbox));
+    for forbidden in ["address", "proof", "challengeId", "verificationId"] {
+        assert!(
+            fetched["result"]["structuredContent"]["data"]
+                .get(forbidden)
+                .is_none(),
+            "MCP response exposed {forbidden}"
+        );
+    }
+
+    let revoke_arguments = json!({
+        "recipientContactId": contact_id,
+        "expectedVersion": 1,
+        "idempotencyKey": "mcp-recipient-revoke"
+    });
+    let revoked = app
+        .call(mcp_request(
+            Some(MCP_RECIPIENT_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_recipient_contacts_revoke",
+                revoke_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let revoked = response_json(&revoked)?;
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["status"],
+        "revoked"
+    );
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["aggregateVersion"],
+        2
+    );
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["replayed"],
+        false
+    );
+    assert!(!revoked.to_string().contains(mailbox));
+
+    let replayed = app
+        .call(mcp_request(
+            Some(MCP_RECIPIENT_TOKEN),
+            tool_call(4, "a3s_cloud_recipient_contacts_revoke", revoke_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&replayed)?["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let raw_mailbox_argument = app
+        .call(mcp_request(
+            Some(MCP_RECIPIENT_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_recipient_contacts_list",
+                json!({"address": mailbox}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&raw_mailbox_argument)?["error"]["code"],
+        -32602
+    );
+    assert!(!String::from_utf8_lossy(raw_mailbox_argument.body()).contains(mailbox));
+    Ok(())
+}
+
+#[tokio::test]
 async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
@@ -1727,6 +1917,8 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
         tool_names(&restricted_tools),
         vec![
             "a3s_cloud_my_membership_invitations_list",
+            "a3s_cloud_recipient_contacts_list",
+            "a3s_cloud_recipient_contacts_get",
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
             "a3s_cloud_notification_alert_policies_list",

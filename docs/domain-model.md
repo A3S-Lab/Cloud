@@ -168,7 +168,8 @@ Primary aggregates:
   adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
   production proof-provider and API/Worker composition; `C0.3-N5c` verifies
   the Worker-only SMTP verification-delivery state machine against PostgreSQL
-  17, NATS JetStream, and Mailpit, while public surfaces remain gated)
+  17, NATS JetStream, and Mailpit; `C0.3-N5d` implements the exact-owner
+  REST/client/CLI and redacted-safe Management MCP self-service surface)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -215,8 +216,9 @@ completion, redacted evidence, active verified resolution, and terminal
 revocation. Challenges retain their initiating organization for
 Outbox/audit correlation even though contact identity remains Principal-global.
 N5b supplies production proof-provider wiring and N5c supplies one-shot SMTP
-challenge delivery. Public REST/client/CLI/MCP surfaces and Notifications
-composition remain open. This
+challenge delivery. N5d supplies the exact-owner REST/client/CLI surface and
+redacted self list/get/revoke through Management MCP. General Notifications
+SMTP composition remains open. This
 boundary adds no directory, email inference, plaintext proof store, provider
 configuration, queue, scheduler, retry counter, or SMTP client.
 
@@ -272,9 +274,9 @@ N5c is not a general Notifications SMTP channel, an HTTP
 Connector subtype, a second queue/retry/scheduler authority, a template system,
 or a public recipient-contact interface.
 
-`C0.3-N5d` freezes a presentation-only self-service boundary over the existing
-five recipient-contact CQRS handlers. An authenticated credential supplies the
-organization and exact actor Principal; the client can never name another
+`C0.3-N5d` implements a presentation-only self-service boundary over the
+existing five recipient-contact CQRS handlers. An authenticated credential
+supplies the organization and exact actor Principal; the client can never name another
 Principal, and the repository continues to require that actor to be an active
 human with an active Membership. `cloud:read` authorizes exact-self list/get,
 while `identity:write` authorizes begin, complete, and version-checked revoke.
@@ -293,6 +295,10 @@ only: begin and complete are absent because mailbox and proof must not become
 model-visible tool arguments. N5d adds no aggregate, repository, migration,
 business rule, configuration, event, provider, queue, scheduler, notification
 subscription, general SMTP channel, or second authorization path.
+
+Focused HTTP, OpenAPI, maintained-client, CLI, Management MCP catalog,
+permission, lifecycle, replay, strict-input, and redaction tests pass across
+this boundary.
 
 ### 3.2 Projects
 

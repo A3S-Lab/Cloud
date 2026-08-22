@@ -325,6 +325,18 @@ Workloads as the rollout-health authority. Contract `1.51.0` adds
 `edge.gateway-certificate-expiry-status.v1` through the same operations while
 Edge remains the certificate-expiry authority.
 
+`listRecipientContacts`, `getRecipientContact`,
+`requestRecipientContactVerification`,
+`completeRecipientContactVerification`, and `revokeRecipientContact` expose
+the exact-owner Identity self-service lifecycle added by REST contract
+`1.52.0`. The client validates bounded canonical-address and proof transport
+inputs, positive optimistic versions, and caller-owned idempotency keys. It
+returns only opaque contact/Principal IDs, address digest, `***@domain` hint,
+closed status, version, timestamps, and replay state; challenge identity,
+mailbox, and proof are never response fields or remapped error details. Cloud
+remains authoritative for exact active human-Principal ownership, Membership,
+verification, persistence, Outbox, and audit.
+
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and
 `revokeOutboundNotificationSubscription` expose the recipient-bound lifecycle

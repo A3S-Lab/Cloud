@@ -44,6 +44,89 @@ export interface CreateApiTokenInput {
   expiresAt?: string | null;
 }
 
+export type RecipientContactStatus = 'pending' | 'verified' | 'revoked';
+
+export interface RecipientContact {
+  id: string;
+  principalId: string;
+  addressDigest: string;
+  addressHint: string;
+  aggregateVersion: number;
+  status: RecipientContactStatus;
+  createdAt: string;
+  updatedAt: string;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface RecipientContactMutationResult extends RecipientContact {
+  replayed: boolean;
+}
+
+export interface RequestRecipientContactVerificationInput {
+  address: string;
+}
+
+export interface CompleteRecipientContactVerificationInput {
+  proof: string;
+}
+
+export const MAX_RECIPIENT_CONTACT_ADDRESS_BYTES = 254;
+export const MAX_RECIPIENT_CONTACT_PROOF_BYTES = 4096;
+
+export function validateRecipientContactAddress(value: string): void {
+  const invalid = () => new TypeError('recipient contact address must be a bounded canonical ASCII mailbox');
+  if (
+    typeof value !== 'string' ||
+    value.length < 3 ||
+    value.length > MAX_RECIPIENT_CONTACT_ADDRESS_BYTES ||
+    !/^[\x21-\x7e]+$/.test(value)
+  ) {
+    throw invalid();
+  }
+  const parts = value.split('@');
+  if (parts.length !== 2) {
+    throw invalid();
+  }
+  const [local = '', domain = ''] = parts;
+  if (
+    local.length < 1 ||
+    local.length > 64 ||
+    local.startsWith('.') ||
+    local.endsWith('.') ||
+    local.includes('..') ||
+    !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local) ||
+    domain.length < 1 ||
+    domain.length > 253 ||
+    domain.startsWith('.') ||
+    domain.endsWith('.') ||
+    domain.includes('..')
+  ) {
+    throw invalid();
+  }
+  for (const label of domain.split('.')) {
+    if (label.length < 1 || label.length > 63 || !/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label)) {
+      throw invalid();
+    }
+  }
+}
+
+export function validateRecipientContactProof(value: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.length > MAX_RECIPIENT_CONTACT_PROOF_BYTES ||
+    !/^a3srcv1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    throw new TypeError('recipient contact proof is invalid');
+  }
+}
+
+export function validateExpectedRecipientContactVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError('expected recipient contact version must be a positive safe integer');
+  }
+}
+
 export type MembershipRole = 'owner' | 'admin' | 'member' | 'restricted';
 export type IdentityPrincipalKind = 'human' | 'service';
 

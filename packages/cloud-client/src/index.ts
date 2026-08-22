@@ -44,6 +44,13 @@ export * from './audit';
 export * from './connectors';
 export * from './diagnostics';
 export * from './durable-cells';
+export {
+  MAX_RECIPIENT_CONTACT_ADDRESS_BYTES,
+  MAX_RECIPIENT_CONTACT_PROOF_BYTES,
+  validateExpectedRecipientContactVersion,
+  validateRecipientContactAddress,
+  validateRecipientContactProof,
+} from './identity';
 export * from './notifications';
 export * from './search';
 export * from './types';

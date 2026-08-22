@@ -43,6 +43,8 @@ export interface ParsedArguments {
   auditFrom?: string;
   auditTo?: string;
   unreadOnly: boolean;
+  addressStdin: boolean;
+  proofStdin: boolean;
   valueStdin: boolean;
   tokenStdin: boolean;
   enrollmentTokenStdin: boolean;
@@ -52,10 +54,12 @@ export interface ParsedArguments {
 
 type ValueOption = Exclude<
   keyof ParsedArguments,
+  | 'addressStdin'
   | 'enrollmentTokenStdin'
   | 'help'
   | 'positionals'
   | 'projectAttributionLabels'
+  | 'proofStdin'
   | 'tokenStdin'
   | 'unreadOnly'
   | 'valueStdin'
@@ -108,6 +112,8 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
   const parsed: ParsedArguments = {
     positionals: [],
     projectAttributionLabels: [],
+    addressStdin: false,
+    proofStdin: false,
     valueStdin: false,
     tokenStdin: false,
     enrollmentTokenStdin: false,
@@ -125,6 +131,26 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     if (argument === '--version' || argument === '-V') {
       parsed.version = true;
       continue;
+    }
+    if (argument === '--address-stdin') {
+      if (parsed.addressStdin) {
+        throw usageError('option --address-stdin may be specified only once');
+      }
+      parsed.addressStdin = true;
+      continue;
+    }
+    if (argument.startsWith('--address-stdin=')) {
+      throw usageError('option --address-stdin does not accept a value');
+    }
+    if (argument === '--proof-stdin') {
+      if (parsed.proofStdin) {
+        throw usageError('option --proof-stdin may be specified only once');
+      }
+      parsed.proofStdin = true;
+      continue;
+    }
+    if (argument.startsWith('--proof-stdin=')) {
+      throw usageError('option --proof-stdin does not accept a value');
     }
     if (argument === '--value-stdin') {
       if (parsed.valueStdin) {

@@ -218,6 +218,26 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses recipient contact private inputs only as valueless standard-input flags', () => {
+    expect(
+      parseArguments([
+        'recipient-contacts',
+        'request',
+        '--address-stdin',
+        '--idempotency-key=recipient:request',
+      ])
+    ).toEqual(expect.objectContaining({ addressStdin: true, proofStdin: false }));
+    expect(
+      parseArguments([
+        'recipient-contacts',
+        'verify',
+        '019c0000-0000-7000-8000-000000000030',
+        '--proof-stdin',
+        '--idempotency-key=recipient:verify',
+      ])
+    ).toEqual(expect.objectContaining({ addressStdin: false, proofStdin: true }));
+  });
+
   it.each([
     [['--token', 'secret', 'organizations', 'list'], 'API tokens are accepted only'],
     [['--token=secret', 'organizations', 'list'], 'API tokens are accepted only'],
@@ -226,6 +246,10 @@ describe('parseArguments', () => {
     [['--output', 'json', '--output', 'table'], 'may be specified only once'],
     [['secrets', 'create', 'Database URL', '--value-stdin', '--value-stdin'], 'may be specified only once'],
     [['secrets', 'create', 'Database URL', '--value-stdin=plaintext'], 'does not accept a value'],
+    [['recipient-contacts', 'request', '--address-stdin=private@example.test'], 'does not accept a value'],
+    [['recipient-contacts', 'verify', '--proof-stdin=private-proof'], 'does not accept a value'],
+    [['recipient-contacts', 'request', '--address-stdin', '--address-stdin'], 'may be specified only once'],
+    [['recipient-contacts', 'verify', '--proof-stdin', '--proof-stdin'], 'may be specified only once'],
     [
       ['nodes', 'bootstrap', 'worker-1', '--enrollment-token-stdin', '--enrollment-token-stdin'],
       'may be specified only once',

@@ -90,6 +90,12 @@ and CLI. Its two reads require `cloud:read`; create and revoke require
 `notification:write`. MCP owns no source registry, expression evaluator,
 incident state, projection worker, queue, scheduler, or configuration parser.
 
+The recipient-contact self-service slice adds only redacted exact-self
+list/get and optimistic revoke over Identity's existing CQRS. Its reads require
+`cloud:read`; revoke requires `identity:write`. Verification request and
+completion are intentionally absent so mailbox and proof never become
+model-visible arguments.
+
 ## Transport contract
 
 The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
@@ -203,6 +209,9 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_recipient_contacts_list` | Principal self-query | `cloud:read`; exact authenticated human Principal and active Membership are enforced in Identity |
+| `a3s_cloud_recipient_contacts_get` | Principal self-query | `cloud:read`; denied and missing contact IDs share one `404` contract |
+| `a3s_cloud_recipient_contacts_revoke` | Principal self-command | `identity:write`; exact Principal, positive expected version, and idempotency required |
 | `a3s_cloud_audit_records_list` | Administrator query | `cloud:read` plus organization administrator role |
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
@@ -311,6 +320,22 @@ invitation, creates the ordinary Membership, and records acceptance atomically;
 expired, revoked, stale, or duplicate-membership cases cannot leave a partial
 Membership. The MCP adapter owns no email lookup, external-identity link,
 session, invitation store, RBAC evaluator, notification queue, or scheduler.
+
+## Recipient-contact self-service
+
+`a3s_cloud_recipient_contacts_list` and
+`a3s_cloud_recipient_contacts_get` return only contacts owned by the exact
+authenticated Principal. Identity remains the final authority for an active
+human Principal and active organization Membership; an administrator cannot
+inspect another Principal's contact through these tools. Responses contain
+only opaque contact/Principal IDs, canonical-address digest, `***@domain` hint,
+closed status, version, and timestamps.
+
+`a3s_cloud_recipient_contacts_revoke` requires a positive expected version and
+caller-owned idempotency key and reuses the existing Identity command handler.
+No tool accepts a Principal selector, mailbox, proof, or challenge identity.
+Verification begin and completion are deliberately absent, and MCP adds no
+repository, provider, queue, scheduler, subscription, or general SMTP path.
 
 ## Personal notification inbox
 
@@ -721,7 +746,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 129-tool administrator and 70-tool
+current focused source runner requires exact 132-tool administrator and 72-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn service_principals_and_foreign_contacts_fail_closed() {
+    async fn service_inactive_and_foreign_contact_actors_fail_closed() {
         let (repository, organization_id, principal_id) = fixture().await;
         let service_id = PrincipalId::new();
         let now = Utc::now();
@@ -536,5 +536,54 @@ mod tests {
             .await
             .expect("foreign lookup")
             .is_none());
+
+        let mut state = repository.state.write().await;
+        state
+            .principals
+            .get_mut(&principal_id)
+            .expect("human principal")
+            .disabled_at = Some(now);
+        drop(state);
+        assert!(matches!(
+            repository
+                .begin_recipient_contact_verification(BeginRecipientContactVerificationWrite {
+                    organization_id,
+                    actor_principal_id: principal_id,
+                    contact_id: RecipientContactId::new(),
+                    verification_id: RecipientContactVerificationId::new(),
+                    address: RecipientEmailAddress::parse("disabled@example.com").expect("address"),
+                    signing_key_id: RecipientContactSigningKeyId::parse("contact-v1").expect("key"),
+                    requested_at: now,
+                    expires_at: now + Duration::minutes(10),
+                    request_id: Uuid::now_v7(),
+                    idempotency: idempotency("contacts", "disabled"),
+                })
+                .await,
+            Err(RepositoryError::Forbidden(_))
+        ));
+
+        let mut state = repository.state.write().await;
+        state
+            .principals
+            .get_mut(&principal_id)
+            .expect("human principal")
+            .disabled_at = None;
+        let membership_id = state
+            .membership_subjects
+            .get(&(organization_id, principal_id))
+            .copied()
+            .expect("human membership");
+        assert!(state
+            .memberships
+            .get_mut(&membership_id)
+            .expect("human membership")
+            .revoke(now));
+        drop(state);
+        assert!(matches!(
+            repository
+                .list_recipient_contacts(organization_id, principal_id)
+                .await,
+            Err(RepositoryError::Forbidden(_))
+        ));
     }
 }

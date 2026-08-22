@@ -221,6 +221,7 @@ conformanceIt(
       'a3s_cloud_memberships_revoke',
       'a3s_cloud_membership_invitations_revoke',
       'a3s_cloud_resource_grants_revoke',
+      'a3s_cloud_recipient_contacts_revoke',
       'a3s_cloud_workloads_stop',
       'a3s_cloud_deployments_cancel',
       'a3s_cloud_build_runs_cancel',

@@ -104,6 +104,17 @@ CLI has no
 expression evaluator, event registry, incident state, timer, scheduler, or
 second configuration format.
 
+`recipient-contacts list` and `recipient-contacts get <contact-id>` return only
+the authenticated human Principal's redacted contacts. `recipient-contacts
+request` requires `--address-stdin` and `--idempotency-key`; `recipient-contacts
+verify <contact-id>` requires `--proof-stdin` and `--idempotency-key`; and
+`recipient-contacts revoke <contact-id>` requires `--expected-version` plus
+`--idempotency-key`. Address and proof are bounded stdin-only values: the CLI
+rejects argv forms, clears their mutable input buffers, and never emits them in
+stdout, stderr, diagnostics, or remapped server errors. REST contract `1.52.0`
+keeps exact actor, Membership, verification, replay, and optimistic-concurrency
+authority in Identity.
+
 `notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]` and
 `notification-subscriptions get <subscription-id>` read only the authenticated
 Principal's currently authorized subscriptions. `notification-subscriptions

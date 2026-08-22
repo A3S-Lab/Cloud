@@ -36,8 +36,9 @@ use super::forms::{
 use super::identity::{
     ChangeMembershipRoleArguments, CreateMembershipArguments, CreateMembershipInvitationArguments,
     CreateResourceGrantArguments, ListResourceGrantsArguments, MembershipArguments,
-    MembershipInvitationArguments, MembershipInvitationMutationArguments, ResourceGrantArguments,
-    RevokeMembershipArguments, RevokeResourceGrantArguments,
+    MembershipInvitationArguments, MembershipInvitationMutationArguments,
+    RecipientContactArguments, ResourceGrantArguments, RevokeMembershipArguments,
+    RevokeRecipientContactArguments, RevokeResourceGrantArguments,
 };
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
@@ -651,6 +652,39 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::RecipientContactsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_recipient_contacts(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::RecipientContactsGet => {
+            let arguments = arguments::parse::<RecipientContactArguments>(arguments).ok()?;
+            identity::get_recipient_contact(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::RecipientContactsRevoke => {
+            let arguments = arguments::parse::<RevokeRecipientContactArguments>(arguments).ok()?;
+            identity::revoke_recipient_contact(
+                command_bus,
+                organization_id,
+                actor_principal_id,
                 arguments,
                 request_id,
             )

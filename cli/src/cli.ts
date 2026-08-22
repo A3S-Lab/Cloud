@@ -22,6 +22,11 @@ Commands:
   api-tokens get ID     Get one API token metadata record
   api-tokens create NAME Create an API token from standard input idempotently
   api-tokens revoke ID  Revoke one API token idempotently
+  recipient-contacts list List my redacted recipient contacts
+  recipient-contacts get ID Get one of my redacted recipient contacts
+  recipient-contacts request Request mailbox verification from standard input
+  recipient-contacts verify ID Complete mailbox verification from standard input
+  recipient-contacts revoke ID Revoke one contact with optimistic concurrency
   memberships list      List organization memberships
   memberships get ID    Get one organization membership
   memberships create KIND NAME ROLE Create a human or service Principal membership idempotently
@@ -236,6 +241,8 @@ Global options:
   --platforms <csv>          linux/amd64 and/or linux/arm64
   --value-stdin              Read Secret material exactly from standard input
   --token-stdin              Read a new API token credential from standard input
+  --address-stdin            Read a recipient contact mailbox from standard input
+  --proof-stdin              Read a recipient contact verification proof from standard input
   --enrollment-token-stdin   Read a node enrollment credential from standard input
   --scopes <csv>             API token scopes for api-tokens create
   --principal <uuid>         Principal bound to a newly created API token

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.51.0" src="https://img.shields.io/badge/REST_contract-1.51.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.52.0" src="https://img.shields.io/badge/REST_contract-1.52.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,10 +61,11 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.51.0`](openapi/v1.json), maintained
+  [OpenAPI `1.52.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
-  [Management MCP](docs/management-mcp.md) share the same commands and
-  queries. The contract includes immutable v1 fixed-eight and v2
+  [Management MCP](docs/management-mcp.md) reuse the same application commands
+  and queries within their surface-specific privacy boundaries. The contract
+  includes immutable v1 fixed-eight and v2
   user-selected one-through-eight outbound-notification provider-attempt
   budgets, plus v3's bounded immutable event-time suppression cutoff. Contract
   `1.47.0` also exposes immutable personal alert policies over the first closed
@@ -80,9 +81,11 @@ The code on `main` separates implemented mechanics from released capability:
   healthy facts through that same lifecycle and delivery path. Contract
   `1.51.0` adds the closed `edge.gateway-certificate-expiry-status.v1` source
   over exact Edge-owned expiring/resolved facts, with no new endpoint, policy
-  lifecycle, or evaluation engine. Broader
+  lifecycle, or evaluation engine. Contract `1.52.0` exposes the exact-owner
+  recipient-contact lifecycle through REST, the maintained client, and CLI,
+  while Management MCP receives only redacted self list/get and revoke. Broader
   enterprise `C0` gates remain.
-- **Verified recipient-contact authority / implemented proof and SMTP delivery** — Identity
+- **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal
   revocation, and an internal active-verified exact-owner resolver. Migration
@@ -107,9 +110,11 @@ The code on `main` separates implemented mechanics from released capability:
   STARTTLS, one provider submission, terminal replay, and the Relay/Worker
   composition; the same run's
   [Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071082)
-  retains the workspace gates. This is still not a general email capability:
-  recipient-contact public surfaces and Notifications SMTP composition remain
-  gated.
+  retains the workspace gates. N5d exposes the same exact-owner authority
+  through REST/OpenAPI `1.52.0`, the maintained client, and stdin-safe CLI;
+  Management MCP exposes only redacted self list/get and optimistic revoke, so
+  mailbox and proof never become model-visible arguments. This is still not a
+  general email capability: Notifications SMTP composition remains gated.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

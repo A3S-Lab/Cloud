@@ -40,6 +40,10 @@ import { executeNotificationCommand, rejectMisplacedNotificationOptions } from '
 import { executeOntologyCommand } from './ontology-commands';
 import { executePluginCommand } from './plugin-commands';
 import {
+  executeRecipientContactCommand,
+  rejectMisplacedRecipientContactOptions,
+} from './recipient-contact-commands';
+import {
   buildEvidenceResult,
   buildRunLogsResult,
   buildRunResult,
@@ -95,6 +99,7 @@ export async function executeCommand(
   }
   rejectMisplacedSourceRecipeOptions(command, arguments_);
   rejectMisplacedSecretValueOption(command, arguments_);
+  rejectMisplacedRecipientContactOptions(command, arguments_);
   rejectMisplacedIdentityOptions(command, arguments_);
   rejectMisplacedNodeOptions(command, arguments_);
   rejectMisplacedAuditOptions(command, arguments_);
@@ -201,6 +206,16 @@ export async function executeCommand(
   const sourceResult = await executeSourceCommand(command, arguments_, context, cloudApi);
   if (sourceResult !== undefined) {
     return sourceResult;
+  }
+  const recipientContactResult = await executeRecipientContactCommand(
+    command,
+    arguments_,
+    context,
+    cloudApi,
+    { readStdin: dependencies.readStdin }
+  );
+  if (recipientContactResult !== undefined) {
+    return recipientContactResult;
   }
   const identityResult = await executeIdentityCommand(command, arguments_, context, cloudApi, {
     readStdin: dependencies.readStdin,

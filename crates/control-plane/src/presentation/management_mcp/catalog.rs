@@ -107,6 +107,9 @@ pub const RESOURCE_GRANTS_LIST: &str = "a3s_cloud_resource_grants_list";
 pub const RESOURCE_GRANTS_GET: &str = "a3s_cloud_resource_grants_get";
 pub const RESOURCE_GRANTS_CREATE: &str = "a3s_cloud_resource_grants_create";
 pub const RESOURCE_GRANTS_REVOKE: &str = "a3s_cloud_resource_grants_revoke";
+pub const RECIPIENT_CONTACTS_LIST: &str = "a3s_cloud_recipient_contacts_list";
+pub const RECIPIENT_CONTACTS_GET: &str = "a3s_cloud_recipient_contacts_get";
+pub const RECIPIENT_CONTACTS_REVOKE: &str = "a3s_cloud_recipient_contacts_revoke";
 pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
@@ -228,6 +231,9 @@ pub enum ManagementTool {
     ResourceGrantsGet,
     ResourceGrantsCreate,
     ResourceGrantsRevoke,
+    RecipientContactsList,
+    RecipientContactsGet,
+    RecipientContactsRevoke,
     ProjectsCreate,
     ProjectsList,
     ProjectAttributionGet,
@@ -324,7 +330,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 129] = [
+    const ALL: [Self; 132] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -375,6 +381,9 @@ impl ManagementTool {
         Self::ResourceGrantsGet,
         Self::ResourceGrantsCreate,
         Self::ResourceGrantsRevoke,
+        Self::RecipientContactsList,
+        Self::RecipientContactsGet,
+        Self::RecipientContactsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
         Self::ProjectAttributionGet,
@@ -532,6 +541,9 @@ impl ManagementTool {
             Self::ResourceGrantsGet => RESOURCE_GRANTS_GET,
             Self::ResourceGrantsCreate => RESOURCE_GRANTS_CREATE,
             Self::ResourceGrantsRevoke => RESOURCE_GRANTS_REVOKE,
+            Self::RecipientContactsList => RECIPIENT_CONTACTS_LIST,
+            Self::RecipientContactsGet => RECIPIENT_CONTACTS_GET,
+            Self::RecipientContactsRevoke => RECIPIENT_CONTACTS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
             Self::ProjectAttributionGet => PROJECT_ATTRIBUTION_GET,
@@ -653,7 +665,8 @@ impl ManagementTool {
             | Self::ResourceGrantsList
             | Self::ResourceGrantsGet
             | Self::ResourceGrantsCreate
-            | Self::ResourceGrantsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
+            | Self::ResourceGrantsRevoke
+            | Self::RecipientContactsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate | Self::ProjectAttributionUpdate => {
                 Some(ApiTokenScope::PROJECT_WRITE)
             }
@@ -674,6 +687,8 @@ impl ManagementTool {
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::MyMembershipInvitationsList
+            | Self::RecipientContactsList
+            | Self::RecipientContactsGet
             | Self::AuditRecordsList
             | Self::NotificationsList
             | Self::NotificationsGet
@@ -873,6 +888,9 @@ impl ManagementTool {
             Self::OperationsList => Some(ManagementResourceBinding::PolymorphicCollection),
             Self::MyMembershipInvitationsList
             | Self::MembershipInvitationsAccept
+            | Self::RecipientContactsList
+            | Self::RecipientContactsGet
+            | Self::RecipientContactsRevoke
             | Self::NotificationsList
             | Self::NotificationsGet
             | Self::NotificationsRead
@@ -1220,6 +1238,24 @@ impl ManagementTool {
                 "Revoke Resource Grant",
                 "Revoke one Resource Grant with optimistic concurrency and explicit idempotency.",
                 revoke_resource_grant_schema(),
+                false,
+            ),
+            Self::RecipientContactsList => (
+                "List my recipient contacts",
+                "List only the authenticated human Principal's redacted recipient contacts.",
+                empty_schema(),
+                true,
+            ),
+            Self::RecipientContactsGet => (
+                "Get my recipient contact",
+                "Get one redacted recipient contact owned exactly by the authenticated human Principal.",
+                uuid_id_schema("recipientContactId"),
+                true,
+            ),
+            Self::RecipientContactsRevoke => (
+                "Revoke my recipient contact",
+                "Revoke one recipient contact owned exactly by the authenticated human Principal with optimistic concurrency and explicit idempotency.",
+                revoke_recipient_contact_schema(),
                 false,
             ),
             Self::ProjectsCreate => (
@@ -1702,6 +1738,7 @@ impl ManagementTool {
             Self::MembershipsRevoke
                 | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsRevoke
+                | Self::RecipientContactsRevoke
                 | Self::ApplicationSessionsClose
                 | Self::ApplicationInvocationsCancel
                 | Self::WorkloadsStop
@@ -3242,6 +3279,19 @@ fn revoke_resource_grant_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["resourceGrantId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_recipient_contact_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "recipientContactId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["recipientContactId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

@@ -4,17 +4,20 @@ use crate::modules::identity::domain::entities::IdentityPrincipalKind;
 use crate::modules::identity::presentation::{
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
-    ResourceGrantMutationResponse, ResourceGrantResponse, ResourceGrantScopeDto,
+    RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
+    ResourceGrantResponse, ResourceGrantScopeDto,
 };
 use crate::modules::identity::{
     AcceptMembershipInvitation, ChangeMembershipRole, CreateMembership, CreateMembershipInvitation,
-    CreateResourceGrant, GetMembership, GetMembershipInvitation, GetResourceGrant,
-    ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations, ListResourceGrants,
-    RevokeMembership, RevokeMembershipInvitation, RevokeResourceGrant,
+    CreateResourceGrant, GetMembership, GetMembershipInvitation, GetRecipientContact,
+    GetResourceGrant, ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations,
+    ListRecipientContacts, ListResourceGrants, RevokeMembership, RevokeMembershipInvitation,
+    RevokeRecipientContact, RevokeResourceGrant,
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    MembershipId, MembershipInvitationId, OrganizationId, PrincipalId, ResourceGrantId,
+    MembershipId, MembershipInvitationId, OrganizationId, PrincipalId, RecipientContactId,
+    ResourceGrantId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::{DateTime, Utc};
@@ -105,6 +108,21 @@ pub struct CreateResourceGrantArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeResourceGrantArguments {
     resource_grant_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecipientContactArguments {
+    recipient_contact_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeRecipientContactArguments {
+    recipient_contact_id: Uuid,
     #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
     idempotency_key: String,
@@ -495,6 +513,81 @@ pub async fn revoke_resource_grant(
         Ok(result) => {
             tool_result::success(200, ResourceGrantMutationResponse::from(result), request_id)
         }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_recipient_contacts(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    _arguments: EmptyArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListRecipientContacts {
+            organization_id,
+            actor_principal_id,
+        })
+        .await?
+    {
+        Ok(contacts) => tool_result::success(
+            200,
+            contacts
+                .into_iter()
+                .map(RecipientContactResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_recipient_contact(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RecipientContactArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetRecipientContact {
+            organization_id,
+            actor_principal_id,
+            contact_id: RecipientContactId::from_uuid(arguments.recipient_contact_id),
+        })
+        .await?
+    {
+        Ok(contact) => {
+            tool_result::success(200, RecipientContactResponse::from(contact), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_recipient_contact(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RevokeRecipientContactArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeRecipientContact {
+            organization_id,
+            actor_principal_id,
+            contact_id: RecipientContactId::from_uuid(arguments.recipient_contact_id),
+            expected_version: arguments.expected_version,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            RecipientContactMutationResponse::from(result),
+            request_id,
+        ),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }
