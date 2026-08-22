@@ -1402,6 +1402,47 @@ arbitrary event selector, JSON-path/expression evaluator, certificate
 lifecycle, incident table, counter, poller, timer, scheduler, queue, second
 event rail, or non-ACL product configuration.
 
+#### Workload rollout-health fact (`C0.3-N4d` frozen)
+
+Workloads remains the deployment and rollout authority. A desired Deployment
+emits `workload.deployment.failed` only when it first enters terminal `Failed`
+from the normal `Queued`, `Resolving`, `Scheduled`, `Applying`, or `Verifying`
+path. The first health-verified activation that selects its WorkloadRevision
+emits `workload.deployment.healthy`, whether that Deployment immediately enters
+`Active` or must remain `Retiring` while its predecessor is cleaned up. Both
+facts use schema version 1.
+
+The fact subject is the logical `Workload`, and its aggregate version is the
+strictly increasing `WorkloadRevision.generation` already serialized and
+enforced by the Workloads repository. A later revision's healthy fact can
+therefore recover an earlier failed rollout, while another Workload can never
+do so. Each payload carries exactly one organization, project, environment,
+Workload identity and bounded name, Deployment, WorkloadRevision and generation,
+Operation, optional selected Node, and closed `failed` or `healthy` status. A
+failure additionally carries its closed pre-terminal phase and one closed
+availability impact: `unavailable` when no revision is active, or
+`previous_revision_retained` when an earlier revision remains selected. It
+never carries `Deployment.failure`, a Runtime/provider message, command or
+observation body, environment value, credential, or Secret material.
+
+Cancellation requests, `Cancelled`, `Orphaned`, stop, predecessor-retirement
+completion or failure, exact transition replay, and every other intermediate
+state emit no rollout-health fact. `Orphaned` represents unresolved cleanup
+rather than a recoverable health pair; a later healthy revision must not close
+it. A future alert source may cover orphan cleanup only after Workloads or its
+existing reconciler emits an explicit bounded resolution fact.
+
+The failed/active-selection mutation and its fact commit in one existing
+Workloads repository transaction and transactional Outbox. A lost response
+after commit is an exact replay and adds no fact; an Outbox write failure rolls
+back the state transition. No new lifecycle record is needed. A later
+`C0.3-N4e` Notifications slice may register the closed
+`workload.deployment-health.v1` source and interpret `healthy` as recovery only
+after a covered failed fact for the same Workload. Initial and routine healthy
+activation remain notification-silent. This prerequisite adds no health table,
+incident state, mutable counter, poller, timer, scheduler, queue, second event
+rail, migration, configuration parser, or public API.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
