@@ -570,16 +570,16 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
 
     let expiry_route_id = RouteId::new();
     let expiry_node_id = NodeId::new();
-    let previous_certificate_id = GatewayCertificateId::new();
-    let replacement_certificate_id = GatewayCertificateId::new();
+    let initial_previous_certificate_id = GatewayCertificateId::new();
+    let initial_replacement_certificate_id = GatewayCertificateId::new();
     let initial_expiry_resolution = notification_gateway_certificate_expiry_message(
         organization_id,
         project_id,
         environment_id,
         expiry_route_id,
         expiry_node_id,
-        previous_certificate_id,
-        replacement_certificate_id,
+        initial_previous_certificate_id,
+        initial_replacement_certificate_id,
         GatewayCertificateExpiryStatus::Resolved,
         3,
         3,
@@ -588,6 +588,8 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
     persist_outbox_message(database, &initial_expiry_resolution).await?;
     projector.project(&initial_expiry_resolution).await?;
 
+    let previous_certificate_id = initial_replacement_certificate_id;
+    let replacement_certificate_id = GatewayCertificateId::new();
     let expiry_firing = notification_gateway_certificate_expiry_message(
         organization_id,
         project_id,
@@ -634,6 +636,10 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
         5,
         policy.created_at + ChronoDuration::seconds(17),
     )?;
+    assert_ne!(
+        initial_expiry_resolution.event_id,
+        expiry_resolution.event_id
+    );
     persist_outbox_message(database, &expiry_resolution).await?;
     projector.project(&expiry_resolution).await?;
     projector.project(&expiry_resolution).await?;

@@ -123,7 +123,7 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
         membership_lookup(organization_id, membership_id, recipient, created_at),
     )
     .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
-    let lifecycle = GatewayCertificateExpiryFixture::new(
+    let initial_lifecycle = GatewayCertificateExpiryFixture::new(
         organization_id,
         project_id,
         environment_id,
@@ -132,7 +132,7 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
     );
 
     projector
-        .project(&lifecycle.message(
+        .project(&initial_lifecycle.message(
             GatewayCertificateExpiryStatus::Expiring,
             1,
             3,
@@ -140,16 +140,20 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
         ))
         .await
         .expect("pre-policy firing is silent");
+    let initial_resolution = initial_lifecycle.message(
+        GatewayCertificateExpiryStatus::Resolved,
+        3,
+        3,
+        created_at + chrono::Duration::seconds(1),
+    );
     projector
-        .project(&lifecycle.message(
-            GatewayCertificateExpiryStatus::Resolved,
-            3,
-            3,
-            created_at + chrono::Duration::seconds(1),
-        ))
+        .project(&initial_resolution)
         .await
         .expect("initial resolution is silent");
 
+    let mut lifecycle = initial_lifecycle.clone();
+    lifecycle.previous_certificate_id = initial_lifecycle.replacement_certificate_id;
+    lifecycle.replacement_certificate_id = GatewayCertificateId::new();
     let firing = lifecycle.message(
         GatewayCertificateExpiryStatus::Expiring,
         3,
@@ -159,13 +163,8 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
     projector.project(&firing).await.expect("project firing");
     projector.project(&firing).await.expect("replay firing");
 
-    let peer = GatewayCertificateExpiryFixture::new(
-        organization_id,
-        project_id,
-        environment_id,
-        route_id,
-        NodeId::new(),
-    );
+    let mut peer = lifecycle.clone();
+    peer.node_id = NodeId::new();
     projector
         .project(&peer.message(
             GatewayCertificateExpiryStatus::Resolved,
@@ -182,6 +181,7 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
         5,
         created_at + chrono::Duration::seconds(4),
     );
+    assert_ne!(initial_resolution.event_id, resolved.event_id);
     projector
         .project(&resolved)
         .await
