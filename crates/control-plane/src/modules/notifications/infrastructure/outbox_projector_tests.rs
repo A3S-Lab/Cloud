@@ -540,5 +540,8 @@ mod domain_claim;
 #[path = "outbox_projector_gateway_certificate_tests.rs"]
 mod gateway_certificate;
 
+#[path = "outbox_projector_gateway_certificate_expiry_tests.rs"]
+mod gateway_certificate_expiry;
+
 #[path = "outbox_projector_workload_tests.rs"]
 mod workload;

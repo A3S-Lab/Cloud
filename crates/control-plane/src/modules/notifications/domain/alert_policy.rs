@@ -18,6 +18,7 @@ const NOTIFICATION_ALERT_POLICY_BLOCK: &str = "notification_alert_policy";
 pub enum NotificationAlertSource {
     EdgeDomainClaimStatusV1,
     EdgeGatewayCertificateRenewalStatusV1,
+    EdgeGatewayCertificateExpiryStatusV1,
     WorkloadDeploymentHealthV1,
 }
 
@@ -28,6 +29,9 @@ impl NotificationAlertSource {
             Self::EdgeGatewayCertificateRenewalStatusV1 => {
                 "edge.gateway-certificate-renewal-status.v1"
             }
+            Self::EdgeGatewayCertificateExpiryStatusV1 => {
+                "edge.gateway-certificate-expiry-status.v1"
+            }
             Self::WorkloadDeploymentHealthV1 => "workload.deployment-health.v1",
         }
     }
@@ -37,6 +41,9 @@ impl NotificationAlertSource {
             "edge.domain-claim-status.v1" => Ok(Self::EdgeDomainClaimStatusV1),
             "edge.gateway-certificate-renewal-status.v1" => {
                 Ok(Self::EdgeGatewayCertificateRenewalStatusV1)
+            }
+            "edge.gateway-certificate-expiry-status.v1" => {
+                Ok(Self::EdgeGatewayCertificateExpiryStatusV1)
             }
             "workload.deployment-health.v1" => Ok(Self::WorkloadDeploymentHealthV1),
             _ => Err("notification alert source is unsupported".into()),
@@ -51,6 +58,10 @@ impl NotificationAlertSource {
             Self::EdgeGatewayCertificateRenewalStatusV1 => &[
                 "edge.gateway-certificate.renewal-failed",
                 "edge.gateway-certificate.renewed",
+            ],
+            Self::EdgeGatewayCertificateExpiryStatusV1 => &[
+                "edge.gateway-certificate.expiring",
+                "edge.gateway-certificate.expiry-resolved",
             ],
             Self::WorkloadDeploymentHealthV1 => {
                 &["workload.deployment.failed", "workload.deployment.healthy"]
@@ -412,6 +423,14 @@ mod tests {
                 &[
                     "edge.gateway-certificate.renewal-failed",
                     "edge.gateway-certificate.renewed",
+                ][..],
+            ),
+            (
+                NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1,
+                "edge.gateway-certificate-expiry-status.v1",
+                &[
+                    "edge.gateway-certificate.expiring",
+                    "edge.gateway-certificate.expiry-resolved",
                 ][..],
             ),
             (

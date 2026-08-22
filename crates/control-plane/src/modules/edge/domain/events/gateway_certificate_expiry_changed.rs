@@ -141,7 +141,11 @@ impl GatewayCertificateExpiryChanged {
                 status,
             };
             events.push(DomainEventEnvelope {
-                event_id: expiry_event_id(aggregate_id, event_key, active_certificate.id),
+                event_id: Self::deterministic_event_id(
+                    aggregate_id,
+                    event_key,
+                    active_certificate.id,
+                ),
                 event_key: event_key.into(),
                 schema_version: 1,
                 organization_id: convergence.organization_id.as_uuid(),
@@ -163,8 +167,13 @@ impl GatewayCertificateExpiryChanged {
         existing: &DomainEventEnvelope,
         candidate: &DomainEventEnvelope,
     ) -> Result<bool, String> {
-        let existing_payload = firing_payload(existing)?;
-        let candidate_payload = firing_payload(candidate)?;
+        let existing_payload = Self::decode_envelope(existing)?;
+        let candidate_payload = Self::decode_envelope(candidate)?;
+        if existing_payload.status != GatewayCertificateExpiryStatus::Expiring
+            || candidate_payload.status != GatewayCertificateExpiryStatus::Expiring
+        {
+            return Err("Gateway certificate expiry retry selected a non-firing event".into());
+        }
         Ok(existing.event_id == candidate.event_id
             && existing.organization_id == candidate.organization_id
             && existing.aggregate_id == candidate.aggregate_id
@@ -183,49 +192,79 @@ impl GatewayCertificateExpiryChanged {
             && existing_payload.active_certificate_expires_at
                 == candidate_payload.active_certificate_expires_at)
     }
-}
 
-fn firing_payload(event: &DomainEventEnvelope) -> Result<GatewayCertificateExpiryChanged, String> {
-    if event.event_key != "edge.gateway-certificate.expiring" || event.schema_version != 1 {
-        return Err("Gateway certificate expiry retry selected a non-firing event".into());
+    pub(crate) fn decode_envelope(event: &DomainEventEnvelope) -> Result<Self, String> {
+        let expected_status = match event.event_key.as_str() {
+            "edge.gateway-certificate.expiring" => GatewayCertificateExpiryStatus::Expiring,
+            "edge.gateway-certificate.expiry-resolved" => GatewayCertificateExpiryStatus::Resolved,
+            _ => return Err("Gateway certificate expiry event key is unsupported".into()),
+        };
+        let payload: Self = serde_json::from_value(event.payload.clone())
+            .map_err(|error| format!("Gateway certificate expiry payload is invalid: {error}"))?;
+        let hostname = RouteHostname::parse(payload.hostname.clone())?;
+        let path_prefix = RoutePath::parse(payload.path_prefix.clone())?;
+        let aggregate_id = renewal_subject_id(payload.route_id, payload.node_id);
+        let (expected_active_certificate_id, valid_revisions) = match expected_status {
+            GatewayCertificateExpiryStatus::Expiring => (
+                payload.previous_certificate_id,
+                payload.certificate_gateway_revision < payload.renewal_gateway_revision,
+            ),
+            GatewayCertificateExpiryStatus::Resolved => (
+                payload.replacement_certificate_id,
+                payload.certificate_gateway_revision == payload.renewal_gateway_revision,
+            ),
+        };
+        if event.schema_version != 1
+            || event.event_id.is_nil()
+            || event.organization_id.is_nil()
+            || event.aggregate_id.is_nil()
+            || event.correlation_id.is_nil()
+            || event.causation_id.is_some()
+            || canonical_timestamp(event.occurred_at) != event.occurred_at
+            || canonical_timestamp(payload.active_certificate_expires_at)
+                != payload.active_certificate_expires_at
+            || payload.organization_id.as_uuid() != event.organization_id
+            || payload.organization_id.as_uuid().is_nil()
+            || payload.project_id.as_uuid().is_nil()
+            || payload.environment_id.as_uuid().is_nil()
+            || payload.route_id.as_uuid().is_nil()
+            || payload.workload_id.as_uuid().is_nil()
+            || payload.node_id.as_uuid().is_nil()
+            || payload.previous_certificate_id.as_uuid().is_nil()
+            || payload.replacement_certificate_id.as_uuid().is_nil()
+            || payload.active_certificate_id.as_uuid().is_nil()
+            || hostname.as_str() != payload.hostname
+            || path_prefix.as_str() != payload.path_prefix
+            || payload.replacement_certificate_id == payload.previous_certificate_id
+            || payload.status != expected_status
+            || payload.active_certificate_id != expected_active_certificate_id
+            || !valid_revisions
+            || certificate_expiry_aggregate_version(
+                payload.certificate_gateway_revision,
+                payload.status,
+            )? != event.aggregate_version
+            || aggregate_id != event.aggregate_id
+            || Self::deterministic_event_id(
+                aggregate_id,
+                &event.event_key,
+                payload.active_certificate_id,
+            ) != event.event_id
+        {
+            return Err("Gateway certificate expiry event identity is inconsistent".into());
+        }
+        Ok(payload)
     }
-    let payload: GatewayCertificateExpiryChanged =
-        serde_json::from_value(event.payload.clone()).map_err(|error| error.to_string())?;
-    let aggregate_id = renewal_subject_id(payload.route_id, payload.node_id);
-    if payload.status != GatewayCertificateExpiryStatus::Expiring
-        || event.correlation_id.is_nil()
-        || event.causation_id.is_some()
-        || canonical_timestamp(event.occurred_at) != event.occurred_at
-        || canonical_timestamp(payload.active_certificate_expires_at)
-            != payload.active_certificate_expires_at
-        || payload.organization_id.as_uuid() != event.organization_id
-        || payload.organization_id.as_uuid().is_nil()
-        || payload.project_id.as_uuid().is_nil()
-        || payload.environment_id.as_uuid().is_nil()
-        || payload.route_id.as_uuid().is_nil()
-        || payload.workload_id.as_uuid().is_nil()
-        || payload.node_id.as_uuid().is_nil()
-        || payload.previous_certificate_id.as_uuid().is_nil()
-        || payload.replacement_certificate_id.as_uuid().is_nil()
-        || RouteHostname::parse(&payload.hostname).is_err()
-        || RoutePath::parse(&payload.path_prefix).is_err()
-        || payload.previous_certificate_id != payload.active_certificate_id
-        || payload.replacement_certificate_id == payload.previous_certificate_id
-        || payload.renewal_gateway_revision <= payload.certificate_gateway_revision
-        || certificate_expiry_aggregate_version(
-            payload.certificate_gateway_revision,
-            payload.status,
-        )? != event.aggregate_version
-        || aggregate_id != event.aggregate_id
-        || expiry_event_id(
-            aggregate_id,
-            &event.event_key,
-            payload.active_certificate_id,
-        ) != event.event_id
-    {
-        return Err("Gateway certificate expiry firing identity is inconsistent".into());
+
+    pub(crate) fn deterministic_event_id(
+        aggregate_id: Uuid,
+        event_key: &str,
+        active_certificate_id: GatewayCertificateId,
+    ) -> Uuid {
+        Uuid::new_v5(
+            &aggregate_id,
+            format!("{event_key}:{active_certificate_id}").as_bytes(),
+        )
     }
-    Ok(payload)
 }
 
 pub fn certificate_expiry_aggregate_version(
@@ -244,17 +283,6 @@ pub fn certificate_expiry_aggregate_version(
             Err("Gateway certificate expiry aggregate version must be positive".into())
         }
     }
-}
-
-fn expiry_event_id(
-    aggregate_id: Uuid,
-    event_key: &str,
-    active_certificate_id: GatewayCertificateId,
-) -> Uuid {
-    Uuid::new_v5(
-        &aggregate_id,
-        format!("{event_key}:{active_certificate_id}").as_bytes(),
-    )
 }
 
 #[cfg(test)]

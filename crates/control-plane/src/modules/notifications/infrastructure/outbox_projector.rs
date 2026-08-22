@@ -89,6 +89,9 @@ impl OutboxNotificationProjector {
                     .gateway_certificate_renewal_notifications(message)
                     .await;
             }
+            "edge.gateway-certificate.expiring" | "edge.gateway-certificate.expiry-resolved" => {
+                return self.gateway_certificate_expiry_notifications(message).await;
+            }
             "workload.deployment.failed" | "workload.deployment.healthy" => {
                 return self.workload_deployment_health_notifications(message).await;
             }
@@ -193,7 +196,7 @@ impl OutboxNotificationProjector {
         Ok(authorized)
     }
 
-    async fn recovery_follows_projected_failure(
+    async fn recovery_follows_projected_firing(
         &self,
         policy: &NotificationAlertPolicy,
         source: NotificationAlertSource,
@@ -245,7 +248,7 @@ impl OutboxNotificationProjector {
                 ),
                 DomainClaimState::Verified => {
                     if !self
-                        .recovery_follows_projected_failure(
+                        .recovery_follows_projected_firing(
                             &policy,
                             source,
                             message,
@@ -333,7 +336,7 @@ impl OutboxNotificationProjector {
                 },
                 GatewayCertificateRenewalStatus::Renewed => {
                     if !self
-                        .recovery_follows_projected_failure(
+                        .recovery_follows_projected_firing(
                             &policy,
                             source,
                             message,
@@ -417,7 +420,7 @@ impl OutboxNotificationProjector {
                 },
                 WorkloadDeploymentHealthStatus::Healthy => {
                     if !self
-                        .recovery_follows_projected_failure(
+                        .recovery_follows_projected_firing(
                             &policy,
                             source,
                             message,
@@ -672,6 +675,12 @@ fn validate_identity_payload(
     }
     Ok(())
 }
+
+#[path = "outbox_projector_gateway_certificate_expiry.rs"]
+mod gateway_certificate_expiry;
+
+#[cfg(test)]
+use gateway_certificate_expiry::decode_gateway_certificate_expiry;
 
 #[cfg(test)]
 #[path = "outbox_projector_tests.rs"]
