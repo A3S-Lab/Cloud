@@ -14,6 +14,25 @@ export interface ApiTokenMutationResult extends ApiToken {
   replayed: boolean;
 }
 
+export type RecipientContactStatus = 'pending' | 'verified' | 'revoked';
+
+export interface RecipientContact {
+  id: string;
+  principalId: string;
+  addressDigest: string;
+  addressHint: string;
+  aggregateVersion: number;
+  status: RecipientContactStatus;
+  createdAt: string;
+  updatedAt: string;
+  verifiedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface RecipientContactMutationResult extends RecipientContact {
+  replayed: boolean;
+}
+
 export interface OidcAuthorizationStart {
   authorizationUrl: string;
 }

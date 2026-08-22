@@ -190,6 +190,8 @@ import type {
   PublishFormReleaseOptions,
   PublishRouteInput,
   PublishWorkflowDefinitionInput,
+  RecipientContact,
+  RecipientContactMutationResult,
   RequestNodePoolMemberRemovalInput,
   ResolveSourceRevisionInput,
   ResourceGrant,
@@ -245,6 +247,7 @@ import {
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
   validateExpectedProjectVersion,
+  validateExpectedRecipientContactVersion,
   validateExpectedResourceGrantVersion,
   validateFormDraftInput,
   validateFormVersionControl,
@@ -254,9 +257,12 @@ import {
   validateMembershipInput,
   validateMembershipInvitationInput,
   validateMembershipRole,
+  validateNonNilUuid,
   validateOntologyAcl,
   validateOntologyRevisionControl,
   validateProjectAttributionInput,
+  validateRecipientContactAddress,
+  validateRecipientContactProof,
   validateResourceGrantInput,
   validateSecretValue,
   validateWorkflowDefinitionPublication,
@@ -277,7 +283,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.51.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.52.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -442,6 +448,71 @@ export class CloudApi {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/api-tokens/${encodeURIComponent(tokenId)}`,
       idempotencyKey,
+      signal
+    );
+  }
+
+  listRecipientContacts(organizationId: string, signal?: AbortSignal): Promise<RecipientContact[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/recipient-contacts`, signal);
+  }
+
+  getRecipientContact(
+    organizationId: string,
+    recipientContactId: string,
+    signal?: AbortSignal
+  ): Promise<RecipientContact> {
+    validateNonNilUuid(recipientContactId, 'recipient contact ID');
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/recipient-contacts/${encodeURIComponent(recipientContactId)}`,
+      signal
+    );
+  }
+
+  requestRecipientContactVerification(
+    organizationId: string,
+    address: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<RecipientContactMutationResult> {
+    validateRecipientContactAddress(address);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/recipient-contacts`,
+      idempotencyKey,
+      { address },
+      signal
+    );
+  }
+
+  verifyRecipientContact(
+    organizationId: string,
+    recipientContactId: string,
+    proof: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<RecipientContactMutationResult> {
+    validateNonNilUuid(recipientContactId, 'recipient contact ID');
+    validateRecipientContactProof(proof);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/recipient-contacts/${encodeURIComponent(recipientContactId)}/verification`,
+      idempotencyKey,
+      { proof },
+      signal
+    );
+  }
+
+  revokeRecipientContact(
+    organizationId: string,
+    recipientContactId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<RecipientContactMutationResult> {
+    validateNonNilUuid(recipientContactId, 'recipient contact ID');
+    validateExpectedRecipientContactVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/recipient-contacts/${encodeURIComponent(recipientContactId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
       signal
     );
   }

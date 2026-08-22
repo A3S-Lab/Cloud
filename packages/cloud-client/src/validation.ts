@@ -123,6 +123,54 @@ export function validateExpectedMembershipInvitationVersion(value: number): void
   validateExpectedVersion(value, 'membership invitation');
 }
 
+export function validateRecipientContactAddress(value: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.length < 3 ||
+    value.length > 254 ||
+    !/^[\x21-\x7e]+$/.test(value) ||
+    value.trim() !== value
+  ) {
+    throw new TypeError('recipient email address must be a bounded canonical ASCII mailbox');
+  }
+  const parts = value.split('@');
+  if (parts.length !== 2) {
+    throw new TypeError('recipient email address must be a bounded canonical ASCII mailbox');
+  }
+  const [local = '', domain = ''] = parts;
+  const validLocal =
+    local.length >= 1 &&
+    local.length <= 64 &&
+    !local.startsWith('.') &&
+    !local.endsWith('.') &&
+    !local.includes('..') &&
+    /^[A-Za-z0-9.!#$%&'*+\-/=?^_`{|}~]+$/.test(local);
+  const validDomain =
+    domain.length >= 1 &&
+    domain.length <= 253 &&
+    !domain.startsWith('.') &&
+    !domain.endsWith('.') &&
+    !domain.includes('..') &&
+    domain.split('.').every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label));
+  if (!validLocal || !validDomain) {
+    throw new TypeError('recipient email address must be a bounded canonical ASCII mailbox');
+  }
+}
+
+export function validateRecipientContactProof(value: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.length > 4096 ||
+    !/^a3srcv1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    throw new TypeError('recipient contact verification proof is invalid');
+  }
+}
+
+export function validateExpectedRecipientContactVersion(value: number): void {
+  validateExpectedVersion(value, 'recipient contact');
+}
+
 export function validateResourceGrantInput(input: CreateResourceGrantInput): void {
   const scope = input?.scope as ResourceGrantScope | undefined;
   if (!scope || typeof scope !== 'object') {

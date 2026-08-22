@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.51.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.52.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2716,6 +2716,97 @@ describe('CloudApi', () => {
         'client:token-invalid-calendar-expiry'
       )
     ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(called).toBe(false);
+  });
+
+  it('exposes exact-owner recipient contact reads and private mutations', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const contactId = '019c0000-0000-7000-8000-000000000041';
+    const address = 'Private.Owner@Example.test';
+    const proof = 'a3srcv1.cHJpdmF0ZS1wYXlsb2Fk.cHJpdmF0ZS1hdXRoZW50aWNhdG9y';
+
+    await api.listRecipientContacts('organization / one');
+    await api.getRecipientContact('organization / one', contactId);
+    await api.requestRecipientContactVerification(
+      'organization / one',
+      address,
+      'client:recipient-contact:request'
+    );
+    await api.verifyRecipientContact(
+      'organization / one',
+      contactId,
+      proof,
+      'client:recipient-contact:verify'
+    );
+    await api.revokeRecipientContact('organization / one', contactId, 2, 'client:recipient-contact:revoke');
+
+    const item = `/api/v1/organizations/organization%20%2F%20one/recipient-contacts/${contactId}`;
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      ['/api/v1/organizations/organization%20%2F%20one/recipient-contacts', 'GET'],
+      [item, 'GET'],
+      ['/api/v1/organizations/organization%20%2F%20one/recipient-contacts', 'POST'],
+      [`${item}/verification`, 'POST'],
+      [`${item}/revocation`, 'POST'],
+    ]);
+    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:recipient-contact:request' }),
+        body: JSON.stringify({ address }),
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:recipient-contact:verify' }),
+        body: JSON.stringify({ proof }),
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:recipient-contact:revoke' }),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      }),
+    ]);
+    expect(calls.every(([input]) => !String(input).includes(address) && !String(input).includes(proof))).toBe(
+      true
+    );
+  });
+
+  it('rejects invalid recipient contact input before transport without echoing private values', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    const contactId = '019c0000-0000-7000-8000-000000000041';
+    const privateAddress = ' private.owner@example.test';
+    const privateProof = 'a3srcv1.private-proof';
+
+    for (const operation of [
+      () =>
+        api.requestRecipientContactVerification(
+          'organization',
+          privateAddress,
+          'client:recipient-contact:address'
+        ),
+      () =>
+        api.verifyRecipientContact('organization', contactId, privateProof, 'client:recipient-contact:proof'),
+      () => api.getRecipientContact('organization', 'not-a-uuid'),
+      () => api.revokeRecipientContact('organization', contactId, 0, 'client:recipient-contact:version'),
+    ]) {
+      let caught: unknown;
+      try {
+        operation();
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      const message = caught instanceof Error ? caught.message : String(caught);
+      expect(message).not.toContain(privateAddress);
+      expect(message).not.toContain(privateProof);
+    }
     expect(called).toBe(false);
   });
 

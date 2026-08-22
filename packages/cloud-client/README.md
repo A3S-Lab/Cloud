@@ -368,6 +368,17 @@ and A3S ORM persistence. CLI callers supply a new credential only through the
 bounded `--token-stdin` path; it is never a command argument, configuration
 value, result field, or echoed error.
 
+`listRecipientContacts`, `getRecipientContact`,
+`requestRecipientContactVerification`, `verifyRecipientContact`, and
+`revokeRecipientContact` expose the exact authenticated human Principal's
+self-service lifecycle added by REST contract `1.52.0`. Reads return only the
+opaque contact and Principal IDs, mailbox digest, `***@domain` hint, state,
+version, and timestamps. The request mailbox and verification proof travel
+only in bounded JSON request bodies; client validation errors never echo them,
+and neither value appears in a URL or response type. Cloud Identity remains
+authoritative for active Membership, human-Principal admission, exact
+ownership, verification, replay, revocation, Outbox, audit, and persistence.
+
 `listMembershipInvitations`, `getMembershipInvitation`,
 `createMembershipInvitation`, and `revokeMembershipInvitation` expose the
 organization-administrator invitation history and mutations added by REST
