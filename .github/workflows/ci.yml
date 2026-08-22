@@ -114,6 +114,7 @@ jobs:
           fi
           chmod 0755 "$mailpit_binary"
           install -d -m 0755 "$cert_dir"
+          # rustls rejects a CA certificate presented as the TLS end entity.
           openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 1 \
             -keyout "$cert_dir/key.pem" \
             -out "$cert_dir/cert.pem" \
@@ -159,13 +160,23 @@ jobs:
           A3S_CLOUD_TEST_SMTP_USERNAME: a3s-cloud
         run: |
           log="$RUNNER_TEMP/a3s-cloud-n5c-mailpit.log"
-          cargo test --locked -p a3s-cloud-control-plane \
-            --test smtp_recipient_contact \
-            real_mailpit_accepts_one_authenticated_required_starttls_submission \
-            -- --ignored --exact --nocapture --test-threads=1 2>&1 | tee "$log"
-          grep --fixed-strings \
-            'A3S_CLOUD_C0_3_N5C_MAILPIT_CERTIFIED tls=required_starttls auth=plain submissions=1 outcome=delivered' \
-            "$log" >/dev/null
+          if cargo test --locked -p a3s-cloud-control-plane \
+              --test smtp_recipient_contact \
+              real_mailpit_accepts_one_authenticated_required_starttls_submission \
+              -- --ignored --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            if grep --fixed-strings \
+                'A3S_CLOUD_C0_3_N5C_MAILPIT_CERTIFIED tls=required_starttls auth=plain submissions=1 outcome=delivered' \
+                "$log" >/dev/null; then
+              exit 0
+            fi
+            echo 'recipient-delivery certification marker is missing' >>"$log"
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Recipient-delivery provider gate failed::$detail"
+          exit 1
 
       - name: Upload recipient-delivery provider evidence
         if: always()
