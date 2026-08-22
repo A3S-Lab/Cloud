@@ -2601,6 +2601,26 @@ node.
   composition remain open. No email inference, second directory,
   plaintext proof persistence, provider configuration, queue, scheduler,
   retry counter, or SMTP client is authorized by this slice.
+- Frozen as `C0.3-N5b`: wire the N5a signer/verifier into real API/Worker
+  composition without opening an email surface. The proof port becomes
+  asynchronous so production can use Vault Transit HMAC SHA2-256 through the
+  shared bounded HTTPS Vault client. Its opaque physical key version remains in
+  the proof authenticator while one closed logical signing-key ID is pinned in
+  each challenge; key material never leaves Vault. Development instead loads
+  or atomically creates one restart-stable 32-byte local HMAC key below
+  `security.state_dir` with private directory/file permissions. The existing
+  `security` A3S ACL is the sole provider-selection authority, production
+  rejects a local proof provider, and Vault credentials are required when this
+  provider is the only Vault consumer. Both providers retain the bounded
+  `a3srcv1` claims envelope, redacted diagnostics, exact key/expiry checks, and
+  rejected-versus-unavailable failure semantics. The sole PostgreSQL adapter
+  factory exposes the existing recipient-contact repository; API/Worker
+  composition registers begin/complete/revoke and exact-owner get/list through
+  one proof provider. Focused configuration, local restart/permission, Vault
+  protocol/failure, proof, and composition tests are the gate. No migration,
+  mailbox/proof persistence, SMTP transport, public interface, notification
+  subscription, provider profile, Secret record, queue, scheduler, retry
+  mechanism, or second configuration language is authorized by this slice.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its

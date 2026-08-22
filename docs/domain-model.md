@@ -217,6 +217,22 @@ and Notifications composition remain open. This boundary adds no directory,
 email inference, plaintext proof store, provider configuration, queue,
 scheduler, retry counter, or SMTP client.
 
+`C0.3-N5b` freezes only proof-provider and process composition. The N5a proof
+port becomes asynchronous. Development owns one restart-stable local HMAC key
+file beneath `security.state_dir`; production delegates HMAC SHA2-256 to Vault
+Transit through the shared bounded HTTPS client, so private key material never
+enters Cloud memory. One closed logical signing-key ID remains in the challenge
+claims, while Vault's opaque physical key version remains inside the proof
+authenticator and is checked by Vault. Provider selection and key identity use
+the existing `security` A3S ACL, and production fails closed unless the proof
+provider is Vault. Both providers preserve the bounded `a3srcv1` envelope,
+redacted diagnostics, exact key/expiry checks, and the rejected-versus-
+unavailable error boundary. The existing recipient-contact repository and its
+five CQRS handlers enter the sole API/Worker composition root. This slice owns
+no new aggregate, table, migration, SMTP client or delivery fact, presentation
+surface, notification subscription, provider profile, Secret record, queue,
+scheduler, retry mechanism, or configuration language.
+
 ### 3.2 Projects
 
 Owns `Project`, its current immutable attribution-profile reference, and
