@@ -9,6 +9,9 @@ pub use application::commands::accept_membership_invitation::{
 pub use application::commands::begin_oidc_flow::{
     BeginOidcFlow, BeginOidcFlowHandler, BeginOidcFlowResult,
 };
+pub use application::commands::begin_recipient_contact_verification::{
+    BeginRecipientContactVerification, BeginRecipientContactVerificationHandler,
+};
 pub use application::commands::bootstrap_identity::{
     BootstrapIdentity, BootstrapIdentityHandler, BootstrapIdentityResult,
 };
@@ -17,6 +20,9 @@ pub use application::commands::change_membership_role::{
 };
 pub use application::commands::complete_oidc_flow::{
     CompleteOidcFlow, CompleteOidcFlowHandler, CompleteOidcFlowResult,
+};
+pub use application::commands::complete_recipient_contact_verification::{
+    CompleteRecipientContactVerification, CompleteRecipientContactVerificationHandler,
 };
 pub use application::commands::create_api_token::{
     CreateApiToken, CreateApiTokenHandler, CreateApiTokenResult,
@@ -38,6 +44,9 @@ pub use application::commands::revoke_membership::{RevokeMembership, RevokeMembe
 pub use application::commands::revoke_membership_invitation::{
     RevokeMembershipInvitation, RevokeMembershipInvitationHandler,
 };
+pub use application::commands::revoke_recipient_contact::{
+    RevokeRecipientContact, RevokeRecipientContactHandler,
+};
 pub use application::commands::revoke_resource_grant::{
     RevokeResourceGrant, RevokeResourceGrantHandler,
 };
@@ -45,6 +54,9 @@ pub use application::queries::get_api_token::{GetApiToken, GetApiTokenHandler};
 pub use application::queries::get_membership::{GetMembership, GetMembershipHandler};
 pub use application::queries::get_membership_invitation::{
     GetMembershipInvitation, GetMembershipInvitationHandler,
+};
+pub use application::queries::get_recipient_contact::{
+    GetRecipientContact, GetRecipientContactHandler,
 };
 pub use application::queries::get_resource_grant::{GetResourceGrant, GetResourceGrantHandler};
 pub use application::queries::list_api_tokens::{ListApiTokens, ListApiTokensHandler};
@@ -56,10 +68,15 @@ pub use application::queries::list_my_membership_invitations::{
     ListMyMembershipInvitations, ListMyMembershipInvitationsHandler,
 };
 pub use application::queries::list_organizations::{ListOrganizations, ListOrganizationsHandler};
+pub use application::queries::list_recipient_contacts::{
+    ListRecipientContacts, ListRecipientContactsHandler,
+};
 pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
-pub use domain::repositories::{IOidcIdentityRepository, IResourceAuthorizationDecisionRepository};
+pub use domain::repositories::{
+    IOidcIdentityRepository, IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
+};
 pub use domain::services::{
     IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
     OidcProviderError, ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest,

@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 135;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "135";
+const CLOUD_MIGRATION_COUNT: i64 = 136;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "136";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -141,6 +141,8 @@ mod plugins_support;
 mod postgres_fixture;
 #[path = "support/project_attribution.rs"]
 mod project_attribution_support;
+#[path = "support/recipient_contacts.rs"]
+mod recipient_contacts_support;
 #[path = "support/resource_claims.rs"]
 mod resource_claims_support;
 #[path = "support/resource_grants.rs"]
@@ -609,6 +611,19 @@ async fn postgres_external_oidc_identity_is_exact_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL external OIDC identity foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_recipient_contacts_are_exact_single_use_redacted_and_terminal() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        recipient_contacts_support::exercise_recipient_contact_persistence,
+    )
+    .await
+    .expect("PostgreSQL recipient-contact authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

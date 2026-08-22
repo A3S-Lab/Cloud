@@ -40,6 +40,8 @@ macro_rules! identifier {
 
 identifier!(OrganizationId);
 identifier!(PrincipalId);
+identifier!(RecipientContactId);
+identifier!(RecipientContactVerificationId);
 identifier!(ExternalIdentityLinkId);
 identifier!(OidcFlowId);
 identifier!(MembershipId);

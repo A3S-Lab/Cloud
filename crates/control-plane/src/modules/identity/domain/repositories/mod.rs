@@ -3,6 +3,7 @@ mod membership_invitation_repository;
 mod membership_repository;
 mod oidc_identity_repository;
 mod organization_repository;
+mod recipient_contact_repository;
 mod resource_authorization_decision_repository;
 mod resource_grant_repository;
 
@@ -20,6 +21,11 @@ pub use oidc_identity_repository::{
     CompleteOidcLinkWrite, CompleteOidcLoginWrite, IOidcIdentityRepository,
 };
 pub use organization_repository::{CreateOrganizationWrite, IOrganizationRepository};
+pub use recipient_contact_repository::{
+    BeginRecipientContactVerificationResult, BeginRecipientContactVerificationWrite,
+    CompleteRecipientContactVerificationWrite, IRecipientContactRepository,
+    ResolvedRecipientContact, RevokeRecipientContactWrite,
+};
 pub use resource_authorization_decision_repository::IResourceAuthorizationDecisionRepository;
 pub use resource_grant_repository::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,

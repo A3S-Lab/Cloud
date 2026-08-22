@@ -1261,6 +1261,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/135_notification_alert_policy_certificate_expiry_source.sql"
             )),
         ),
+        Migration::new(
+            "136",
+            "Identity verified recipient contacts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/136_identity_recipient_contacts.sql"
+            )),
+        ),
     ]
 }
 
@@ -2227,6 +2235,61 @@ mod notification_alert_policy_certificate_expiry_source_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 135 duplicated alert authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod identity_recipient_contact_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/136_identity_recipient_contacts.sql"
+    ));
+
+    #[test]
+    fn migration_136_keeps_mailbox_pii_in_identity_and_proofs_ephemeral() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "create table recipient_contacts",
+            "create table recipient_contact_verifications",
+            "unique (principal_id, canonical_address)",
+            "octet_length(canonical_address) = char_length(canonical_address)",
+            "([.][a-z0-9",
+            "expires_at >= issued_at + interval '1 minute'",
+            "expires_at <= issued_at + interval '30 minutes'",
+            "recipient_contact_verifications_pending_idx",
+            "validate_recipient_contact_principal",
+            "kind = 'human'",
+            "disabled_at is null",
+            "validate_recipient_contact_verification_insert",
+            "organization_memberships",
+            "state = 'pending'",
+            "validate_recipient_contact_transition",
+            "revoked recipient contacts are terminal",
+            "reject_recipient_contact_delete",
+            "validate_recipient_contact_verification_transition",
+            "reject_recipient_contact_verification_delete",
+            "proof and signature material are never persisted",
+        ] {
+            assert!(
+                lower.contains(expected),
+                "migration 136 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table notification",
+            "create table delivery",
+            "provider_message",
+            "secret_material",
+            "proof text",
+            "signature text",
+            "mailbox text",
+            "\\.",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 136 contains forbidden recipient-contact schema material {forbidden}"
             );
         }
     }

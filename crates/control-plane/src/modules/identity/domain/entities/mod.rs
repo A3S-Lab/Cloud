@@ -5,6 +5,8 @@ mod membership;
 mod membership_invitation;
 mod oidc_flow;
 mod organization;
+mod recipient_contact;
+mod recipient_contact_verification;
 mod resource_grant;
 
 pub use api_token::{
@@ -21,4 +23,10 @@ pub use oidc_flow::{
     OidcFlow, OidcFlowError, OidcFlowPurpose, MAX_OIDC_FLOW_LIFETIME, MIN_OIDC_FLOW_LIFETIME,
 };
 pub use organization::Organization;
+pub use recipient_contact::{RecipientContact, RecipientContactRecord, RecipientContactStatus};
+pub use recipient_contact_verification::{
+    RecipientContactVerification, RecipientContactVerificationClaims,
+    RecipientContactVerificationStatus, MAX_RECIPIENT_CONTACT_VERIFICATION_LIFETIME,
+    MIN_RECIPIENT_CONTACT_VERIFICATION_LIFETIME,
+};
 pub use resource_grant::ResourceGrant;

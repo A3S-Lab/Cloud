@@ -2571,7 +2571,8 @@ node.
   threshold or severity,
   arbitrary selector, payload expression, poller, timer, scheduler, queue,
   second event rail, configuration parser, endpoint, or tool.
-- Frozen as `C0.3-N5a`: Identity owns one exact human-Principal-bound email
+- Implemented as the component-only `C0.3-N5a` foundation: Identity owns one
+  exact human-Principal-bound email
   `RecipientContact` plus a short-lived one-time
   `RecipientContactVerification`. A contact starts pending and only possession
   of a cryptographically verified proof bound to its exact Principal,
@@ -2586,9 +2587,14 @@ node.
   audit evidence contain only opaque IDs, closed state, address digest,
   versions, and timestamps. They never contain the mailbox, proof, signature,
   provider response, or Secret material. A signer/verifier port owns proof
-  cryptography. Migration `136`, implementation, retained PostgreSQL evidence,
-  SMTP challenge delivery, public interfaces, and notification subscription/
-  dispatch composition remain open. No email inference, second directory,
+  cryptography. Migration `136`, in-memory and PostgreSQL repositories,
+  begin/complete/revoke commands, exact-owner queries, the HMAC-SHA-256 adapter,
+  redacted transactional evidence, the internal active-verified resolver, and
+  focused plus retained PostgreSQL tests are implemented. Each challenge stays
+  pinned to its initiating organization for Outbox/audit correlation while the
+  contact remains Principal-global. Production proof-key wiring, SMTP challenge
+  delivery, public interfaces, and notification subscription/dispatch
+  composition remain open. No email inference, second directory,
   plaintext proof persistence, provider configuration, queue, scheduler,
   retry counter, or SMTP client is authorized by this slice.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative

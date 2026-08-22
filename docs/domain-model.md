@@ -164,8 +164,9 @@ Primary aggregates:
 - `ApiToken`
 - `ResourceGrant`
 - `RecipientContact` and transient `RecipientContactVerification`
-  (`C0.3-N5a` component boundary frozen; implementation and SMTP verification
-  delivery remain gated)
+  (`C0.3-N5a` domain, migration, repositories, application boundary, proof
+  adapter, and retained PostgreSQL evidence are implemented; production proof
+  key wiring, SMTP verification delivery, and public surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -173,7 +174,7 @@ Primary aggregates:
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
 
-#### Verified recipient contact (`C0.3-N5a` frozen)
+#### Verified recipient contact (`C0.3-N5a` implemented component)
 
 Identity owns one opaque `RecipientContactId` for each exact human Principal and
 canonical email mailbox. A contact begins pending and is never eligible for
@@ -203,9 +204,13 @@ digest, versions, and timestamps only. They never carry the mailbox, proof,
 signature, provider response, or Secret material. A token signer/verifier port
 owns proof cryptography; later SMTP challenge delivery must use the existing
 Outbox/A3S Event and fenced provider evidence rather than a synchronous
-presentation side effect. Migration `136`, repositories, commands/queries,
-token adapter, retained PostgreSQL evidence, SMTP delivery, and public
-REST/client/CLI/MCP surfaces remain open. This boundary adds no directory,
+presentation side effect. Migration `136`, the in-memory and PostgreSQL
+repositories, begin/complete/revoke commands, exact-owner queries, the
+HMAC-SHA-256 token adapter, focused application tests, and retained PostgreSQL
+evidence are implemented. Challenges retain their initiating organization for
+Outbox/audit correlation even though contact identity remains Principal-global.
+Production proof-key wiring, SMTP delivery, public REST/client/CLI/MCP surfaces,
+and Notifications composition remain open. This boundary adds no directory,
 email inference, plaintext proof store, provider configuration, queue,
 scheduler, retry counter, or SMTP client.
 

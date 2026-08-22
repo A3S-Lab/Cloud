@@ -1,6 +1,7 @@
 use crate::modules::identity::domain::entities::{
     ApiToken, AuthenticatedApiToken, ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal,
-    Membership, MembershipInvitation, OidcFlow, Organization, ResourceGrant,
+    Membership, MembershipInvitation, OidcFlow, Organization, RecipientContact,
+    RecipientContactVerification, ResourceGrant,
 };
 use crate::modules::identity::domain::repositories::{
     CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
@@ -9,8 +10,8 @@ use crate::modules::identity::domain::services::ResourceAuthorizationDecision;
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, MembershipId,
-    MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId, RepositoryError,
-    ResourceGrantId, Sha256Digest,
+    MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId, RecipientContactId,
+    RecipientContactVerificationId, RepositoryError, ResourceGrantId, Sha256Digest,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -40,6 +41,12 @@ pub(super) struct State {
     pub(super) oidc_flows: BTreeMap<OidcFlowId, OidcFlow>,
     pub(super) oidc_flow_states: BTreeMap<Sha256Digest, OidcFlowId>,
     pub(super) external_identity_links: BTreeMap<ExternalIdentityLinkId, ExternalIdentityLink>,
+    pub(super) recipient_contacts: BTreeMap<RecipientContactId, RecipientContact>,
+    pub(super) recipient_contact_addresses: BTreeMap<(PrincipalId, String), RecipientContactId>,
+    pub(super) recipient_contact_verifications:
+        BTreeMap<RecipientContactVerificationId, RecipientContactVerification>,
+    pub(super) recipient_contact_verification_organizations:
+        BTreeMap<RecipientContactVerificationId, OrganizationId>,
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
     pub(super) token_digests: BTreeMap<String, ApiTokenId>,
