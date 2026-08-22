@@ -300,6 +300,37 @@ Focused HTTP, OpenAPI, maintained-client, CLI, Management MCP catalog,
 permission, lifecycle, replay, strict-input, and redaction tests pass across
 this boundary.
 
+`C0.3-N5e` freezes the general Notifications SMTP composition. It does not add
+another contact or subscription aggregate. `cloud.notification.outbound-subscription.v4`
+is SMTP-only and binds the exact recipient Principal's opaque
+`RecipientContactId`, existing severity floor and immutable one-through-eight
+attempt budget, with an optional bounded event-time cutoff. The domain target is
+a closed Connector-or-recipient-contact union: signed webhook and
+Slack-compatible v1-v3 definitions retain their exact Connector target and
+byte-compatible delivery-v1/v2 facts; SMTP v4 produces delivery-v3 with the
+contact ID and immutable notification content only.
+
+Identity remains authoritative for the contact, its mailbox, the human
+Principal, Membership, verification, and revocation. Subscription admission and
+every provider attempt use an organization-scoped resolver. Definitive authority
+loss yields a Notifications-owned `obsolete` terminal receipt without SMTP
+access, while an unavailable resolver leaves the A3S Event fact unacknowledged.
+No mailbox, digest/hint, credential, composed message, or Provider text may
+enter the ACL, event, persistence, audit/idempotency evidence, logs,
+diagnostics, or `Debug`.
+
+Notifications owns the SMTP delivery attempt state. Each deterministic
+generation is lease-reserved, fully prepares contact resolution, fixed bounded
+plain-text composition, TLS, EHLO, and authentication, then durably crosses a
+`dispatching` fence before the first envelope or message command. It shares only
+the low-level SMTP session transport already used by N5c; it neither invokes the
+Identity verification workflow nor writes a synthetic Connector attempt.
+Accepted, permanent-rejected, explicit transient-rejected, and unknown
+post-fence results become exact Delivered, Rejected, Retryable, or terminal
+Indeterminate evidence. Only Retryable evidence admits the next generation;
+equality with the pinned bound yields Exhausted. Terminal receipts commit before
+A3S Event ACK, and post-terminal replay is ACK-only.
+
 ### 3.2 Projects
 
 Owns `Project`, its current immutable attribution-profile reference, and

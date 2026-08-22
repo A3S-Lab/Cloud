@@ -2721,6 +2721,57 @@ node.
   migration, business rule, configuration, event, provider, queue, scheduler,
   notification subscription, general SMTP channel, or second authorization
   path.
+- Frozen as `C0.3-N5e`: add general SMTP only as a fourth immutable version of
+  the existing personal outbound-subscription ACL. Version 4 is SMTP-only and
+  replaces the exact Connector revision attributes with one opaque
+  `recipient_contact_id`; it retains the severity floor, one-through-eight
+  immutable Provider-attempt budget, and an optional bounded event-time
+  suppression cutoff. Existing v1-v3 canonical ACL bytes and Connector
+  delivery-v1/v2 facts must parse and replay unchanged. The in-memory domain is
+  a closed Connector-or-recipient-contact target union, and migration `138`
+  makes the same exactly-one-target rule, channel binding, and immutability
+  database-enforced.
+
+  Subscription creation and each SMTP dispatch must call an
+  organization-scoped Identity resolver for the exact owner Principal and
+  contact. Only an active human Principal with an active Membership and an
+  active verified contact is admissible. The subscription and delivery-v3 fact
+  retain only the contact ID, never its current version or mailbox, so Identity
+  revocation, Principal disablement, or Membership revocation takes effect on
+  the next resolution. Definitive authority loss settles `obsolete` without
+  Provider access; repository unavailability remains retryable through A3S
+  Event rather than being misclassified as revocation.
+
+  Notifications owns a per-delivery-generation SMTP reservation, lease,
+  `dispatching` fence, and closed terminal evidence in migration `138`. It may
+  share only the N5c transport's low-level TLS, EHLO, authentication, envelope,
+  and byte-submission implementation selected by the sole top-level `smtp` A3S
+  ACL. It must not call Identity's proof/message workflow, synthesize Connector
+  IDs, or write Connector C6 attempts/evidence. Contact resolution, bounded
+  fixed plain-text message composition, connection, TLS, EHLO, and
+  authentication all finish before the fence; the fence commits before the
+  first `MAIL`, `RCPT`, or `DATA` command. Explicit acceptance maps to
+  Delivered, permanent rejection to Rejected, and explicit transient rejection
+  to durable Retryable evidence. A timeout, crash, connection loss, or any
+  unknown post-fence result maps to terminal Indeterminate and can never
+  authorize an automatic resend.
+
+  Only exact durable Retryable evidence advances to the next deterministic
+  generation. The delivery-pinned bound settles Exhausted at equality, while
+  A3S Event `AckWait` remains the only redelivery clock and terminal receipt
+  durability still precedes ACK. Mailbox, address digest/hint, SMTP credentials,
+  composed bytes, and Provider text are prohibited from ACL, Outbox/A3S Event,
+  PostgreSQL evidence, audit/idempotency payloads, logs, diagnostics, and
+  `Debug`. REST/OpenAPI `1.53.0`, the maintained client, CLI, and the existing
+  four Management MCP operations expose a closed Connector-or-contact target
+  union and add no endpoint or tool. The retained PostgreSQL 17, NATS JetStream,
+  and authenticated required-STARTTLS Mailpit gate must cover accepted delivery,
+  one explicit transient retry, permanent rejection, authority-obsolete silence,
+  ambiguous terminal replay, exact exhaustion, and terminal ACK-only replay.
+  This slice adds no template language, arbitrary headers, HTML/attachments,
+  built-in mail server, copied contact store, direct HTTP fallback, mutable retry
+  counter, sleep, timer, queue, scheduler, second event rail, or non-ACL
+  configuration.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its

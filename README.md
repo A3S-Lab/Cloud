@@ -113,8 +113,14 @@ The code on `main` separates implemented mechanics from released capability:
   retains the workspace gates. N5d exposes the same exact-owner authority
   through REST/OpenAPI `1.52.0`, the maintained client, and stdin-safe CLI;
   Management MCP exposes only redacted self list/get and optimistic revoke, so
-  mailbox and proof never become model-visible arguments. This is still not a
-  general email capability: Notifications SMTP composition remains gated.
+  mailbox and proof never become model-visible arguments. Its
+  [main CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32598405161)
+  passes the Rust, client/CLI, cross-surface, and Management MCP gates. General
+  email is still unavailable, but N5e now freezes its safe implementation:
+  Notifications will pin only an opaque verified-contact ID, re-resolve Identity
+  authority before every attempt, own its SMTP fence/evidence, and reuse only
+  the low-level TLS/authenticated SMTP session transport without widening the
+  HTTP-only Connector contract.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

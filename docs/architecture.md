@@ -290,7 +290,7 @@ second entry in an authority row must be redesigned before implementation.
 | Evolution experiments, evaluations, candidates, and promotion decisions | Evolution context in PostgreSQL | Model-, Agent-, Workflow-, or telemetry-specific evaluation and promotion controllers |
 | Request replay | Shared tenant-scoped idempotency records | Per-context idempotency tables or in-memory replay state |
 | Integration facts | Transactional Outbox plus A3S Event; memory is limited to development all-in-one or a non-publishing API, while every event-owning production or split role requires NATS | Direct publish-before-commit, a process-local bus across process boundaries, or another queue |
-| Personal and outbound notification projection | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors/Secrets own target and credential material; Identity owns exact verified recipient contacts, one-time verification proof consumption, and revocation | Business desired state, source-fact mutation, a second event rail or queue, provider-local retry scheduler, copied connection/Secret/contact authority, OIDC-claim email inference, or presentation-local inbox |
+| Personal and outbound notification projection | Notifications owns the exact-recipient inbox, deterministic delivery intent, and channel-specific dispatch evidence; A3S Event owns durable consumption; Connectors/Secrets own HTTP target and credential material; Identity owns exact verified recipient contacts, one-time verification proof consumption, and revocation; the sole SMTP ACL owns relay selection and secret references | Business desired state, source-fact mutation, a second event rail or queue, provider-local retry scheduler, synthetic Connector evidence, copied connection/Secret/contact authority, OIDC-claim email inference, or presentation-local inbox |
 | Placement, replicas, rollout, and scaling | Workloads | Agent, MCP, Durable Cell, inference, Gateway, or import-specific schedulers and autoscalers |
 | Node delivery | Fleet `node_commands`, leases, and the Node Agent journal | Direct Cloud-to-process control, second queue, or profile-specific node channel |
 | Provider-neutral lifecycle | A3S Runtime Task and Service | Product policy inside Runtime or provider calls from Cloud contexts |
@@ -580,6 +580,12 @@ Notifications subscription and dispatch channel. Identity's separate
 recipient-contact challenge transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
+`C0.3-N5e` freezes the missing composition as a Notifications-owned SMTP target,
+delivery-v3 fact, per-generation fence/evidence path, and terminal receipt over
+an Identity-owned opaque contact reference. Only the low-level authenticated
+SMTP session transport is shared with N5c; contact and verification authority
+stay in Identity, HTTP attempts stay in Connector C6, and old subscription/event
+bytes remain unchanged.
 
 The Operations application reconciler is deliberately clockless: it exposes
 one bounded projection pass only. `FlowOperationCoordinator` is the sole owner
