@@ -4,7 +4,7 @@ use crate::modules::notifications::{
     MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES,
     NOTIFICATION_ALERT_POLICY_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
 };
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
@@ -153,13 +153,46 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "NotificationAlertPolicySuccessResponse": alert_policy_success,
             "NotificationAlertPolicyPageSuccessResponse": alert_policy_page_success,
             "NotificationAlertPolicyMutationSuccessResponse": alert_policy_mutation_success,
+            "OutboundNotificationConnectorTarget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "projectId", "environmentId", "profileId", "revisionId"],
+                "properties": {
+                    "kind": { "type": "string", "enum": ["connector"] },
+                    "projectId": { "type": "string", "format": "uuid" },
+                    "environmentId": { "type": "string", "format": "uuid" },
+                    "profileId": { "type": "string", "format": "uuid" },
+                    "revisionId": { "type": "string", "format": "uuid" }
+                }
+            },
+            "OutboundNotificationRecipientContactTarget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "recipientContactId"],
+                "properties": {
+                    "kind": { "type": "string", "enum": ["recipient_contact"] },
+                    "recipientContactId": { "type": "string", "format": "uuid" }
+                }
+            },
+            "OutboundNotificationTarget": {
+                "oneOf": [
+                    { "$ref": "#/components/schemas/OutboundNotificationConnectorTarget" },
+                    { "$ref": "#/components/schemas/OutboundNotificationRecipientContactTarget" }
+                ],
+                "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                        "connector": "#/components/schemas/OutboundNotificationConnectorTarget",
+                        "recipient_contact": "#/components/schemas/OutboundNotificationRecipientContactTarget"
+                    }
+                }
+            },
             "OutboundNotificationSubscription": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
                     "organizationId", "subscriptionId", "channel", "minimumSeverity",
-                    "connectorProjectId", "connectorEnvironmentId", "connectorProfileId",
-                    "connectorRevisionId", "maximumProviderAttempts", "suppressBefore", "definitionSchema",
+                    "target", "maximumProviderAttempts", "suppressBefore", "definitionSchema",
                     "definitionAcl", "definitionDigest", "state", "aggregateVersion",
                     "createdBy", "createdAt", "revokedAt"
                 ],
@@ -168,16 +201,13 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "subscriptionId": { "type": "string", "format": "uuid" },
                     "channel": {
                         "type": "string",
-                        "enum": ["signed_webhook", "slack_compatible"]
+                        "enum": ["signed_webhook", "slack_compatible", "smtp"]
                     },
                     "minimumSeverity": {
                         "type": "string",
                         "enum": ["information", "warning", "critical"]
                     },
-                    "connectorProjectId": { "type": "string", "format": "uuid" },
-                    "connectorEnvironmentId": { "type": "string", "format": "uuid" },
-                    "connectorProfileId": { "type": "string", "format": "uuid" },
-                    "connectorRevisionId": { "type": "string", "format": "uuid" },
+                    "target": { "$ref": "#/components/schemas/OutboundNotificationTarget" },
                     "maximumProviderAttempts": {
                         "type": "integer",
                         "minimum": MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
@@ -193,7 +223,8 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                         "enum": [
                             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
                             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
                         ]
                     },
                     "definitionAcl": {

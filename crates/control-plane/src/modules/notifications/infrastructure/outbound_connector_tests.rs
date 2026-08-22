@@ -1,9 +1,11 @@
 use super::*;
 use crate::modules::notifications::domain::{
     Notification, NotificationScope, NotificationSeverity, OutboundNotificationConnectorTarget,
+    OutboundNotificationSubscriptionDefinition,
 };
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
+    RecipientContactId,
 };
 use chrono::Utc;
 
@@ -55,7 +57,7 @@ fn signed_webhook_builds_only_a_stable_fenced_connector_request() {
     assert_eq!(request, replay);
     assert_eq!(
         request.connector_revision_id(),
-        delivery.target_revision_id()
+        delivery.target_revision_id().expect("Connector target")
     );
     assert_eq!(request.attempt_id(), attempt_id);
     assert_eq!(
@@ -125,7 +127,16 @@ fn channel_drift_and_nil_attempt_fail_before_connector_execution() {
 
 #[test]
 fn unsupported_smtp_has_no_http_adapter_fallback() {
-    let smtp = delivery(OutboundNotificationChannel::Smtp);
+    let notification = notification();
+    let smtp = OutboundNotificationSubscriptionDefinition::from_smtp_spec(
+        RecipientContactId::new(),
+        NotificationSeverity::Warning,
+        3,
+        None,
+    )
+    .expect("SMTP definition")
+    .delivery_for(&notification)
+    .expect("SMTP delivery");
     assert_eq!(
         SignedWebhookNotificationAdapter::new().build_request(&smtp, Uuid::now_v7()),
         Err(OutboundNotificationRequestError::Rejected)
@@ -134,4 +145,25 @@ fn unsupported_smtp_has_no_http_adapter_fallback() {
         SlackCompatibleNotificationAdapter::new().build_request(&smtp, Uuid::now_v7()),
         Err(OutboundNotificationRequestError::Rejected)
     );
+}
+
+fn notification() -> Notification {
+    let now = Utc::now();
+    Notification::project(
+        OrganizationId::new(),
+        PrincipalId::new(),
+        Uuid::now_v7(),
+        "identity.membership.role-changed".into(),
+        1,
+        Uuid::now_v7(),
+        2,
+        Uuid::now_v7(),
+        NotificationSeverity::Warning,
+        "Organization role changed".into(),
+        "Your organization role is now member.".into(),
+        NotificationScope::Organization,
+        now,
+        now,
+    )
+    .expect("notification")
 }

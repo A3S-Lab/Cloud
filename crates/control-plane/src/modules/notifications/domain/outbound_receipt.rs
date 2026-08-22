@@ -1,6 +1,7 @@
 use super::{
-    outbound_notification_attempt_id, OutboundNotificationConnectorTarget,
-    OutboundNotificationDelivery, MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    outbound_notification_attempt_id, outbound_notification_smtp_attempt_id,
+    OutboundNotificationDelivery, OutboundNotificationSmtpAttemptOutcome,
+    OutboundNotificationTarget, MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::connectors::{ConnectorExecutionEvidence, ConnectorExecutionOutcome};
 use crate::modules::shared_kernel::domain::{canonical_timestamp, OrganizationId};
@@ -15,6 +16,7 @@ pub enum OutboundNotificationTerminalOutcome {
     Rejected,
     Indeterminate,
     Exhausted,
+    Obsolete,
 }
 
 impl OutboundNotificationTerminalOutcome {
@@ -24,6 +26,7 @@ impl OutboundNotificationTerminalOutcome {
             Self::Rejected => "rejected",
             Self::Indeterminate => "indeterminate",
             Self::Exhausted => "exhausted",
+            Self::Obsolete => "obsolete",
         }
     }
 
@@ -33,6 +36,7 @@ impl OutboundNotificationTerminalOutcome {
             "rejected" => Ok(Self::Rejected),
             "indeterminate" => Ok(Self::Indeterminate),
             "exhausted" => Ok(Self::Exhausted),
+            "obsolete" => Ok(Self::Obsolete),
             _ => Err("outbound notification terminal outcome is unsupported".into()),
         }
     }
@@ -46,7 +50,7 @@ impl OutboundNotificationTerminalOutcome {
 pub struct OutboundNotificationTerminalReceipt {
     organization_id: OrganizationId,
     delivery_id: Uuid,
-    target: OutboundNotificationConnectorTarget,
+    target: OutboundNotificationTarget,
     #[serde(default = "default_provider_attempt_budget")]
     maximum_provider_attempts: u64,
     outcome: OutboundNotificationTerminalOutcome,
@@ -56,6 +60,34 @@ pub struct OutboundNotificationTerminalReceipt {
 }
 
 impl OutboundNotificationTerminalReceipt {
+    pub fn from_smtp_outcome(
+        delivery: &OutboundNotificationDelivery,
+        generation: u64,
+        outcome: OutboundNotificationSmtpAttemptOutcome,
+        terminal_at: DateTime<Utc>,
+    ) -> Result<Option<Self>, String> {
+        if delivery.recipient_contact_id().is_none() {
+            return Err("SMTP evidence cannot settle a Connector notification delivery".into());
+        }
+        let Some(receipt_outcome) =
+            outcome.terminal_receipt_outcome(generation, delivery.maximum_provider_attempts())
+        else {
+            return Ok(None);
+        };
+        let receipt = Self::restore_with_provider_attempt_budget(
+            delivery.organization_id(),
+            delivery.id(),
+            delivery.target(),
+            delivery.maximum_provider_attempts(),
+            receipt_outcome,
+            generation,
+            outbound_notification_smtp_attempt_id(delivery.id(), generation)?,
+            terminal_at,
+        )?;
+        receipt.validate_against(delivery)?;
+        Ok(Some(receipt))
+    }
+
     pub fn delivered(
         delivery: &OutboundNotificationDelivery,
         generation: u64,
@@ -124,7 +156,7 @@ impl OutboundNotificationTerminalReceipt {
     pub fn restore(
         organization_id: OrganizationId,
         delivery_id: Uuid,
-        target: OutboundNotificationConnectorTarget,
+        target: OutboundNotificationTarget,
         outcome: OutboundNotificationTerminalOutcome,
         generation: u64,
         attempt_id: Uuid,
@@ -146,7 +178,7 @@ impl OutboundNotificationTerminalReceipt {
     pub fn restore_with_provider_attempt_budget(
         organization_id: OrganizationId,
         delivery_id: Uuid,
-        target: OutboundNotificationConnectorTarget,
+        target: OutboundNotificationTarget,
         maximum_provider_attempts: u64,
         outcome: OutboundNotificationTerminalOutcome,
         generation: u64,
@@ -176,11 +208,14 @@ impl OutboundNotificationTerminalReceipt {
     ) -> Result<Self, String> {
         evidence.validate()?;
         let target = delivery.target();
+        let connector_target = target.connector().ok_or_else(|| {
+            "Connector evidence cannot settle an SMTP outbound notification delivery".to_owned()
+        })?;
         if evidence.organization_id() != delivery.organization_id()
-            || evidence.project_id() != target.project_id
-            || evidence.environment_id() != target.environment_id
-            || evidence.profile_id() != target.profile_id
-            || evidence.revision_id() != target.revision_id
+            || evidence.project_id() != connector_target.project_id
+            || evidence.environment_id() != connector_target.environment_id
+            || evidence.profile_id() != connector_target.profile_id
+            || evidence.revision_id() != connector_target.revision_id
             || evidence.outcome() != expected_connector_outcome
         {
             return Err(
@@ -203,14 +238,18 @@ impl OutboundNotificationTerminalReceipt {
 
     pub fn validate(&self) -> Result<(), String> {
         self.target.validate()?;
+        let expected_attempt_id = if self.target.recipient_contact_id().is_some() {
+            outbound_notification_smtp_attempt_id(self.delivery_id, self.generation)?
+        } else {
+            outbound_notification_attempt_id(self.delivery_id, self.generation)?
+        };
         if self.organization_id.as_uuid().is_nil()
             || self.delivery_id.is_nil()
             || self.attempt_id.is_nil()
             || self.maximum_provider_attempts == 0
             || self.maximum_provider_attempts > MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
             || self.generation > self.maximum_provider_attempts
-            || self.attempt_id
-                != outbound_notification_attempt_id(self.delivery_id, self.generation)?
+            || self.attempt_id != expected_attempt_id
             || self.outcome == OutboundNotificationTerminalOutcome::Exhausted
                 && self.generation != self.maximum_provider_attempts
             || self.terminal_at != canonical_timestamp(self.terminal_at)
@@ -244,7 +283,7 @@ impl OutboundNotificationTerminalReceipt {
         self.delivery_id
     }
 
-    pub const fn target(&self) -> OutboundNotificationConnectorTarget {
+    pub const fn target(&self) -> OutboundNotificationTarget {
         self.target
     }
 
@@ -278,7 +317,8 @@ mod tests {
     use super::*;
     use crate::modules::notifications::{
         Notification, NotificationScope, NotificationSeverity, OutboundNotificationChannel,
-        OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
+        OutboundNotificationConnectorTarget, OutboundNotificationSubscriptionDefinition,
+        OutboundNotificationSubscriptionSpec,
     };
     use crate::modules::shared_kernel::domain::{
         ConnectorProfileId, ConnectorRevisionId, EnvironmentId, PrincipalId, ProjectId,

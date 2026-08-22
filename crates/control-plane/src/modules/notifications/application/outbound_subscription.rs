@@ -1,4 +1,5 @@
 use crate::modules::connectors::IConnectorProfileRepository;
+use crate::modules::identity::domain::repositories::IRecipientContactRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
@@ -54,16 +55,19 @@ pub struct OutboundNotificationSubscriptionMutationResult {
 pub struct CreateOutboundNotificationSubscriptionHandler {
     notifications: Arc<dyn IOutboundNotificationRepository>,
     connectors: Arc<dyn IConnectorProfileRepository>,
+    recipient_contacts: Arc<dyn IRecipientContactRepository>,
 }
 
 impl CreateOutboundNotificationSubscriptionHandler {
     pub fn new(
         notifications: Arc<dyn IOutboundNotificationRepository>,
         connectors: Arc<dyn IConnectorProfileRepository>,
+        recipient_contacts: Arc<dyn IRecipientContactRepository>,
     ) -> Self {
         Self {
             notifications,
             connectors,
+            recipient_contacts,
         }
     }
 }
@@ -81,6 +85,7 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
     > {
         let notifications = Arc::clone(&self.notifications);
         let connectors = Arc::clone(&self.connectors);
+        let recipient_contacts = Arc::clone(&self.recipient_contacts);
         Box::pin(async move {
             if command.organization_id.as_uuid().is_nil()
                 || command.actor_principal_id.as_uuid().is_nil()
@@ -97,14 +102,39 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             let spec = definition.spec();
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
-                    project_id: spec.target.project_id,
-                    environment_id: spec.target.environment_id,
-                })
-            {
-                return Ok(Err(outbound_subscription_not_found()));
+            if let Some(target) = spec.target.connector() {
+                if !command
+                    .resource_access
+                    .allows(ResourceGrantScope::Environment {
+                        project_id: target.project_id,
+                        environment_id: target.environment_id,
+                    })
+                {
+                    return Ok(Err(outbound_subscription_not_found()));
+                }
+            } else if let Some(contact_id) = spec.target.recipient_contact_id() {
+                match recipient_contacts
+                    .resolve_verified_recipient_contact(
+                        command.organization_id,
+                        command.actor_principal_id,
+                        contact_id,
+                    )
+                    .await
+                {
+                    Ok(Some(contact))
+                        if contact.id == contact_id
+                            && contact.principal_id == command.actor_principal_id => {}
+                    Ok(Some(_)) => {
+                        return Err(BootError::Internal(
+                            "recipient contact lookup returned inconsistent identity".into(),
+                        ))
+                    }
+                    Ok(None)
+                    | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
+                        return Ok(Err(outbound_subscription_not_found()))
+                    }
+                    Err(error) => return Ok(Err(error.into())),
+                }
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
@@ -142,32 +172,34 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            match connectors
-                .find_revision(
-                    command.organization_id,
-                    spec.target.project_id,
-                    spec.target.environment_id,
-                    spec.target.profile_id,
-                    spec.target.revision_id,
-                )
-                .await
-            {
-                Ok(Some(revision))
-                    if revision.organization_id == command.organization_id
-                        && revision.project_id == spec.target.project_id
-                        && revision.environment_id == spec.target.environment_id
-                        && revision.profile_id == spec.target.profile_id
-                        && revision.id == spec.target.revision_id => {}
-                Ok(Some(_)) => {
-                    return Err(BootError::Internal(
-                        "Connector revision lookup returned inconsistent identity".into(),
-                    ))
+            if let Some(target) = spec.target.connector() {
+                match connectors
+                    .find_revision(
+                        command.organization_id,
+                        target.project_id,
+                        target.environment_id,
+                        target.profile_id,
+                        target.revision_id,
+                    )
+                    .await
+                {
+                    Ok(Some(revision))
+                        if revision.organization_id == command.organization_id
+                            && revision.project_id == target.project_id
+                            && revision.environment_id == target.environment_id
+                            && revision.profile_id == target.profile_id
+                            && revision.id == target.revision_id => {}
+                    Ok(Some(_)) => {
+                        return Err(BootError::Internal(
+                            "Connector revision lookup returned inconsistent identity".into(),
+                        ))
+                    }
+                    Ok(None)
+                    | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
+                        return Ok(Err(outbound_subscription_not_found()))
+                    }
+                    Err(error) => return Ok(Err(error.into())),
                 }
-                Ok(None)
-                | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(outbound_subscription_not_found()))
-                }
-                Err(error) => return Ok(Err(error.into())),
             }
             let subscription = match OutboundNotificationSubscription::create(
                 command.organization_id,
@@ -256,14 +288,16 @@ impl CommandHandler<RevokeOutboundNotificationSubscription>
                 Err(error) => return Ok(Err(error.into())),
             };
             let target = existing.definition.spec().target;
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
-                    project_id: target.project_id,
-                    environment_id: target.environment_id,
-                })
-            {
-                return Ok(Err(outbound_subscription_not_found()));
+            if let Some(target) = target.connector() {
+                if !command
+                    .resource_access
+                    .allows(ResourceGrantScope::Environment {
+                        project_id: target.project_id,
+                        environment_id: target.environment_id,
+                    })
+                {
+                    return Ok(Err(outbound_subscription_not_found()));
+                }
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,

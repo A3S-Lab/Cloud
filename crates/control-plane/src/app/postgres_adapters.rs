@@ -42,7 +42,7 @@ use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxReposi
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
     IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
-    PostgresNotificationRepository,
+    IOutboundNotificationSmtpAttemptRepository, PostgresNotificationRepository,
 };
 use crate::modules::operations::{IOperationRepository, PostgresOperationRepository};
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
@@ -260,6 +260,7 @@ pub(super) struct NotificationPostgresAdapters {
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     pub(super) outbound_deliveries: Arc<dyn IOutboundNotificationDeliveryRepository>,
+    pub(super) outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>,
 }
 
 impl NotificationPostgresAdapters {
@@ -269,7 +270,8 @@ impl NotificationPostgresAdapters {
             notifications: repository.clone(),
             alert_policies: repository.clone(),
             outbound_notifications: repository.clone(),
-            outbound_deliveries: repository,
+            outbound_deliveries: repository.clone(),
+            outbound_smtp_attempts: repository,
         }
     }
 }

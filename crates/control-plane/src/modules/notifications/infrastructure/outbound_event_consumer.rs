@@ -166,6 +166,20 @@ impl A3sEventOutboundNotificationConsumer {
         }
 
         let receipt = match self.dispatcher.dispatch(&delivery, delivery_count).await {
+            Ok(OutboundNotificationDispatchResult::TerminalPersisted { receipt }) => {
+                if let Err(error) = receipt.validate_against(&delivery) {
+                    tracing::error!(
+                        event_id,
+                        delivery_id = %delivery.id(),
+                        error,
+                        "leaving outbound SMTP notification fact unacknowledged after invalid atomic terminal receipt"
+                    );
+                    drop(pending);
+                    return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
+                }
+                pending.ack().await?;
+                return Ok(OutboundNotificationConsumerAction::Acknowledged);
+            }
             Ok(OutboundNotificationDispatchResult::Delivered {
                 generation,
                 evidence,
@@ -191,6 +205,7 @@ impl A3sEventOutboundNotificationConsumer {
             ),
             Ok(
                 OutboundNotificationDispatchResult::Retryable { .. }
+                | OutboundNotificationDispatchResult::SmtpRetryable { .. }
                 | OutboundNotificationDispatchResult::Deferred { .. },
             ) => {
                 tracing::warn!(

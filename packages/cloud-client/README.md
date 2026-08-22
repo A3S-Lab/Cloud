@@ -345,10 +345,13 @@ added by REST contract `1.37.0`. Create sends one bounded canonical A3S ACL as
 version. Contract `1.46.0` widens the response definition schema to v1/v2/v3,
 retains required `maximumProviderAttempts`, and adds nullable `suppressBefore`;
 v1 remains exactly eight, v2 pins one value from 1 through 8, and v3 also pins
-the bounded immutable event-time cutoff. Lists use the shared opaque cursor and 50/200 bounds. Notifications
-remains authoritative for recipient identity, Resource Grants, exact Connector
-revision admission, idempotency, Outbox, audit, and persistence. The client has
-no ACL parser and never resolves endpoints, Secrets, credentials, provider
+the bounded immutable event-time cutoff. Contract `1.53.0` adds SMTP-only v4
+and returns one required discriminated `target`: an exact Connector revision
+for signed-webhook/Slack delivery or one opaque `recipient_contact` ID for
+SMTP. Lists use the shared opaque cursor and 50/200 bounds. Notifications
+remains authoritative for recipient identity, Resource Grants, exact target
+admission, idempotency, Outbox, audit, and persistence. The client has no ACL
+parser and never resolves mailbox, endpoints, Secrets, credentials, provider
 bodies, delivery evidence, receipts, or retry state.
 
 `listAgentConversations`, `getAgentConversation`, and

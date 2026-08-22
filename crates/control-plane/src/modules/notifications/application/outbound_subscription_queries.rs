@@ -179,8 +179,10 @@ fn is_visible(
     resource_access: &ResourceAccessEvaluator,
 ) -> bool {
     let target = subscription.definition.spec().target;
-    resource_access.allows(ResourceGrantScope::Environment {
-        project_id: target.project_id,
-        environment_id: target.environment_id,
+    target.connector().is_none_or(|target| {
+        resource_access.allows(ResourceGrantScope::Environment {
+            project_id: target.project_id,
+            environment_id: target.environment_id,
+        })
     })
 }

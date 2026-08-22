@@ -106,16 +106,14 @@ fn delivery_request(
     attempt_id: Uuid,
     body: Vec<u8>,
 ) -> Result<ConnectorExecutionRequest, OutboundNotificationRequestError> {
-    ConnectorExecutionRequest::new(
-        delivery.target_revision_id(),
-        attempt_id,
-        "application/json",
-        body,
-    )
-    .and_then(|request| {
-        request.with_header("x-a3s-notification-delivery-id", delivery.id().to_string())
-    })
-    .map_err(|_| OutboundNotificationRequestError::Rejected)
+    let revision_id = delivery
+        .target_revision_id()
+        .ok_or(OutboundNotificationRequestError::Rejected)?;
+    ConnectorExecutionRequest::new(revision_id, attempt_id, "application/json", body)
+        .and_then(|request| {
+            request.with_header("x-a3s-notification-delivery-id", delivery.id().to_string())
+        })
+        .map_err(|_| OutboundNotificationRequestError::Rejected)
 }
 
 fn webhook_signing_input(occurred_at: &str, delivery_id: Uuid, body: &[u8]) -> Vec<u8> {

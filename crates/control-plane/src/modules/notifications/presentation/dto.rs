@@ -217,16 +217,32 @@ pub struct RevokeNotificationAlertPolicyRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OutboundNotificationTargetResponse {
+    Connector {
+        #[serde(rename = "projectId")]
+        project_id: Uuid,
+        #[serde(rename = "environmentId")]
+        environment_id: Uuid,
+        #[serde(rename = "profileId")]
+        profile_id: Uuid,
+        #[serde(rename = "revisionId")]
+        revision_id: Uuid,
+    },
+    RecipientContact {
+        #[serde(rename = "recipientContactId")]
+        recipient_contact_id: Uuid,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutboundNotificationSubscriptionResponse {
     pub organization_id: Uuid,
     pub subscription_id: Uuid,
     pub channel: OutboundNotificationChannel,
     pub minimum_severity: NotificationSeverity,
-    pub connector_project_id: Uuid,
-    pub connector_environment_id: Uuid,
-    pub connector_profile_id: Uuid,
-    pub connector_revision_id: Uuid,
+    pub target: OutboundNotificationTargetResponse,
     pub maximum_provider_attempts: u64,
     pub suppress_before: Option<DateTime<Utc>>,
     pub definition_schema: String,
@@ -242,15 +258,27 @@ pub struct OutboundNotificationSubscriptionResponse {
 impl From<OutboundNotificationSubscription> for OutboundNotificationSubscriptionResponse {
     fn from(subscription: OutboundNotificationSubscription) -> Self {
         let spec = subscription.definition.spec();
+        let target = match spec.target {
+            crate::modules::notifications::OutboundNotificationTarget::Connector(target) => {
+                OutboundNotificationTargetResponse::Connector {
+                    project_id: target.project_id.as_uuid(),
+                    environment_id: target.environment_id.as_uuid(),
+                    profile_id: target.profile_id.as_uuid(),
+                    revision_id: target.revision_id.as_uuid(),
+                }
+            }
+            crate::modules::notifications::OutboundNotificationTarget::RecipientContact(
+                contact_id,
+            ) => OutboundNotificationTargetResponse::RecipientContact {
+                recipient_contact_id: contact_id.as_uuid(),
+            },
+        };
         Self {
             organization_id: subscription.organization_id.as_uuid(),
             subscription_id: subscription.id.as_uuid(),
             channel: spec.channel,
             minimum_severity: spec.minimum_severity,
-            connector_project_id: spec.target.project_id.as_uuid(),
-            connector_environment_id: spec.target.environment_id.as_uuid(),
-            connector_profile_id: spec.target.profile_id.as_uuid(),
-            connector_revision_id: spec.target.revision_id.as_uuid(),
+            target,
             maximum_provider_attempts: subscription.definition.maximum_provider_attempts(),
             suppress_before: subscription.definition.suppress_before(),
             definition_schema: subscription.definition.definition_schema().into(),
@@ -312,3 +340,7 @@ impl From<OutboundNotificationSubscriptionMutationResult>
 pub struct RevokeOutboundNotificationSubscriptionRequest {
     pub expected_version: u64,
 }
+
+#[cfg(test)]
+#[path = "dto_tests.rs"]
+mod tests;

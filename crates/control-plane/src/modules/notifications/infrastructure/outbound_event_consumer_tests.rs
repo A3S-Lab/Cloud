@@ -165,7 +165,7 @@ fn delivery_with_budget(maximum_provider_attempts: Option<u64>) -> OutboundNotif
                 OutboundNotificationSubscriptionSpec {
                     channel: OutboundNotificationChannel::SlackCompatible,
                     minimum_severity: NotificationSeverity::Warning,
-                    target,
+                    target: target.into(),
                 },
                 maximum_provider_attempts,
             )
@@ -231,7 +231,7 @@ fn evidence(
     generation: u64,
 ) -> ConnectorExecutionEvidence {
     let now = canonical_timestamp(Utc::now());
-    let target = delivery.target();
+    let target = delivery.connector_target().expect("Connector target");
     ConnectorExecutionEvidence::restore(
         delivery.organization_id(),
         target.project_id,
@@ -343,6 +343,38 @@ async fn terminal_evidence_is_acknowledged_only_after_fenced_dispatch() {
 }
 
 #[tokio::test]
+async fn atomically_persisted_terminal_result_is_validated_and_acked_without_second_settlement() {
+    let delivery = delivery();
+    let receipt = OutboundNotificationTerminalReceipt::delivered(
+        &delivery,
+        1,
+        &evidence(&delivery, ConnectorExecutionOutcome::Accepted, 1),
+    )
+    .expect("terminal receipt");
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::TerminalPersisted { receipt },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    let action = consumer
+        .process_pending(pending(
+            event(&delivery, 1),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("ack atomic terminal result");
+
+    assert_eq!(action, OutboundNotificationConsumerAction::Acknowledged);
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn exhausted_attempt_budget_is_receipted_before_acknowledgement_and_survives_ack_loss() {
     let delivery = delivery();
     let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
@@ -428,6 +460,37 @@ async fn retryable_evidence_is_left_to_provider_ack_wait_without_local_nak() {
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
     assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn smtp_retryable_result_is_left_to_provider_ack_wait_without_local_settlement() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::SmtpRetryable {
+            generation: 1,
+            attempt_id: Uuid::now_v7(),
+        },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, dispatcher);
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    let action = consumer
+        .process_pending(pending(
+            event(&delivery, 1),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("defer SMTP retryable event");
+
+    assert_eq!(
+        action,
+        OutboundNotificationConsumerAction::DeferredToEventProvider
+    );
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

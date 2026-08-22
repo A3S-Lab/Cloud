@@ -30,6 +30,9 @@ pub trait IOutboundNotificationDispatcher: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutboundNotificationDispatchResult {
+    TerminalPersisted {
+        receipt: crate::modules::notifications::domain::OutboundNotificationTerminalReceipt,
+    },
     Delivered {
         generation: u64,
         evidence: ConnectorExecutionEvidence,
@@ -41,6 +44,10 @@ pub enum OutboundNotificationDispatchResult {
     Retryable {
         generation: u64,
         evidence: ConnectorExecutionEvidence,
+    },
+    SmtpRetryable {
+        generation: u64,
+        attempt_id: Uuid,
     },
     Exhausted {
         generation: u64,
@@ -68,6 +75,7 @@ pub struct OutboundNotificationDispatcher {
     connectors: Arc<ConnectorExecutionApplicationService>,
     signed_webhook: Arc<dyn IOutboundNotificationRequestAdapter>,
     slack_compatible: Arc<dyn IOutboundNotificationRequestAdapter>,
+    smtp: Option<Arc<super::OutboundNotificationSmtpDispatcher>>,
 }
 
 impl OutboundNotificationDispatcher {
@@ -88,7 +96,16 @@ impl OutboundNotificationDispatcher {
             connectors,
             signed_webhook,
             slack_compatible,
+            smtp: None,
         }
+    }
+
+    pub fn with_smtp_dispatcher(
+        mut self,
+        smtp: Arc<super::OutboundNotificationSmtpDispatcher>,
+    ) -> Self {
+        self.smtp = Some(smtp);
+        self
     }
 
     async fn dispatch_fenced(
@@ -109,7 +126,11 @@ impl OutboundNotificationDispatcher {
             .min(MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION)
             .min(delivery.maximum_provider_attempts());
         let adapter = self.adapter(delivery.channel())?;
-        let target = delivery.target();
+        let target = delivery.connector_target().ok_or_else(|| {
+            ApplicationError::Invalid(
+                "Connector notification delivery requires an exact Connector target".into(),
+            )
+        })?;
         let resource_access =
             ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
                 project_id: target.project_id,
@@ -323,6 +344,12 @@ impl IOutboundNotificationDispatcher for OutboundNotificationDispatcher {
         delivery: &OutboundNotificationDelivery,
         delivery_count: u64,
     ) -> ApplicationResult<OutboundNotificationDispatchResult> {
+        if delivery.channel() == OutboundNotificationChannel::Smtp {
+            let smtp = self.smtp.as_ref().ok_or_else(|| {
+                ApplicationError::Unavailable("SMTP notification delivery is not configured".into())
+            })?;
+            return smtp.dispatch(delivery, delivery_count).await;
+        }
         self.dispatch_fenced(delivery, delivery_count).await
     }
 }

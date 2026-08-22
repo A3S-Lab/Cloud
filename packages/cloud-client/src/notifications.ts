@@ -84,24 +84,39 @@ type PersonalPageQuery = {
   limit?: number;
 };
 
-export type OutboundNotificationChannel = 'signed_webhook' | 'slack_compatible';
+export type OutboundNotificationChannel = 'signed_webhook' | 'slack_compatible' | 'smtp';
 export type OutboundNotificationSubscriptionState = 'active' | 'revoked';
+
+export interface OutboundNotificationConnectorTarget {
+  kind: 'connector';
+  projectId: string;
+  environmentId: string;
+  profileId: string;
+  revisionId: string;
+}
+
+export interface OutboundNotificationRecipientContactTarget {
+  kind: 'recipient_contact';
+  recipientContactId: string;
+}
+
+export type OutboundNotificationTarget =
+  | OutboundNotificationConnectorTarget
+  | OutboundNotificationRecipientContactTarget;
 
 export interface OutboundNotificationSubscription {
   organizationId: string;
   subscriptionId: string;
   channel: OutboundNotificationChannel;
   minimumSeverity: NotificationSeverity;
-  connectorProjectId: string;
-  connectorEnvironmentId: string;
-  connectorProfileId: string;
-  connectorRevisionId: string;
+  target: OutboundNotificationTarget;
   maximumProviderAttempts: number;
   suppressBefore: string | null;
   definitionSchema:
     | 'cloud.notification.outbound-subscription.v1'
     | 'cloud.notification.outbound-subscription.v2'
-    | 'cloud.notification.outbound-subscription.v3';
+    | 'cloud.notification.outbound-subscription.v3'
+    | 'cloud.notification.outbound-subscription.v4';
   definitionAcl: string;
   definitionDigest: string;
   state: OutboundNotificationSubscriptionState;

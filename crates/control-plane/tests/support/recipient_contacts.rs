@@ -427,14 +427,20 @@ pub async fn exercise_recipient_contact_persistence(
         .await;
     assert!(matches!(consumed_reuse, Err(RepositoryError::Conflict(_))));
     let resolved = repository
-        .resolve_verified_recipient_contact(principal_id, completed.value.id)
+        .resolve_verified_recipient_contact(organization_id, principal_id, completed.value.id)
         .await?
         .expect("verified internal recipient resolution");
     assert_eq!(resolved.address.as_str(), canonical_address);
-    assert!(repository
-        .resolve_verified_recipient_contact(other_principal_id, completed.value.id)
-        .await?
-        .is_none());
+    assert!(
+        repository
+            .resolve_verified_recipient_contact(
+                organization_id,
+                other_principal_id,
+                completed.value.id,
+            )
+            .await?
+            .is_none()
+    );
 
     assert!(database
         .execute(
@@ -535,7 +541,7 @@ pub async fn exercise_recipient_contact_persistence(
             .replayed
     );
     assert!(repository
-        .resolve_verified_recipient_contact(principal_id, completed.value.id)
+        .resolve_verified_recipient_contact(organization_id, principal_id, completed.value.id)
         .await?
         .is_none());
 

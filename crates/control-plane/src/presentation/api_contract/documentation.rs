@@ -169,6 +169,15 @@ fn component_schema_description(name: &str) -> String {
         "OutboundNotificationSubscription" => {
             "Immutable personal outbound notification subscription and delivery policy.".into()
         }
+        "OutboundNotificationTarget" => {
+            "Closed delivery-authority union discriminated by `kind`.".into()
+        }
+        "OutboundNotificationConnectorTarget" => {
+            "Exact immutable Connector profile revision target for HTTP delivery.".into()
+        }
+        "OutboundNotificationRecipientContactTarget" => {
+            "Opaque verified recipient-contact target for SMTP delivery.".into()
+        }
         "OutboundNotificationSubscriptionPage" => {
             "Bounded cursor page of personal outbound notification subscriptions.".into()
         }

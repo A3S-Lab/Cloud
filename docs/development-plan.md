@@ -450,10 +450,10 @@ transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
 
-The current REST/OpenAPI contract is `1.52.0`. It retains `1.51.0`'s exact
-Gateway certificate-expiry firing/recovery facts in the immutable personal
-alert-policy lifecycle and adds the exact-owner recipient-contact self-service
-surface without exposing challenge identity, mailbox, or proof. It
+The current REST/OpenAPI contract is `1.53.0`. It retains `1.52.0`'s exact-owner
+recipient-contact self-service surface without exposing challenge identity,
+mailbox, or proof, and adds SMTP-only outbound-subscription v4 through one
+required closed Connector-or-recipient-contact target union. It
 also retains `1.48.0`'s complete human-readable operation, tag,
 parameter, request, response, example, authentication, and compatibility
 documentation for the entire REST surface, while retaining `1.46.0`'s
@@ -1744,7 +1744,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.52.0`. Focused tests
+  and every API response pin the current contract `1.53.0`. Focused tests
   regenerate the candidate from the resolved route table and reject snapshot
   drift. CI compares
   the committed contract with the pull request base and rejects operation

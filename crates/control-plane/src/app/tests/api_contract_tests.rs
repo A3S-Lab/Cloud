@@ -450,8 +450,67 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         json!([
             "cloud.notification.outbound-subscription.v1",
             "cloud.notification.outbound-subscription.v2",
-            "cloud.notification.outbound-subscription.v3"
+            "cloud.notification.outbound-subscription.v3",
+            "cloud.notification.outbound-subscription.v4"
         ])
+    );
+    assert_eq!(
+        response["properties"]["channel"]["enum"],
+        json!(["signed_webhook", "slack_compatible", "smtp"])
+    );
+    assert_eq!(
+        response["properties"]["target"]["$ref"],
+        "#/components/schemas/OutboundNotificationTarget"
+    );
+    let required = response["required"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("subscription required fields are missing".into()))?;
+    assert!(required.contains(&json!("target")));
+    for obsolete in [
+        "connectorProjectId",
+        "connectorEnvironmentId",
+        "connectorProfileId",
+        "connectorRevisionId",
+        "recipientContactId",
+    ] {
+        assert!(!required.contains(&json!(obsolete)));
+        assert!(response["properties"].get(obsolete).is_none());
+    }
+    let target = &document["components"]["schemas"]["OutboundNotificationTarget"];
+    assert_eq!(
+        target["oneOf"],
+        json!([
+            {"$ref": "#/components/schemas/OutboundNotificationConnectorTarget"},
+            {"$ref": "#/components/schemas/OutboundNotificationRecipientContactTarget"}
+        ])
+    );
+    assert_eq!(target["discriminator"]["propertyName"], "kind");
+    assert_eq!(
+        target["discriminator"]["mapping"],
+        json!({
+            "connector": "#/components/schemas/OutboundNotificationConnectorTarget",
+            "recipient_contact": "#/components/schemas/OutboundNotificationRecipientContactTarget"
+        })
+    );
+    let connector_target =
+        &document["components"]["schemas"]["OutboundNotificationConnectorTarget"];
+    assert_eq!(connector_target["additionalProperties"], false);
+    assert_eq!(
+        connector_target["required"],
+        json!([
+            "kind",
+            "projectId",
+            "environmentId",
+            "profileId",
+            "revisionId"
+        ])
+    );
+    let contact_target =
+        &document["components"]["schemas"]["OutboundNotificationRecipientContactTarget"];
+    assert_eq!(contact_target["additionalProperties"], false);
+    assert_eq!(
+        contact_target["required"],
+        json!(["kind", "recipientContactId"])
     );
     assert_eq!(
         response["properties"]["maximumProviderAttempts"]["minimum"],

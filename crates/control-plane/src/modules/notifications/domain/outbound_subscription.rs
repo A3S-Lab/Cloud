@@ -1,11 +1,12 @@
 use super::{
     Notification, NotificationSeverity, OutboundNotificationChannel,
-    OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
+    OutboundNotificationConnectorTarget, OutboundNotificationDelivery, OutboundNotificationTarget,
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
-    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, Sha256Digest,
+    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RecipientContactId,
+    Sha256Digest,
 };
 use a3s_acl::builder::{number, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
@@ -21,6 +22,8 @@ pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2: &str =
     "cloud.notification.outbound-subscription.v2";
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3: &str =
     "cloud.notification.outbound-subscription.v3";
+pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4: &str =
+    "cloud.notification.outbound-subscription.v4";
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES: usize = 16 * 1024;
 pub const MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS: u64 = 1;
 pub const MAXIMUM_OUTBOUND_NOTIFICATION_SUPPRESSION_DAYS: i64 = 30;
@@ -31,7 +34,7 @@ const OUTBOUND_NOTIFICATION_SUBSCRIPTION_BLOCK: &str = "notification_outbound_su
 pub struct OutboundNotificationSubscriptionSpec {
     pub channel: OutboundNotificationChannel,
     pub minimum_severity: NotificationSeverity,
-    pub target: OutboundNotificationConnectorTarget,
+    pub target: OutboundNotificationTarget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +86,24 @@ impl OutboundNotificationSubscriptionDefinition {
         )
     }
 
+    pub fn from_smtp_spec(
+        recipient_contact_id: RecipientContactId,
+        minimum_severity: NotificationSeverity,
+        maximum_provider_attempts: u64,
+        suppress_before: Option<DateTime<Utc>>,
+    ) -> Result<Self, String> {
+        Self::from_versioned_spec(
+            OutboundNotificationSubscriptionSpec {
+                channel: OutboundNotificationChannel::Smtp,
+                minimum_severity,
+                target: OutboundNotificationTarget::recipient_contact(recipient_contact_id)?,
+            },
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
+            maximum_provider_attempts,
+            suppress_before,
+        )
+    }
+
     fn from_versioned_spec(
         spec: OutboundNotificationSubscriptionSpec,
         definition_schema: &str,
@@ -90,6 +111,7 @@ impl OutboundNotificationSubscriptionDefinition {
         suppress_before: Option<DateTime<Utc>>,
     ) -> Result<Self, String> {
         validate_spec(spec)?;
+        validate_target_schema(spec, definition_schema)?;
         let suppress_before = suppress_before.map(canonical_timestamp);
         validate_versioned_policy(
             definition_schema,
@@ -171,16 +193,19 @@ impl OutboundNotificationSubscriptionDefinition {
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA => 1,
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 => 2,
             OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3 => 3,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4 => 4,
             _ => unreachable!("validated outbound subscription schema"),
         }
     }
 
     /// Subscription v3 changes admission only; eligible facts retain the delivery-v2 contract.
     pub fn delivery_schema_version(&self) -> u32 {
-        if self.definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA {
-            1
-        } else {
-            2
+        match self.definition_schema.as_str() {
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA => 1,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+            | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3 => 2,
+            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4 => 3,
+            _ => unreachable!("validated outbound subscription schema"),
         }
     }
 
@@ -408,11 +433,30 @@ pub struct OutboundNotificationSubscriptionPage {
 }
 
 fn validate_spec(spec: OutboundNotificationSubscriptionSpec) -> Result<(), String> {
-    spec.target.validate()?;
-    if spec.channel == OutboundNotificationChannel::Smtp {
-        return Err("SMTP outbound notification subscriptions are unavailable".into());
+    spec.target.validate_for_channel(spec.channel)
+}
+
+fn validate_target_schema(
+    spec: OutboundNotificationSubscriptionSpec,
+    definition_schema: &str,
+) -> Result<(), String> {
+    if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4 {
+        if spec.channel == OutboundNotificationChannel::Smtp
+            && spec.target.recipient_contact_id().is_some()
+        {
+            return Ok(());
+        }
+    } else if matches!(
+        definition_schema,
+        OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA
+            | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+            | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+    ) && spec.channel != OutboundNotificationChannel::Smtp
+        && spec.target.connector().is_some()
+    {
+        return Ok(());
     }
-    Ok(())
+    Err("outbound notification subscription schema and target do not match".into())
 }
 
 fn severity_rank(severity: NotificationSeverity) -> u8 {
@@ -432,26 +476,34 @@ fn definition_document(
     let mut root = BlockBuilder::new(OUTBOUND_NOTIFICATION_SUBSCRIPTION_BLOCK)
         .attr("schema", string(definition_schema))
         .attr("channel", string(spec.channel.as_str()))
-        .attr("minimum_severity", string(spec.minimum_severity.as_str()))
-        .attr(
-            "connector_project_id",
-            string(&spec.target.project_id.to_string()),
-        )
-        .attr(
-            "connector_environment_id",
-            string(&spec.target.environment_id.to_string()),
-        )
-        .attr(
-            "connector_profile_id",
-            string(&spec.target.profile_id.to_string()),
-        )
-        .attr(
-            "connector_revision_id",
-            string(&spec.target.revision_id.to_string()),
-        );
+        .attr("minimum_severity", string(spec.minimum_severity.as_str()));
+    root = match spec.target {
+        OutboundNotificationTarget::Connector(target) => root
+            .attr(
+                "connector_project_id",
+                string(&target.project_id.to_string()),
+            )
+            .attr(
+                "connector_environment_id",
+                string(&target.environment_id.to_string()),
+            )
+            .attr(
+                "connector_profile_id",
+                string(&target.profile_id.to_string()),
+            )
+            .attr(
+                "connector_revision_id",
+                string(&target.revision_id.to_string()),
+            ),
+        OutboundNotificationTarget::RecipientContact(contact_id) => {
+            root.attr("recipient_contact_id", string(&contact_id.to_string()))
+        }
+    };
     if matches!(
         definition_schema,
-        OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+        OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
+            | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+            | OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
     ) {
         root = root.attr(
             "maximum_provider_attempts",
@@ -481,10 +533,8 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
         return Err("outbound notification subscription must contain one top-level block".into());
     }
     let root = &document.blocks[0];
-    let common_attributes = [
-        "schema",
-        "channel",
-        "minimum_severity",
+    let common_attributes = ["schema", "channel", "minimum_severity"];
+    let connector_attributes = [
         "connector_project_id",
         "connector_environment_id",
         "connector_profile_id",
@@ -492,14 +542,25 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
     ];
     let definition_schema = required_string(root, "schema")?;
     let attributes = if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA {
-        common_attributes.to_vec()
+        let mut attributes = common_attributes.to_vec();
+        attributes.extend(connector_attributes);
+        attributes
     } else if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2 {
         let mut attributes = common_attributes.to_vec();
+        attributes.extend(connector_attributes);
         attributes.push("maximum_provider_attempts");
         attributes
     } else if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3 {
         let mut attributes = common_attributes.to_vec();
+        attributes.extend(connector_attributes);
         attributes.extend(["maximum_provider_attempts", "suppress_before"]);
+        attributes
+    } else if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4 {
+        let mut attributes = common_attributes.to_vec();
+        attributes.extend(["recipient_contact_id", "maximum_provider_attempts"]);
+        if root.attributes.contains_key("suppress_before") {
+            attributes.push("suppress_before");
+        }
         attributes
     } else {
         return Err("outbound notification subscription schema is unsupported".into());
@@ -521,20 +582,33 @@ fn parse_definition(document: &Document) -> Result<ParsedSubscriptionDefinition,
         } else {
             required_bounded_u64(root, "maximum_provider_attempts")?
         };
-    let suppress_before = (definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3)
-        .then(|| required_timestamp(root, "suppress_before"))
-        .transpose()?;
+    let suppress_before = if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+        || definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
+            && root.attributes.contains_key("suppress_before")
+    {
+        Some(required_timestamp(root, "suppress_before")?)
+    } else {
+        None
+    };
     validate_versioned_policy(
         &definition_schema,
         maximum_provider_attempts,
         suppress_before,
     )?;
-    let target = OutboundNotificationConnectorTarget::new(
-        ProjectId::from_uuid(parse_id(root, "connector_project_id")?),
-        EnvironmentId::from_uuid(parse_id(root, "connector_environment_id")?),
-        ConnectorProfileId::from_uuid(parse_id(root, "connector_profile_id")?),
-        ConnectorRevisionId::from_uuid(parse_id(root, "connector_revision_id")?),
-    )?;
+    let target = if definition_schema == OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4 {
+        OutboundNotificationTarget::recipient_contact(RecipientContactId::from_uuid(parse_id(
+            root,
+            "recipient_contact_id",
+        )?))?
+    } else {
+        OutboundNotificationConnectorTarget::new(
+            ProjectId::from_uuid(parse_id(root, "connector_project_id")?),
+            EnvironmentId::from_uuid(parse_id(root, "connector_environment_id")?),
+            ConnectorProfileId::from_uuid(parse_id(root, "connector_profile_id")?),
+            ConnectorRevisionId::from_uuid(parse_id(root, "connector_revision_id")?),
+        )?
+        .into()
+    };
     Ok(ParsedSubscriptionDefinition {
         spec: OutboundNotificationSubscriptionSpec {
             channel: OutboundNotificationChannel::parse(&required_string(root, "channel")?)?,
@@ -558,6 +632,7 @@ fn validate_versioned_policy(
     if definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA
         && definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
         && definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
+        && definition_schema != OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
     {
         return Err("outbound notification subscription schema is unsupported".into());
     }
@@ -573,12 +648,17 @@ fn validate_versioned_policy(
     }
     match (definition_schema, suppress_before) {
         (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, Some(cutoff))
+        | (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4, Some(cutoff))
             if cutoff == canonical_timestamp(cutoff) =>
         {
             Ok(())
         }
         (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, _) => Err(
             "outbound notification subscription v3 requires a canonical suppression cutoff".into(),
+        ),
+        (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4, None) => Ok(()),
+        (OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4, Some(_)) => Err(
+            "outbound notification subscription v4 requires a canonical suppression cutoff".into(),
         ),
         (_, None) => Ok(()),
         (_, Some(_)) => {
@@ -647,295 +727,5 @@ const fn default_provider_attempt_budget() -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::modules::shared_kernel::domain::{
-        ConnectorProfileId, ConnectorRevisionId, EnvironmentId, ProjectId,
-    };
-
-    fn notification(
-        organization_id: OrganizationId,
-        recipient: PrincipalId,
-        occurred_at: DateTime<Utc>,
-    ) -> Notification {
-        Notification::project(
-            organization_id,
-            recipient,
-            Uuid::now_v7(),
-            "workload.health.changed".into(),
-            1,
-            Uuid::now_v7(),
-            1,
-            Uuid::now_v7(),
-            NotificationSeverity::Critical,
-            "Workload unhealthy".into(),
-            "The workload health check failed.".into(),
-            super::super::NotificationScope::Organization,
-            occurred_at,
-            occurred_at,
-        )
-        .expect("notification")
-    }
-
-    fn definition() -> OutboundNotificationSubscriptionDefinition {
-        OutboundNotificationSubscriptionDefinition::from_spec(
-            OutboundNotificationSubscriptionSpec {
-                channel: OutboundNotificationChannel::SignedWebhook,
-                minimum_severity: NotificationSeverity::Warning,
-                target: OutboundNotificationConnectorTarget::new(
-                    ProjectId::new(),
-                    EnvironmentId::new(),
-                    ConnectorProfileId::new(),
-                    ConnectorRevisionId::new(),
-                )
-                .expect("target"),
-            },
-        )
-        .expect("definition")
-    }
-
-    #[test]
-    fn subscription_acl_is_canonical_exact_and_smtp_closed() {
-        let definition = definition();
-        let spec = definition.spec();
-        let expected_acl = format!(
-            concat!(
-                "notification_outbound_subscription {{\n",
-                "  channel = \"signed_webhook\"\n",
-                "  connector_environment_id = \"{}\"\n",
-                "  connector_profile_id = \"{}\"\n",
-                "  connector_project_id = \"{}\"\n",
-                "  connector_revision_id = \"{}\"\n",
-                "  minimum_severity = \"warning\"\n",
-                "  schema = \"cloud.notification.outbound-subscription.v1\"\n",
-                "}}\n"
-            ),
-            spec.target.environment_id,
-            spec.target.profile_id,
-            spec.target.project_id,
-            spec.target.revision_id,
-        );
-        assert_eq!(definition.canonical_acl(), expected_acl);
-        assert_eq!(
-            OutboundNotificationSubscriptionDefinition::parse_acl(definition.canonical_acl())
-                .expect("reparse"),
-            definition
-        );
-        assert!(definition.canonical_acl().ends_with('\n'));
-        assert!(OutboundNotificationSubscriptionDefinition::parse_acl(
-            &definition
-                .canonical_acl()
-                .replace("  channel", "    channel")
-        )
-        .is_err());
-        let mut smtp = definition.spec();
-        smtp.channel = OutboundNotificationChannel::Smtp;
-        assert!(OutboundNotificationSubscriptionDefinition::from_spec(smtp).is_err());
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA
-        );
-        assert_eq!(
-            definition.maximum_provider_attempts(),
-            MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
-        );
-        assert!(!definition
-            .canonical_acl()
-            .contains("maximum_provider_attempts"));
-        assert_eq!(definition.suppress_before(), None);
-    }
-
-    #[test]
-    fn version_two_acl_pins_a_bounded_provider_attempt_budget() {
-        let spec = definition().spec();
-        let definition =
-            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
-                spec, 3,
-            )
-            .expect("version two definition");
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
-        );
-        assert_eq!(definition.schema_version(), 2);
-        assert_eq!(definition.maximum_provider_attempts(), 3);
-        assert_eq!(definition.suppress_before(), None);
-        assert!(definition
-            .canonical_acl()
-            .contains("maximum_provider_attempts = 3"));
-        assert_eq!(
-            OutboundNotificationSubscriptionDefinition::parse_acl(definition.canonical_acl()),
-            Ok(definition.clone())
-        );
-        assert!(
-            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
-                spec, 0
-            )
-            .is_err()
-        );
-        assert!(
-            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
-                spec, 9
-            )
-            .is_err()
-        );
-        assert!(OutboundNotificationSubscriptionDefinition::parse_acl(
-            &definition
-                .canonical_acl()
-                .replace("  maximum_provider_attempts = 3\n", "")
-        )
-        .is_err());
-        assert!(OutboundNotificationSubscriptionDefinition::parse_acl(
-            &definition.canonical_acl().replace(
-                "  maximum_provider_attempts = 3",
-                "  maximum_provider_attempts = 2.5"
-            )
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn checked_in_version_two_contract_is_canonical() {
-        let source = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/c0.3/outbound-notification-subscription-v2.acl"
-        ));
-        let definition =
-            OutboundNotificationSubscriptionDefinition::parse_acl(source).expect("contract");
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
-        );
-        assert_eq!(definition.maximum_provider_attempts(), 3);
-    }
-
-    #[test]
-    fn version_three_acl_suppresses_strictly_by_bounded_source_event_time() {
-        let organization_id = OrganizationId::new();
-        let recipient = PrincipalId::new();
-        let created_at = canonical_timestamp(Utc::now());
-        let suppress_before = created_at + Duration::days(1);
-        let definition = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
-            definition().spec(),
-            3,
-            suppress_before,
-        )
-        .expect("version three definition");
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
-        );
-        assert_eq!(definition.schema_version(), 3);
-        assert_eq!(definition.delivery_schema_version(), 2);
-        assert_eq!(definition.maximum_provider_attempts(), 3);
-        assert_eq!(definition.suppress_before(), Some(suppress_before));
-        assert!(definition.canonical_acl().contains(&format!(
-            "suppress_before = \"{}\"",
-            suppress_before.to_rfc3339_opts(SecondsFormat::Micros, true)
-        )));
-        assert_eq!(
-            OutboundNotificationSubscriptionDefinition::parse_acl(definition.canonical_acl()),
-            Ok(definition.clone())
-        );
-
-        let subscription = OutboundNotificationSubscription::create(
-            organization_id,
-            NotificationSubscriptionId::new(),
-            recipient,
-            definition.clone(),
-            recipient,
-            created_at,
-        )
-        .expect("bounded suppressed subscription");
-        assert!(!subscription.matches(&notification(
-            organization_id,
-            recipient,
-            suppress_before - Duration::microseconds(1),
-        )));
-        let boundary = notification(organization_id, recipient, suppress_before);
-        assert!(subscription.matches(&boundary));
-        let delivery = definition
-            .delivery_for(&boundary)
-            .expect("eligible delivery");
-        assert_eq!(delivery.schema_version(), 2);
-        assert_eq!(delivery.maximum_provider_attempts(), 3);
-
-        for invalid_cutoff in [
-            created_at,
-            created_at + Duration::days(30) + Duration::microseconds(1),
-        ] {
-            let invalid = OutboundNotificationSubscriptionDefinition::from_spec_with_suppression(
-                definition.spec(),
-                3,
-                invalid_cutoff,
-            )
-            .expect("definition is independent from subscription creation time");
-            assert!(OutboundNotificationSubscription::create(
-                organization_id,
-                NotificationSubscriptionId::new(),
-                recipient,
-                invalid,
-                recipient,
-                created_at,
-            )
-            .is_err());
-        }
-        assert!(OutboundNotificationSubscriptionDefinition::parse_acl(
-            &definition
-                .canonical_acl()
-                .replace("  suppress_before = ", "  unknown_suppression = ")
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn checked_in_version_three_contract_is_canonical() {
-        let source = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../contracts/c0.3/outbound-notification-subscription-v3.acl"
-        ));
-        let definition =
-            OutboundNotificationSubscriptionDefinition::parse_acl(source).expect("contract");
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3
-        );
-        assert_eq!(definition.maximum_provider_attempts(), 3);
-        assert_eq!(
-            definition
-                .suppress_before()
-                .map(|value| value.to_rfc3339_opts(SecondsFormat::Micros, true)),
-            Some("2026-09-01T00:00:00.000000Z".into())
-        );
-    }
-
-    #[test]
-    fn subscription_is_personal_immutable_and_only_revocable_once() {
-        let recipient = PrincipalId::new();
-        let now = canonical_timestamp(Utc::now());
-        let subscription = OutboundNotificationSubscription::create(
-            OrganizationId::new(),
-            NotificationSubscriptionId::new(),
-            recipient,
-            definition(),
-            recipient,
-            now,
-        )
-        .expect("subscription");
-        assert!(subscription.is_active());
-        let revoked = subscription
-            .revoke(1, recipient, now)
-            .expect("revoked subscription");
-        assert!(!revoked.is_active());
-        assert!(revoked.revoke(2, recipient, now).is_err());
-        assert!(OutboundNotificationSubscription::create(
-            OrganizationId::new(),
-            NotificationSubscriptionId::new(),
-            PrincipalId::new(),
-            definition(),
-            recipient,
-            now,
-        )
-        .is_err());
-    }
-}
+#[path = "outbound_subscription_tests.rs"]
+mod tests;

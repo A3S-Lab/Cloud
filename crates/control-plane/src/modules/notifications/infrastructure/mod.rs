@@ -3,6 +3,9 @@ mod in_memory;
 mod outbound_connector;
 mod outbound_event_consumer;
 mod outbound_postgres;
+mod outbound_smtp;
+mod outbound_smtp_in_memory;
+mod outbound_smtp_postgres;
 mod outbox_projector;
 mod postgres;
 
@@ -13,6 +16,10 @@ pub use outbound_connector::{
 pub use outbound_event_consumer::{
     A3sEventOutboundNotificationConsumer, OutboundNotificationConsumerAction,
     OUTBOUND_NOTIFICATION_SUBSCRIBER_ID,
+};
+pub use outbound_smtp::{
+    SmtpOutboundNotificationCredentials, SmtpOutboundNotificationDeliveryOptions,
+    SmtpOutboundNotificationDeliveryService, SmtpOutboundNotificationTlsPolicy,
 };
 pub use outbox_projector::OutboxNotificationProjector;
 pub use postgres::PostgresNotificationRepository;

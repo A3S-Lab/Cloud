@@ -135,7 +135,7 @@ async fn fixture_with_retryable_generations_and_budget(
             OutboundNotificationSubscriptionSpec {
                 channel: OutboundNotificationChannel::SlackCompatible,
                 minimum_severity: NotificationSeverity::Warning,
-                target,
+                target: target.into(),
             },
             maximum_provider_attempts,
         )

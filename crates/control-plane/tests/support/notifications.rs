@@ -184,6 +184,18 @@ pub(super) async fn exercise_notification_persistence(
             "Gateway certificate-expiry notification alert source".into()
         )
     );
+    let smtp_delivery_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("138"),
+        )
+        .await?;
+    assert_eq!(
+        smtp_delivery_migration_state,
+        (1, "Notifications verified-contact SMTP delivery".into())
+    );
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -772,7 +784,7 @@ async fn create_outbound_subscription(
         OutboundNotificationSubscriptionSpec {
             channel: OutboundNotificationChannel::SlackCompatible,
             minimum_severity: NotificationSeverity::Information,
-            target,
+            target: target.into(),
         },
         2,
         created_at + ChronoDuration::seconds(1),
@@ -868,7 +880,7 @@ async fn assert_suppressed_delivery_rejected(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fact = delivery.requested_event()?;
     let payload_digest = Sha256Digest::from_bytes(&delivery.canonical_payload()?);
-    let target = delivery.target();
+    let target = delivery.connector_target().expect("Connector target");
     let organization_id = delivery.organization_id();
     let delivery_id = delivery.id();
     let notification_id = delivery.notification_id();
@@ -959,6 +971,7 @@ async fn assert_null_suppression_rejected(
     subscription: &OutboundNotificationSubscription,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let spec = subscription.definition.spec();
+    let target = spec.target.connector().expect("Connector target");
     let rejected = database
         .execute(
             sql_query::<()>("insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (")
@@ -972,13 +985,13 @@ async fn assert_null_suppression_rejected(
                 .append(", ")
                 .bind(spec.minimum_severity.as_str())
                 .append(", ")
-                .bind(spec.target.project_id.as_uuid())
+                .bind(target.project_id.as_uuid())
                 .append(", ")
-                .bind(spec.target.environment_id.as_uuid())
+                .bind(target.environment_id.as_uuid())
                 .append(", ")
-                .bind(spec.target.profile_id.as_uuid())
+                .bind(target.profile_id.as_uuid())
                 .append(", ")
-                .bind(spec.target.revision_id.as_uuid())
+                .bind(target.revision_id.as_uuid())
                 .append(", ")
                 .bind(subscription.definition.definition_schema())
                 .append(", ")

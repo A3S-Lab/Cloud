@@ -1,5 +1,6 @@
 use crate::infrastructure::{
     ImmutableObjectClient, OperationResourceAccessResolver, S3ImmutableObjectOptions,
+    SmtpCredentials, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
 };
 use crate::modules::agents::{
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
@@ -144,14 +145,14 @@ use crate::modules::identity::{
     OpenIdConnectProviderService, RecipientContactVerificationDeliveryDispatcher,
     RevokeApiTokenHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
     RevokeRecipientContactHandler, RevokeResourceGrantHandler,
-    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
-    SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
+    SmtpRecipientContactVerificationDeliveryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay,
     OutboxRelayConfig,
 };
+use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
     CreateOutboundNotificationSubscriptionHandler, GetNotificationAlertPolicyHandler,
@@ -160,8 +161,9 @@ use crate::modules::notifications::{
     IOutboundNotificationRepository, ListNotificationAlertPoliciesHandler,
     ListNotificationsHandler, ListOutboundNotificationSubscriptionsHandler,
     MarkNotificationReadHandler, NotificationsModule, OutboundNotificationDispatcher,
-    OutboxNotificationProjector, RevokeNotificationAlertPolicyHandler,
-    RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    OutboundNotificationSmtpDispatcher, OutboxNotificationProjector,
+    RevokeNotificationAlertPolicyHandler, RevokeOutboundNotificationSubscriptionHandler,
+    OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -489,6 +491,7 @@ async fn build_api_worker_application(
     let alert_policies = adapters.notifications.alert_policies;
     let outbound_notifications = adapters.notifications.outbound_notifications;
     let outbound_notification_deliveries = adapters.notifications.outbound_deliveries;
+    let outbound_notification_smtp_attempts = adapters.notifications.outbound_smtp_attempts;
     let plugin_registries = adapters.plugins.registries;
     let plugin_enrollment_authorizer = adapters.plugins.enrollment_authorizer;
     let nodes = adapters.fleet.nodes;
@@ -567,33 +570,81 @@ async fn build_api_worker_application(
     } else {
         None
     };
-    let outbound_notification_consumer =
-        if run_operations && config.events.provider == EventProviderKind::Nats {
-            let event_publisher = event_publisher.as_ref().ok_or_else(|| {
-                ControlPlaneStartupError::Framework(BootError::Internal(
-                    "worker process is missing its event publisher".into(),
-                ))
-            })?;
-            let connector_execution = connector_execution.as_ref().ok_or_else(|| {
-                ControlPlaneStartupError::Connector(
-                    "worker process is missing Connector execution".into(),
-                )
-            })?;
-            let dispatcher: Arc<dyn IOutboundNotificationDispatcher> = Arc::new(
-                OutboundNotificationDispatcher::new(Arc::clone(connector_execution)),
-            );
-            Some(
-                A3sEventOutboundNotificationConsumer::new(
-                    event_publisher.bus(),
-                    event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
-                    outbound_notification_deliveries,
-                    dispatcher,
-                )
-                .map_err(ControlPlaneStartupError::Notification)?,
-            )
-        } else {
-            None
+    let smtp_delivery_transport = if run_operations
+        && config.events.provider == EventProviderKind::Nats
+        && config.smtp.provider == SmtpProviderKind::Relay
+    {
+        let credentials = config.smtp_credentials()?.ok_or_else(|| {
+            ControlPlaneStartupError::Smtp("SMTP credentials were not resolved".into())
+        })?;
+        let sender = crate::modules::identity::domain::value_objects::RecipientEmailAddress::parse(
+            &config.smtp.sender,
+        )
+        .map_err(ControlPlaneStartupError::Smtp)?;
+        let tls_policy = match config.smtp.tls {
+            SmtpTlsMode::RequiredStartTls => SmtpTlsPolicy::RequiredStartTls,
+            SmtpTlsMode::Implicit => SmtpTlsPolicy::Implicit,
         };
+        let transport = SmtpTransport::new(SmtpTransportOptions {
+            host: config.smtp.host.clone(),
+            port: config.smtp.port,
+            tls_policy,
+            hello_name: config.smtp.hello_name.clone(),
+            ca_certificate_file: config.smtp.ca_certificate_file.clone(),
+            credentials: SmtpCredentials {
+                username: credentials.username,
+                password: credentials.password,
+            },
+            connect_timeout: Duration::from_millis(config.smtp.connect_timeout_ms),
+            command_timeout: Duration::from_millis(config.smtp.command_timeout_ms),
+        })
+        .map_err(ControlPlaneStartupError::Smtp)?;
+        Some((sender, Arc::new(transport)))
+    } else {
+        None
+    };
+    let outbound_notification_consumer = if run_operations
+        && config.events.provider == EventProviderKind::Nats
+    {
+        let event_publisher = event_publisher.as_ref().ok_or_else(|| {
+            ControlPlaneStartupError::Framework(BootError::Internal(
+                "worker process is missing its event publisher".into(),
+            ))
+        })?;
+        let connector_execution = connector_execution.as_ref().ok_or_else(|| {
+            ControlPlaneStartupError::Connector(
+                "worker process is missing Connector execution".into(),
+            )
+        })?;
+        let mut dispatcher = OutboundNotificationDispatcher::new(Arc::clone(connector_execution));
+        if let Some((sender, transport)) = &smtp_delivery_transport {
+            let smtp_delivery_service = Arc::new(SmtpOutboundNotificationDeliveryService::new(
+                sender.clone(),
+                Arc::clone(transport),
+            ));
+            let smtp_dispatcher = OutboundNotificationSmtpDispatcher::new(
+                Arc::clone(&outbound_notification_smtp_attempts),
+                Arc::clone(&recipient_contacts),
+                smtp_delivery_service,
+                chrono_duration(config.smtp.reservation_lease_ms)?,
+                chrono_duration(config.smtp.command_timeout_ms)?,
+            )
+            .map_err(ControlPlaneStartupError::Notification)?;
+            dispatcher = dispatcher.with_smtp_dispatcher(Arc::new(smtp_dispatcher));
+        }
+        let dispatcher: Arc<dyn IOutboundNotificationDispatcher> = Arc::new(dispatcher);
+        Some(
+            A3sEventOutboundNotificationConsumer::new(
+                event_publisher.bus(),
+                event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
+                outbound_notification_deliveries,
+                dispatcher,
+            )
+            .map_err(ControlPlaneStartupError::Notification)?,
+        )
+    } else {
+        None
+    };
     let recipient_contact_verification_consumer = if run_operations
         && config.events.provider == EventProviderKind::Nats
         && config.smtp.provider == SmtpProviderKind::Relay
@@ -603,37 +654,14 @@ async fn build_api_worker_application(
                 "worker process is missing its event publisher".into(),
             ))
         })?;
-        let credentials = config.smtp_credentials()?.ok_or_else(|| {
-            ControlPlaneStartupError::Smtp("SMTP credentials were not resolved".into())
+        let (sender, transport) = smtp_delivery_transport.as_ref().ok_or_else(|| {
+            ControlPlaneStartupError::Smtp("SMTP transport was not composed".into())
         })?;
-        let sender = crate::modules::identity::domain::value_objects::RecipientEmailAddress::parse(
-            &config.smtp.sender,
-        )
-        .map_err(ControlPlaneStartupError::Smtp)?;
-        let tls_policy = match config.smtp.tls {
-            SmtpTlsMode::RequiredStartTls => {
-                SmtpRecipientContactVerificationTlsPolicy::RequiredStartTls
-            }
-            SmtpTlsMode::Implicit => SmtpRecipientContactVerificationTlsPolicy::Implicit,
-        };
         let delivery_service = Arc::new(
-            SmtpRecipientContactVerificationDeliveryService::new(
-                SmtpRecipientContactVerificationDeliveryOptions {
-                    host: config.smtp.host.clone(),
-                    port: config.smtp.port,
-                    tls_policy,
-                    hello_name: config.smtp.hello_name.clone(),
-                    ca_certificate_file: config.smtp.ca_certificate_file.clone(),
-                    sender,
-                    credentials: SmtpRecipientContactVerificationCredentials {
-                        username: credentials.username,
-                        password: credentials.password,
-                    },
-                    connect_timeout: Duration::from_millis(config.smtp.connect_timeout_ms),
-                    command_timeout: Duration::from_millis(config.smtp.command_timeout_ms),
-                },
-            )
-            .map_err(ControlPlaneStartupError::Smtp)?,
+            SmtpRecipientContactVerificationDeliveryService::from_transport(
+                sender.clone(),
+                Arc::clone(transport),
+            ),
         );
         let dispatcher = Arc::new(
             RecipientContactVerificationDeliveryDispatcher::new(
@@ -1828,6 +1856,7 @@ fn build_management_application_with_health(
     let get_outbound_notification_subscriptions = outbound_notifications;
     let create_connector_environments = Arc::clone(&environments);
     let outbound_notification_connector_profiles = Arc::clone(&connector_profiles);
+    let outbound_notification_recipient_contacts = Arc::clone(&recipient_contacts);
     let create_connector_profiles = Arc::clone(&connector_profiles);
     let revise_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_profiles = Arc::clone(&connector_profiles);
@@ -2331,6 +2360,7 @@ fn build_management_application_with_health(
                     CreateOutboundNotificationSubscriptionHandler::new(
                         create_outbound_notification_subscriptions,
                         outbound_notification_connector_profiles,
+                        outbound_notification_recipient_contacts,
                     ),
                 )
                 .command_handler::<

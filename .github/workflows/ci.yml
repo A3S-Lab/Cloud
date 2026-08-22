@@ -126,6 +126,7 @@ jobs:
           chmod 0600 "$cert_dir/key.pem"
           chmod 0644 "$cert_dir/cert.pem"
           MP_DISABLE_VERSION_CHECK=true \
+            MP_ENABLE_CHAOS=true \
             MP_SMTP_AUTH='a3s-cloud:test-password' \
             MP_SMTP_BIND_ADDR=127.0.0.1:1025 \
             MP_SMTP_DISABLE_RDNS=true \
@@ -326,6 +327,34 @@ jobs:
           postgres_notifications_are_personal_alerted_event_time_suppressed_and_atomic
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify verified-contact SMTP attempt fencing and atomic receipts
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-n5e-postgres.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_outbound_smtp_attempts_are_fenced_atomic_and_authority_scoped \
+              -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            grep --fixed-strings \
+              'A3S_CLOUD_C0_3_N5E_POSTGRES_CERTIFIED migration=138 accepted=1 rejected=1 retryable=1 exhausted=1 indeterminate=1 obsolete=1 atomic_receipts=5' \
+              "$log"
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=N5e PostgreSQL SMTP authority gate failed::$detail"
+          exit 1
+
+      - name: Upload verified-contact SMTP PostgreSQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n5e-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-n5e-postgres.log
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Certify the PostgreSQL-only API process composition
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
@@ -360,6 +389,48 @@ jobs:
           done
           cat "${RUNNER_TEMP}/a3s-cloud-notification-nats.log"
           exit 1
+
+      - name: Certify Notifications SMTP over PostgreSQL, NATS, and Mailpit
+        env:
+          A3S_CLOUD_TEST_MAILPIT_API: http://127.0.0.1:8025
+          A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
+          A3S_CLOUD_TEST_SMTP_CA_FILE: ${{ runner.temp }}/a3s-cloud-mailpit-tls/cert.pem
+          A3S_CLOUD_TEST_SMTP_HOST: 127.0.0.1
+          A3S_CLOUD_TEST_SMTP_PASSWORD: test-password
+          A3S_CLOUD_TEST_SMTP_PORT: "1025"
+          A3S_CLOUD_TEST_SMTP_USERNAME: a3s-cloud
+          RUST_BACKTRACE: "1"
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-n5e-postgres-nats-mailpit.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_nats_mailpit_outbound_smtp_is_fenced_retry_bounded_and_ack_safe \
+              -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            if grep --fixed-strings \
+                'A3S_CLOUD_C0_3_N5E_PROVIDER_CERTIFIED migration=138 jetstream=durable_manual_ack starttls=required auth=plain accepted=1 transient_attempts=2 rejected=1 indeterminate=1 obsolete=1 exhausted=1 ack_only_replays=2 provider_calls=5 mailpit_captured=2 generic_settlements=0' \
+                "$log" >/dev/null; then
+              exit 0
+            fi
+            echo 'Notifications SMTP certification marker is missing' >>"$log"
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=N5e PostgreSQL/NATS/Mailpit gate failed::$detail"
+          exit 1
+
+      - name: Upload Notifications SMTP provider evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n5e-postgres-nats-mailpit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/a3s-cloud-n5e-postgres-nats-mailpit.log
+            ${{ runner.temp }}/a3s-cloud-n5c-mailpit-server.log
+            ${{ runner.temp }}/a3s-cloud-notification-nats.log
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Certify the F0 PostgreSQL and Event foundation
         env:

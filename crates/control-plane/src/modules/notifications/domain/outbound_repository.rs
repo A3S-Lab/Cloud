@@ -106,10 +106,16 @@ pub struct OutboundNotificationSubscriptionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suppress_before: Option<chrono::DateTime<chrono::Utc>>,
     pub channel: String,
-    pub connector_project_id: Uuid,
-    pub connector_environment_id: Uuid,
-    pub connector_profile_id: Uuid,
-    pub connector_revision_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connector_project_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connector_environment_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connector_profile_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connector_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient_contact_id: Option<Uuid>,
     pub state: String,
 }
 
@@ -121,6 +127,7 @@ impl OutboundNotificationSubscriptionEvent {
     ) -> Result<DomainEventEnvelope, String> {
         subscription.validate()?;
         let spec = subscription.definition.spec();
+        let connector_target = spec.target.connector();
         let schema_version = subscription.definition.schema_version();
         let versioned_budget = (schema_version >= 2).then(|| {
             (
@@ -147,10 +154,15 @@ impl OutboundNotificationSubscriptionEvent {
                 maximum_provider_attempts: versioned_budget.map(|(_, budget)| budget),
                 suppress_before: subscription.definition.suppress_before(),
                 channel: spec.channel.as_str().into(),
-                connector_project_id: spec.target.project_id.as_uuid(),
-                connector_environment_id: spec.target.environment_id.as_uuid(),
-                connector_profile_id: spec.target.profile_id.as_uuid(),
-                connector_revision_id: spec.target.revision_id.as_uuid(),
+                connector_project_id: connector_target.map(|target| target.project_id.as_uuid()),
+                connector_environment_id: connector_target
+                    .map(|target| target.environment_id.as_uuid()),
+                connector_profile_id: connector_target.map(|target| target.profile_id.as_uuid()),
+                connector_revision_id: connector_target.map(|target| target.revision_id.as_uuid()),
+                recipient_contact_id: spec
+                    .target
+                    .recipient_contact_id()
+                    .map(|contact_id| contact_id.as_uuid()),
                 state: if subscription.is_active() {
                     "active".into()
                 } else {
@@ -238,6 +250,7 @@ fn validate_subscription_event(
             format!("outbound notification subscription event is invalid: {error}")
         })?;
     let spec = subscription.definition.spec();
+    let connector_target = spec.target.connector();
     let versioned_budget = (subscription.definition.schema_version() >= 2).then(|| {
         (
             subscription.definition.definition_schema(),
@@ -252,10 +265,19 @@ fn validate_subscription_event(
             != versioned_budget.map(|(_, maximum_provider_attempts)| maximum_provider_attempts)
         || payload.suppress_before != subscription.definition.suppress_before()
         || payload.channel != spec.channel.as_str()
-        || payload.connector_project_id != spec.target.project_id.as_uuid()
-        || payload.connector_environment_id != spec.target.environment_id.as_uuid()
-        || payload.connector_profile_id != spec.target.profile_id.as_uuid()
-        || payload.connector_revision_id != spec.target.revision_id.as_uuid()
+        || payload.connector_project_id
+            != connector_target.map(|target| target.project_id.as_uuid())
+        || payload.connector_environment_id
+            != connector_target.map(|target| target.environment_id.as_uuid())
+        || payload.connector_profile_id
+            != connector_target.map(|target| target.profile_id.as_uuid())
+        || payload.connector_revision_id
+            != connector_target.map(|target| target.revision_id.as_uuid())
+        || payload.recipient_contact_id
+            != spec
+                .target
+                .recipient_contact_id()
+                .map(|contact_id| contact_id.as_uuid())
         || payload.state
             != if subscription.is_active() {
                 "active"

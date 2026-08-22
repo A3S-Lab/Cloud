@@ -5,9 +5,9 @@ use crate::modules::notifications::domain::{
     MarkNotificationReadWrite, Notification, NotificationAlertPolicy,
     NotificationAlertPolicyCursor, NotificationAlertSource, NotificationCursor,
     OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
-    OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
-    OutboundNotificationTerminalReceipt, RevokeNotificationAlertPolicyWrite,
-    RevokeOutboundNotificationSubscriptionWrite,
+    OutboundNotificationSmtpAttemptRecord, OutboundNotificationSubscription,
+    OutboundNotificationSubscriptionCursor, OutboundNotificationTerminalReceipt,
+    RevokeNotificationAlertPolicyWrite, RevokeOutboundNotificationSubscriptionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, NotificationId,
@@ -20,30 +20,32 @@ use tokio::sync::RwLock;
 
 #[derive(Default)]
 pub struct InMemoryNotificationRepository {
-    state: RwLock<State>,
+    pub(super) state: RwLock<State>,
 }
 
 #[derive(Default)]
-struct State {
+pub(super) struct State {
     notifications: BTreeMap<(OrganizationId, NotificationId), Notification>,
     source_events: BTreeMap<(uuid::Uuid, PrincipalId), NotificationId>,
     read_idempotency: BTreeMap<(String, String), (String, Notification)>,
     subscription_idempotency:
         BTreeMap<(String, String), (String, OutboundNotificationSubscription)>,
-    subscriptions:
+    pub(super) subscriptions:
         BTreeMap<(OrganizationId, NotificationSubscriptionId), OutboundNotificationSubscription>,
     alert_policy_idempotency: BTreeMap<(String, String), (String, NotificationAlertPolicy)>,
     alert_policies: BTreeMap<(OrganizationId, NotificationAlertPolicyId), NotificationAlertPolicy>,
-    outbound_deliveries: BTreeMap<(OrganizationId, uuid::Uuid), StoredOutboundDelivery>,
+    pub(super) outbound_deliveries: BTreeMap<(OrganizationId, uuid::Uuid), StoredOutboundDelivery>,
+    pub(super) outbound_smtp_attempts:
+        BTreeMap<(OrganizationId, uuid::Uuid, u64), OutboundNotificationSmtpAttemptRecord>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
 }
 
 #[derive(Clone)]
-struct StoredOutboundDelivery {
-    delivery: OutboundNotificationDelivery,
-    subscription_id: NotificationSubscriptionId,
-    payload_digest: Sha256Digest,
-    receipt: Option<OutboundNotificationTerminalReceipt>,
+pub(super) struct StoredOutboundDelivery {
+    pub(super) delivery: OutboundNotificationDelivery,
+    pub(super) subscription_id: NotificationSubscriptionId,
+    pub(super) payload_digest: Sha256Digest,
+    pub(super) receipt: Option<OutboundNotificationTerminalReceipt>,
 }
 
 impl InMemoryNotificationRepository {

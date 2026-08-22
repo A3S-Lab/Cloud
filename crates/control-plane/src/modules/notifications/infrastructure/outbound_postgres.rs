@@ -9,13 +9,14 @@ use crate::modules::notifications::domain::{
     IOutboundNotificationRepository, Notification, OutboundNotificationConnectorTarget,
     OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
     OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
-    OutboundNotificationSubscriptionDefinition, OutboundNotificationTerminalOutcome,
-    OutboundNotificationTerminalReceipt, RevokeOutboundNotificationSubscriptionWrite,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationTarget,
+    OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
+    RevokeOutboundNotificationSubscriptionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
-    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    Sha256Digest,
+    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RecipientContactId,
+    RepositoryError, Sha256Digest,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresTransaction,
@@ -25,8 +26,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
-const SELECT_DELIVERIES: &str = "select organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at from notification_outbound_deliveries";
+const SELECT_SUBSCRIPTIONS: &str = "select organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, recipient_contact_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_outbound_subscriptions";
+const SELECT_DELIVERIES: &str = "select organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, recipient_contact_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at from notification_outbound_deliveries";
 
 struct OutboundSubscriptionRow {
     organization_id: Uuid,
@@ -34,10 +35,11 @@ struct OutboundSubscriptionRow {
     recipient_principal_id: Uuid,
     channel: String,
     minimum_severity: String,
-    connector_project_id: Uuid,
-    connector_environment_id: Uuid,
-    connector_profile_id: Uuid,
-    connector_revision_id: Uuid,
+    connector_project_id: Option<Uuid>,
+    connector_environment_id: Option<Uuid>,
+    connector_profile_id: Option<Uuid>,
+    connector_revision_id: Option<Uuid>,
+    recipient_contact_id: Option<Uuid>,
     definition_schema: String,
     maximum_provider_attempts: u64,
     suppress_before: Option<DateTime<Utc>>,
@@ -61,15 +63,16 @@ impl FromRow for OutboundSubscriptionRow {
             connector_environment_id: decode(row, 6)?,
             connector_profile_id: decode(row, 7)?,
             connector_revision_id: decode(row, 8)?,
-            definition_schema: decode(row, 9)?,
-            maximum_provider_attempts: decode(row, 10)?,
-            suppress_before: decode(row, 11)?,
-            canonical_acl: decode(row, 12)?,
-            definition_digest: decode(row, 13)?,
-            aggregate_version: decode(row, 14)?,
-            created_by: decode(row, 15)?,
-            created_at: decode(row, 16)?,
-            revoked_at: decode(row, 17)?,
+            recipient_contact_id: decode(row, 9)?,
+            definition_schema: decode(row, 10)?,
+            maximum_provider_attempts: decode(row, 11)?,
+            suppress_before: decode(row, 12)?,
+            canonical_acl: decode(row, 13)?,
+            definition_digest: decode(row, 14)?,
+            aggregate_version: decode(row, 15)?,
+            created_by: decode(row, 16)?,
+            created_at: decode(row, 17)?,
+            revoked_at: decode(row, 18)?,
         })
     }
 }
@@ -84,10 +87,11 @@ struct OutboundDeliveryRow {
     payload_digest: String,
     maximum_provider_attempts: u64,
     channel: String,
-    connector_project_id: Uuid,
-    connector_environment_id: Uuid,
-    connector_profile_id: Uuid,
-    connector_revision_id: Uuid,
+    connector_project_id: Option<Uuid>,
+    connector_environment_id: Option<Uuid>,
+    connector_profile_id: Option<Uuid>,
+    connector_revision_id: Option<Uuid>,
+    recipient_contact_id: Option<Uuid>,
     occurred_at: DateTime<Utc>,
     terminal_outcome: Option<String>,
     terminal_generation: Option<u64>,
@@ -111,11 +115,12 @@ impl FromRow for OutboundDeliveryRow {
             connector_environment_id: decode(row, 10)?,
             connector_profile_id: decode(row, 11)?,
             connector_revision_id: decode(row, 12)?,
-            occurred_at: decode(row, 13)?,
-            terminal_outcome: decode(row, 14)?,
-            terminal_generation: decode(row, 15)?,
-            terminal_attempt_id: decode(row, 16)?,
-            terminal_at: decode(row, 17)?,
+            recipient_contact_id: decode(row, 13)?,
+            occurred_at: decode(row, 14)?,
+            terminal_outcome: decode(row, 15)?,
+            terminal_generation: decode(row, 16)?,
+            terminal_attempt_id: decode(row, 17)?,
+            terminal_at: decode(row, 18)?,
         })
     }
 }
@@ -126,6 +131,63 @@ fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> 
             .ok_or(DecodeError::MissingColumn { index })?,
         index,
     )
+}
+
+type OutboundTargetColumns = (
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+    Option<Uuid>,
+);
+
+fn target_columns(target: OutboundNotificationTarget) -> OutboundTargetColumns {
+    match target {
+        OutboundNotificationTarget::Connector(target) => (
+            Some(target.project_id.as_uuid()),
+            Some(target.environment_id.as_uuid()),
+            Some(target.profile_id.as_uuid()),
+            Some(target.revision_id.as_uuid()),
+            None,
+        ),
+        OutboundNotificationTarget::RecipientContact(contact_id) => {
+            (None, None, None, None, Some(contact_id.as_uuid()))
+        }
+    }
+}
+
+fn decode_target(
+    connector_project_id: Option<Uuid>,
+    connector_environment_id: Option<Uuid>,
+    connector_profile_id: Option<Uuid>,
+    connector_revision_id: Option<Uuid>,
+    recipient_contact_id: Option<Uuid>,
+) -> Result<OutboundNotificationTarget, PostgresPersistenceError> {
+    match (
+        connector_project_id,
+        connector_environment_id,
+        connector_profile_id,
+        connector_revision_id,
+        recipient_contact_id,
+    ) {
+        (Some(project), Some(environment), Some(profile), Some(revision), None) => {
+            OutboundNotificationConnectorTarget::new(
+                ProjectId::from_uuid(project),
+                EnvironmentId::from_uuid(environment),
+                ConnectorProfileId::from_uuid(profile),
+                ConnectorRevisionId::from_uuid(revision),
+            )
+            .map(OutboundNotificationTarget::Connector)
+            .map_err(PostgresPersistenceError::Invariant)
+        }
+        (None, None, None, None, Some(contact)) => {
+            OutboundNotificationTarget::recipient_contact(RecipientContactId::from_uuid(contact))
+                .map_err(PostgresPersistenceError::Invariant)
+        }
+        _ => Err(PostgresPersistenceError::Invariant(
+            "stored outbound notification target columns are not exclusive".into(),
+        )),
+    }
 }
 
 pub(super) async fn store_outbound_deliveries(
@@ -148,6 +210,7 @@ pub(super) async fn store_outbound_deliveries(
             continue;
         }
         let spec = subscription.definition.spec();
+        let target_columns = target_columns(spec.target);
         let delivery = subscription
             .definition
             .delivery_for(notification)
@@ -164,7 +227,7 @@ pub(super) async fn store_outbound_deliveries(
         let inserted = execute(
             transaction,
             sql_query::<()>(
-                "insert into notification_outbound_deliveries (organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at) values (",
+                "insert into notification_outbound_deliveries (organization_id, id, notification_id, recipient_principal_id, subscription_id, requested_event_id, payload_digest, maximum_provider_attempts, channel, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, recipient_contact_id, occurred_at, terminal_outcome, terminal_generation, terminal_attempt_id, terminal_at) values (",
             )
             .bind(delivery.organization_id().as_uuid())
             .append(", ")
@@ -184,13 +247,15 @@ pub(super) async fn store_outbound_deliveries(
             .append(", ")
             .bind(delivery.channel().as_str())
             .append(", ")
-            .bind(spec.target.project_id.as_uuid())
+            .bind(target_columns.0)
             .append(", ")
-            .bind(spec.target.environment_id.as_uuid())
+            .bind(target_columns.1)
             .append(", ")
-            .bind(spec.target.profile_id.as_uuid())
+            .bind(target_columns.2)
             .append(", ")
-            .bind(spec.target.revision_id.as_uuid())
+            .bind(target_columns.3)
+            .append(", ")
+            .bind(target_columns.4)
             .append(", ")
             .bind(delivery.occurred_at())
             .append(", null, null, null, null)"),
@@ -226,15 +291,17 @@ fn decode_subscription(
         ))
     })?;
     let spec = definition.spec();
+    let target_columns = target_columns(spec.target);
     if row.definition_schema != definition.definition_schema()
         || row.maximum_provider_attempts != definition.maximum_provider_attempts()
         || row.suppress_before != definition.suppress_before()
         || row.channel != spec.channel.as_str()
         || row.minimum_severity != spec.minimum_severity.as_str()
-        || row.connector_project_id != spec.target.project_id.as_uuid()
-        || row.connector_environment_id != spec.target.environment_id.as_uuid()
-        || row.connector_profile_id != spec.target.profile_id.as_uuid()
-        || row.connector_revision_id != spec.target.revision_id.as_uuid()
+        || row.connector_project_id != target_columns.0
+        || row.connector_environment_id != target_columns.1
+        || row.connector_profile_id != target_columns.2
+        || row.connector_revision_id != target_columns.3
+        || row.recipient_contact_id != target_columns.4
     {
         return Err(PostgresPersistenceError::Invariant(
             "stored outbound notification subscription columns drifted from its ACL".into(),
@@ -262,6 +329,7 @@ fn delivery_matches_row(
     row: &OutboundDeliveryRow,
 ) -> Result<bool, PostgresPersistenceError> {
     let target = delivery.target();
+    let target_columns = target_columns(target);
     let payload_digest = Sha256Digest::from_bytes(
         &delivery
             .canonical_payload()
@@ -276,10 +344,11 @@ fn delivery_matches_row(
         && row.payload_digest == payload_digest.as_str()
         && row.maximum_provider_attempts == delivery.maximum_provider_attempts()
         && row.channel == delivery.channel().as_str()
-        && row.connector_project_id == target.project_id.as_uuid()
-        && row.connector_environment_id == target.environment_id.as_uuid()
-        && row.connector_profile_id == target.profile_id.as_uuid()
-        && row.connector_revision_id == target.revision_id.as_uuid()
+        && row.connector_project_id == target_columns.0
+        && row.connector_environment_id == target_columns.1
+        && row.connector_profile_id == target_columns.2
+        && row.connector_revision_id == target_columns.3
+        && row.recipient_contact_id == target_columns.4
         && row.occurred_at == delivery.occurred_at())
 }
 
@@ -294,16 +363,17 @@ fn decode_receipt(
     ) {
         (None, None, None, None) => Ok(None),
         (Some(outcome), Some(generation), Some(attempt_id), Some(terminal_at)) => {
+            let target = decode_target(
+                row.connector_project_id,
+                row.connector_environment_id,
+                row.connector_profile_id,
+                row.connector_revision_id,
+                row.recipient_contact_id,
+            )?;
             OutboundNotificationTerminalReceipt::restore_with_provider_attempt_budget(
                 OrganizationId::from_uuid(row.organization_id),
                 row.id,
-                OutboundNotificationConnectorTarget::new(
-                    ProjectId::from_uuid(row.connector_project_id),
-                    EnvironmentId::from_uuid(row.connector_environment_id),
-                    ConnectorProfileId::from_uuid(row.connector_profile_id),
-                    ConnectorRevisionId::from_uuid(row.connector_revision_id),
-                )
-                .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?,
+                target,
                 row.maximum_provider_attempts,
                 OutboundNotificationTerminalOutcome::parse(outcome)
                     .map_err(|error| PostgresPersistenceError::Invariant(error.to_string()))?,
@@ -322,6 +392,64 @@ fn decode_receipt(
             "stored outbound notification terminal receipt is incomplete".into(),
         )),
     }
+}
+
+pub(super) async fn lock_exact_outbound_delivery(
+    transaction: &PostgresTransaction,
+    delivery: &OutboundNotificationDelivery,
+) -> Result<Option<OutboundNotificationTerminalReceipt>, PostgresPersistenceError> {
+    let row = fetch_optional::<OutboundDeliveryRow, _>(
+        transaction,
+        delivery_query()
+            .append(" where organization_id = ")
+            .bind(delivery.organization_id().as_uuid())
+            .append(" and id = ")
+            .bind(delivery.id())
+            .append(" for update"),
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    if !delivery_matches_row(delivery, &row)? {
+        return Err(RepositoryError::Conflict(
+            "outbound notification delivery fact changed before settlement".into(),
+        )
+        .into());
+    }
+    decode_receipt(&row)
+}
+
+pub(super) async fn store_locked_outbound_delivery_receipt(
+    transaction: &PostgresTransaction,
+    delivery: &OutboundNotificationDelivery,
+    receipt: &OutboundNotificationTerminalReceipt,
+) -> Result<(), PostgresPersistenceError> {
+    receipt
+        .validate_against(delivery)
+        .map_err(RepositoryError::Storage)?;
+    let updated = execute(
+        transaction,
+        sql_query::<()>("update notification_outbound_deliveries set terminal_outcome = ")
+            .bind(receipt.outcome().as_str())
+            .append(", terminal_generation = ")
+            .bind(receipt.generation())
+            .append(", terminal_attempt_id = ")
+            .bind(receipt.attempt_id())
+            .append(", terminal_at = ")
+            .bind(receipt.terminal_at())
+            .append(" where organization_id = ")
+            .bind(delivery.organization_id().as_uuid())
+            .append(" and id = ")
+            .bind(delivery.id())
+            .append(" and terminal_outcome is null"),
+    )
+    .await?;
+    if updated != 1 {
+        return Err(RepositoryError::Conflict(
+            "outbound notification delivery changed while settling".into(),
+        )
+        .into());
+    }
+    Ok(())
 }
 
 #[async_trait]
@@ -362,10 +490,11 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                     }
                     let subscription = &write.subscription;
                     let spec = subscription.definition.spec();
+                    let target_columns = target_columns(spec.target);
                     let inserted = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
+                            "insert into notification_outbound_subscriptions (organization_id, id, recipient_principal_id, channel, minimum_severity, connector_project_id, connector_environment_id, connector_profile_id, connector_revision_id, recipient_contact_id, definition_schema, maximum_provider_attempts, suppress_before, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
                         )
                         .bind(subscription.organization_id.as_uuid())
                         .append(", ")
@@ -377,13 +506,15 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                         .append(", ")
                         .bind(spec.minimum_severity.as_str())
                         .append(", ")
-                        .bind(spec.target.project_id.as_uuid())
+                        .bind(target_columns.0)
                         .append(", ")
-                        .bind(spec.target.environment_id.as_uuid())
+                        .bind(target_columns.1)
                         .append(", ")
-                        .bind(spec.target.profile_id.as_uuid())
+                        .bind(target_columns.2)
                         .append(", ")
-                        .bind(spec.target.revision_id.as_uuid())
+                        .bind(target_columns.3)
+                        .append(", ")
+                        .bind(target_columns.4)
                         .append(", ")
                         .bind(subscription.definition.definition_schema())
                         .append(", ")
@@ -441,10 +572,11 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                                 "maximumProviderAttempts": subscription.definition.maximum_provider_attempts(),
                                 "suppressBefore": subscription.definition.suppress_before(),
                                 "channel": spec.channel,
-                                "connectorProjectId": spec.target.project_id,
-                                "connectorEnvironmentId": spec.target.environment_id,
-                                "connectorProfileId": spec.target.profile_id,
-                                "connectorRevisionId": spec.target.revision_id,
+                                "connectorProjectId": target_columns.0,
+                                "connectorEnvironmentId": target_columns.1,
+                                "connectorProfileId": target_columns.2,
+                                "connectorRevisionId": target_columns.3,
+                                "recipientContactId": target_columns.4,
                             }),
                         },
                     )
@@ -660,24 +792,9 @@ impl IOutboundNotificationDeliveryRepository for PostgresNotificationRepository 
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    let row = fetch_optional::<OutboundDeliveryRow, _>(
-                        transaction,
-                        delivery_query()
-                            .append(" where organization_id = ")
-                            .bind(delivery.organization_id().as_uuid())
-                            .append(" and id = ")
-                            .bind(delivery.id())
-                            .append(" for update"),
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)?;
-                    if !delivery_matches_row(&delivery, &row)? {
-                        return Err(RepositoryError::Conflict(
-                            "outbound notification delivery fact changed before settlement".into(),
-                        )
-                        .into());
-                    }
-                    if let Some(existing) = decode_receipt(&row)? {
+                    if let Some(existing) =
+                        lock_exact_outbound_delivery(transaction, &delivery).await?
+                    {
                         if existing == receipt {
                             return Ok(false);
                         }
@@ -687,31 +804,8 @@ impl IOutboundNotificationDeliveryRepository for PostgresNotificationRepository 
                         )
                         .into());
                     }
-                    let updated = execute(
-                        transaction,
-                        sql_query::<()>(
-                            "update notification_outbound_deliveries set terminal_outcome = ",
-                        )
-                        .bind(receipt.outcome().as_str())
-                        .append(", terminal_generation = ")
-                        .bind(receipt.generation())
-                        .append(", terminal_attempt_id = ")
-                        .bind(receipt.attempt_id())
-                        .append(", terminal_at = ")
-                        .bind(receipt.terminal_at())
-                        .append(" where organization_id = ")
-                        .bind(delivery.organization_id().as_uuid())
-                        .append(" and id = ")
-                        .bind(delivery.id())
-                        .append(" and terminal_outcome is null"),
-                    )
-                    .await?;
-                    if updated != 1 {
-                        return Err(RepositoryError::Conflict(
-                            "outbound notification delivery changed while settling".into(),
-                        )
-                        .into());
-                    }
+                    store_locked_outbound_delivery_receipt(transaction, &delivery, &receipt)
+                        .await?;
                     Ok(true)
                 })
             })

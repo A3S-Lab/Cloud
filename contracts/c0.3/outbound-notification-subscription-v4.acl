@@ -1,0 +1,7 @@
+notification_outbound_subscription {
+  channel = "smtp"
+  maximum_provider_attempts = 3
+  minimum_severity = "warning"
+  recipient_contact_id = "55555555-5555-7555-8555-555555555555"
+  schema = "cloud.notification.outbound-subscription.v4"
+}

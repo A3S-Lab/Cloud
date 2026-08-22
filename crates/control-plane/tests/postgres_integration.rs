@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 137;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "137";
+const CLOUD_MIGRATION_COUNT: i64 = 138;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "138";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -135,6 +135,8 @@ mod membership_invitations_support;
 mod notifications_support;
 #[path = "support/oidc_cross_surface.rs"]
 mod oidc_cross_surface_support;
+#[path = "support/outbound_smtp.rs"]
+mod outbound_smtp_support;
 #[path = "support/plugins.rs"]
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
@@ -327,6 +329,45 @@ async fn postgres_notifications_are_personal_alerted_event_time_suppressed_and_a
     )
     .await
     .expect("PostgreSQL notification inbox, alert policy, and event-time suppression gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_outbound_smtp_attempts_are_fenced_atomic_and_authority_scoped() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        outbound_smtp_support::exercise_outbound_smtp_persistence,
+    )
+    .await
+    .expect("PostgreSQL verified-contact SMTP attempt authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_nats_mailpit_outbound_smtp_is_fenced_retry_bounded_and_ack_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    for required in [
+        "A3S_CLOUD_TEST_NATS_URL",
+        "A3S_CLOUD_TEST_MAILPIT_API",
+        "A3S_CLOUD_TEST_SMTP_CA_FILE",
+        "A3S_CLOUD_TEST_SMTP_HOST",
+        "A3S_CLOUD_TEST_SMTP_PASSWORD",
+        "A3S_CLOUD_TEST_SMTP_PORT",
+        "A3S_CLOUD_TEST_SMTP_USERNAME",
+    ] {
+        if std::env::var(required).is_err() {
+            return;
+        }
+    }
+    run_isolated_postgres(
+        &admin_url,
+        outbound_smtp_support::exercise_outbound_smtp_provider_delivery,
+    )
+    .await
+    .expect("PostgreSQL, NATS, and Mailpit verified-contact SMTP provider gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

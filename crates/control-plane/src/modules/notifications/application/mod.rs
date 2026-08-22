@@ -4,6 +4,7 @@ mod get_notification;
 mod list_notifications;
 mod mark_notification_read;
 mod outbound_dispatch;
+mod outbound_smtp_dispatch;
 mod outbound_subscription;
 mod outbound_subscription_queries;
 
@@ -28,6 +29,7 @@ pub use outbound_dispatch::{
     IOutboundNotificationDispatcher, OutboundNotificationDispatchResult,
     OutboundNotificationDispatcher,
 };
+pub use outbound_smtp_dispatch::OutboundNotificationSmtpDispatcher;
 pub use outbound_subscription::{
     CreateOutboundNotificationSubscription, CreateOutboundNotificationSubscriptionHandler,
     OutboundNotificationSubscriptionMutationResult, RevokeOutboundNotificationSubscription,

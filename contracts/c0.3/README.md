@@ -10,6 +10,10 @@ later than creation and at most 30 days later. A source notification strictly
 before it remains in the personal inbox but creates no outbound delivery;
 equality is eligible and uses the unchanged delivery-v2 contract.
 
+`outbound-notification-subscription-v4.acl` adds the SMTP channel with one
+opaque Identity-owned verified recipient-contact reference. It never embeds a
+mailbox, address digest, hint, credential, or provider response.
+
 The historic v1 schema remains valid and always means eight attempts. Changing
 any subscription setting creates a new definition; revoke remains the only
 mutation. Delivery progress comes only from A3S Event redelivery and immutable

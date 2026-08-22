@@ -1,3 +1,7 @@
+use crate::infrastructure::{
+    PreparedSmtpSession, SmtpCredentials, SmtpPreparationError, SmtpSubmissionOutcome,
+    SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
+};
 use crate::modules::identity::domain::services::{
     IPreparedRecipientContactVerificationDelivery, IRecipientContactVerificationDeliveryService,
     RecipientContactVerificationDeliveryPreparationError,
@@ -6,17 +10,10 @@ use crate::modules::identity::domain::services::{
 use crate::modules::identity::domain::value_objects::RecipientEmailAddress;
 use async_trait::async_trait;
 use chrono::SecondsFormat;
-use lettre::address::{Address, Envelope};
-use lettre::transport::smtp::authentication::{Credentials, Mechanism};
-use lettre::transport::smtp::client::{
-    AsyncSmtpConnection, Certificate, TlsParameters, TlsVersion,
-};
-use lettre::transport::smtp::extension::ClientId;
-use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
-const MAX_CA_CERTIFICATE_BYTES: u64 = 1024 * 1024;
 const MAX_VERIFICATION_MESSAGE_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,68 +50,42 @@ pub struct SmtpRecipientContactVerificationDeliveryOptions {
 }
 
 pub struct SmtpRecipientContactVerificationDeliveryService {
-    host: String,
-    port: u16,
-    tls_policy: SmtpRecipientContactVerificationTlsPolicy,
-    hello_name: ClientId,
     sender: RecipientEmailAddress,
-    credentials: SmtpRecipientContactVerificationCredentials,
-    tls_parameters: TlsParameters,
-    connect_timeout: Duration,
-    command_timeout: Duration,
+    transport: Arc<SmtpTransport>,
 }
 
 impl SmtpRecipientContactVerificationDeliveryService {
     pub fn new(options: SmtpRecipientContactVerificationDeliveryOptions) -> Result<Self, String> {
-        if options.host.is_empty()
-            || options.host.len() > 253
-            || options.port == 0
-            || options.hello_name.is_empty()
-            || options.hello_name.len() > 253
-            || options.sender.as_str().is_empty()
-            || options.credentials.username.is_empty()
-            || options.credentials.username.len() > 1024
-            || options.credentials.password.is_empty()
-            || options.credentials.password.len() > 8192
-            || options.connect_timeout.is_zero()
-            || options.connect_timeout > Duration::from_secs(60)
-            || options.command_timeout.is_zero()
-            || options.command_timeout > Duration::from_secs(60)
-        {
+        if options.sender.as_str().is_empty() {
             return Err("SMTP recipient contact verification options are invalid".into());
         }
-        let mut tls =
-            TlsParameters::builder(options.host.clone()).set_min_tls_version(TlsVersion::Tlsv12);
-        if !options.ca_certificate_file.is_empty() {
-            let path = Path::new(&options.ca_certificate_file);
-            let metadata = std::fs::metadata(path)
-                .map_err(|_| "could not inspect SMTP CA certificate file".to_owned())?;
-            if !metadata.is_file()
-                || metadata.len() == 0
-                || metadata.len() > MAX_CA_CERTIFICATE_BYTES
-            {
-                return Err("SMTP CA certificate file is invalid".into());
+        let tls_policy = match options.tls_policy {
+            SmtpRecipientContactVerificationTlsPolicy::RequiredStartTls => {
+                SmtpTlsPolicy::RequiredStartTls
             }
-            let pem = std::fs::read(path)
-                .map_err(|_| "could not read SMTP CA certificate file".to_owned())?;
-            let certificate = Certificate::from_pem(&pem)
-                .map_err(|_| "SMTP CA certificate file is invalid".to_owned())?;
-            tls = tls.add_root_certificate(certificate);
-        }
-        let tls_parameters = tls
-            .build()
-            .map_err(|_| "could not construct SMTP TLS policy".to_owned())?;
-        Ok(Self {
+            SmtpRecipientContactVerificationTlsPolicy::Implicit => SmtpTlsPolicy::Implicit,
+        };
+        let transport = SmtpTransport::new(SmtpTransportOptions {
             host: options.host,
             port: options.port,
-            tls_policy: options.tls_policy,
-            hello_name: ClientId::Domain(options.hello_name),
-            sender: options.sender,
-            credentials: options.credentials,
-            tls_parameters,
+            tls_policy,
+            hello_name: options.hello_name,
+            ca_certificate_file: options.ca_certificate_file,
+            credentials: SmtpCredentials {
+                username: options.credentials.username,
+                password: options.credentials.password,
+            },
             connect_timeout: options.connect_timeout,
             command_timeout: options.command_timeout,
-        })
+        })?;
+        Ok(Self::from_transport(options.sender, Arc::new(transport)))
+    }
+
+    pub(crate) fn from_transport(
+        sender: RecipientEmailAddress,
+        transport: Arc<SmtpTransport>,
+    ) -> Self {
+        Self { sender, transport }
     }
 }
 
@@ -122,21 +93,15 @@ impl std::fmt::Debug for SmtpRecipientContactVerificationDeliveryService {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("SmtpRecipientContactVerificationDeliveryService")
-            .field("host", &self.host)
-            .field("port", &self.port)
-            .field("tls_policy", &self.tls_policy)
             .field("sender", &"[REDACTED]")
-            .field("credentials", &"[REDACTED]")
-            .field("connect_timeout", &self.connect_timeout)
-            .field("command_timeout", &self.command_timeout)
+            .field("transport", &self.transport)
             .finish()
     }
 }
 
 struct LettrePreparedRecipientContactVerificationDelivery {
-    connection: AsyncSmtpConnection,
+    session: PreparedSmtpSession,
     sender: RecipientEmailAddress,
-    command_timeout: Duration,
 }
 
 #[async_trait]
@@ -149,54 +114,19 @@ impl IRecipientContactVerificationDeliveryService
         Box<dyn IPreparedRecipientContactVerificationDelivery>,
         RecipientContactVerificationDeliveryPreparationError,
     > {
-        let implicit_tls = (self.tls_policy == SmtpRecipientContactVerificationTlsPolicy::Implicit)
-            .then(|| self.tls_parameters.clone());
-        let connection = tokio::time::timeout(
-            self.connect_timeout,
-            AsyncSmtpConnection::connect_tokio1(
-                (self.host.as_str(), self.port),
-                Some(self.connect_timeout),
-                &self.hello_name,
-                implicit_tls,
-                None,
-            ),
-        )
-        .await
-        .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?
-        .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?;
-        let mut connection = connection;
-        if self.tls_policy == SmtpRecipientContactVerificationTlsPolicy::RequiredStartTls {
-            if !connection.can_starttls() {
-                return Err(RecipientContactVerificationDeliveryPreparationError::Unavailable);
-            }
-            tokio::time::timeout(
-                self.command_timeout,
-                connection.starttls(self.tls_parameters.clone(), &self.hello_name),
-            )
+        let session = self
+            .transport
+            .prepare()
             .await
-            .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?
-            .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?;
-        }
-        if !connection.is_encrypted() {
-            return Err(RecipientContactVerificationDeliveryPreparationError::Unavailable);
-        }
-        let credentials = Credentials::new(
-            self.credentials.username.to_string(),
-            self.credentials.password.to_string(),
-        );
-        tokio::time::timeout(
-            self.command_timeout,
-            connection.auth(&[Mechanism::Plain, Mechanism::Login], &credentials),
-        )
-        .await
-        .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?
-        .map_err(|_| RecipientContactVerificationDeliveryPreparationError::Unavailable)?;
-        drop(credentials);
+            .map_err(|error| match error {
+                SmtpPreparationError::Unavailable => {
+                    RecipientContactVerificationDeliveryPreparationError::Unavailable
+                }
+            })?;
         Ok(Box::new(
             LettrePreparedRecipientContactVerificationDelivery {
-                connection,
+                session,
                 sender: self.sender.clone(),
-                command_timeout: self.command_timeout,
             },
         ))
     }
@@ -207,36 +137,31 @@ impl IPreparedRecipientContactVerificationDelivery
     for LettrePreparedRecipientContactVerificationDelivery
 {
     async fn deliver(
-        mut self: Box<Self>,
+        self: Box<Self>,
         request: RecipientContactVerificationDeliveryRequest,
     ) -> RecipientContactVerificationProviderOutcome {
-        let sender = match self.sender.as_str().parse::<Address>() {
-            Ok(value) => value,
-            Err(_) => return RecipientContactVerificationProviderOutcome::Indeterminate,
-        };
-        let recipient = match request.address.as_str().parse::<Address>() {
-            Ok(value) => value,
-            Err(_) => return RecipientContactVerificationProviderOutcome::Indeterminate,
-        };
-        let envelope = match Envelope::new(Some(sender), vec![recipient]) {
-            Ok(value) => value,
-            Err(_) => return RecipientContactVerificationProviderOutcome::Indeterminate,
-        };
         let message = match build_verification_message(&self.sender, &request) {
             Ok(value) => value,
             Err(_) => return RecipientContactVerificationProviderOutcome::Indeterminate,
         };
-        match tokio::time::timeout(
-            self.command_timeout,
-            self.connection.send(&envelope, message.as_slice()),
-        )
-        .await
-        {
-            Ok(Ok(_)) => RecipientContactVerificationProviderOutcome::Delivered,
-            Ok(Err(error)) if error.is_permanent() => {
+        let submission = match self.session.prepare_submission(
+            self.sender.as_str(),
+            request.address.as_str(),
+            message,
+        ) {
+            Ok(value) => value,
+            Err(_) => return RecipientContactVerificationProviderOutcome::Indeterminate,
+        };
+        match submission.submit().await {
+            SmtpSubmissionOutcome::Accepted => {
+                RecipientContactVerificationProviderOutcome::Delivered
+            }
+            SmtpSubmissionOutcome::PermanentRejected => {
                 RecipientContactVerificationProviderOutcome::Rejected
             }
-            Ok(Err(_)) | Err(_) => RecipientContactVerificationProviderOutcome::Indeterminate,
+            SmtpSubmissionOutcome::TransientRejected | SmtpSubmissionOutcome::Indeterminate => {
+                RecipientContactVerificationProviderOutcome::Indeterminate
+            }
         }
     }
 }

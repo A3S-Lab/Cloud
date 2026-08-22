@@ -117,6 +117,7 @@ pub trait IRecipientContactRepository: Send + Sync {
 
     async fn resolve_verified_recipient_contact(
         &self,
+        organization_id: OrganizationId,
         principal_id: PrincipalId,
         contact_id: RecipientContactId,
     ) -> Result<Option<ResolvedRecipientContact>, RepositoryError>;

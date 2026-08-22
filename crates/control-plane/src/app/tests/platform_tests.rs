@@ -486,6 +486,8 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
     assert!(adapters.contains(
         "recipient_contact_verification_deliveries:\n        Arc<dyn IRecipientContactVerificationDeliveryRepository>"
     ));
+    assert!(adapters
+        .contains("outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>"));
     assert_eq!(
         adapters
             .matches("recipient_contacts: repository.clone()")
@@ -501,7 +503,10 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
         "the existing Identity repository must remain the sole verification-delivery adapter"
     );
     for required in [
-        "SmtpRecipientContactVerificationDeliveryService::new(",
+        "SmtpTransport::new(",
+        "SmtpRecipientContactVerificationDeliveryService::from_transport(",
+        "SmtpOutboundNotificationDeliveryService::new(",
+        "OutboundNotificationSmtpDispatcher::new(",
         "RecipientContactVerificationDeliveryDispatcher::new(",
         "A3sEventRecipientContactVerificationConsumer::new(",
         "config.smtp_credentials()?",

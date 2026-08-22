@@ -585,7 +585,17 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         .await?;
     assert_eq!(exact.status(), 200);
     assert_eq!(
-        response_json(&exact)?["data"]["connectorRevisionId"],
+        response_json(&exact)?["data"]["target"],
+        json!({
+            "kind": "connector",
+            "projectId": project,
+            "environmentId": environment,
+            "profileId": profile_id,
+            "revisionId": revision_id,
+        })
+    );
+    assert_eq!(
+        response_json(&exact)?["data"]["target"]["revisionId"],
         revision_id
     );
 
@@ -1037,7 +1047,8 @@ fn outbound_subscription_definition(
             ConnectorProfileId::from_uuid(parse(profile_id, "Connector profile ID")?),
             ConnectorRevisionId::from_uuid(parse(revision_id, "Connector revision ID")?),
         )
-        .map_err(|error| error.to_string())?,
+        .map_err(|error| error.to_string())?
+        .into(),
     })
 }
 

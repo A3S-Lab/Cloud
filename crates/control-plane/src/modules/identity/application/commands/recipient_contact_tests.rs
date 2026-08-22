@@ -296,7 +296,11 @@ async fn application_boundary_is_exact_redacted_replay_safe_and_terminal() {
     );
     assert!(fixture
         .repository
-        .resolve_verified_recipient_contact(fixture.principal_id, loaded.id)
+        .resolve_verified_recipient_contact(
+            fixture.organization_id,
+            fixture.principal_id,
+            loaded.id,
+        )
         .await
         .expect("internal resolver")
         .is_none());

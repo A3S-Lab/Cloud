@@ -1277,6 +1277,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/137_identity_recipient_contact_verification_delivery.sql"
             )),
         ),
+        Migration::new(
+            "138",
+            "Notifications verified-contact SMTP delivery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/138_notification_outbound_smtp.sql"
+            )),
+        ),
     ]
 }
 
@@ -2345,6 +2353,60 @@ mod identity_recipient_contact_verification_delivery_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 137 persists forbidden material through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_outbound_smtp_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/138_notification_outbound_smtp.sql"
+    ));
+
+    #[test]
+    fn migration_138_adds_exact_verified_contact_smtp_attempt_authority() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        let canonical = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+        for expected in [
+            "cloud.notification.outbound-subscription.v4",
+            "a3s.cloud.notification-delivery.v3",
+            "channel in ('signed_webhook', 'slack_compatible', 'smtp')",
+            "notification_outbound_subscriptions_target_authority_check",
+            "notification_outbound_deliveries_target_authority_check",
+            "references recipient_contacts (principal_id, id)",
+            "create table notification_outbound_smtp_attempts",
+            "state text not null check (state in ('reserved', 'dispatching', 'terminal'))",
+            "outcome text check ( outcome in ('accepted', 'rejected', 'retryable', 'indeterminate', 'obsolete') )",
+            "lease_expires_at <= reserved_at + interval '5 minutes'",
+            "outcome_deadline_at <= dispatch_started_at + interval '120 seconds'",
+            "smtp notification attempt requires exact prior retryable evidence",
+            "smtp notification reservation takeover is not fenced",
+            "terminal smtp notification attempts are immutable",
+            "outbound smtp terminal receipt does not match its exact notifications attempt",
+            "attempt_state is distinct from 'terminal' or evidence_outcome is distinct from 'indeterminate'",
+            "not a queue, scheduler, connector attempt, mailbox store, credential store, or provider-response store",
+        ] {
+            assert!(
+                canonical.contains(expected),
+                "migration 138 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "add column canonical_address",
+            "add column address_digest",
+            "add column contact_hint",
+            "add column credential",
+            "add column provider_response",
+            "create table notification_queue",
+            "create table notification_retries",
+            "retry_count",
+            "next_attempt_at",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 138 persists forbidden SMTP material through {forbidden}"
             );
         }
     }

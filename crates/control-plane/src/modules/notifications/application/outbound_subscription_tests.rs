@@ -7,6 +7,7 @@ use crate::modules::connectors::{
     InMemoryConnectorProfileRepository,
 };
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::notifications::{
     GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
     INotificationRepository, InMemoryNotificationRepository, ListOutboundNotificationSubscriptions,
@@ -100,7 +101,8 @@ async fn fixture() -> Fixture {
                 revision.profile_id,
                 revision.id,
             )
-            .expect("target"),
+            .expect("target")
+            .into(),
         },
     )
     .expect("subscription definition")
@@ -115,7 +117,11 @@ async fn fixture() -> Fixture {
         environment_id,
         actor,
         definition_acl,
-        create: CreateOutboundNotificationSubscriptionHandler::new(outbound, connector_repository),
+        create: CreateOutboundNotificationSubscriptionHandler::new(
+            outbound,
+            connector_repository,
+            Arc::new(InMemoryIdentityRepository::new()),
+        ),
         notifications,
     }
 }

@@ -1620,19 +1620,19 @@ impl ManagementTool {
             ),
             Self::NotificationOutboundSubscriptionsCreate => (
                 "Create my outbound notification subscription",
-                "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL, an exact Connector revision, and the ACL-pinned provider-attempt budget.",
+                "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL, an exact Connector revision or verified recipient contact, and the ACL-pinned provider-attempt budget.",
                 create_notification_outbound_subscription_schema(),
                 false,
             ),
             Self::NotificationOutboundSubscriptionsList => (
                 "List my outbound notification subscriptions",
-                "List one bounded, Resource-Grant-filtered page of the authenticated Principal's outbound notification subscriptions.",
+                "List one bounded page of the authenticated Principal's outbound notification subscriptions; Connector targets are filtered by current Resource Grants.",
                 notification_outbound_subscription_list_schema(),
                 true,
             ),
             Self::NotificationOutboundSubscriptionsGet => (
                 "Get my outbound notification subscription",
-                "Get one exact recipient-bound outbound notification subscription and immutable provider-attempt budget without resolving its Connector endpoint or credentials.",
+                "Get one exact recipient-bound outbound notification subscription, discriminated target, and immutable provider-attempt budget without resolving a Connector endpoint, contact mailbox, or credentials.",
                 uuid_id_schema("subscriptionId"),
                 true,
             ),

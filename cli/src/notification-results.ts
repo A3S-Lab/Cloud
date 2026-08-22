@@ -88,7 +88,13 @@ const OUTBOUND_SUBSCRIPTION_COLUMNS: readonly TableColumn<OutboundNotificationSu
   { header: 'STATE', value: (row) => row.state },
   { header: 'VERSION', value: (row) => row.aggregateVersion },
   { header: 'SUBSCRIPTION ID', value: (row) => row.subscriptionId },
-  { header: 'CONNECTOR REVISION', value: (row) => row.connectorRevisionId },
+  {
+    header: 'TARGET',
+    value: (row) =>
+      row.target.kind === 'connector'
+        ? `connector:${row.target.revisionId}`
+        : `recipient_contact:${row.target.recipientContactId}`,
+  },
 ];
 
 export function outboundNotificationSubscriptionsResult(

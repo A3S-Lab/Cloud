@@ -8,6 +8,7 @@ mod operation_resource_access;
 mod postgres;
 mod postgres_access;
 mod postgres_schema;
+mod smtp;
 mod topology_binding;
 mod vault_client;
 
@@ -46,5 +47,9 @@ pub(crate) use postgres::{
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
 pub(crate) use postgres_schema::{AuditRecords, InfrastructureBindings, OutboxEvents};
+pub(crate) use smtp::{
+    PreparedSmtpSession, PreparedSmtpSubmission, SmtpCredentials, SmtpPreparationError,
+    SmtpSubmissionOutcome, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
+};
 pub(crate) use topology_binding::{bind_infrastructure, InfrastructureBinding};
 pub(crate) use vault_client::{VaultClient, VaultClientError};

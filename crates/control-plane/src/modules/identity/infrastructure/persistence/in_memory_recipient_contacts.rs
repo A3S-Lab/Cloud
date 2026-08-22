@@ -10,8 +10,8 @@ use crate::modules::identity::domain::repositories::{
     ResolvedRecipientContact, RevokeRecipientContactWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, PrincipalId, RecipientContactId, RecipientContactVerificationId,
-    RepositoryError,
+    IdempotentWrite, OrganizationId, PrincipalId, RecipientContactId,
+    RecipientContactVerificationId, RepositoryError,
 };
 use async_trait::async_trait;
 
@@ -306,6 +306,7 @@ impl IRecipientContactRepository for InMemoryIdentityRepository {
 
     async fn resolve_verified_recipient_contact(
         &self,
+        organization_id: OrganizationId,
         principal_id: PrincipalId,
         contact_id: RecipientContactId,
     ) -> Result<Option<ResolvedRecipientContact>, RepositoryError> {
@@ -317,6 +318,14 @@ impl IRecipientContactRepository for InMemoryIdentityRepository {
                 principal.is_active() && principal.kind == IdentityPrincipalKind::Human
             });
         if !principal_active {
+            return Ok(None);
+        }
+        let membership_active = state
+            .membership_subjects
+            .get(&(organization_id, principal_id))
+            .and_then(|membership_id| state.memberships.get(membership_id))
+            .is_some_and(|membership| membership.is_active());
+        if !membership_active {
             return Ok(None);
         }
         Ok(state
@@ -483,7 +492,11 @@ mod tests {
             .expect("replay");
         assert!(replay.replayed);
         assert!(repository
-            .resolve_verified_recipient_contact(principal_id, second.value.contact.id)
+            .resolve_verified_recipient_contact(
+                organization_id,
+                principal_id,
+                second.value.contact.id,
+            )
             .await
             .expect("resolve")
             .is_some());

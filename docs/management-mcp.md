@@ -220,10 +220,10 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_notification_alert_policies_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
 | `a3s_cloud_notification_alert_policies_get` | Principal self-query | `cloud:read`; denied and missing policy IDs share one `404` contract |
 | `a3s_cloud_notification_alert_policies_revoke` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
-| `a3s_cloud_notification_outbound_subscriptions_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact Connector revision, Resource Grant, and idempotency required |
-| `a3s_cloud_notification_outbound_subscriptions_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
+| `a3s_cloud_notification_outbound_subscriptions_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact Connector revision plus Resource Grant or active verified recipient contact, and idempotency required |
+| `a3s_cloud_notification_outbound_subscriptions_list` | Principal self-query | `cloud:read`; bounded keyset page; Connector targets are filtered by current Resource Grants and recipient-contact targets remain Principal-owned |
 | `a3s_cloud_notification_outbound_subscriptions_get` | Principal self-query | `cloud:read`; denied and missing subscription IDs share one `404` contract |
-| `a3s_cloud_notification_outbound_subscriptions_revoke` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
+| `a3s_cloud_notification_outbound_subscriptions_revoke` | Principal self-command | `notification:write`; exact Principal and current target authority, optimistic concurrency, and idempotency required |
 | `a3s_cloud_ontologies_list` | Query | None |
 | `a3s_cloud_ontologies_get` | Query | None |
 | `a3s_cloud_ontology_revisions_list` | Query | None |
@@ -377,26 +377,29 @@ projector, queue, scheduler, or second event rail.
 
 ## Personal outbound notification subscriptions
 
-REST contract `1.46.0` extends the four
+REST contract `1.53.0` extends the four
 `a3s_cloud_notification_outbound_subscriptions_*` tools, which reuse the
 same Notifications commands and queries as REST, the maintained client, and
-CLI. Create accepts one canonical bounded v1, v2, or
-`cloud.notification.outbound-subscription.v3` A3S ACL and binds the
-authenticated Principal to an exact Connector revision. v1 retains its fixed
-eight-attempt meaning; v2 requires `maximum_provider_attempts` from 1 through
-8, while v3 also requires an immutable bounded `suppress_before` event-time
-cutoff. List and exact get
-apply current Resource Grants; list keyset-pages past invisible records, while
-denied and missing exact IDs both return `404`. Revoke uses the current
-aggregate version and caller-owned idempotency key.
+CLI. Create accepts one canonical bounded v1, v2, v3, or
+`cloud.notification.outbound-subscription.v4` A3S ACL. v1 through v3 bind the
+authenticated Principal to an exact Connector revision; SMTP-only v4 binds it
+to one opaque Identity-owned active verified recipient contact. v1 retains its
+fixed eight-attempt meaning; v2 requires `maximum_provider_attempts` from 1
+through 8; v3 also requires an immutable bounded `suppress_before` event-time
+cutoff; and v4 requires the same bounded attempt budget with an optional cutoff.
+List and exact get apply current Resource Grants to Connector targets while
+recipient-contact targets remain visible only through their owning Principal;
+list keyset-pages past invisible records, while denied and missing exact IDs
+both return `404`. Revoke uses the current aggregate version and caller-owned
+idempotency key.
 
 The response contains the actual definition schema, canonical subscription
-ACL/digest, exact Connector identifiers, and immutable
-`maximumProviderAttempts` and nullable `suppressBefore`. It never resolves the
-Connector endpoint, Secret, credential, provider body, attempt/evidence,
-delivery receipt, or retry state.
-The MCP adapter adds no recipient selector, repository, configuration parser,
-queue, scheduler, retry counter, or delivery mechanism.
+ACL/digest, one required discriminated Connector-or-recipient-contact `target`,
+and immutable `maximumProviderAttempts` and nullable `suppressBefore`. It never
+resolves the Connector endpoint, contact mailbox, Secret, credential, provider
+body, attempt/evidence, delivery receipt, or retry state. The MCP adapter adds
+no recipient selector, repository, configuration parser, queue, scheduler,
+retry counter, or delivery mechanism.
 
 ## Client flow
 

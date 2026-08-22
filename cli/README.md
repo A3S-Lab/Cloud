@@ -120,12 +120,14 @@ authority in Identity.
 Principal's currently authorized subscriptions. `notification-subscriptions
 create --file=<subscription.acl>` requires `--idempotency-key`; revoke requires
 the exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses
-the canonical ACL, checks the exact Connector revision and Resource Grant, and
+the canonical ACL, checks the exact Connector or verified-contact authority,
 owns persistence, Outbox, audit, and replay. REST contract `1.46.0` reports the
 actual v1/v2/v3 definition schema, immutable `ATTEMPTS` budget, and nullable
 `SUPPRESS BEFORE` cutoff; v1 means eight, v2 admits 1 through 8, and v3 adds
-the bounded event-time cutoff. The CLI never resolves endpoints, Secrets,
-credentials, delivery evidence, or retry state.
+the bounded event-time cutoff. Contract `1.53.0` adds SMTP-only v4 and renders
+the required closed Connector-or-recipient-contact `TARGET`; it never resolves
+a mailbox. The CLI never resolves endpoints, Secrets, credentials, delivery
+evidence, or retry state.
 
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires

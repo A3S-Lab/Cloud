@@ -20,8 +20,8 @@ use crate::modules::identity::domain::repositories::{
     ResolvedRecipientContact, RevokeRecipientContactWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, PrincipalId, RecipientContactId, RecipientContactVerificationId,
-    RepositoryError,
+    IdempotentWrite, OrganizationId, PrincipalId, RecipientContactId,
+    RecipientContactVerificationId, RepositoryError,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect};
 use async_trait::async_trait;
@@ -555,13 +555,16 @@ impl IRecipientContactRepository for PostgresIdentityRepository {
 
     async fn resolve_verified_recipient_contact(
         &self,
+        organization_id: OrganizationId,
         principal_id: PrincipalId,
         contact_id: RecipientContactId,
     ) -> Result<Option<ResolvedRecipientContact>, RepositoryError> {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(
                 sql_query::<RecipientContactRow>(contact_select())
-                    .append(" join identity_principals as principal on principal.id = recipient_contacts.principal_id where recipient_contacts.principal_id = ")
+                    .append(" join identity_principals as principal on principal.id = recipient_contacts.principal_id join organization_memberships as membership on membership.principal_id = recipient_contacts.principal_id and membership.organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and membership.revoked_at is null where recipient_contacts.principal_id = ")
                     .bind(principal_id.as_uuid())
                     .append(" and recipient_contacts.id = ")
                     .bind(contact_id.as_uuid())

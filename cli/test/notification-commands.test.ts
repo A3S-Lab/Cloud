@@ -57,10 +57,13 @@ const SUBSCRIPTION: OutboundNotificationSubscription = {
   subscriptionId: SUBSCRIPTION_ID,
   channel: 'signed_webhook',
   minimumSeverity: 'warning',
-  connectorProjectId: '019c0000-0000-7000-8000-000000000007',
-  connectorEnvironmentId: '019c0000-0000-7000-8000-000000000008',
-  connectorProfileId: '019c0000-0000-7000-8000-000000000009',
-  connectorRevisionId: '019c0000-0000-7000-8000-00000000000a',
+  target: {
+    kind: 'connector',
+    projectId: '019c0000-0000-7000-8000-000000000007',
+    environmentId: '019c0000-0000-7000-8000-000000000008',
+    profileId: '019c0000-0000-7000-8000-000000000009',
+    revisionId: '019c0000-0000-7000-8000-00000000000a',
+  },
   maximumProviderAttempts: 8,
   suppressBefore: null,
   definitionSchema: 'cloud.notification.outbound-subscription.v1',
@@ -72,6 +75,14 @@ const SUBSCRIPTION: OutboundNotificationSubscription = {
   createdAt: '2026-08-14T01:02:03Z',
   revokedAt: null,
 };
+
+const RECIPIENT_CONTACT_ID = '019c0000-0000-7000-8000-00000000000c';
+const SMTP_SUBSCRIPTION = {
+  ...SUBSCRIPTION,
+  channel: 'smtp',
+  target: { kind: 'recipient_contact', recipientContactId: RECIPIENT_CONTACT_ID },
+  definitionSchema: 'cloud.notification.outbound-subscription.v4',
+} satisfies OutboundNotificationSubscription;
 
 function envelope(data: unknown): Response {
   return new Response(
@@ -324,6 +335,17 @@ describe('notification commands', () => {
     expect(getOutput.stdout()).toContain('3');
     expect(getOutput.stdout()).toContain('SUPPRESS BEFORE');
     expect(getOutput.stdout()).toContain('2026-08-15T01:02:03Z');
+    expect(getOutput.stdout()).toContain('TARGET');
+    expect(getOutput.stdout()).toContain('connector:019c0000-0000-7000-8000-00000000000a');
+
+    const smtpOutput = capture();
+    const smtpExitCode = await runCli(['notification-subscriptions', 'get', SUBSCRIPTION_ID], {
+      ...smtpOutput.runtime,
+      environment: environment(),
+      fetch: async () => envelope(SMTP_SUBSCRIPTION),
+    });
+    expect(smtpExitCode).toBe(0);
+    expect(smtpOutput.stdout()).toContain(`recipient_contact:${RECIPIENT_CONTACT_ID}`);
 
     const revokeOutput = capture();
     const revokeExitCode = await runCli(

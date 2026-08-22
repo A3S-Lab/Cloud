@@ -572,9 +572,10 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.52.0`
-  retains it and adds the exact-owner redacted recipient-contact self-service
-  lifecycle without exposing challenge identity, mailbox, or proof. The shared
+  responses, envelopes, and compatibility metadata; current contract `1.53.0`
+  retains the exact-owner redacted recipient-contact self-service lifecycle and
+  adds SMTP-only outbound-subscription v4 through one closed target union without
+  exposing mailbox resolution or delivery evidence. The shared
   client and response headers pin the current version;
   route-snapshot and whole-surface
   documentation tests plus a PR-base semantic checker reject undocumented

@@ -1,7 +1,7 @@
 use super::{Notification, NotificationScope, NotificationSeverity};
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, NotificationId,
-    OrganizationId, PrincipalId, ProjectId,
+    OrganizationId, PrincipalId, ProjectId, RecipientContactId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::{DateTime, Utc};
@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 pub const OUTBOUND_NOTIFICATION_SCHEMA: &str = "a3s.cloud.notification-delivery.v1";
 pub const OUTBOUND_NOTIFICATION_SCHEMA_V2: &str = "a3s.cloud.notification-delivery.v2";
+pub const OUTBOUND_NOTIFICATION_SCHEMA_V3: &str = "a3s.cloud.notification-delivery.v3";
 pub const OUTBOUND_NOTIFICATION_EVENT_KEY: &str = "notification.delivery.requested";
 pub const MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION: u64 = 1_000;
 pub const MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS: u64 = 8;
@@ -80,6 +81,74 @@ impl OutboundNotificationConnectorTarget {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutboundNotificationTarget {
+    Connector(OutboundNotificationConnectorTarget),
+    RecipientContact(RecipientContactId),
+}
+
+impl OutboundNotificationTarget {
+    pub fn recipient_contact(recipient_contact_id: RecipientContactId) -> Result<Self, String> {
+        let target = Self::RecipientContact(recipient_contact_id);
+        target.validate()?;
+        Ok(target)
+    }
+
+    pub fn validate(self) -> Result<(), String> {
+        match self {
+            Self::Connector(target) => target.validate(),
+            Self::RecipientContact(contact_id) if !contact_id.as_uuid().is_nil() => Ok(()),
+            Self::RecipientContact(_) => {
+                Err("outbound notification recipient contact target must be non-nil".into())
+            }
+        }
+    }
+
+    pub fn validate_for_channel(self, channel: OutboundNotificationChannel) -> Result<(), String> {
+        self.validate()?;
+        if matches!(
+            (channel, self),
+            (
+                OutboundNotificationChannel::SignedWebhook
+                    | OutboundNotificationChannel::SlackCompatible,
+                Self::Connector(_)
+            ) | (OutboundNotificationChannel::Smtp, Self::RecipientContact(_))
+        ) {
+            Ok(())
+        } else {
+            Err("outbound notification channel and target authority do not match".into())
+        }
+    }
+
+    pub const fn connector(self) -> Option<OutboundNotificationConnectorTarget> {
+        match self {
+            Self::Connector(target) => Some(target),
+            Self::RecipientContact(_) => None,
+        }
+    }
+
+    pub const fn recipient_contact_id(self) -> Option<RecipientContactId> {
+        match self {
+            Self::Connector(_) => None,
+            Self::RecipientContact(contact_id) => Some(contact_id),
+        }
+    }
+
+    const fn identity_id(self) -> Uuid {
+        match self {
+            Self::Connector(target) => target.revision_id.as_uuid(),
+            Self::RecipientContact(contact_id) => contact_id.as_uuid(),
+        }
+    }
+}
+
+impl From<OutboundNotificationConnectorTarget> for OutboundNotificationTarget {
+    fn from(value: OutboundNotificationConnectorTarget) -> Self {
+        Self::Connector(value)
+    }
+}
+
 /// Immutable, provider-neutral delivery input derived from one in-app notification.
 ///
 /// The exact target is an opaque reference owned by the subscription/Connector boundary.
@@ -90,7 +159,7 @@ pub struct OutboundNotificationDelivery {
     schema_version: u32,
     maximum_provider_attempts: u64,
     channel: OutboundNotificationChannel,
-    target: OutboundNotificationConnectorTarget,
+    target: OutboundNotificationTarget,
     organization_id: OrganizationId,
     notification_id: NotificationId,
     recipient_principal_id: PrincipalId,
@@ -105,15 +174,15 @@ pub struct OutboundNotificationDelivery {
 }
 
 impl OutboundNotificationDelivery {
-    pub fn from_notification(
+    pub fn from_notification<T: Into<OutboundNotificationTarget>>(
         notification: &Notification,
         channel: OutboundNotificationChannel,
-        target: OutboundNotificationConnectorTarget,
+        target: T,
     ) -> Result<Self, String> {
         Self::from_notification_contract(
             notification,
             channel,
-            target,
+            target.into(),
             1,
             MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
         )
@@ -122,13 +191,13 @@ impl OutboundNotificationDelivery {
     pub(super) fn from_notification_contract(
         notification: &Notification,
         channel: OutboundNotificationChannel,
-        target: OutboundNotificationConnectorTarget,
+        target: OutboundNotificationTarget,
         schema_version: u32,
         maximum_provider_attempts: u64,
     ) -> Result<Self, String> {
         notification.validate()?;
-        target.validate()?;
-        let id = delivery_id(notification.id, channel, target.revision_id);
+        target.validate_for_channel(channel)?;
+        let id = delivery_id(notification.id, channel, target.identity_id());
         let delivery = Self {
             id,
             schema_version,
@@ -190,20 +259,32 @@ impl OutboundNotificationDelivery {
         self.maximum_provider_attempts
     }
 
-    pub const fn schema(&self) -> &'static str {
-        if self.schema_version == 1 {
-            OUTBOUND_NOTIFICATION_SCHEMA
-        } else {
-            OUTBOUND_NOTIFICATION_SCHEMA_V2
+    pub fn schema(&self) -> &'static str {
+        match self.schema_version {
+            1 => OUTBOUND_NOTIFICATION_SCHEMA,
+            2 => OUTBOUND_NOTIFICATION_SCHEMA_V2,
+            3 => OUTBOUND_NOTIFICATION_SCHEMA_V3,
+            _ => unreachable!("validated outbound notification delivery schema"),
         }
     }
 
-    pub const fn target_revision_id(&self) -> ConnectorRevisionId {
-        self.target.revision_id
+    pub const fn target_revision_id(&self) -> Option<ConnectorRevisionId> {
+        match self.target {
+            OutboundNotificationTarget::Connector(target) => Some(target.revision_id),
+            OutboundNotificationTarget::RecipientContact(_) => None,
+        }
     }
 
-    pub const fn target(&self) -> OutboundNotificationConnectorTarget {
+    pub const fn target(&self) -> OutboundNotificationTarget {
         self.target
+    }
+
+    pub const fn connector_target(&self) -> Option<OutboundNotificationConnectorTarget> {
+        self.target.connector()
+    }
+
+    pub const fn recipient_contact_id(&self) -> Option<RecipientContactId> {
+        self.target.recipient_contact_id()
     }
 
     pub const fn organization_id(&self) -> OrganizationId {
@@ -257,8 +338,13 @@ impl OutboundNotificationDelivery {
             || self.recipient_principal_id.as_uuid().is_nil()
             || self.source_event_id.is_nil()
             || self.correlation_id.is_nil()
-            || self.id != delivery_id(self.notification_id, self.channel, self.target.revision_id)
-            || !matches!(self.schema_version, 1 | 2)
+            || self.id
+                != delivery_id(
+                    self.notification_id,
+                    self.channel,
+                    self.target.identity_id(),
+                )
+            || !matches!(self.schema_version, 1..=3)
             || self.maximum_provider_attempts == 0
             || self.maximum_provider_attempts > MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
             || self.schema_version == 1
@@ -266,7 +352,12 @@ impl OutboundNotificationDelivery {
         {
             return Err("outbound notification delivery identity is invalid".into());
         }
-        self.target.validate()?;
+        self.target.validate_for_channel(self.channel)?;
+        if self.schema_version <= 2 && self.target.connector().is_none()
+            || self.schema_version == 3 && self.target.recipient_contact_id().is_none()
+        {
+            return Err("outbound notification delivery schema and target do not match".into());
+        }
         if self.source_event_key.is_empty()
             || self.source_event_key.len() > 255
             || self.title.is_empty()
@@ -279,15 +370,48 @@ impl OutboundNotificationDelivery {
 
     pub fn canonical_payload(&self) -> Result<Vec<u8>, String> {
         if self.schema_version == 1 {
+            let target = self.target.connector().ok_or_else(|| {
+                "outbound notification delivery v1 requires a Connector target".to_owned()
+            })?;
             return canonical_json_bounded(
                 &OutboundNotificationPayload {
                     schema: OUTBOUND_NOTIFICATION_SCHEMA,
                     delivery_id: self.id,
                     channel: self.channel,
-                    project_id: self.target.project_id,
-                    environment_id: self.target.environment_id,
-                    target_profile_id: self.target.profile_id,
-                    target_revision_id: self.target.revision_id,
+                    project_id: target.project_id,
+                    environment_id: target.environment_id,
+                    target_profile_id: target.profile_id,
+                    target_revision_id: target.revision_id,
+                    organization_id: self.organization_id,
+                    notification_id: self.notification_id,
+                    recipient_principal_id: self.recipient_principal_id,
+                    source_event_id: self.source_event_id,
+                    source_event_key: &self.source_event_key,
+                    correlation_id: self.correlation_id,
+                    severity: self.severity,
+                    title: &self.title,
+                    body: &self.body,
+                    scope: self.scope,
+                    occurred_at: self.occurred_at,
+                },
+                MAXIMUM_OUTBOUND_PAYLOAD_BYTES,
+                "outbound notification payload",
+            );
+        }
+        if self.schema_version == 2 {
+            let target = self.target.connector().ok_or_else(|| {
+                "outbound notification delivery v2 requires a Connector target".to_owned()
+            })?;
+            return canonical_json_bounded(
+                &OutboundNotificationPayloadV2 {
+                    schema: OUTBOUND_NOTIFICATION_SCHEMA_V2,
+                    maximum_provider_attempts: self.maximum_provider_attempts,
+                    delivery_id: self.id,
+                    channel: self.channel,
+                    project_id: target.project_id,
+                    environment_id: target.environment_id,
+                    target_profile_id: target.profile_id,
+                    target_revision_id: target.revision_id,
                     organization_id: self.organization_id,
                     notification_id: self.notification_id,
                     recipient_principal_id: self.recipient_principal_id,
@@ -305,15 +429,15 @@ impl OutboundNotificationDelivery {
             );
         }
         canonical_json_bounded(
-            &OutboundNotificationPayloadV2 {
-                schema: OUTBOUND_NOTIFICATION_SCHEMA_V2,
+            &OutboundNotificationPayloadV3 {
+                schema: OUTBOUND_NOTIFICATION_SCHEMA_V3,
                 maximum_provider_attempts: self.maximum_provider_attempts,
                 delivery_id: self.id,
                 channel: self.channel,
-                project_id: self.target.project_id,
-                environment_id: self.target.environment_id,
-                target_profile_id: self.target.profile_id,
-                target_revision_id: self.target.revision_id,
+                recipient_contact_id: self.target.recipient_contact_id().ok_or_else(|| {
+                    "outbound notification delivery v3 requires a recipient contact target"
+                        .to_owned()
+                })?,
                 organization_id: self.organization_id,
                 notification_id: self.notification_id,
                 recipient_principal_id: self.recipient_principal_id,
@@ -357,6 +481,11 @@ impl OutboundNotificationDelivery {
                     .map_err(|_| "outbound notification payload shape is invalid".to_owned())?;
                 DecodedOutboundNotificationPayload::from_v2(decoded)
             }
+            OUTBOUND_NOTIFICATION_SCHEMA_V3 => {
+                let decoded: OwnedOutboundNotificationPayloadV3 = serde_json::from_slice(&encoded)
+                    .map_err(|_| "outbound notification payload shape is invalid".to_owned())?;
+                DecodedOutboundNotificationPayload::from_v3(decoded)
+            }
             _ => return Err("outbound notification payload schema is unsupported".into()),
         };
         let delivery = Self {
@@ -364,12 +493,7 @@ impl OutboundNotificationDelivery {
             schema_version: decoded.schema_version,
             maximum_provider_attempts: decoded.maximum_provider_attempts,
             channel: decoded.channel,
-            target: OutboundNotificationConnectorTarget {
-                project_id: decoded.project_id,
-                environment_id: decoded.environment_id,
-                profile_id: decoded.target_profile_id,
-                revision_id: decoded.target_revision_id,
-            },
+            target: decoded.target,
             organization_id: decoded.organization_id,
             notification_id: decoded.notification_id,
             recipient_principal_id: decoded.recipient_principal_id,
@@ -453,6 +577,27 @@ struct OutboundNotificationPayloadV2<'a> {
     occurred_at: DateTime<Utc>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutboundNotificationPayloadV3<'a> {
+    schema: &'static str,
+    maximum_provider_attempts: u64,
+    delivery_id: Uuid,
+    channel: OutboundNotificationChannel,
+    recipient_contact_id: RecipientContactId,
+    organization_id: OrganizationId,
+    notification_id: NotificationId,
+    recipient_principal_id: PrincipalId,
+    source_event_id: Uuid,
+    source_event_key: &'a str,
+    correlation_id: Uuid,
+    severity: NotificationSeverity,
+    title: &'a str,
+    body: &'a str,
+    scope: NotificationScope,
+    occurred_at: DateTime<Utc>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct OwnedOutboundNotificationPayload {
@@ -500,15 +645,33 @@ struct OwnedOutboundNotificationPayloadV2 {
     occurred_at: DateTime<Utc>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnedOutboundNotificationPayloadV3 {
+    schema: String,
+    maximum_provider_attempts: u64,
+    delivery_id: Uuid,
+    channel: OutboundNotificationChannel,
+    recipient_contact_id: RecipientContactId,
+    organization_id: OrganizationId,
+    notification_id: NotificationId,
+    recipient_principal_id: PrincipalId,
+    source_event_id: Uuid,
+    source_event_key: String,
+    correlation_id: Uuid,
+    severity: NotificationSeverity,
+    title: String,
+    body: String,
+    scope: NotificationScope,
+    occurred_at: DateTime<Utc>,
+}
+
 struct DecodedOutboundNotificationPayload {
     schema_version: u32,
     maximum_provider_attempts: u64,
     delivery_id: Uuid,
     channel: OutboundNotificationChannel,
-    project_id: ProjectId,
-    environment_id: EnvironmentId,
-    target_profile_id: ConnectorProfileId,
-    target_revision_id: ConnectorRevisionId,
+    target: OutboundNotificationTarget,
     organization_id: OrganizationId,
     notification_id: NotificationId,
     recipient_principal_id: PrincipalId,
@@ -530,10 +693,12 @@ impl DecodedOutboundNotificationPayload {
             maximum_provider_attempts: MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
             delivery_id: value.delivery_id,
             channel: value.channel,
-            project_id: value.project_id,
-            environment_id: value.environment_id,
-            target_profile_id: value.target_profile_id,
-            target_revision_id: value.target_revision_id,
+            target: OutboundNotificationTarget::Connector(OutboundNotificationConnectorTarget {
+                project_id: value.project_id,
+                environment_id: value.environment_id,
+                profile_id: value.target_profile_id,
+                revision_id: value.target_revision_id,
+            }),
             organization_id: value.organization_id,
             notification_id: value.notification_id,
             recipient_principal_id: value.recipient_principal_id,
@@ -555,10 +720,34 @@ impl DecodedOutboundNotificationPayload {
             maximum_provider_attempts: value.maximum_provider_attempts,
             delivery_id: value.delivery_id,
             channel: value.channel,
-            project_id: value.project_id,
-            environment_id: value.environment_id,
-            target_profile_id: value.target_profile_id,
-            target_revision_id: value.target_revision_id,
+            target: OutboundNotificationTarget::Connector(OutboundNotificationConnectorTarget {
+                project_id: value.project_id,
+                environment_id: value.environment_id,
+                profile_id: value.target_profile_id,
+                revision_id: value.target_revision_id,
+            }),
+            organization_id: value.organization_id,
+            notification_id: value.notification_id,
+            recipient_principal_id: value.recipient_principal_id,
+            source_event_id: value.source_event_id,
+            source_event_key: value.source_event_key,
+            correlation_id: value.correlation_id,
+            severity: value.severity,
+            title: value.title,
+            body: value.body,
+            scope: value.scope,
+            occurred_at: value.occurred_at,
+        }
+    }
+
+    fn from_v3(value: OwnedOutboundNotificationPayloadV3) -> Self {
+        debug_assert_eq!(value.schema, OUTBOUND_NOTIFICATION_SCHEMA_V3);
+        Self {
+            schema_version: 3,
+            maximum_provider_attempts: value.maximum_provider_attempts,
+            delivery_id: value.delivery_id,
+            channel: value.channel,
+            target: OutboundNotificationTarget::RecipientContact(value.recipient_contact_id),
             organization_id: value.organization_id,
             notification_id: value.notification_id,
             recipient_principal_id: value.recipient_principal_id,
@@ -577,225 +766,14 @@ impl DecodedOutboundNotificationPayload {
 fn delivery_id(
     notification_id: NotificationId,
     channel: OutboundNotificationChannel,
-    target_revision_id: ConnectorRevisionId,
+    target_id: Uuid,
 ) -> Uuid {
     Uuid::new_v5(
         &notification_id.as_uuid(),
-        format!("{}:{target_revision_id}", channel.as_str()).as_bytes(),
+        format!("{}:{target_id}", channel.as_str()).as_bytes(),
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::modules::notifications::{
-        Notification, OutboundNotificationSubscriptionDefinition,
-        OutboundNotificationSubscriptionSpec, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
-    };
-
-    fn notification() -> Notification {
-        let now = Utc::now();
-        Notification::project(
-            OrganizationId::new(),
-            PrincipalId::new(),
-            Uuid::now_v7(),
-            "identity.membership.role-changed".into(),
-            1,
-            Uuid::now_v7(),
-            2,
-            Uuid::now_v7(),
-            NotificationSeverity::Warning,
-            "Organization role changed".into(),
-            "Your organization role is now member.".into(),
-            NotificationScope::Organization,
-            now,
-            now,
-        )
-        .expect("notification")
-    }
-
-    fn target(revision_id: ConnectorRevisionId) -> OutboundNotificationConnectorTarget {
-        OutboundNotificationConnectorTarget::new(
-            ProjectId::new(),
-            EnvironmentId::new(),
-            ConnectorProfileId::new(),
-            revision_id,
-        )
-        .expect("target")
-    }
-
-    #[test]
-    fn delivery_identity_is_stable_per_notification_channel_and_target_revision() {
-        let notification = notification();
-        let target_revision_id = ConnectorRevisionId::new();
-        let first = OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SignedWebhook,
-            target(target_revision_id),
-        )
-        .expect("delivery");
-        let replay = OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SignedWebhook,
-            first.target(),
-        )
-        .expect("delivery replay");
-        let another_channel = OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SlackCompatible,
-            first.target(),
-        )
-        .expect("Slack-compatible delivery");
-        assert_eq!(first, replay);
-        assert_ne!(first.id, another_channel.id);
-
-        let payload: serde_json::Value =
-            serde_json::from_slice(&first.canonical_payload().expect("canonical payload"))
-                .expect("payload JSON");
-        assert_eq!(
-            payload["schema"],
-            serde_json::json!(OUTBOUND_NOTIFICATION_SCHEMA)
-        );
-        assert_eq!(payload["deliveryId"], serde_json::json!(first.id));
-        assert_eq!(
-            OutboundNotificationDelivery::from_payload(&payload),
-            Ok(first.clone())
-        );
-        assert!(payload.get("readAt").is_none());
-        assert!(payload.get("endpoint").is_none());
-        assert!(payload.get("credential").is_none());
-        let event = first.requested_event().expect("requested event");
-        assert_eq!(event.event_id, first.requested_event_id());
-        assert_eq!(event.event_key, OUTBOUND_NOTIFICATION_EVENT_KEY);
-        assert_eq!(event.aggregate_id, first.id());
-        assert_eq!(event.causation_id, Some(first.source_event_id()));
-        assert_eq!(event.payload, payload);
-    }
-
-    #[test]
-    fn nil_or_tampered_target_identity_fails_closed() {
-        let notification = notification();
-        assert!(OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SignedWebhook,
-            OutboundNotificationConnectorTarget {
-                project_id: ProjectId::new(),
-                environment_id: EnvironmentId::new(),
-                profile_id: ConnectorProfileId::new(),
-                revision_id: ConnectorRevisionId::from_uuid(Uuid::nil()),
-            },
-        )
-        .is_err());
-        let mut delivery = OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SignedWebhook,
-            target(ConnectorRevisionId::new()),
-        )
-        .expect("delivery");
-        delivery.target.revision_id = ConnectorRevisionId::new();
-        assert!(delivery.validate().is_err());
-    }
-
-    #[test]
-    fn version_two_delivery_pins_budget_while_version_one_bytes_remain_unchanged() {
-        let notification = notification();
-        let target = target(ConnectorRevisionId::new());
-        let version_one = OutboundNotificationDelivery::from_notification(
-            &notification,
-            OutboundNotificationChannel::SignedWebhook,
-            target,
-        )
-        .expect("version one delivery");
-        let definition =
-            OutboundNotificationSubscriptionDefinition::from_spec_with_provider_attempt_budget(
-                OutboundNotificationSubscriptionSpec {
-                    channel: OutboundNotificationChannel::SignedWebhook,
-                    minimum_severity: NotificationSeverity::Warning,
-                    target,
-                },
-                2,
-            )
-            .expect("version two subscription");
-        assert_eq!(
-            definition.definition_schema(),
-            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2
-        );
-        let version_two = definition
-            .delivery_for(&notification)
-            .expect("version two delivery");
-
-        assert_eq!(version_one.schema_version(), 1);
-        assert_eq!(
-            version_one.maximum_provider_attempts(),
-            MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
-        );
-        let version_one_target = version_one.target();
-        let expected_version_one_payload = serde_json::json!({
-            "schema": OUTBOUND_NOTIFICATION_SCHEMA,
-            "deliveryId": version_one.id(),
-            "channel": version_one.channel(),
-            "projectId": version_one_target.project_id,
-            "environmentId": version_one_target.environment_id,
-            "targetProfileId": version_one_target.profile_id,
-            "targetRevisionId": version_one_target.revision_id,
-            "organizationId": version_one.organization_id(),
-            "notificationId": version_one.notification_id(),
-            "recipientPrincipalId": version_one.recipient_principal_id(),
-            "sourceEventId": version_one.source_event_id(),
-            "sourceEventKey": version_one.source_event_key(),
-            "correlationId": version_one.correlation_id(),
-            "severity": version_one.severity(),
-            "title": version_one.title(),
-            "body": version_one.body(),
-            "scope": version_one.scope(),
-            "occurredAt": version_one.occurred_at(),
-        });
-        assert_eq!(
-            version_one.canonical_payload().expect("version one bytes"),
-            canonical_json_bounded(
-                &expected_version_one_payload,
-                MAXIMUM_OUTBOUND_PAYLOAD_BYTES,
-                "outbound notification payload",
-            )
-            .expect("historic version one bytes")
-        );
-        assert_eq!(
-            version_one.requested_event_id(),
-            Uuid::new_v5(&version_one.id(), b"notification-delivery-requested:v1")
-        );
-        assert!(!version_one
-            .canonical_payload_value()
-            .expect("version one payload")
-            .as_object()
-            .expect("object")
-            .contains_key("maximumProviderAttempts"));
-        assert_eq!(version_two.id(), version_one.id());
-        assert_ne!(
-            version_two.requested_event_id(),
-            version_one.requested_event_id()
-        );
-        assert_eq!(version_two.schema(), OUTBOUND_NOTIFICATION_SCHEMA_V2);
-        assert_eq!(version_two.schema_version(), 2);
-        assert_eq!(version_two.maximum_provider_attempts(), 2);
-        let payload = version_two
-            .canonical_payload_value()
-            .expect("version two payload");
-        assert_eq!(payload["schema"], OUTBOUND_NOTIFICATION_SCHEMA_V2);
-        assert_eq!(payload["maximumProviderAttempts"], 2);
-        assert_eq!(
-            OutboundNotificationDelivery::from_payload(&payload),
-            Ok(version_two.clone())
-        );
-        assert_eq!(
-            version_two
-                .requested_event()
-                .expect("version two event")
-                .schema_version,
-            2
-        );
-
-        let mut invalid = payload;
-        invalid["maximumProviderAttempts"] = serde_json::json!(0);
-        assert!(OutboundNotificationDelivery::from_payload(&invalid).is_err());
-    }
-}
+#[path = "outbound_delivery_tests.rs"]
+mod tests;
