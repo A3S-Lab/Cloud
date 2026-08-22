@@ -1442,15 +1442,15 @@ back the state transition. The
 [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32557820241/job/96994701683)
 proves failed and healthy Outbox rollback before exact retry, typed persisted
 facts, replay deduplication, same-revision silence, and private-error exclusion
-on checksum-pinned PostgreSQL 17.5. No new lifecycle record is needed. A later
-`C0.3-N4e` Notifications slice may register the closed
-`workload.deployment-health.v1` source and interpret `healthy` as recovery only
+on checksum-pinned PostgreSQL 17.5. No new lifecycle record is needed. The
+`C0.3-N4e` Notifications slice below registers the closed
+`workload.deployment-health.v1` source and interprets `healthy` as recovery only
 after a covered failed fact for the same Workload. Initial and routine healthy
 activation remain notification-silent. This prerequisite adds no health table,
 incident state, mutable counter, poller, timer, scheduler, queue, second event
 rail, migration, configuration parser, or public API.
 
-#### Workload deployment-health alert source (`C0.3-N4e` frozen)
+#### Workload deployment-health alert source (`C0.3-N4e` implemented)
 
 Notifications extends the existing immutable
 `cloud.notification.alert-policy.v1` source union with only
@@ -1478,13 +1478,14 @@ The existing policy lookup, active Membership and current Resource Grant
 revalidation, personal inbox repository, transactional Outbox, outbound
 subscription, A3S Event durable/manual-ack consumer, and C6 delivery evidence
 remain the only policy, projection, event, and delivery authorities. Migration
-`134` may widen only the closed persisted source constraint, and REST/OpenAPI
+`134` widens only the closed persisted source constraint, and REST/OpenAPI
 `1.50.0`, the maintained client, CLI, and four existing Management MCP
-operations may expose the new enum value. Implementation and retained
-PostgreSQL/NATS evidence remain open. No second policy lifecycle, arbitrary
-selector, payload expression, health or incident table, counter, poller, timer,
-scheduler, queue, event rail, configuration format, endpoint, or tool is
-introduced.
+operations expose the new enum value. Focused domain, projection,
+malformed-payload, migration, contract, maintained-client, and CLI gates pass;
+retained PostgreSQL/NATS evidence remains open. No second policy lifecycle,
+arbitrary selector, payload expression, health or incident table, counter,
+poller, timer, scheduler, queue, event rail, configuration format, endpoint,
+or tool is introduced.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 

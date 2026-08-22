@@ -319,7 +319,9 @@ projection, idempotency, Outbox, audit, and persistence. The client has no ACL
 parser, event expression evaluator, incident state, projector, or delivery
 mechanism. Contract `1.49.0` extends the closed source union with
 `edge.gateway-certificate-renewal-status.v1` without adding another client
-operation or configuration format.
+operation or configuration format. Contract `1.50.0` adds
+`workload.deployment-health.v1` through those same four operations and keeps
+Workloads as the rollout-health authority.
 
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and
