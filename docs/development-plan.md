@@ -2381,7 +2381,8 @@ node.
   There is no arbitrary event selector, JSON-path/expression evaluator, metrics
   store, mutable incident/counter, poller, timer, scheduler, queue, second event
   rail, or configuration parser.
-- Frozen as `C0.3-N4b`: Edge first supplies bounded certificate-renewal owner
+- Implemented locally as `C0.3-N4b`, with retained PostgreSQL 17 evidence still
+  pending: Edge first supplies bounded certificate-renewal owner
   facts through its existing Gateway certificate reconciler. Only an exact
   certificate-replacement convergence with reason `Renewal` participates.
   Terminal `Rejected` and `Unavailable` outcomes emit schema-v1

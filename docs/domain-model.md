@@ -1313,7 +1313,7 @@ Primary record:
 
 - `NotificationAlertPolicy`
 
-#### Edge certificate-renewal fact (`C0.3-N4b` frozen)
+#### Edge certificate-renewal fact (`C0.3-N4b` implemented; retained PostgreSQL 17 evidence pending)
 
 Edge remains the certificate lifecycle authority. Its existing Gateway
 certificate reconciler may emit renewal status only for a
