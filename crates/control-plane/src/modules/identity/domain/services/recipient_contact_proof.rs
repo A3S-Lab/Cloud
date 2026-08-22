@@ -2,6 +2,7 @@ use crate::modules::identity::domain::entities::{
     RecipientContactVerification, RecipientContactVerificationClaims,
 };
 use crate::modules::identity::domain::value_objects::RecipientContactSigningKeyId;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
 
@@ -13,15 +14,16 @@ pub enum RecipientContactProofError {
     Unavailable,
 }
 
+#[async_trait]
 pub trait IRecipientContactProofService: Send + Sync {
     fn current_key_id(&self) -> &RecipientContactSigningKeyId;
 
-    fn issue(
+    async fn issue(
         &self,
         verification: &RecipientContactVerification,
     ) -> Result<Zeroizing<String>, RecipientContactProofError>;
 
-    fn verify(
+    async fn verify(
         &self,
         proof: &str,
         now: DateTime<Utc>,

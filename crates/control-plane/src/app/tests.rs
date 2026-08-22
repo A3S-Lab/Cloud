@@ -1033,6 +1033,8 @@ fn config() -> CloudConfig {
             gateway_certificate_authority: SecurityProviderKind::Local,
             key_encryption: SecurityProviderKind::Local,
             build_evidence_signing: SecurityProviderKind::Local,
+            recipient_contact_proof: SecurityProviderKind::Local,
+            recipient_contact_proof_key_id: "recipient-contact-v1".into(),
             vault_address_env: "A3S_CLOUD_VAULT_ADDR".into(),
             vault_token_env: "A3S_CLOUD_VAULT_TOKEN".into(),
             vault_pki_mount: "pki".into(),
@@ -1042,6 +1044,7 @@ fn config() -> CloudConfig {
             vault_transit_mount: "transit".into(),
             vault_transit_key: "a3s-cloud".into(),
             vault_build_evidence_signing_key: "a3s-cloud-build-evidence".into(),
+            vault_recipient_contact_proof_key: "a3s-cloud-recipient-contact-proof".into(),
             vault_timeout_ms: 5_000,
         },
     }
@@ -1784,6 +1787,15 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             membership_invitations: identity.clone(),
             resource_grants: identity.clone(),
             oidc_identity: identity.clone(),
+            recipient_contacts: identity.clone(),
+            recipient_contact_proof: Arc::new(
+                HmacRecipientContactProofService::new(
+                    RecipientContactSigningKeyId::parse("recipient-contact-v1")
+                        .map_err(BootError::Internal)?,
+                    zeroize::Zeroizing::new(vec![0x31; 32]),
+                )
+                .map_err(BootError::Internal)?,
+            ),
             resource_authorization_decisions: identity,
             projects: projects.clone(),
             environments: projects,

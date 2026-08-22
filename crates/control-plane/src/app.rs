@@ -119,22 +119,30 @@ use crate::modules::forms::{
 };
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOidcIdentityRepository, IOrganizationRepository, IResourceAuthorizationDecisionRepository,
-    IResourceGrantRepository,
+    IOidcIdentityRepository, IOrganizationRepository, IRecipientContactRepository,
+    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
 };
-use crate::modules::identity::domain::services::IOidcProviderService;
-use crate::modules::identity::domain::value_objects::BootstrapCredential;
-use crate::modules::identity::infrastructure::ApiTokenVerifier;
+use crate::modules::identity::domain::services::{
+    IOidcProviderService, IRecipientContactProofService,
+};
+use crate::modules::identity::domain::value_objects::{
+    BootstrapCredential, RecipientContactSigningKeyId,
+};
+use crate::modules::identity::infrastructure::{
+    ApiTokenVerifier, HmacRecipientContactProofService, VaultRecipientContactProofService,
+};
 use crate::modules::identity::{
-    AcceptMembershipInvitationHandler, BeginOidcFlowHandler, BootstrapIdentityHandler,
-    ChangeMembershipRoleHandler, CompleteOidcFlowHandler, CreateApiTokenHandler,
-    CreateMembershipHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
-    CreateResourceGrantHandler, GetApiTokenHandler, GetMembershipHandler,
-    GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
+    AcceptMembershipInvitationHandler, BeginOidcFlowHandler,
+    BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
+    ChangeMembershipRoleHandler, CompleteOidcFlowHandler,
+    CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
+    CreateMembershipInvitationHandler, CreateOrganizationHandler, CreateResourceGrantHandler,
+    GetApiTokenHandler, GetMembershipHandler, GetMembershipInvitationHandler,
+    GetRecipientContactHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
     ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
-    ListOrganizationsHandler, ListResourceGrantsHandler, OpenIdConnectProviderService,
-    RevokeApiTokenHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
-    RevokeResourceGrantHandler,
+    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
+    OpenIdConnectProviderService, RevokeApiTokenHandler, RevokeMembershipHandler,
+    RevokeMembershipInvitationHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay,
@@ -439,6 +447,8 @@ async fn build_api_worker_application(
     };
     let vault_credentials = config.vault_credentials()?;
     let key_encryption = key_encryption_provider(&config, vault_credentials.as_ref())?;
+    let recipient_contact_proof =
+        recipient_contact_proof_provider(&config, vault_credentials.as_ref())?;
     let gateway_certificate_authority =
         gateway_certificate_authority(&config, vault_credentials.as_ref())?;
     let log_chunks: Arc<dyn ILogChunkStore> = Arc::new(LogChunkObjectStore::from_client(
@@ -454,6 +464,7 @@ async fn build_api_worker_application(
     let membership_invitations = adapters.identity.membership_invitations;
     let resource_grants = adapters.identity.resource_grants;
     let oidc_identity = adapters.identity.oidc_identity;
+    let recipient_contacts = adapters.identity.recipient_contacts;
     let resource_authorization_decisions = adapters.identity.resource_authorization_decisions;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
@@ -1414,6 +1425,8 @@ async fn build_api_worker_application(
                 membership_invitations,
                 resource_grants,
                 oidc_identity,
+                recipient_contacts,
+                recipient_contact_proof,
                 resource_authorization_decisions,
                 projects: projects.clone(),
                 environments,
@@ -1583,6 +1596,8 @@ struct ManagementApplicationDependencies {
     membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     oidc_identity: Arc<dyn IOidcIdentityRepository>,
+    recipient_contacts: Arc<dyn IRecipientContactRepository>,
+    recipient_contact_proof: Arc<dyn IRecipientContactProofService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
@@ -1653,6 +1668,8 @@ fn build_management_application_with_health(
         membership_invitations,
         resource_grants,
         oidc_identity,
+        recipient_contacts,
+        recipient_contact_proof,
         resource_authorization_decisions,
         projects,
         environments,
@@ -1928,6 +1945,13 @@ fn build_management_application_with_health(
     let begin_oidc_memberships = Arc::clone(&memberships);
     let begin_oidc_identity = Arc::clone(&oidc_identity);
     let begin_oidc_provider = Arc::clone(&oidc_provider);
+    let begin_recipient_contacts = Arc::clone(&recipient_contacts);
+    let begin_recipient_contact_proof = Arc::clone(&recipient_contact_proof);
+    let complete_recipient_contacts = Arc::clone(&recipient_contacts);
+    let complete_recipient_contact_proof = Arc::clone(&recipient_contact_proof);
+    let revoke_recipient_contacts = Arc::clone(&recipient_contacts);
+    let list_recipient_contacts = Arc::clone(&recipient_contacts);
+    let get_recipient_contacts = Arc::clone(&recipient_contacts);
     let create_memberships = Arc::clone(&memberships);
     let change_memberships = Arc::clone(&memberships);
     let revoke_memberships = Arc::clone(&memberships);
@@ -2190,6 +2214,23 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::CompleteOidcFlow, _>(
                     CompleteOidcFlowHandler::new(oidc_identity, oidc_provider),
+                )
+                .command_handler::<
+                    crate::modules::identity::BeginRecipientContactVerification,
+                    _,
+                >(BeginRecipientContactVerificationHandler::new(
+                    begin_recipient_contacts,
+                    begin_recipient_contact_proof,
+                ))
+                .command_handler::<
+                    crate::modules::identity::CompleteRecipientContactVerification,
+                    _,
+                >(CompleteRecipientContactVerificationHandler::new(
+                    complete_recipient_contacts,
+                    complete_recipient_contact_proof,
+                ))
+                .command_handler::<crate::modules::identity::RevokeRecipientContact, _>(
+                    RevokeRecipientContactHandler::new(revoke_recipient_contacts),
                 )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
                     CreateProjectHandler::new(project_organizations, create_projects),
@@ -2716,6 +2757,12 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::GetResourceGrant, _>(
                     GetResourceGrantHandler::new(get_resource_grants),
+                )
+                .query_handler::<crate::modules::identity::ListRecipientContacts, _>(
+                    ListRecipientContactsHandler::new(list_recipient_contacts),
+                )
+                .query_handler::<crate::modules::identity::GetRecipientContact, _>(
+                    GetRecipientContactHandler::new(get_recipient_contacts),
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),
@@ -3403,6 +3450,41 @@ fn certificate_authority_provider(
             }
         };
     Ok(certificate_authority)
+}
+
+fn recipient_contact_proof_provider(
+    config: &CloudConfig,
+    credentials: Option<&(String, String)>,
+) -> std::result::Result<Arc<dyn IRecipientContactProofService>, ControlPlaneStartupError> {
+    let key_id =
+        RecipientContactSigningKeyId::parse(&config.security.recipient_contact_proof_key_id)
+            .map_err(ControlPlaneStartupError::Security)?;
+    match config.security.recipient_contact_proof {
+        SecurityProviderKind::Local => Ok(Arc::new(
+            HmacRecipientContactProofService::load_or_create(
+                key_id,
+                std::path::Path::new(&config.security.state_dir)
+                    .join("recipient-contact/proof-hmac.key"),
+            )
+            .map_err(ControlPlaneStartupError::Security)?,
+        )),
+        SecurityProviderKind::Vault => {
+            let (address, token) = credentials.ok_or_else(|| {
+                ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
+            })?;
+            Ok(Arc::new(
+                VaultRecipientContactProofService::new(
+                    address,
+                    token,
+                    config.security.vault_transit_mount.clone(),
+                    config.security.vault_recipient_contact_proof_key.clone(),
+                    key_id,
+                    Duration::from_millis(config.security.vault_timeout_ms),
+                )
+                .map_err(ControlPlaneStartupError::Security)?,
+            ))
+        }
+    }
 }
 
 fn key_encryption_provider(

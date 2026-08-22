@@ -43,7 +43,7 @@ impl CommandHandler<CompleteRecipientContactVerification>
         let proof_service = Arc::clone(&self.proof_service);
         Box::pin(async move {
             let completed_at = Utc::now();
-            let claims = match proof_service.verify(&command.proof, completed_at) {
+            let claims = match proof_service.verify(&command.proof, completed_at).await {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(map_recipient_contact_proof_error(error))),
             };

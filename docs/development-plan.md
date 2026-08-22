@@ -2596,13 +2596,13 @@ node.
   completion, redacted evidence, active verified resolution, and terminal
   revocation. Each challenge stays pinned to its initiating organization for
   Outbox/audit correlation while the contact remains Principal-global.
-  Production proof-key wiring, SMTP challenge
+  The follow-on N5b supplies production proof-provider wiring. SMTP challenge
   delivery, public interfaces, and notification subscription/dispatch
   composition remain open. No email inference, second directory,
   plaintext proof persistence, provider configuration, queue, scheduler,
   retry counter, or SMTP client is authorized by this slice.
-- Frozen as `C0.3-N5b`: wire the N5a signer/verifier into real API/Worker
-  composition without opening an email surface. The proof port becomes
+- Implemented as `C0.3-N5b`: the N5a signer/verifier is wired into real
+  API/Worker composition without opening an email surface. The proof port is
   asynchronous so production can use Vault Transit HMAC SHA2-256 through the
   shared bounded HTTPS Vault client. Its opaque physical key version remains in
   the proof authenticator while one closed logical signing-key ID is pinned in
@@ -2615,9 +2615,11 @@ node.
   `a3srcv1` claims envelope, redacted diagnostics, exact key/expiry checks, and
   rejected-versus-unavailable failure semantics. The sole PostgreSQL adapter
   factory exposes the existing recipient-contact repository; API/Worker
-  composition registers begin/complete/revoke and exact-owner get/list through
-  one proof provider. Focused configuration, local restart/permission, Vault
-  protocol/failure, proof, and composition tests are the gate. No migration,
+  composition registers begin/complete/revoke and exact-owner get/list, with
+  completion consuming one proof provider. Focused configuration, local
+  restart/permission, mock Vault protocol/failure, proof, and composition tests
+  pass, as do formatting, strict Clippy, and the full workspace suite. No
+  migration,
   mailbox/proof persistence, SMTP transport, public interface, notification
   subscription, provider profile, Secret record, queue, scheduler, retry
   mechanism, or second configuration language is authorized by this slice.

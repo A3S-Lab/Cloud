@@ -1,5 +1,7 @@
 use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
-use crate::modules::identity::domain::value_objects::{OidcIssuer, OidcProviderKey};
+use crate::modules::identity::domain::value_objects::{
+    OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId,
+};
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
@@ -397,6 +399,8 @@ pub struct SecurityConfig {
     pub gateway_certificate_authority: SecurityProviderKind,
     pub key_encryption: SecurityProviderKind,
     pub build_evidence_signing: SecurityProviderKind,
+    pub recipient_contact_proof: SecurityProviderKind,
+    pub recipient_contact_proof_key_id: String,
     pub vault_address_env: String,
     pub vault_token_env: String,
     pub vault_pki_mount: String,
@@ -406,6 +410,7 @@ pub struct SecurityConfig {
     pub vault_transit_mount: String,
     pub vault_transit_key: String,
     pub vault_build_evidence_signing_key: String,
+    pub vault_recipient_contact_proof_key: String,
     pub vault_timeout_ms: u64,
 }
 
@@ -681,6 +686,8 @@ impl CloudConfig {
                 "gateway_certificate_authority",
                 "key_encryption",
                 "build_evidence_signing",
+                "recipient_contact_proof",
+                "recipient_contact_proof_key_id",
                 "vault_address_env",
                 "vault_token_env",
                 "vault_pki_mount",
@@ -690,6 +697,7 @@ impl CloudConfig {
                 "vault_transit_mount",
                 "vault_transit_key",
                 "vault_build_evidence_signing_key",
+                "vault_recipient_contact_proof_key",
                 "vault_timeout_ms",
             ],
         )?;
@@ -907,6 +915,11 @@ impl CloudConfig {
                     "build_evidence_signing",
                     &string(security, "build_evidence_signing")?,
                 )?,
+                recipient_contact_proof: SecurityProviderKind::parse(
+                    "recipient_contact_proof",
+                    &string(security, "recipient_contact_proof")?,
+                )?,
+                recipient_contact_proof_key_id: string(security, "recipient_contact_proof_key_id")?,
                 vault_address_env: string(security, "vault_address_env")?,
                 vault_token_env: string(security, "vault_token_env")?,
                 vault_pki_mount: string(security, "vault_pki_mount")?,
@@ -918,6 +931,10 @@ impl CloudConfig {
                 vault_build_evidence_signing_key: string(
                     security,
                     "vault_build_evidence_signing_key",
+                )?,
+                vault_recipient_contact_proof_key: string(
+                    security,
+                    "vault_recipient_contact_proof_key",
                 )?,
                 vault_timeout_ms: integer(security, "vault_timeout_ms")?,
             },
@@ -1458,12 +1475,15 @@ impl CloudConfig {
                     .into(),
             ));
         }
-        if self.security.state_dir.trim().is_empty()
-            || self.security.state_dir.len() > 4096
-            || self.security.state_dir.contains('\0')
-        {
+        if !valid_data_path(&self.security.state_dir) {
             return Err(ConfigError::Invalid("security.state_dir is invalid".into()));
         }
+        RecipientContactSigningKeyId::parse(&self.security.recipient_contact_proof_key_id)
+            .map_err(|error| {
+                ConfigError::Invalid(format!(
+                    "security.recipient_contact_proof_key_id is invalid: {error}"
+                ))
+            })?;
         for (label, value) in [
             ("vault_address_env", &self.security.vault_address_env),
             ("vault_token_env", &self.security.vault_token_env),
@@ -1491,6 +1511,10 @@ impl CloudConfig {
                 "vault_build_evidence_signing_key",
                 &self.security.vault_build_evidence_signing_key,
             ),
+            (
+                "vault_recipient_contact_proof_key",
+                &self.security.vault_recipient_contact_proof_key,
+            ),
         ] {
             if !valid_provider_segment(value) {
                 return Err(ConfigError::Invalid(format!("security.{label} is invalid")));
@@ -1505,10 +1529,11 @@ impl CloudConfig {
             && (self.security.certificate_authority != SecurityProviderKind::Vault
                 || self.security.gateway_certificate_authority != SecurityProviderKind::Vault
                 || self.security.key_encryption != SecurityProviderKind::Vault
-                || self.security.build_evidence_signing != SecurityProviderKind::Vault)
+                || self.security.build_evidence_signing != SecurityProviderKind::Vault
+                || self.security.recipient_contact_proof != SecurityProviderKind::Vault)
         {
             return Err(ConfigError::Invalid(
-                "production security requires external Vault node PKI, Gateway PKI, Transit encryption, and build evidence signing providers".into(),
+                "production security requires external Vault node PKI, Gateway PKI, Transit encryption, build evidence signing, and recipient-contact proof providers".into(),
             ));
         }
         if self.security.profile == SecurityProfile::Production
@@ -1626,6 +1651,7 @@ impl CloudConfig {
             && self.security.gateway_certificate_authority != SecurityProviderKind::Vault
             && self.security.key_encryption != SecurityProviderKind::Vault
             && self.security.build_evidence_signing != SecurityProviderKind::Vault
+            && self.security.recipient_contact_proof != SecurityProviderKind::Vault
         {
             return Ok(None);
         }
@@ -2260,6 +2286,8 @@ security {
   gateway_certificate_authority = "local"
   key_encryption = "local"
   build_evidence_signing = "local"
+  recipient_contact_proof = "local"
+  recipient_contact_proof_key_id = "recipient-contact-v1"
   vault_address_env = "A3S_CLOUD_VAULT_ADDR"
   vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
   vault_pki_mount = "pki"
@@ -2269,6 +2297,7 @@ security {
   vault_transit_mount = "transit"
   vault_transit_key = "a3s-cloud"
   vault_build_evidence_signing_key = "a3s-cloud-build-evidence"
+  vault_recipient_contact_proof_key = "a3s-cloud-recipient-contact-proof"
   vault_timeout_ms = 5000
 }
 "#;
@@ -2356,8 +2385,20 @@ security {
             SecurityProviderKind::Local
         );
         assert_eq!(
+            config.security.recipient_contact_proof,
+            SecurityProviderKind::Local
+        );
+        assert_eq!(
+            config.security.recipient_contact_proof_key_id,
+            "recipient-contact-v1"
+        );
+        assert_eq!(
             config.security.vault_build_evidence_signing_key,
             "a3s-cloud-build-evidence"
+        );
+        assert_eq!(
+            config.security.vault_recipient_contact_proof_key,
+            "a3s-cloud-recipient-contact-proof"
         );
     }
 
@@ -2498,6 +2539,39 @@ security {
             config.vault_credentials(),
             Err(ConfigError::Invalid(message)) if message.contains(ADDRESS_ENV)
         ));
+    }
+
+    #[test]
+    fn recipient_contact_proof_configuration_is_closed_and_vault_credentials_are_required() {
+        const ADDRESS_ENV: &str = "A3S_CLOUD_TEST_CONTACT_PROOF_VAULT_ADDR_MUST_BE_UNSET";
+        const TOKEN_ENV: &str = "A3S_CLOUD_TEST_CONTACT_PROOF_VAULT_TOKEN_MUST_BE_UNSET";
+        assert!(std::env::var_os(ADDRESS_ENV).is_none());
+        assert!(std::env::var_os(TOKEN_ENV).is_none());
+        let config = CloudConfig::parse(
+            &VALID
+                .replace(
+                    "recipient_contact_proof = \"local\"",
+                    "recipient_contact_proof = \"vault\"",
+                )
+                .replace("A3S_CLOUD_VAULT_ADDR", ADDRESS_ENV)
+                .replace("A3S_CLOUD_VAULT_TOKEN", TOKEN_ENV),
+        )
+        .expect("development config with Vault recipient-contact proof provider");
+
+        assert!(matches!(
+            config.vault_credentials(),
+            Err(ConfigError::Invalid(message)) if message.contains(ADDRESS_ENV)
+        ));
+        assert!(CloudConfig::parse(&VALID.replace(
+            "recipient_contact_proof_key_id = \"recipient-contact-v1\"",
+            "recipient_contact_proof_key_id = \"Recipient Contact V1\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "vault_recipient_contact_proof_key = \"a3s-cloud-recipient-contact-proof\"",
+            "vault_recipient_contact_proof_key = \"recipient/contact/proof\""
+        ))
+        .is_err());
     }
 
     #[test]
@@ -2686,6 +2760,10 @@ security {
                 "build_evidence_signing = \"local\"",
                 "build_evidence_signing = \"vault\"",
             )
+            .replace(
+                "recipient_contact_proof = \"local\"",
+                "recipient_contact_proof = \"vault\"",
+            )
             .replace("provider = \"local\"", "provider = \"s3\"")
             .replace(
                 "insecure_hosts = [\"127.0.0.1:5000\"]",
@@ -2704,6 +2782,11 @@ security {
                 "publication_allow_anonymous = false",
             );
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(&production_s3.replace(
+            "recipient_contact_proof = \"vault\"",
+            "recipient_contact_proof = \"local\""
+        ))
+        .is_err());
         assert!(CloudConfig::parse(
             &production_s3.replace("provider = \"nats\"", "provider = \"memory\"")
         )

@@ -82,7 +82,7 @@ The code on `main` separates implemented mechanics from released capability:
   over exact Edge-owned expiring/resolved facts, with no new endpoint, policy
   lifecycle, or evaluation engine. Broader
   enterprise `C0` gates remain.
-- **Implemented component / verified recipient-contact authority** — Identity
+- **Verified recipient-contact authority / implemented production proof provider** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal
   revocation, and an internal active-verified exact-owner resolver. Migration
@@ -90,10 +90,12 @@ The code on `main` separates implemented mechanics from released capability:
   records, transactional Outbox/audit facts, and the
   [successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32583260303/job/97055668058)
   enforce reissue invalidation, single consumption, organization-pinned
-  challenges, and mailbox/proof exclusion outside the Identity table. This is
-  not yet an externally usable email capability: production proof-key wiring,
-  asynchronous SMTP challenge delivery, REST/client/CLI/MCP surfaces, and
-  Notifications composition remain gated.
+  challenges, and mailbox/proof exclusion outside the Identity table. N5b now
+  composes the asynchronous proof port with a restart-stable local HMAC key
+  for development and Vault Transit HMAC SHA2-256 for production through the
+  existing `security` A3S ACL. This is still not an externally usable email
+  capability: asynchronous SMTP challenge delivery, REST/client/CLI/MCP
+  surfaces, and Notifications composition remain gated.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

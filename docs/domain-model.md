@@ -165,8 +165,9 @@ Primary aggregates:
 - `ResourceGrant`
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
-  adapter, and verified PostgreSQL evidence are implemented; production proof
-  key wiring, SMTP verification delivery, and public surfaces remain gated)
+  adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
+  production proof-provider and API/Worker composition, while SMTP verification
+  delivery and public surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -212,13 +213,13 @@ proves migration `136`, exact ownership, reissue invalidation, single-use
 completion, redacted evidence, active verified resolution, and terminal
 revocation. Challenges retain their initiating organization for
 Outbox/audit correlation even though contact identity remains Principal-global.
-Production proof-key wiring, SMTP delivery, public REST/client/CLI/MCP surfaces,
-and Notifications composition remain open. This boundary adds no directory,
-email inference, plaintext proof store, provider configuration, queue,
-scheduler, retry counter, or SMTP client.
+N5b supplies production proof-provider wiring. SMTP delivery, public
+REST/client/CLI/MCP surfaces, and Notifications composition remain open. This
+boundary adds no directory, email inference, plaintext proof store, provider
+configuration, queue, scheduler, retry counter, or SMTP client.
 
-`C0.3-N5b` freezes only proof-provider and process composition. The N5a proof
-port becomes asynchronous. Development owns one restart-stable local HMAC key
+`C0.3-N5b` implements only proof-provider and process composition. The N5a proof
+port is asynchronous. Development owns one restart-stable local HMAC key
 file beneath `security.state_dir`; production delegates HMAC SHA2-256 to Vault
 Transit through the shared bounded HTTPS client, so private key material never
 enters Cloud memory. One closed logical signing-key ID remains in the challenge
@@ -228,7 +229,8 @@ the existing `security` A3S ACL, and production fails closed unless the proof
 provider is Vault. Both providers preserve the bounded `a3srcv1` envelope,
 redacted diagnostics, exact key/expiry checks, and the rejected-versus-
 unavailable error boundary. The existing recipient-contact repository and its
-five CQRS handlers enter the sole API/Worker composition root. This slice owns
+five CQRS handlers enter the sole API/Worker composition root, with completion
+using the one configured proof provider. This slice owns
 no new aggregate, table, migration, SMTP client or delivery fact, presentation
 surface, notification subscription, provider profile, Secret record, queue,
 scheduler, retry mechanism, or configuration language.

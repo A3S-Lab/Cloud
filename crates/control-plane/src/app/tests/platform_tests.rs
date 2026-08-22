@@ -444,6 +444,66 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
 }
 
 #[test]
+fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() {
+    let composition = include_str!("../../app.rs");
+    let adapters = include_str!("../postgres_adapters.rs");
+
+    assert_eq!(
+        composition
+            .matches("recipient_contact_proof_provider(")
+            .count(),
+        2,
+        "the recipient-contact proof provider must have one definition and one composition call"
+    );
+    assert_eq!(
+        composition
+            .matches("HmacRecipientContactProofService::load_or_create(")
+            .count(),
+        1
+    );
+    assert_eq!(
+        composition
+            .matches("VaultRecipientContactProofService::new(")
+            .count(),
+        1
+    );
+    for handler in [
+        "BeginRecipientContactVerificationHandler::new(",
+        "CompleteRecipientContactVerificationHandler::new(",
+        "RevokeRecipientContactHandler::new(",
+        "ListRecipientContactsHandler::new(",
+        "GetRecipientContactHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(handler).count(),
+            1,
+            "recipient-contact CQRS composition drifted for {handler}"
+        );
+    }
+    assert!(adapters.contains("recipient_contacts: Arc<dyn IRecipientContactRepository>"));
+    assert_eq!(
+        adapters
+            .matches("recipient_contacts: repository.clone()")
+            .count(),
+        1,
+        "the existing Identity repository must remain the sole recipient-contact adapter"
+    );
+    let relay = adapters
+        .split("pub(super) struct RelayPostgresAdapters")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("pub(super) struct IdentityPostgresAdapters")
+                .next()
+        })
+        .expect("relay adapter section");
+    assert!(
+        !relay.contains("recipient_contact"),
+        "the dedicated Relay acquired recipient-contact proof state"
+    );
+}
+
+#[test]
 fn postgres_schema_mutation_has_one_non_serving_process_root() {
     let application = include_str!("../../app.rs");
     let server = include_str!("../../main.rs");

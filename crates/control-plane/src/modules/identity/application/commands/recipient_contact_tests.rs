@@ -179,6 +179,7 @@ async fn application_boundary_is_exact_redacted_replay_safe_and_terminal() {
     let proof = fixture
         .proof_service
         .issue(&begun.verification)
+        .await
         .expect("issued proof");
     let wrong_principal = CompleteRecipientContactVerificationHandler::new(
         fixture.repository_port(),
@@ -311,6 +312,7 @@ async fn reissue_invalidates_delivered_proof_and_service_principals_fail_closed(
     let first_proof = fixture
         .proof_service
         .issue(&first.verification)
+        .await
         .expect("first proof");
     let organizations: Arc<dyn IOrganizationRepository> = fixture.repository.clone();
     let other_organization = CreateOrganizationHandler::new(organizations)

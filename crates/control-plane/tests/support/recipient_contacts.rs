@@ -138,7 +138,7 @@ pub async fn exercise_recipient_contact_persistence(
         .await?;
     assert!(replayed_first.replayed);
     assert_eq!(replayed_first.value, first.value);
-    let first_proof = proof_service.issue(&first.value.verification)?;
+    let first_proof = proof_service.issue(&first.value.verification).await?;
 
     let second_requested_at = first.value.verification.issued_at + chrono::Duration::seconds(1);
     let second = repository
@@ -170,10 +170,12 @@ pub async fn exercise_recipient_contact_persistence(
         invalidated.status_at(second_requested_at),
         RecipientContactVerificationStatus::Invalidated
     );
-    let stale_claims = proof_service.verify(
-        &first_proof,
-        first.value.verification.issued_at + chrono::Duration::seconds(2),
-    )?;
+    let stale_claims = proof_service
+        .verify(
+            &first_proof,
+            first.value.verification.issued_at + chrono::Duration::seconds(2),
+        )
+        .await?;
     let stale_completion = repository
         .complete_recipient_contact_verification(CompleteRecipientContactVerificationWrite {
             organization_id,
@@ -219,13 +221,13 @@ pub async fn exercise_recipient_contact_persistence(
         .await;
     assert!(matches!(service_begin, Err(RepositoryError::Forbidden(_))));
 
-    let second_proof = proof_service.issue(&second.value.verification)?;
+    let second_proof = proof_service.issue(&second.value.verification).await?;
     let completed_at = second.value.verification.issued_at + chrono::Duration::minutes(1);
     let complete_write = CompleteRecipientContactVerificationWrite {
         organization_id,
         actor_principal_id: principal_id,
         contact_id: second.value.contact.id,
-        claims: proof_service.verify(&second_proof, completed_at)?,
+        claims: proof_service.verify(&second_proof, completed_at).await?,
         completed_at,
         request_id: Uuid::now_v7(),
         idempotency: idempotency("complete-second"),
