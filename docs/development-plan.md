@@ -2541,7 +2541,7 @@ node.
   then commits one firing fact per Route, later failed-attempt retry stays
   silent, and applied replacement commits the exact resolution facts without
   private acknowledgement text.
-- Implemented as `C0.3-N4g`: register only
+- Verified as `C0.3-N4g`: register only
   `edge.gateway-certificate-expiry-status.v1` in the existing compile-time
   alert source registry while preserving `cloud.notification.alert-policy.v1`.
   Admit exact schema-v1 `edge.gateway-certificate.expiring` and
@@ -2557,13 +2557,18 @@ node.
   payload, unsupported key, and schema drift stay silent or fail closed as
   appropriate; a later certificate lifecycle may warn again at its higher
   phase. Recheck active Membership and current Resource Grants before reusing
-  the personal inbox and outbound path. Migration `135` may widen only the
+  the personal inbox and outbound path. Migration `135` widens only the
   persisted closed source constraint; REST/OpenAPI `1.51.0`, the maintained
   client, CLI, and four existing Management MCP operations expose the enum
   without another interface. Edge remains the expiry authority. Focused domain,
   projection, malformed-payload, migration, contract, client, and CLI gates
-  pass; retained PostgreSQL/NATS evidence remains open. This adds no second policy
-  lifecycle, certificate or incident state, configurable threshold or severity,
+  pass. The [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32574263264/job/97034204390)
+  proves migration `135`, coexistence of all four closed sources, unknown-source
+  rejection, initial-resolution silence, Route-plus-node-local warning and
+  recovery projection, later-certificate refiring, replay deduplication, and the
+  unchanged durable NATS/manual-ack delivery and terminal-replay path. This adds
+  no second policy lifecycle, certificate or incident state, configurable
+  threshold or severity,
   arbitrary selector, payload expression, poller, timer, scheduler, queue,
   second event rail, configuration parser, endpoint, or tool.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
