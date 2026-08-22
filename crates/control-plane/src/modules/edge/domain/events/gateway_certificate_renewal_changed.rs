@@ -106,17 +106,14 @@ impl GatewayCertificateRenewalChanged {
 
         let mut events = Vec::with_capacity(routes.len());
         for (route, version) in routes.iter().zip(&convergence.retained_routes) {
-            let Some(domain_claim_id) = route.domain_claim_id else {
+            if route.domain_claim_id.is_none() {
                 return Err("Gateway certificate renewal Route lost its domain Claim".into());
-            };
+            }
             if route.id != version.route_id
                 || route.aggregate_version != version.aggregate_version
                 || route.organization_id != convergence.organization_id
                 || route.gateway_node_id != convergence.node_id
                 || route.state != RouteState::Active
-                || !active_certificate
-                    .domain_claim_ids
-                    .contains(&domain_claim_id)
             {
                 return Err("Gateway certificate renewal Route scope is inconsistent".into());
             }

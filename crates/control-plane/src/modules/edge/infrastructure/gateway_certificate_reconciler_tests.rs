@@ -613,6 +613,27 @@ async fn renewal_failure_and_success_emit_scoped_private_replay_safe_facts() {
         acknowledged_at: rejected_at,
         management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
     };
+    let mut terminal_convergence = failed.convergence.clone();
+    terminal_convergence
+        .acknowledge(&rejected)
+        .expect("terminal renewal convergence");
+    let mut terminal_publication = failed.publication.clone();
+    terminal_publication
+        .acknowledge(&rejected)
+        .expect("terminal renewal publication");
+    let mut historically_scoped_certificate = previous.clone();
+    historically_scoped_certificate.domain_claim_ids = vec![DomainClaimId::new()];
+    assert_eq!(
+        GatewayCertificateRenewalChanged::envelopes(
+            &terminal_convergence,
+            &terminal_publication,
+            &historically_scoped_certificate,
+            std::slice::from_ref(&route),
+        )
+        .expect("route binding, not historical certificate claims, owns fact scope")
+        .len(),
+        1
+    );
     fixture
         .repository
         .project_gateway_acknowledgement(&rejected, rejected_at + Duration::milliseconds(1))
