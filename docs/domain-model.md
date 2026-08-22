@@ -166,9 +166,9 @@ Primary aggregates:
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
   adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
-  production proof-provider and API/Worker composition; `C0.3-N5c` implements
-  the Worker-only SMTP verification-delivery state machine, while retained CI
-  provider evidence and public surfaces remain gated)
+  production proof-provider and API/Worker composition; `C0.3-N5c` verifies
+  the Worker-only SMTP verification-delivery state machine against PostgreSQL
+  17, NATS JetStream, and Mailpit, while public surfaces remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
@@ -261,11 +261,38 @@ environment-backed paired credentials, and bounded timeouts. Production rejects
 disabled or downgrade-prone delivery. In-process protocol fixtures cover
 TLS/authentication, one submission, permanent rejection, ambiguous final
 response loss, and downgrade rejection; repository, event-consumer,
-configuration, composition, and migration coverage pass locally. Digest-pinned
-Mailpit and PostgreSQL/NATS retained gates are wired into CI but not yet claimed
-as successful. N5c is not a general Notifications SMTP channel, an HTTP
+configuration, composition, and migration coverage pass locally. The
+[successful PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
+proves migration `137`, exact authority/redaction guards, authenticated required
+STARTTLS, one captured submission, durable terminal replay, and the Relay/Worker
+composition. The same run's
+[successful Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071082)
+retains the full-workspace, strict Clippy, formatting, and documentation gates.
+N5c is not a general Notifications SMTP channel, an HTTP
 Connector subtype, a second queue/retry/scheduler authority, a template system,
 or a public recipient-contact interface.
+
+`C0.3-N5d` freezes a presentation-only self-service boundary over the existing
+five recipient-contact CQRS handlers. An authenticated credential supplies the
+organization and exact actor Principal; the client can never name another
+Principal, and the repository continues to require that actor to be an active
+human with an active Membership. `cloud:read` authorizes exact-self list/get,
+while `identity:write` authorizes begin, complete, and version-checked revoke.
+No organization administrator can inspect or mutate another Principal's
+contact through this surface.
+
+REST/OpenAPI `1.52.0` and the maintained client expose only the opaque contact
+and Principal IDs, canonical-address digest, `***@domain` hint, closed status,
+aggregate version, timestamps, and mutation replay state. The challenge ID,
+mailbox, and proof are never responses. Mailbox and proof enter only their
+separate closed, bounded HTTPS request bodies; OpenAPI marks proof write-only.
+CLI consumes each private value only from bounded stdin, clears the mutable byte
+buffer, and never accepts it in argv or emits it in output, diagnostics, or
+remapped errors. Management MCP exposes redacted list/get and optimistic revoke
+only: begin and complete are absent because mailbox and proof must not become
+model-visible tool arguments. N5d adds no aggregate, repository, migration,
+business rule, configuration, event, provider, queue, scheduler, notification
+subscription, general SMTP channel, or second authorization path.
 
 ### 3.2 Projects
 

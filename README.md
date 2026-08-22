@@ -101,9 +101,14 @@ The code on `main` separates implemented mechanics from released capability:
   machine, and authenticated implicit-TLS or required-STARTTLS relay delivery.
   Mailbox, proof, message, credential, and provider text remain outside durable
   and diagnostic evidence; ambiguous post-fence outcomes are terminal and never
-  auto-resend. Its retained PostgreSQL/NATS and real Mailpit CI gates are wired
-  but not yet claimed as successful. This is still not a public email
-  capability: REST/client/CLI/MCP surfaces and Notifications composition remain
+  auto-resend. The
+  [successful PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
+  proves migration `137`, exact authority rechecks, authenticated required
+  STARTTLS, one provider submission, terminal replay, and the Relay/Worker
+  composition; the same run's
+  [Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071082)
+  retains the workspace gates. This is still not a general email capability:
+  recipient-contact public surfaces and Notifications SMTP composition remain
   gated.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only

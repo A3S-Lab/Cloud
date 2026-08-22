@@ -444,6 +444,12 @@ supersede those claims rather than acting as a second live status source.
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
 
+The `C0` summary's remaining SMTP item means a general Notifications
+subscription/dispatch channel. Identity's separate recipient-contact challenge
+transport is verified by the
+[N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
+and does not widen Notifications or the HTTP-only Connector contract.
+
 The current REST/OpenAPI contract is `1.51.0`. It retains `1.50.0`'s closed
 Workload deployment-health source and adds exact Gateway certificate-expiry
 firing/recovery facts to the same immutable personal alert-policy
@@ -1990,8 +1996,9 @@ node.
   CQRS and the Resource Grant evaluator; exact prior profiles remain readable,
   while PostgreSQL rejects UPDATE, DELETE, and cross-project lineage. It adds
   neither commercial billing authority nor another migration mechanism.
-  `C0.3` remains in progress because SMTP, security investigation, usage-fact
-  profile snapshots, and audit retention/export remain open.
+  `C0.3` remains in progress because recipient-contact public surfaces,
+  Notifications SMTP composition, security investigation, usage-fact profile
+  snapshots, and audit retention/export remain open.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -2628,7 +2635,8 @@ node.
   mailbox/proof persistence, SMTP transport, public interface, notification
   subscription, provider profile, Secret record, queue, scheduler, retry
   mechanism, or second configuration language is authorized by this slice.
-- Implemented with retained CI verification pending as `C0.3-N5c`: Identity
+- Verified on PostgreSQL 17, NATS JetStream, and Mailpit in CI as `C0.3-N5c`:
+  Identity
   consumes only its exact
   `identity.recipient-contact.verification-requested` transactional Outbox fact
   through a Worker-owned A3S Event durable/manual-ack subscription. Migration
@@ -2661,11 +2669,56 @@ node.
   one SMTP envelope/message submission, permanent rejection, lost final reply,
   and required-STARTTLS downgrade rejection. Repository, dispatcher, event
   consumer, configuration, composition, and migration tests pass together with
-  the full workspace suite, strict Clippy, formatting, and documentation. A
-  checksum-pinned official Mailpit `1.30.6` authenticated required-STARTTLS
-  test and the extended PostgreSQL/NATS H0 fixture are wired into CI; this text
-  does not claim those retained provider gates until their first successful run
-  is linked.
+  the full workspace suite, strict Clippy, formatting, and documentation. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
+  proves migration `137`, exact authority and redaction guards, obsolete
+  reissue, durable dispatch fencing, terminal indeterminate/delivered replay,
+  an official checksum-pinned Mailpit `1.30.6` relay with authentication and
+  required STARTTLS, exactly one captured submission, and the PostgreSQL/NATS
+  Relay/Worker composition. The same run's
+  [successful Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071082)
+  retains the full workspace, strict Clippy, formatting, and documentation
+  gates.
+- Frozen for implementation as `C0.3-N5d`: expose only the five existing
+  exact-owner recipient-contact CQRS operations through one authenticated
+  self-service surface. REST paths are exactly
+  `GET /organizations/{organization_id}/recipient-contacts`,
+  `GET /organizations/{organization_id}/recipient-contacts/{recipient_contact_id}`,
+  `POST /organizations/{organization_id}/recipient-contacts`,
+  `POST /organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification`,
+  and
+  `POST /organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation`.
+  Reads require `cloud:read`; mutations require `identity:write`. The
+  presentation layer derives the actor solely from the authenticated
+  credential, and the repository remains the final authority for an exact
+  active human Principal plus active organization Membership. No administrator
+  may act for another Principal.
+
+  REST/OpenAPI contract `1.52.0`, the maintained TypeScript client, and CLI
+  return only contact and Principal IDs, the canonical-address digest,
+  `***@domain` hint, closed status, aggregate version, timestamps, and mutation
+  replay state. Beginning verification returns no challenge ID or proof. The
+  mailbox and proof are accepted only in separate closed, bounded HTTPS JSON
+  bodies; the proof is write-only in OpenAPI. CLI commands are
+  `recipient-contacts list|get|request|verify|revoke`. Request and verify require
+  bounded `--address-stdin` and `--proof-stdin`, respectively, zero their input
+  byte buffers, and reject mailbox/proof in argv, stdout, stderr, diagnostics,
+  and remapped server errors. Begin uses `202` for a new asynchronous request
+  and `200` for idempotent replay; complete and version-checked revoke are
+  synchronous `200` mutations. Every mutation retains the existing caller-owned
+  idempotency boundary.
+
+  Management MCP adds only exact-self redacted list/get and optimistic revoke.
+  It deliberately omits begin and complete because model-visible mailbox or
+  proof arguments would violate the private presentation boundary. Focused
+  controller tests must cover scope separation, exact actor derivation,
+  service/foreign/disabled rejection, status codes, replay, and response/error
+  redaction. Contract, client, CLI, and MCP conformance must cover closed
+  schemas, bounded secret inputs, no argv/output leakage, exact tool catalogs,
+  and the absence of begin/complete tools. This slice adds no repository,
+  migration, business rule, configuration, event, provider, queue, scheduler,
+  notification subscription, general SMTP channel, or second authorization
+  path.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its
