@@ -1304,10 +1304,10 @@ Outbox/audit persistence, exact rejection/recovery projection and replay
 deduplication, silence after policy revocation, durable delivery, and terminal
 ACK-only replay.
 
-Future workload-health, certificate-expiry, backup, node-availability,
-operation-latency, and resource-signal families enter only as explicit bounded
-firing, missing-data, and recovery facts from their owning context or existing
-reconciler. Notifications never polls telemetry or interprets silence. The
+Future backup, node-availability, operation-latency, and resource-signal
+families enter only as explicit bounded firing, missing-data, and recovery
+facts from their owning context or existing reconciler. Notifications never
+polls telemetry or interprets silence. The
 policy language has no arbitrary event key, JSON path, expression evaluator,
 metric query, mutable counter, timer, scheduler, queue, second event rail, or
 non-ACL configuration.
@@ -1490,6 +1490,63 @@ NATS/manual-ack delivery, and terminal ACK-only replay. No second policy
 lifecycle, arbitrary selector, payload expression, health or incident table,
 counter, poller, timer, scheduler, queue, event rail, configuration format,
 endpoint, or tool is introduced.
+
+#### Gateway certificate expiry-risk fact (`C0.3-N4f` frozen)
+
+Edge remains the certificate-expiry authority. The existing Gateway certificate
+reconciler evaluates a fixed 24-hour emergency window after ordinary renewal
+has already had time to converge; this threshold is domain policy, not product
+configuration. A candidate must be an active logical Route bound on one
+physical Gateway node to the `Ready` certificate of an installed `Applied`
+publication. A normal renewal that applies a certificate outside the emergency
+window creates no expiry-risk fact.
+
+Each Route-plus-node pair has a source-specific deterministic subject and one
+narrow Edge-owned `GatewayCertificateExpiryRisk` projection. It retains only
+`at_risk` or `clear`, the exact certificate evidence for the last transition,
+and a strictly increasing fact generation. When an active certificate expires
+at or before the canonical observation time plus 24 hours, the first
+observation of that exact certificate transitions or refreshes the subject to
+`at_risk` and emits schema-v1
+`edge.gateway-certificate.expiry-at-risk`. Replaying the same certificate is
+silent. If a different certificate is actually applied but also lies inside
+the emergency window, it emits one new at-risk generation and never reports a
+false recovery.
+
+Only the terminal `Applied` transaction that binds a different `Ready`
+certificate with expiry strictly later than its application time plus 24 hours
+may transition an existing risk for the same subject to `clear` and emit
+schema-v1 `edge.gateway-certificate.expiry-risk-cleared`. Staging, dispatch,
+issuance alone, `Rejected`, `Unavailable`, a snapshot-only application that
+retains the same certificate, revocation, Route inactivity, clock rollback,
+another Route, and another node cannot clear it. An absent or already-clear
+risk also makes a normal applied certificate recovery-silent.
+
+Both event keys carry a closed `GatewayCertificateExpiryRiskChanged` payload.
+It pins exact organization, project/environment, Route, Workload,
+hostname/path, physical Node, active Gateway revision, active certificate and
+expiry, the fixed window, state, and projection generation. The clear payload
+also pins the previous at-risk certificate and expiry; the at-risk payload
+forbids those previous fields. The envelope uses the source-specific subject
+and risk generation, not the unrelated certificate aggregate version or
+Gateway revision. Certificate PEM, CA bundle, credentials, provider and
+acknowledgement text, command bodies, and private failure details are excluded.
+
+Risk entry, terminal Applied clearing, optimistic projection generation, and
+their existing transactional Outbox facts commit atomically. A stale or
+concurrent scan fails closed and then observes the committed state; it cannot
+emit a duplicate. Outbox failure rolls back both projection and owning Edge
+mutation. Migration `135` may add only this projection and its scope, state,
+generation, certificate, and timestamp constraints. Implementation and
+retained PostgreSQL 17.5 evidence remain open for exact threshold equality,
+outside-window and normal-renewal silence, independent Routes and nodes,
+same-certificate replay and concurrent scan deduplication, an applied
+short-lived replacement, Applied-only recovery, private-data exclusion, and
+injected at-risk/clear Outbox rollback. This slice adds no Notification policy
+or source, incident authority, configurable threshold, new poller, timer,
+scheduler, queue, event rail, configuration parser, public endpoint, or tool.
+The later Notifications slice may register only
+`edge.gateway-certificate-expiry-risk.v1` after these owner facts are verified.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 

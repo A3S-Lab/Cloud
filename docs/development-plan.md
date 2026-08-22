@@ -2508,9 +2508,40 @@ node.
   selector, expression evaluator, health or incident table, mutable counter,
   poller, timer, scheduler, queue, second event rail, configuration parser,
   endpoint, or tool.
+- Frozen as `C0.3-N4f`: keep certificate-expiry risk with Edge and extend the
+  existing Gateway certificate reconciler with a fixed 24-hour emergency
+  window. Normal renewal should complete before that window and remain silent.
+  For every active logical Route and physical Gateway node, derive one
+  source-specific deterministic subject and retain a narrow
+  `GatewayCertificateExpiryRisk` projection containing only `at_risk`/`clear`,
+  exact active-certificate evidence, and a monotonic fact generation. At
+  threshold equality, the first observation of an exact active certificate
+  emits schema-v1 `edge.gateway-certificate.expiry-at-risk`; replay is silent,
+  and an actually-applied replacement that is also inside the window emits a
+  new at-risk generation rather than a false recovery. Only a different
+  `Ready` certificate bound through terminal `Applied`, with expiry strictly
+  outside the window, may clear an existing risk for the same Route-plus-node
+  subject and emit schema-v1
+  `edge.gateway-certificate.expiry-risk-cleared`.
+  `GatewayCertificateExpiryRiskChanged` pins organization/project/environment,
+  Route, Workload, hostname/path, physical Node, active Gateway revision,
+  active certificate/expiry, fixed window, state, and clearing-only previous
+  risk evidence. PEM, credentials, provider/acknowledgement text, commands, and
+  private failures are forbidden. Entry and Applied-only clearing persist the
+  risk generation and existing Outbox fact atomically under optimistic
+  concurrency. Migration `135` may add only this projection. Implementation
+  and retained PostgreSQL 17.5 evidence remain open for threshold equality,
+  normal-renewal and outside-window silence, Route/node isolation,
+  concurrent/replay deduplication, short-lived replacement behavior,
+  Applied-only clearing, private-data exclusion, and injected Outbox rollback.
+  This owner-fact slice adds no Notification source or policy, incident,
+  configurable threshold, poller, timer, scheduler, queue, second event rail,
+  configuration parser, endpoint, or tool. A later slice may register only
+  `edge.gateway-certificate-expiry-risk.v1` through the existing alert-policy
+  lifecycle.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
-  certificate expiry, backup status, node availability,
-  operation latency, and resource signals only after each owning context or its
+  backup status, node availability, operation latency, and resource signals
+  only after each owning context or its
   existing reconciler emits bounded typed missing-data, firing, and recovery
   transitions. Notifications may project those facts but never poll telemetry,
   infer health from silence, or mutate the monitored resource.
