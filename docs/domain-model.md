@@ -147,7 +147,8 @@ are different facts.
 
 Owns stable human and service Principals, organizations, Membership roles,
 exact-Principal MembershipInvitations, Principal-bound API credentials,
-revocation, Resource Grants, exact external OIDC subject links and one-time
+revocation, Resource Grants, exact human-Principal recipient contacts and their
+one-time verification challenges, exact external OIDC subject links and one-time
 login/link flow persistence under `C0.3`, planned SAML/OIDC provider, SCIM, and session
 policy under `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
@@ -162,12 +163,51 @@ Primary aggregates:
 - `MembershipInvitation`
 - `ApiToken`
 - `ResourceGrant`
+- `RecipientContact` and transient `RecipientContactVerification`
+  (`C0.3-N5a` component boundary frozen; implementation and SMTP verification
+  delivery remain gated)
 - `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence, the
   internal discovery/JWKS/ID-token adapter, and begin/complete application
   composition are implemented; production wiring and public callback surfaces
   remain gated)
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
+
+#### Verified recipient contact (`C0.3-N5a` frozen)
+
+Identity owns one opaque `RecipientContactId` for each exact human Principal and
+canonical email mailbox. A contact begins pending and is never eligible for
+notification delivery until an exact short-lived `RecipientContactVerification`
+proof is cryptographically verified and consumed once. The proof binds its
+contact ID, Principal, canonical-address digest, contact version, challenge ID,
+signing-key identity, issue time, and expiry. Reissuing a challenge invalidates
+every older pending challenge for that contact. Verification increments the
+contact version atomically with challenge consumption; replay, expiry,
+wrong-contact, wrong-Principal, address/version drift, and stale-key proof fail
+closed. Revocation is version-checked, terminal for that contact identity, and
+takes effect on the next resolution.
+
+Only the exact active Principal may begin, inspect, complete, or revoke its
+contact. Neither an OIDC `email`/`email_verified` claim, Membership metadata,
+organization administrator, presentation input, nor Notifications may assert
+verification. The canonical mailbox is PII retained only by Identity; list and
+mutation results are redacted, while one internal exact-owner resolver may
+return it only for an active verified contact. Notifications may later store
+the opaque contact ID in a new immutable subscription revision and resolve it
+at each dispatch, so contact revocation is immediate and no address copy is
+created.
+
+The verification-requested, verified, and revoked transactional Outbox facts
+and shared audit records carry opaque IDs, closed state, canonical-address
+digest, versions, and timestamps only. They never carry the mailbox, proof,
+signature, provider response, or Secret material. A token signer/verifier port
+owns proof cryptography; later SMTP challenge delivery must use the existing
+Outbox/A3S Event and fenced provider evidence rather than a synchronous
+presentation side effect. Migration `136`, repositories, commands/queries,
+token adapter, retained PostgreSQL evidence, SMTP delivery, and public
+REST/client/CLI/MCP surfaces remain open. This boundary adds no directory,
+email inference, plaintext proof store, provider configuration, queue,
+scheduler, retry counter, or SMTP client.
 
 ### 3.2 Projects
 

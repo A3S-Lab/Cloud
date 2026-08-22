@@ -2571,6 +2571,26 @@ node.
   threshold or severity,
   arbitrary selector, payload expression, poller, timer, scheduler, queue,
   second event rail, configuration parser, endpoint, or tool.
+- Frozen as `C0.3-N5a`: Identity owns one exact human-Principal-bound email
+  `RecipientContact` plus a short-lived one-time
+  `RecipientContactVerification`. A contact starts pending and only possession
+  of a cryptographically verified proof bound to its exact Principal,
+  canonical-address digest, contact version, challenge ID, signing-key identity,
+  issue time, and expiry may atomically mark it verified. Reissue invalidates
+  prior pending challenges; completion consumes exactly one; revocation is
+  terminal for that contact identity and applies on the next resolution. OIDC
+  claims, Membership metadata, administrators, presentation input, and
+  Notifications cannot assert verification. Identity retains the canonical
+  mailbox as PII and exposes it only through an internal exact-owner resolver
+  for an active verified contact; public projections are redacted. Outbox and
+  audit evidence contain only opaque IDs, closed state, address digest,
+  versions, and timestamps. They never contain the mailbox, proof, signature,
+  provider response, or Secret material. A signer/verifier port owns proof
+  cryptography. Migration `136`, implementation, retained PostgreSQL evidence,
+  SMTP challenge delivery, public interfaces, and notification subscription/
+  dispatch composition remain open. No email inference, second directory,
+  plaintext proof persistence, provider configuration, queue, scheduler,
+  retry counter, or SMTP client is authorized by this slice.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its
