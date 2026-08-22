@@ -3,7 +3,9 @@ use super::gateway_certificate_reconciler::{
 };
 use super::{GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata};
 use crate::modules::edge::domain::events::{
-    DomainClaimChanged, GatewayScopeCreated, RoutePublicationStaged,
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus, GatewayScopeCreated,
+    RoutePublicationStaged,
 };
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
@@ -20,9 +22,9 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, IdempotencyRequest,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{GatewayAckState, NodeGatewayAck};
 use async_trait::async_trait;
@@ -481,6 +483,22 @@ async fn apply_convergence(
         .expect("apply convergence");
 }
 
+async fn renewal_facts(
+    repository: &InMemoryEdgeRepository,
+) -> Vec<a3s_cloud_contracts::DomainEventEnvelope> {
+    repository
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event.event_key.as_str(),
+                "edge.gateway-certificate.renewal-failed" | "edge.gateway-certificate.renewed"
+            )
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn durable_convergence_is_redispatched_after_command_queue_failure() {
     let fixture = Fixture::new();
@@ -533,6 +551,180 @@ async fn durable_convergence_is_redispatched_after_command_queue_failure() {
     assert_eq!(second.dispatched_commands, 1);
     assert!(second.failures.is_empty());
     assert_eq!(queue.publications.lock().await.len(), 1);
+}
+
+#[tokio::test]
+async fn renewal_failure_and_success_emit_scoped_private_replay_safe_facts() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture.verified_claim("facts.example.com", base).await;
+    let previous_expires_at = base + Duration::days(30);
+    let (route, previous) = fixture
+        .activate_route(
+            &claim,
+            "facts.example.com",
+            base + Duration::seconds(1),
+            previous_expires_at,
+        )
+        .await;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue, authority);
+    let staged_at = base + Duration::days(24);
+    reconciler
+        .run_once(staged_at)
+        .await
+        .expect("stage certificate renewal");
+    let failed = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending renewal")
+        .pop()
+        .expect("renewal");
+    assert_eq!(
+        failed.convergence.reason,
+        crate::modules::edge::domain::GatewayCertificateConvergenceReason::Renewal
+    );
+    assert!(renewal_facts(fixture.repository.as_ref()).await.is_empty());
+    issue_certificate(
+        fixture.repository.as_ref(),
+        failed
+            .certificate
+            .as_ref()
+            .expect("failed-at-delivery replacement"),
+        staged_at + Duration::milliseconds(1),
+        staged_at + Duration::days(30),
+    )
+    .await;
+    let rejected_at = staged_at + Duration::milliseconds(2);
+    let rejected = NodeGatewayAck {
+        schema: NodeGatewayAck::SCHEMA.into(),
+        acknowledgement_id: Uuid::now_v7(),
+        command_id: failed.publication.command_id.as_uuid(),
+        node_id: failed.publication.node_id.as_uuid(),
+        gateway_id: failed.publication.node_id.as_uuid(),
+        revision: failed.publication.revision,
+        snapshot_digest: failed.publication.snapshot_digest.clone(),
+        expires_at: failed.publication.snapshot_expires_at,
+        state: GatewayAckState::Rejected,
+        ready: false,
+        message: Some("provider token=private-value".into()),
+        acknowledged_at: rejected_at,
+        management_protocol: Some(a3s_cloud_contracts::GatewayManagementProtocol::advertised_v1()),
+    };
+    let mut terminal_convergence = failed.convergence.clone();
+    terminal_convergence
+        .acknowledge(&rejected)
+        .expect("terminal renewal convergence");
+    let mut terminal_publication = failed.publication.clone();
+    terminal_publication
+        .acknowledge(&rejected)
+        .expect("terminal renewal publication");
+    let mut historically_scoped_certificate = previous.clone();
+    historically_scoped_certificate.domain_claim_ids = vec![DomainClaimId::new()];
+    assert_eq!(
+        GatewayCertificateRenewalChanged::envelopes(
+            &terminal_convergence,
+            &terminal_publication,
+            &historically_scoped_certificate,
+            std::slice::from_ref(&route),
+        )
+        .expect("route binding, not historical certificate claims, owns fact scope")
+        .len(),
+        1
+    );
+    fixture
+        .repository
+        .project_gateway_acknowledgement(&rejected, rejected_at + Duration::milliseconds(1))
+        .await
+        .expect("reject certificate renewal");
+    let facts = renewal_facts(fixture.repository.as_ref()).await;
+    assert_eq!(facts.len(), 1);
+    let failed_payload: GatewayCertificateRenewalChanged =
+        serde_json::from_value(facts[0].payload.clone()).expect("failed renewal payload");
+    assert_eq!(
+        facts[0].aggregate_id,
+        renewal_subject_id(route.id, fixture.node_id)
+    );
+    assert_eq!(facts[0].aggregate_version, failed.publication.revision);
+    assert_eq!(facts[0].occurred_at, canonical_timestamp(rejected_at));
+    assert_eq!(failed_payload.project_id, fixture.project_id);
+    assert_eq!(failed_payload.environment_id, fixture.environment_id);
+    assert_eq!(failed_payload.route_id, route.id);
+    assert_eq!(failed_payload.node_id, fixture.node_id);
+    assert_eq!(failed_payload.hostname, "facts.example.com");
+    assert_eq!(failed_payload.path_prefix, "/");
+    assert_eq!(
+        failed_payload.status,
+        GatewayCertificateRenewalStatus::Failed
+    );
+    assert_eq!(
+        failed_payload.failure_kind,
+        Some(GatewayCertificateRenewalFailureKind::Rejected)
+    );
+    assert_eq!(failed_payload.active_certificate_id, previous.id);
+    assert_eq!(
+        failed_payload.active_certificate_expires_at,
+        canonical_timestamp(previous_expires_at)
+    );
+    assert!(!facts[0].payload.to_string().contains("private-value"));
+
+    fixture
+        .repository
+        .project_gateway_acknowledgement(&rejected, rejected_at + Duration::milliseconds(1))
+        .await
+        .expect("replay rejected renewal");
+    assert_eq!(renewal_facts(fixture.repository.as_ref()).await.len(), 1);
+
+    let retry_at = staged_at + Duration::seconds(1);
+    reconciler
+        .run_once(retry_at)
+        .await
+        .expect("stage renewal retry");
+    let recovered = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending retry")
+        .pop()
+        .expect("renewal retry");
+    let replacement = recovered
+        .certificate
+        .as_ref()
+        .expect("recovery replacement");
+    let replacement_expires_at = retry_at + Duration::days(60);
+    issue_certificate(
+        fixture.repository.as_ref(),
+        replacement,
+        retry_at + Duration::milliseconds(1),
+        replacement_expires_at,
+    )
+    .await;
+    apply_convergence(
+        fixture.repository.as_ref(),
+        &recovered.publication,
+        retry_at + Duration::milliseconds(2),
+    )
+    .await;
+
+    let facts = renewal_facts(fixture.repository.as_ref()).await;
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[1].event_key, "edge.gateway-certificate.renewed");
+    assert_eq!(facts[1].aggregate_id, facts[0].aggregate_id);
+    assert!(facts[1].aggregate_version > facts[0].aggregate_version);
+    let recovered_payload: GatewayCertificateRenewalChanged =
+        serde_json::from_value(facts[1].payload.clone()).expect("renewed payload");
+    assert_eq!(
+        recovered_payload.status,
+        GatewayCertificateRenewalStatus::Renewed
+    );
+    assert_eq!(recovered_payload.failure_kind, None);
+    assert_eq!(recovered_payload.active_certificate_id, replacement.id);
+    assert_eq!(
+        recovered_payload.active_certificate_expires_at,
+        canonical_timestamp(replacement_expires_at)
+    );
 }
 
 #[tokio::test]
@@ -696,6 +888,7 @@ async fn applied_snapshot_is_renewed_before_expiry_without_reissuing_its_certifi
     assert_eq!(settled.convergence_targets, 0);
     assert_eq!(settled.obsolete_certificates, 0);
     assert!(settled.failures.is_empty());
+    assert!(renewal_facts(fixture.repository.as_ref()).await.is_empty());
 }
 
 #[tokio::test]

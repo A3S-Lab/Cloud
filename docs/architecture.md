@@ -556,7 +556,7 @@ not business ownership or convenience wrappers.
 | Executions | Generic finite Runtime Task product, immutable ACL-native ExecutionTemplate revisions, cancellation lifecycle, and one typed Workflow child port | Current; finite Workflow binding implemented, retained real-provider verification pending |
 | Workloads | Service desired state, placement, replicas, claims, deployment, rollout, and autoscaling policy | Current foundation; later `H0` gates planned |
 | Fleet | Nodes, enrollment, inventory, command leases, observations, claims, and fencing | Current |
-| Edge | Domains, certificates, logical Gateway scopes, routes, snapshots, and applied projection | Current |
+| Edge | Domains, certificates, logical Gateway scopes, routes, snapshots, applied projection, and bounded typed certificate-renewal terminal facts | Current; `C0.3-N4b` implements schema-v1 renewal failure/recovery facts per logical Route and physical Gateway node over the existing certificate reconciler and transactional Outbox; retained PostgreSQL 17 evidence remains open |
 | Secrets | Immutable Secret versions, bindings, authorization, and materialization policy | Current |
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |

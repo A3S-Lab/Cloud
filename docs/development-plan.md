@@ -2381,6 +2381,26 @@ node.
   There is no arbitrary event selector, JSON-path/expression evaluator, metrics
   store, mutable incident/counter, poller, timer, scheduler, queue, second event
   rail, or configuration parser.
+- Implemented locally as `C0.3-N4b`, with retained PostgreSQL 17 evidence still
+  pending: Edge first supplies bounded certificate-renewal owner
+  facts through its existing Gateway certificate reconciler. Only an exact
+  certificate-replacement convergence with reason `Renewal` participates.
+  Terminal `Rejected` and `Unavailable` outcomes emit schema-v1
+  `edge.gateway-certificate.renewal-failed`; terminal `Applied` emits schema-v1
+  `edge.gateway-certificate.renewed`. Staging, command dispatch failure,
+  snapshot-validity renewal, revocation, projection repair, and pending work are
+  silent. The terminal mutation and per-retained-Route Outbox facts are one Edge
+  transaction, and terminal replay emits nothing again. Each fact binds one
+  exact project/environment, logical Route, physical Gateway node, monotonic
+  node-local revision, hostname/path, Workload, previous/replacement/active
+  certificate identity, active-certificate expiry, and closed public outcome;
+  provider-private failure text is excluded. Its deterministic Route-plus-node
+  subject prevents one replica from recovering another. `C0.3-N4c` may later
+  register `edge.gateway-certificate-renewal-status.v1`; a routine `renewed`
+  fact remains silent unless the same policy-covered subject previously fired.
+  This owner-fact prerequisite adds no alert policy version, certificate state,
+  incident table, poller, timer, scheduler, queue, event rail, migration,
+  configuration parser, or public surface.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   workload health, certificate expiry, backup status, node availability,
   operation latency, and resource signals only after each owning context or its

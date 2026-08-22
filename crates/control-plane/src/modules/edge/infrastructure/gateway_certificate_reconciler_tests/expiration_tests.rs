@@ -1,5 +1,7 @@
 use super::*;
-use crate::modules::edge::domain::GatewayCertificateConvergenceState;
+use crate::modules::edge::domain::{
+    GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
+};
 
 #[tokio::test]
 async fn expired_convergence_preserves_installed_state_and_retries_a_new_revision() {
@@ -124,4 +126,90 @@ async fn expired_convergence_preserves_installed_state_and_retries_a_new_revisio
         .expect("obsolete certificates")
         .is_empty());
     assert_eq!(queue.publications.lock().await.len(), 2);
+}
+
+#[tokio::test]
+async fn expired_certificate_renewal_emits_one_unavailable_fact() {
+    let fixture = Fixture::new();
+    let base = Utc::now();
+    let claim = fixture
+        .verified_claim("renewal-expiry.example.com", base)
+        .await;
+    let previous_expires_at = base + Duration::days(30);
+    let (route, previous) = fixture
+        .activate_route(
+            &claim,
+            "renewal-expiry.example.com",
+            base + Duration::seconds(1),
+            previous_expires_at,
+        )
+        .await;
+    let queue = Arc::new(RecordingGatewayQueue::default());
+    let authority = Arc::new(RecordingGatewayCertificateAuthority::default());
+    let reconciler = reconciler(&fixture, queue, authority);
+    let staged_at = base + Duration::days(24);
+    reconciler
+        .run_once(staged_at)
+        .await
+        .expect("stage expiring certificate renewal");
+    let first = fixture
+        .repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending renewal")
+        .pop()
+        .expect("renewal");
+    assert_eq!(
+        first.convergence.reason,
+        GatewayCertificateConvergenceReason::Renewal
+    );
+    assert!(first.convergence.replacement_certificate_id.is_some());
+    assert!(renewal_facts(fixture.repository.as_ref()).await.is_empty());
+
+    let expired_at = first.publication.command_not_after;
+    let report = reconciler
+        .run_once(expired_at)
+        .await
+        .expect("expire certificate renewal");
+    assert_eq!(report.unavailable_convergences, 1);
+    let facts = renewal_facts(fixture.repository.as_ref()).await;
+    assert_eq!(facts.len(), 1);
+    assert_eq!(
+        facts[0].event_key,
+        "edge.gateway-certificate.renewal-failed"
+    );
+    assert_eq!(
+        facts[0].aggregate_id,
+        renewal_subject_id(route.id, fixture.node_id)
+    );
+    let payload: GatewayCertificateRenewalChanged =
+        serde_json::from_value(facts[0].payload.clone()).expect("unavailable renewal payload");
+    assert_eq!(payload.status, GatewayCertificateRenewalStatus::Failed);
+    assert_eq!(
+        payload.failure_kind,
+        Some(GatewayCertificateRenewalFailureKind::Unavailable)
+    );
+    assert_eq!(payload.active_certificate_id, previous.id);
+    assert_eq!(
+        payload.active_certificate_expires_at,
+        canonical_timestamp(previous_expires_at)
+    );
+    assert!(!facts[0]
+        .payload
+        .to_string()
+        .contains("expired before acknowledgement"));
+
+    fixture
+        .repository
+        .mark_gateway_certificate_convergence_unavailable(
+            fixture.organization_id,
+            fixture.node_id,
+            first.publication.revision,
+            first.publication.command_id,
+            "Gateway certificate convergence command expired before acknowledgement",
+            expired_at,
+        )
+        .await
+        .expect("replay unavailable renewal");
+    assert_eq!(renewal_facts(fixture.repository.as_ref()).await.len(), 1);
 }

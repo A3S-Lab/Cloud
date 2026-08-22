@@ -1,12 +1,14 @@
 use super::State;
+use crate::modules::edge::domain::events::GatewayCertificateRenewalChanged;
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayCertificateRouteStatus, StageGatewayCertificateConvergence,
 };
 use crate::modules::edge::domain::{
     DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceState, GatewayCertificateState, GatewayPublicationState,
-    GatewayRouteVersion, GatewayScopeState, Route, RouteState,
+    GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
+    GatewayCertificateState, GatewayPublication, GatewayPublicationState, GatewayRouteVersion,
+    GatewayScopeState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, GatewayRolloutId, NodeCommandId, NodeId,
@@ -280,12 +282,17 @@ pub(super) fn mark_unavailable(
             "Gateway certificate convergence command identity diverged".into(),
         ));
     }
-    publication
+    let publication_changed = publication
         .mark_unavailable(failure, observed_at)
         .map_err(RepositoryError::Conflict)?;
-    convergence
+    let convergence_changed = convergence
         .mark_unavailable(failure, observed_at)
         .map_err(RepositoryError::Conflict)?;
+    if publication_changed != convergence_changed {
+        return Err(RepositoryError::Storage(
+            "Gateway convergence terminal projections diverged".into(),
+        ));
+    }
     let certificate = convergence
         .replacement_certificate_id
         .map(|certificate_id| {
@@ -313,6 +320,19 @@ pub(super) fn mark_unavailable(
             Ok(certificate)
         })
         .transpose()?;
+    let events = if convergence_changed
+        && convergence.reason == GatewayCertificateConvergenceReason::Renewal
+    {
+        let active_certificate = state
+            .certificates
+            .get(&convergence.previous_certificate_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("active Gateway renewal certificate disappeared".into())
+            })?;
+        renewal_events(state, &convergence, &publication, active_certificate)?
+    } else {
+        Vec::new()
+    };
     state.publications.insert(key, publication.clone());
     state
         .certificate_convergences
@@ -322,11 +342,40 @@ pub(super) fn mark_unavailable(
             .certificates
             .insert(certificate.id, certificate.clone());
     }
+    state.outbox.extend(events);
     Ok(GatewayCertificateConvergenceResult {
         convergence,
         certificate,
         publication,
     })
+}
+
+pub(super) fn renewal_events(
+    state: &State,
+    convergence: &GatewayCertificateConvergence,
+    publication: &GatewayPublication,
+    active_certificate: &GatewayCertificate,
+) -> Result<Vec<a3s_cloud_contracts::DomainEventEnvelope>, RepositoryError> {
+    let active = active_routes_for_node(state, convergence.node_id)
+        .into_iter()
+        .map(|route| (route.id, route))
+        .collect::<BTreeMap<_, _>>();
+    let routes = convergence
+        .retained_routes
+        .iter()
+        .map(|version| {
+            active.get(&version.route_id).cloned().ok_or_else(|| {
+                RepositoryError::Storage("Gateway certificate renewal Route disappeared".into())
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    GatewayCertificateRenewalChanged::envelopes(
+        convergence,
+        publication,
+        active_certificate,
+        &routes,
+    )
+    .map_err(RepositoryError::Storage)
 }
 
 pub(super) fn obsolete(
