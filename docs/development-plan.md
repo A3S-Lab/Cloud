@@ -2479,7 +2479,7 @@ node.
   This prerequisite adds no alert policy version, health table, incident state,
   counter, poller, timer, scheduler, queue, second event rail, migration,
   configuration parser, or public surface.
-- Implemented as `C0.3-N4e`: register only
+- Verified as `C0.3-N4e` on PostgreSQL 17 and NATS JetStream in CI: register only
   `workload.deployment-health.v1` in the existing compile-time alert source
   registry and preserve `cloud.notification.alert-policy.v1`. Admit only exact
   schema-v1 `workload.deployment.failed` and `workload.deployment.healthy`
@@ -2498,10 +2498,16 @@ node.
   the maintained client, CLI, and the four existing Management MCP operations
   expose the new source value without another interface. Focused domain,
   projection, malformed-payload, migration, contract, maintained-client, and
-  CLI gates pass; retained PostgreSQL 17/NATS evidence remains open. Workloads
-  retains rollout authority, and this slice adds no arbitrary selector, expression evaluator,
-  health or incident table, mutable counter, poller, timer, scheduler, queue,
-  second event rail, configuration parser, endpoint, or tool.
+  CLI gates pass. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32560830604/job/97001995638)
+  proves migration `134`, coexistence of all three closed sources,
+  unknown-source rejection, initial-health and other-Workload silence, warning
+  retained-failure and critical unavailable projection, same-Workload recovery,
+  replay deduplication, durable NATS/manual-ack delivery, and terminal ACK-only
+  replay. Workloads retains rollout authority, and this slice adds no arbitrary
+  selector, expression evaluator, health or incident table, mutable counter,
+  poller, timer, scheduler, queue, second event rail, configuration parser,
+  endpoint, or tool.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   certificate expiry, backup status, node availability,
   operation latency, and resource signals only after each owning context or its

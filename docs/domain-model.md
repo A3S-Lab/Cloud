@@ -1450,7 +1450,7 @@ activation remain notification-silent. This prerequisite adds no health table,
 incident state, mutable counter, poller, timer, scheduler, queue, second event
 rail, migration, configuration parser, or public API.
 
-#### Workload deployment-health alert source (`C0.3-N4e` implemented)
+#### Workload deployment-health alert source (`C0.3-N4e` verified)
 
 Notifications extends the existing immutable
 `cloud.notification.alert-policy.v1` source union with only
@@ -1481,11 +1481,15 @@ remain the only policy, projection, event, and delivery authorities. Migration
 `134` widens only the closed persisted source constraint, and REST/OpenAPI
 `1.50.0`, the maintained client, CLI, and four existing Management MCP
 operations expose the new enum value. Focused domain, projection,
-malformed-payload, migration, contract, maintained-client, and CLI gates pass;
-retained PostgreSQL/NATS evidence remains open. No second policy lifecycle,
-arbitrary selector, payload expression, health or incident table, counter,
-poller, timer, scheduler, queue, event rail, configuration format, endpoint,
-or tool is introduced.
+malformed-payload, migration, contract, maintained-client, and CLI gates pass.
+The [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32560830604/job/97001995638)
+proves migration `134`, all three closed sources and unknown-source rejection,
+initial-health and other-Workload silence, warning retained-failure and critical
+unavailable projection, same-Workload recovery, replay deduplication, durable
+NATS/manual-ack delivery, and terminal ACK-only replay. No second policy
+lifecycle, arbitrary selector, payload expression, health or incident table,
+counter, poller, timer, scheduler, queue, event rail, configuration format,
+endpoint, or tool is introduced.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
