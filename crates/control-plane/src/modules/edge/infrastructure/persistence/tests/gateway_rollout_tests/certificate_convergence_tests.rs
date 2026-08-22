@@ -1,5 +1,8 @@
 use super::*;
-use crate::modules::edge::domain::events::DomainClaimChanged;
+use crate::modules::edge::domain::events::{
+    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
+    GatewayCertificateRenewalStatus,
+};
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, GatewayCertificateConvergenceResult, TransitionDomainClaim,
 };
@@ -8,7 +11,7 @@ use crate::modules::edge::domain::services::{
     IGatewayCertificateAuthority, IGatewayCommandQueue,
 };
 use crate::modules::edge::infrastructure::GatewayCertificateReconciler;
-use crate::modules::edge::GatewayCertificateMaterial;
+use crate::modules::edge::{GatewayCertificateConvergenceReason, GatewayCertificateMaterial};
 use async_trait::async_trait;
 
 struct RecordingQueue;
@@ -49,7 +52,7 @@ impl IGatewayCertificateAuthority for UnexpectedCertificateAuthority {
 }
 
 #[tokio::test]
-async fn replicated_domain_revocation_releases_each_physical_owner_only_after_its_ack() {
+async fn replicated_certificate_renewal_and_domain_revocation_are_node_local() {
     let repository = Arc::new(InMemoryEdgeRepository::new());
     let now = Utc::now();
     let organization_id = OrganizationId::new();
@@ -225,11 +228,69 @@ async fn replicated_domain_revocation_releases_each_physical_owner_only_after_it
         .expect("active reused certificates")
         .is_empty());
 
+    let certificate_renew_at = now + Duration::days(29) + Duration::seconds(1);
+    let renewal_report = reconciler
+        .run_once(certificate_renew_at)
+        .await
+        .expect("run replicated certificate renewal");
+    assert_eq!(renewal_report.convergence_targets, members.len());
+    assert_eq!(renewal_report.staged_convergences, members.len());
+    assert!(renewal_report.failures.is_empty());
+    let certificate_renewals = repository
+        .pending_gateway_certificate_convergences(10)
+        .await
+        .expect("pending replicated certificate renewals");
+    assert_eq!(certificate_renewals.len(), members.len());
+    assert!(certificate_renewals.iter().all(|result| {
+        result.convergence.reason == GatewayCertificateConvergenceReason::Renewal
+            && result.convergence.retained_routes.len() == 1
+            && result.convergence.rejected_routes.is_empty()
+            && result.convergence.replacement_certificate_id.is_some()
+            && result.certificate.is_some()
+    }));
+    for renewal in &certificate_renewals {
+        super::super::issue(
+            &repository,
+            renewal
+                .certificate
+                .as_ref()
+                .expect("replicated renewal certificate"),
+            certificate_renew_at + Duration::seconds(1),
+        )
+        .await;
+        let acknowledged_at = certificate_renew_at + Duration::seconds(2);
+        repository
+            .project_gateway_acknowledgement(
+                &convergence_ack(renewal, acknowledged_at),
+                acknowledged_at,
+            )
+            .await
+            .expect("apply replicated certificate renewal");
+    }
+    let renewal_facts = repository
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| event.event_key == "edge.gateway-certificate.renewed")
+        .collect::<Vec<_>>();
+    assert_eq!(renewal_facts.len(), members.len());
+    for node_id in members {
+        let fact = renewal_facts
+            .iter()
+            .find(|event| event.aggregate_id == renewal_subject_id(route_id, node_id))
+            .expect("node-local replicated renewal fact");
+        let payload: GatewayCertificateRenewalChanged =
+            serde_json::from_value(fact.payload.clone()).expect("replicated renewal payload");
+        assert_eq!(payload.route_id, route_id);
+        assert_eq!(payload.node_id, node_id);
+        assert_eq!(payload.status, GatewayCertificateRenewalStatus::Renewed);
+    }
+
     let verified_claim_version = domain_claim.aggregate_version;
     domain_claim
         .revoke(
             "replicated ownership removed",
-            snapshot_renew_at + Duration::seconds(2),
+            certificate_renew_at + Duration::seconds(3),
         )
         .expect("revoke domain Claim");
     repository
@@ -247,7 +308,7 @@ async fn replicated_domain_revocation_releases_each_physical_owner_only_after_it
         })
         .await
         .expect("persist domain revocation");
-    let revocation_at = snapshot_renew_at + Duration::seconds(3);
+    let revocation_at = certificate_renew_at + Duration::seconds(4);
     let report = reconciler
         .run_once(revocation_at)
         .await

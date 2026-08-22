@@ -356,14 +356,16 @@ pub(super) fn renewal_events(
     publication: &GatewayPublication,
     active_certificate: &GatewayCertificate,
 ) -> Result<Vec<a3s_cloud_contracts::DomainEventEnvelope>, RepositoryError> {
+    let active = active_routes_for_node(state, convergence.node_id)
+        .into_iter()
+        .map(|route| (route.id, route))
+        .collect::<BTreeMap<_, _>>();
     let routes = convergence
         .retained_routes
         .iter()
         .map(|version| {
-            state.routes.get(&version.route_id).cloned().ok_or_else(|| {
-                RepositoryError::Storage(
-                    "Gateway certificate renewal logical Route disappeared".into(),
-                )
+            active.get(&version.route_id).cloned().ok_or_else(|| {
+                RepositoryError::Storage("Gateway certificate renewal Route disappeared".into())
             })
         })
         .collect::<Result<Vec<_>, _>>()?;

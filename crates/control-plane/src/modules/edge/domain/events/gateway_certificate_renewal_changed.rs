@@ -1,7 +1,7 @@
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, Route,
+    GatewayPublicationState, Route, RouteState,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayCertificateId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId,
@@ -110,7 +110,10 @@ impl GatewayCertificateRenewalChanged {
                 return Err("Gateway certificate renewal Route lost its domain Claim".into());
             };
             if route.id != version.route_id
+                || route.aggregate_version != version.aggregate_version
                 || route.organization_id != convergence.organization_id
+                || route.gateway_node_id != convergence.node_id
+                || route.state != RouteState::Active
                 || !active_certificate
                     .domain_claim_ids
                     .contains(&domain_claim_id)

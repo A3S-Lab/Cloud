@@ -961,10 +961,10 @@ pub(super) async fn persist_acknowledgement(
     convergence: &GatewayCertificateConvergence,
     publication: &GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
+    let events = renewal_events(transaction, convergence, publication).await?;
     if convergence.state == GatewayCertificateConvergenceState::Applied {
         persist_route_convergence(transaction, convergence).await?;
     }
-    let events = renewal_events(transaction, convergence, publication).await?;
     require_one_row(
         "Gateway certificate convergence acknowledgement",
         execute(
@@ -1032,20 +1032,29 @@ async fn renewal_events(
     .certificate()?;
     let mut routes = Vec::with_capacity(convergence.retained_routes.len());
     for version in &convergence.retained_routes {
-        let route = fetch_optional::<RouteRow, _>(
+        let route = match super::postgres_rollout_routes::route_projection(
             transaction,
-            select_from::<Routes>()
-                .select(RouteSelection)
-                .filter(Routes::id().eq(version.route_id.as_uuid()))
-                .for_update(),
+            version.route_id,
+            convergence.node_id,
         )
         .await?
-        .ok_or_else(|| {
-            PostgresPersistenceError::Invariant(
-                "Gateway certificate renewal logical Route disappeared".into(),
+        {
+            Some(route) => route,
+            None => fetch_optional::<RouteRow, _>(
+                transaction,
+                select_from::<Routes>()
+                    .select(RouteSelection)
+                    .filter(Routes::id().eq(version.route_id.as_uuid()))
+                    .for_update(),
             )
-        })?
-        .route()?;
+            .await?
+            .ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "Gateway certificate renewal Route disappeared".into(),
+                )
+            })?
+            .route()?,
+        };
         routes.push(route);
     }
     GatewayCertificateRenewalChanged::envelopes(
