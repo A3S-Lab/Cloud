@@ -38,7 +38,7 @@ const PAGE: NotificationPage = {
 const ALERT_POLICY: NotificationAlertPolicy = {
   organizationId: ORGANIZATION_ID,
   policyId: POLICY_ID,
-  source: 'workload.deployment-health.v1',
+  source: 'edge.gateway-certificate-expiry-status.v1',
   projectId: '019c0000-0000-7000-8000-000000000007',
   environmentId: '019c0000-0000-7000-8000-000000000008',
   notifyOnRecovery: true,
@@ -225,7 +225,7 @@ describe('notification commands', () => {
     });
     expect(listExitCode).toBe(0);
     expect(listOutput.stdout()).toContain('POLICY ID');
-    expect(listOutput.stdout()).toContain('workload.deployment-health.v1');
+    expect(listOutput.stdout()).toContain('edge.gateway-certificate-expiry-status.v1');
 
     const getOutput = capture();
     const getExitCode = await runCli(['notification-alert-policies', 'get', POLICY_ID], {
