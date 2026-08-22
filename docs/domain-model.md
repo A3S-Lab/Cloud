@@ -1402,7 +1402,7 @@ arbitrary event selector, JSON-path/expression evaluator, certificate
 lifecycle, incident table, counter, poller, timer, scheduler, queue, second
 event rail, or non-ACL product configuration.
 
-#### Workload rollout-health fact (`C0.3-N4d` frozen)
+#### Workload rollout-health fact (`C0.3-N4d` implemented; retained gate pending)
 
 Workloads remains the deployment and rollout authority. A desired Deployment
 emits `workload.deployment.failed` only when it first enters terminal `Failed`
@@ -1425,12 +1425,15 @@ availability impact: `unavailable` when no revision is active, or
 never carries `Deployment.failure`, a Runtime/provider message, command or
 observation body, environment value, credential, or Secret material.
 
-Cancellation requests, `Cancelled`, `Orphaned`, stop, predecessor-retirement
-completion or failure, exact transition replay, and every other intermediate
-state emit no rollout-health fact. `Orphaned` represents unresolved cleanup
-rather than a recoverable health pair; a later healthy revision must not close
-it. A future alert source may cover orphan cleanup only after Workloads or its
-existing reconciler emits an explicit bounded resolution fact.
+Additional replica materializations or failures for an already selected
+revision, cancellation requests, `Cancelled`, `Orphaned`, stop,
+predecessor-retirement completion or failure, exact transition replay, and
+every other intermediate state emit no rollout-health fact. This keeps one
+logical generation from reopening itself after its first selection. `Orphaned`
+represents unresolved cleanup rather than a recoverable health pair; a later
+healthy revision must not close it. A future alert source may cover orphan
+cleanup only after Workloads or its existing reconciler emits an explicit
+bounded resolution fact.
 
 The failed/active-selection mutation and its fact commit in one existing
 Workloads repository transaction and transactional Outbox. A lost response

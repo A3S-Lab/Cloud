@@ -157,6 +157,8 @@ mod workflow_run_process_death_support;
 mod workflow_semantic_contracts_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
+#[path = "support/workload_rollout_health.rs"]
+mod workload_rollout_health_support;
 #[path = "support/workload_writer_fences.rs"]
 mod workload_writer_fences_support;
 #[path = "support/workloads.rs"]
@@ -5276,6 +5278,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await
     .map_err(|error| format!("Workload persistence integration failed: {error}"))?;
+    workload_rollout_health_support::exercise_workload_health_facts(
+        &executor,
+        Uuid::parse_str(&organization_id)?,
+        Uuid::parse_str(&project_id)?,
+        Uuid::parse_str(&environment_id)?,
+        workload_fixture.node_id,
+    )
+    .await
+    .map_err(|error| format!("Workload health-fact integration failed: {error}"))?;
     let mut replica_set_fixture = workloads_support::exercise_replica_set(
         &executor,
         Uuid::parse_str(&organization_id)?,

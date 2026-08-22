@@ -80,6 +80,7 @@ use uuid::Uuid;
 mod box_cancellation;
 mod routed_update;
 mod support;
+mod workload_health_facts;
 
 use support::*;
 

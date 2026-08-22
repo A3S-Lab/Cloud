@@ -10,8 +10,8 @@ use crate::modules::workloads::domain::entities::{
     WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
 };
 use crate::modules::workloads::domain::events::{
-    WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired,
-    WorkloadReplicaSetReconfigured,
+    WorkloadDeploymentHealthChanged, WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested,
+    WorkloadReplicaRetired, WorkloadReplicaSetReconfigured,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
@@ -1167,12 +1167,14 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .get(&deployment_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
+        let previous_deployment = deployment.clone();
         require_current_desired_replica(&state, &deployment)?;
         let mut workload = state
             .workloads
             .get(&workload_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
+        let previous_workload = workload.clone();
         let at = if workload.active_revision_id == Some(revision_id) {
             at.max(workload.updated_at)
         } else {
@@ -1184,8 +1186,22 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         workload
             .activate(revision_id, at)
             .map_err(transition_error)?;
+        let revision = state.revisions.get(&revision_id).ok_or_else(|| {
+            RepositoryError::Storage("activated Workload revision disappeared".into())
+        })?;
+        let health_event = WorkloadDeploymentHealthChanged::healthy_envelope(
+            &previous_deployment,
+            &deployment,
+            &previous_workload,
+            &workload,
+            revision,
+        )
+        .map_err(RepositoryError::Storage)?;
         state.deployments.insert(deployment_id, deployment.clone());
         state.workloads.insert(workload_id, workload.clone());
+        if let Some(event) = health_event {
+            state.outbox.push(event);
+        }
         Ok((workload, deployment))
     }
 
@@ -1221,10 +1237,51 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         reason: String,
         at: DateTime<Utc>,
     ) -> Result<Deployment, RepositoryError> {
-        mutate(&self.state, deployment_id, expected_version, |deployment| {
-            deployment.fail(reason, at)
-        })
-        .await
+        let mut state = self.state.write().await;
+        let mut deployment = state
+            .deployments
+            .get(&deployment_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if matches!(
+            deployment.status,
+            DeploymentStatus::Failed | DeploymentStatus::Orphaned
+        ) && deployment.failure.as_ref() == Some(&reason)
+        {
+            return Ok(deployment);
+        }
+        if deployment.aggregate_version != expected_version {
+            return Err(version_conflict(
+                expected_version,
+                deployment.aggregate_version,
+            ));
+        }
+        let previous = deployment.clone();
+        deployment.fail(reason, at).map_err(transition_error)?;
+        let workload = state
+            .workloads
+            .get(&deployment.workload_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload health-fact owner disappeared".into())
+            })?;
+        let revision = state
+            .revisions
+            .get(&deployment.revision_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload health-fact revision disappeared".into())
+            })?;
+        let health_event = WorkloadDeploymentHealthChanged::failure_envelope(
+            &previous,
+            &deployment,
+            workload,
+            revision,
+        )
+        .map_err(RepositoryError::Storage)?;
+        state.deployments.insert(deployment_id, deployment.clone());
+        if let Some(event) = health_event {
+            state.outbox.push(event);
+        }
+        Ok(deployment)
     }
 
     async fn mark_cancellation_requested(

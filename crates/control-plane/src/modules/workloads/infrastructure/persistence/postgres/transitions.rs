@@ -11,6 +11,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, OciArtifact, Workload, WorkloadRevision,
 };
+use crate::modules::workloads::domain::events::WorkloadDeploymentHealthChanged;
 use crate::modules::workloads::domain::repositories::RequestDeploymentCancellationBundle;
 use a3s_orm::{update_table, PostgresExecutor, PostgresTransaction};
 use chrono::{DateTime, Utc};
@@ -170,6 +171,8 @@ pub(super) async fn mutate(
                     return Ok(deployment);
                 }
                 require_expected_version(&deployment, expected_version)?;
+                let previous_deployment = deployment.clone();
+                let emits_failure_fact = matches!(&mutation, DeploymentMutation::Fail { .. });
                 let previous_version = deployment.aggregate_version;
                 let requires_desired_replica = matches!(
                     &mutation,
@@ -187,9 +190,25 @@ pub(super) async fn mutate(
                         "deployment transition was rejected: {error}"
                     ))
                 })?;
+                let health_event = if emits_failure_fact {
+                    let (workload, revision) =
+                        health_fact_context(transaction, &deployment).await?;
+                    WorkloadDeploymentHealthChanged::failure_envelope(
+                        &previous_deployment,
+                        &deployment,
+                        &workload,
+                        &revision,
+                    )
+                    .map_err(PostgresPersistenceError::Invariant)?
+                } else {
+                    None
+                };
                 persist_deployment(transaction, &deployment, previous_version).await?;
                 if updates_placement {
                     replicas::place(transaction, &deployment).await?;
+                }
+                if let Some(event) = health_event {
+                    store_outbox(transaction, &event).await?;
                 }
                 Ok(deployment)
             })
@@ -415,6 +434,8 @@ pub(super) async fn activate(
                 };
                 let previous_deployment_version = deployment.aggregate_version;
                 let previous_workload_version = workload.aggregate_version;
+                let previous_deployment = deployment.clone();
+                let previous_workload = workload.clone();
                 deployment
                     .activate(retirement_required, at)
                     .map_err(|error| {
@@ -429,13 +450,63 @@ pub(super) async fn activate(
                             "workload activation was rejected: {error}"
                         ))
                     })?;
+                let revision = queries::revision_in_transaction(
+                    transaction,
+                    deployment.organization_id,
+                    deployment.revision_id,
+                    false,
+                )
+                .await?
+                .ok_or_else(|| {
+                    PostgresPersistenceError::Invariant(
+                        "activated Workload revision disappeared".into(),
+                    )
+                })?;
+                let health_event = WorkloadDeploymentHealthChanged::healthy_envelope(
+                    &previous_deployment,
+                    &deployment,
+                    &previous_workload,
+                    &workload,
+                    &revision,
+                )
+                .map_err(PostgresPersistenceError::Invariant)?;
                 persist_deployment(transaction, &deployment, previous_deployment_version).await?;
                 persist_workload(transaction, &workload, previous_workload_version).await?;
+                if let Some(event) = health_event {
+                    store_outbox(transaction, &event).await?;
+                }
                 Ok((workload, deployment))
             })
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn health_fact_context(
+    transaction: &PostgresTransaction,
+    deployment: &Deployment,
+) -> Result<(Workload, WorkloadRevision), PostgresPersistenceError> {
+    let workload = queries::workload_in_transaction(
+        transaction,
+        deployment.organization_id,
+        deployment.workload_id,
+        true,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("Workload health-fact owner disappeared".into())
+    })?;
+    let revision = queries::revision_in_transaction(
+        transaction,
+        deployment.organization_id,
+        deployment.revision_id,
+        false,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("Workload health-fact revision disappeared".into())
+    })?;
+    Ok((workload, revision))
 }
 
 fn require_expected_version(
