@@ -93,7 +93,10 @@ The code on `main` separates implemented mechanics from released capability:
   challenges, and mailbox/proof exclusion outside the Identity table. N5b now
   composes the asynchronous proof port with a restart-stable local HMAC key
   for development and Vault Transit HMAC SHA2-256 for production through the
-  existing `security` A3S ACL. This is still not an externally usable email
+  existing `security` A3S ACL. The
+  [successful Rust 1.88 CI job](https://github.com/A3S-Lab/Cloud/actions/runs/32586365680/job/97063223412)
+  covers the local/Vault protocol, configuration, composition, strict Clippy,
+  and full workspace gates. This is still not an externally usable email
   capability: asynchronous SMTP challenge delivery, REST/client/CLI/MCP
   surfaces, and Notifications composition remain gated.
 - **Implemented / split-process capability boundary** — dedicated Worker and

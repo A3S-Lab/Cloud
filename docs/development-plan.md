@@ -2618,8 +2618,12 @@ node.
   composition registers begin/complete/revoke and exact-owner get/list, with
   completion consuming one proof provider. Focused configuration, local
   restart/permission, mock Vault protocol/failure, proof, and composition tests
-  pass, as do formatting, strict Clippy, and the full workspace suite. No
-  migration,
+  pass, as do formatting, strict Clippy, documentation, and the full workspace
+  suite in the
+  [successful Rust 1.88 CI job](https://github.com/A3S-Lab/Cloud/actions/runs/32586365680/job/97063223412).
+  The [successful H0 PostgreSQL job](https://github.com/A3S-Lab/Cloud/actions/runs/32586365680/job/97063223218)
+  retains recipient-contact and split-role persistence coverage; no live Vault
+  conformance is claimed. No migration,
   mailbox/proof persistence, SMTP transport, public interface, notification
   subscription, provider profile, Secret record, queue, scheduler, retry
   mechanism, or second configuration language is authorized by this slice.
