@@ -1,14 +1,38 @@
 use super::AppPlatformCapabilityCategory;
 
 pub(super) const REQUIRED_REFERENCES: &[(&str, &str)] = &[
-    ("docs-index", "https://docs.dify.ai/llms.txt"),
-    ("enterprise", "https://dify.ai/pricing/dify-enterprise"),
-    ("knowledge-pipeline", "https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration"),
-    ("monitoring", "https://docs.dify.ai/en/cloud/use-dify/monitor/analysis"),
-    ("new-agent", "https://docs.dify.ai/en/self-host/use-dify/build/new-agent/overview"),
-    ("plugin-types", "https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type"),
-    ("publication", "https://docs.dify.ai/en/cloud/use-dify/publish/README"),
-    ("workflow-chatflow", "https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow"),
+    (
+        "docs-index",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/ai-application-platform-plan.md",
+    ),
+    (
+        "enterprise",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/architecture.md",
+    ),
+    (
+        "knowledge-pipeline",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0006-knowledge-authority.md",
+    ),
+    (
+        "monitoring",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/development-plan.md",
+    ),
+    (
+        "new-agent",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/workflow-evolution-plan.md",
+    ),
+    (
+        "plugin-types",
+        "https://github.com/A3S-Lab/Cloud/blob/main/ROADMAP.md",
+    ),
+    (
+        "publication",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0002-application-delivery.md",
+    ),
+    (
+        "workflow-chatflow",
+        "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0009-workflow-node-catalog-projection.md",
+    ),
 ];
 
 pub(super) const REQUIRED_CAPABILITIES: &[(&str, AppPlatformCapabilityCategory)] = &[

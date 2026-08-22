@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const WORKFLOW_NODE_PROFILES_SCHEMA: &str = "a3s.cloud.app-platform.workflow-node-profiles.v1";
 pub const WORKFLOW_NODE_PROFILES_REVISION: &str = "1.0.0";
 
-const PROFILE_SET_ID: &str = "dify-commercial-core-2026-08-13";
+const PROFILE_SET_ID: &str = "application-platform-core-2026-08-13";
 const PROFILE_SET_BLOCK: &str = "workflow_node_profiles";
 const PROFILE_BLOCK: &str = "node";
 const MAX_PROFILE_SET_BYTES: usize = 32 * 1024;
