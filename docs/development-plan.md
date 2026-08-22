@@ -2381,8 +2381,7 @@ node.
   There is no arbitrary event selector, JSON-path/expression evaluator, metrics
   store, mutable incident/counter, poller, timer, scheduler, queue, second event
   rail, or configuration parser.
-- Implemented locally as `C0.3-N4b`, with retained PostgreSQL 17 evidence still
-  pending: Edge first supplies bounded certificate-renewal owner
+- Verified as `C0.3-N4b`: Edge first supplies bounded certificate-renewal owner
   facts through its existing Gateway certificate reconciler. Only an exact
   certificate-replacement convergence with reason `Renewal` participates.
   Terminal `Rejected` and `Unavailable` outcomes emit schema-v1
@@ -2400,7 +2399,14 @@ node.
   fact remains silent unless the same policy-covered subject previously fired.
   This owner-fact prerequisite adds no alert policy version, certificate state,
   incident table, poller, timer, scheduler, queue, event rail, migration,
-  configuration parser, or public surface.
+  configuration parser, or public surface. The
+  [retained PostgreSQL 17.5 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381856)
+  proves injected-Outbox-failure rollback, exact failure/recovery facts,
+  private-error exclusion, terminal replay deduplication, node-local projection
+  identity, and non-renewal silence. The
+  [successful Rust 1.88 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32543351641/job/96957381665)
+  proves independent subjects across two Gateway replicas, while the H0 job's
+  separate durable NATS/manual-ack gate also remains green.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   workload health, certificate expiry, backup status, node availability,
   operation latency, and resource signals only after each owning context or its
