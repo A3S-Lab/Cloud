@@ -133,8 +133,13 @@ The code on `main` separates implemented mechanics from released capability:
   unavailable/resolved facts through a Worker-only bounded reconciler and
   migration `139`'s per-Node fact head. Initial observation is silent; strict
   timeout firing, heartbeat/revoke recovery, deterministic phase identity,
-  and fact-head-plus-Outbox atomicity are implemented, with the retained
-  PostgreSQL 17 provider gate pending.
+  and fact-head-plus-Outbox atomicity are verified by the
+  [retained PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32611449889/job/97125126982),
+  including production heartbeat recovery, revoke replay, disjoint concurrent
+  pages, three atomic rollback boundaries, restart silence, tenant isolation,
+  and private-data exclusion; the
+  [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32611449889)
+  passes all ten jobs.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

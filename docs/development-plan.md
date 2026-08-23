@@ -2777,7 +2777,7 @@ node.
   built-in mail server, copied contact store, direct HTTP fallback, mutable retry
   counter, sleep, timer, queue, scheduler, second event rail, or non-ACL
   configuration.
-- Implemented as `C0.3-N4h`; retained PostgreSQL 17 verification is pending:
+- Verified as `C0.3-N4h` on retained PostgreSQL 17:
   Fleet, not Notifications, owns the first explicit node-
   availability missing-data fact. Backup status remains blocked because Data has
   no executable backup lifecycle; hosted-Git backups, object seals,
@@ -2815,14 +2815,16 @@ node.
   the same Node/head order and commit atomically. Bounded
   `FOR UPDATE SKIP LOCKED` scans make concurrent Workers disjoint; transaction,
   process, or Outbox failure leaves no partial fact, while restart and replay are
-  silent. The retained PostgreSQL 17 gate must prove strict deadline equality,
-  first firing, duplicate/concurrent scan silence, heartbeat and revoke
-  resolution, second firing at the next phase, rollback, restart, tenant
-  isolation, bounded paging, typed payloads, and private-data exclusion. N4h
+  silent. The
+  [retained PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32611449889/job/97125126982)
+  proves migration `139`, strict deadline equality, initial and state-change
+  silence, seven firings, production heartbeat and replay-safe revoke
+  resolution, disjoint bounded pages, three rollback boundaries, restart
+  silence, tenant isolation, typed payloads, and private-data exclusion. N4h
   adds no Notifications source or polling, alert-policy version, REST/client/
   CLI/MCP surface, mutable retry counter, generic timer, or second authority.
   The following N4i slice may add an exact-node alert-policy-v2 target and
-  current Node Resource Grant revalidation only after this owner evidence passes.
+  current Node Resource Grant revalidation on top of this verified owner evidence.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its

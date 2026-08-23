@@ -1755,7 +1755,7 @@ or add a configurable threshold, severity rule, certificate state, incident
 table, arbitrary selector, payload expression, timer, scheduler, queue, second
 event rail, or configuration format.
 
-#### Fleet node-availability fact (`C0.3-N4h` implemented; verification pending)
+#### Fleet node-availability fact (`C0.3-N4h` verified on PostgreSQL 17)
 
 Fleet remains authoritative for Node lifecycle and heartbeat observation. The
 implemented alert prerequisite is a Worker-only bounded availability
@@ -1793,11 +1793,17 @@ Outbox fact lock in one order and commit atomically. Bounded
 `FOR UPDATE SKIP LOCKED` pages make concurrent Worker replicas disjoint;
 transaction, process, or Outbox failure leaves no partial transition. The
 cursor is exactly-once owner evidence, not a generic health/incident store or a
-Notifications projection. N4h adds no public surface, alert-policy version,
-Notifications poller, configuration field, queue, scheduler, timer authority,
-or event rail. A following N4i slice may admit the closed facts through an
-exact-node policy target and the existing Node Resource Grant evaluator only
-after retained PostgreSQL owner evidence passes.
+Notifications projection. The
+[retained PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32611449889/job/97125126982)
+proves migration `139`, silent initial/equality/state-change cases, seven
+firings, both production heartbeat and replay-safe revoke resolutions,
+disjoint two-page concurrency, three atomic rollback boundaries, restart
+silence, tenant isolation, typed bounded payloads, and private-data exclusion.
+N4h adds no public surface, alert-policy version, Notifications poller,
+configuration field, queue, scheduler, timer authority, or event rail. A
+following N4i slice may admit the closed facts through an exact-node policy
+target and the existing Node Resource Grant evaluator only on top of this
+verified owner evidence.
 
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
