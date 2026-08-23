@@ -136,7 +136,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "planned"
   }
   gate "W0.3" {
-    evidence = ["implementation:crates/control-plane/src/modules/workflow/domain/workflow_graph.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
+    evidence = ["doc:docs/decisions/app-platform/0047-descriptor-bound-transform-failure-routes.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_graph.rs", "implementation:migrations/145_workflow_transform_failure_step_projections.sql", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
     state = "in_progress"
   }
   gate "W0.4" {
