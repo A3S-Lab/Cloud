@@ -355,6 +355,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Certify Fleet node-availability owner facts
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-n4h-node-availability.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_fleet_node_availability_facts_are_strict_atomic_and_recoverable \
+              -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            grep --fixed-strings \
+              'A3S_CLOUD_C0_3_N4H_POSTGRES_CERTIFIED migration=139 initial_silence=1 strict_boundary=1 state_change_silence=1 firings=7 resolutions=2 production_heartbeat=1 revoke_replay=1 concurrent_pages=2 atomic_rollbacks=3 restart_silence=1 tenant_isolation=1 private_fields=0' \
+              "$log"
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=N4h Fleet node-availability owner-fact gate failed::$detail"
+          exit 1
+
+      - name: Upload Fleet node-availability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n4h-node-availability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-n4h-node-availability.log
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Certify the PostgreSQL-only API process composition
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

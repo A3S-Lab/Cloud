@@ -129,7 +129,12 @@ The code on `main` separates implemented mechanics from released capability:
   replay, authority-obsolete silence, and authenticated required-STARTTLS
   delivery over PostgreSQL 17, NATS JetStream, and Mailpit; the
   [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447)
-  passes all ten jobs.
+  passes all ten jobs. N4h now implements Fleet-owned schema-v1 Node
+  unavailable/resolved facts through a Worker-only bounded reconciler and
+  migration `139`'s per-Node fact head. Initial observation is silent; strict
+  timeout firing, heartbeat/revoke recovery, deterministic phase identity,
+  and fact-head-plus-Outbox atomicity are implemented, with the retained
+  PostgreSQL 17 provider gate pending.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

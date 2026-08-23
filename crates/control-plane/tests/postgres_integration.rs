@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 138;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "138";
+const CLOUD_MIGRATION_COUNT: i64 = 139;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "139";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -131,6 +131,8 @@ mod human_tasks_support;
 mod mcp_route_policies_support;
 #[path = "support/membership_invitations.rs"]
 mod membership_invitations_support;
+#[path = "support/node_availability.rs"]
+mod node_availability_support;
 #[path = "support/notifications.rs"]
 mod notifications_support;
 #[path = "support/oidc_cross_surface.rs"]
@@ -342,6 +344,19 @@ async fn postgres_outbound_smtp_attempts_are_fenced_atomic_and_authority_scoped(
     )
     .await
     .expect("PostgreSQL verified-contact SMTP attempt authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_fleet_node_availability_facts_are_strict_atomic_and_recoverable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        node_availability_support::exercise_node_availability_facts,
+    )
+    .await
+    .expect("PostgreSQL Fleet node availability owner-fact gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

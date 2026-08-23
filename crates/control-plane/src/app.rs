@@ -109,9 +109,9 @@ use crate::modules::fleet::{
     IGatewayAcknowledgementProjector, IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler,
     ListNodePoolsHandler, ListNodesHandler, LocalCertificateAuthority, LocalKeyEncryptionService,
     LogChunkObjectStore, LogCompactionWorker, LogRetentionWorker, ManageNodePoolHandler,
-    NodeControlApi, NodeControlServer, RecordGatewayAcknowledgementHandler,
-    RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
-    VaultCertificateAuthority, VaultKeyEncryptionService,
+    NodeAvailabilityReconciler, NodeControlApi, NodeControlServer,
+    RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
+    RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::forms::{
     CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
@@ -495,6 +495,7 @@ async fn build_api_worker_application(
     let plugin_registries = adapters.plugins.registries;
     let plugin_enrollment_authorizer = adapters.plugins.enrollment_authorizer;
     let nodes = adapters.fleet.nodes;
+    let node_availability = adapters.fleet.node_availability;
     let scheduling_nodes = adapters.fleet.scheduling_nodes;
     let node_pools = adapters.fleet.node_pools;
     let draining_nodes = adapters.fleet.draining_nodes;
@@ -1375,6 +1376,13 @@ async fn build_api_worker_application(
             100,
         )
         .map_err(ControlPlaneStartupError::NodeControl)?;
+        let node_availability_reconciler = NodeAvailabilityReconciler::new(
+            node_availability,
+            Duration::from_millis(config.fleet.heartbeat_interval_ms),
+            chrono_duration(config.fleet.heartbeat_timeout_ms)?,
+            100,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
         let durable_cell_writer_fences = Arc::new(DurableCellWriterFenceAdapter::new(
             Arc::clone(&durable_cell_applications),
             Arc::clone(&durable_cell_deployments),
@@ -1453,6 +1461,7 @@ async fn build_api_worker_application(
             gateway_replica_recovery_reconciler,
             gateway_rollout_rollback_reconciler,
             secret_rotation_restart_reconciler,
+            node_availability_reconciler,
             node_drain_evacuation_reconciler,
             replica_deployment_materializer,
             replica_retirement_reconciler,

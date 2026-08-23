@@ -26,6 +26,7 @@ pub(in super::super) async fn record_observations(
                         capabilities,
                         observed_at: batch.heartbeat_observed_at,
                     },
+                    received_at,
                 )
                 .await?;
                 if let Some(reference) = &batch.inventory {

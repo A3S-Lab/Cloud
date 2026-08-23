@@ -21,9 +21,12 @@ pub(super) async fn record_heartbeat(
     executor: &PostgresExecutor,
     update: NodeHeartbeatUpdate,
 ) -> Result<Node, RepositoryError> {
+    let received_at = canonical_timestamp(Utc::now());
     executor
         .transaction(move |transaction| {
-            Box::pin(async move { record_heartbeat_in_transaction(transaction, update).await })
+            Box::pin(async move {
+                record_heartbeat_in_transaction(transaction, update, received_at).await
+            })
         })
         .await
         .map_err(transaction_error)
@@ -32,8 +35,10 @@ pub(super) async fn record_heartbeat(
 pub(super) async fn record_heartbeat_in_transaction(
     transaction: &PostgresTransaction,
     mut update: NodeHeartbeatUpdate,
+    received_at: DateTime<Utc>,
 ) -> Result<Node, PostgresPersistenceError> {
     update.observed_at = canonical_timestamp(update.observed_at);
+    let received_at = canonical_timestamp(received_at);
     let mut node = queries::node_by_id(transaction, update.node_id, true)
         .await?
         .ok_or(RepositoryError::NotFound)?;
@@ -57,6 +62,7 @@ pub(super) async fn record_heartbeat_in_transaction(
             return Ok(node);
         }
     }
+    let previous = node.clone();
     let previous_version = node.aggregate_version;
     node.agent_instance_id = update.agent_instance_id;
     node.agent_version = update.agent_version;
@@ -98,6 +104,8 @@ pub(super) async fn record_heartbeat_in_transaction(
         )
         .await?,
     )?;
+    super::availability::record_heartbeat_transition(transaction, &previous, &node, received_at)
+        .await?;
     Ok(node)
 }
 
@@ -158,6 +166,8 @@ pub(super) async fn set_state(
                     .await?,
                 )?;
                 if requested_state == NodeState::Revoked {
+                    super::availability::record_revoke_transition(transaction, &node, changed_at)
+                        .await?;
                     let active = queries::active_certificate_by_node(transaction, node_id, true)
                         .await?
                         .ok_or_else(|| {

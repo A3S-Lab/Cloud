@@ -1285,6 +1285,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/138_notification_outbound_smtp.sql"
             )),
         ),
+        Migration::new(
+            "139",
+            "Fleet node availability owner facts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/139_fleet_node_availability_facts.sql"
+            )),
+        ),
     ]
 }
 
@@ -2407,6 +2415,53 @@ mod notification_outbound_smtp_migration_tests {
             assert!(
                 !canonical.contains(forbidden),
                 "migration 138 persists forbidden SMTP material through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod fleet_node_availability_fact_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/139_fleet_node_availability_facts.sql"
+    ));
+
+    #[test]
+    fn migration_139_adds_a_bounded_strict_owner_fact_cursor() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        let canonical = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+        for expected in [
+            "create table fleet_node_availability_fact_heads",
+            "state text not null check (state in ('observed', 'unavailable', 'resolved'))",
+            "'fleet.node.unavailable'",
+            "'fleet.node.availability-resolved'",
+            "resolution_reason in ('heartbeat_restored', 'node_revoked')",
+            "firing_timeout_deadline_at > firing_last_observed_at",
+            "detected_at > firing_timeout_deadline_at",
+            "where state in ('observed', 'resolved')",
+            "fleet node availability fact heads cannot be deleted",
+            "fleet node availability resolution does not advance its firing",
+            "timeout-policy drift alone cannot create an availability fact",
+            "not a generic health, incident, metric, queue, scheduler, timer, log, inventory, command, credential, provider-response, or notifications store",
+        ] {
+            assert!(canonical.contains(expected), "migration 139 is missing {expected}");
+        }
+        for forbidden in [
+            "capabilities json",
+            "inventory json",
+            "command json",
+            "metric json",
+            "provider_response",
+            "credential text",
+            "diagnostic text",
+            "create table notification",
+            "create table incident",
+            "create table queue",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 139 persists forbidden material through {forbidden}"
             );
         }
     }

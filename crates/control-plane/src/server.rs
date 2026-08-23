@@ -7,7 +7,9 @@ use crate::modules::edge::{
     McpGatewayDesiredStateReconciler, McpGatewaySnapshotReconciler,
 };
 use crate::modules::executions::ExecutionReconciler;
-use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
+use crate::modules::fleet::{
+    LogCompactionWorker, LogRetentionWorker, NodeAvailabilityReconciler, NodeControlServer,
+};
 use crate::modules::identity::A3sEventRecipientContactVerificationConsumer;
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::notifications::A3sEventOutboundNotificationConsumer;
@@ -54,6 +56,7 @@ struct WorkerProcesses {
     gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler,
     gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler,
     secret_rotation_restart_reconciler: SecretRotationRestartReconciler,
+    node_availability_reconciler: NodeAvailabilityReconciler,
     node_drain_evacuation_reconciler: NodeDrainEvacuationReconciler,
     replica_deployment_materializer: ReplicaDeploymentMaterializer,
     replica_retirement_reconciler: ReplicaRetirementReconciler,
@@ -90,6 +93,7 @@ impl ControlPlaneWorkers {
         gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler,
         gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler,
         secret_rotation_restart_reconciler: SecretRotationRestartReconciler,
+        node_availability_reconciler: NodeAvailabilityReconciler,
         node_drain_evacuation_reconciler: NodeDrainEvacuationReconciler,
         replica_deployment_materializer: ReplicaDeploymentMaterializer,
         replica_retirement_reconciler: ReplicaRetirementReconciler,
@@ -119,6 +123,7 @@ impl ControlPlaneWorkers {
                 gateway_replica_recovery_reconciler,
                 gateway_rollout_rollback_reconciler,
                 secret_rotation_restart_reconciler,
+                node_availability_reconciler,
                 node_drain_evacuation_reconciler,
                 replica_deployment_materializer,
                 replica_retirement_reconciler,
@@ -275,6 +280,7 @@ impl ControlPlane {
                 gateway_replica_recovery_reconciler,
                 gateway_rollout_rollback_reconciler,
                 secret_rotation_restart_reconciler,
+                node_availability_reconciler,
                 node_drain_evacuation_reconciler,
                 replica_deployment_materializer,
                 replica_retirement_reconciler,
@@ -373,6 +379,12 @@ impl ControlPlane {
                 "Secret rotation restart reconciler",
                 shutdown_receiver.clone(),
                 move |shutdown| secret_rotation_restart_reconciler.run(shutdown),
+            );
+            spawn_worker(
+                &mut workers,
+                "Node availability reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| node_availability_reconciler.run(shutdown),
             );
             spawn_worker(
                 &mut workers,

@@ -26,8 +26,8 @@ use crate::modules::executions::{
     PostgresExecutionTemplateRepository,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
-    INodeRepository, INodeSchedulingRepository,
+    ILogRetentionRepository, INodeAvailabilityRepository, INodeControlRepository,
+    INodeDrainRepository, INodePoolRepository, INodeRepository, INodeSchedulingRepository,
 };
 use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::forms::{IFormRepository, PostgresFormRepository};
@@ -293,6 +293,7 @@ impl PluginPostgresAdapters {
 
 pub(super) struct FleetPostgresAdapters {
     pub(super) nodes: Arc<dyn INodeRepository>,
+    pub(super) node_availability: Arc<dyn INodeAvailabilityRepository>,
     pub(super) scheduling_nodes: Arc<dyn INodeSchedulingRepository>,
     pub(super) node_pools: Arc<dyn INodePoolRepository>,
     pub(super) draining_nodes: Arc<dyn INodeDrainRepository>,
@@ -306,6 +307,7 @@ impl FleetPostgresAdapters {
         let repository = Arc::new(PostgresNodeRepository::new(executor));
         Self {
             nodes: repository.clone(),
+            node_availability: repository.clone(),
             scheduling_nodes: repository.clone(),
             node_pools: repository.clone(),
             draining_nodes: repository.clone(),

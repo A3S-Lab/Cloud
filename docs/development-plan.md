@@ -2777,7 +2777,8 @@ node.
   built-in mail server, copied contact store, direct HTTP fallback, mutable retry
   counter, sleep, timer, queue, scheduler, second event rail, or non-ACL
   configuration.
-- Frozen as `C0.3-N4h`: Fleet, not Notifications, owns the first explicit node-
+- Implemented as `C0.3-N4h`; retained PostgreSQL 17 verification is pending:
+  Fleet, not Notifications, owns the first explicit node-
   availability missing-data fact. Backup status remains blocked because Data has
   no executable backup lifecycle; hosted-Git backups, object seals,
   `data.backup.completed` documentation, logs, and silence are not substitute
@@ -2786,9 +2787,10 @@ node.
   repository port. It adds no configuration field, generic scheduler, queue, or
   event rail.
 
-  Only non-Pending, non-Revoked Nodes participate. At the strict boundary
-  `evaluated_at > last_observed_at + heartbeat_timeout`, the reconciler emits
-  schema-v1 `fleet.node.unavailable`; equality remains online. A later heartbeat
+  Only non-Pending, non-Revoked Nodes participate. The first observation
+  initializes a silent deadline anchor. On a following scan at the strict
+  boundary `evaluated_at > last_observed_at + heartbeat_timeout`, the reconciler
+  emits schema-v1 `fleet.node.unavailable`; equality remains online. A later heartbeat
   resolves an open firing only when its canonical `last_observed_at` strictly
   advances, using schema-v1 `fleet.node.availability-resolved` with closed reason
   `heartbeat_restored`. Explicit revocation resolves one open firing with reason

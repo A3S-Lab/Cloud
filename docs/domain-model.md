@@ -1755,16 +1755,17 @@ or add a configurable threshold, severity rule, certificate state, incident
 table, arbitrary selector, payload expression, timer, scheduler, queue, second
 event rail, or configuration format.
 
-#### Fleet node-availability fact (`C0.3-N4h` frozen)
+#### Fleet node-availability fact (`C0.3-N4h` implemented; verification pending)
 
 Fleet remains authoritative for Node lifecycle and heartbeat observation. The
-next admissible alert prerequisite is a Worker-only bounded availability
+implemented alert prerequisite is a Worker-only bounded availability
 reconciler over that authority. Backup status stays blocked until Data owns an
 executable backup lifecycle; a documented `data.backup.completed` key,
 hosted-Git backup, object-namespace seal, log, or absent record is not a backup
 status fact.
 
-Only non-Pending, non-Revoked Nodes participate. At the strict boundary
+Only non-Pending, non-Revoked Nodes participate. The first observation creates
+a silent deadline anchor. On a following scan at the strict boundary
 `evaluated_at > last_observed_at + heartbeat_timeout`, the existing `fleet` A3S
 ACL-selected timeout produces schema-v1 `fleet.node.unavailable`; equality is
 still online. A later heartbeat produces schema-v1

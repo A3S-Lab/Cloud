@@ -1,3 +1,4 @@
+mod availability;
 mod certificates;
 mod control;
 mod enrollment;
@@ -12,13 +13,14 @@ pub(crate) use node_pools::node_pool_placement_is_eligible;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodePoolRepository, INodeRepository,
-    INodeSchedulingRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
-    NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
-    NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
-    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogGapMetadata,
-    NodeLogRetentionTarget, NodePoolWrite, NodeResourceInventoryRecord, NodeStateChange,
-    RuntimeObservationRecord,
+    ILogRetentionRepository, INodeAvailabilityRepository, INodeControlRepository,
+    INodePoolRepository, INodeRepository, INodeSchedulingRepository,
+    NodeAvailabilityReconciliationResult, NodeCertificateRotationCompletion,
+    NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
+    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
+    NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult,
+    NodeLogGapMetadata, NodeLogRetentionTarget, NodePoolWrite, NodeResourceInventoryRecord,
+    NodeStateChange, ReconcileNodeAvailability, RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
@@ -203,6 +205,16 @@ impl INodeRepository for PostgresNodeRepository {
 
     async fn list(&self, organization_id: OrganizationId) -> Result<Vec<Node>, RepositoryError> {
         nodes::list(&self.executor, organization_id).await
+    }
+}
+
+#[async_trait]
+impl INodeAvailabilityRepository for PostgresNodeRepository {
+    async fn reconcile_node_availability(
+        &self,
+        request: ReconcileNodeAvailability,
+    ) -> Result<NodeAvailabilityReconciliationResult, RepositoryError> {
+        availability::reconcile(&self.executor, request).await
     }
 }
 

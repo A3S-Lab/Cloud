@@ -20,7 +20,8 @@ pub use application::{
 };
 pub use infrastructure::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore,
-    PostgresNodeRepository, VaultCertificateAuthority, VaultKeyEncryptionService,
+    NodeAvailabilityReconciler, PostgresNodeRepository, VaultCertificateAuthority,
+    VaultKeyEncryptionService,
 };
 pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};
 pub(crate) use presentation::{NodeControlApi, NodeLogRecordResponse};
