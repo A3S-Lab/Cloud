@@ -7,11 +7,11 @@ use a3s_cloud_control_plane::app::{
     build_application_with_source_resolver_and_oidc_provider,
 };
 use a3s_cloud_control_plane::config::{
-    ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
-    EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
-    ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig, PostgresConfig, ProcessRole,
-    RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
-    SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
+    ArtifactTransferConfig, AssetsConfig, AuditConfig, AuthConfig, BuildsConfig, DeploymentsConfig,
+    EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig,
+    NodeControlConfig, ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig,
+    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    SecurityProviderKind, ServerConfig, SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
@@ -26,8 +26,9 @@ use a3s_cloud_control_plane::modules::assets::{
 };
 use a3s_cloud_control_plane::modules::audit::{
     AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecordCursor,
-    AuditRecordFilter, ExportAuditRecords, ExportAuditRecordsHandler, IAuditExportSigner,
-    IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
+    AuditRecordFilter, AuditRetentionWorker, ExportAuditRecords, ExportAuditRecordsHandler,
+    IAuditExportSigner, IAuditRecordRepository, PostgresAuditRecordRepository,
+    VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
@@ -43,7 +44,7 @@ use a3s_cloud_control_plane::modules::security::{
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, EnvironmentId, IdempotencyRequest, OperationId, OrganizationId,
-    ProjectAttributionProfileId, ProjectId, ResourceName, RouteId,
+    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, RouteId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -67,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 143;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "143";
+const CLOUD_MIGRATION_COUNT: i64 = 144;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "144";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -750,13 +751,13 @@ async fn postgres_oidc_http_flow_survives_restart_and_commits_exactly_once() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_audit_query_and_signed_export_are_tenant_scoped_filtered_and_keyset_paginated() {
+async fn postgres_audit_query_signed_export_and_retention_are_tenant_scoped_bounded_and_atomic() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
     run_isolated_postgres(&admin_url, exercise_postgres_audit_query)
         .await
-        .expect("PostgreSQL tenant audit query and signed export gate");
+        .expect("PostgreSQL tenant audit query, signed export, and retention gate");
 }
 
 async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -1218,6 +1219,304 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         ))
         .await?;
     assert_eq!(index_count, 4);
+
+    let retention_now = chrono::DateTime::<Utc>::from_timestamp_micros(
+        (now + chrono::Duration::days(1) + chrono::Duration::hours(1)).timestamp_micros(),
+    )
+    .expect("canonical retention time");
+    database
+        .execute(
+            sql_query::<()>("update audit_retention_states set next_scan_at = ")
+                .bind(retention_now + chrono::Duration::days(10))
+                .append(", version = version + 1 where organization_id = ")
+                .bind(hidden_organization_id.as_uuid()),
+        )
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "create function fail_audit_retention_rollback_probe() returns trigger language plpgsql as $$ begin raise exception 'retention rollback probe'; end $$",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "create trigger zz_audit_retention_rollback_probe before update on audit_retention_states for each row execute function fail_audit_retention_rollback_probe()",
+        ))
+        .await?;
+
+    let retention_worker = AuditRetentionWorker::new(
+        repository.clone(),
+        Duration::from_secs(24 * 60 * 60),
+        Duration::from_secs(1),
+        1,
+        2,
+    )
+    .map_err(std::io::Error::other)?;
+    assert!(retention_worker.run_once(retention_now).await.is_err());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where organization_id = ",)
+                    .bind(organization_id.as_uuid()),
+            )
+            .await?,
+        4,
+        "a failed state update must roll back the bounded deletion"
+    );
+    let rolled_back = repository.retention_state(organization_id).await?;
+    assert_eq!(rolled_back.records_available_from, None);
+    assert_eq!(rolled_back.total_deleted_records, 0);
+    assert_eq!(rolled_back.version, 0);
+
+    database
+        .execute(sql_query::<()>(
+            "drop trigger zz_audit_retention_rollback_probe on audit_retention_states",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "drop function fail_audit_retention_rollback_probe()",
+        ))
+        .await?;
+
+    let first_sweep = retention_worker.run_once(retention_now).await?;
+    assert_eq!(first_sweep.inspected_organizations, 1);
+    assert_eq!(first_sweep.deleted_records, 2);
+    assert_eq!(first_sweep.completed_organizations, 0);
+    let first_boundary = chrono::DateTime::<Utc>::from_timestamp_micros(
+        (retention_now - chrono::Duration::days(1)).timestamp_micros(),
+    )
+    .expect("first retention boundary");
+    let first_state = repository.retention_state(organization_id).await?;
+    assert_eq!(first_state.records_available_from, Some(first_boundary));
+    assert_eq!(first_state.records_deleted_before, None);
+    assert_eq!(first_state.total_deleted_records, 2);
+    assert_eq!(first_state.version, 1);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where organization_id = ",)
+                    .bind(organization_id.as_uuid()),
+            )
+            .await?,
+        2
+    );
+    assert!(repository
+        .list_page(organization_id, &AuditRecordFilter::default(), None, 10,)
+        .await?
+        .is_empty());
+    assert!(matches!(
+        repository
+            .list_page(
+                organization_id,
+                &AuditRecordFilter {
+                    from: Some(now),
+                    ..AuditRecordFilter::default()
+                },
+                None,
+                10,
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let expired_export = export_handler
+        .execute(
+            ExportAuditRecords {
+                organization_id,
+                filter: AuditRecordFilter {
+                    from: Some(now),
+                    to: Some(now + chrono::Duration::seconds(3)),
+                    ..AuditRecordFilter::default()
+                },
+                cursor: None,
+                limit: 2,
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await?;
+    assert!(matches!(
+        expired_export,
+        Err(
+            a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError::Conflict(
+                _
+            )
+        )
+    ));
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", null, 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'not_applicable', '{}'::jsonb)"),
+        )
+        .await
+        .is_err());
+
+    let second_now = retention_now + chrono::Duration::seconds(2);
+    let second_sweep = retention_worker.run_once(second_now).await?;
+    assert_eq!(second_sweep.deleted_records, 2);
+    assert_eq!(second_sweep.completed_organizations, 1);
+    let second_boundary = chrono::DateTime::<Utc>::from_timestamp_micros(
+        (second_now - chrono::Duration::days(1)).timestamp_micros(),
+    )
+    .expect("second retention boundary");
+    let completed_state = repository.retention_state(organization_id).await?;
+    assert_eq!(
+        completed_state.records_available_from,
+        Some(second_boundary)
+    );
+    assert_eq!(
+        completed_state.records_deleted_before,
+        Some(second_boundary)
+    );
+    assert_eq!(completed_state.total_deleted_records, 4);
+    assert_eq!(completed_state.version, 2);
+
+    let relaxed_worker = AuditRetentionWorker::new(
+        repository.clone(),
+        Duration::from_secs(2 * 24 * 60 * 60),
+        Duration::from_secs(1),
+        1,
+        2,
+    )
+    .map_err(std::io::Error::other)?;
+    relaxed_worker
+        .run_once(retention_now + chrono::Duration::seconds(4))
+        .await?;
+    let relaxed_state = repository.retention_state(organization_id).await?;
+    assert_eq!(relaxed_state.records_available_from, Some(second_boundary));
+    assert_eq!(relaxed_state.records_deleted_before, Some(second_boundary));
+    assert_eq!(relaxed_state.total_deleted_records, 4);
+    assert_eq!(relaxed_state.version, 3);
+    assert_eq!(
+        relaxed_state.applied_policy_digest.as_ref(),
+        Some(relaxed_worker.policy().digest())
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where organization_id = ",)
+                    .bind(hidden_organization_id.as_uuid()),
+            )
+            .await?,
+        1,
+        "a due-tenant batch must not delete another tenant's retained history"
+    );
+
+    database
+        .execute(sql_query::<()>(
+            "create sequence audit_retention_concurrency_probe",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "create function delay_audit_retention_concurrency_probe() returns trigger language plpgsql as $$ begin perform nextval('audit_retention_concurrency_probe'); perform pg_sleep(1); return new; end $$",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "create trigger zz_audit_retention_concurrency_probe before update on audit_retention_states for each row execute function delay_audit_retention_concurrency_probe()",
+        ))
+        .await?;
+
+    let concurrent_now = retention_now + chrono::Duration::seconds(6);
+    let (left, right) = tokio::join!(
+        retention_worker.run_once(concurrent_now),
+        retention_worker.run_once(concurrent_now)
+    );
+    let left = left?;
+    let right = right?;
+    assert_eq!(
+        left.inspected_organizations + right.inspected_organizations,
+        1,
+        "concurrent workers must claim a due organization exactly once"
+    );
+    assert_eq!(left.deleted_records + right.deleted_records, 0);
+    let concurrent_state = repository.retention_state(organization_id).await?;
+    let concurrent_boundary = concurrent_state
+        .records_available_from
+        .expect("concurrent availability boundary");
+    let sequence_marker = database
+        .fetch_one_as(sql_query::<i64>(
+            "select last_value from audit_retention_concurrency_probe",
+        ))
+        .await?;
+
+    let race_now = concurrent_now + chrono::Duration::seconds(2);
+    let race_record_time = concurrent_boundary + chrono::Duration::seconds(1);
+    let race_worker = retention_worker.run_once(race_now);
+    let race_insert = async {
+        let mut worker_holds_state_lock = false;
+        for _ in 0..100 {
+            let marker = database
+                .fetch_one_as(sql_query::<i64>(
+                    "select last_value from audit_retention_concurrency_probe",
+                ))
+                .await
+                .expect("retention concurrency marker");
+            if marker > sequence_marker {
+                worker_holds_state_lock = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(
+            worker_holds_state_lock,
+            "retention worker did not acquire the state row in time"
+        );
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+                )
+                .bind(Uuid::now_v7())
+                .append(", ")
+                .bind(organization_id.as_uuid())
+                .append(", null, 'identity.membership.created', ")
+                .bind(Uuid::now_v7())
+                .append(", ")
+                .bind(race_record_time)
+                .append(", ")
+                .bind(Uuid::now_v7())
+                .append(", 'not_applicable', '{}'::jsonb)"),
+            )
+            .await
+    };
+    let (race_report, race_insert) = tokio::join!(race_worker, race_insert);
+    let race_report = race_report?;
+    assert_eq!(race_report.inspected_organizations, 1);
+    assert!(
+        race_insert.is_err(),
+        "an insert that was valid before the locked advance must fail after the new watermark commits"
+    );
+    assert!(repository
+        .list_page(organization_id, &AuditRecordFilter::default(), None, 10,)
+        .await?
+        .is_empty());
+
+    database
+        .execute(sql_query::<()>(
+            "drop trigger zz_audit_retention_concurrency_probe on audit_retention_states",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "drop function delay_audit_retention_concurrency_probe()",
+        ))
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "drop sequence audit_retention_concurrency_probe",
+        ))
+        .await?;
     Ok(())
 }
 

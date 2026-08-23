@@ -20,10 +20,11 @@ import type { CloudContext } from './context';
 import { parseUuid, requireOrganization } from './context';
 import { usageError } from './errors';
 import type { CommandResult } from './results';
-import { auditExportResult, auditRecordsResult } from './audit-results';
+import { auditExportResult, auditRecordsResult, auditRetentionResult } from './audit-results';
 
 const AUDIT_LIST_COMMAND = 'audit-records list';
 const AUDIT_EXPORT_COMMAND = 'audit-records export';
+const AUDIT_RETENTION_COMMAND = 'audit-records retention';
 
 export async function executeAuditCommand(
   command: string,
@@ -31,7 +32,11 @@ export async function executeAuditCommand(
   context: CloudContext,
   cloudApi: () => CloudApi
 ): Promise<CommandResult | undefined> {
-  if (command !== AUDIT_LIST_COMMAND && command !== AUDIT_EXPORT_COMMAND) {
+  if (
+    command !== AUDIT_LIST_COMMAND &&
+    command !== AUDIT_EXPORT_COMMAND &&
+    command !== AUDIT_RETENTION_COMMAND
+  ) {
     return undefined;
   }
   requireArity(arguments_.positionals, 2, command);
@@ -41,6 +46,10 @@ export async function executeAuditCommand(
   rejectGatewayRolloutOptions(arguments_);
   if (arguments_.stream !== undefined) {
     throw usageError('--stream is valid only for log commands');
+  }
+  if (command === AUDIT_RETENTION_COMMAND) {
+    rejectAuditQueryOptions(arguments_);
+    return auditRetentionResult(await cloudApi().getAuditRetentionStatus(requireOrganization(context)));
   }
 
   const selection = {
@@ -88,7 +97,11 @@ export async function executeAuditCommand(
 }
 
 export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedArguments): void {
-  if (command === AUDIT_LIST_COMMAND || command === AUDIT_EXPORT_COMMAND) {
+  if (
+    command === AUDIT_LIST_COMMAND ||
+    command === AUDIT_EXPORT_COMMAND ||
+    command === AUDIT_RETENTION_COMMAND
+  ) {
     return;
   }
   if (
@@ -104,6 +117,25 @@ export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedA
     throw usageError(
       '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list or export'
     );
+  }
+}
+
+function rejectAuditQueryOptions(arguments_: ParsedArguments): void {
+  if (
+    arguments_.auditActorPrincipalId !== undefined ||
+    arguments_.auditAction !== undefined ||
+    arguments_.auditAggregateId !== undefined ||
+    arguments_.auditRequestId !== undefined ||
+    arguments_.auditAttributionProfileId !== undefined ||
+    arguments_.auditAttributionStatus !== undefined ||
+    arguments_.auditFrom !== undefined ||
+    arguments_.auditTo !== undefined ||
+    arguments_.projectId !== undefined ||
+    arguments_.environmentId !== undefined ||
+    arguments_.cursor !== undefined ||
+    arguments_.limit !== undefined
+  ) {
+    throw usageError('audit-records retention does not accept record query options');
   }
 }
 

@@ -46,7 +46,9 @@ pub(crate) use postgres::{
     is_unique_violation, lock_idempotency_key, lock_node_placement, require_one_row, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
-pub(crate) use postgres_schema::{AuditRecords, InfrastructureBindings, OutboxEvents};
+pub(crate) use postgres_schema::{
+    AuditRecords, AuditRetentionStates, InfrastructureBindings, OutboxEvents,
+};
 pub(crate) use smtp::{
     PreparedSmtpSession, PreparedSmtpSubmission, SmtpCredentials, SmtpPreparationError,
     SmtpSubmissionOutcome, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,

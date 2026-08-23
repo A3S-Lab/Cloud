@@ -306,11 +306,11 @@ jobs:
           postgres_oidc_http_flow_survives_restart_and_commits_exactly_once
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify tenant audit query and signed export persistence
+      - name: Certify tenant audit query, signed export, and retention authority
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_audit_query_and_signed_export_are_tenant_scoped_filtered_and_keyset_paginated
+          postgres_audit_query_signed_export_and_retention_are_tenant_scoped_bounded_and_atomic
           -- --exact --nocapture --test-threads=1
 
       - name: Certify Gateway Route policy security timeline persistence

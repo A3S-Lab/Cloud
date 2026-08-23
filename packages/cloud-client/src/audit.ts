@@ -25,6 +25,21 @@ export interface AuditRecordPage {
   nextCursor: string | null;
 }
 
+export interface AuditRetentionStatus {
+  organizationId: string;
+  retentionMs: number;
+  policyDigest: string;
+  appliedPolicyDigest: string | null;
+  currentPolicyApplied: boolean;
+  recordsAvailableFrom: string | null;
+  recordsDeletedBefore: string | null;
+  totalDeletedRecords: number;
+  lastSweptAt: string | null;
+  lastCompletedAt: string | null;
+  nextScanAt: string;
+  version: number;
+}
+
 export interface AuditExportDsseSignature {
   keyId: string;
   signature: string;

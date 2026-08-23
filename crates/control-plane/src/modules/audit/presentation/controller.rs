@@ -1,6 +1,7 @@
-use super::dto::{AuditExportResponse, AuditRecordPageResponse};
+use super::dto::{AuditExportResponse, AuditRecordPageResponse, AuditRetentionStatusResponse};
 use crate::modules::audit::application::{
-    ExportAuditRecords, ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
+    ExportAuditRecords, GetAuditRetentionStatus, ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT,
+    MAXIMUM_AUDIT_RECORD_LIMIT,
 };
 use crate::modules::audit::domain::{AuditAttributionStatus, AuditRecordFilter};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -22,6 +23,7 @@ use uuid::Uuid;
 
 pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let export_bus = Arc::clone(&bus);
+    let retention_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_guard(OrganizationAdministratorGuard)
@@ -46,6 +48,28 @@ pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition
                         .await?
                     {
                         Ok(export) => BootResponse::json(&AuditExportResponse::from(export)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/{organization_id}/audit-records/retention",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&retention_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetAuditRetentionStatus {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                        })
+                        .await?
+                    {
+                        Ok(status) => {
+                            BootResponse::json(&AuditRetentionStatusResponse::from(status))
+                        }
                         Err(error) => application_error_response(error, request_id),
                     }
                 }

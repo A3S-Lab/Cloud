@@ -111,6 +111,7 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_operations_list',
   'a3s_cloud_audit_records_list',
   'a3s_cloud_audit_records_export',
+  'a3s_cloud_audit_retention_get',
   'a3s_cloud_security_gateway_route_policy_timeline_list',
   'a3s_cloud_notifications_list',
   'a3s_cloud_notifications_get',
@@ -198,6 +199,7 @@ export const READ_ONLY_TOOLS = [
   'a3s_cloud_operations_list',
   'a3s_cloud_audit_records_list',
   'a3s_cloud_audit_records_export',
+  'a3s_cloud_audit_retention_get',
   'a3s_cloud_security_gateway_route_policy_timeline_list',
   'a3s_cloud_notifications_list',
   'a3s_cloud_notifications_get',
@@ -292,7 +294,7 @@ export function authenticatedHeaders(token: string, idempotencyKey: string): Rec
 
 export async function restEnvelope(
   url: string,
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   headers: Record<string, string>,
   body: JsonObject | string | undefined,
   expectedStatus: number,

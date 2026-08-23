@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { AuditExport, AuditRecordPage, CloudFetch } from '@a3s/cloud-client';
+import type { AuditExport, AuditRecordPage, AuditRetentionStatus, CloudFetch } from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
@@ -41,6 +41,21 @@ const SIGNED_EXPORT: AuditExport = {
     keyId: 'a'.repeat(64),
     publicKey: 'cHVibGljLWtleQ==',
   },
+};
+
+const RETENTION_STATUS: AuditRetentionStatus = {
+  organizationId: ORGANIZATION_ID,
+  retentionMs: 7_776_000_000,
+  policyDigest: `sha256:${'a'.repeat(64)}`,
+  appliedPolicyDigest: `sha256:${'a'.repeat(64)}`,
+  currentPolicyApplied: true,
+  recordsAvailableFrom: '2026-05-25T12:00:00Z',
+  recordsDeletedBefore: '2026-05-25T12:00:00Z',
+  totalDeletedRecords: 42,
+  lastSweptAt: '2026-08-23T12:00:00Z',
+  lastCompletedAt: '2026-08-23T12:00:00Z',
+  nextScanAt: '2026-08-23T12:01:00Z',
+  version: 7,
 };
 
 function envelope(data: unknown): Response {
@@ -146,6 +161,31 @@ describe('audit-records commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('shows the enforced retention policy and monotonic organization watermarks', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(['audit-records', 'retention'], {
+      ...output.runtime,
+      environment: {
+        A3S_CLOUD_TOKEN: 'token',
+        A3S_CLOUD_ORGANIZATION_ID: ORGANIZATION_ID,
+      },
+      fetch: async (...args) => {
+        calls.push(args);
+        return envelope(RETENTION_STATUS);
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(String(calls[0]?.[0])).toContain(
+      `/api/v1/organizations/${ORGANIZATION_ID}/audit-records/retention`
+    );
+    expect(output.stdout()).toContain('"retentionMs": 7776000000');
+    expect(output.stdout()).toContain('"recordsAvailableFrom": "2026-05-25T12:00:00Z"');
+    expect(output.stdout()).toContain('"totalDeletedRecords": 42');
+    expect(output.stderr()).toBe('');
+  });
+
   it.each([
     [['audit-records', 'list', '--limit=0'], 'audit record limit must be between 1 and 200'],
     [['audit-records', 'list', '--cursor='], 'option --cursor requires a value'],
@@ -159,6 +199,10 @@ describe('audit-records commands', () => {
     [
       ['audit-records', 'export', '--from=2026-07-01T00:00:00Z', '--to=2026-08-02T00:00:00Z'],
       'audit export window must not exceed 31 days',
+    ],
+    [
+      ['audit-records', 'retention', '--limit=1'],
+      'audit-records retention does not accept record query options',
     ],
     [['organizations', 'list', `--request-id=${REQUEST_ID}`], '--actor-principal, --action, --aggregate'],
   ])('rejects invalid or misplaced options before transport %#', async (argv, message) => {

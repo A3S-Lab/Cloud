@@ -213,6 +213,8 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_recipient_contacts_get` | Principal self-query | `cloud:read`; denied and missing contact IDs share one `404` contract |
 | `a3s_cloud_recipient_contacts_revoke` | Principal self-command | `identity:write`; exact Principal, positive expected version, and idempotency required |
 | `a3s_cloud_audit_records_list` | Administrator query | `cloud:read` plus organization administrator role |
+| `a3s_cloud_audit_records_export` | Administrator query | `cloud:read` plus organization administrator role; explicit bounded time window required |
+| `a3s_cloud_audit_retention_get` | Administrator query | `cloud:read` plus organization administrator role; empty arguments and read-only status only |
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
 | `a3s_cloud_notifications_read` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
@@ -372,6 +374,25 @@ job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306596)
 proves the exact 134/74 catalogs, annotations, permissions, strict arguments,
 and real shared-handler dispatch. The [complete PA2b main CI
 run](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087) is successful.
+
+## Audit retention authority
+
+REST contract `1.58.0` adds the read-only
+`a3s_cloud_audit_retention_get` tool. It accepts no arguments and dispatches
+the same owner/admin `GetAuditRetentionStatus` query as REST, the maintained
+client, and CLI. The result exposes only the organization, configured duration
+and semantic policy digest, applied digest, whether the current policy has run,
+inclusive logical-availability watermark, exclusive physical-deletion
+boundary, aggregate deleted count, last sweep/completion, next scan, and
+monotonic version.
+
+The tool cannot change retention. The sole top-level `audit` A3S ACL remains
+the deployment policy authority, migration `144` remains the per-organization
+state authority, and the Worker remains the only cleanup path. Strict empty
+arguments, the same administrator guard, and `cloud:read` take the exact
+catalogs to 135 administrator and 75 read-only tools. No audit copy, persisted
+export, object namespace, queue, Connector, SIEM push, or commercial authority
+is added.
 
 ## Recipient-contact self-service
 
@@ -805,14 +826,15 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 134-tool administrator and 74-tool
+current focused source runner requires exact 135-tool administrator and 75-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
 record; returns the same `404` business-error contract for foreign and missing
 Projects; and queries the shared tenant audit history with the read-only
 administrator token while proving the response omits internal `details`. It
-also exposes the owner/admin-only Gateway MCP Route policy security timeline as
+also proves REST/MCP equality for the read-only audit-retention status and
+exposes the owner/admin-only Gateway MCP Route policy security timeline as
 one `cloud:read` operation over the shared query handler. The [successful
 PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528129)
 retains its typed correlation, gap, ambiguity, tenancy, pagination, and

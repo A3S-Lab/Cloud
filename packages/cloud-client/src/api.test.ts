@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.57.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.58.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2918,6 +2918,33 @@ describe('CloudApi', () => {
         'action=identity.membership.created&from=2026-08-01T00%3A00%3A00Z&' +
         'to=2026-08-13T00%3A00%3A00Z&limit=25'
     );
+  });
+
+  it('gets the organization audit retention authority without query ambiguity', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({
+        organizationId: '019c0000-0000-7000-8000-000000000031',
+        retentionMs: 7_776_000_000,
+        policyDigest: `sha256:${'a'.repeat(64)}`,
+        appliedPolicyDigest: null,
+        currentPolicyApplied: false,
+        recordsAvailableFrom: null,
+        recordsDeletedBefore: null,
+        totalDeletedRecords: 0,
+        lastSweptAt: null,
+        lastCompletedAt: null,
+        nextScanAt: '1970-01-01T00:00:00Z',
+        version: 0,
+      });
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const status = await api.getAuditRetentionStatus('organization / one');
+    expect(calls[0]?.[0]).toBe('/api/v1/organizations/organization%20%2F%20one/audit-records/retention');
+    expect(calls[0]?.[1]).toEqual(expect.objectContaining({ method: 'GET' }));
+    expect(status.retentionMs).toBe(7_776_000_000);
+    expect(status.currentPolicyApplied).toBe(false);
   });
 
   it('rejects invalid audit query values before transport', () => {

@@ -62,3 +62,17 @@ orm_table! {
         details: serde_json::Value => "details",
     }
 }
+
+orm_table! {
+    pub(crate) struct AuditRetentionStates => "audit_retention_states" {
+        organization_id: Uuid => "organization_id",
+        records_available_from: Option<DateTime<Utc>> => "records_available_from",
+        records_deleted_before: Option<DateTime<Utc>> => "records_deleted_before",
+        applied_policy_digest: Option<String> => "applied_policy_digest",
+        total_deleted_records: u64 => "total_deleted_records",
+        last_swept_at: Option<DateTime<Utc>> => "last_swept_at",
+        last_completed_at: Option<DateTime<Utc>> => "last_completed_at",
+        next_scan_at: DateTime<Utc> => "next_scan_at",
+        version: u64 => "version",
+    }
+}

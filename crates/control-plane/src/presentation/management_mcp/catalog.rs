@@ -116,6 +116,7 @@ pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const AUDIT_RECORDS_EXPORT: &str = "a3s_cloud_audit_records_export";
+pub const AUDIT_RETENTION_GET: &str = "a3s_cloud_audit_retention_get";
 pub const SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST: &str =
     "a3s_cloud_security_gateway_route_policy_timeline_list";
 pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
@@ -292,6 +293,7 @@ pub enum ManagementTool {
     OperationsList,
     AuditRecordsList,
     AuditRecordsExport,
+    AuditRetentionGet,
     SecurityGatewayRoutePolicyTimelineList,
     NotificationsList,
     NotificationsGet,
@@ -336,7 +338,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 134] = [
+    const ALL: [Self; 135] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -444,6 +446,7 @@ impl ManagementTool {
         Self::OperationsList,
         Self::AuditRecordsList,
         Self::AuditRecordsExport,
+        Self::AuditRetentionGet,
         Self::SecurityGatewayRoutePolicyTimelineList,
         Self::NotificationsList,
         Self::NotificationsGet,
@@ -606,6 +609,7 @@ impl ManagementTool {
             Self::OperationsList => OPERATIONS_LIST,
             Self::AuditRecordsList => AUDIT_RECORDS_LIST,
             Self::AuditRecordsExport => AUDIT_RECORDS_EXPORT,
+            Self::AuditRetentionGet => AUDIT_RETENTION_GET,
             Self::SecurityGatewayRoutePolicyTimelineList => {
                 SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST
             }
@@ -703,6 +707,7 @@ impl ManagementTool {
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
             | Self::AuditRecordsExport
+            | Self::AuditRetentionGet
             | Self::SecurityGatewayRoutePolicyTimelineList
             | Self::NotificationsList
             | Self::NotificationsGet
@@ -797,6 +802,7 @@ impl ManagementTool {
                 | Self::MembershipInvitationsRevoke
                 | Self::AuditRecordsList
                 | Self::AuditRecordsExport
+                | Self::AuditRetentionGet
                 | Self::SecurityGatewayRoutePolicyTimelineList
                 | Self::ResourceGrantsList
                 | Self::ResourceGrantsGet
@@ -1596,6 +1602,12 @@ impl ManagementTool {
                 "Export a signed audit page",
                 "Export one bounded, redacted audit page in a verifiable DSSE envelope for an explicit time window of at most 31 days.",
                 audit_record_export_schema(),
+                true,
+            ),
+            Self::AuditRetentionGet => (
+                "Get audit retention status",
+                "Get the configured semantic audit retention policy and durable per-organization availability and physical-deletion watermarks.",
+                empty_schema(),
                 true,
             ),
             Self::SecurityGatewayRoutePolicyTimelineList => (

@@ -1,5 +1,5 @@
 #[test]
-fn audit_query_reuses_the_shared_records_through_typed_a3s_orm() {
+fn audit_query_and_retention_reuse_shared_authority_through_typed_a3s_orm() {
     let source = include_str!("postgres.rs");
     for forbidden in [
         "AuditRecords::details()",
@@ -17,5 +17,12 @@ fn audit_query_reuses_the_shared_records_through_typed_a3s_orm() {
         );
     }
     assert!(source.contains("select_from::<AuditRecords>()"));
+    assert!(source.contains("select_from::<AuditRetentionStates>()"));
+    assert!(source.contains("delete_from::<AuditRecords>()"));
+    assert!(source.contains("update_table::<AuditRetentionStates>()"));
+    assert!(source.contains(".for_share()"));
+    assert!(source.contains(".for_update()"));
+    assert!(source.contains(".skip_locked()"));
+    assert!(source.contains(".in_subquery(candidates)"));
     assert!(!source.contains("insert_into"));
 }
