@@ -784,7 +784,12 @@ PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/
 retains its typed correlation, gap, ambiguity, tenancy, pagination, and
 redaction boundaries, while the [successful Management MCP
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528171)
-retains the exact catalog and annotations. The scenario also creates an
+retains the exact catalog and annotations. The [PA2a PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176670880)
+proves all four request-time attribution states, immutable historical profile
+binding, reference rejection, exact filters, pagination, and redaction; the
+[PA2a Management MCP job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176671002)
+retains the 133/73 catalogs, and the [complete PA2a CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460)
+passes all ten jobs. The scenario also creates an
 Ontology through REST, replays it through
 MCP, exercises all seven Ontology tools with a read-only token where
 applicable, rejects a breaking revision without its target migration rule,

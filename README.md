@@ -61,7 +61,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.54.0`](openapi/v1.json), maintained
+  [OpenAPI `1.56.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) reuse the same application commands
   and queries within their surface-specific privacy boundaries. The contract
@@ -100,6 +100,18 @@ The code on `main` separates implemented mechanics from released capability:
   firing, opt-in recovery, stale/initial/replay silence, durable delivery, and
   terminal replay; the [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469)
   passes all ten jobs, including current-grant and REST/MCP cross-surface gates.
+  Contract `1.55.0` adds one bounded owner/admin Gateway MCP Route policy
+  investigation timeline over typed Edge Outbox facts and redacted audit
+  correlation. Contract `1.56.0` adds immutable request-time Project
+  attribution to every applicable new audit fact through migration `142`,
+  exposes exact Project, Environment, attribution-profile, and closed-status
+  filters, and keeps private audit details and profile contents outside REST,
+  the maintained client, CLI, and the existing read-only Management MCP tool.
+  The [successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176670880)
+  verifies migration `142`, all four closed statuses, occurrence-time profile
+  stability, tenant/reference rejection, filtering, pagination, and redaction;
+  the [complete PA2a CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460)
+  passes all ten jobs.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal
