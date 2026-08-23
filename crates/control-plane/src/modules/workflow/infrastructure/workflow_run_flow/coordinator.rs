@@ -19,12 +19,14 @@ use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowApplicationAnswerHookMetadata,
     WorkflowApplicationAnswerResumePayload, WorkflowApplicationVariableSnapshotHookMetadata,
-    WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
-    WorkflowApplicationVariableWriteResumePayload, WorkflowExecutionChildReferenceMetadata,
-    WorkflowExecutionHookMetadata, WorkflowExecutionOutcome, WorkflowExecutionResumePayload,
-    WorkflowExecutionStepOutput, WorkflowRunCoordinationError, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_RESULT_SCHEMA,
+    WorkflowApplicationVariableSnapshotResumePayload,
+    WorkflowApplicationVariableWriteFailureResumePayload,
+    WorkflowApplicationVariableWriteHookMetadata, WorkflowApplicationVariableWriteResumePayload,
+    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
+    WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionStepOutput,
+    WorkflowRunCoordinationError, WorkflowRunRecord, WorkflowRunStatus,
+    WorkflowStepFailureClassification, WorkflowStepKind, WorkflowStepProjectionStatus,
+    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -415,12 +417,43 @@ impl FlowWorkflowRunCoordinator {
                 request
                     .validate()
                     .map_err(WorkflowRunCoordinationError::Unavailable)?;
-                let write = port
-                    .advance_conversation_variables(&request)
-                    .await
-                    .map_err(|error| {
-                        application_effect_unavailable("advance conversation variables", error)
-                    })?;
+                let write = match port.advance_conversation_variables(&request).await {
+                    Ok(write) => write,
+                    Err(error) => {
+                        let classification = application_variable_failure_classification(
+                            &record.run.execution_input,
+                            &metadata.step_id,
+                            &error,
+                        );
+                        let Some(classification) = classification else {
+                            return Err(application_effect_unavailable(
+                                "advance conversation variables",
+                                error,
+                            ));
+                        };
+                        let payload = WorkflowApplicationVariableWriteFailureResumePayload::new(
+                            metadata,
+                            classification,
+                        )
+                        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                        return self
+                            .engine
+                            .resume_hook(
+                                &record.run.flow_run_id,
+                                &metadata.flow_hook_id(),
+                                serde_json::to_value(payload).map_err(|error| {
+                                    WorkflowRunCoordinationError::Unavailable(error.to_string())
+                                })?,
+                            )
+                            .await
+                            .map_err(|error| {
+                                unavailable_at(
+                                    "resume Application variable write failure hook",
+                                    error,
+                                )
+                            });
+                    }
+                };
                 let revision = &write.value;
                 revision
                     .validate()
@@ -929,6 +962,35 @@ fn permanent_dispatch_error(error: &ApplicationError) -> bool {
             | ApplicationError::Conflict(_)
             | ApplicationError::Forbidden(_)
     )
+}
+
+fn application_variable_failure_classification(
+    input: &crate::modules::workflow::domain::WorkflowRunInput,
+    step_id: &str,
+    error: &ApplicationError,
+) -> Option<WorkflowStepFailureClassification> {
+    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V14
+        || !input
+            .plan
+            .edges
+            .iter()
+            .any(|edge| edge.source == step_id && edge.source_handle.as_deref() == Some("error"))
+    {
+        return None;
+    }
+    match error {
+        ApplicationError::Invalid(_) => Some(WorkflowStepFailureClassification::ApplicationInvalid),
+        ApplicationError::NotFound(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationNotFound)
+        }
+        ApplicationError::Conflict(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationConflict)
+        }
+        ApplicationError::Forbidden(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationForbidden)
+        }
+        ApplicationError::Unavailable(_) | ApplicationError::Internal(_) => None,
+    }
 }
 
 fn rejection_reason(error: &ApplicationError) -> String {

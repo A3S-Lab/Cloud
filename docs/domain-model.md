@@ -906,7 +906,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-`APP0.2-C1` through `C13` freezes and persists the next
+`APP0.2-C1` through `C14` freezes and persists the next
 Applications-owned records and exposes only project-member management
 admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
@@ -1001,6 +1001,16 @@ remain distinct; nested outer execution paths prevent collisions. Children do
 not emit Application final-output or terminal lifecycle, and Application-
 scoped variables remain prohibited in frames. Historic v1-v12 inputs and
 semantic-free child compilation retain their prior behavior.
+
+C14 admits a failure edge only for the exact Application conversation-variable
+assignment descriptor. That graph emits Plan v6 and Application-composed Run
+v14. The existing write Hook carries only authority plus an Applications-owned
+closed classification: `Invalid`, `NotFound`, `Conflict`, or `Forbidden`.
+Flow records redacted `cloud.workflow.step-failure.v3`, selects the declared
+`error` handle, and keeps the source Service failed while its reachable branch
+may complete the parent. `Unavailable` and `Internal` keep the Hook unresolved
+for the existing idempotent retry path. Raw owner errors and variable values do
+not enter failure evidence; historic v1-v13 behavior is unchanged.
 
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse
@@ -2977,6 +2987,11 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   Connector hook/history; the Service projection remains failed while its
   selected ordinary DAG branch may complete the parent. Flow remains the sole
   scheduler and C6 remains the sole provider-attempt authority.
+  An exact Application conversation-variable Service error edge emits Plan
+  v6/Run v14. Only deterministic terminal owner rejections derive redacted
+  `cloud.workflow.step-failure.v3`; transient or internal errors remain
+  unresolved, and the Applications repository remains the sole variable/CAS
+  authority.
 - An immutable Workflow variable contract declares invocation, node-output,
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
@@ -3541,12 +3556,16 @@ the same terminal observation into one canonical policy v3 value and retains
 exact descriptor error edge emits `cloud.workflow.plan.v5`; immutable Run v9
 preserves v8 typed success projection and selects that edge only for a bounded
 terminal provider classification. Plans v1-v4 and Run inputs v1-v8 remain
-byte-stable. Migration `122` adds nullable default-output evidence to the
+byte-stable. An exact Application conversation-variable descriptor error edge
+emits `cloud.workflow.plan.v6`; immutable Run v14 maps only deterministic
+terminal owner rejections to redacted failure v3 and the declared edge. Plans
+v1-v5 and Run inputs v1-v13 retain their exact behavior. Migration `122` adds nullable default-output evidence to the
 existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
-still proves the exact ConnectorRevision binding and declared handle.
-Applications-owned variable access remains fail-closed rather than inferring a
-missing owner adapter.
+still proves the exact descriptor binding and declared handle. Descriptor-bound
+Application variable snapshot/CAS access and deterministic failure routing are
+implemented; unsupported, transient, or drifted owner access remains
+fail-closed.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

@@ -1,5 +1,133 @@
 use super::*;
 
+#[tokio::test]
+async fn v14_application_variable_owner_conflict_selects_the_error_route_and_replays(
+) -> Result<(), FlowError> {
+    let mut input = routed_application_variable_workflow_run_input().map_err(FlowError::Runtime)?;
+    input.requested_at = chrono::Utc::now();
+    input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+    input.validate().map_err(FlowError::Runtime)?;
+    let run_id = input.workflow_run_id.to_string();
+    let spec = WorkflowSpec::rust_embedded(
+        WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION_V14,
+        "a3s-cloud",
+        "main",
+    );
+    let encoded = serde_json::to_value(&input)?;
+    let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
+    engine
+        .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
+        .await?;
+
+    let waiting_snapshot = engine.snapshot(&run_id).await?;
+    let snapshot_hook = waiting_snapshot
+        .hooks
+        .values()
+        .find(|hook| {
+            hook.status == HookStatus::Active
+                && hook
+                    .hook_id
+                    .starts_with("workflow-application-variable-snapshot:")
+        })
+        .expect("Application variable snapshot hook");
+    let snapshot_metadata = serde_json::from_value::<
+        WorkflowApplicationVariableSnapshotHookMetadata,
+    >(snapshot_hook.metadata.clone())?;
+    let values = json!({"locale": "private-locale-sentinel"});
+    let values_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(
+            &values,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow Application variable failure test snapshot",
+        )
+        .map_err(FlowError::Runtime)?,
+    );
+    let snapshot_payload = WorkflowApplicationVariableSnapshotResumePayload::new(
+        &snapshot_metadata,
+        ApplicationId::new(),
+        ApplicationReleaseId::new(),
+        Sha256Digest::parse(digest('a')).map_err(FlowError::Runtime)?,
+        ApplicationSessionId::new(),
+        ApplicationInvocationId::new(),
+        ConversationVariableRevisionId::new(),
+        1,
+        values_digest,
+        values,
+    )
+    .map_err(FlowError::Runtime)?;
+    engine
+        .resume_hook(
+            &run_id,
+            &snapshot_metadata.flow_hook_id(),
+            serde_json::to_value(snapshot_payload)?,
+        )
+        .await?;
+
+    let waiting_write = engine.snapshot(&run_id).await?;
+    let write_hook = waiting_write
+        .hooks
+        .values()
+        .find(|hook| {
+            hook.status == HookStatus::Active
+                && hook
+                    .hook_id
+                    .starts_with("workflow-application-variable-write:")
+        })
+        .expect("Application variable write hook");
+    let write_metadata = serde_json::from_value::<WorkflowApplicationVariableWriteHookMetadata>(
+        write_hook.metadata.clone(),
+    )?;
+    let failure_payload = WorkflowApplicationVariableWriteFailureResumePayload::new(
+        &write_metadata,
+        WorkflowStepFailureClassification::ApplicationConflict,
+    )
+    .map_err(FlowError::Runtime)?;
+    engine
+        .resume_hook(
+            &run_id,
+            &write_metadata.flow_hook_id(),
+            serde_json::to_value(failure_payload)?,
+        )
+        .await?;
+
+    let completed = engine.snapshot(&run_id).await?;
+    assert_eq!(
+        completed.status,
+        WorkflowRunStatus::Completed,
+        "{completed:#?}"
+    );
+    assert_eq!(completed.output, Some(json!({"result": input.goal_input})));
+    let output = serde_json::to_string(&completed.output)?;
+    assert!(!output.contains("private-locale-sentinel"));
+
+    let resolved = input.resolved_steps().map_err(FlowError::Runtime)?;
+    let projected =
+        super::super::projection::completed_workflow_steps(&input, &resolved, &completed)
+            .map_err(FlowError::Runtime)?;
+    let assignment = projected
+        .completed
+        .get(TEST_APPLICATION_VARIABLE_STEP_ID)
+        .expect("routed Application variable result");
+    assert_eq!(assignment.selected_handle.as_deref(), Some("error"));
+    let failure = serde_json::to_string(&assignment.output)?;
+    assert!(failure.contains("application_conflict"));
+    assert!(failure.contains("conflicted with current state"));
+    assert!(!failure.contains("private-locale-sentinel"));
+    assert_eq!(
+        projected
+            .application_failures
+            .get(TEST_APPLICATION_VARIABLE_STEP_ID)
+            .map(String::as_str),
+        Some("Application variable assignment conflicted with current state")
+    );
+
+    let history_length = engine.history(&run_id).await?.len();
+    engine.start_with_id(run_id.clone(), spec, encoded).await?;
+    assert_eq!(engine.history(&run_id).await?.len(), history_length);
+    Ok(())
+}
+
 #[test]
 fn v5_application_variable_projection_reuses_exact_snapshot_and_write_authority() {
     let mut input =

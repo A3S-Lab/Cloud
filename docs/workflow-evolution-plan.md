@@ -158,6 +158,13 @@ WorkflowRun input/runtime/Flow v9; a closed terminal provider classification
 becomes `cloud.workflow.step-failure.v2` data on the ordinary DAG while the
 Service source projection remains failed. Plans v1-v4 and Run inputs v1-v8
 retain their exact bytes and replay behavior.
+An exact Application conversation-variable assignment descriptor error edge
+emits Plan v6 and immutable WorkflowRun input/runtime/Flow v14. Applications
+`Invalid`, `NotFound`, `Conflict`, and `Forbidden` write results become
+redacted `cloud.workflow.step-failure.v3` data on the ordinary DAG while the
+Service source projection remains failed. `Unavailable` and `Internal` leave
+the write Hook unresolved for the existing idempotent retry path. Plans v1-v5
+and Run inputs v1-v13 retain their exact bytes and replay behavior.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -276,9 +283,10 @@ region reducers, and Flow-backed child lifecycle are implemented. Runtime v3
 uses one exact hook per ordinal and deterministic ordinary child WorkflowRun,
 links its Flow identity, resumes digest-bound results, and propagates parent
 cancellation/timeout before termination. Iteration is initially sequential
-under its declared concurrency ceiling. Applications-owned variables,
-Answer and remaining non-Execution error semantics, business-service and remaining
-Agent/MCP/model/Tool capability dispatch,
+under its declared concurrency ceiling. Descriptor-bound Application Answer,
+conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
+implemented through Run v11-v14. Remaining non-Execution error semantics,
+business-service and remaining Agent/MCP/model/Tool capability dispatch,
 compensation, expanded cross-surface evidence, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
@@ -296,6 +304,12 @@ admits the already wired Service projection kind and its failed selected-handle
 shape; immutable WorkflowRun plan validation still proves the exact
 ConnectorRevision binding and declared handle. No new table, log, queue,
 scheduler, retry engine, or Flow mechanism is introduced.
+Runtime v14 admits only an Application-composed Plan v6 with the exact
+`application.conversation-variable-assign` descriptor and error edge. It maps
+only deterministic terminal owner rejections to failure v3 and the declared
+handle; transient or internal owner errors stay unresolved. The existing
+migration `123` already admits the failed Service projection shape, so this
+slice adds no migration or public OpenAPI schema.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -317,12 +331,14 @@ explicit exports; the region reducer restores observations to contiguous
 ordinal order, applies Iteration failure policy, requires Loop termination,
 and folds updates and exports in ordinal order. Authorized inspection reads
 parent and reduced composite materialization from immutable input and Flow
-history. Runtime still fails closed for Applications-owned reads/writes. Typed
+history. Descriptor-bound Application reads/writes are implemented through Run
+v12 and their deterministic write-failure branches through Plan v6/Run v14;
+unsupported or transient owner observations still fail closed. Typed
 finite-Execution failure branches are implemented through Plan v3/Run v4 and
 exact default-output fallback through Plan v4/Run v7. Descriptor-bound
 Connector failure branches are implemented through Plan v5/Run v9. Application
 composite Answer frames use Run v13 root/child authority and stable zero-based
-ordinals; remaining non-Execution error branches remain unimplemented parts of
+ordinals; other non-Execution error branches remain unimplemented parts of
 `W0.3`.
 
 ### 4.3 Compiler rules

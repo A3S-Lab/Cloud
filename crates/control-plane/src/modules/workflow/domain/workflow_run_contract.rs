@@ -8,7 +8,7 @@ use super::{
     WorkflowVariableContract, WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
     WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
-    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
     WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
@@ -60,6 +60,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V12: &str = "12";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V13: &str = "cloud.workflow-run.input.v13";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13: &str = "cloud.workflow-run-runtime.v13";
 pub const WORKFLOW_RUN_FLOW_VERSION_V13: &str = "13";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V14: &str = "cloud.workflow-run.input.v14";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14: &str = "cloud.workflow-run-runtime.v14";
+pub const WORKFLOW_RUN_FLOW_VERSION_V14: &str = "14";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -217,6 +220,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V11
                 | WORKFLOW_RUN_INPUT_SCHEMA_V12
                 | WORKFLOW_RUN_INPUT_SCHEMA_V13
+                | WORKFLOW_RUN_INPUT_SCHEMA_V14
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -680,6 +684,87 @@ impl WorkflowRunInput {
                         )?;
                         application_projection.validate_variable_contract(&self.plan, &contract)?;
                     }
+                    let regions = resolved_regions.restore()?;
+                    if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
+                        return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        );
+                    }
+                    (Some(contract), defaults, Some(regions), true, true)
+                }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V14,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14,
+                    WORKFLOW_RUN_FLOW_VERSION_V14,
+                    WORKFLOW_PLAN_SCHEMA_V6,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3 =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_application_runtime_variable_contract(
+                        &contract,
+                        defaults.as_ref(),
+                        &self.plan,
+                    )?;
+                    application_projection.validate_variable_contract(&self.plan, &contract)?;
+                    let regions = regions
+                        .map(ResolvedWorkflowCompositeRegions::restore)
+                        .transpose()?;
+                    match (
+                        self.plan.composite_regions_digest.as_ref(),
+                        regions.as_ref(),
+                    ) {
+                        (None, None) | (Some(_), Some(_)) => {}
+                        _ => return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        ),
+                    }
+                    let composite_runtime = regions.is_some();
+                    (Some(contract), defaults, regions, composite_runtime, true)
+                }
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V14,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14,
+                    WORKFLOW_RUN_FLOW_VERSION_V14,
+                    WORKFLOW_PLAN_SCHEMA_V6,
+                    Some(resolved),
+                    defaults,
+                    Some(resolved_regions),
+                    Some(application_projection),
+                ) if application_projection.schema
+                    == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5 =>
+                {
+                    application_projection.validate(&self.plan)?;
+                    let contract = resolved.restore()?;
+                    if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                        return Err(
+                            "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                        );
+                    }
+                    let defaults = defaults
+                        .map(ResolvedWorkflowVariableDefaults::restore)
+                        .transpose()?;
+                    validate_application_runtime_variable_contract(
+                        &contract,
+                        defaults.as_ref(),
+                        &self.plan,
+                    )?;
+                    application_projection.validate_variable_contract(&self.plan, &contract)?;
                     let regions = resolved_regions.restore()?;
                     if self.plan.composite_regions_digest.as_ref() != Some(regions.digest()) {
                         return Err(

@@ -1,4 +1,7 @@
-use super::{application_lifecycle_projection, FlowWorkflowRunCoordinator};
+use super::{
+    application_lifecycle_projection, application_variable_failure_classification,
+    FlowWorkflowRunCoordinator,
+};
 use crate::modules::applications::{
     AdvanceApplicationInvocationWrite, ApplicationAudience, ApplicationDeliveryPolicy,
     ApplicationEndUser, ApplicationExperience, ApplicationInteractionMode, ApplicationInvocation,
@@ -21,14 +24,16 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowRun, WorkflowRunFlowState, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11,
-    WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepProjectionStatus,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
+    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13,
+    WORKFLOW_RUN_FLOW_VERSION_V14,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
     application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
-    application_variable_workflow_run_input, application_workflow_run_input, workflow_run_input,
+    application_variable_workflow_run_input, application_workflow_run_input,
+    routed_application_variable_workflow_run_input, workflow_run_input,
     TEST_APPLICATION_VARIABLE_STEP_ID,
 };
 use a3s_flow::{FlowEngine, RuntimeBuildCompatibility, RuntimeBuildId, WorkflowSpec};
@@ -55,6 +60,7 @@ struct RecordingApplicationEffects {
     drift_answer_evidence_once: AtomicBool,
     lose_variable_response_once: AtomicBool,
     drift_variable_evidence_once: AtomicBool,
+    variable_error: Mutex<Option<ApplicationError>>,
 }
 
 impl RecordingApplicationEffects {
@@ -66,6 +72,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            variable_error: Mutex::new(None),
         }
     }
 
@@ -77,6 +84,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            variable_error: Mutex::new(None),
         }
     }
 
@@ -88,6 +96,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(true),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            variable_error: Mutex::new(None),
         }
     }
 
@@ -99,6 +108,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(true),
             drift_variable_evidence_once: AtomicBool::new(false),
+            variable_error: Mutex::new(None),
         }
     }
 
@@ -110,6 +120,22 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(true),
+            variable_error: Mutex::new(None),
+        }
+    }
+
+    fn with_variable_error(
+        sessions: Arc<dyn IApplicationSessionRepository>,
+        error: ApplicationError,
+    ) -> Self {
+        Self {
+            inner: WorkflowApplicationEffectsService::new(sessions),
+            calls: Mutex::new(Vec::new()),
+            lose_answer_response_once: AtomicBool::new(false),
+            drift_answer_evidence_once: AtomicBool::new(false),
+            lose_variable_response_once: AtomicBool::new(false),
+            drift_variable_evidence_once: AtomicBool::new(false),
+            variable_error: Mutex::new(Some(error)),
         }
     }
 
@@ -175,6 +201,9 @@ impl IWorkflowApplicationEffectsPort for RecordingApplicationEffects {
             .lock()
             .await
             .push(RecordedApplicationEffect::Variables(request.clone()));
+        if let Some(error) = self.variable_error.lock().await.clone() {
+            return Err(error);
+        }
         let mut write = self.inner.advance_conversation_variables(request).await?;
         if self
             .lose_variable_response_once
@@ -491,6 +520,44 @@ async fn application_variable_workflow_fixture() -> (FlowEngine, WorkflowRunReco
     (engine, record, actor)
 }
 
+async fn routed_application_variable_workflow_fixture(
+) -> (FlowEngine, WorkflowRunRecord, PrincipalId) {
+    let mut input = routed_application_variable_workflow_run_input()
+        .expect("routed Application variable WorkflowRun input");
+    let requested_at = canonical_timestamp(Utc::now());
+    input.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+    input.project_id = ProjectId::new();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = requested_at + Duration::hours(1);
+    input
+        .validate()
+        .expect("valid routed Application variable WorkflowRun input");
+    let actor = PrincipalId::new();
+    let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-variable-test@2").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                WORKFLOW_RUN_FLOW_NAME,
+                WORKFLOW_RUN_FLOW_VERSION_V14,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start routed Application variable WorkflowRun Flow");
+    (engine, record, actor)
+}
+
 #[tokio::test]
 async fn variable_snapshot_and_cas_commit_precede_final_output_and_terminal_projection() {
     let (engine, record, actor) = application_variable_workflow_fixture().await;
@@ -565,6 +632,178 @@ async fn variable_snapshot_and_cas_commit_precede_final_output_and_terminal_proj
         .expect("replayed WorkflowRun projection");
     assert_eq!(replayed, completed);
     assert_eq!(binding.effects.calls().await.len(), 6);
+}
+
+#[test]
+fn application_variable_failure_classification_is_version_and_retry_fenced() {
+    let routed = routed_application_variable_workflow_run_input()
+        .expect("routed Application variable input");
+    let cases = [
+        (
+            ApplicationError::Invalid("private invalid detail".into()),
+            Some(WorkflowStepFailureClassification::ApplicationInvalid),
+        ),
+        (
+            ApplicationError::NotFound("private missing detail".into()),
+            Some(WorkflowStepFailureClassification::ApplicationNotFound),
+        ),
+        (
+            ApplicationError::Conflict("private conflict detail".into()),
+            Some(WorkflowStepFailureClassification::ApplicationConflict),
+        ),
+        (
+            ApplicationError::Forbidden("private forbidden detail".into()),
+            Some(WorkflowStepFailureClassification::ApplicationForbidden),
+        ),
+        (ApplicationError::Unavailable("retry".into()), None),
+        (ApplicationError::Internal("retry".into()), None),
+    ];
+    for (error, expected) in cases {
+        assert_eq!(
+            application_variable_failure_classification(
+                &routed,
+                TEST_APPLICATION_VARIABLE_STEP_ID,
+                &error,
+            ),
+            expected
+        );
+    }
+
+    let historic =
+        application_variable_workflow_run_input().expect("historic Application variable input");
+    assert_eq!(
+        application_variable_failure_classification(
+            &historic,
+            TEST_APPLICATION_VARIABLE_STEP_ID,
+            &ApplicationError::Conflict("historic".into()),
+        ),
+        None
+    );
+}
+
+#[tokio::test]
+async fn deterministic_application_variable_rejection_completes_the_error_branch_once() {
+    let (engine, record, actor) = routed_application_variable_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_variable_error(
+        binding.sessions.clone(),
+        ApplicationError::Conflict("private-owner-conflict-sentinel".into()),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("Application variable snapshot");
+    let completed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("routed Application variable rejection")
+        .expect("completed WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let assignment = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_APPLICATION_VARIABLE_STEP_ID)
+        .expect("Application variable step projection");
+    assert_eq!(assignment.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(assignment.selected_handle.as_deref(), Some("error"));
+    assert_eq!(
+        assignment.error.as_deref(),
+        Some("Application variable assignment conflicted with current state")
+    );
+    assert!(assignment.result.is_none());
+
+    let snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("completed Flow snapshot");
+    let write_hook = snapshot
+        .hooks
+        .values()
+        .find(|hook| {
+            hook.hook_id
+                .starts_with("workflow-application-variable-write:")
+        })
+        .expect("Application variable write hook");
+    assert_eq!(write_hook.status, a3s_flow::HookStatus::Received);
+    let evidence = serde_json::to_string(&write_hook.payload).expect("failure evidence JSON");
+    assert!(evidence.contains("application_conflict"));
+    assert!(!evidence.contains("private-owner-conflict-sentinel"));
+
+    let variables = effects
+        .inner
+        .read_conversation_variables(&WorkflowApplicationRunReference {
+            organization_id: record.run.organization_id,
+            workflow_run_id: record.run.id,
+        })
+        .await
+        .expect("unchanged Application variables");
+    assert_eq!(variables.version.revision_number, 1);
+
+    let replayed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("routed rejection replay")
+        .expect("replayed WorkflowRun projection");
+    assert_eq!(replayed, completed);
+    assert_eq!(
+        effects
+            .calls()
+            .await
+            .iter()
+            .filter(|effect| matches!(effect, RecordedApplicationEffect::Variables(_)))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn transient_application_variable_error_keeps_the_write_hook_retryable() {
+    let (engine, record, actor) = routed_application_variable_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_variable_error(
+        binding.sessions.clone(),
+        ApplicationError::Unavailable("private-transient-sentinel".into()),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("Application variable snapshot");
+    for _ in 0..2 {
+        let error = coordinator
+            .reconcile(&record, record.run.requested_at)
+            .await
+            .expect_err("transient Application variable error");
+        assert!(error.to_string().contains("private-transient-sentinel"));
+        let waiting = engine
+            .snapshot(&record.run.flow_run_id)
+            .await
+            .expect("waiting Flow snapshot");
+        let write_hook = waiting
+            .hooks
+            .values()
+            .find(|hook| {
+                hook.hook_id
+                    .starts_with("workflow-application-variable-write:")
+            })
+            .expect("Application variable write hook");
+        assert_eq!(write_hook.status, a3s_flow::HookStatus::Active);
+        assert!(write_hook.payload.is_none());
+    }
+    assert_eq!(
+        effects
+            .calls()
+            .await
+            .iter()
+            .filter(|effect| matches!(effect, RecordedApplicationEffect::Variables(_)))
+            .count(),
+        2
+    );
 }
 
 #[tokio::test]

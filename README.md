@@ -51,9 +51,9 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@15` and the
+  New Operations pin replay generation `a3s-cloud-workflows@16` and the
   `cloud.flow.bounded-step-retries-v1` marker. Their infrastructure steps use
-  eight attempts with a 30-second capped backoff; `@1` through `@14` retain
+  eight attempts with a 30-second capped backoff; `@1` through `@15` retain
   their exact replay policy through the explicit Flow compatibility set, which
   readiness exposes with the remaining unpinned migration switch. Cloud and
   Code resolve one exact Flow revision. The
@@ -268,7 +268,8 @@ The code on `main` separates implemented mechanics from released capability:
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
   REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
-  tools. Component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9/C10/C11` freezes and persists
+  tools. Component-only
+  `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9/C10/C11/C13/C14` freezes and persists
   release-pinned end users, sessions, invocation correlation, ordered messages,
   optimistic conversation variables, exactly-once Workflow semantic effects,
   and immutable invocation execution authority through migrations `125`-`127`
@@ -286,7 +287,10 @@ The code on `main` separates implemented mechanics from released capability:
   state through that port before WorkflowRun persistence; v11 dispatches
   descriptor-bound Answer ports, and v12 snapshots and dispatches exact
   Application-variable ports through the same owner before CAS assignment and
-  Flow-derived inspection. C8 exposes
+  Flow-derived inspection. V13 binds repeated composite Answer frames to one
+  root invocation, and Plan v6/Run v14 routes only deterministic terminal
+  variable-write rejections through the exact redacted `error` branch while
+  transient owner failures remain unresolved. C8 exposes
   project-member session open/read,
   invocation request/read, and ordered message reads through REST/OpenAPI
   `1.43.0`, the maintained client, CLI, and five additional Management MCP
@@ -497,14 +501,18 @@ creating their own control planes:
    maps closed Connector terminal and response-validation failures to bounded
    `cloud.workflow.step-failure.v2` values only when the exact
    descriptor-bound `error` edge exists; the source projection remains failed
-   while the ordinary reachable failure branch may complete the parent. The
-   same DAG and Flow history remain the sole control path. Historic v8 keeps
+    while the ordinary reachable failure branch may complete the parent. The
+    same DAG and Flow history remain the sole control path. Historic v8 keeps
    its fail-closed behavior without this edge, v5 remains digest-only, and v6
    remains reference-only, while Plan v4/Run v7 folds finite
-   Execution failure observations into one exact policy-owned default output
-   with typed projection evidence. This is a component execution path, not
-   public HTTP Request availability; Answer, remaining non-Execution error semantics,
-   remaining providers, recovery evidence, and later `W0` gates remain open.
+    Execution failure observations into one exact policy-owned default output
+    with typed projection evidence. Plan v6/Run v14 applies the same ordinary
+    DAG mechanism to the exact Application conversation-variable descriptor:
+    deterministic `Invalid`, `NotFound`, `Conflict`, and `Forbidden` writes
+    become redacted failure v3 data, while transient errors keep the Hook active.
+    This is a component execution path with no OpenAPI schema change, not public
+    HTTP Request availability; other non-Execution error semantics, remaining
+    providers, recovery evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` carries start, run-scoped
@@ -523,7 +531,7 @@ creating their own control planes:
    Outbox facts through PostgreSQL/A3S ORM. Project authorization, CQRS,
    REST/OpenAPI `1.42.0`, the maintained client, CLI, and six Management MCP
    tools all reuse that authority. Component-only
-   `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9/C10/C11` adds and
+    `APP0.2-C1/C2/C3/C4/C5/C6/C7/C9/C10/C11/C13/C14` adds and
    persists the single release-pinned session/message/variable contract,
    deterministic Workflow-effect replay boundary, and immutable invocation
    execution authority through migrations `125`-`127`. A typed internal port
@@ -538,7 +546,9 @@ creating their own control planes:
     application-only Run v10 to project aggregate final output and terminal
     state before WorkflowRun persistence. C10 adds descriptor-bound Answer
     dispatch through Run v11; C11 adds Run v12 snapshot/CAS dispatch and
-    Flow-derived inspection for exact Application-variable ports. C8 adds
+    Flow-derived inspection for exact Application-variable ports; C13 adds v13
+    root-bound repeated Answer frames; and C14 adds Plan v6/Run v14 redacted
+    deterministic Application-variable failure branches. C8 adds
     project-member management delivery through REST
    contract `1.43.0`, the client, CLI, and five Management MCP tools. C12 adds
    close/cancel/full replay through contract `1.44.0` and three more Management

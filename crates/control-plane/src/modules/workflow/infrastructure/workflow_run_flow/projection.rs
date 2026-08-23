@@ -1,6 +1,7 @@
 use super::workflow::{
-    application_answer_result, application_variable_write_result, connector_failure_route_result,
-    execution_result, human_decision_result, inactive_step_ids, ExecutionResolution,
+    application_answer_result, application_variable_write_resolution,
+    connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
+    ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -61,6 +62,7 @@ pub fn project_workflow_run_record(
         completed,
         execution_failures,
         connector_failures,
+        application_failures,
         composite_failures,
     } = completed_workflow_steps(&record.run.execution_input, &resolved_steps, snapshot)?;
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
@@ -173,11 +175,15 @@ pub fn project_workflow_run_record(
                     .find(|event| event.sequence == sequence)
                     .map(|event| event.timestamp)
                     .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let failure = application_failures.get(&projection.step_id).cloned();
                 let step_status = match hook.status {
                     HookStatus::Active | HookStatus::Received if write_hook.is_none() => {
                         WorkflowStepProjectionStatus::Running
                     }
                     HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received if failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
                     HookStatus::Received => WorkflowStepProjectionStatus::Completed,
                     HookStatus::Disposed | HookStatus::Cancelled => {
                         WorkflowStepProjectionStatus::Cancelled
@@ -189,13 +195,10 @@ pub fn project_workflow_run_record(
                     ))
                     }
                 };
-                let result = if write_hook
-                    .as_ref()
-                    .is_some_and(|(hook, _)| hook.status == HookStatus::Received)
-                {
+                let completed_result = completed.get(&projection.step_id);
+                let result = if step_status == WorkflowStepProjectionStatus::Completed {
                     Some(
-                        completed
-                            .get(&projection.step_id)
+                        completed_result
                             .ok_or_else(|| {
                                 format!(
                                     "Workflow Application variable step {:?} has no committed result",
@@ -208,12 +211,16 @@ pub fn project_workflow_run_record(
                 } else {
                     None
                 };
+                let selected_handle = failure
+                    .as_ref()
+                    .and(completed_result)
+                    .and_then(|result| result.selected_handle.clone());
                 (
                     step_status,
                     snapshot_metadata.step_attempt,
                     result,
-                    None,
-                    None,
+                    selected_handle,
+                    failure,
                     sequence,
                     at,
                 )
@@ -631,6 +638,7 @@ pub(super) struct CompletedWorkflowSteps {
     pub(super) completed: BTreeMap<String, WorkflowLocalStepResult>,
     pub(super) execution_failures: BTreeMap<String, String>,
     pub(super) connector_failures: BTreeMap<String, String>,
+    pub(super) application_failures: BTreeMap<String, String>,
     pub(super) composite_failures: BTreeMap<String, String>,
 }
 
@@ -667,6 +675,7 @@ pub(super) fn completed_workflow_steps(
 
     let mut execution_failures = BTreeMap::new();
     let mut connector_failures = BTreeMap::new();
+    let mut application_failures = BTreeMap::new();
     let mut composite_failures = BTreeMap::new();
     for resolved in resolved_steps {
         if input
@@ -716,16 +725,25 @@ pub(super) fn completed_workflow_steps(
                     &composites,
                     &application_snapshot,
                 )?;
-                let result = application_variable_write_result(
+                let resolution = application_variable_write_resolution(
                     &snapshot.run_id,
                     &write_metadata.flow_hook_id(),
+                    input,
                     resolved,
                     &write_metadata,
                     &values,
                     payload,
                 )
                 .map_err(|error| error.to_string())?;
-                completed.insert(result.step_id.clone(), result);
+                match resolution {
+                    ApplicationVariableWriteResolution::Completed(result) => {
+                        completed.insert(result.step_id.clone(), *result);
+                    }
+                    ApplicationVariableWriteResolution::Failed { result, message } => {
+                        completed.insert(result.step_id.clone(), *result);
+                        application_failures.insert(resolved.plan.id.clone(), message);
+                    }
+                }
             }
             continue;
         }
@@ -915,6 +933,7 @@ pub(super) fn completed_workflow_steps(
         completed,
         execution_failures,
         connector_failures,
+        application_failures,
         composite_failures,
     })
 }

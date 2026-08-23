@@ -44,7 +44,7 @@ alter a verified A3S release. That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The forty-three authority decisions are
+implementation is not a public capability. The forty-five authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -407,7 +407,15 @@ parent. Migration `123` admits the already wired Service projection kind and
 failed selected-handle shape, while immutable plan validation remains the sole
 exact ConnectorRevision-and-handle authority. Plan v1-v4 and Run v1-v8 retain
 their byte and replay shape, and no retry/provider mechanism moves into
-Workflow. REST/OpenAPI `1.41.0` and the maintained client expose the exact
+Workflow. An exact Application conversation-variable assignment descriptor
+error edge emits Plan v6 and immutable WorkflowRun input/runtime/Flow v14.
+Only Applications `Invalid`, `NotFound`, `Conflict`, and `Forbidden` write
+results become bounded, redacted `cloud.workflow.step-failure.v3` data on the
+ordinary DAG; transient or internal results leave the existing idempotent write
+Hook unresolved. The Service source remains failed while its selected error
+branch may complete the parent. Plan v1-v5 and Run v1-v13 retain their bytes
+and replay behavior, migration `123` already admits the projection shape, and
+the public OpenAPI schema is unchanged. REST/OpenAPI `1.41.0` and the maintained client expose the exact
 descriptor-failure/default contracts and their typed evidence. REST/OpenAPI
 `1.35.0`, the client, CLI, and Management MCP accept
 optional default and composite ACL material; the inspection surface added in
@@ -417,8 +425,10 @@ observed Flow sequence and materialized/unavailable state, redacts Secret
 references, adds no variable store, and rejects Plan v1. Composite-region
 frames/exports and sequential Iteration/Loop dispatch are implemented through
 exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
-parent cancellation/timeout propagation. Applications dispatch remains open
-and fail closed. Answer and remaining non-Execution error semantics remain open.
+parent cancellation/timeout propagation. Descriptor-bound Application Answer,
+conversation-variable snapshot/CAS, repeated-frame Answer, and deterministic
+variable-write failure routing are implemented. Other non-Execution error
+semantics remain open and fail closed.
 Existing `cloud.workflow.plan.v1` histories are
 unchanged.
 
@@ -686,7 +696,8 @@ implementing a Cloud substitute is prohibited by this plan.
 | `APP0.2-C11` | Implemented; component-only | Only the exact Applications-owned `application.conversation-variable-assign` Service descriptor is admitted in Application semantic composition; capability-free Service structure is deferred to that owner-specific check while legacy Workflow revision and Plan validation still reject it. Variable-bearing composition alone emits immutable WorkflowRun input/runtime/Flow v12 plus projection v3, pinning the final Output, ordered Answers, ordered variable steps, and assignment subset without changing v10/v11 behavior. Flow first records a history-redacted C7 variable snapshot, evaluates the assignment, then records and replays one exact expected-revision CAS request until matching commit evidence exists; stale or drifted evidence fails closed. Authorized inspection reconstructs the latest Application variable object from that same Hook history. Runtime build `a3s-cloud-workflows@12` retains `@1`-`@11`; no migration, public surface, queue, or second history is added. Focused contract/compiler/runtime/coordinator/replay/inspection and production-adapter tests pass, and the [retained PostgreSQL 17 C6-C11 recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32474020740/job/96746540732) proves snapshot/CAS commit-before-response loss, exact replay, final-output/terminal replay, and durable cardinalities | `APP0.2-C10`, `APP0.2-C7`, protected `W0.3` Flow reconciliation |
 | `APP0.2-C12` | Implemented; project-member management interface only | REST/OpenAPI `1.44.0`, the maintained client, CLI, and three additional `application:write` Management MCP tools expose C6's close-session, cancel-invocation, and complete bounded session-replay contracts. Close/cancel retain exact optimistic versions and C6 replay evidence; cancellation still delegates to Workflow's sole state machine. Replay returns the Applications-owned session head, contiguous messages, current variable revision, next sequence, and `hasMore` without projecting Workflow or Flow history. No repository, migration, application credential, anonymous delivery, blocking wait, answer stream, Gateway state, or availability claim is added | `APP0.2-C6`, `APP0.2-C8`, `C0.2m`, protected `W0.3` WorkflowRun cancellation |
 | `APP0.2-C13` | Verified on PostgreSQL 17 in CI (`2026-08-21`); component-only | Composite Application roots alone emit immutable WorkflowRun input/runtime/Flow v13 with projection v5. Every semantic child receives projection v4 plus an exact tenant/root/parent/Plan/region/child/path/frame authority; descriptor-bound Answers address the invocation-bound root Run with a logical-path-derived stable step and the current zero-based frame ordinal. Sibling ordinals share the logical step, nested outer paths remain collision-free, lost responses replay the exact root effect, and child final-output/terminal lifecycle is suppressed. Application-scoped variables remain prohibited inside frames; legacy semantic-free children and v1-v12 histories retain their prior behavior. Replay build `a3s-cloud-workflows@13` retains `@1`-`@12`. Focused contract/compiler/runtime/coordinator/lost-response/production-adapter/variable/Connector tests and the full library suite pass. The [retained PostgreSQL 17 C6-C13 recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32486698014/job/96784727028) proves ordinal 0/1 and ordinal-1 commit-before-response replay without a migration, table, queue, public surface, or second history | `APP0.2-C11`, `APP0.2-C10`, protected `W0.3` composite child and Flow reconciliation |
-| `APP0.2` | Complete preset authoring-profile publication over the deterministic C4 wrappers, application-scoped credential and anonymous/end-user admission, remaining message variants, file references, citations, feedback, annotations, blocking/streaming parity over the verified C1-C13 component foundation | `APP0.2-C4`, `APP0.2-C6`, `APP0.2-C7`, `APP0.2-C8`, `APP0.2-C9`, `APP0.2-C10`, `APP0.2-C11`, `APP0.2-C12`, `APP0.2-C13`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
+| `APP0.2-C14` | Implemented; component-only | An exact Application conversation-variable assignment error edge emits Plan v6 and immutable WorkflowRun input/runtime/Flow v14. The existing write Hook resumes deterministic `Invalid`, `NotFound`, `Conflict`, or `Forbidden` owner rejections as classification-only evidence; Flow materializes redacted failure v3, selects `error`, keeps the source Service failed, and may complete the parent through the ordinary branch. `Unavailable` and `Internal` remain unresolved for idempotent retry, and exact replay does not repeat a terminal write. Runtime build `a3s-cloud-workflows@16` retains `@1`-`@15`; migration `123` already admits the projection shape. No migration, raw owner error, public OpenAPI change, queue, retry rail, or second history is added | `APP0.2-C11`, protected `W0.3` descriptor-bound failure routing |
+| `APP0.2` | Complete preset authoring-profile publication over the deterministic C4 wrappers, application-scoped credential and anonymous/end-user admission, remaining message variants, file references, citations, feedback, annotations, blocking/streaming parity over the verified C1-C14 component foundation | `APP0.2-C4`, `APP0.2-C6`, `APP0.2-C7`, `APP0.2-C8`, `APP0.2-C9`, `APP0.2-C10`, `APP0.2-C11`, `APP0.2-C12`, `APP0.2-C13`, `APP0.2-C14`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
 | `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
 | `APP0.5` | Add run-history and monitor projections, token/usage/cost correlation, latency and failure diagnostics, feedback/annotation review, retention/redaction, external telemetry export, and operator alerts without a second run log | `APP0.3`, `I0.2c`, Operations and telemetry foundations |
@@ -781,18 +792,21 @@ The recommended sequence is:
    policy/child bindings, deterministic frame/export and ordered region
    reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
-   folding/evidence, and Plan v5 Connector failure routing; retain the
-   `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8/C9/C10/C11` Applications-owned variable, Answer,
+   folding/evidence, Plan v5 Connector failure routing, and Plan v6
+   Application-variable failure routing; retain the
+   `APP0.2-C1/C2/C3/C4/C5/C6/C7/C8/C9/C10/C11/C12/C13/C14` Applications-owned variable, Answer,
    final-output, terminal-effect, typed WorkflowRun composition, preset wrapper
    publication, persisted execution-authority contracts, v10 aggregate
    final-output/terminal reconciliation, v11 descriptor-bound Answer dispatch,
-   and v12 descriptor-bound Application-variable snapshot/CAS dispatch, then
-   complete remaining non-Execution error branches,
+   v12 descriptor-bound Application-variable snapshot/CAS dispatch, v13
+   root-bound repeated Answer frames, and v14 redacted deterministic
+   Application-variable failure routing, then complete other non-Execution error branches,
    and retained Flow replay tests. Prove any proposed Flow primitive
    is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Retain the implemented `APP0.1`
    vertical slice, component-only `APP0.2-C1/C2/C3/C4/C5/C6/C7`, the
-   `APP0.2-C8` management adapter, and component-only `APP0.2-C9/C10/C11`, and implement
+   `APP0.2-C8` management adapter plus C12 interface, and component-only
+   `APP0.2-C9/C10/C11/C13/C14`, and implement
    `K0.1` and
    `AUT0.1` independently. Do not add provider behavior to these contract
    slices.

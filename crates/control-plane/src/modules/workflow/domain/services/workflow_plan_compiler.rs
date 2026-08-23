@@ -4,8 +4,9 @@ use crate::modules::workflow::domain::{
     WorkflowGoalContract, WorkflowPlan, WorkflowPlanStep, WorkflowRevision,
     WorkflowStepBindingKind, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2,
     WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_COMPILER_REVISION_V4,
-    WORKFLOW_PLAN_COMPILER_REVISION_V5, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
+    WORKFLOW_PLAN_COMPILER_REVISION_V5, WORKFLOW_PLAN_COMPILER_REVISION_V6, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
+    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_SCHEMA_V6,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -22,6 +23,16 @@ pub struct WorkflowPlanCompiler;
 impl WorkflowPlanCompiler {
     pub fn compiler_revision(workflow_revision: &WorkflowRevision) -> &'static str {
         if workflow_revision.semantic_contracts.is_some()
+            && workflow_revision
+                .semantic_contracts
+                .as_ref()
+                .is_some_and(|contracts| {
+                    contracts
+                        .has_application_variable_failure_route(workflow_revision.contract.spec())
+                })
+        {
+            WORKFLOW_PLAN_COMPILER_REVISION_V6
+        } else if workflow_revision.semantic_contracts.is_some()
             && has_connector_failure_route(workflow_revision.contract.spec())
         {
             WORKFLOW_PLAN_COMPILER_REVISION_V5
@@ -74,12 +85,16 @@ impl WorkflowPlanCompiler {
             .map(|step| (step.id.as_str(), step))
             .collect::<BTreeMap<_, _>>();
         let semantic_contracts = workflow_revision.semantic_contracts.as_ref();
+        let application_variable_failure_version = semantic_contracts.is_some_and(|contracts| {
+            contracts.has_application_variable_failure_route(workflow_revision.contract.spec())
+        });
         let connector_failure_version = semantic_contracts.is_some()
             && has_connector_failure_route(workflow_revision.contract.spec());
         let default_output_version =
             semantic_contracts.is_some_and(|contracts| contracts.has_default_output_fallback());
         let failure_version = semantic_contracts.is_some()
-            && (connector_failure_version
+            && (application_variable_failure_version
+                || connector_failure_version
                 || default_output_version
                 || workflow_revision
                     .contract
@@ -135,7 +150,9 @@ impl WorkflowPlanCompiler {
             goal_id,
             plan_revision_id,
             WorkflowPlan {
-                schema: if connector_failure_version {
+                schema: if application_variable_failure_version {
+                    WORKFLOW_PLAN_SCHEMA_V6
+                } else if connector_failure_version {
                     WORKFLOW_PLAN_SCHEMA_V5
                 } else if default_output_version {
                     WORKFLOW_PLAN_SCHEMA_V4

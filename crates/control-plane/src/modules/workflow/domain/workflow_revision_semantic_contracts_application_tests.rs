@@ -987,6 +987,183 @@ fn compiler_emits_v12_only_for_exact_application_variable_port() {
     assert_eq!(projection.variable_assignment_step_ids, ["assign"]);
     input.validate().expect("valid v12 input");
 
+    let routed_revision_id = WorkflowRevisionId::new();
+    let mut routed_workflow = bound_workflow.clone();
+    routed_workflow.edges.push(WorkflowEdgeSpec {
+        id: "assign-error-output".into(),
+        source: "assign".into(),
+        target: "output".into(),
+        source_handle: Some("error".into()),
+    });
+    let routed_contract =
+        WorkflowContract::from_spec(routed_workflow.clone()).expect("routed workflow");
+    let routed_input_descriptor = descriptor(
+        "workflow.input",
+        WorkflowStepKind::Input,
+        "invocation",
+        "value",
+    );
+    let mut routed_assignment_descriptor = assignment_descriptor.clone();
+    routed_assignment_descriptor.revision = "1.1.0".into();
+    routed_assignment_descriptor.failure = WorkflowStepFailureContract {
+        error_output: Some(WorkflowStepPort {
+            name: "error".into(),
+            value_type: WorkflowDataType::Object,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }),
+        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let routed_output_descriptor = descriptor(
+        "workflow.output",
+        WorkflowStepKind::Output,
+        "result",
+        "value",
+    );
+    let routed_registry =
+        WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+            id: "support.application-variable-routed".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            descriptors: vec![
+                routed_input_descriptor,
+                routed_assignment_descriptor,
+                routed_output_descriptor,
+            ],
+        })
+        .expect("routed registry");
+    let routed_bindings =
+        WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+            id: "support.application-variable-routed".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            bindings: [
+                ("input", "workflow.input", "1.0.0"),
+                (
+                    "assign",
+                    "application.conversation-variable-assign",
+                    "1.1.0",
+                ),
+                ("output", "workflow.output", "1.0.0"),
+            ]
+            .into_iter()
+            .map(
+                |(step_id, descriptor_id, descriptor_revision)| WorkflowStepDescriptorBinding {
+                    step_id: step_id.into(),
+                    descriptor_id: descriptor_id.into(),
+                    descriptor_revision: descriptor_revision.into(),
+                    semantic_digest: routed_registry
+                        .resolve(descriptor_id, descriptor_revision)
+                        .expect("routed descriptor")
+                        .semantic_digest()
+                        .clone(),
+                },
+            )
+            .collect(),
+        })
+        .expect("routed bindings");
+    let routed_semantics = WorkflowRevisionSemanticContracts::create(
+        &routed_workflow,
+        routed_bindings,
+        routed_registry,
+        revision
+            .semantic_contracts
+            .as_ref()
+            .expect("v12 semantic contracts")
+            .variable_contract()
+            .clone(),
+    )
+    .expect("routed semantic contracts");
+    let routed_revision = WorkflowRevision::initial_with_semantic_contracts(
+        organization_id,
+        project_id,
+        definition_id,
+        routed_revision_id,
+        routed_contract.clone(),
+        revision.payloads.clone(),
+        routed_semantics,
+        principal_id,
+        now,
+    )
+    .expect("routed revision");
+    let routed_definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        definition_id,
+        routed_workflow.name.clone(),
+        routed_workflow.description.clone(),
+        routed_revision_id,
+        routed_contract.digest().clone(),
+        principal_id,
+        now,
+    )
+    .expect("routed definition");
+    let routed_goal = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: "Routed Application variable goal".into(),
+        workflow_definition_id: definition_id,
+        workflow_revision_id: routed_revision_id,
+        workflow_digest: routed_contract.digest().clone(),
+        ontology_id,
+        ontology_revision_id,
+        ontology_digest: ontology_contract.digest().clone(),
+        environment_id: None,
+        input: json!({
+            "topic": "urgent",
+            "conversationRevision": 0,
+            "conversationEffect": "effect-1"
+        }),
+    })
+    .expect("routed goal");
+    let routed_compiled = WorkflowPlanCompiler::compile_goal(
+        WorkflowGoalId::new(),
+        PlanRevisionId::new(),
+        routed_goal,
+        &routed_definition,
+        &routed_revision,
+        &ontology_revision,
+        principal_id,
+        now,
+    )
+    .expect("compiled routed goal");
+    assert_eq!(
+        WorkflowPlanCompiler::compiler_revision(&routed_revision),
+        WORKFLOW_PLAN_COMPILER_REVISION_V6
+    );
+    assert_eq!(
+        routed_compiled.plan_revision.plan.schema,
+        WORKFLOW_PLAN_SCHEMA_V6
+    );
+    let routed_run = WorkflowRunCompiler::compile_for_application(
+        WorkflowRunId::new(),
+        &routed_compiled.goal,
+        &routed_compiled.plan_revision,
+        &routed_revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("routed Application variable run");
+    assert_eq!(
+        routed_run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V14
+    );
+    assert_eq!(
+        routed_run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14
+    );
+    assert_eq!(
+        routed_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V14
+    );
+    routed_run
+        .run
+        .execution_input
+        .validate()
+        .expect("valid v14 compiler output");
+
     assignment_descriptor.id = "application.variable-assign".into();
     assignment_descriptor.semantic_profile = "application.variable-assign".into();
     let alias_registry =

@@ -7,11 +7,14 @@ use super::{
 use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep,
     WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
-    WorkflowApplicationVariableSnapshotHookMetadata, WorkflowApplicationVariableWriteHookMetadata,
-    WorkflowEdgeSpec, WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
+    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationVariableWriteFailureResumePayload,
+    WorkflowApplicationVariableWriteHookMetadata, WorkflowEdgeSpec, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
     WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepKind,
+    WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA,
+    WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -21,6 +24,14 @@ use std::collections::{BTreeMap, BTreeSet};
 enum ResolvedState {
     Active(Box<WorkflowLocalStepResult>),
     Inactive,
+}
+
+pub(super) enum ApplicationVariableWriteResolution {
+    Completed(Box<WorkflowLocalStepResult>),
+    Failed {
+        result: Box<WorkflowLocalStepResult>,
+        message: String,
+    },
 }
 
 pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeCommand, FlowError> {
@@ -335,14 +346,19 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 )));
             }
             if let Some(payload) = context.hook_payload(&hook_id) {
-                let result = application_variable_write_result(
+                let resolution = application_variable_write_resolution(
                     &invocation.run_id,
                     &hook_id,
+                    &input,
                     step,
                     &metadata,
                     &values,
                     payload,
                 )?;
+                let result = match resolution {
+                    ApplicationVariableWriteResolution::Completed(result) => *result,
+                    ApplicationVariableWriteResolution::Failed { result, .. } => *result,
+                };
                 resolved.insert(
                     step.plan.id.clone(),
                     ResolvedState::Active(Box::new(result)),
@@ -694,6 +710,55 @@ pub(super) fn connector_failure_route_result(
     failure_route_result(run_id, input, step, failure)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn application_variable_write_resolution(
+    run_id: &str,
+    hook_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowApplicationVariableWriteHookMetadata,
+    values: &Value,
+    observed: &Value,
+) -> Result<ApplicationVariableWriteResolution, FlowError> {
+    match observed.get("schema").and_then(Value::as_str) {
+        Some(WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA) => {
+            application_variable_write_result(run_id, hook_id, step, metadata, values, observed)
+                .map(Box::new)
+                .map(ApplicationVariableWriteResolution::Completed)
+        }
+        Some(WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA)
+            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V14 =>
+        {
+            let payload = serde_json::from_value::<
+                WorkflowApplicationVariableWriteFailureResumePayload,
+            >(observed.clone())
+            .map_err(|_| application_variable_failure_payload_drift(run_id, &step.plan.id))?;
+            payload
+                .validate(metadata)
+                .map_err(|_| application_variable_failure_payload_drift(run_id, &step.plan.id))?;
+            if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+                return Err(application_variable_failure_payload_drift(
+                    run_id,
+                    &step.plan.id,
+                ));
+            }
+            let failure =
+                WorkflowStepFailureOutput::application_variable(step, payload.classification)
+                    .map_err(|_| {
+                        application_variable_failure_payload_drift(run_id, &step.plan.id)
+                    })?;
+            let message = failure.message.clone();
+            let result = failure_route_result(run_id, input, step, failure)?
+                .ok_or_else(|| application_variable_failure_payload_drift(run_id, &step.plan.id))?;
+            Ok(ApplicationVariableWriteResolution::Failed { result, message })
+        }
+        _ => Err(application_variable_failure_payload_drift(
+            run_id,
+            &step.plan.id,
+        )),
+    }
+}
+
 fn failure_route_result(
     run_id: &str,
     input: &WorkflowRunInput,
@@ -748,6 +813,15 @@ fn failure_payload_drift(run_id: &str, step_id: &str) -> FlowError {
         run_id: run_id.into(),
         reason: format!(
             "Workflow step {step_id:?} could not restore its descriptor-bound failure value"
+        ),
+    }
+}
+
+fn application_variable_failure_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow Application variable step {step_id:?} received invalid failure evidence"
         ),
     }
 }

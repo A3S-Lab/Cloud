@@ -5,10 +5,42 @@ use crate::modules::workflow::test_support::{
     application_nested_frame_answer_authorities, application_variable_workflow_run_input,
     application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
     connector_workflow_run_input_v6, human_decision_workflow_run_input,
-    routed_connector_workflow_run_input, routed_execution_workflow_run_input,
-    typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
-    TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
+    routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
+    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
+    TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
+    TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v14_application_variable_failure_route_is_exact_and_version_fenced() {
+    let input = routed_application_variable_workflow_run_input()
+        .expect("valid routed Application variable input");
+    assert_eq!(input.plan.schema, WORKFLOW_PLAN_SCHEMA_V6);
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V14);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V14);
+    input.validate().expect("valid v14 input");
+
+    let mut historic_alias = input.clone();
+    historic_alias.schema = WORKFLOW_RUN_INPUT_SCHEMA_V12.into();
+    historic_alias.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12.into();
+    historic_alias.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V12.into();
+    assert!(historic_alias.validate().is_err());
+
+    let mut descriptor_alias = input.clone();
+    descriptor_alias
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == TEST_APPLICATION_VARIABLE_STEP_ID)
+        .and_then(|step| step.descriptor.as_mut())
+        .expect("Application variable descriptor")
+        .descriptor_id = "application.variable-assign".into();
+    assert!(descriptor_alias.plan.validate().is_err());
+}
 
 #[test]
 fn v13_application_frames_pin_root_path_and_repeated_answer_ordinals() {

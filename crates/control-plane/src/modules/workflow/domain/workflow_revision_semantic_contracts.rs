@@ -1,9 +1,10 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    validate_descriptor_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowPlan,
-    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
-    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
+    has_application_variable_failure_route, validate_descriptor_failure_routes, CapabilityType,
+    WorkflowCompositeRegions, WorkflowDataType, WorkflowPlan, WorkflowSpec,
+    WorkflowStepBindingKind, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass, WorkflowStepFallbackMode,
+    WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
     WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableDefaults,
     WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
@@ -268,6 +269,7 @@ impl WorkflowRevisionSemanticContracts {
 
         let mut referenced_descriptors = BTreeSet::new();
         let mut application_ports = BTreeSet::new();
+        let mut application_variable_steps = BTreeSet::new();
         let mut descriptors_by_step = BTreeMap::new();
         let mut failures_by_step = BTreeMap::new();
         for step in &workflow.steps {
@@ -298,6 +300,9 @@ impl WorkflowRevisionSemanticContracts {
             if descriptor.spec().owner == WorkflowStepOwner::Applications {
                 application_ports.insert(step.id.as_str());
             }
+            if is_exact_application_variable_descriptor(descriptor.spec()) {
+                application_variable_steps.insert(step.id.as_str());
+            }
         }
         let stored_descriptors = self
             .descriptor_registry
@@ -311,7 +316,11 @@ impl WorkflowRevisionSemanticContracts {
                     .into(),
             );
         }
-        validate_descriptor_failure_routes(workflow, &failures_by_step)?;
+        validate_descriptor_failure_routes(
+            workflow,
+            &failures_by_step,
+            &application_variable_steps,
+        )?;
         validate_variable_read_ports(self.variable_contract.spec(), &descriptors_by_step)?;
         self.variable_contract
             .validate_graph_bindings_with_application_ports(workflow, &application_ports)?;
@@ -481,6 +490,25 @@ impl WorkflowRevisionSemanticContracts {
         })
     }
 
+    pub(crate) fn has_application_variable_failure_route(&self, workflow: &WorkflowSpec) -> bool {
+        let steps = workflow
+            .steps
+            .iter()
+            .filter(|step| {
+                step.kind == WorkflowStepKind::Service
+                    && step.capability.is_none()
+                    && self
+                        .descriptor_bindings
+                        .resolve(&step.id)
+                        .is_some_and(|binding| {
+                            binding.descriptor_id == "application.conversation-variable-assign"
+                        })
+            })
+            .map(|step| step.id.as_str())
+            .collect::<BTreeSet<_>>();
+        has_application_variable_failure_route(workflow, &steps)
+    }
+
     pub(crate) fn default_output_contract(
         &self,
         step_id: &str,
@@ -562,6 +590,9 @@ impl WorkflowRevisionSemanticContracts {
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 super::WORKFLOW_PLAN_SCHEMA_V5
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V6
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 _ => {
@@ -840,10 +871,23 @@ fn is_exact_application_variable_descriptor(
         && descriptor.required_bindings == [WorkflowStepBindingKind::ReleaseReference]
         && descriptor.allowed_capability_types.is_empty()
         && descriptor.default_policy_digest.is_none()
-        && descriptor.failure.error_output.is_none()
-        && descriptor.failure.retry_classification == WorkflowStepRetryClassification::NotRetryable
-        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
-        && !descriptor.failure.failure_branch
+        && is_application_variable_failure_contract(&descriptor.failure)
+}
+
+fn is_application_variable_failure_contract(failure: &super::WorkflowStepFailureContract) -> bool {
+    (failure.error_output.is_none()
+        && failure.retry_classification == WorkflowStepRetryClassification::NotRetryable
+        && failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !failure.failure_branch)
+        || (failure.error_output.as_ref().is_some_and(|output| {
+            output.name == "error"
+                && output.value_type == WorkflowDataType::Object
+                && output.cardinality == WorkflowStepPortCardinality::Single
+                && output.required
+                && !output.dynamic
+        }) && failure.retry_classification == WorkflowStepRetryClassification::OwnerClassified
+            && failure.fallback == WorkflowStepFallbackMode::FailureBranch
+            && failure.failure_branch)
 }
 
 fn is_exact_application_final_output_descriptor(

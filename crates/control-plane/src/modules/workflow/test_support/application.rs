@@ -512,3 +512,37 @@ pub(crate) fn application_variable_workflow_run_input() -> Result<WorkflowRunInp
     input.validate()?;
     Ok(input)
 }
+
+pub(crate) fn routed_application_variable_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = application_variable_workflow_run_input()?;
+    for step in &mut input.plan.steps {
+        step.failure = Some(if step.id == TEST_APPLICATION_VARIABLE_STEP_ID {
+            routed_failure_contract()
+        } else {
+            unsupported_failure_contract()
+        });
+    }
+    input.plan.edges.push(edge(
+        "assign-conversation-error-output",
+        TEST_APPLICATION_VARIABLE_STEP_ID,
+        "output",
+        Some("error"),
+    ));
+    input
+        .plan
+        .edges
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V6.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V6.into();
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "routed Application variable WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V14.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V14.into();
+    input.validate()?;
+    Ok(input)
+}
