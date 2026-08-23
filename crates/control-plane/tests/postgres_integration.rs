@@ -1548,6 +1548,35 @@ async fn exercise_postgres_gateway_route_policy_security_timeline(
     let now = Utc::now();
     let mut events = Vec::new();
 
+    for (organization_id, name, name_key) in [
+        (
+            organization_id,
+            "Gateway policy timeline tenant",
+            "gateway-policy-timeline-tenant",
+        ),
+        (
+            hidden_organization_id,
+            "Hidden gateway policy timeline tenant",
+            "hidden-gateway-policy-timeline-tenant",
+        ),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+                )
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", 1, ")
+                .bind(now)
+                .append(")"),
+            )
+            .await?;
+    }
+
     for revision in 1_u64..=3 {
         let event_id = Uuid::now_v7();
         let correlation_id = Uuid::now_v7();
