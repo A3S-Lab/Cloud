@@ -453,7 +453,9 @@ and does not widen Notifications or the HTTP-only Connector contract.
 The current REST/OpenAPI contract is `1.53.0`. It retains `1.52.0`'s exact-owner
 recipient-contact self-service surface without exposing challenge identity,
 mailbox, or proof, and adds SMTP-only outbound-subscription v4 through one
-required closed Connector-or-recipient-contact target union. It
+required closed Connector-or-recipient-contact target union. The four legacy
+Connector fields remain deprecated nullable response projections for `1.52`
+clients and are `null` for SMTP. It
 also retains `1.48.0`'s complete human-readable operation, tag,
 parameter, request, response, example, authentication, and compatibility
 documentation for the entire REST surface, while retaining `1.46.0`'s

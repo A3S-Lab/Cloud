@@ -243,6 +243,10 @@ pub struct OutboundNotificationSubscriptionResponse {
     pub channel: OutboundNotificationChannel,
     pub minimum_severity: NotificationSeverity,
     pub target: OutboundNotificationTargetResponse,
+    pub connector_project_id: Option<Uuid>,
+    pub connector_environment_id: Option<Uuid>,
+    pub connector_profile_id: Option<Uuid>,
+    pub connector_revision_id: Option<Uuid>,
     pub maximum_provider_attempts: u64,
     pub suppress_before: Option<DateTime<Utc>>,
     pub definition_schema: String,
@@ -258,20 +262,42 @@ pub struct OutboundNotificationSubscriptionResponse {
 impl From<OutboundNotificationSubscription> for OutboundNotificationSubscriptionResponse {
     fn from(subscription: OutboundNotificationSubscription) -> Self {
         let spec = subscription.definition.spec();
-        let target = match spec.target {
+        let (
+            target,
+            connector_project_id,
+            connector_environment_id,
+            connector_profile_id,
+            connector_revision_id,
+        ) = match spec.target {
             crate::modules::notifications::OutboundNotificationTarget::Connector(target) => {
-                OutboundNotificationTargetResponse::Connector {
-                    project_id: target.project_id.as_uuid(),
-                    environment_id: target.environment_id.as_uuid(),
-                    profile_id: target.profile_id.as_uuid(),
-                    revision_id: target.revision_id.as_uuid(),
-                }
+                let project_id = target.project_id.as_uuid();
+                let environment_id = target.environment_id.as_uuid();
+                let profile_id = target.profile_id.as_uuid();
+                let revision_id = target.revision_id.as_uuid();
+                (
+                    OutboundNotificationTargetResponse::Connector {
+                        project_id,
+                        environment_id,
+                        profile_id,
+                        revision_id,
+                    },
+                    Some(project_id),
+                    Some(environment_id),
+                    Some(profile_id),
+                    Some(revision_id),
+                )
             }
             crate::modules::notifications::OutboundNotificationTarget::RecipientContact(
                 contact_id,
-            ) => OutboundNotificationTargetResponse::RecipientContact {
-                recipient_contact_id: contact_id.as_uuid(),
-            },
+            ) => (
+                OutboundNotificationTargetResponse::RecipientContact {
+                    recipient_contact_id: contact_id.as_uuid(),
+                },
+                None,
+                None,
+                None,
+                None,
+            ),
         };
         Self {
             organization_id: subscription.organization_id.as_uuid(),
@@ -279,6 +305,10 @@ impl From<OutboundNotificationSubscription> for OutboundNotificationSubscription
             channel: spec.channel,
             minimum_severity: spec.minimum_severity,
             target,
+            connector_project_id,
+            connector_environment_id,
+            connector_profile_id,
+            connector_revision_id,
             maximum_provider_attempts: subscription.definition.maximum_provider_attempts(),
             suppress_before: subscription.definition.suppress_before(),
             definition_schema: subscription.definition.definition_schema().into(),

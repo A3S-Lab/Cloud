@@ -574,8 +574,10 @@ transport.
   mutation inputs, examples,
   responses, envelopes, and compatibility metadata; current contract `1.53.0`
   retains the exact-owner redacted recipient-contact self-service lifecycle and
-  adds SMTP-only outbound-subscription v4 through one closed target union without
-  exposing mailbox resolution or delivery evidence. The shared
+  adds SMTP-only outbound-subscription v4 through one closed target union. Four
+  deprecated nullable Connector projections preserve `1.52` response
+  compatibility and are `null` for SMTP, without exposing mailbox resolution or
+  delivery evidence. The shared
   client and response headers pin the current version;
   route-snapshot and whole-surface
   documentation tests plus a PR-base semantic checker reject undocumented

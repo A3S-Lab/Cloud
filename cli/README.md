@@ -125,9 +125,11 @@ owns persistence, Outbox, audit, and replay. REST contract `1.46.0` reports the
 actual v1/v2/v3 definition schema, immutable `ATTEMPTS` budget, and nullable
 `SUPPRESS BEFORE` cutoff; v1 means eight, v2 admits 1 through 8, and v3 adds
 the bounded event-time cutoff. Contract `1.53.0` adds SMTP-only v4 and renders
-the required closed Connector-or-recipient-contact `TARGET`; it never resolves
-a mailbox. The CLI never resolves endpoints, Secrets, credentials, delivery
-evidence, or retry state.
+the required closed Connector-or-recipient-contact `TARGET`; deprecated
+Connector response projections remain transport-only compatibility fields and
+are never rendered as a second authority. It never resolves a mailbox. The CLI
+never resolves endpoints, Secrets, credentials, delivery evidence, or retry
+state.
 
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires

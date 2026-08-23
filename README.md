@@ -84,10 +84,11 @@ The code on `main` separates implemented mechanics from released capability:
   lifecycle, or evaluation engine. Contract `1.52.0` exposes the exact-owner
   recipient-contact lifecycle through REST, the maintained client, and CLI,
   while Management MCP receives only redacted self list/get and revoke. Contract
-  `1.53.0` adds SMTP-only outbound-subscription v4 and replaces flattened target
-  fields with one required Connector-or-recipient-contact discriminated union;
-  mailbox resolution and delivery evidence remain internal. Broader enterprise
-  `C0` gates remain.
+  `1.53.0` adds SMTP-only outbound-subscription v4 and one required
+  Connector-or-recipient-contact discriminated union. The four flattened
+  Connector fields remain deprecated nullable response projections for `1.52`
+  clients and are `null` for SMTP; mailbox resolution and delivery evidence
+  remain internal. Broader enterprise `C0` gates remain.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

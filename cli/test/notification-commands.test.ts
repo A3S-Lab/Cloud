@@ -64,6 +64,10 @@ const SUBSCRIPTION: OutboundNotificationSubscription = {
     profileId: '019c0000-0000-7000-8000-000000000009',
     revisionId: '019c0000-0000-7000-8000-00000000000a',
   },
+  connectorProjectId: '019c0000-0000-7000-8000-000000000007',
+  connectorEnvironmentId: '019c0000-0000-7000-8000-000000000008',
+  connectorProfileId: '019c0000-0000-7000-8000-000000000009',
+  connectorRevisionId: '019c0000-0000-7000-8000-00000000000a',
   maximumProviderAttempts: 8,
   suppressBefore: null,
   definitionSchema: 'cloud.notification.outbound-subscription.v1',
@@ -81,6 +85,10 @@ const SMTP_SUBSCRIPTION = {
   ...SUBSCRIPTION,
   channel: 'smtp',
   target: { kind: 'recipient_contact', recipientContactId: RECIPIENT_CONTACT_ID },
+  connectorProjectId: null,
+  connectorEnvironmentId: null,
+  connectorProfileId: null,
+  connectorRevisionId: null,
   definitionSchema: 'cloud.notification.outbound-subscription.v4',
 } satisfies OutboundNotificationSubscription;
 

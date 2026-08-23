@@ -110,6 +110,14 @@ export interface OutboundNotificationSubscription {
   channel: OutboundNotificationChannel;
   minimumSeverity: NotificationSeverity;
   target: OutboundNotificationTarget;
+  /** @deprecated Use target. Null for SMTP subscriptions. */
+  connectorProjectId: string | null;
+  /** @deprecated Use target. Null for SMTP subscriptions. */
+  connectorEnvironmentId: string | null;
+  /** @deprecated Use target. Null for SMTP subscriptions. */
+  connectorProfileId: string | null;
+  /** @deprecated Use target. Null for SMTP subscriptions. */
+  connectorRevisionId: string | null;
   maximumProviderAttempts: number;
   suppressBefore: string | null;
   definitionSchema:

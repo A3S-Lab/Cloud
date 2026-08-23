@@ -39,13 +39,13 @@ fn smtp_subscription_response_exposes_only_the_closed_contact_target() {
         })
     );
     assert_eq!(response["channel"], "smtp");
-    for obsolete in [
+    for legacy in [
         "connectorProjectId",
         "connectorEnvironmentId",
         "connectorProfileId",
         "connectorRevisionId",
-        "recipientContactId",
     ] {
-        assert!(response.get(obsolete).is_none());
+        assert!(response.get(legacy).is_some_and(serde_json::Value::is_null));
     }
+    assert!(response.get("recipientContactId").is_none());
 }

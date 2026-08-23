@@ -43,6 +43,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         typed_success_response_schema("#/components/schemas/RecipientContactList");
     let recipient_contact_mutation_success =
         typed_success_response_schema("#/components/schemas/RecipientContactMutation");
+    let outbound_notification_subscription = outbound_notification_subscription_schema();
     components.insert(
         "schemas".into(),
         json!({
@@ -187,62 +188,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     }
                 }
             },
-            "OutboundNotificationSubscription": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                    "organizationId", "subscriptionId", "channel", "minimumSeverity",
-                    "target", "maximumProviderAttempts", "suppressBefore", "definitionSchema",
-                    "definitionAcl", "definitionDigest", "state", "aggregateVersion",
-                    "createdBy", "createdAt", "revokedAt"
-                ],
-                "properties": {
-                    "organizationId": { "type": "string", "format": "uuid" },
-                    "subscriptionId": { "type": "string", "format": "uuid" },
-                    "channel": {
-                        "type": "string",
-                        "enum": ["signed_webhook", "slack_compatible", "smtp"]
-                    },
-                    "minimumSeverity": {
-                        "type": "string",
-                        "enum": ["information", "warning", "critical"]
-                    },
-                    "target": { "$ref": "#/components/schemas/OutboundNotificationTarget" },
-                    "maximumProviderAttempts": {
-                        "type": "integer",
-                        "minimum": MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
-                        "maximum": MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
-                    },
-                    "suppressBefore": {
-                        "type": "string",
-                        "format": "date-time",
-                        "nullable": true
-                    },
-                    "definitionSchema": {
-                        "type": "string",
-                        "enum": [
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
-                            OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
-                        ]
-                    },
-                    "definitionAcl": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
-                    },
-                    "definitionDigest": {
-                        "type": "string",
-                        "pattern": "^sha256:[0-9a-f]{64}$"
-                    },
-                    "state": { "type": "string", "enum": ["active", "revoked"] },
-                    "aggregateVersion": { "type": "integer", "minimum": 1, "maximum": 2 },
-                    "createdBy": { "type": "string", "format": "uuid" },
-                    "createdAt": { "type": "string", "format": "date-time" },
-                    "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
-                }
-            },
+            "OutboundNotificationSubscription": outbound_notification_subscription,
             "OutboundNotificationSubscriptionPage": {
                 "type": "object",
                 "additionalProperties": false,
@@ -389,6 +335,80 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     }
     components.insert("responses".into(), Value::Object(response_components));
     Ok(())
+}
+
+fn outbound_notification_subscription_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "organizationId", "subscriptionId", "channel", "minimumSeverity",
+            "target", "connectorProjectId", "connectorEnvironmentId",
+            "connectorProfileId", "connectorRevisionId", "maximumProviderAttempts",
+            "suppressBefore", "definitionSchema", "definitionAcl", "definitionDigest",
+            "state", "aggregateVersion", "createdBy", "createdAt", "revokedAt"
+        ],
+        "properties": {
+            "organizationId": { "type": "string", "format": "uuid" },
+            "subscriptionId": { "type": "string", "format": "uuid" },
+            "channel": {
+                "type": "string",
+                "enum": ["signed_webhook", "slack_compatible", "smtp"]
+            },
+            "minimumSeverity": {
+                "type": "string",
+                "enum": ["information", "warning", "critical"]
+            },
+            "target": { "$ref": "#/components/schemas/OutboundNotificationTarget" },
+            "connectorProjectId": legacy_connector_target_projection_schema(),
+            "connectorEnvironmentId": legacy_connector_target_projection_schema(),
+            "connectorProfileId": legacy_connector_target_projection_schema(),
+            "connectorRevisionId": legacy_connector_target_projection_schema(),
+            "maximumProviderAttempts": {
+                "type": "integer",
+                "minimum": MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+                "maximum": MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+            },
+            "suppressBefore": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+            },
+            "definitionSchema": {
+                "type": "string",
+                "enum": [
+                    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+                    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
+                    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+                    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4
+                ]
+            },
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+            },
+            "definitionDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "state": { "type": "string", "enum": ["active", "revoked"] },
+            "aggregateVersion": { "type": "integer", "minimum": 1, "maximum": 2 },
+            "createdBy": { "type": "string", "format": "uuid" },
+            "createdAt": { "type": "string", "format": "date-time" },
+            "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+    })
+}
+
+fn legacy_connector_target_projection_schema() -> Value {
+    json!({
+        "type": "string",
+        "format": "uuid",
+        "nullable": true,
+        "deprecated": true,
+        "description": "Deprecated non-authoritative compatibility projection. Use target; null for SMTP."
+    })
 }
 
 fn typed_success_response_schema(data_schema_ref: &str) -> Value {

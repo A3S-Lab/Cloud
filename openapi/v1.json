@@ -679,6 +679,10 @@
                 "subscription": {
                   "aggregateVersion": 1,
                   "channel": "signed_webhook",
+                  "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+                  "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+                  "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+                  "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
                   "createdAt": "2026-08-22T00:00:00Z",
                   "createdBy": "00000000-0000-4000-8000-000000000001",
                   "definitionAcl": "version = 1\n",
@@ -737,6 +741,10 @@
                 "subscription": {
                   "aggregateVersion": 1,
                   "channel": "signed_webhook",
+                  "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+                  "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+                  "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+                  "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
                   "createdAt": "2026-08-22T00:00:00Z",
                   "createdBy": "00000000-0000-4000-8000-000000000001",
                   "definitionAcl": "version = 1\n",
@@ -796,6 +804,10 @@
                   {
                     "aggregateVersion": 1,
                     "channel": "signed_webhook",
+                    "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+                    "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+                    "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+                    "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
                     "createdAt": "2026-08-22T00:00:00Z",
                     "createdBy": "00000000-0000-4000-8000-000000000001",
                     "definitionAcl": "version = 1\n",
@@ -853,6 +865,10 @@
               "data": {
                 "aggregateVersion": 1,
                 "channel": "signed_webhook",
+                "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+                "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+                "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+                "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
                 "createdAt": "2026-08-22T00:00:00Z",
                 "createdBy": "00000000-0000-4000-8000-000000000001",
                 "definitionAcl": "version = 1\n",
@@ -1848,6 +1864,10 @@
         "example": {
           "aggregateVersion": 1,
           "channel": "signed_webhook",
+          "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+          "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+          "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+          "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
           "createdAt": "2026-08-22T00:00:00Z",
           "createdBy": "00000000-0000-4000-8000-000000000001",
           "definitionAcl": "version = 1\n",
@@ -1880,6 +1900,34 @@
               "slack_compatible",
               "smtp"
             ],
+            "type": "string"
+          },
+          "connectorEnvironmentId": {
+            "deprecated": true,
+            "description": "Deprecated non-authoritative compatibility projection. Use target; null for SMTP.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "connectorProfileId": {
+            "deprecated": true,
+            "description": "Deprecated non-authoritative compatibility projection. Use target; null for SMTP.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "connectorProjectId": {
+            "deprecated": true,
+            "description": "Deprecated non-authoritative compatibility projection. Use target; null for SMTP.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "connectorRevisionId": {
+            "deprecated": true,
+            "description": "Deprecated non-authoritative compatibility projection. Use target; null for SMTP.",
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "createdAt": {
@@ -1956,6 +2004,10 @@
           "channel",
           "minimumSeverity",
           "target",
+          "connectorProjectId",
+          "connectorEnvironmentId",
+          "connectorProfileId",
+          "connectorRevisionId",
           "maximumProviderAttempts",
           "suppressBefore",
           "definitionSchema",
@@ -1977,6 +2029,10 @@
           "subscription": {
             "aggregateVersion": 1,
             "channel": "signed_webhook",
+            "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+            "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+            "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+            "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
             "createdAt": "2026-08-22T00:00:00Z",
             "createdBy": "00000000-0000-4000-8000-000000000001",
             "definitionAcl": "version = 1\n",
@@ -2035,6 +2091,10 @@
             "subscription": {
               "aggregateVersion": 1,
               "channel": "signed_webhook",
+              "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+              "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+              "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+              "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
               "createdAt": "2026-08-22T00:00:00Z",
               "createdBy": "00000000-0000-4000-8000-000000000001",
               "definitionAcl": "version = 1\n",
@@ -2097,6 +2157,10 @@
             {
               "aggregateVersion": 1,
               "channel": "signed_webhook",
+              "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+              "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+              "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+              "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
               "createdAt": "2026-08-22T00:00:00Z",
               "createdBy": "00000000-0000-4000-8000-000000000001",
               "definitionAcl": "version = 1\n",
@@ -2163,6 +2227,10 @@
               {
                 "aggregateVersion": 1,
                 "channel": "signed_webhook",
+                "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+                "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+                "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+                "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
                 "createdAt": "2026-08-22T00:00:00Z",
                 "createdBy": "00000000-0000-4000-8000-000000000001",
                 "definitionAcl": "version = 1\n",
@@ -2238,6 +2306,10 @@
           "data": {
             "aggregateVersion": 1,
             "channel": "signed_webhook",
+            "connectorEnvironmentId": "00000000-0000-4000-8000-000000000001",
+            "connectorProfileId": "00000000-0000-4000-8000-000000000001",
+            "connectorProjectId": "00000000-0000-4000-8000-000000000001",
+            "connectorRevisionId": "00000000-0000-4000-8000-000000000001",
             "createdAt": "2026-08-22T00:00:00Z",
             "createdBy": "00000000-0000-4000-8000-000000000001",
             "definitionAcl": "version = 1\n",

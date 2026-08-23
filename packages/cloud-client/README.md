@@ -348,7 +348,9 @@ v1 remains exactly eight, v2 pins one value from 1 through 8, and v3 also pins
 the bounded immutable event-time cutoff. Contract `1.53.0` adds SMTP-only v4
 and returns one required discriminated `target`: an exact Connector revision
 for signed-webhook/Slack delivery or one opaque `recipient_contact` ID for
-SMTP. Lists use the shared opaque cursor and 50/200 bounds. Notifications
+SMTP. The four deprecated nullable Connector fields remain populated for
+Connector subscriptions and are `null` for SMTP so `1.52` response consumers do
+not break. Lists use the shared opaque cursor and 50/200 bounds. Notifications
 remains authoritative for recipient identity, Resource Grants, exact target
 admission, idempotency, Outbox, audit, and persistence. The client has no ACL
 parser and never resolves mailbox, endpoints, Secrets, credentials, provider

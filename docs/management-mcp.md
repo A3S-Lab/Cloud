@@ -395,11 +395,12 @@ idempotency key.
 
 The response contains the actual definition schema, canonical subscription
 ACL/digest, one required discriminated Connector-or-recipient-contact `target`,
-and immutable `maximumProviderAttempts` and nullable `suppressBefore`. It never
-resolves the Connector endpoint, contact mailbox, Secret, credential, provider
-body, attempt/evidence, delivery receipt, or retry state. The MCP adapter adds
-no recipient selector, repository, configuration parser, queue, scheduler,
-retry counter, or delivery mechanism.
+and immutable `maximumProviderAttempts` and nullable `suppressBefore`. The four
+deprecated nullable Connector projections remain for `1.52` response
+compatibility and are `null` for SMTP. It never resolves the Connector endpoint,
+contact mailbox, Secret, credential, provider body, attempt/evidence, delivery
+receipt, or retry state. The MCP adapter adds no recipient selector, repository,
+configuration parser, queue, scheduler, retry counter, or delivery mechanism.
 
 ## Client flow
 

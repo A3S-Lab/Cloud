@@ -466,16 +466,18 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         .as_array()
         .ok_or_else(|| BootError::Internal("subscription required fields are missing".into()))?;
     assert!(required.contains(&json!("target")));
-    for obsolete in [
+    for legacy in [
         "connectorProjectId",
         "connectorEnvironmentId",
         "connectorProfileId",
         "connectorRevisionId",
-        "recipientContactId",
     ] {
-        assert!(!required.contains(&json!(obsolete)));
-        assert!(response["properties"].get(obsolete).is_none());
+        assert!(required.contains(&json!(legacy)));
+        assert_eq!(response["properties"][legacy]["nullable"], true);
+        assert_eq!(response["properties"][legacy]["deprecated"], true);
     }
+    assert!(!required.contains(&json!("recipientContactId")));
+    assert!(response["properties"].get("recipientContactId").is_none());
     let target = &document["components"]["schemas"]["OutboundNotificationTarget"];
     assert_eq!(
         target["oneOf"],

@@ -598,6 +598,22 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         response_json(&exact)?["data"]["target"]["revisionId"],
         revision_id
     );
+    assert_eq!(
+        response_json(&exact)?["data"]["connectorProjectId"],
+        project
+    );
+    assert_eq!(
+        response_json(&exact)?["data"]["connectorEnvironmentId"],
+        environment
+    );
+    assert_eq!(
+        response_json(&exact)?["data"]["connectorProfileId"],
+        profile_id
+    );
+    assert_eq!(
+        response_json(&exact)?["data"]["connectorRevisionId"],
+        revision_id
+    );
 
     let mcp_get = app
         .call(mcp_tool_call_as(
