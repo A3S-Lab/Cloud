@@ -111,6 +111,7 @@ distributes committed facts after the corresponding database transaction.
 | Security incident projection | Tenant- and grant-scoped `C0.3` investigation timeline derived from shared audit and authorized evidence references; it is not desired state or enforcement authority. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
+| BuildPlan proposal | A transient, canonical, reviewable P0 detection result bound to an exact source-layout identity, detector revision, evidence digest, project root, and Sources-owned build recipe; it is not accepted desired state. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -382,6 +383,22 @@ credential. A bounded installation-authority reconciler polls GitHub with an
 App JWT and persists only typed lifecycle/account observations plus generic
 check health. The same authority boundary is required immediately before any
 private-repository credential is issued.
+
+### 3.3.1 Developer workflows
+
+Owns bounded, deterministic inspection of an already identified source layout
+and emits versioned reviewable BuildPlan proposals. Component-only `P0.1-C1`
+binds every proposal to the exact source identity, commit, whole-layout content
+digest, detector kind/revision, evidence file/digest, project root, and existing
+Sources-owned Dockerfile `BuildRecipe`. The source-layout snapshot is canonical,
+bounded, sorted, and independent of a local checkout directory.
+
+The initial closed detector set contains Dockerfile and A3S Asset ACL detection.
+The latter consumes the Assets-owned `.a3s/asset.acl` parser and is authoritative
+over heuristics, so P0 does not reinterpret or copy Asset semantics. This context
+does not accept Source revisions, own build execution or Artifacts, persist an
+accepted desired plan, create Workloads or Routes, expose product interfaces, or
+schedule work.
 
 ### 3.4 Asset hosting
 

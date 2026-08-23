@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1` implements bounded canonical source-layout snapshots plus deterministic Dockerfile and A3S Asset ACL BuildPlan proposals. Acceptance, persistence, interfaces, build/deployment composition, profiles, previews, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -938,6 +938,15 @@ Ordered delivery:
 3. pull-request previews with bounded lifetime and cleanup;
 4. monorepo affected-set planning; and
 5. closed stateless Compose import, followed by `S0`-backed stateful mappings.
+
+Component-only `P0.1-C1` implements the first detector boundary: one bounded,
+canonical source-layout snapshot is bound to exact source identity, commit, and
+content digests; Dockerfile and A3S Asset ACL detectors emit deterministic
+canonical A3S ACL BuildPlan proposals and closed diagnostics. The Asset detector
+reuses the Assets-owned manifest parser, and explicit Asset ACL intent takes
+precedence over heuristic detection. This slice has no Source-revision
+acceptance, persistence, public interface, build execution, Workload projection,
+Route publication, or scheduler.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

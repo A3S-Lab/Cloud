@@ -24,9 +24,10 @@ pub use services::{
 };
 pub use value_objects::{
     AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRpcLimits,
-    AssetGitRpcResponse, AssetGitService, AssetManifestAdmission, AssetReleaseArtifact,
-    AssetReleaseArtifactKind, AssetReleaseProvenance, AssetReleaseVersion, McpServiceProfile,
-    McpServiceProfileSpec, MCP_SERVICE_PROFILE_MAX_ACL_BYTES, SKILL_BUNDLE_MEDIA_TYPE,
+    AssetGitRpcResponse, AssetGitService, AssetManifestAdmission, AssetManifestDefinition,
+    AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseProvenance, AssetReleaseVersion,
+    McpServiceProfile, McpServiceProfileSpec, ASSET_MANIFEST_MAX_ACL_BYTES, ASSET_MANIFEST_PATH,
+    ASSET_MANIFEST_SCHEMA, MCP_SERVICE_PROFILE_MAX_ACL_BYTES, SKILL_BUNDLE_MEDIA_TYPE,
 };
 
 #[cfg(test)]

@@ -1,0 +1,22 @@
+build_plan {
+  detector = "dockerfile"
+  detector_revision = "p0.1-c1"
+  project_root = "."
+  schema = "a3s.cloud.build-plan-proposal.v1"
+  source {
+    commit_sha = "1111111111111111111111111111111111111111"
+    content_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    identity_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+  evidence {
+    content_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    path = "Dockerfile"
+  }
+  build {
+    context = "."
+    file = "Dockerfile"
+    kind = "dockerfile"
+    platforms = ["linux/amd64"]
+    schema = "a3s.cloud.build-recipe.v1"
+  }
+}

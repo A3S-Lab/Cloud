@@ -316,6 +316,13 @@ The code on `main` separates implemented mechanics from released capability:
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint
   behavior/Gateway, and lifecycle gates remain; the service is unavailable.
+- **Implemented component / Developer Workflows detection** — `P0.1-C1`
+  introduces a bounded canonical source-layout snapshot and deterministic
+  Dockerfile/A3S Asset ACL detectors that emit exact-source-bound canonical A3S
+  ACL BuildPlan proposals. Asset semantics reuse the Assets-owned parser;
+  Sources, Artifacts, Workloads, Edge, and Automations retain their authorities.
+  Accepted-plan persistence, interfaces, workload profiles, previews,
+  monorepos, and Compose import remain open, so P0 is unavailable.
 - **In-progress / future platform families** — `APP0.1` now implements one
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,
