@@ -95,7 +95,11 @@ The code on `main` separates implemented mechanics from released capability:
   `projectId` and `environmentId` remain populated for v1 and are `null` for
   v2. Creation and every delayed projection reuse the current Membership and
   Resource Grant evaluator, while Fleet remains the sole availability
-  authority.
+  authority. The [successful retained PostgreSQL 17 and NATS JetStream H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469/job/97138232995)
+  verifies migration `140`, exact-Node policy persistence and replay,
+  current-grant filtering, critical firing, opt-in recovery, durable delivery,
+  and terminal replay; the [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469)
+  passes all ten jobs.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

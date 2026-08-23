@@ -2827,8 +2827,8 @@ node.
   CLI/MCP surface, mutable retry counter, generic timer, or second authority.
   The following N4i slice may add an exact-node alert-policy-v2 target and
   current Node Resource Grant revalidation on top of this verified owner evidence.
-- Implemented as `C0.3-N4i` with retained certification pending: add canonical
-  `cloud.notification.alert-policy.v2` only for the closed
+- Verified as `C0.3-N4i` by the [retained PostgreSQL 17 and NATS JetStream H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469/job/97138232995): canonical
+  `cloud.notification.alert-policy.v2` adds only the closed
   `fleet.node-availability-status.v1` source and one required exact `node_id`.
   Preserve every v1 canonical ACL byte and its four project/environment source
   families. V1 continues to require `project_id` plus `environment_id` and to
@@ -2862,8 +2862,11 @@ node.
   Environment-or-Node `target`; the legacy `projectId` and `environmentId`
   response fields remain nullable compatibility projections and are null for a
   Node policy. Focused domain, projection, malformed-payload, migration,
-  OpenAPI, client, and CLI gates pass locally; retained PostgreSQL/NATS
-  certification remains pending. Reuse the existing inbox history, Outbox,
+  OpenAPI, client, and CLI gates pass locally. The retained gate verifies
+  migration `140`, exact-Node policy persistence and replay, current-grant
+  filtering, critical firing, opt-in recovery, durable NATS delivery, and
+  terminal replay; the [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469)
+  passes all ten jobs. Reuse the existing inbox history, Outbox,
   outbound subscription, A3S Event, and C6 delivery rails. Add no Node poller or copied state, second policy
   lifecycle, health/incident table, mutable counter, threshold/severity rule,
   arbitrary selector or expression, timer, scheduler, queue, second event rail,
