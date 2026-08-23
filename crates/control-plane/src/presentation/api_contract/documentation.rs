@@ -744,6 +744,12 @@ struct ResourceLabel {
 }
 
 fn resource_for_path(path: &str) -> ResourceLabel {
+    if path.contains("security-investigations") && path.ends_with("/timeline") {
+        return ResourceLabel {
+            singular: "security timeline",
+            plural: "security timeline entries",
+        };
+    }
     path.trim_matches('/')
         .split('/')
         .rev()

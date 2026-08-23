@@ -1,4 +1,4 @@
-pub(super) const TAGS: [(&str, &str); 22] = [
+pub(super) const TAGS: [(&str, &str); 23] = [
     (
         "Platform",
         "Public platform metadata, liveness, and readiness diagnostics.",
@@ -72,6 +72,10 @@ pub(super) const TAGS: [(&str, &str); 22] = [
         "Asynchronous operation polling and resumable event streaming.",
     ),
     ("Audit", "Tenant-authorized immutable audit-record queries."),
+    (
+        "Security",
+        "Tenant-administrator security-investigation timelines over typed owner evidence.",
+    ),
     (
         "Notifications",
         "Personal notifications, alert policies, and outbound subscriptions.",

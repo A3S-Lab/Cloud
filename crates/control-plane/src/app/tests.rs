@@ -35,6 +35,7 @@ use crate::modules::search::{ISearchRepository, InMemorySearchRepository};
 use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
+use crate::modules::security::InMemoryGatewayRoutePolicyTimelineRepository;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, HumanTaskId, IdempotencyRequest, IdempotentWrite,
     OrganizationId, PrincipalId, ProjectId, RepositoryError, RouteId, WorkflowDecisionId,
@@ -99,6 +100,7 @@ mod recipient_contact_tests;
 mod route_tests;
 mod search_tests;
 mod secret_tests;
+mod security_tests;
 mod source_lifecycle_tests;
 mod source_private_tests;
 mod source_subscription_tests;
@@ -515,6 +517,7 @@ struct TestRuntimeRepositories {
     operations: Option<Arc<InMemoryOperationRepository>>,
     human_tasks: Option<Arc<TestHumanTaskRepository>>,
     audit_records: Option<Arc<InMemoryAuditRecordRepository>>,
+    security_investigations: Option<Arc<InMemoryGatewayRoutePolicyTimelineRepository>>,
     notifications: Option<Arc<crate::modules::notifications::InMemoryNotificationRepository>>,
     oidc_provider: Option<Arc<dyn IOidcProviderService>>,
 }
@@ -1314,6 +1317,7 @@ fn build_test_application_with_execution_and_operation_repositories(
             operations: Some(operations),
             human_tasks: None,
             audit_records: None,
+            security_investigations: None,
             notifications: None,
             oidc_provider: None,
         },
@@ -1342,6 +1346,33 @@ fn build_test_application_with_audit_records(
         None,
         TestRuntimeRepositories {
             audit_records: Some(audit_records),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
+fn build_test_application_with_security_investigations(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    security_investigations: Arc<InMemoryGatewayRoutePolicyTimelineRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            security_investigations: Some(security_investigations),
             ..TestRuntimeRepositories::default()
         },
     )
@@ -1709,6 +1740,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         operations,
         human_tasks,
         audit_records,
+        security_investigations,
         notifications,
         oidc_provider,
     } = runtime_repositories;
@@ -1827,6 +1859,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
+            security_investigations: security_investigations
+                .unwrap_or_else(|| Arc::new(InMemoryGatewayRoutePolicyTimelineRepository::new())),
             notifications,
             alert_policies,
             outbound_notifications,

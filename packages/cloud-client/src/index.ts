@@ -53,4 +53,5 @@ export {
 } from './identity';
 export * from './notifications';
 export * from './search';
+export * from './security';
 export * from './types';

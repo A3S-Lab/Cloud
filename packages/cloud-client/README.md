@@ -89,6 +89,14 @@ revision, limits, and expiry, and commits audit/Outbox evidence. The client
 does not publish a Gateway snapshot, derive targets, or create a second MCP
 policy lifecycle.
 
+`listGatewayRoutePolicySecurityTimeline` exposes the owner/admin-only,
+read-only investigation projection added by REST contract `1.55.0`. It pages
+the exact typed `edge.mcp-route-policy.created` and `.revised` owner facts in
+descending order and reports shared-audit correlation as `verified` or
+`missing`. The projection never returns canonical policy ACL, raw Outbox
+payload, or audit details, and the client does not infer Gateway denials or
+create a second incident/evidence store.
+
 `listOntologies`, `getOntology`, `createOntologyFromAcl`,
 `listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
 `reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST

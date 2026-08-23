@@ -52,6 +52,9 @@ use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IPr
 use crate::modules::projects::PostgresProjectsRepository;
 use crate::modules::search::{ISearchRepository, PostgresSearchRepository};
 use crate::modules::secrets::{ISecretRepository, PostgresSecretRepository};
+use crate::modules::security::{
+    IGatewayRoutePolicyTimelineRepository, PostgresGatewayRoutePolicyTimelineRepository,
+};
 use crate::modules::sources::domain::{
     IGithubConnectionRepository, ISourceRevisionRepository, ISourceSubscriptionRepository,
     ISourceWebhookRepository,
@@ -105,6 +108,9 @@ impl PostgresAdapterFactory {
             sources: SourcePostgresAdapters::new(self.executor.clone()),
             search: Arc::new(PostgresSearchRepository::new(self.executor.clone())),
             audit_records: Arc::new(PostgresAuditRecordRepository::new(self.executor.clone())),
+            security_investigations: Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(
+                self.executor.clone(),
+            )),
             builds: Arc::new(PostgresBuildRunRepository::new(self.executor.clone())),
             executions: Arc::new(PostgresExecutionRepository::new(self.executor.clone())),
             execution_templates: Arc::new(PostgresExecutionTemplateRepository::new(
@@ -165,6 +171,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) sources: SourcePostgresAdapters,
     pub(super) search: Arc<dyn ISearchRepository>,
     pub(super) audit_records: Arc<dyn IAuditRecordRepository>,
+    pub(super) security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     pub(super) builds: Arc<dyn IBuildRunRepository>,
     pub(super) executions: Arc<dyn IExecutionRepository>,
     pub(super) execution_templates: Arc<dyn IExecutionTemplateRepository>,

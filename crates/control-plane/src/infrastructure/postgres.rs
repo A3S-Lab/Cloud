@@ -1301,6 +1301,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/140_notification_alert_policy_node_target.sql"
             )),
         ),
+        Migration::new(
+            "141",
+            "Security Gateway Route policy investigation timeline indexes",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/141_security_gateway_route_policy_timeline.sql"
+            )),
+        ),
     ]
 }
 
@@ -2517,6 +2525,52 @@ mod notification_alert_policy_node_target_migration_tests {
             assert!(
                 !canonical.contains(forbidden),
                 "migration 140 adds forbidden alert authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod security_gateway_route_policy_timeline_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/141_security_gateway_route_policy_timeline.sql"
+    ));
+
+    #[test]
+    fn migration_141_adds_only_bounded_owner_fact_and_audit_query_indexes() {
+        let canonical = MIGRATION
+            .to_ascii_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for expected in [
+            "create index outbox_events_security_gateway_route_policy_timeline_idx",
+            "on outbox_events ( organization_id, aggregate_id, occurred_at desc, event_id desc )",
+            "create index audit_records_security_gateway_route_policy_correlation_idx",
+            "on audit_records ( organization_id, aggregate_id, action, occurred_at, request_id, audit_id )",
+            "'edge.mcp-route-policy.created'",
+            "'edge.mcp-route-policy.revised'",
+            "audit details remain private",
+        ] {
+            assert!(
+                canonical.contains(expected),
+                "migration 141 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "alter table",
+            "details json",
+            "incident",
+            "denial",
+            "telemetry",
+            "queue",
+            "scheduler",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 141 adds forbidden security authority through {forbidden}"
             );
         }
     }

@@ -59,6 +59,7 @@ use super::projects::{
     ProjectArguments, UpdateProjectAttributionArguments,
 };
 use super::search::SearchArguments;
+use super::security::SecurityGatewayRoutePolicyTimelineArguments;
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
     HumanTaskArguments, HumanTaskMutationArguments, HumanTaskSubmissionArguments,
@@ -72,8 +73,8 @@ use super::workloads::{
 };
 use super::{
     applications, artifacts, audit, connectors, durable_cells, edge, execution_templates, forms,
-    identity, nodes, notifications, ontology, operations, plugins, projects, search, workflow,
-    workloads,
+    identity, nodes, notifications, ontology, operations, plugins, projects, search, security,
+    workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -1191,6 +1192,17 @@ pub async fn execute(
         ManagementTool::AuditRecordsList => {
             let arguments = arguments::parse::<AuditRecordListArguments>(arguments).ok()?;
             audit::list_audit_records(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::SecurityGatewayRoutePolicyTimelineList => {
+            let arguments =
+                arguments::parse::<SecurityGatewayRoutePolicyTimelineArguments>(arguments).ok()?;
+            security::list_gateway_route_policy_timeline(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
         }
         ManagementTool::NotificationsList => {
             let arguments = arguments::parse::<NotificationListArguments>(arguments).ok()?;

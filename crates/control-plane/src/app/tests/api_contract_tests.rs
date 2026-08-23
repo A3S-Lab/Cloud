@@ -691,6 +691,70 @@ fn recipient_contact_contract_is_exact_owner_bounded_and_redacted() -> Result<()
 }
 
 #[test]
+fn security_gateway_route_policy_timeline_contract_is_exact_bounded_and_redacted() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let path = &document["paths"]
+        ["/organizations/{organization_id}/security-investigations/gateway-routes/{route_id}/timeline"];
+    assert_eq!(path.as_object().map(serde_json::Map::len), Some(1));
+    let operation = &path["get"];
+    assert_eq!(operation["tags"], json!(["Security"]));
+    assert_eq!(
+        operation["responses"]["200"]["$ref"],
+        "#/components/responses/SecurityGatewayRoutePolicyTimelinePageSuccess200"
+    );
+    assert!(operation.get("requestBody").is_none());
+
+    let parameters = operation["parameters"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("security timeline parameters are missing".into()))?;
+    let parameter = |name: &str| {
+        parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .ok_or_else(|| {
+                BootError::Internal(format!("security timeline {name} parameter is missing"))
+            })
+    };
+    let cursor = parameter("cursor")?;
+    assert_eq!(cursor["in"], "query");
+    assert_eq!(cursor["required"], false);
+    assert_eq!(cursor["schema"]["minLength"], 1);
+    assert_eq!(cursor["schema"]["maxLength"], 128);
+    let limit = parameter("limit")?;
+    assert_eq!(limit["in"], "query");
+    assert_eq!(limit["required"], false);
+    assert_eq!(limit["schema"]["minimum"], 1);
+    assert_eq!(limit["schema"]["maximum"], 100);
+    assert_eq!(limit["schema"]["default"], 50);
+
+    let entry = &document["components"]["schemas"]["SecurityGatewayRoutePolicyTimelineEntry"];
+    assert_eq!(entry["additionalProperties"], false);
+    assert_eq!(
+        entry["properties"]["eventKey"]["enum"],
+        json!([
+            "edge.mcp-route-policy.created",
+            "edge.mcp-route-policy.revised"
+        ])
+    );
+    assert_eq!(
+        entry["properties"]["auditCorrelation"]["enum"],
+        json!(["verified", "missing"])
+    );
+    assert_eq!(
+        entry["properties"]["policyDigest"]["pattern"],
+        "^sha256:[0-9a-f]{64}$"
+    );
+    for forbidden in ["payload", "details", "canonicalAcl", "privateError"] {
+        assert!(entry["properties"].get(forbidden).is_none());
+    }
+    let page = &document["components"]["schemas"]["SecurityGatewayRoutePolicyTimelinePage"];
+    assert_eq!(page["additionalProperties"], false);
+    assert_eq!(page["properties"]["nextCursor"]["maxLength"], 128);
+    Ok(())
+}
+
+#[test]
 fn committed_openapi_snapshot_matches_the_resolved_route_contract() -> Result<()> {
     let app = contract_test_application()?;
     let generated = generate_openapi_contract(&app)?;

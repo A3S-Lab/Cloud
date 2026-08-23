@@ -31,6 +31,7 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
+use crate::modules::security::{DEFAULT_SECURITY_TIMELINE_LIMIT, MAXIMUM_SECURITY_TIMELINE_LIMIT};
 use crate::modules::workflow::{
     WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
 };
@@ -114,6 +115,8 @@ pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
+pub const SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST: &str =
+    "a3s_cloud_security_gateway_route_policy_timeline_list";
 pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
 pub const NOTIFICATIONS_GET: &str = "a3s_cloud_notifications_get";
 pub const NOTIFICATIONS_READ: &str = "a3s_cloud_notifications_read";
@@ -287,6 +290,7 @@ pub enum ManagementTool {
     NodesGet,
     OperationsList,
     AuditRecordsList,
+    SecurityGatewayRoutePolicyTimelineList,
     NotificationsList,
     NotificationsGet,
     NotificationsRead,
@@ -330,7 +334,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 132] = [
+    const ALL: [Self; 133] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -437,6 +441,7 @@ impl ManagementTool {
         Self::NodesGet,
         Self::OperationsList,
         Self::AuditRecordsList,
+        Self::SecurityGatewayRoutePolicyTimelineList,
         Self::NotificationsList,
         Self::NotificationsGet,
         Self::NotificationsRead,
@@ -597,6 +602,9 @@ impl ManagementTool {
             Self::NodesGet => NODES_GET,
             Self::OperationsList => OPERATIONS_LIST,
             Self::AuditRecordsList => AUDIT_RECORDS_LIST,
+            Self::SecurityGatewayRoutePolicyTimelineList => {
+                SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST
+            }
             Self::NotificationsList => NOTIFICATIONS_LIST,
             Self::NotificationsGet => NOTIFICATIONS_GET,
             Self::NotificationsRead => NOTIFICATIONS_READ,
@@ -690,6 +698,7 @@ impl ManagementTool {
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
+            | Self::SecurityGatewayRoutePolicyTimelineList
             | Self::NotificationsList
             | Self::NotificationsGet
             | Self::NotificationAlertPoliciesList
@@ -782,6 +791,7 @@ impl ManagementTool {
                 | Self::MembershipInvitationsCreate
                 | Self::MembershipInvitationsRevoke
                 | Self::AuditRecordsList
+                | Self::SecurityGatewayRoutePolicyTimelineList
                 | Self::ResourceGrantsList
                 | Self::ResourceGrantsGet
                 | Self::ResourceGrantsCreate
@@ -1576,6 +1586,12 @@ impl ManagementTool {
                 audit_record_list_schema(),
                 true,
             ),
+            Self::SecurityGatewayRoutePolicyTimelineList => (
+                "List Gateway Route policy security timeline",
+                "List one bounded, redacted investigation timeline over exact Edge owner facts and correlated shared audit metadata.",
+                security_gateway_route_policy_timeline_schema(),
+                true,
+            ),
             Self::NotificationsList => (
                 "List my notifications",
                 "List one bounded, Resource-Grant-filtered page from the authenticated Principal's in-app inbox.",
@@ -1961,6 +1977,24 @@ fn audit_record_list_schema() -> Value {
                 "default": DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT
             }
         },
+        "additionalProperties": false
+    })
+}
+
+fn security_gateway_route_policy_timeline_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "routeId": {"type": "string", "format": "uuid"},
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_SECURITY_TIMELINE_LIMIT,
+                "default": DEFAULT_SECURITY_TIMELINE_LIMIT
+            }
+        },
+        "required": ["routeId"],
         "additionalProperties": false
     })
 }

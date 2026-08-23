@@ -73,6 +73,7 @@ import {
   workloadsResult,
 } from './results';
 import { executeSearchCommand } from './search-commands';
+import { executeSecurityCommand } from './security-commands';
 import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import type { ReadStdin } from './standard-input';
@@ -144,6 +145,10 @@ export async function executeCommand(
   const auditResult = await executeAuditCommand(command, arguments_, context, cloudApi);
   if (auditResult !== undefined) {
     return auditResult;
+  }
+  const securityResult = await executeSecurityCommand(command, arguments_, context, cloudApi);
+  if (securityResult !== undefined) {
+    return securityResult;
   }
   const notificationResult = await executeNotificationCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

@@ -31,6 +31,7 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
+use crate::modules::security::{DEFAULT_SECURITY_TIMELINE_LIMIT, MAXIMUM_SECURITY_TIMELINE_LIMIT};
 use crate::modules::workflow::{
     WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
 };
@@ -408,6 +409,25 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 parameters,
                 json!({"name": name, "in": "query", "required": false, "schema": schema}),
             );
+        }
+    }
+    if method == "get" && is_security_gateway_route_policy_timeline_path(path) {
+        for parameter in [
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_SECURITY_TIMELINE_LIMIT,
+                    "default": DEFAULT_SECURITY_TIMELINE_LIMIT
+                }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
         }
     }
     if method == "get" && path.ends_with("/notifications") {
@@ -1058,26 +1078,27 @@ fn describe_request_body(
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
     for status in success_statuses(method, path) {
-        let component =
-            if let Some(component) = recipient_contact_success_component(method, path, status) {
-                component
-            } else if let Some(component) =
-                notification_alert_policy_success_component(method, path, status)
-            {
-                component
-            } else if let Some(component) =
-                notification_outbound_subscription_success_component(method, path, status)
-            {
-                component
-            } else if let Some(component) = asset_git_success_component(path) {
-                component.to_owned()
-            } else if path.ends_with("/stream") {
-                "SseSuccess200".to_owned()
-            } else if path == "/node-control/enroll" {
-                format!("RawSuccess{status}")
-            } else {
-                format!("Success{status}")
-            };
+        let component = if is_security_gateway_route_policy_timeline_path(path) {
+            "SecurityGatewayRoutePolicyTimelinePageSuccess200".to_owned()
+        } else if let Some(component) = recipient_contact_success_component(method, path, status) {
+            component
+        } else if let Some(component) =
+            notification_alert_policy_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) =
+            notification_outbound_subscription_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) = asset_git_success_component(path) {
+            component.to_owned()
+        } else if path.ends_with("/stream") {
+            "SseSuccess200".to_owned()
+        } else if path == "/node-control/enroll" {
+            format!("RawSuccess{status}")
+        } else {
+            format!("Success{status}")
+        };
         responses.insert(status.to_string(), response_ref(&component));
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
@@ -1196,6 +1217,8 @@ fn operation_id(method: &str, path: &str) -> String {
 fn operation_tag(path: &str) -> &'static str {
     if path.starts_with("/health") || path == "/platform" {
         "Platform"
+    } else if path.contains("security-investigations") {
+        "Security"
     } else if path.starts_with("/bootstrap")
         || path.contains("api-tokens")
         || path.contains("memberships")
@@ -1449,6 +1472,10 @@ fn is_membership_invitation_version_path(path: &str) -> bool {
 
 fn is_notification_read_path(path: &str) -> bool {
     path.ends_with("/notifications/{notification_id}/read")
+}
+
+fn is_security_gateway_route_policy_timeline_path(path: &str) -> bool {
+    path.ends_with("/security-investigations/gateway-routes/{route_id}/timeline")
 }
 
 fn is_notification_alert_policy_collection_path(path: &str) -> bool {

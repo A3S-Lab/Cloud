@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.54.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.55.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2914,6 +2914,52 @@ describe('CloudApi', () => {
         to: '2026-08-13T00:00:00Z',
       })
     ).toThrow('audit from timestamp must not exceed to timestamp');
+    expect(called).toBe(false);
+  });
+
+  it('queries a bounded Gateway Route policy security timeline', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ entries: [], nextCursor: null });
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    await api.listGatewayRoutePolicySecurityTimeline(
+      'organization / one',
+      '019c0000-0000-7000-8000-000000000036',
+      {
+        cursor: 'v1:1786579200000000:019c0000-0000-7000-8000-000000000037',
+        limit: 25,
+      }
+    );
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/security-investigations/gateway-routes/' +
+        '019c0000-0000-7000-8000-000000000036/timeline?' +
+        'cursor=v1%3A1786579200000000%3A019c0000-0000-7000-8000-000000000037&limit=25'
+    );
+  });
+
+  it('rejects invalid security timeline scope and pagination before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({ entries: [], nextCursor: null });
+      },
+    });
+    expect(() => api.listGatewayRoutePolicySecurityTimeline('organization', 'not-a-uuid')).toThrow(
+      'Gateway Route policy security timeline route ID must be a non-nil UUID'
+    );
+    expect(() =>
+      api.listGatewayRoutePolicySecurityTimeline('organization', '019c0000-0000-7000-8000-000000000036', {
+        cursor: '',
+      })
+    ).toThrow('security timeline cursor is invalid');
+    expect(() =>
+      api.listGatewayRoutePolicySecurityTimeline('organization', '019c0000-0000-7000-8000-000000000036', {
+        limit: 101,
+      })
+    ).toThrow('security timeline limit must be between 1 and 100');
     expect(called).toBe(false);
   });
 

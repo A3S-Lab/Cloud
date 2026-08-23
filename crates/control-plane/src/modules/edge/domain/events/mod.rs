@@ -25,5 +25,8 @@ pub use gateway_route_cutover_staged::GatewayRouteCutoverStaged;
 pub use gateway_scope_created::GatewayScopeCreated;
 pub use mcp_credential_changed::McpCredentialChanged;
 pub use mcp_gateway_snapshot_staged::McpGatewaySnapshotStaged;
-pub use mcp_route_policy_changed::{McpRoutePolicyChanged, McpRoutePolicyMutationKind};
+pub use mcp_route_policy_changed::{
+    McpRoutePolicyChanged, McpRoutePolicyMutationKind, MCP_ROUTE_POLICY_CREATED_EVENT_KEY,
+    MCP_ROUTE_POLICY_REVISED_EVENT_KEY,
+};
 pub use route_publication_staged::RoutePublicationStaged;

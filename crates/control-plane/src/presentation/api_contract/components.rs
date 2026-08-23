@@ -44,6 +44,9 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         typed_success_response_schema("#/components/schemas/RecipientContactList");
     let recipient_contact_mutation_success =
         typed_success_response_schema("#/components/schemas/RecipientContactMutation");
+    let security_gateway_route_policy_timeline_page_success = typed_success_response_schema(
+        "#/components/schemas/SecurityGatewayRoutePolicyTimelinePage",
+    );
     let outbound_notification_subscription = outbound_notification_subscription_schema();
     components.insert(
         "schemas".into(),
@@ -73,6 +76,64 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                     "timestamp": { "type": "string", "format": "date-time" }
                 }
             },
+            "SecurityGatewayRoutePolicyTimelineEntry": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "eventId", "eventKey", "schemaVersion", "organizationId", "projectId",
+                    "environmentId", "routeId", "policyRevision", "policyDigest",
+                    "occurredAt", "correlationId", "auditCorrelation", "auditRecordId",
+                    "actorPrincipalId"
+                ],
+                "properties": {
+                    "eventId": { "type": "string", "format": "uuid" },
+                    "eventKey": {
+                        "type": "string",
+                        "enum": [
+                            "edge.mcp-route-policy.created",
+                            "edge.mcp-route-policy.revised"
+                        ]
+                    },
+                    "schemaVersion": { "type": "integer", "enum": [1] },
+                    "organizationId": { "type": "string", "format": "uuid" },
+                    "projectId": { "type": "string", "format": "uuid" },
+                    "environmentId": { "type": "string", "format": "uuid" },
+                    "routeId": { "type": "string", "format": "uuid" },
+                    "policyRevision": {
+                        "type": "integer", "minimum": 1, "maximum": 9007199254740991_i64
+                    },
+                    "policyDigest": {
+                        "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "occurredAt": { "type": "string", "format": "date-time" },
+                    "correlationId": { "type": "string", "format": "uuid" },
+                    "auditCorrelation": { "type": "string", "enum": ["verified", "missing"] },
+                    "auditRecordId": {
+                        "type": "string", "format": "uuid", "nullable": true
+                    },
+                    "actorPrincipalId": {
+                        "type": "string", "format": "uuid", "nullable": true
+                    }
+                }
+            },
+            "SecurityGatewayRoutePolicyTimelinePage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entries", "nextCursor"],
+                "properties": {
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SecurityGatewayRoutePolicyTimelineEntry"
+                        }
+                    },
+                    "nextCursor": {
+                        "type": "string", "minLength": 1, "maxLength": 128, "nullable": true
+                    }
+                }
+            },
+            "SecurityGatewayRoutePolicyTimelinePageSuccessResponse":
+                security_gateway_route_policy_timeline_page_success,
             "RecipientContact": recipient_contact_schema(false),
             "RecipientContactList": {
                 "type": "array",
@@ -268,6 +329,13 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(status, ""),
         );
     }
+    response_components.insert(
+        "SecurityGatewayRoutePolicyTimelinePageSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/SecurityGatewayRoutePolicyTimelinePageSuccessResponse",
+        ),
+    );
     response_components.insert(
         "RecipientContactSuccess200".into(),
         response_component(200, "#/components/schemas/RecipientContactSuccessResponse"),

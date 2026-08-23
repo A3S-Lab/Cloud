@@ -31,8 +31,12 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationStatus, OperationSubject, PostgresOperationRepository,
     RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
+use a3s_cloud_control_plane::modules::security::{
+    GatewayRoutePolicyTimelineCursor, IGatewayRoutePolicyTimelineRepository,
+    PostgresGatewayRoutePolicyTimelineRepository, SecurityAuditCorrelation,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName,
+    AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName, RouteId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -56,8 +60,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 140;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "140";
+const CLOUD_MIGRATION_COUNT: i64 = 141;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "141";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -828,6 +832,275 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         .await?;
     assert_eq!(exact.len(), 1);
     assert_eq!(exact[0].id, expected[1]);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_gateway_route_policy_security_timeline_is_typed_correlated_and_tenant_scoped() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        exercise_postgres_gateway_route_policy_security_timeline,
+    )
+    .await
+    .expect("PostgreSQL Gateway Route policy security timeline gate");
+}
+
+async fn exercise_postgres_gateway_route_policy_security_timeline(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let repository = PostgresGatewayRoutePolicyTimelineRepository::new(executor);
+    let organization_id = OrganizationId::new();
+    let hidden_organization_id = OrganizationId::new();
+    let project_id = Uuid::now_v7();
+    let environment_id = Uuid::now_v7();
+    let route_id = RouteId::new();
+    let actor_id = Uuid::now_v7();
+    let now = Utc::now();
+    let mut events = Vec::new();
+
+    for revision in 1_u64..=3 {
+        let event_id = Uuid::now_v7();
+        let correlation_id = Uuid::now_v7();
+        let occurred_at = now + chrono::Duration::seconds(revision as i64);
+        let event_key = if revision == 1 {
+            "edge.mcp-route-policy.created"
+        } else {
+            "edge.mcp-route-policy.revised"
+        };
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (",
+                )
+                .bind(event_id)
+                .append(", ")
+                .bind(event_key)
+                .append(", 1, ")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(route_id.as_uuid())
+                .append(", ")
+                .bind(revision)
+                .append(", ")
+                .bind(occurred_at)
+                .append(", ")
+                .bind(correlation_id)
+                .append(", null, ")
+                .bind(json!({
+                    "organization_id": organization_id.as_uuid(),
+                    "project_id": project_id,
+                    "environment_id": environment_id,
+                    "route_id": route_id.as_uuid(),
+                    "policy_revision": revision,
+                    "policy_digest": format!("sha256:{}", char::from(b'a' + revision as u8).to_string().repeat(64)),
+                }))
+                .append(")"),
+            )
+            .await?;
+        let audit_id = if revision == 2 {
+            None
+        } else {
+            let audit_id = Uuid::now_v7();
+            database
+                .execute(
+                    sql_query::<()>(
+                        "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                    )
+                    .bind(audit_id)
+                    .append(", ")
+                    .bind(organization_id.as_uuid())
+                    .append(", ")
+                    .bind(actor_id)
+                    .append(", ")
+                    .bind(event_key)
+                    .append(", ")
+                    .bind(route_id.as_uuid())
+                    .append(", ")
+                    .bind(occurred_at)
+                    .append(", ")
+                    .bind(correlation_id)
+                    .append(", '{\"private\":\"must-not-be-selected\"}'::jsonb)"),
+                )
+                .await?;
+            Some(audit_id)
+        };
+        events.push((event_id, audit_id));
+    }
+
+    let hidden_event_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (",
+            )
+            .bind(hidden_event_id)
+            .append(", 'edge.mcp-route-policy.created', 1, ")
+            .bind(hidden_organization_id.as_uuid())
+            .append(", ")
+            .bind(route_id.as_uuid())
+            .append(", 1, ")
+            .bind(now + chrono::Duration::seconds(10))
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", null, ")
+            .bind(json!({
+                "organization_id": hidden_organization_id.as_uuid(),
+                "project_id": Uuid::now_v7(),
+                "environment_id": Uuid::now_v7(),
+                "route_id": route_id.as_uuid(),
+                "policy_revision": 1,
+                "policy_digest": format!("sha256:{}", "f".repeat(64)),
+            }))
+            .append(")"),
+        )
+        .await?;
+
+    let first = repository
+        .list_page(organization_id, route_id, None, 2)
+        .await?;
+    assert_eq!(
+        first.iter().map(|entry| entry.event_id).collect::<Vec<_>>(),
+        vec![events[2].0, events[1].0]
+    );
+    assert_eq!(
+        first[0].audit_correlation,
+        SecurityAuditCorrelation::Verified
+    );
+    assert_eq!(first[0].audit_record_id, events[2].1);
+    assert_eq!(
+        first[0].actor_principal_id.map(|value| value.as_uuid()),
+        Some(actor_id)
+    );
+    assert_eq!(
+        first[1].audit_correlation,
+        SecurityAuditCorrelation::Missing
+    );
+    assert_eq!(first[1].audit_record_id, None);
+    assert_eq!(first[1].actor_principal_id, None);
+    assert!(!format!("{first:?}").contains("must-not-be-selected"));
+    assert!(first.iter().all(|entry| entry.event_id != hidden_event_id));
+
+    let second = repository
+        .list_page(
+            organization_id,
+            route_id,
+            Some(GatewayRoutePolicyTimelineCursor::after(&first[1])),
+            2,
+        )
+        .await?;
+    assert_eq!(
+        second
+            .iter()
+            .map(|entry| entry.event_id)
+            .collect::<Vec<_>>(),
+        vec![events[0].0]
+    );
+
+    let malformed_route_id = RouteId::new();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", 'edge.mcp-route-policy.created', 2, ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(malformed_route_id.as_uuid())
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", null, ")
+            .bind(json!({
+                "organization_id": organization_id.as_uuid(),
+                "project_id": project_id,
+                "environment_id": environment_id,
+                "route_id": malformed_route_id.as_uuid(),
+                "policy_revision": 1,
+                "policy_digest": format!("sha256:{}", "a".repeat(64)),
+            }))
+            .append(")"),
+        )
+        .await?;
+    assert!(repository
+        .list_page(organization_id, malformed_route_id, None, 10)
+        .await
+        .is_err());
+
+    let ambiguous_route_id = RouteId::new();
+    let ambiguous_event_id = Uuid::now_v7();
+    let ambiguous_correlation_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload) values (",
+            )
+            .bind(ambiguous_event_id)
+            .append(", 'edge.mcp-route-policy.created', 1, ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(ambiguous_route_id.as_uuid())
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(ambiguous_correlation_id)
+            .append(", null, ")
+            .bind(json!({
+                "organization_id": organization_id.as_uuid(),
+                "project_id": project_id,
+                "environment_id": environment_id,
+                "route_id": ambiguous_route_id.as_uuid(),
+                "policy_revision": 1,
+                "policy_digest": format!("sha256:{}", "a".repeat(64)),
+            }))
+            .append(")"),
+        )
+        .await?;
+    for audit_id in [Uuid::now_v7(), Uuid::now_v7()] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                )
+                .bind(audit_id)
+                .append(", ")
+                .bind(organization_id.as_uuid())
+                .append(", null, 'edge.mcp-route-policy.created', ")
+                .bind(ambiguous_route_id.as_uuid())
+                .append(", ")
+                .bind(now)
+                .append(", ")
+                .bind(ambiguous_correlation_id)
+                .append(", '{}'::jsonb)"),
+            )
+            .await?;
+    }
+    let ambiguous = repository
+        .list_page(organization_id, ambiguous_route_id, None, 10)
+        .await
+        .expect_err("duplicate audit correlation must fail closed");
+    assert!(ambiguous
+        .to_string()
+        .contains("ambiguous audit correlation"));
+
+    let index_count = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select count(*) from pg_indexes where schemaname = current_schema() and indexname in (",
+            )
+            .bind("outbox_events_security_gateway_route_policy_timeline_idx")
+            .append(", ")
+            .bind("audit_records_security_gateway_route_policy_correlation_idx")
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(index_count, 2);
     Ok(())
 }
 

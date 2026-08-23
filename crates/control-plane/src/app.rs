@@ -190,6 +190,9 @@ use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ListSecretsHandler, RevokeSecretVersionHandler,
     RotateSecretHandler, SecretsModule,
 };
+use crate::modules::security::{
+    IGatewayRoutePolicyTimelineRepository, ListGatewayRoutePolicyTimelineHandler, SecurityModule,
+};
 use crate::modules::sources::domain::{
     IGithubAppAuthorizationService, IGithubConnectionAuthorityService, IGithubConnectionRepository,
     IGithubInstallationAuthorityProvider, IGithubInstallationTokenService, ISourceCheckout,
@@ -487,6 +490,7 @@ async fn build_api_worker_application(
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search = adapters.search;
     let audit_records = adapters.audit_records;
+    let security_investigations = adapters.security_investigations;
     let notifications = adapters.notifications.notifications;
     let alert_policies = adapters.notifications.alert_policies;
     let outbound_notifications = adapters.notifications.outbound_notifications;
@@ -1556,6 +1560,7 @@ async fn build_api_worker_application(
                 form_semantic_core,
                 search,
                 audit_records,
+                security_investigations,
                 notifications,
                 alert_policies,
                 outbound_notifications,
@@ -1719,6 +1724,7 @@ struct ManagementApplicationDependencies {
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
+    security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     notifications: Arc<dyn INotificationRepository>,
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
@@ -1791,6 +1797,7 @@ fn build_management_application_with_health(
         form_semantic_core,
         search,
         audit_records,
+        security_investigations,
         notifications,
         alert_policies,
         outbound_notifications,
@@ -2971,6 +2978,9 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::audit::ListAuditRecords, _>(
                     ListAuditRecordsHandler::new(audit_records),
                 )
+                .query_handler::<crate::modules::security::ListGatewayRoutePolicyTimeline, _>(
+                    ListGatewayRoutePolicyTimelineHandler::new(security_investigations),
+                )
                 .query_handler::<crate::modules::notifications::ListNotifications, _>(
                     ListNotificationsHandler::new(list_notifications),
                 )
@@ -3254,6 +3264,7 @@ fn build_management_application_with_health(
         .import(FormsModule)
         .import(SearchModule)
         .import(AuditModule)
+        .import(SecurityModule)
         .import(NotificationsModule)
         .import(ConnectorsModule)
         .import(ApplicationsModule)

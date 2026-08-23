@@ -420,6 +420,7 @@ mcp-routes list
 mcp-routes get <route-id>
 mcp-routes create --file=<path>
 mcp-routes revise <route-id> --file=<path>
+security-investigations timeline <route-id> [--cursor=<cursor>] [--limit=<1..100>]
 routes list
 routes get <route-id>
 routes publish <gateway-scope-id> <workload-revision-id> <domain-claim-id> <hostname> <path-prefix> <port-name>
@@ -466,6 +467,13 @@ canonical policy and revision. Cloud remains authoritative for Service-profile
 admission, tenancy, grant generations, domain and Workload identity, audit,
 Outbox, reconciliation, and the single complete Gateway publication path; the
 CLI does not compile or publish Gateway state.
+
+`security-investigations timeline` is an owner/admin-only, read-only view over
+the exact Gateway Route policy owner facts and their shared-audit correlation.
+It uses stable descending keyset pagination and renders only typed identifiers,
+revision/digest metadata, timestamps, and `verified`/`missing` audit state. It
+never prints canonical ACL, raw Outbox payload, or audit details, and it does
+not infer Gateway denials from lossy logs or usage data.
 
 The `ontologies` commands expose the one Workflow-owned, project-scoped
 Ontology lifecycle. Create and revise submit bounded closed A3S ACL with a

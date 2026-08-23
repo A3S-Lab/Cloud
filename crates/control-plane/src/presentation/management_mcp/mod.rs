@@ -20,6 +20,7 @@ mod plugins;
 mod projects;
 mod protocol;
 mod search;
+mod security;
 mod tool_result;
 mod workflow;
 mod workloads;

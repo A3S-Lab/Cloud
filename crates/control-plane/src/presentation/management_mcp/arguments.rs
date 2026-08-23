@@ -1,4 +1,5 @@
 use crate::modules::fleet::application::MAX_LOG_PAGE_SIZE;
+use crate::modules::security::MAXIMUM_SECURITY_TIMELINE_LIMIT;
 use crate::presentation::parse_sequence_cursor;
 use a3s_runtime::contract::RuntimeLogStream;
 use serde::de::Error as _;
@@ -157,6 +158,21 @@ where
     if !(1..=MAXIMUM_LIST_LIMIT).contains(&limit) {
         return Err(D::Error::custom(format!(
             "limit must be between 1 and {MAXIMUM_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}
+
+pub(super) fn deserialize_security_timeline_limit<'de, D>(
+    deserializer: D,
+) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let limit = usize::deserialize(deserializer)?;
+    if !(1..=MAXIMUM_SECURITY_TIMELINE_LIMIT).contains(&limit) {
+        return Err(D::Error::custom(format!(
+            "security timeline limit must be between 1 and {MAXIMUM_SECURITY_TIMELINE_LIMIT}"
         )));
     }
     Ok(limit)

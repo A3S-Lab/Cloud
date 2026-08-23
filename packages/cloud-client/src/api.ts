@@ -29,6 +29,11 @@ import {
 } from './applications';
 import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
 import {
+  encodeSecurityTimelineQuery,
+  type GatewayRoutePolicyTimelinePage,
+  type SecurityTimelineQuery,
+} from './security';
+import {
   type ConnectorProfile,
   type ConnectorProfileMutationResult,
   type ConnectorProfileRecord,
@@ -263,6 +268,7 @@ import {
   validateMembershipInput,
   validateMembershipInvitationInput,
   validateMembershipRole,
+  validateNonNilUuid,
   validateOntologyAcl,
   validateOntologyRevisionControl,
   validateProjectAttributionInput,
@@ -286,7 +292,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.54.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.55.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1755,6 +1761,20 @@ export class CloudApi {
     const parameters = encodeAuditRecordQuery(query);
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/audit-records?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  listGatewayRoutePolicySecurityTimeline(
+    organizationId: string,
+    routeId: string,
+    query: SecurityTimelineQuery = {},
+    signal?: AbortSignal
+  ): Promise<GatewayRoutePolicyTimelinePage> {
+    validateNonNilUuid(routeId, 'Gateway Route policy security timeline route ID');
+    const parameters = encodeSecurityTimelineQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/security-investigations/gateway-routes/${encodeURIComponent(routeId)}/timeline?${parameters.toString()}`,
       signal
     );
   }

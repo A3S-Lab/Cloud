@@ -313,6 +313,13 @@ jobs:
           postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Gateway Route policy security timeline persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_gateway_route_policy_security_timeline_is_typed_correlated_and_tenant_scoped
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify project attribution persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

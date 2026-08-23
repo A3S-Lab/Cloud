@@ -20,6 +20,7 @@ pub mod plugins;
 pub mod projects;
 pub mod search;
 pub mod secrets;
+pub mod security;
 pub mod shared_kernel;
 pub mod sources;
 pub mod workflow;
