@@ -1805,7 +1805,7 @@ following N4i slice may admit the closed facts through an exact-node policy
 target and the existing Node Resource Grant evaluator only on top of this
 verified owner evidence.
 
-#### Fleet node-availability alert source (`C0.3-N4i` frozen)
+#### Fleet node-availability alert source (`C0.3-N4i` implemented; certification pending)
 
 Notifications adds canonical `cloud.notification.alert-policy.v2` only for one
 required exact `node_id` target and the closed
@@ -1843,18 +1843,18 @@ current `ResourceGrantScope::Node`. Every delayed owner fact rechecks the
 recipient's active Membership and current grants before projection. A
 restricted member's project or environment grant cannot authorize a Node, while
 organization-wide roles continue through the same evaluator. Migration `140`
-may add the tenant-scoped Node foreign key, nullable legacy environment columns
+adds the tenant-scoped Node foreign key, nullable legacy environment columns
 under a strict v1/v2 source/target XOR, separate active Environment and Node
 uniqueness/query indexes, and Node target immutability in the existing
 active-to-revoked trigger.
 
 REST/OpenAPI `1.54.0`, the maintained client, CLI, and four existing Management
-MCP operations may expose the same create/list/get/revoke CQRS with a closed
+MCP operations expose the same create/list/get/revoke CQRS with a closed
 typed Environment-or-Node `target`. Nullable legacy `projectId` and
 `environmentId` response projections remain populated for v1 and null for v2;
-the canonical ACL, schema, and digest remain authoritative. Implementation and
-retained PostgreSQL/NATS evidence remain open. Fleet remains the sole heartbeat
-and availability authority. Notifications does not poll Fleet, infer health
+the canonical ACL, schema, and digest remain authoritative. Focused local gates
+pass; retained PostgreSQL/NATS certification remains pending. Fleet remains the
+sole heartbeat and availability authority. Notifications does not poll Fleet, infer health
 from silence, add a threshold or severity rule, copy Node state, or introduce a
 health/incident table, mutable counter, timer, scheduler, queue, second event
 rail, endpoint, tool, compatibility parser, or non-ACL configuration.

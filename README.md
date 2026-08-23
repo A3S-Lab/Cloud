@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.53.0" src="https://img.shields.io/badge/REST_contract-1.53.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.54.0" src="https://img.shields.io/badge/REST_contract-1.54.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,7 +61,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.53.0`](openapi/v1.json), maintained
+  [OpenAPI `1.54.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) reuse the same application commands
   and queries within their surface-specific privacy boundaries. The contract
@@ -89,6 +89,13 @@ The code on `main` separates implemented mechanics from released capability:
   Connector fields remain deprecated nullable response projections for `1.52`
   clients and are `null` for SMTP; mailbox resolution and delivery evidence
   remain internal. Broader enterprise `C0` gates remain.
+  Contract `1.54.0` adds canonical alert-policy v2 for the single closed
+  `fleet.node-availability-status.v1` source and an exact Node target. The
+  response exposes one required Environment-or-Node `target`; legacy
+  `projectId` and `environmentId` remain populated for v1 and are `null` for
+  v2. Creation and every delayed projection reuse the current Membership and
+  Resource Grant evaluator, while Fleet remains the sole availability
+  authority.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

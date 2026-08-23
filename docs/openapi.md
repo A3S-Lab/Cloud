@@ -11,6 +11,8 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
+The current semantic contract version is `1.54.0`.
+
 ## Contract completeness
 
 Every public REST operation must declare all of the following:
@@ -125,6 +127,13 @@ typed correlation data. Parse and generate these documents with `a3s-acl`.
 ACL examples in the OpenAPI document are illustrative syntax. The field bounds,
 schema identifiers, semantic validation, and canonical digest remain owned by
 the domain identified by the operation.
+
+Notification alert-policy responses use a required discriminated `target`.
+Alert-policy v1 returns `{ "kind": "environment", ... }`; v2 returns
+`{ "kind": "node", ... }`. The legacy `projectId` and `environmentId`
+properties remain required nullable response fields: they retain their v1
+values and are `null` for v2. The canonical ACL, `definitionSchema`, and digest
+remain authoritative.
 
 ## Versioning and compatibility
 

@@ -450,10 +450,12 @@ transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
 
-The current REST/OpenAPI contract is `1.53.0`. It retains `1.52.0`'s exact-owner
+The current REST/OpenAPI contract is `1.54.0`. It retains `1.53.0`'s SMTP-only
+outbound-subscription v4 target union and `1.52.0`'s exact-owner
 recipient-contact self-service surface without exposing challenge identity,
-mailbox, or proof, and adds SMTP-only outbound-subscription v4 through one
-required closed Connector-or-recipient-contact target union. The four legacy
+mailbox, or proof. It adds alert-policy v2 only for the closed Fleet Node
+availability source and one exact Node target. The legacy alert-policy
+project/environment fields remain nullable for v1 response compatibility. The four legacy
 Connector fields remain deprecated nullable response projections for `1.52`
 clients and are `null` for SMTP. It
 also retains `1.48.0`'s complete human-readable operation, tag,
@@ -1746,7 +1748,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.53.0`. Focused tests
+  and every API response pin the current contract `1.54.0`. Focused tests
   regenerate the candidate from the resolved route table and reject snapshot
   drift. CI compares
   the committed contract with the pull request base and rejects operation
@@ -2825,7 +2827,7 @@ node.
   CLI/MCP surface, mutable retry counter, generic timer, or second authority.
   The following N4i slice may add an exact-node alert-policy-v2 target and
   current Node Resource Grant revalidation on top of this verified owner evidence.
-- Frozen as `C0.3-N4i`: add canonical
+- Implemented as `C0.3-N4i` with retained certification pending: add canonical
   `cloud.notification.alert-policy.v2` only for the closed
   `fleet.node-availability-status.v1` source and one required exact `node_id`.
   Preserve every v1 canonical ACL byte and its four project/environment source
@@ -2856,12 +2858,13 @@ node.
   XOR, add the tenant-scoped Node foreign key, pin all target columns in the
   revoke-only trigger, and replace nullable uniqueness with separate partial
   environment and Node indexes. REST/OpenAPI `1.54.0`, the maintained client,
-  CLI, and the same four Management MCP operations may expose a closed typed
+  CLI, and the same four Management MCP operations expose a closed typed
   Environment-or-Node `target`; the legacy `projectId` and `environmentId`
   response fields remain nullable compatibility projections and are null for a
-  Node policy. Implementation and retained PostgreSQL/NATS evidence remain
-  open. Reuse the existing inbox history, Outbox, outbound subscription, A3S
-  Event, and C6 delivery rails. Add no Node poller or copied state, second policy
+  Node policy. Focused domain, projection, malformed-payload, migration,
+  OpenAPI, client, and CLI gates pass locally; retained PostgreSQL/NATS
+  certification remains pending. Reuse the existing inbox history, Outbox,
+  outbound subscription, A3S Event, and C6 delivery rails. Add no Node poller or copied state, second policy
   lifecycle, health/incident table, mutable counter, threshold/severity rule,
   arbitrary selector or expression, timer, scheduler, queue, second event rail,
   endpoint, tool, compatibility parser, or non-ACL configuration.

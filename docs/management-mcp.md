@@ -216,7 +216,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
 | `a3s_cloud_notifications_read` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
-| `a3s_cloud_notification_alert_policies_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact environment scope, Resource Grant, and idempotency required |
+| `a3s_cloud_notification_alert_policies_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact Environment-or-Node target, Resource Grant, and idempotency required |
 | `a3s_cloud_notification_alert_policies_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
 | `a3s_cloud_notification_alert_policies_get` | Principal self-query | `cloud:read`; denied and missing policy IDs share one `404` contract |
 | `a3s_cloud_notification_alert_policies_revoke` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
@@ -357,20 +357,23 @@ configuration document.
 
 ## Personal notification alert policies
 
-REST contract `1.51.0` retains the four
+REST contract `1.54.0` retains the four
 `a3s_cloud_notification_alert_policies_*` tools. Create accepts only one bounded
-canonical `cloud.notification.alert-policy.v1` ACL for the closed typed
+canonical alert-policy ACL. V1 binds one exact Environment to the closed typed
 `edge.domain-claim-status.v1`,
-`edge.gateway-certificate-renewal-status.v1`, or
+`edge.gateway-certificate-renewal-status.v1`,
 `workload.deployment-health.v1`, or
-`edge.gateway-certificate-expiry-status.v1` source and an exact
-project/environment scope.
+`edge.gateway-certificate-expiry-status.v1` source. V2 binds one exact Node to
+the single `fleet.node-availability-status.v1` source. Schema, source, and
+target kind are mutually closed.
 List and exact get apply current Resource Grants; revoke requires the current
 aggregate version and a caller-owned idempotency key. Recipient identity always
 comes from the authenticated credential.
 
-The response contains the canonical ACL/digest, closed source, exact scope,
-recovery preference, lifecycle version, and timestamps. It exposes no arbitrary
+The response contains the canonical ACL/digest, closed source, one required
+discriminated Environment-or-Node `target`, recovery preference, lifecycle
+version, and timestamps. Nullable legacy `projectId` and `environmentId`
+remain populated for v1 and are `null` for v2. It exposes no arbitrary
 event selector, provider failure, metric query, incident state, delivery
 attempt, Secret, or credential. The MCP adapter adds no parser, repository,
 projector, queue, scheduler, or second event rail.

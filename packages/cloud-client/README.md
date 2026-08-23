@@ -314,7 +314,7 @@ personal alert-policy lifecycle added by REST contract `1.47.0`. Create sends
 one bounded canonical `cloud.notification.alert-policy.v1` A3S ACL; list/get
 reuse bounded personal pagination, and revoke carries one positive expected
 aggregate version. Cloud remains authoritative for the exact recipient,
-environment existence, current Resource Grants, closed typed source registry,
+target existence, current Resource Grants, closed typed source registry,
 projection, idempotency, Outbox, audit, and persistence. The client has no ACL
 parser, event expression evaluator, incident state, projector, or delivery
 mechanism. Contract `1.49.0` extends the closed source union with
@@ -323,7 +323,13 @@ operation or configuration format. Contract `1.50.0` adds
 `workload.deployment-health.v1` through those same four operations and keeps
 Workloads as the rollout-health authority. Contract `1.51.0` adds
 `edge.gateway-certificate-expiry-status.v1` through the same operations while
-Edge remains the certificate-expiry authority.
+Edge remains the certificate-expiry authority. Contract `1.54.0` adds canonical
+`cloud.notification.alert-policy.v2` only for
+`fleet.node-availability-status.v1` and an exact Node. Every response includes
+one discriminated Environment-or-Node `target`; deprecated `projectId` and
+`environmentId` remain nullable compatibility projections and are `null` for
+Node policies. The client adds no Node lookup, heartbeat interpretation, or
+availability state.
 
 `listRecipientContacts`, `getRecipientContact`,
 `requestRecipientContactVerification`,

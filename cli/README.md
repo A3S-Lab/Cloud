@@ -97,10 +97,12 @@ canonical `cloud.notification.alert-policy.v1` ACL, admits the closed
 `edge.domain-claim-status.v1` and
 `edge.gateway-certificate-renewal-status.v1` sources plus
 `workload.deployment-health.v1` and
-`edge.gateway-certificate-expiry-status.v1`, rechecks Membership and Resource Grants, and
-projects their typed failure/recovery facts through the existing inbox and
-outbound delivery path. REST contract `1.51.0` exposes the same lifecycle. The
-CLI has no
+`edge.gateway-certificate-expiry-status.v1`, rechecks Membership and Resource
+Grants, and projects their typed failure/recovery facts through the existing
+inbox and outbound delivery path. REST contract `1.54.0` also admits canonical
+alert-policy v2 only for `fleet.node-availability-status.v1` and one exact
+Node. List/get render the required Environment-or-Node `TARGET`; the CLI never
+polls or interprets Node heartbeats. The CLI has no
 expression evaluator, event registry, incident state, timer, scheduler, or
 second configuration format.
 
