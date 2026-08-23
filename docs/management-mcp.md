@@ -321,6 +321,24 @@ expired, revoked, stale, or duplicate-membership cases cannot leave a partial
 Membership. The MCP adapter owns no email lookup, external-identity link,
 session, invitation store, RBAC evaluator, notification queue, or scheduler.
 
+## Request-time audit attribution
+
+REST contract `1.56.0` extends the existing read-only
+`a3s_cloud_audit_records_list` tool without adding another tool or writer. The
+owner/admin query accepts exact Project, Environment, immutable attribution-
+profile, and closed-status filters in addition to its existing redacted audit
+filters and bounded keyset pagination. Each record exposes exactly eleven typed
+fields: the prior seven plus request-time `projectId`, `environmentId`,
+`attributionProfileId`, and `attributionStatus`.
+
+The closed statuses are `legacy_unknown` for rows predating migration `142`,
+`not_applicable` for facts outside Project scope, `profile_missing` when a
+Project had no eligible profile at occurrence time, and `profile_bound` when
+the exact immutable profile was pinned. The tool never returns shared
+`details`, attribution labels, business-owner text, or cost-attribution code,
+and it retains the existing 133-tool administrator and 73-tool read-only
+catalogs.
+
 ## Recipient-contact self-service
 
 `a3s_cloud_recipient_contacts_list` and

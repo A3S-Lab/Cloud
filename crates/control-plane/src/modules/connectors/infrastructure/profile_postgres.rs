@@ -628,6 +628,10 @@ async fn store_connector_audit(
             aggregate_id: record.profile.id.as_uuid(),
             occurred_at: record.revision.created_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(
+                record.profile.project_id,
+                Some(record.profile.environment_id),
+            ),
             details: serde_json::json!({
                 "projectId": record.profile.project_id,
                 "environmentId": record.profile.environment_id,

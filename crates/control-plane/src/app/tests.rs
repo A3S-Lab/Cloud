@@ -8,7 +8,7 @@ use crate::config::{
 };
 use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
-use crate::modules::audit::{AuditRecord, InMemoryAuditRecordRepository};
+use crate::modules::audit::{AuditAttributionStatus, AuditRecord, InMemoryAuditRecordRepository};
 use crate::modules::connectors::InMemoryConnectorProfileRepository;
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
@@ -38,7 +38,8 @@ use crate::modules::secrets::{
 use crate::modules::security::InMemoryGatewayRoutePolicyTimelineRepository;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, HumanTaskId, IdempotencyRequest, IdempotentWrite,
-    OrganizationId, PrincipalId, ProjectId, RepositoryError, RouteId, WorkflowDecisionId,
+    OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId, RepositoryError, RouteId,
+    WorkflowDecisionId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,

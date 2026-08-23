@@ -231,6 +231,7 @@ pub(super) async fn store_membership_audit(
             aggregate_id: record.membership.id.as_uuid(),
             occurred_at: record.membership.updated_at,
             request_id,
+            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "principalId": record.principal.id,
                 "principalKind": record.principal.kind.as_str(),

@@ -2,12 +2,14 @@ use super::dto::AuditRecordPageResponse;
 use crate::modules::audit::application::{
     ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
 };
-use crate::modules::audit::domain::AuditRecordFilter;
+use crate::modules::audit::domain::{AuditAttributionStatus, AuditRecordFilter};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
     OrganizationAdministratorGuard, OrganizationTenantGuard,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
+};
 use crate::presentation::application_error_response;
 use a3s_boot::{
     BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
@@ -47,6 +49,14 @@ pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition
                                 action: parameters.action,
                                 aggregate_id: parameters.aggregate_id,
                                 request_id: parameters.request_id,
+                                project_id: parameters.project_id.map(ProjectId::from_uuid),
+                                environment_id: parameters
+                                    .environment_id
+                                    .map(EnvironmentId::from_uuid),
+                                attribution_profile_id: parameters
+                                    .attribution_profile_id
+                                    .map(ProjectAttributionProfileId::from_uuid),
+                                attribution_status: parameters.attribution_status,
                                 from: parameters.from,
                                 to: parameters.to,
                             },
@@ -74,6 +84,14 @@ struct AuditRecordParameters {
     aggregate_id: Option<Uuid>,
     #[serde(default)]
     request_id: Option<Uuid>,
+    #[serde(default)]
+    project_id: Option<Uuid>,
+    #[serde(default)]
+    environment_id: Option<Uuid>,
+    #[serde(default)]
+    attribution_profile_id: Option<Uuid>,
+    #[serde(default)]
+    attribution_status: Option<AuditAttributionStatus>,
     #[serde(default)]
     from: Option<DateTime<Utc>>,
     #[serde(default)]

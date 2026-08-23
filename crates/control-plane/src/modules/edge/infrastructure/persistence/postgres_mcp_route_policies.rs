@@ -274,6 +274,10 @@ async fn store_policy_audit(
             aggregate_id: policy.spec().route_id.as_uuid(),
             occurred_at: write.requested_at,
             request_id: write.request_id,
+            attribution_scope: AuditWrite::project_attribution(
+                policy.spec().project_id,
+                Some(policy.spec().environment_id),
+            ),
             details: serde_json::json!({
                 "projectId": policy.spec().project_id,
                 "environmentId": policy.spec().environment_id,

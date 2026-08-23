@@ -5,15 +5,16 @@ use super::postgres_access::{
 use super::postgres_schema::{AuditRecords, IdempotencyRecords, OutboxEvents};
 use crate::config::valid_postgres_role_name;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, ProjectId,
+    RepositoryError,
 };
 use a3s_boot::{migrate_postgres_queue, BootError, HealthIndicatorResult};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_flow::{migrate_postgres_flow, FlowError};
 use a3s_orm::migration::MigrationRunError;
 use a3s_orm::{
-    insert_into, select_from, DecodeError, Executor, FromRow, Migration, Migrator, PostgresDialect,
-    PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
+    insert_into, select_from, sql_query, DecodeError, Executor, FromRow, Migration, Migrator,
+    PostgresDialect, PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
     PostgresTransactionError, Query,
 };
 use chrono::{DateTime, Utc};
@@ -29,7 +30,33 @@ pub(crate) struct AuditWrite {
     pub(crate) aggregate_id: Uuid,
     pub(crate) occurred_at: DateTime<Utc>,
     pub(crate) request_id: Uuid,
+    pub(crate) attribution_scope: AuditAttributionScope,
     pub(crate) details: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AuditAttributionScope {
+    NotApplicable,
+    Project {
+        project_id: ProjectId,
+        environment_id: Option<EnvironmentId>,
+    },
+}
+
+impl AuditWrite {
+    pub(crate) const fn not_applicable() -> AuditAttributionScope {
+        AuditAttributionScope::NotApplicable
+    }
+
+    pub(crate) const fn project_attribution(
+        project_id: ProjectId,
+        environment_id: Option<EnvironmentId>,
+    ) -> AuditAttributionScope {
+        AuditAttributionScope::Project {
+            project_id,
+            environment_id,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1309,6 +1336,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/141_security_gateway_route_policy_timeline.sql"
             )),
         ),
+        Migration::new(
+            "142",
+            "request-time audit attribution snapshots",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/142_audit_attribution_snapshots.sql"
+            )),
+        ),
     ]
 }
 
@@ -1493,6 +1528,8 @@ pub(crate) async fn store_audit(
             "audit record is invalid".into(),
         ));
     }
+    let (project_id, environment_id, attribution_profile_id, attribution_status) =
+        resolve_audit_attribution(transaction, audit).await?;
     require_one_row(
         "audit record",
         execute(
@@ -1505,10 +1542,81 @@ pub(crate) async fn store_audit(
                 .value(AuditRecords::aggregate_id(), audit.aggregate_id)
                 .value(AuditRecords::occurred_at(), audit.occurred_at)
                 .value(AuditRecords::request_id(), audit.request_id)
+                .value(AuditRecords::project_id(), project_id)
+                .value(AuditRecords::environment_id(), environment_id)
+                .value(
+                    AuditRecords::attribution_profile_id(),
+                    attribution_profile_id,
+                )
+                .value(AuditRecords::attribution_status(), attribution_status)
                 .value(AuditRecords::details(), audit.details.clone()),
         )
         .await?,
     )
+}
+
+async fn resolve_audit_attribution(
+    transaction: &PostgresTransaction,
+    audit: &AuditWrite,
+) -> Result<(Option<Uuid>, Option<Uuid>, Option<Uuid>, &'static str), PostgresPersistenceError> {
+    match audit.attribution_scope {
+        AuditAttributionScope::NotApplicable => Ok((None, None, None, "not_applicable")),
+        AuditAttributionScope::Project {
+            project_id,
+            environment_id,
+        } => {
+            if project_id.as_uuid().is_nil()
+                || environment_id.is_some_and(|value| value.as_uuid().is_nil())
+            {
+                return Err(PostgresPersistenceError::Invariant(
+                    "audit attribution scope is invalid".into(),
+                ));
+            }
+            fetch_optional::<Uuid, _>(
+                transaction,
+                sql_query::<Uuid>(
+                    "select project.id from projects project where project.organization_id = ",
+                )
+                .bind(audit.organization_id)
+                .append(" and project.id = ")
+                .bind(project_id.as_uuid())
+                .append(" and (")
+                .bind(environment_id.map(EnvironmentId::as_uuid))
+                .append("::uuid is null or exists (select 1 from environments environment where environment.organization_id = project.organization_id and environment.project_id = project.id and environment.id = ")
+                .bind(environment_id.map(EnvironmentId::as_uuid))
+                .append(")) for share of project"),
+            )
+            .await?
+            .ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "audit attribution Project or Environment is outside the tenant scope".into(),
+                )
+            })?;
+            let profile = fetch_optional::<Uuid, _>(
+                transaction,
+                sql_query::<Uuid>(
+                    "select profile.id from project_attribution_profiles profile where profile.organization_id = ",
+                )
+                .bind(audit.organization_id)
+                .append(" and profile.project_id = ")
+                .bind(project_id.as_uuid())
+                .append(" and profile.created_at <= ")
+                .bind(audit.occurred_at)
+                .append(" order by profile.created_at desc, profile.id desc limit 1"),
+            )
+            .await?;
+            Ok((
+                Some(project_id.as_uuid()),
+                environment_id.map(EnvironmentId::as_uuid),
+                profile,
+                if profile.is_some() {
+                    "profile_bound"
+                } else {
+                    "profile_missing"
+                },
+            ))
+        }
+    }
 }
 
 pub(crate) fn require_one_row(
@@ -2571,6 +2679,69 @@ mod security_gateway_route_policy_timeline_migration_tests {
             assert!(
                 !canonical.contains(forbidden),
                 "migration 141 adds forbidden security authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod audit_attribution_snapshot_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/142_audit_attribution_snapshots.sql"
+    ));
+
+    #[test]
+    fn migration_142_extends_only_shared_audit_records_with_closed_immutable_attribution() {
+        let canonical = MIGRATION
+            .to_ascii_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for expected in [
+            "alter table audit_records",
+            "add column project_id uuid",
+            "add column environment_id uuid",
+            "add column attribution_profile_id uuid",
+            "add column attribution_status text",
+            "set attribution_status = 'legacy_unknown'",
+            "attribution_status = 'not_applicable'",
+            "attribution_status = 'profile_missing'",
+            "attribution_status = 'profile_bound'",
+            "references projects (organization_id, id)",
+            "references environments (organization_id, project_id, id)",
+            "references project_attribution_profiles (organization_id, project_id, id)",
+            "audit_records_reject_new_legacy_attribution",
+            "audit_records_attribution_immutable",
+            "audit_records_project_attribution_query_idx",
+            "audit_records_environment_attribution_query_idx",
+            "audit_records_profile_attribution_query_idx",
+            "audit_records_attribution_status_query_idx",
+            "private details are never an attribution source",
+        ] {
+            assert!(
+                canonical.contains(expected),
+                "migration 142 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table",
+            "details::",
+            "details ->",
+            "create table usage",
+            "create table invoice",
+            "create table price",
+            "create table balance",
+            "create table settlement",
+            "create table entitlement",
+            "create table queue",
+            "create table export",
+            "signing_key",
+            "scheduler",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 142 adds forbidden authority through {forbidden}"
             );
         }
     }

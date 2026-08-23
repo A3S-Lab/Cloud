@@ -13,6 +13,10 @@ pub struct AuditRecordResponse {
     pub aggregate_id: Uuid,
     pub occurred_at: DateTime<Utc>,
     pub request_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub environment_id: Option<Uuid>,
+    pub attribution_profile_id: Option<Uuid>,
+    pub attribution_status: String,
 }
 
 impl From<AuditRecord> for AuditRecordResponse {
@@ -25,6 +29,10 @@ impl From<AuditRecord> for AuditRecordResponse {
             aggregate_id: record.aggregate_id,
             occurred_at: record.occurred_at,
             request_id: record.request_id,
+            project_id: record.project_id.map(|value| value.as_uuid()),
+            environment_id: record.environment_id.map(|value| value.as_uuid()),
+            attribution_profile_id: record.attribution_profile_id.map(|value| value.as_uuid()),
+            attribution_status: record.attribution_status.as_str().into(),
         }
     }
 }
@@ -52,7 +60,10 @@ impl From<AuditRecordPage> for AuditRecordPageResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+    use crate::modules::audit::AuditAttributionStatus;
+    use crate::modules::shared_kernel::domain::{
+        OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
+    };
 
     #[test]
     fn public_projection_never_exposes_unstructured_details() {
@@ -64,9 +75,16 @@ mod tests {
             aggregate_id: Uuid::now_v7(),
             occurred_at: Utc::now(),
             request_id: Uuid::now_v7(),
+            project_id: Some(ProjectId::new()),
+            environment_id: None,
+            attribution_profile_id: Some(ProjectAttributionProfileId::new()),
+            attribution_status: AuditAttributionStatus::ProfileBound,
         });
         let value = serde_json::to_value(response).expect("audit response");
-        assert_eq!(value.as_object().map(serde_json::Map::len), Some(7));
+        assert_eq!(value.as_object().map(serde_json::Map::len), Some(11));
         assert!(!value.as_object().expect("object").contains_key("details"));
+        for private in ["labels", "businessOwnerReference", "costAttributionCode"] {
+            assert!(!value.as_object().expect("object").contains_key(private));
+        }
     }
 }

@@ -78,7 +78,9 @@ impl QueryHandler<ListAuditRecords> for ListAuditRecordsHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::audit::{AuditRecord, InMemoryAuditRecordRepository};
+    use crate::modules::audit::{
+        AuditAttributionStatus, AuditRecord, InMemoryAuditRecordRepository,
+    };
     use crate::modules::shared_kernel::domain::PrincipalId;
     use a3s_boot::ModuleRef;
     use chrono::{Duration, Utc};
@@ -105,6 +107,10 @@ mod tests {
                     aggregate_id: Uuid::now_v7(),
                     occurred_at: now + Duration::seconds(offset),
                     request_id,
+                    project_id: None,
+                    environment_id: None,
+                    attribution_profile_id: None,
+                    attribution_status: AuditAttributionStatus::NotApplicable,
                 })
                 .await
                 .expect("audit record");

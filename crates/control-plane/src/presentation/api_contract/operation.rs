@@ -389,6 +389,10 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             ("actorPrincipalId", Some("uuid")),
             ("aggregateId", Some("uuid")),
             ("requestId", Some("uuid")),
+            ("projectId", Some("uuid")),
+            ("environmentId", Some("uuid")),
+            ("attributionProfileId", Some("uuid")),
+            ("attributionStatus", None),
             ("action", None),
             ("from", Some("date-time")),
             ("to", Some("date-time")),
@@ -401,6 +405,14 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             if name == "action" {
                 schema["maxLength"] = json!(255);
                 schema["pattern"] = json!("^[a-z-]+(?:\\.[a-z-]+){2,}$");
+            }
+            if name == "attributionStatus" {
+                schema["enum"] = json!([
+                    "legacy_unknown",
+                    "not_applicable",
+                    "profile_missing",
+                    "profile_bound"
+                ]);
             }
             if name == "cursor" {
                 schema["maxLength"] = json!(128);

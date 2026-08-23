@@ -644,6 +644,7 @@ async fn store_workflow_audit(
             aggregate_id: record.definition.id.as_uuid(),
             occurred_at: record.revision.created_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.definition.project_id, None),
             details: serde_json::json!({
                 "projectId": record.definition.project_id,
                 "revisionId": record.revision.id,

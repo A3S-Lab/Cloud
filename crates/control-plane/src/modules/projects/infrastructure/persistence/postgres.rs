@@ -308,6 +308,10 @@ impl IProjectRepository for PostgresProjectsRepository {
                             aggregate_id: profile.project_id.as_uuid(),
                             occurred_at: profile.created_at,
                             request_id: write.request_id,
+                            attribution_scope: AuditWrite::project_attribution(
+                                profile.project_id,
+                                None,
+                            ),
                             details: serde_json::json!({
                                 "projectId": profile.project_id,
                                 "attributionProfileId": profile.id,

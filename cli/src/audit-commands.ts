@@ -1,6 +1,7 @@
 import {
   DEFAULT_AUDIT_RECORD_LIMIT,
   MAX_AUDIT_RECORD_LIMIT,
+  type AuditAttributionStatus,
   type AuditRecordQuery,
   type CloudApi,
   encodeAuditRecordQuery,
@@ -44,6 +45,10 @@ export async function executeAuditCommand(
     action: arguments_.auditAction,
     aggregateId: optionalUuid(arguments_.auditAggregateId, 'audit aggregate ID'),
     requestId: optionalUuid(arguments_.auditRequestId, 'audit request ID'),
+    projectId: optionalUuid(arguments_.projectId, 'audit Project ID'),
+    environmentId: optionalUuid(arguments_.environmentId, 'audit Environment ID'),
+    attributionProfileId: optionalUuid(arguments_.auditAttributionProfileId, 'audit attribution profile ID'),
+    attributionStatus: arguments_.auditAttributionStatus as AuditAttributionStatus | undefined,
     from: arguments_.auditFrom,
     to: arguments_.auditTo,
     cursor: arguments_.cursor,
@@ -69,11 +74,13 @@ export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedA
     arguments_.auditAction !== undefined ||
     arguments_.auditAggregateId !== undefined ||
     arguments_.auditRequestId !== undefined ||
+    arguments_.auditAttributionProfileId !== undefined ||
+    arguments_.auditAttributionStatus !== undefined ||
     arguments_.auditFrom !== undefined ||
     arguments_.auditTo !== undefined
   ) {
     throw usageError(
-      '--actor-principal, --action, --aggregate, --request-id, --from, and --to are valid only for audit-records list'
+      '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list'
     );
   }
 }

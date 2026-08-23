@@ -737,6 +737,10 @@ async fn store_durable_cell_audit(
             aggregate_id: record.application.id.as_uuid(),
             occurred_at: record.application.updated_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(
+                record.application.project_id,
+                Some(record.application.environment_id),
+            ),
             details: serde_json::json!({
                 "projectId": record.application.project_id,
                 "environmentId": record.application.environment_id,

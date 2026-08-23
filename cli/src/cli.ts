@@ -255,6 +255,8 @@ Global options:
   --action <action>          Exact lowercase dot-separated audit action filter
   --aggregate <uuid>         Exact audit aggregate filter
   --request-id <uuid>        Exact audit request-correlation filter
+  --attribution-profile <uuid> Exact immutable audit attribution-profile filter
+  --attribution-status <status> legacy_unknown, not_applicable, profile_missing, or profile_bound
   --from <timestamp>         Inclusive RFC 3339 audit lower bound
   --to <timestamp>           Inclusive RFC 3339 audit upper bound
   -h, --help              Show help

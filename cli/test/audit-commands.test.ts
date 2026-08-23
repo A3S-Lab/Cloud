@@ -7,6 +7,9 @@ const ACTOR_ID = '019c0000-0000-7000-8000-000000000002';
 const AGGREGATE_ID = '019c0000-0000-7000-8000-000000000003';
 const REQUEST_ID = '019c0000-0000-7000-8000-000000000004';
 const AUDIT_ID = '019c0000-0000-7000-8000-000000000005';
+const PROJECT_ID = '019c0000-0000-7000-8000-000000000006';
+const ENVIRONMENT_ID = '019c0000-0000-7000-8000-000000000007';
+const ATTRIBUTION_PROFILE_ID = '019c0000-0000-7000-8000-000000000008';
 
 const PAGE: AuditRecordPage = {
   records: [
@@ -18,6 +21,10 @@ const PAGE: AuditRecordPage = {
       aggregateId: AGGREGATE_ID,
       occurredAt: '2026-08-13T01:02:03Z',
       requestId: REQUEST_ID,
+      projectId: PROJECT_ID,
+      environmentId: ENVIRONMENT_ID,
+      attributionProfileId: ATTRIBUTION_PROFILE_ID,
+      attributionStatus: 'profile_bound',
     },
   ],
   nextCursor: `v1:1786582923000000:${AUDIT_ID}`,
@@ -65,6 +72,10 @@ describe('audit-records list command', () => {
         '--action=identity.membership.created',
         `--aggregate=${AGGREGATE_ID}`,
         `--request-id=${REQUEST_ID}`,
+        `--project=${PROJECT_ID}`,
+        `--environment=${ENVIRONMENT_ID}`,
+        `--attribution-profile=${ATTRIBUTION_PROFILE_ID}`,
+        '--attribution-status=profile_bound',
         '--from=2026-08-13T00:00:00Z',
         '--to=2026-08-14T00:00:00Z',
         `--cursor=v1:1786582923000000:${AUDIT_ID}`,
@@ -86,6 +97,8 @@ describe('audit-records list command', () => {
     expect(exitCode).toBe(0);
     expect(String(calls[0]?.[0])).toContain(`/organizations/${ORGANIZATION_ID}/audit-records?`);
     expect(String(calls[0]?.[0])).toContain('action=identity.membership.created');
+    expect(String(calls[0]?.[0])).toContain(`projectId=${PROJECT_ID}`);
+    expect(String(calls[0]?.[0])).toContain('attributionStatus=profile_bound');
     expect(String(calls[0]?.[0])).toContain('limit=25');
     expect(output.stdout()).toContain('OCCURRED AT');
     expect(output.stdout()).toContain('identity.membership.created');
@@ -98,6 +111,7 @@ describe('audit-records list command', () => {
     [['audit-records', 'list', '--limit=0'], 'audit record limit must be between 1 and 200'],
     [['audit-records', 'list', '--cursor='], 'option --cursor requires a value'],
     [['audit-records', 'list', '--action=Invalid'], 'audit action must use bounded lowercase'],
+    [['audit-records', 'list', '--attribution-status=invalid'], 'audit attribution status is invalid'],
     [
       ['audit-records', 'list', '--from=2026-08-14T00:00:00Z', '--to=2026-08-13T00:00:00Z'],
       'audit from timestamp must not exceed to timestamp',

@@ -1,7 +1,9 @@
 use super::tool_result;
 use crate::modules::audit::presentation::AuditRecordPageResponse;
-use crate::modules::audit::{AuditRecordFilter, ListAuditRecords};
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+use crate::modules::audit::{AuditAttributionStatus, AuditRecordFilter, ListAuditRecords};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
+};
 use a3s_boot::{QueryBus, Result};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -16,6 +18,10 @@ pub struct AuditRecordListArguments {
     action: Option<String>,
     aggregate_id: Option<Uuid>,
     request_id: Option<Uuid>,
+    project_id: Option<Uuid>,
+    environment_id: Option<Uuid>,
+    attribution_profile_id: Option<Uuid>,
+    attribution_status: Option<AuditAttributionStatus>,
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
     cursor: Option<String>,
@@ -40,6 +46,12 @@ pub async fn list_audit_records(
                 action: arguments.action,
                 aggregate_id: arguments.aggregate_id,
                 request_id: arguments.request_id,
+                project_id: arguments.project_id.map(ProjectId::from_uuid),
+                environment_id: arguments.environment_id.map(EnvironmentId::from_uuid),
+                attribution_profile_id: arguments
+                    .attribution_profile_id
+                    .map(ProjectAttributionProfileId::from_uuid),
+                attribution_status: arguments.attribution_status,
                 from: arguments.from,
                 to: arguments.to,
             },

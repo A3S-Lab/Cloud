@@ -156,6 +156,10 @@ impl IDurableCellDeploymentRepository for PostgresDurableCellDeploymentRepositor
                             aggregate_id: projection.application_id.as_uuid(),
                             occurred_at: deployment.requested_at,
                             request_id: deployment.request_id,
+                            attribution_scope: AuditWrite::project_attribution(
+                                projection.project_id,
+                                Some(projection.environment_id),
+                            ),
                             details: serde_json::json!({
                                 "projectId": projection.project_id,
                                 "environmentId": projection.environment_id,

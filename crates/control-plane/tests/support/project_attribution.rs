@@ -171,6 +171,47 @@ pub(super) async fn exercise_project_attribution_persistence(
         })
         .await?;
 
+    let first_audit = database
+        .fetch_one_as(
+            sql_query::<(Option<Uuid>, Option<Uuid>, Option<Uuid>, String)>(
+                "select project_id, environment_id, attribution_profile_id, attribution_status from audit_records where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and request_id = ")
+            .bind(first_request_id)
+            .append(" and action = 'project.attribution-profile.updated'"),
+        )
+        .await?;
+    let second_audit = database
+        .fetch_one_as(
+            sql_query::<(Option<Uuid>, Option<Uuid>, Option<Uuid>, String)>(
+                "select project_id, environment_id, attribution_profile_id, attribution_status from audit_records where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and request_id = ")
+            .bind(second_request_id)
+            .append(" and action = 'project.attribution-profile.updated'"),
+        )
+        .await?;
+    assert_eq!(
+        first_audit,
+        (
+            Some(project_id.as_uuid()),
+            None,
+            Some(first_id.as_uuid()),
+            "profile_bound".into(),
+        )
+    );
+    assert_eq!(
+        second_audit,
+        (
+            Some(project_id.as_uuid()),
+            None,
+            Some(second_id.as_uuid()),
+            "profile_bound".into(),
+        )
+    );
+
     let stale_id = ProjectAttributionProfileId::new();
     let stale = ProjectAttributionProfile::create(
         organization_id,

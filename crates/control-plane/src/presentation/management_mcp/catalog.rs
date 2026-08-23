@@ -1967,6 +1967,18 @@ fn audit_record_list_schema() -> Value {
             },
             "aggregateId": {"type": "string", "format": "uuid"},
             "requestId": {"type": "string", "format": "uuid"},
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "attributionProfileId": {"type": "string", "format": "uuid"},
+            "attributionStatus": {
+                "type": "string",
+                "enum": [
+                    "legacy_unknown",
+                    "not_applicable",
+                    "profile_missing",
+                    "profile_bound"
+                ]
+            },
             "from": {"type": "string", "format": "date-time"},
             "to": {"type": "string", "format": "date-time"},
             "cursor": {"type": "string", "minLength": 1, "maxLength": 128},

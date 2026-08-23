@@ -55,6 +55,10 @@ orm_table! {
         aggregate_id: Uuid => "aggregate_id",
         occurred_at: DateTime<Utc> => "occurred_at",
         request_id: Uuid => "request_id",
+        project_id: Option<Uuid> => "project_id",
+        environment_id: Option<Uuid> => "environment_id",
+        attribution_profile_id: Option<Uuid> => "attribution_profile_id",
+        attribution_status: String => "attribution_status",
         details: serde_json::Value => "details",
     }
 }

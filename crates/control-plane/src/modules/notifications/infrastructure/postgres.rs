@@ -401,6 +401,15 @@ impl INotificationRepository for PostgresNotificationRepository {
                             aggregate_id: write.notification.id.as_uuid(),
                             occurred_at: write.notification.read_at.expect("validated read time"),
                             request_id: write.request_id,
+                            attribution_scope: write.notification.scope.project_id().map_or_else(
+                                AuditWrite::not_applicable,
+                                |project_id| {
+                                    AuditWrite::project_attribution(
+                                        project_id,
+                                        write.notification.scope.environment_id(),
+                                    )
+                                },
+                            ),
                             details: serde_json::json!({
                                 "notificationId": write.notification.id,
                                 "sourceEventId": write.notification.source_event_id,

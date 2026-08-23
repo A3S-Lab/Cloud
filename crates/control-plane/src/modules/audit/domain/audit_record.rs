@@ -1,5 +1,9 @@
-use crate::modules::shared_kernel::domain::{validate_audit_action, OrganizationId, PrincipalId};
+use crate::modules::shared_kernel::domain::{
+    validate_audit_action, EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId,
+    ProjectId,
+};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const CURSOR_VERSION: &str = "v1";
@@ -13,6 +17,40 @@ pub struct AuditRecord {
     pub aggregate_id: Uuid,
     pub occurred_at: DateTime<Utc>,
     pub request_id: Uuid,
+    pub project_id: Option<ProjectId>,
+    pub environment_id: Option<EnvironmentId>,
+    pub attribution_profile_id: Option<ProjectAttributionProfileId>,
+    pub attribution_status: AuditAttributionStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditAttributionStatus {
+    LegacyUnknown,
+    NotApplicable,
+    ProfileMissing,
+    ProfileBound,
+}
+
+impl AuditAttributionStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyUnknown => "legacy_unknown",
+            Self::NotApplicable => "not_applicable",
+            Self::ProfileMissing => "profile_missing",
+            Self::ProfileBound => "profile_bound",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "legacy_unknown" => Ok(Self::LegacyUnknown),
+            "not_applicable" => Ok(Self::NotApplicable),
+            "profile_missing" => Ok(Self::ProfileMissing),
+            "profile_bound" => Ok(Self::ProfileBound),
+            _ => Err("audit attribution status is invalid".into()),
+        }
+    }
 }
 
 impl AuditRecord {
@@ -24,10 +62,36 @@ impl AuditRecord {
                 .is_some_and(|actor| actor.as_uuid().is_nil())
             || self.aggregate_id.is_nil()
             || self.request_id.is_nil()
+            || self
+                .project_id
+                .is_some_and(|value| value.as_uuid().is_nil())
+            || self
+                .environment_id
+                .is_some_and(|value| value.as_uuid().is_nil())
+            || self
+                .attribution_profile_id
+                .is_some_and(|value| value.as_uuid().is_nil())
         {
             return Err("audit record identifiers must not be nil".into());
         }
-        validate_audit_action(&self.action)
+        validate_audit_action(&self.action)?;
+        let attribution_shape_is_valid = match self.attribution_status {
+            AuditAttributionStatus::LegacyUnknown | AuditAttributionStatus::NotApplicable => {
+                self.project_id.is_none()
+                    && self.environment_id.is_none()
+                    && self.attribution_profile_id.is_none()
+            }
+            AuditAttributionStatus::ProfileMissing => {
+                self.project_id.is_some() && self.attribution_profile_id.is_none()
+            }
+            AuditAttributionStatus::ProfileBound => {
+                self.project_id.is_some() && self.attribution_profile_id.is_some()
+            }
+        };
+        if !attribution_shape_is_valid {
+            return Err("audit attribution shape is invalid".into());
+        }
+        Ok(())
     }
 }
 
@@ -85,6 +149,10 @@ pub struct AuditRecordFilter {
     pub action: Option<String>,
     pub aggregate_id: Option<Uuid>,
     pub request_id: Option<Uuid>,
+    pub project_id: Option<ProjectId>,
+    pub environment_id: Option<EnvironmentId>,
+    pub attribution_profile_id: Option<ProjectAttributionProfileId>,
+    pub attribution_status: Option<AuditAttributionStatus>,
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
 }
@@ -96,6 +164,15 @@ impl AuditRecordFilter {
             .is_some_and(|value| value.as_uuid().is_nil())
             || self.aggregate_id.is_some_and(|value| value.is_nil())
             || self.request_id.is_some_and(|value| value.is_nil())
+            || self
+                .project_id
+                .is_some_and(|value| value.as_uuid().is_nil())
+            || self
+                .environment_id
+                .is_some_and(|value| value.as_uuid().is_nil())
+            || self
+                .attribution_profile_id
+                .is_some_and(|value| value.as_uuid().is_nil())
         {
             return Err("audit record filter identifiers must not be nil".into());
         }
@@ -121,6 +198,18 @@ impl AuditRecordFilter {
             && self
                 .request_id
                 .is_none_or(|value| record.request_id == value)
+            && self
+                .project_id
+                .is_none_or(|value| record.project_id == Some(value))
+            && self
+                .environment_id
+                .is_none_or(|value| record.environment_id == Some(value))
+            && self
+                .attribution_profile_id
+                .is_none_or(|value| record.attribution_profile_id == Some(value))
+            && self
+                .attribution_status
+                .is_none_or(|value| record.attribution_status == value)
             && self.from.is_none_or(|value| record.occurred_at >= value)
             && self.to.is_none_or(|value| record.occurred_at <= value)
     }
@@ -177,5 +266,88 @@ mod tests {
             .from
             .map(|value| value - chrono::Duration::seconds(1));
         assert!(filter.validate().is_err());
+    }
+
+    #[test]
+    fn attribution_status_and_reference_shapes_are_closed() {
+        for status in [
+            AuditAttributionStatus::LegacyUnknown,
+            AuditAttributionStatus::NotApplicable,
+            AuditAttributionStatus::ProfileMissing,
+            AuditAttributionStatus::ProfileBound,
+        ] {
+            assert_eq!(AuditAttributionStatus::parse(status.as_str()), Ok(status));
+        }
+        assert!(AuditAttributionStatus::parse("current_profile").is_err());
+
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let profile_id = ProjectAttributionProfileId::new();
+        for (status, project_id, environment_id, profile_id) in [
+            (AuditAttributionStatus::LegacyUnknown, None, None, None),
+            (AuditAttributionStatus::NotApplicable, None, None, None),
+            (
+                AuditAttributionStatus::ProfileMissing,
+                Some(project_id),
+                Some(environment_id),
+                None,
+            ),
+            (
+                AuditAttributionStatus::ProfileBound,
+                Some(project_id),
+                Some(environment_id),
+                Some(profile_id),
+            ),
+        ] {
+            assert_eq!(
+                audit_record(status, project_id, environment_id, profile_id).validate(),
+                Ok(())
+            );
+        }
+        assert!(audit_record(
+            AuditAttributionStatus::NotApplicable,
+            Some(project_id),
+            None,
+            None,
+        )
+        .validate()
+        .is_err());
+        assert!(audit_record(
+            AuditAttributionStatus::ProfileMissing,
+            None,
+            Some(environment_id),
+            None,
+        )
+        .validate()
+        .is_err());
+        assert!(audit_record(
+            AuditAttributionStatus::ProfileBound,
+            Some(project_id),
+            None,
+            None,
+        )
+        .validate()
+        .is_err());
+    }
+
+    fn audit_record(
+        attribution_status: AuditAttributionStatus,
+        project_id: Option<ProjectId>,
+        environment_id: Option<EnvironmentId>,
+        attribution_profile_id: Option<ProjectAttributionProfileId>,
+    ) -> AuditRecord {
+        AuditRecord {
+            id: Uuid::now_v7(),
+            organization_id: OrganizationId::new(),
+            actor_principal_id: None,
+            action: "identity.membership.created".into(),
+            aggregate_id: Uuid::now_v7(),
+            occurred_at: Utc::now(),
+            request_id: Uuid::now_v7(),
+            project_id,
+            environment_id,
+            attribution_profile_id,
+            attribution_status,
+        }
     }
 }

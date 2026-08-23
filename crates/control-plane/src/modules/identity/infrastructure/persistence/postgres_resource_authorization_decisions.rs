@@ -106,6 +106,15 @@ impl IResourceAuthorizationDecisionRepository for PostgresIdentityRepository {
                             aggregate_id: decision.aggregate_id(),
                             occurred_at: decision.decided_at,
                             request_id: decision.request_id,
+                            attribution_scope: decision.resource.project_id().map_or_else(
+                                AuditWrite::not_applicable,
+                                |project_id| {
+                                    AuditWrite::project_attribution(
+                                        project_id,
+                                        decision.resource.environment_id(),
+                                    )
+                                },
+                            ),
                             details,
                         },
                     )

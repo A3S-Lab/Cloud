@@ -443,6 +443,10 @@ async fn store_credential_audit(
             aggregate_id: credential.id.as_uuid(),
             occurred_at: credential.updated_at(),
             request_id,
+            attribution_scope: AuditWrite::project_attribution(
+                credential.project_id,
+                Some(credential.environment_id),
+            ),
             details: serde_json::json!({
                 "projectId": credential.project_id,
                 "environmentId": credential.environment_id,

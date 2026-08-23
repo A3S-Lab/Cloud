@@ -21,7 +21,8 @@ use a3s_cloud_control_plane::modules::assets::{
     LocalAssetGitRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::audit::{
-    AuditRecordCursor, AuditRecordFilter, IAuditRecordRepository, PostgresAuditRecordRepository,
+    AuditAttributionStatus, AuditRecordCursor, AuditRecordFilter, IAuditRecordRepository,
+    PostgresAuditRecordRepository,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
@@ -36,7 +37,8 @@ use a3s_cloud_control_plane::modules::security::{
     PostgresGatewayRoutePolicyTimelineRepository, SecurityAuditCorrelation,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName, RouteId,
+    AssetId, EnvironmentId, IdempotencyRequest, OperationId, OrganizationId,
+    ProjectAttributionProfileId, ProjectId, ResourceName, RouteId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -60,8 +62,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 141;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "141";
+const CLOUD_MIGRATION_COUNT: i64 = 142;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "142";
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -715,6 +717,9 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
     let repository = PostgresAuditRecordRepository::new(executor);
     let organization_id = OrganizationId::new();
     let hidden_organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let profile_id = ProjectAttributionProfileId::new();
     let actor_id = Uuid::now_v7();
     let request_id = Uuid::now_v7();
     let now = Utc::now();
@@ -738,53 +743,187 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
             )
             .await?;
     }
-    let mut expected = Vec::new();
-    for index in 0..3 {
-        let audit_id = Uuid::now_v7();
-        let action = if index == 1 {
-            "identity.membership.revoked"
-        } else {
-            "identity.membership.created"
-        };
-        database
-            .execute(
-                sql_query::<()>(
-                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
-                )
-                .bind(audit_id)
-                .append(", ")
-                .bind(organization_id.as_uuid())
-                .append(", ")
+    database
+        .execute(
+            sql_query::<()>("insert into identity_principals (id, kind, name, aggregate_version, created_at, disabled_at) values (")
                 .bind(actor_id)
-                .append(", ")
-                .bind(action)
-                .append(", ")
-                .bind(Uuid::now_v7())
-                .append(", ")
-                .bind(now + chrono::Duration::seconds(index))
-                .append(", ")
-                .bind(request_id)
-                .append(", '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+                .append(", 'human', 'Audit actor', 1, ")
+                .bind(now - chrono::Duration::seconds(3))
+                .append(", null)"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
             )
-            .await?;
-        expected.push(audit_id);
-    }
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'Audit project', 'audit-project', 1, ")
+            .bind(now - chrono::Duration::seconds(2))
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", ")
+            .bind(environment_id.as_uuid())
+            .append(", 'Audit environment', 'audit-environment', 1, ")
+            .bind(now - chrono::Duration::seconds(1))
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into project_attribution_profiles (organization_id, project_id, id, previous_profile_id, business_owner_reference, cost_attribution_code, labels, created_by, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", ")
+            .bind(profile_id.as_uuid())
+            .append(", null, 'audit-owner', 'AUDIT-001', '{\"team\":\"audit\"}'::jsonb, ")
+            .bind(actor_id)
+            .append(", ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+
+    let legacy_id = Uuid::now_v7();
+    database
+        .execute(sql_query::<()>(
+            "alter table audit_records disable trigger audit_records_reject_new_legacy_attribution",
+        ))
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, project_id, environment_id, attribution_profile_id, attribution_status, details) values (",
+            )
+            .bind(legacy_id)
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(actor_id)
+            .append(", 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(request_id)
+            .append(", null, null, null, 'legacy_unknown', '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+        )
+        .await?;
+    database
+        .execute(sql_query::<()>(
+            "alter table audit_records enable trigger audit_records_reject_new_legacy_attribution",
+        ))
+        .await?;
+
+    let not_applicable_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(not_applicable_id)
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(actor_id)
+            .append(", 'identity.membership.revoked', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now + chrono::Duration::seconds(1))
+            .append(", ")
+            .bind(request_id)
+            .append(", 'not_applicable', '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+        )
+        .await?;
+
+    let profile_missing_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, project_id, attribution_status, details) values (",
+            )
+            .bind(profile_missing_id)
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(actor_id)
+            .append(", 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now + chrono::Duration::seconds(2))
+            .append(", ")
+            .bind(request_id)
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'profile_missing', '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+        )
+        .await?;
+
+    let profile_bound_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, project_id, environment_id, attribution_profile_id, attribution_status, details) values (",
+            )
+            .bind(profile_bound_id)
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(actor_id)
+            .append(", 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now + chrono::Duration::seconds(3))
+            .append(", ")
+            .bind(request_id)
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", ")
+            .bind(environment_id.as_uuid())
+            .append(", ")
+            .bind(profile_id.as_uuid())
+            .append(", 'profile_bound', '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+        )
+        .await?;
+    let expected = [
+        legacy_id,
+        not_applicable_id,
+        profile_missing_id,
+        profile_bound_id,
+    ];
+
     let hidden_id = Uuid::now_v7();
     database
         .execute(
             sql_query::<()>(
-                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
             )
             .bind(hidden_id)
             .append(", ")
             .bind(hidden_organization_id.as_uuid())
-            .append(", null, 'identity.membership.created', ")
+            .append(", ")
+            .bind(actor_id)
+            .append(", 'identity.membership.created', ")
             .bind(Uuid::now_v7())
             .append(", ")
             .bind(now + chrono::Duration::seconds(10))
             .append(", ")
             .bind(request_id)
-            .append(", '{}'::jsonb)"),
+            .append(", 'not_applicable', '{}'::jsonb)"),
         )
         .await?;
 
@@ -802,9 +941,23 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         .await?;
     assert_eq!(
         first.iter().map(|record| record.id).collect::<Vec<_>>(),
-        vec![expected[2], expected[1]]
+        vec![expected[3], expected[2]]
     );
     assert!(first.iter().all(|record| record.id != hidden_id));
+    assert_eq!(first[0].project_id, Some(project_id));
+    assert_eq!(first[0].environment_id, Some(environment_id));
+    assert_eq!(first[0].attribution_profile_id, Some(profile_id));
+    assert_eq!(
+        first[0].attribution_status,
+        AuditAttributionStatus::ProfileBound
+    );
+    assert_eq!(first[1].project_id, Some(project_id));
+    assert_eq!(first[1].environment_id, None);
+    assert_eq!(first[1].attribution_profile_id, None);
+    assert_eq!(
+        first[1].attribution_status,
+        AuditAttributionStatus::ProfileMissing
+    );
     let second = repository
         .list_page(
             organization_id,
@@ -815,7 +968,15 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         .await?;
     assert_eq!(
         second.iter().map(|record| record.id).collect::<Vec<_>>(),
-        vec![expected[0]]
+        vec![expected[1], expected[0]]
+    );
+    assert_eq!(
+        second[0].attribution_status,
+        AuditAttributionStatus::NotApplicable
+    );
+    assert_eq!(
+        second[1].attribution_status,
+        AuditAttributionStatus::LegacyUnknown
     );
     let exact = repository
         .list_page(
@@ -832,6 +993,126 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         .await?;
     assert_eq!(exact.len(), 1);
     assert_eq!(exact[0].id, expected[1]);
+
+    let project_scoped = repository
+        .list_page(
+            organization_id,
+            &AuditRecordFilter {
+                project_id: Some(project_id),
+                ..AuditRecordFilter::default()
+            },
+            None,
+            10,
+        )
+        .await?;
+    assert_eq!(
+        project_scoped
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>(),
+        vec![profile_bound_id, profile_missing_id]
+    );
+    assert!(!format!("{project_scoped:?}").contains("must-not-be-projected"));
+    let environment_scoped = repository
+        .list_page(
+            organization_id,
+            &AuditRecordFilter {
+                environment_id: Some(environment_id),
+                ..AuditRecordFilter::default()
+            },
+            None,
+            10,
+        )
+        .await?;
+    assert_eq!(environment_scoped.len(), 1);
+    assert_eq!(environment_scoped[0].id, profile_bound_id);
+    let profile_scoped = repository
+        .list_page(
+            organization_id,
+            &AuditRecordFilter {
+                attribution_profile_id: Some(profile_id),
+                ..AuditRecordFilter::default()
+            },
+            None,
+            10,
+        )
+        .await?;
+    assert_eq!(profile_scoped.len(), 1);
+    assert_eq!(profile_scoped[0].id, profile_bound_id);
+    for (status, expected_id) in [
+        (AuditAttributionStatus::LegacyUnknown, legacy_id),
+        (AuditAttributionStatus::NotApplicable, not_applicable_id),
+        (AuditAttributionStatus::ProfileMissing, profile_missing_id),
+        (AuditAttributionStatus::ProfileBound, profile_bound_id),
+    ] {
+        let records = repository
+            .list_page(
+                organization_id,
+                &AuditRecordFilter {
+                    attribution_status: Some(status),
+                    ..AuditRecordFilter::default()
+                },
+                None,
+                10,
+            )
+            .await?;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].id, expected_id);
+    }
+
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(organization_id.as_uuid())
+            .append(", null, 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'legacy_unknown', '{}'::jsonb)"),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "update audit_records set attribution_profile_id = null, attribution_status = 'profile_missing' where audit_id = ",
+            )
+            .bind(profile_bound_id),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, project_id, attribution_status, details) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(hidden_organization_id.as_uuid())
+            .append(", null, 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'profile_missing', '{}'::jsonb)"),
+        )
+        .await
+        .is_err());
+    let index_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_indexes where schemaname = current_schema() and indexname in ('audit_records_project_attribution_query_idx', 'audit_records_environment_attribution_query_idx', 'audit_records_profile_attribution_query_idx', 'audit_records_attribution_status_query_idx')",
+        ))
+        .await?;
+    assert_eq!(index_count, 4);
     Ok(())
 }
 
@@ -909,7 +1190,7 @@ async fn exercise_postgres_gateway_route_policy_security_timeline(
             database
                 .execute(
                     sql_query::<()>(
-                        "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                        "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
                     )
                     .bind(audit_id)
                     .append(", ")
@@ -924,7 +1205,7 @@ async fn exercise_postgres_gateway_route_policy_security_timeline(
                     .bind(occurred_at)
                     .append(", ")
                     .bind(correlation_id)
-                    .append(", '{\"private\":\"must-not-be-selected\"}'::jsonb)"),
+                    .append(", 'not_applicable', '{\"private\":\"must-not-be-selected\"}'::jsonb)"),
                 )
                 .await?;
             Some(audit_id)
@@ -1066,7 +1347,7 @@ async fn exercise_postgres_gateway_route_policy_security_timeline(
         database
             .execute(
                 sql_query::<()>(
-                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
                 )
                 .bind(audit_id)
                 .append(", ")
@@ -1077,7 +1358,7 @@ async fn exercise_postgres_gateway_route_policy_security_timeline(
                 .bind(now)
                 .append(", ")
                 .bind(ambiguous_correlation_id)
-                .append(", '{}'::jsonb)"),
+                .append(", 'not_applicable', '{}'::jsonb)"),
             )
             .await?;
     }

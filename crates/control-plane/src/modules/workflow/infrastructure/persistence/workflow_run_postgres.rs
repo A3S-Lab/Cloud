@@ -790,6 +790,7 @@ async fn store_run_audit(
             aggregate_id: record.run.id.as_uuid(),
             occurred_at: record.run.updated_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.run.project_id, None),
             details: serde_json::json!({
                 "projectId": record.run.project_id,
                 "workflowGoalId": record.run.workflow_goal_id,

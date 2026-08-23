@@ -270,7 +270,7 @@ projects list
 projects create <name>
 project-attribution get [profile-id]
 project-attribution update <owner> --expected-version=<version> [--cost-attribution-code=<code>] [--label=<key=value> ...]
-audit-records list
+audit-records list [--actor-principal=<id>] [--action=<key>] [--aggregate=<id>] [--request-id=<id>] [--project=<id>] [--environment=<id>] [--attribution-profile=<id>] [--attribution-status=<legacy_unknown|not_applicable|profile_missing|profile_bound>] [--from=<timestamp>] [--to=<timestamp>] [--cursor=<cursor>] [--limit=<1..200>]
 notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]
 notifications get <notification-id>
 notifications read <notification-id> --expected-version=<version>

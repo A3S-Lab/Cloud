@@ -261,6 +261,7 @@ pub(super) async fn store_recipient_contact_audit(
             aggregate_id: contact.id.as_uuid(),
             occurred_at,
             request_id,
+            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "contactId": contact.id,
                 "principalId": contact.principal_id,

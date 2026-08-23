@@ -637,6 +637,7 @@ async fn store_form_audit(
             aggregate_id: draft.id.as_uuid(),
             occurred_at: draft.updated_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(draft.project_id, None),
             details: serde_json::json!({
                 "projectId": draft.project_id,
                 "draftDigest": draft.document.digest(),

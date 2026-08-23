@@ -537,6 +537,7 @@ async fn store_ontology_audit(
             aggregate_id: record.ontology.id.as_uuid(),
             occurred_at: record.revision.created_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.ontology.project_id, None),
             details: serde_json::json!({
                 "projectId": record.ontology.project_id,
                 "revisionId": record.revision.id,

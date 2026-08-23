@@ -342,14 +342,22 @@ conformanceIt(
         'action',
         'actorPrincipalId',
         'aggregateId',
+        'attributionProfileId',
+        'attributionStatus',
+        'environmentId',
         'id',
         'occurredAt',
         'organizationId',
+        'projectId',
         'requestId',
       ]);
       expect(record.organizationId).toBe(organizationId);
       expect(record.action).toBe('workflow.ontology.created');
       expect(record.aggregateId).toBe(ontologyId);
+      expect(record.projectId).toBe(projectId);
+      expect(record.environmentId).toBeNull();
+      expect(record.attributionProfileId).toBeNull();
+      expect(record.attributionStatus).toBe('profile_missing');
       expect(record).not.toHaveProperty('details');
     }
 

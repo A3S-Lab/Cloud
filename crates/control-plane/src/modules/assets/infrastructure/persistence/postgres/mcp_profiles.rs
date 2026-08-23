@@ -218,6 +218,7 @@ async fn store_profile_audit(
             aggregate_id: binding.asset_release_id.as_uuid(),
             occurred_at: binding.created_at,
             request_id,
+            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "assetId": binding.asset_id,
                 "assetReleaseId": binding.asset_release_id,

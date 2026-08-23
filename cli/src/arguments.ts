@@ -40,6 +40,8 @@ export interface ParsedArguments {
   auditAction?: string;
   auditAggregateId?: string;
   auditRequestId?: string;
+  auditAttributionProfileId?: string;
+  auditAttributionStatus?: string;
   auditFrom?: string;
   auditTo?: string;
   unreadOnly: boolean;
@@ -104,6 +106,8 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--action': 'auditAction',
   '--aggregate': 'auditAggregateId',
   '--request-id': 'auditRequestId',
+  '--attribution-profile': 'auditAttributionProfileId',
+  '--attribution-status': 'auditAttributionStatus',
   '--from': 'auditFrom',
   '--to': 'auditTo',
 };

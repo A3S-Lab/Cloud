@@ -487,6 +487,7 @@ impl IOidcIdentityRepository for PostgresIdentityRepository {
                                 aggregate_id: link.id.as_uuid(),
                                 occurred_at: link.last_verified_at,
                                 request_id: write.request_id,
+                                attribution_scope: AuditWrite::not_applicable(),
                                 details: serde_json::json!({
                                     "principalId": link.principal_id,
                                     "providerKey": link.provider_key.as_str(),
@@ -602,6 +603,7 @@ impl IOidcIdentityRepository for PostgresIdentityRepository {
                             aggregate_id: token.id.as_uuid(),
                             occurred_at: token.created_at,
                             request_id: write.request_id,
+                            attribution_scope: AuditWrite::not_applicable(),
                             details: serde_json::json!({
                                 "principalId": link.principal_id,
                                 "providerKey": flow.provider_key.as_str(),

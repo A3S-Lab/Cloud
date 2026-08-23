@@ -1,5 +1,11 @@
 import { isRfc3339Timestamp, validateNonNilUuid } from './validation';
 
+export type AuditAttributionStatus =
+  | 'legacy_unknown'
+  | 'not_applicable'
+  | 'profile_missing'
+  | 'profile_bound';
+
 export interface AuditRecord {
   id: string;
   organizationId: string;
@@ -8,6 +14,10 @@ export interface AuditRecord {
   aggregateId: string;
   occurredAt: string;
   requestId: string;
+  projectId: string | null;
+  environmentId: string | null;
+  attributionProfileId: string | null;
+  attributionStatus: AuditAttributionStatus;
 }
 
 export interface AuditRecordPage {
@@ -20,6 +30,10 @@ export interface AuditRecordQuery {
   action?: string;
   aggregateId?: string;
   requestId?: string;
+  projectId?: string;
+  environmentId?: string;
+  attributionProfileId?: string;
+  attributionStatus?: AuditAttributionStatus;
   from?: string;
   to?: string;
   cursor?: string;
@@ -37,6 +51,9 @@ export function encodeAuditRecordQuery(query: AuditRecordQuery = {}): URLSearchP
     ['actorPrincipalId', query.actorPrincipalId],
     ['aggregateId', query.aggregateId],
     ['requestId', query.requestId],
+    ['projectId', query.projectId],
+    ['environmentId', query.environmentId],
+    ['attributionProfileId', query.attributionProfileId],
   ] as const) {
     if (value !== undefined) {
       validateNonNilUuid(value, `audit ${name}`);
@@ -48,6 +65,16 @@ export function encodeAuditRecordQuery(query: AuditRecordQuery = {}): URLSearchP
       throw new TypeError('audit action must use bounded lowercase dot-separated segments');
     }
     parameters.set('action', query.action);
+  }
+  if (query.attributionStatus !== undefined) {
+    if (
+      !['legacy_unknown', 'not_applicable', 'profile_missing', 'profile_bound'].includes(
+        query.attributionStatus
+      )
+    ) {
+      throw new TypeError('audit attribution status is invalid');
+    }
+    parameters.set('attributionStatus', query.attributionStatus);
   }
   for (const [name, value] of [
     ['from', query.from],

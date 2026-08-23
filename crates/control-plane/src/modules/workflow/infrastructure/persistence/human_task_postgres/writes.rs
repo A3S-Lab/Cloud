@@ -387,6 +387,7 @@ pub(super) async fn store_task_audit(
             aggregate_id: record.task.id.as_uuid(),
             occurred_at: record.task.updated_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.task.project_id, None),
             details: serde_json::json!({
                 "projectId": record.task.project_id,
                 "workflowRunId": record.task.workflow_run_id,

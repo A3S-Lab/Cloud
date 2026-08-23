@@ -211,6 +211,15 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                             aggregate_id: policy.id.as_uuid(),
                             occurred_at: policy.created_at,
                             request_id: write.request_id,
+                            attribution_scope: spec.target.project_id().map_or_else(
+                                AuditWrite::not_applicable,
+                                |project_id| {
+                                    AuditWrite::project_attribution(
+                                        project_id,
+                                        spec.target.environment_id(),
+                                    )
+                                },
+                            ),
                             details: serde_json::json!({
                                 "policyId": policy.id,
                                 "recipientPrincipalId": policy.recipient_principal_id,
@@ -307,6 +316,17 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                             aggregate_id: policy.id.as_uuid(),
                             occurred_at: policy.revoked_at.expect("validated policy revoke time"),
                             request_id: write.request_id,
+                            attribution_scope: policy
+                                .definition
+                                .spec()
+                                .target
+                                .project_id()
+                                .map_or_else(AuditWrite::not_applicable, |project_id| {
+                                    AuditWrite::project_attribution(
+                                        project_id,
+                                        policy.definition.spec().target.environment_id(),
+                                    )
+                                }),
                             details: serde_json::json!({
                                 "policyId": policy.id,
                                 "recipientPrincipalId": policy.recipient_principal_id,

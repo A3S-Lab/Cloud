@@ -141,6 +141,7 @@ async fn store_application_audit(
             aggregate_id: record.application.id.as_uuid(),
             occurred_at: record.release.created_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.application.project_id, None),
             details: serde_json::json!({
                 "projectId": record.application.project_id,
                 "releaseId": record.release.id,

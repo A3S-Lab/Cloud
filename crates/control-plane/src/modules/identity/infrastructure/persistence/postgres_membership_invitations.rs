@@ -163,6 +163,7 @@ async fn store_invitation_audit(
             aggregate_id: invitation.id.as_uuid(),
             occurred_at: invitation.updated_at,
             request_id,
+            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "principalId": invitation.principal_id,
                 "role": invitation.role.as_str(),

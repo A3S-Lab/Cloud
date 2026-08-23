@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.55.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.56.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2869,6 +2869,10 @@ describe('CloudApi', () => {
       action: 'identity.membership.created',
       aggregateId: '019c0000-0000-7000-8000-000000000033',
       requestId: '019c0000-0000-7000-8000-000000000034',
+      projectId: '019c0000-0000-7000-8000-000000000036',
+      environmentId: '019c0000-0000-7000-8000-000000000037',
+      attributionProfileId: '019c0000-0000-7000-8000-000000000038',
+      attributionStatus: 'profile_bound',
       from: '2026-08-12T00:00:00Z',
       to: '2026-08-13T00:00:00Z',
       cursor: 'v1:1786579200000000:019c0000-0000-7000-8000-000000000035',
@@ -2879,7 +2883,11 @@ describe('CloudApi', () => {
         'actorPrincipalId=019c0000-0000-7000-8000-000000000032&' +
         'aggregateId=019c0000-0000-7000-8000-000000000033&' +
         'requestId=019c0000-0000-7000-8000-000000000034&' +
-        'action=identity.membership.created&from=2026-08-12T00%3A00%3A00Z&' +
+        'projectId=019c0000-0000-7000-8000-000000000036&' +
+        'environmentId=019c0000-0000-7000-8000-000000000037&' +
+        'attributionProfileId=019c0000-0000-7000-8000-000000000038&' +
+        'action=identity.membership.created&attributionStatus=profile_bound&' +
+        'from=2026-08-12T00%3A00%3A00Z&' +
         'to=2026-08-13T00%3A00%3A00Z&' +
         'cursor=v1%3A1786579200000000%3A019c0000-0000-7000-8000-000000000035&limit=25'
     );
@@ -2905,6 +2913,11 @@ describe('CloudApi', () => {
     expect(() => api.listAuditRecords('organization', { cursor: '' })).toThrow(
       'audit record cursor is invalid'
     );
+    expect(() =>
+      api.listAuditRecords('organization', {
+        attributionStatus: 'invalid' as 'profile_bound',
+      })
+    ).toThrow('audit attribution status is invalid');
     expect(() => api.listAuditRecords('organization', { limit: 201 })).toThrow(
       'audit record limit must be between 1 and 200'
     );

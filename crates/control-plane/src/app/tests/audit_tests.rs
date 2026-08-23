@@ -41,6 +41,9 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
     let actor = PrincipalId::new();
     let request_id = Uuid::now_v7();
     let aggregate_ids = [Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7()];
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let attribution_profile_id = ProjectAttributionProfileId::new();
     let now = Utc::now();
     for (index, aggregate_id) in aggregate_ids.into_iter().enumerate() {
         audit
@@ -56,6 +59,14 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
                 aggregate_id,
                 occurred_at: now + chrono::Duration::seconds(index as i64),
                 request_id,
+                project_id: (index > 0).then_some(project_id),
+                environment_id: (index == 2).then_some(environment_id),
+                attribution_profile_id: (index == 2).then_some(attribution_profile_id),
+                attribution_status: match index {
+                    0 => AuditAttributionStatus::LegacyUnknown,
+                    1 => AuditAttributionStatus::ProfileMissing,
+                    _ => AuditAttributionStatus::ProfileBound,
+                },
             })
             .await
             .map_err(|error| BootError::Internal(error.to_string()))?;
@@ -70,6 +81,10 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
             aggregate_id: Uuid::now_v7(),
             occurred_at: now + chrono::Duration::seconds(10),
             request_id,
+            project_id: None,
+            environment_id: None,
+            attribution_profile_id: None,
+            attribution_status: AuditAttributionStatus::NotApplicable,
         })
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?;
@@ -90,6 +105,22 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         aggregate_ids[1].to_string()
     );
     assert!(first["data"]["records"][0].get("details").is_none());
+    assert_eq!(
+        first["data"]["records"][0]["projectId"],
+        project_id.to_string()
+    );
+    assert_eq!(
+        first["data"]["records"][0]["environmentId"],
+        environment_id.to_string()
+    );
+    assert_eq!(
+        first["data"]["records"][0]["attributionProfileId"],
+        attribution_profile_id.to_string()
+    );
+    assert_eq!(
+        first["data"]["records"][0]["attributionStatus"],
+        "profile_bound"
+    );
     assert!(!first.to_string().contains(&hidden_id.to_string()));
     let cursor = first["data"]["nextCursor"]
         .as_str()
@@ -119,6 +150,10 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
                 "actorPrincipalId": actor,
                 "action": "identity.membership.created",
                 "requestId": request_id,
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "attributionProfileId": attribution_profile_id,
+                "attributionStatus": "profile_bound",
                 "limit": 1
             }),
             ADMIN_TOKEN,
@@ -136,6 +171,10 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
     assert!(mcp["result"]["structuredContent"]["data"]["records"][0]
         .get("details")
         .is_none());
+    assert_eq!(
+        mcp["result"]["structuredContent"]["data"]["records"][0]["attributionStatus"],
+        "profile_bound"
+    );
 
     let filtered = app
         .call(get_as(
@@ -193,6 +232,8 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         "cursor=untrusted",
         "action=Invalid.action.value",
         "aggregateId=00000000-0000-0000-0000-000000000000",
+        "projectId=00000000-0000-0000-0000-000000000000",
+        "attributionStatus=invalid",
         "from=2026-08-14T00%3A00%3A00Z&to=2026-08-13T00%3A00%3A00Z",
     ] {
         let response = app

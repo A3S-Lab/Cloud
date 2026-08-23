@@ -436,6 +436,7 @@ async fn store_goal_audit(
             aggregate_id: record.goal.id.as_uuid(),
             occurred_at: record.goal.created_at,
             request_id,
+            attribution_scope: AuditWrite::project_attribution(record.goal.project_id, None),
             details: serde_json::json!({
                 "projectId": record.goal.project_id,
                 "planRevisionId": record.plan_revision.id,

@@ -7,6 +7,10 @@ const AUDIT_RECORD_COLUMNS: readonly TableColumn<AuditRecord>[] = [
   { header: 'ACTION', value: (row) => row.action },
   { header: 'ACTOR', value: (row) => row.actorPrincipalId ?? '' },
   { header: 'AGGREGATE', value: (row) => row.aggregateId },
+  { header: 'ATTRIBUTION', value: (row) => row.attributionStatus },
+  { header: 'PROJECT', value: (row) => row.projectId ?? '' },
+  { header: 'ENVIRONMENT', value: (row) => row.environmentId ?? '' },
+  { header: 'PROFILE', value: (row) => row.attributionProfileId ?? '' },
   { header: 'REQUEST', value: (row) => row.requestId },
   { header: 'ID', value: (row) => row.id },
 ];

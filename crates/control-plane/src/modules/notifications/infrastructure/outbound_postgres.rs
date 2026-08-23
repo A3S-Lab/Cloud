@@ -564,6 +564,15 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                             aggregate_id: subscription.id.as_uuid(),
                             occurred_at: subscription.created_at,
                             request_id: write.request_id,
+                            attribution_scope: spec.target.connector().map_or_else(
+                                AuditWrite::not_applicable,
+                                |target| {
+                                    AuditWrite::project_attribution(
+                                        target.project_id,
+                                        Some(target.environment_id),
+                                    )
+                                },
+                            ),
                             details: serde_json::json!({
                                 "subscriptionId": subscription.id,
                                 "recipientPrincipalId": subscription.recipient_principal_id,
@@ -666,6 +675,17 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                                 .revoked_at
                                 .expect("validated subscription revoke time"),
                             request_id: write.request_id,
+                            attribution_scope: subscription
+                                .definition
+                                .spec()
+                                .target
+                                .connector()
+                                .map_or_else(AuditWrite::not_applicable, |target| {
+                                    AuditWrite::project_attribution(
+                                        target.project_id,
+                                        Some(target.environment_id),
+                                    )
+                                }),
                             details: serde_json::json!({
                                 "subscriptionId": subscription.id,
                                 "recipientPrincipalId": subscription.recipient_principal_id,

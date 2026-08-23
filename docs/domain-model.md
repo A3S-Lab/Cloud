@@ -676,7 +676,7 @@ records by occurrence time and audit ID. It exposes only typed actor, action,
 aggregate, occurrence, and request metadata; unstructured internal details
 remain private. REST, CLI, and Management MCP all call the same query handler
 and no second audit store, writer, or authorization mechanism exists.
-Frozen `C0.3-PA2a` extends that one authority with request-time attribution,
+Implemented `C0.3-PA2a` extends that one authority with request-time attribution,
 without creating another audit fact or projection. Existing records are
 explicit `legacy_unknown`; every new writer must instead choose
 `not_applicable` or provide an exact tenant Project and optional exact child
@@ -687,7 +687,7 @@ Project-pointer changes never rewrite the selection, and tenant or reference
 mismatch fails closed. The bounded read model may expose the typed references
 and closed status for exact filtering, but never `details`, labels,
 business-owner text, or cost-attribution text. Signed export remains later work
-and cannot precede this frozen prerequisite.
+and cannot precede this prerequisite.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`
@@ -2291,7 +2291,7 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - A profile stores its previous profile ID, creating project-qualified lineage.
   The current Project pointer and aggregate version advance atomically; exact
   older profiles remain addressable and PostgreSQL rejects UPDATE or DELETE.
-- Frozen `C0.3-PA2a` makes audit attribution an occurrence-time snapshot rather
+- Implemented `C0.3-PA2a` makes audit attribution an occurrence-time snapshot rather
   than a lookup of the current pointer: an applicable audit fact retains its
   exact tenant Project, optional child Environment, and the newest immutable
   profile at or before the fact's occurrence time, or an explicit missing

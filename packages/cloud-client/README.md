@@ -413,11 +413,15 @@ transition. The client adds no email/OIDC discovery, role inference, invitation
 store, notification queue, or authorization model.
 
 `listAuditRecords` implements the owner/admin-only read projection added by
-REST contract `1.26.0`. It validates exact Principal/aggregate/request UUIDs,
-canonical action names, RFC 3339 time bounds, the opaque cursor, and the
-1-through-200 page limit before transport. The result contains only typed
-audit metadata and a next cursor; it cannot expose the shared record's
-unstructured `details` or create a client-side audit store.
+REST contract `1.26.0` and extended by contract `1.56.0`. It validates exact
+Principal, aggregate, request, Project, Environment, and immutable attribution-
+profile UUIDs; canonical action names; the closed `legacy_unknown`,
+`not_applicable`, `profile_missing`, or `profile_bound` status; inclusive RFC
+3339 time bounds; the opaque cursor; and the 1-through-200 page limit before
+transport. Each result adds only the request-time Project, optional Environment,
+exact profile reference, and closed status to the existing seven typed fields.
+It cannot expose shared `details`, profile labels, business-owner or cost-code
+text, or create a client-side audit store.
 
 `createMembership` is the single Principal-plus-Membership mutation retained in
 REST contract `1.29.0`. Callers choose the closed `human` or `service` Principal

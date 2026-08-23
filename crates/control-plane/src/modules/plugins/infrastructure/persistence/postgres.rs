@@ -172,6 +172,7 @@ impl IPluginRegistryRepository for PostgresPluginRegistryRepository {
                             aggregate_id: registry.id.as_uuid(),
                             occurred_at: registry.created_at,
                             request_id,
+                            attribution_scope: AuditWrite::not_applicable(),
                             details: serde_json::json!({
                                 "endpoint": registry.endpoint.as_str(),
                                 "rootObjectRef": registry.trust_root.object_ref().as_str(),

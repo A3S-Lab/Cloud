@@ -130,6 +130,7 @@ impl IOrganizationRepository for PostgresIdentityRepository {
                             aggregate_id: organization.id.as_uuid(),
                             occurred_at: organization.created_at,
                             request_id,
+                            attribution_scope: AuditWrite::not_applicable(),
                             details: serde_json::json!({
                                 "ownerMembershipId": owner_membership.id,
                                 "ownerPrincipalId": owner_membership.principal_id,

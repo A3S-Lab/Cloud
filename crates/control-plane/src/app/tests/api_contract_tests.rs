@@ -1146,6 +1146,10 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         ("actorPrincipalId", Some("uuid")),
         ("aggregateId", Some("uuid")),
         ("requestId", Some("uuid")),
+        ("projectId", Some("uuid")),
+        ("environmentId", Some("uuid")),
+        ("attributionProfileId", Some("uuid")),
+        ("attributionStatus", None),
         ("action", None),
         ("from", Some("date-time")),
         ("to", Some("date-time")),
@@ -1174,6 +1178,19 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .find(|parameter| parameter["name"] == "cursor")
         .expect("audit cursor parameter");
     assert_eq!(audit_cursor["schema"]["maxLength"], 128);
+    let attribution_status = audit_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "attributionStatus")
+        .expect("audit attribution status parameter");
+    assert_eq!(
+        attribution_status["schema"]["enum"],
+        json!([
+            "legacy_unknown",
+            "not_applicable",
+            "profile_missing",
+            "profile_bound"
+        ])
+    );
     let notification_collection =
         &document["paths"]["/organizations/{organization_id}/notifications"]["get"];
     assert_eq!(notification_collection["tags"], json!(["Notifications"]));

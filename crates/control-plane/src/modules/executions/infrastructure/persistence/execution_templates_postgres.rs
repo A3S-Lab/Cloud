@@ -130,6 +130,10 @@ impl IExecutionTemplateRepository for PostgresExecutionTemplateRepository {
                             aggregate_id: revision.template_id.as_uuid(),
                             occurred_at: revision.created_at,
                             request_id: write.request_id,
+                            attribution_scope: AuditWrite::project_attribution(
+                                revision.project_id,
+                                None,
+                            ),
                             details: serde_json::json!({
                                 "projectId": revision.project_id,
                                 "revisionId": revision.revision_id,
