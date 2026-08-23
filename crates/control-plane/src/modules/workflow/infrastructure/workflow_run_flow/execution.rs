@@ -4,6 +4,7 @@ use crate::modules::workflow::domain::{
     WorkflowDataSchema, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
@@ -28,6 +29,8 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
     if input.step.plan.kind == WorkflowStepKind::Subworkflow {
@@ -320,6 +323,7 @@ mod tests {
     use super::*;
     use crate::modules::workflow::domain::{
         WorkflowDataField, WorkflowDataType, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
         WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
     };
     use serde_json::json;
@@ -377,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn local_executor_exposes_projected_current_only_to_runtime_v2() {
+    fn local_executor_exposes_projected_current_to_typed_runtime_versions() {
         let input = crate::modules::workflow::test_support::typed_variable_workflow_run_input()
             .expect("typed-variable WorkflowRun input");
         let mut step = input
@@ -399,10 +403,15 @@ mod tests {
                 composite_region_result: None,
             };
 
-        let result =
-            execute_local_step(&step_input(WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, true))
-                .expect("runtime v2 projected current");
-        assert_eq!(result.output, json!("T-42"));
+        for runtime_revision in [
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14,
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
+        ] {
+            let result = execute_local_step(&step_input(runtime_revision, true))
+                .expect("typed runtime projected current");
+            assert_eq!(result.output, json!("T-42"));
+        }
         assert!(
             execute_local_step(&step_input(WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, false)).is_err()
         );
