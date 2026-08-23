@@ -332,7 +332,7 @@ Indeterminate evidence. Only Retryable evidence admits the next generation;
 equality with the pinned bound yields Exhausted. Terminal receipts commit before
 A3S Event ACK, and post-terminal replay is ACK-only.
 
-The [retained H0 provider job](https://github.com/A3S-Lab/Cloud/actions/runs/32607176166/job/97113905343)
+The [retained H0 provider job](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447/job/97113956621)
 proves migration `138`, the exact authority and fence transitions, accepted,
 rejected, retryable/exhausted, indeterminate, and obsolete outcomes, terminal
 ACK-only replay, and provider-call isolation over PostgreSQL 17, NATS JetStream,
