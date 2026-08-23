@@ -339,6 +339,13 @@ the exact immutable profile was pinned. The tool never returns shared
 and it retains the existing 133-tool administrator and 73-tool read-only
 catalogs.
 
+The [successful Management MCP
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176671002)
+proves the unchanged catalogs, permissions, strict arguments, shared query, and
+redacted `profile_missing` projection. The [complete PA2a CI
+run](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460) passes all ten
+jobs.
+
 ## Recipient-contact self-service
 
 `a3s_cloud_recipient_contacts_list` and
