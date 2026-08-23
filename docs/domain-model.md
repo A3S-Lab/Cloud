@@ -738,6 +738,21 @@ H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/9722476729
 and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148)
 verify the persisted and cross-surface boundaries. Multi-page manifests and
 authorized SIEM delivery remain separate lifecycles.
+
+Frozen `C0.3-PA2d` adds a transient `AuditExportSnapshot`, not a durable
+aggregate. It contains one organization's captured retention state and at most
+eight pages of records selected under one exclusive retention-row lock. The
+application releases that lock, partitions the immutable selection into the
+existing signed page documents, and builds one
+`a3s.cloud.audit-export-manifest.v1` document whose ordered entries bind each
+page's record count, input/next cursor, signing-key ID, and payload digest. The
+manifest also binds the canonical filter/window/page size, configured and
+applied policy digests, both retention watermarks, retention version, one
+generation time, and the total record/page counts. A ninth page is rejected
+before signing; zero records yield a signed zero-page manifest. The response is
+returned atomically only after every page and the manifest verify with one
+Ed25519 key. No snapshot, page, envelope, or manifest is persisted, and no
+object-storage or delivery ownership is implied.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`

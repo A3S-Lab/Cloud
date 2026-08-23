@@ -344,6 +344,19 @@ and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148
 verify these boundaries. Persisted multi-page manifests, object copies, and
 SIEM delivery remain outside this slice.
 
+Frozen `C0.3-PA2d` extends only the same Audit read boundary with a synchronous,
+complete, bounded multi-page bundle. One transaction locks the organization's
+retention row exclusively, validates its watermark, and captures no more than
+eight requested pages plus one overflow sentinel. That brief lock serializes
+the capture with retention updates and insert-time shared locks; signing occurs
+after commit. The returned existing signed pages share one generation time,
+an exact cursor chain, and one purpose-separated Ed25519 key. A separately
+signed canonical manifest binds their ordered payload digests, counts, cursors,
+key identities, exact filter, and the captured retention policy/watermarks.
+Overflow, signing-key drift, partial signing, or verification mismatch returns
+no bundle. This is neither a persisted export lifecycle nor an S0 object or
+SIEM delivery claim.
+
 If A3S ORM lacks a required typed query, expression, lock, or transaction
 primitive, the primitive is added and certified in A3S ORM through its normal
 issue, pull-request, release, and compatibility-lock flow. Cloud does not use

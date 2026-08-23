@@ -3089,6 +3089,42 @@ node.
   extend the same authority with chained or persisted multi-page manifests,
   authorized SIEM delivery, and correlation across Flow, node commands, and
   provider resources.
+- Frozen as `C0.3-PA2d`: expose one owner/admin-only, `cloud:read` complete
+  multi-page audit export bundle without adding another audit authority. Reuse
+  PA2b's exact filters and required inclusive canonical window of at most 31
+  days, accept no input cursor, and accept a one-through-200 `pageSize` with a
+  default of 200. The repository must lock the organization's retention row
+  `FOR UPDATE`, validate the watermark, and select no more than
+  `8 * pageSize + 1` redacted records in one transaction. This bounded
+  exclusive capture serializes with both retention advancement and the
+  insert-time shared lock; it is released before canonicalization or signing.
+  A ninth page is `422` before the first signature and tells the caller to
+  narrow the window or add exact filters.
+  Partition a successful capture into zero through eight existing
+  `a3s.cloud.audit-export.v1` pages with one generation time and an exact cursor
+  chain. Sign every page and one canonical
+  `a3s.cloud.audit-export-manifest.v1` document with the same
+  purpose-separated Ed25519 key. The manifest binds the exact organization,
+  filter/window/page size, configured and applied retention-policy digests,
+  availability and physical-deletion watermarks, retention version, total
+  records, and each ordered page's record count, input/next cursor, signing-key
+  ID, and `sha256:` payload digest. Its DSSE payload type is
+  `application/vnd.a3s.cloud.audit-export-manifest.v1+json`. Empty selections
+  produce a signed zero-page manifest. Signer unavailability, provider output
+  rejection, signing-key drift, partial signing, retention conflict, capacity
+  overflow, and any offline manifest/page mismatch fail closed without a
+  partial response.
+  REST/OpenAPI `1.59.0`, the maintained client, CLI, and one new read-only
+  Management MCP operation share this handler and take the planned exact
+  catalogs to 136 administrator and 76 read-only tools. Focused and PostgreSQL
+  tests must prove one-query capture, writer/retention serialization,
+  zero/one/eight-page behavior, overflow silence, exact cursor/digest/count
+  continuity, same-key enforcement, offline tamper rejection, tenant and role
+  denial, cross-surface parity, and exclusion of private audit details and all
+  other sensitive domains. PA2d adds no migration, export table, persisted
+  envelope, object copy, S0 namespace, audit writer, per-tenant mutable policy,
+  SIEM/Connector delivery, queue, scheduler, event rail, or commercial
+  authority.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,
