@@ -28,6 +28,7 @@ use crate::modules::workflow::domain::{
     WorkflowRunCoordinationError, WorkflowRunRecord, WorkflowRunStatus,
     WorkflowStepFailureClassification, WorkflowStepKind, WorkflowStepProjectionStatus,
     WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
+    WORKFLOW_RUN_INPUT_SCHEMA_V16,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -999,7 +1000,9 @@ fn application_variable_failure_classification(
 ) -> Option<WorkflowStepFailureClassification> {
     if !matches!(
         input.schema.as_str(),
-        WORKFLOW_RUN_INPUT_SCHEMA_V14 | WORKFLOW_RUN_INPUT_SCHEMA_V15
+        WORKFLOW_RUN_INPUT_SCHEMA_V14
+            | WORKFLOW_RUN_INPUT_SCHEMA_V15
+            | WORKFLOW_RUN_INPUT_SCHEMA_V16
     ) || !input
         .plan
         .edges
@@ -1028,12 +1031,14 @@ fn application_answer_failure_classification(
     step_id: &str,
     error: &ApplicationError,
 ) -> Option<WorkflowStepFailureClassification> {
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V15
-        || !input
-            .plan
-            .edges
-            .iter()
-            .any(|edge| edge.source == step_id && edge.source_handle.as_deref() == Some("error"))
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V15 | WORKFLOW_RUN_INPUT_SCHEMA_V16
+    ) || !input
+        .plan
+        .edges
+        .iter()
+        .any(|edge| edge.source == step_id && edge.source_handle.as_deref() == Some("error"))
     {
         return None;
     }

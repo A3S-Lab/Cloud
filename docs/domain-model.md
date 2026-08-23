@@ -1051,6 +1051,14 @@ Output selected-handle projection evidence; completed Output aliases remain
 invalid, raw owner errors and Answer content are excluded, and historic v1-v14
 behavior is unchanged.
 
+W0.3 admits a failure edge for an exact Workflow-owned Transform descriptor.
+That graph emits Plan v8 and Run v16. A deterministic local evaluation failure
+executes once without retry, becomes fixed redacted
+`cloud.workflow.step-failure.v5`, selects `error`, and keeps the Transform
+projection failed while the reachable ordinary branch may complete the parent.
+Migration `145` admits only failed Transform selected-handle evidence; raw
+evaluator errors are excluded, and historic v1-v15 behavior is unchanged.
+
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse
 reaches the same identity and conflicts instead of creating a second record.
@@ -3607,12 +3615,16 @@ v1-v5 and Run inputs v1-v13 retain their exact behavior. An exact Application
 Answer descriptor error edge emits `cloud.workflow.plan.v7`; immutable Run v15
 maps the same closed terminal classifications to redacted failure v4 and the
 declared root or frame-local edge. Plans v1-v6 and Run inputs v1-v14 retain
-their exact behavior. Migration `122` adds nullable default-output evidence to the
+their exact behavior. An exact Workflow-local Transform descriptor error edge
+emits `cloud.workflow.plan.v8`; immutable Run v16 maps deterministic local
+evaluation failure to fixed redacted failure v5 and the declared edge. Plans
+v1-v7 and Run inputs v1-v15 retain their exact behavior. Migration `122` adds nullable default-output evidence to the
 existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`
 widens only that structural handle constraint for failed Output projections;
-completed Output selected handles remain rejected. Descriptor-bound Application
+completed Output selected handles remain rejected. Migration `145` widens it
+only for failed Transform projections. Descriptor-bound Application
 variable snapshot/CAS and Answer access plus deterministic failure routing are
 implemented; unsupported, transient, or drifted owner access remains fail-closed.
 

@@ -172,6 +172,13 @@ ordinary DAG for root and composite-frame Answers while the source Output
 projection remains failed. `Unavailable` and `Internal` leave the Answer Hook
 unresolved. Plans v1-v6 and Run inputs v1-v14 retain their exact bytes and
 replay behavior.
+An exact Workflow-local Transform descriptor error edge emits Plan v8 and
+immutable WorkflowRun input/runtime/Flow v16. Deterministic local evaluation
+failure runs once without retry, becomes fixed redacted
+`cloud.workflow.step-failure.v5` data on the ordinary DAG, and leaves the
+source Transform projection failed with the exact selected handle. Plans v1-v7
+and Run inputs v1-v15 retain their exact bytes and replay behavior; runtime
+build `a3s-cloud-workflows@18` explicitly retains `@1` through `@17`.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -324,6 +331,13 @@ handle; transient or internal owner errors stay unresolved. Migration `143`
 widens only the existing projection constraint for failed Output selected-
 handle evidence and still rejects completed Output aliases. This slice adds no
 public OpenAPI schema or second message, retry, or orchestration authority.
+Runtime v16 admits Plan v8 only when an exact Workflow-local Transform selects
+its descriptor-bound error edge. The failed local step is scheduled once with
+no retry, and Flow reconstructs fixed redacted failure v5 data instead of
+copying evaluator diagnostics. Migration `145` widens only the existing
+projection constraint for failed Transform selected-handle evidence. This
+slice adds no table, column, public OpenAPI schema, or second retry or
+orchestration authority.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -354,8 +368,10 @@ exact default-output fallback through Plan v4/Run v7. Descriptor-bound
 Connector failure branches are implemented through Plan v5/Run v9. Application
 composite Answer frames use Run v13 root/child authority and stable zero-based
 ordinals; their deterministic Answer failures retain that root authority in
-Run v15. Other non-Execution error branches remain unimplemented parts of
-`W0.3`.
+Run v15. Workflow-local Transform failure branches are implemented through
+Plan v8/Run v16. Business-service and remaining Agent/MCP/model/Tool failure
+semantics, compensation, expanded provider evidence, and public availability
+remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 

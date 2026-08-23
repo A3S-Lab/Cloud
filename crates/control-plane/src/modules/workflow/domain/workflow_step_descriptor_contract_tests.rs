@@ -91,12 +91,48 @@ fn execution_descriptor() -> WorkflowStepDescriptorSpec {
     }
 }
 
+fn transform_descriptor() -> WorkflowStepDescriptorSpec {
+    WorkflowStepDescriptorSpec {
+        id: "workflow.transform".into(),
+        revision: "1.0.0".into(),
+        owner: WorkflowStepOwner::Workflow,
+        kind: Some(WorkflowStepKind::Transform),
+        semantic_profile: "workflow.transform".into(),
+        execution_class: WorkflowStepExecutionClass::WorkflowLocal,
+        input_ports: vec![port("current", WorkflowDataType::Object)],
+        output_ports: vec![port("value", WorkflowDataType::Object)],
+        configuration_schema_digest: digest('d'),
+        default_policy_digest: None,
+        required_bindings: Vec::new(),
+        allowed_capability_types: Vec::new(),
+        failure: WorkflowStepFailureContract {
+            error_output: Some(port("error", WorkflowDataType::Object)),
+            retry_classification: WorkflowStepRetryClassification::NotRetryable,
+            fallback: WorkflowStepFallbackMode::FailureBranch,
+            failure_branch: true,
+        },
+        minimum_compiler_schema_version: 2,
+        maximum_compiler_schema_version: 3,
+        admission: WorkflowStepDescriptorAdmission::Admitted,
+        unavailable_reason: None,
+        presentation: WorkflowStepPresentationSpec {
+            label: "Transform".into(),
+            summary: "Evaluates one deterministic Workflow-local transform".into(),
+            icon_key: "workflow.transform".into(),
+        },
+    }
+}
+
 fn registry_spec() -> WorkflowStepDescriptorRegistrySpec {
     WorkflowStepDescriptorRegistrySpec {
         id: "cloud.builtin".into(),
         revision: "1.0.0".into(),
         compiler_schema_version: 2,
-        descriptors: vec![execution_descriptor(), input_descriptor("User Input")],
+        descriptors: vec![
+            execution_descriptor(),
+            input_descriptor("User Input"),
+            transform_descriptor(),
+        ],
     }
 }
 
@@ -106,7 +142,7 @@ fn registry_is_canonical_digest_addressed_and_restorable() {
     assert_eq!(registry.id(), "cloud.builtin");
     assert_eq!(registry.revision(), "1.0.0");
     assert_eq!(registry.compiler_schema_version(), 2);
-    assert_eq!(registry.descriptors().len(), 2);
+    assert_eq!(registry.descriptors().len(), 3);
     assert!(registry.digest().as_str().starts_with("sha256:"));
     assert_eq!(
         WorkflowStepDescriptorRegistry::parse_acl(registry.canonical_acl()).expect("parsed"),

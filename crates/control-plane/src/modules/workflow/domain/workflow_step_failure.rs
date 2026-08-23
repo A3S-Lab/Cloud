@@ -9,6 +9,7 @@ pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA: &str = "cloud.workflow.step-failu
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V2: &str = "cloud.workflow.step-failure.v2";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3: &str = "cloud.workflow.step-failure.v3";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4: &str = "cloud.workflow.step-failure.v4";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5: &str = "cloud.workflow.step-failure.v5";
 pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
     "cloud.workflow.step-default-output.v1";
 
@@ -27,6 +28,7 @@ pub enum WorkflowStepFailureClassification {
     ApplicationNotFound,
     ApplicationConflict,
     ApplicationForbidden,
+    WorkflowLocalInvalid,
 }
 
 impl WorkflowStepFailureClassification {
@@ -44,6 +46,7 @@ impl WorkflowStepFailureClassification {
             Self::ApplicationNotFound => "application_not_found",
             Self::ApplicationConflict => "application_conflict",
             Self::ApplicationForbidden => "application_forbidden",
+            Self::WorkflowLocalInvalid => "workflow_local_invalid",
         }
     }
 
@@ -66,6 +69,10 @@ impl WorkflowStepFailureClassification {
                 | Self::ApplicationConflict
                 | Self::ApplicationForbidden
         )
+    }
+
+    const fn is_workflow_local(self) -> bool {
+        matches!(self, Self::WorkflowLocalInvalid)
     }
 }
 
@@ -201,6 +208,18 @@ impl WorkflowStepFailureOutput {
         Ok(value)
     }
 
+    pub(crate) fn local_transform(step: &ResolvedWorkflowRunStep) -> Result<Self, String> {
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5.into(),
+            step_id: step.plan.id.clone(),
+            classification: WorkflowStepFailureClassification::WorkflowLocalInvalid,
+            message: workflow_local_failure_message().into(),
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
         self.validate_observation(step)?;
         let failure =
@@ -245,6 +264,16 @@ impl WorkflowStepFailureOutput {
                     )
                 }
             }
+        }
+        if self.classification.is_workflow_local() {
+            if self.schema == WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5
+                && step.plan.kind == WorkflowStepKind::Transform
+            {
+                return Ok(());
+            }
+            return Err(
+                "Workflow-local failure requires an exact descriptor-bound Transform step".into(),
+            );
         }
         if step.plan.kind != WorkflowStepKind::Execution {
             return Err("Workflow execution failure requires an Execution step".into());
@@ -321,9 +350,18 @@ impl WorkflowStepFailureOutput {
             {
                 Ok(())
             }
+            (
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
+                WorkflowStepFailureClassification::WorkflowLocalInvalid,
+                None,
+            ) if self.message == workflow_local_failure_message() => Ok(()),
             _ => Err("Workflow step failure details do not match their classification".into()),
         }
     }
+}
+
+const fn workflow_local_failure_message() -> &'static str {
+    "Workflow Transform evaluation was invalid"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -499,9 +537,34 @@ mod tests {
     use crate::modules::workflow::test_support::{
         routed_application_answer_workflow_run_input,
         routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
-        routed_execution_workflow_run_input, TEST_ANSWER_STEP_ID,
-        TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_EXECUTION_STEP_ID,
+        routed_execution_workflow_run_input, transform_failure_workflow_run_input,
+        TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
+        TEST_EXECUTION_STEP_ID,
     };
+
+    #[test]
+    fn transform_failures_are_redacted_exact_v5_local_observations() {
+        let input = transform_failure_workflow_run_input().expect("routed Transform input");
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == TEST_EXECUTION_STEP_ID)
+            .expect("Transform step");
+        let failure =
+            WorkflowStepFailureOutput::local_transform(&step).expect("v5 Transform failure");
+        assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5);
+        assert_eq!(
+            failure.classification,
+            WorkflowStepFailureClassification::WorkflowLocalInvalid
+        );
+        assert_eq!(failure.message, workflow_local_failure_message());
+        assert!(failure.details.is_none());
+
+        let mut forged = failure;
+        forged.message = "raw template error: private input".into();
+        assert!(forged.validate(&step).is_err());
+    }
 
     #[test]
     fn application_variable_failures_are_redacted_exact_v3_owner_observations() {

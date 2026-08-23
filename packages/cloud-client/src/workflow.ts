@@ -226,7 +226,17 @@ export interface WorkflowStepFailureContract {
 export type WorkflowStepFailureClassification =
   | 'dispatch_rejected'
   | 'execution_failed'
-  | 'execution_cancelled';
+  | 'execution_cancelled'
+  | 'provider_rejected'
+  | 'provider_attempts_exhausted'
+  | 'provider_indeterminate'
+  | 'provider_observation_limit'
+  | 'provider_response_invalid'
+  | 'application_invalid'
+  | 'application_not_found'
+  | 'application_conflict'
+  | 'application_forbidden'
+  | 'workflow_local_invalid';
 
 export type WorkflowExecutionOutcome =
   | { kind: 'succeeded'; exit_code: 0 }
@@ -251,7 +261,12 @@ export interface WorkflowExecutionFailureDetails {
 }
 
 export interface WorkflowStepFailureOutput {
-  schema: 'cloud.workflow.step-failure.v1';
+  schema:
+    | 'cloud.workflow.step-failure.v1'
+    | 'cloud.workflow.step-failure.v2'
+    | 'cloud.workflow.step-failure.v3'
+    | 'cloud.workflow.step-failure.v4'
+    | 'cloud.workflow.step-failure.v5';
   stepId: string;
   classification: WorkflowStepFailureClassification;
   message: string;
@@ -284,12 +299,20 @@ export interface WorkflowPlan {
     | 'cloud.workflow.plan.v1'
     | 'cloud.workflow.plan.v2'
     | 'cloud.workflow.plan.v3'
-    | 'cloud.workflow.plan.v4';
+    | 'cloud.workflow.plan.v4'
+    | 'cloud.workflow.plan.v5'
+    | 'cloud.workflow.plan.v6'
+    | 'cloud.workflow.plan.v7'
+    | 'cloud.workflow.plan.v8';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
     | 'cloud.workflow.plan-compiler.v3'
-    | 'cloud.workflow.plan-compiler.v4';
+    | 'cloud.workflow.plan-compiler.v4'
+    | 'cloud.workflow.plan-compiler.v5'
+    | 'cloud.workflow.plan-compiler.v6'
+    | 'cloud.workflow.plan-compiler.v7'
+    | 'cloud.workflow.plan-compiler.v8';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
@@ -315,12 +338,20 @@ export interface WorkflowPlanRevision {
     | 'cloud.workflow.plan.v1'
     | 'cloud.workflow.plan.v2'
     | 'cloud.workflow.plan.v3'
-    | 'cloud.workflow.plan.v4';
+    | 'cloud.workflow.plan.v4'
+    | 'cloud.workflow.plan.v5'
+    | 'cloud.workflow.plan.v6'
+    | 'cloud.workflow.plan.v7'
+    | 'cloud.workflow.plan.v8';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
     | 'cloud.workflow.plan-compiler.v3'
-    | 'cloud.workflow.plan-compiler.v4';
+    | 'cloud.workflow.plan-compiler.v4'
+    | 'cloud.workflow.plan-compiler.v5'
+    | 'cloud.workflow.plan-compiler.v6'
+    | 'cloud.workflow.plan-compiler.v7'
+    | 'cloud.workflow.plan-compiler.v8';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;

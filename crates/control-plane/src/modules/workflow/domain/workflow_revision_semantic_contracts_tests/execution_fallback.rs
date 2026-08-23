@@ -183,6 +183,105 @@ fn failure_route_fixture() -> FailureRouteFixture {
     }
 }
 
+fn transform_failure_route_fixture() -> FailureRouteFixture {
+    let mut fixture = failure_route_fixture();
+    let mut transform_configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    transform_configuration.template = Some("{{current.missing}}".into());
+    let transform_configuration = WorkflowPayload::from_content(
+        WorkflowPayloadContent::Configuration(transform_configuration),
+    )
+    .expect("Transform configuration");
+    let transform_step = fixture
+        .workflow
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "execute")
+        .expect("Execution step");
+    let execution_configuration_digest = transform_step.configuration_digest.clone();
+    transform_step.id = "transform".into();
+    transform_step.label = "transform".into();
+    transform_step.kind = WorkflowStepKind::Transform;
+    transform_step.configuration_digest = transform_configuration.digest().clone();
+    transform_step.policy_digest = None;
+    transform_step.capability = None;
+    for edge in &mut fixture.workflow.edges {
+        if edge.source == "execute" {
+            edge.source = "transform".into();
+        }
+        if edge.target == "execute" {
+            edge.target = "transform".into();
+        }
+        edge.id = edge.id.replace("execute", "transform");
+    }
+    fixture
+        .payloads
+        .retain(|payload| payload.digest() != &execution_configuration_digest);
+    fixture.payloads.push(transform_configuration);
+
+    let mut transform_descriptor = descriptor(
+        "workflow.transform",
+        WorkflowStepKind::Transform,
+        "input",
+        "result",
+    );
+    transform_descriptor.failure = WorkflowStepFailureContract {
+        error_output: Some(port("error")),
+        retry_classification: WorkflowStepRetryClassification::NotRetryable,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.transform-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: vec![
+            descriptor(
+                "workflow.input",
+                WorkflowStepKind::Input,
+                "invocation",
+                "value",
+            ),
+            transform_descriptor,
+            descriptor(
+                "workflow.output",
+                WorkflowStepKind::Output,
+                "result",
+                "value",
+            ),
+        ],
+    })
+    .expect("Transform failure route registry");
+    let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: "support.transform-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        bindings: [
+            ("input", "workflow.input"),
+            ("transform", "workflow.transform"),
+            ("failure_output", "workflow.output"),
+            ("output", "workflow.output"),
+        ]
+        .into_iter()
+        .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+            step_id: step_id.into(),
+            descriptor_id: descriptor_id.into(),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: registry
+                .resolve(descriptor_id, "1.0.0")
+                .expect("descriptor")
+                .semantic_digest()
+                .clone(),
+        })
+        .collect(),
+    })
+    .expect("Transform failure route bindings");
+    let variables = fixture.semantic_contracts.variable_contract().clone();
+    fixture.semantic_contracts =
+        WorkflowRevisionSemanticContracts::create(&fixture.workflow, bindings, registry, variables)
+            .expect("Transform failure route semantics");
+    fixture
+}
+
 fn connector_failure_route_fixture() -> FailureRouteFixture {
     let mut fixture = failure_route_fixture();
     let connector_configuration =
@@ -559,6 +658,42 @@ fn compiler_emits_plan_v5_and_run_v9_for_connector_failure_routes() {
         .execution_input
         .validate()
         .expect("valid run v9 input");
+}
+
+#[test]
+fn compiler_emits_plan_v8_and_run_v16_for_transform_failure_routes() {
+    let (compiled, revision, principal_id, now) = compile_execution_fallback_fixture(
+        transform_failure_route_fixture(),
+        "Routed Transform goal",
+    );
+    assert_eq!(compiled.plan_revision.plan.schema, "cloud.workflow.plan.v8");
+    assert_eq!(
+        compiled.plan_revision.plan.compiler_revision,
+        "cloud.workflow.plan-compiler.v8"
+    );
+    let run = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("compiled run v16");
+    assert_eq!(
+        run.run.execution_input.schema,
+        "cloud.workflow-run.input.v16"
+    );
+    assert_eq!(
+        run.run.execution_input.runtime_contract_revision,
+        "cloud.workflow-run-runtime.v16"
+    );
+    assert_eq!(run.run.execution_input.flow_workflow_version, "16");
+    run.run
+        .execution_input
+        .validate()
+        .expect("valid run v16 input");
 }
 
 fn compile_execution_fallback_fixture(

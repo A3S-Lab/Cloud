@@ -1360,8 +1360,20 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/144_audit_retention_authority.sql"
             )),
         ),
+        Migration::new(
+            "145",
+            "Workflow Transform failure step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/145_workflow_transform_failure_step_projections.sql"
+            )),
+        ),
     ]
 }
+
+#[cfg(test)]
+#[path = "postgres_tests/workflow_transform_failure_migration.rs"]
+mod workflow_transform_failure_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

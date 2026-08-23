@@ -157,6 +157,11 @@ failure scheduler or provider lifecycle. The exported
 `WorkflowStepFailureOutput`, `WorkflowStepDefaultOutputContract`,
 `WorkflowStepDefaultOutputEvidence`, and Execution-detail types describe those
 stable values without attempting to interpret arbitrary Workflow output.
+The same fields now enumerate Plan v5 Connector, Plan v6 Application-variable,
+Plan v7 Application-Answer, and Plan v8 Workflow-local Transform failure
+semantics plus `cloud.workflow.step-failure.v2` through v5. These runtime
+variants require no new REST operation or response field; the client keeps the
+closed schema and classification strings aligned with the server.
 
 `getWorkflowNodeCatalog` exposes the project-authorized read-only discovery
 projection added by REST contract `1.31.0`. It returns the exact frozen baseline,

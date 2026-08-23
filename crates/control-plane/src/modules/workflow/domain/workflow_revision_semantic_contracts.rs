@@ -620,6 +620,9 @@ impl WorkflowRevisionSemanticContracts {
                 super::WORKFLOW_PLAN_SCHEMA_V7
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V8
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
                 _ => {
                     return Err(format!(
                         "Workflow plan step {:?} failure semantics drifted",

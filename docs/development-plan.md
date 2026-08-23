@@ -444,13 +444,22 @@ supersede those claims rather than acting as a second live status source.
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
 
+`W0.3` status update (this supersedes the compact W0 row's version inventory
+above): descriptor-bound Workflow-local Transform failure
+routing is implemented through Plan v8, WorkflowRun input/runtime/Flow v16,
+fixed redacted failure v5, projection migration `145`, and runtime build
+`a3s-cloud-workflows@18` with `@1` through `@17` retained for replay. The
+milestone remains in progress: business-service and remaining
+Agent/MCP/model/Tool dispatch, compensation, expanded provider conformance,
+`W0.5`, and public availability remain open.
+
 The `C0` summary's remaining SMTP item means a general Notifications
 subscription/dispatch channel. Identity's separate recipient-contact challenge
 transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
 
-The current REST/OpenAPI contract is `1.54.0`. It retains `1.53.0`'s SMTP-only
+The current REST/OpenAPI contract is `1.58.0`. It retains `1.53.0`'s SMTP-only
 outbound-subscription v4 target union and `1.52.0`'s exact-owner
 recipient-contact self-service surface without exposing challenge identity,
 mailbox, or proof. It adds alert-policy v2 only for the closed Fleet Node
@@ -832,8 +841,8 @@ commit and query tenant-scoped desired state.
   its `FormReleaseRef`, request, submission, canonicalization, and digest types,
   and calls its compiler and evaluator through one application port without a
   Cloud copy.
-- New Operation histories pin runtime build `a3s-cloud-workflows@17` and patch
-  marker `cloud.flow.bounded-step-retries-v1`. The former `@1` through `@16`
+- New Operation histories pin runtime build `a3s-cloud-workflows@18` and patch
+  marker `cloud.flow.bounded-step-retries-v1`. The former `@1` through `@17`
   generations are explicit replay-compatible migration entries; unknown
   pinned generations fail closed. Legacy unpinned histories remain replayable
   only as visible migration debt, and Cloud does not create new unpinned
@@ -2332,8 +2341,8 @@ node.
   `cloud.workflow.step-failure.v2` data on the ordinary DAG. Historic v8 still
   fails closed without that interpretation, v7 retains default-output behavior,
   v6 output stays reference-only, and v5 output stays digest-only and
-  byte-compatible. Current replay build `a3s-cloud-workflows@17` keeps
-  versions/builds `@1` through `@16` explicitly replayable. Migration `123`
+  byte-compatible. Current replay build `a3s-cloud-workflows@18` keeps
+  versions/builds `@1` through `@17` explicitly replayable. Migration `123`
   only admits the already wired Service projection
   shape and its failed selected handle; it adds no table, queue, timer worker,
   scheduler, retry counter, child Operation,
@@ -2367,6 +2376,16 @@ node.
   v1-v14 preserve their exact behavior. Migration `143` admits only failed
   Output selected-handle evidence and rejects completed aliases; no raw owner
   error, OpenAPI version change, queue, retry rail, or second history is added.
+- Implemented as component-only `W0.3` local failure interpretation: only an
+  exact Workflow-owned Transform descriptor with one required static object
+  `error` edge emits Plan v8 and WorkflowRun input/runtime/Flow v16. A failed
+  deterministic evaluation runs once without retry and materializes fixed
+  redacted `cloud.workflow.step-failure.v5` data on the ordinary DAG. The
+  source projection remains failed with the exact selected handle while its
+  reachable sink may complete the parent. Migration `145` only widens the
+  existing projection constraint for failed Transform routing evidence;
+  Plans v1-v7, Run inputs v1-v15, and runtime builds `@1` through `@17` retain
+  exact replay, with no new table, column, OpenAPI shape, queue, or retry rail.
 - Implemented as `C0.3-N2f`: REST/OpenAPI `1.37.0`, the maintained client, CLI,
   and four Management MCP tools expose the existing recipient-bound outbound
   subscription create/list/get/revoke CQRS. Bounded keyset reads apply current
@@ -4429,7 +4448,8 @@ Follow the detailed gates in
    Plan v4/Run v7 exact default-output folding/evidence, Run v8 strict typed
    JSON projection, Plan v5/Run v9 descriptor-bound Connector failure routing,
    Plan v6/Run v14 descriptor-bound Application-variable failure routing, and
-   Plan v7/Run v15 descriptor-bound Application-Answer failure routing
+   Plan v7/Run v15 descriptor-bound Application-Answer failure routing,
+   Plan v8/Run v16 descriptor-bound Workflow-local Transform failure routing,
    while retaining the no-duplicate authority tests;
 2. retain protected `W0.3` runs, reachable-sink Output aggregation, the
    immutable bounded composite policy/child-binding foundation, and the
@@ -4438,7 +4458,8 @@ Follow the detailed gates in
    and recovery; retain descriptor-bound graph Answer and Application-variable
    snapshot/CAS semantics, including v13 repeated-frame ordinals, v14
    deterministic variable write-failure routing, and v15 deterministic
-   root/frame Answer write-failure routing, and complete other non-Execution error routes while
+   root/frame Answer write-failure routing, and complete business-service and
+   remaining Agent/MCP/model/Tool error routes while
    preserving historical Flow replay
    before exposing product claims;
 3. retain the implemented `APP0.1`, component-only

@@ -9,9 +9,9 @@ execution class, configuration/default-policy digests, required bindings,
 allowed existing `CapabilityType` values, typed failure behavior, compiler
 compatibility, admission metadata, and a separate presentation digest.
 
-The fixture contains two representative admitted descriptors so both a
-Workflow-local step and the existing finite Executions application port are
-covered. It is not the production built-in catalog, does not advertise all 23
+The fixture contains three representative admitted descriptors so both
+Workflow-local Input and Transform steps and the existing finite Executions
+application port are covered. It is not the production built-in catalog, does not advertise all 23
 application-platform nodes, and does not change public parity availability.
 `step-descriptor-bindings.acl` freezes the separate, presentation-independent
 step-to-descriptor authority. Migration `103` persists bindings, the exact
@@ -52,6 +52,25 @@ retry engine, error queue, node-run table, provider lifecycle, or Flow history.
 Application composite Answer frames are implemented by `APP0.2-C13` without
 changing this finite-Execution contract. Compensation and other provider error
 branches remain unavailable.
+
+## Descriptor-bound Workflow-local Transform failure route
+
+The `workflow.transform` descriptor declares one required static object error
+output named `error`, a non-retryable classification, and failure-branch
+fallback. Selecting that port emits `cloud.workflow.plan.v8` and immutable
+WorkflowRun input/runtime/Flow v16. A failed local evaluation runs exactly
+once, resumes normal DAG interpretation, and produces the bounded redacted
+`cloud.workflow.step-failure.v5` value. The failed Transform projection records
+the exact `error` handle while its ordinary failure sink may complete the
+parent run.
+
+Runtime v16 never copies the template evaluator's raw error into handled DAG
+data or the public step projection. Migration `145` only admits failed
+Transform selected-handle evidence in the existing projection constraint, and
+runtime build `a3s-cloud-workflows@18` retains `@1` through `@17` for exact
+replay. Plans v1-v7 and Run inputs v1-v15 keep their bytes and behavior. This
+slice adds no table, column, retry engine, queue, worker, scheduler, or second
+Flow mechanism.
 
 ## Typed variable scopes
 

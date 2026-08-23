@@ -1,7 +1,8 @@
 use super::workflow::{
     application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
-    ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
+    local_transform_failure_route_result, ApplicationAnswerResolution,
+    ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -64,6 +65,7 @@ pub fn project_workflow_run_record(
         connector_failures,
         application_failures,
         composite_failures,
+        workflow_local_failures,
     } = completed_workflow_steps(&record.run.execution_input, &resolved_steps, snapshot)?;
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
     let composite_hooks =
@@ -491,7 +493,7 @@ pub fn project_workflow_run_record(
                         ))
                     }
                 };
-                let result = flow_step
+                let replay_result = flow_step
                     .output
                     .as_ref()
                     .map(|value| {
@@ -511,16 +513,24 @@ pub fn project_workflow_run_record(
                         Ok::<WorkflowLocalStepResult, String>(result)
                     })
                     .transpose()?;
-                let selected_handle = result
-                    .as_ref()
-                    .and_then(|result| result.selected_handle.clone());
-                let output = result.map(|result| result.output);
+                let routed_failure = workflow_local_failures.get(&projection.step_id).cloned();
+                let completed_result = completed.get(&projection.step_id);
+                let selected_handle =
+                    completed_result.and_then(|result| result.selected_handle.clone());
+                let output = (status == WorkflowStepProjectionStatus::Completed)
+                    .then(|| replay_result.map(|result| result.output))
+                    .flatten();
+                let step_error = if status == WorkflowStepProjectionStatus::Failed {
+                    routed_failure.or_else(|| flow_step.error.clone())
+                } else {
+                    flow_step.error.clone()
+                };
                 (
                     status,
                     flow_step.attempt,
                     output,
                     selected_handle,
-                    flow_step.error.clone(),
+                    step_error,
                     sequence,
                     at,
                 )
@@ -648,6 +658,7 @@ pub(super) struct CompletedWorkflowSteps {
     pub(super) connector_failures: BTreeMap<String, String>,
     pub(super) application_failures: BTreeMap<String, String>,
     pub(super) composite_failures: BTreeMap<String, String>,
+    pub(super) workflow_local_failures: BTreeMap<String, String>,
 }
 
 pub(super) fn completed_workflow_steps(
@@ -685,6 +696,7 @@ pub(super) fn completed_workflow_steps(
     let mut connector_failures = BTreeMap::new();
     let mut application_failures = BTreeMap::new();
     let mut composite_failures = BTreeMap::new();
+    let mut workflow_local_failures = BTreeMap::new();
     for resolved in resolved_steps {
         if input
             .application_projection
@@ -899,6 +911,29 @@ pub(super) fn completed_workflow_steps(
                     }
                 }
             }
+            WorkflowStepKind::Transform => {
+                let durable_step_id = flow_step_id(&resolved.plan.id);
+                if snapshot
+                    .steps
+                    .get(&durable_step_id)
+                    .is_some_and(|step| step.status == StepStatus::Failed)
+                {
+                    if let Some(result) =
+                        local_transform_failure_route_result(&snapshot.run_id, input, resolved)
+                            .map_err(|error| error.to_string())?
+                    {
+                        let failure = serde_json::from_value::<
+                            crate::modules::workflow::domain::WorkflowStepFailureOutput,
+                        >(result.output.clone())
+                        .map_err(|error| {
+                            format!("Workflow local failure output is invalid: {error}")
+                        })?;
+                        workflow_local_failures
+                            .insert(resolved.plan.id.clone(), failure.message.clone());
+                        completed.insert(result.step_id.clone(), *result);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -952,6 +987,7 @@ pub(super) fn completed_workflow_steps(
         connector_failures,
         application_failures,
         composite_failures,
+        workflow_local_failures,
     })
 }
 

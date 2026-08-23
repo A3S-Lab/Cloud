@@ -2135,8 +2135,10 @@ Output to be terminal, and proves every step reaches at least one sink. The
 runtime waits for all declared sinks, omits inactive branch sinks, preserves a
 single sink's historical value shape, orders a multiple-sink object by stable
 step ID, and enforces the existing aggregate byte bound. `W0.3` remains open
-for other non-Execution error branches and retained real-provider recovery
-evidence.
+for business-service and remaining Agent/MCP/model/Tool failure semantics,
+compensation, and retained real-provider recovery evidence. Workflow-local
+Transform failure routing is now implemented through Plan v8/Run v16 with
+fixed redacted failure-v5 data and migration `145`.
 
 The shared execution substrate now pins A3S Flow `1.0.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.1`-backed PostgreSQL stores. Workflow
@@ -2145,7 +2147,7 @@ single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
 and `a3s_boot` schemas. One process-level supervisor now observes every
 mandatory worker exit, error, and panic and fails serving before a background
 path can disappear silently. New Cloud Operation
-runs pin runtime build `a3s-cloud-workflows@16`; the former `@1` through `@15`
+runs pin runtime build `a3s-cloud-workflows@18`; the former `@1` through `@17`
 generations are admitted only through the explicit compatibility set, while
 legacy unpinned histories remain replayable as migration debt. Composite-only
 Plan v2 runs pin WorkflowRun input/runtime/Flow v3; descriptor-bound Plan v3
@@ -2160,7 +2162,10 @@ projection v3; composite Application roots and semantic children pin v13 with
 root projection v5 and child frame projection v4; an exact Application-variable
 descriptor error edge pins Plan v6 and v14, maps only deterministic terminal
 owner rejections to redacted failure v3, and leaves transient errors unresolved.
-Historic v1-v13 inputs
+An exact Workflow-local Transform error edge pins Plan v8 and Run v16,
+executes once without retry, and projects fixed redacted failure v5 through the
+ordinary DAG. Migration `145` only widens failed Transform selected-handle
+evidence. Historic v1-v15 inputs
 retain their bytes and replay behavior.
 PostgreSQL tests cover queue
 draining, bounded retries, terminal-failure readiness, and the existing nine
@@ -2426,7 +2431,9 @@ The default portfolio priority is:
     exact pinning plus Plan v3 descriptor-bound finite-Execution failure
     routing, Plan v4 exact default-output folding/evidence, Plan v5
     descriptor-bound Connector failure routing, and Plan v6 descriptor-bound
-    Application-variable failure routing, initial
+    Application-variable failure routing, Plan v7 descriptor-bound
+    Application-Answer failure routing, and Plan v8 descriptor-bound
+    Workflow-local Transform failure routing, initial
     typed-variable Flow projection, Flow-derived
     authorized variable inspection, digest-bound defaults, bounded composite
     policy/child bindings, deterministic frame/export and ordered region
@@ -2434,8 +2441,10 @@ The default portfolio priority is:
     cancellation, and recovery,
     and read-only built-in catalog discovery, then retain descriptor-bound
     graph Answer frames, Applications-owned variables, v13 repeated-frame
-    Answer ordinals, and v14 deterministic variable-write failure routing while
-    finishing other non-Execution error routes and
+    Answer ordinals, v14 deterministic variable-write failure routing, v15
+    deterministic Answer failure routing, and v16 deterministic local
+    Transform failure routing while finishing business-service and remaining
+    Agent/MCP/model/Tool error routes and
     retaining the implemented reachable-sink Output aggregation and WorkflowRun
     execution on Operations and A3S Flow; expand real-PostgreSQL/provider cross-surface and process-death
     evidence for the remaining paths before closing `W0.3`, without waiting for

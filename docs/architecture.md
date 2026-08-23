@@ -691,7 +691,12 @@ Output error port emits Plan v7; Application-composed Run v15 routes the same
 closed terminal classifications as redacted `cloud.workflow.step-failure.v4`
 data for root and frame-bound Answers while leaving transient or internal
 failures unresolved. Plans v1-v6 and Run inputs v1-v14 retain their canonical
-bytes and replay behavior. WorkflowRun v2 reconstructs supported values and defaults, v3 also
+bytes and replay behavior. An exact Workflow-local Transform error port emits
+Plan v8; Run v16 executes the deterministic local evaluation once without
+retry, routes fixed redacted `cloud.workflow.step-failure.v5` data, and leaves
+the source Transform failed with the exact selected handle. Plans v1-v7 and
+Run inputs v1-v15 retain their canonical bytes and replay behavior.
+WorkflowRun v2 reconstructs supported values and defaults, v3 also
 restores reduced composite updates and exports, and v4 composes both with
 descriptor-bound Execution failure routing from immutable input plus existing
 Flow history; v5 adds Connector attempt/wait interpretation, v6 adds immutable
@@ -700,7 +705,8 @@ over the same hook and history; v8 adds schema-bound typed Connector response
 projection, v9 adds only descriptor-bound Connector failure selection, v14
 adds only descriptor-bound Application-variable failure selection over the
 existing snapshot/CAS authority, and v15 adds descriptor-bound root/frame
-Application-Answer failure selection over the existing Answer effect authority. A step
+Application-Answer failure selection over the existing Answer effect authority;
+v16 adds only descriptor-bound Workflow-local Transform failure selection. A step
 with explicit reads can consume only its typed `current` projection; a step
 without reads retains legacy dependency input. REST/OpenAPI `1.34.0` transports
 digest-bound defaults, while `1.35.0` adds optional `compositeRegionsAcl`
@@ -722,6 +728,12 @@ Run v15 can retain exact Application Answer routing evidence. Completed Output
 steps with selected handles remain rejected, and aggregate validation still
 proves the exact Answer descriptor, failure contract, declared edge, and
 selected handle before persistence.
+
+Migration `145` only widens the same selected-handle constraint for failed
+Transform projections. Aggregate validation still proves Plan v8, the exact
+Workflow-owned descriptor contract, declared edge, fixed failure-v5 shape, and
+selected handle. It introduces no table, column, retry engine, or second Flow
+mechanism.
 
 The separate built-in discovery projection fail-closed composes the parity
 manifest's exact 23-node owner/gate/dependency/availability inventory with its

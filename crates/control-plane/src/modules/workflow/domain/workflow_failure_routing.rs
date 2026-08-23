@@ -93,6 +93,20 @@ pub(crate) fn has_connector_failure_route(workflow: &WorkflowSpec) -> bool {
     })
 }
 
+pub(crate) fn has_transform_failure_route(workflow: &WorkflowSpec) -> bool {
+    let steps = workflow
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    workflow.edges.iter().any(|edge| {
+        edge.source_handle.is_some()
+            && steps
+                .get(edge.source.as_str())
+                .is_some_and(|step| step.kind == WorkflowStepKind::Transform)
+    })
+}
+
 pub(crate) fn descriptor_failure_output(
     failure: &WorkflowStepFailureContract,
 ) -> Result<&WorkflowStepPort, String> {
@@ -120,7 +134,8 @@ fn supports_failure_route(
     application_variable_steps: &BTreeSet<&str>,
     application_answer_steps: &BTreeSet<&str>,
 ) -> bool {
-    step.kind == WorkflowStepKind::Execution
+    step.kind == WorkflowStepKind::Transform
+        || step.kind == WorkflowStepKind::Execution
         || is_connector_step(step)
         || (step.kind == WorkflowStepKind::Service
             && step.capability.is_none()
@@ -249,14 +264,17 @@ mod tests {
             Ok(true)
         );
 
-        let unsupported = validate_descriptor_failure_routes(
-            &routed_workflow(WorkflowStepKind::Transform),
-            &execution_failures,
-            &no_application_steps,
-            &no_application_steps,
-        )
-        .expect_err("Transform failure routes remain gated");
-        assert!(unsupported.contains("unsupported transform step"));
+        let transform_workflow = routed_workflow(WorkflowStepKind::Transform);
+        assert_eq!(
+            validate_descriptor_failure_routes(
+                &transform_workflow,
+                &execution_failures,
+                &no_application_steps,
+                &no_application_steps,
+            ),
+            Ok(true)
+        );
+        assert!(has_transform_failure_route(&transform_workflow));
 
         let unbound_service = validate_descriptor_failure_routes(
             &routed_workflow(WorkflowStepKind::Service),

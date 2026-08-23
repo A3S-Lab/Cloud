@@ -1,12 +1,17 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{Sha256Digest, WorkflowRunId};
 use crate::modules::workflow::domain::WORKFLOW_RUN_OUTPUT_MAX_BYTES;
-use crate::modules::workflow::domain::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
+use crate::modules::workflow::domain::{
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
+};
+use crate::modules::workflow::infrastructure::workflow_run_flow::execution;
 use crate::modules::workflow::test_support::{
     default_output_execution_workflow_run_input, digest, multi_output_workflow_run_input,
-    timestamp, workflow_run_input, TEST_EXECUTION_STEP_ID,
+    timestamp, transform_failure_workflow_run_input, workflow_run_input, TEST_EXECUTION_STEP_ID,
 };
-use a3s_flow::{CancellationRequest, FlowEvent, FlowEventEnvelope, WorkflowSpec};
+use a3s_flow::{
+    CancellationRequest, FlowEvent, FlowEventEnvelope, StepFailureAction, WorkflowSpec,
+};
 use uuid::Uuid;
 
 #[test]
@@ -157,6 +162,69 @@ fn workflow_runtime_rejects_identity_and_replayed_step_drift() {
 }
 
 #[test]
+fn transform_failure_routes_redacted_output_without_retrying() {
+    let input = transform_failure_workflow_run_input().expect("routed Transform input");
+    let input_result = WorkflowLocalStepResult {
+        step_id: "input".into(),
+        kind: WorkflowStepKind::Input,
+        output: input.goal_input.clone(),
+        output_digest: execution::value_digest(&input.goal_input, "test input").expect("digest"),
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    let input_completed = envelope(
+        &input,
+        1,
+        timestamp(8, 1),
+        FlowEvent::StepCompleted {
+            step_id: flow_step_id("input"),
+            output: serde_json::to_value(input_result).expect("input result"),
+        },
+    );
+    let scheduled = run_workflow(invocation(&input, vec![input_completed.clone()]))
+        .expect("Transform scheduling");
+    let RuntimeCommand::ScheduleSteps { steps } = scheduled else {
+        panic!("routed Transform must be scheduled as a recoverable local step");
+    };
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].step_id, flow_step_id(TEST_EXECUTION_STEP_ID));
+    assert_eq!(steps[0].retry.max_attempts, 1);
+    assert_eq!(
+        steps[0].retry.on_exhausted,
+        StepFailureAction::ContinueWorkflow
+    );
+
+    let failed = envelope(
+        &input,
+        2,
+        timestamp(8, 2),
+        FlowEvent::StepFailed {
+            step_id: flow_step_id(TEST_EXECUTION_STEP_ID),
+            attempt: 1,
+            error: "runtime error: secret template detail".into(),
+        },
+    );
+    let routed = run_workflow(invocation(&input, vec![input_completed, failed]))
+        .expect("Transform failure routing");
+    let RuntimeCommand::ScheduleSteps { steps } = routed else {
+        panic!("routed Transform failure must schedule its error sink");
+    };
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].step_id, flow_step_id("failure_output"));
+    let sink_input = serde_json::from_value::<WorkflowLocalStepInput>(steps[0].input.clone())
+        .expect("failure sink input");
+    let failure = serde_json::from_value::<WorkflowStepFailureOutput>(sink_input.effective_input)
+        .expect("typed Transform failure");
+    assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5);
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::WorkflowLocalInvalid
+    );
+    assert!(!failure.message.contains("secret"));
+}
+
+#[test]
 fn multi_output_aggregate_enforces_the_workflow_run_output_bound() {
     let input = multi_output_workflow_run_input().expect("multi-output WorkflowRun input");
     let value = Value::String("x".repeat(WORKFLOW_RUN_OUTPUT_MAX_BYTES / 2));
@@ -197,7 +265,7 @@ fn invocation(input: &WorkflowRunInput, history: Vec<FlowEventEnvelope>) -> Work
         input.workflow_run_id.to_string(),
         WorkflowSpec::rust_embedded(
             WORKFLOW_RUN_FLOW_NAME,
-            WORKFLOW_RUN_FLOW_VERSION,
+            input.flow_workflow_version.clone(),
             "cloud",
             "workflow_run",
         ),

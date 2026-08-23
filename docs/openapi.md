@@ -11,7 +11,7 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.54.0`.
+The current semantic contract version is `1.58.0`.
 
 ## Contract completeness
 
