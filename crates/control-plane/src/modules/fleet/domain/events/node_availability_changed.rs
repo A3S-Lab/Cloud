@@ -156,9 +156,7 @@ impl NodeAvailabilityChanged {
         let resolved_at = canonical_timestamp(resolved_at);
         let valid_transition = match reason {
             NodeAvailabilityResolutionReason::HeartbeatRestored => {
-                snapshot.participates()
-                    && snapshot.last_observed_at > firing.last_observed_at
-                    && snapshot.last_observed_at <= resolved_at
+                snapshot.participates() && snapshot.last_observed_at > firing.last_observed_at
             }
             NodeAvailabilityResolutionReason::NodeRevoked => {
                 snapshot.state == NodeState::Revoked
@@ -261,7 +259,12 @@ impl NodeAvailabilityChanged {
                     && payload.resolved_at == Some(event.occurred_at)
                     && match payload.resolution_reason {
                         Some(NodeAvailabilityResolutionReason::HeartbeatRestored) => {
-                            payload.last_observed_at <= event.occurred_at
+                            // Schema v1 carries the current observation and the firing deadline,
+                            // but not the firing observation. Its strict advancement is therefore
+                            // enforced while producing the owner fact and cannot be reconstructed
+                            // from this envelope alone. Node clocks may also lead control-plane
+                            // receipt time, so no current-observation ordering is inferred here.
+                            true
                         }
                         Some(NodeAvailabilityResolutionReason::NodeRevoked) => {
                             payload.timeout_deadline_at > payload.last_observed_at
@@ -404,6 +407,20 @@ mod tests {
                 .last_observed_at,
             delayed_observation.last_observed_at
         );
+
+        let clock_ahead_observation = NodeAvailabilitySnapshot {
+            last_observed_at: observed_at + Duration::seconds(50),
+            ..delayed_observation
+        };
+        let clock_ahead_resolution = NodeAvailabilityChanged::resolved_envelope(
+            clock_ahead_observation,
+            firing_identity,
+            NodeAvailabilityResolutionReason::HeartbeatRestored,
+            deadline + Duration::seconds(13),
+        )
+        .expect("advancing heartbeat may carry a clock-ahead observation");
+        NodeAvailabilityChanged::decode_envelope(&clock_ahead_resolution)
+            .expect("typed clock-ahead heartbeat resolution");
 
         let second = NodeAvailabilityChanged::unavailable_envelope(
             recovered,

@@ -262,7 +262,7 @@ describe('notification commands', () => {
     expect(listOutput.stdout()).toContain('POLICY ID');
     expect(listOutput.stdout()).toContain('edge.gateway-certificate-expiry-status.v1');
     expect(listOutput.stdout()).toContain(
-      `environment:${ALERT_POLICY.projectId}/${ALERT_POLICY.environmentId}`,
+      `environment:${ALERT_POLICY.projectId}/${ALERT_POLICY.environmentId}`
     );
     expect(listOutput.stdout()).toContain(`node:${NODE_ID}`);
 
