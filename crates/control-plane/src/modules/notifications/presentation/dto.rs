@@ -1,7 +1,8 @@
 use crate::modules::notifications::domain::{
-    Notification, NotificationAlertPolicy, NotificationAlertPolicyPage, NotificationPage,
-    NotificationScope, NotificationSeverity, OutboundNotificationChannel,
-    OutboundNotificationSubscription, OutboundNotificationSubscriptionPage,
+    Notification, NotificationAlertPolicy, NotificationAlertPolicyPage,
+    NotificationAlertPolicyTarget, NotificationPage, NotificationScope, NotificationSeverity,
+    OutboundNotificationChannel, OutboundNotificationSubscription,
+    OutboundNotificationSubscriptionPage,
 };
 use crate::modules::notifications::{
     MarkNotificationReadResult, NotificationAlertPolicyMutationResult,
@@ -129,13 +130,46 @@ pub struct MarkNotificationReadRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NotificationAlertPolicyTargetResponse {
+    Environment {
+        #[serde(rename = "projectId")]
+        project_id: Uuid,
+        #[serde(rename = "environmentId")]
+        environment_id: Uuid,
+    },
+    Node {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+    },
+}
+
+impl From<NotificationAlertPolicyTarget> for NotificationAlertPolicyTargetResponse {
+    fn from(target: NotificationAlertPolicyTarget) -> Self {
+        match target {
+            NotificationAlertPolicyTarget::Environment {
+                project_id,
+                environment_id,
+            } => Self::Environment {
+                project_id: project_id.as_uuid(),
+                environment_id: environment_id.as_uuid(),
+            },
+            NotificationAlertPolicyTarget::Node { node_id } => Self::Node {
+                node_id: node_id.as_uuid(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationAlertPolicyResponse {
     pub organization_id: Uuid,
     pub policy_id: Uuid,
     pub source: String,
-    pub project_id: Uuid,
-    pub environment_id: Uuid,
+    pub target: NotificationAlertPolicyTargetResponse,
+    pub project_id: Option<Uuid>,
+    pub environment_id: Option<Uuid>,
     pub notify_on_recovery: bool,
     pub definition_schema: String,
     pub definition_acl: String,
@@ -154,11 +188,11 @@ impl From<NotificationAlertPolicy> for NotificationAlertPolicyResponse {
             organization_id: policy.organization_id.as_uuid(),
             policy_id: policy.id.as_uuid(),
             source: spec.source.as_str().into(),
-            project_id: spec.project_id.as_uuid(),
-            environment_id: spec.environment_id.as_uuid(),
+            target: spec.target.into(),
+            project_id: spec.target.project_id().map(|id| id.as_uuid()),
+            environment_id: spec.target.environment_id().map(|id| id.as_uuid()),
             notify_on_recovery: spec.notify_on_recovery,
-            definition_schema: crate::modules::notifications::NOTIFICATION_ALERT_POLICY_SCHEMA
-                .into(),
+            definition_schema: policy.definition.schema().into(),
             definition_acl: policy.definition.canonical_acl().to_owned(),
             definition_digest: policy.definition.digest().as_str().to_owned(),
             state: if policy.is_active() {

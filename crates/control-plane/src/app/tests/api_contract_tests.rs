@@ -349,13 +349,26 @@ fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Re
             "edge.domain-claim-status.v1",
             "edge.gateway-certificate-renewal-status.v1",
             "workload.deployment-health.v1",
-            "edge.gateway-certificate-expiry-status.v1"
+            "edge.gateway-certificate-expiry-status.v1",
+            "fleet.node-availability-status.v1"
         ])
     );
     assert_eq!(
         response["properties"]["definitionSchema"]["enum"],
-        json!(["cloud.notification.alert-policy.v1"])
+        json!([
+            "cloud.notification.alert-policy.v1",
+            "cloud.notification.alert-policy.v2"
+        ])
     );
+    assert_eq!(
+        response["properties"]["target"]["$ref"],
+        "#/components/schemas/NotificationAlertPolicyTarget"
+    );
+    assert_eq!(response["properties"]["projectId"]["nullable"], true);
+    assert_eq!(response["properties"]["environmentId"]["nullable"], true);
+    let target = &document["components"]["schemas"]["NotificationAlertPolicyTarget"];
+    assert_eq!(target["discriminator"]["propertyName"], "kind");
+    assert_eq!(target["oneOf"].as_array().map(Vec::len), Some(2));
     assert!(response["properties"].get("recipientPrincipalId").is_none());
     assert!(response["required"]
         .as_array()

@@ -2,9 +2,10 @@ use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
     MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES,
-    NOTIFICATION_ALERT_POLICY_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
+    NOTIFICATION_ALERT_POLICY_SCHEMA, NOTIFICATION_ALERT_POLICY_SCHEMA_V2,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
 };
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
@@ -81,11 +82,37 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "RecipientContactSuccessResponse": recipient_contact_success,
             "RecipientContactListSuccessResponse": recipient_contact_list_success,
             "RecipientContactMutationSuccessResponse": recipient_contact_mutation_success,
+            "NotificationAlertPolicyEnvironmentTarget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "projectId", "environmentId"],
+                "properties": {
+                    "kind": { "type": "string", "enum": ["environment"] },
+                    "projectId": { "type": "string", "format": "uuid" },
+                    "environmentId": { "type": "string", "format": "uuid" }
+                }
+            },
+            "NotificationAlertPolicyNodeTarget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "nodeId"],
+                "properties": {
+                    "kind": { "type": "string", "enum": ["node"] },
+                    "nodeId": { "type": "string", "format": "uuid" }
+                }
+            },
+            "NotificationAlertPolicyTarget": {
+                "oneOf": [
+                    { "$ref": "#/components/schemas/NotificationAlertPolicyEnvironmentTarget" },
+                    { "$ref": "#/components/schemas/NotificationAlertPolicyNodeTarget" }
+                ],
+                "discriminator": { "propertyName": "kind" }
+            },
             "NotificationAlertPolicy": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
-                    "organizationId", "policyId", "source",
+                    "organizationId", "policyId", "source", "target",
                     "projectId", "environmentId", "notifyOnRecovery", "definitionSchema",
                     "definitionAcl", "definitionDigest", "state", "aggregateVersion",
                     "createdBy", "createdAt", "revokedAt"
@@ -99,15 +126,20 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
                             "edge.domain-claim-status.v1",
                             "edge.gateway-certificate-renewal-status.v1",
                             "workload.deployment-health.v1",
-                            "edge.gateway-certificate-expiry-status.v1"
+                            "edge.gateway-certificate-expiry-status.v1",
+                            "fleet.node-availability-status.v1"
                         ]
                     },
-                    "projectId": { "type": "string", "format": "uuid" },
-                    "environmentId": { "type": "string", "format": "uuid" },
+                    "target": { "$ref": "#/components/schemas/NotificationAlertPolicyTarget" },
+                    "projectId": { "type": "string", "format": "uuid", "nullable": true },
+                    "environmentId": { "type": "string", "format": "uuid", "nullable": true },
                     "notifyOnRecovery": { "type": "boolean" },
                     "definitionSchema": {
                         "type": "string",
-                        "enum": [NOTIFICATION_ALERT_POLICY_SCHEMA]
+                        "enum": [
+                            NOTIFICATION_ALERT_POLICY_SCHEMA,
+                            NOTIFICATION_ALERT_POLICY_SCHEMA_V2
+                        ]
                     },
                     "definitionAcl": {
                         "type": "string",

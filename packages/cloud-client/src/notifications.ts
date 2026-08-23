@@ -44,17 +44,36 @@ export type NotificationAlertSource =
   | 'edge.domain-claim-status.v1'
   | 'edge.gateway-certificate-renewal-status.v1'
   | 'workload.deployment-health.v1'
-  | 'edge.gateway-certificate-expiry-status.v1';
+  | 'edge.gateway-certificate-expiry-status.v1'
+  | 'fleet.node-availability-status.v1';
 export type NotificationAlertPolicyState = 'active' | 'revoked';
+
+export interface NotificationAlertPolicyEnvironmentTarget {
+  kind: 'environment';
+  projectId: string;
+  environmentId: string;
+}
+
+export interface NotificationAlertPolicyNodeTarget {
+  kind: 'node';
+  nodeId: string;
+}
+
+export type NotificationAlertPolicyTarget =
+  | NotificationAlertPolicyEnvironmentTarget
+  | NotificationAlertPolicyNodeTarget;
 
 export interface NotificationAlertPolicy {
   organizationId: string;
   policyId: string;
   source: NotificationAlertSource;
-  projectId: string;
-  environmentId: string;
+  target: NotificationAlertPolicyTarget;
+  /** @deprecated Use target. Null for Node policies. */
+  projectId: string | null;
+  /** @deprecated Use target. Null for Node policies. */
+  environmentId: string | null;
   notifyOnRecovery: boolean;
-  definitionSchema: 'cloud.notification.alert-policy.v1';
+  definitionSchema: 'cloud.notification.alert-policy.v1' | 'cloud.notification.alert-policy.v2';
   definitionAcl: string;
   definitionDigest: string;
   state: NotificationAlertPolicyState;

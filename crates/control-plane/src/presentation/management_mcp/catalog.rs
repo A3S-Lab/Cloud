@@ -1596,7 +1596,7 @@ impl ManagementTool {
             ),
             Self::NotificationAlertPoliciesCreate => (
                 "Create my notification alert policy",
-                "Create one immutable personal alert policy from canonical A3S ACL for a closed source and exact authorized environment scope.",
+                "Create one immutable personal alert policy from canonical A3S ACL for a closed source and exact authorized Environment-or-Node target.",
                 create_notification_alert_policy_schema(),
                 false,
             ),
@@ -1608,7 +1608,7 @@ impl ManagementTool {
             ),
             Self::NotificationAlertPoliciesGet => (
                 "Get my notification alert policy",
-                "Get one exact personal alert policy when its environment scope remains authorized.",
+                "Get one exact personal alert policy when its Environment-or-Node target remains authorized.",
                 uuid_id_schema("policyId"),
                 true,
             ),

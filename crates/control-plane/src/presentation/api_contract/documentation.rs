@@ -160,6 +160,15 @@ fn component_schema_description(name: &str) -> String {
         "NotificationAlertPolicy" => {
             "Immutable personal alert policy over a closed notification source family.".into()
         }
+        "NotificationAlertPolicyTarget" => {
+            "Closed alert target union discriminated by `kind`.".into()
+        }
+        "NotificationAlertPolicyEnvironmentTarget" => {
+            "Exact Project and Environment target used by alert-policy v1.".into()
+        }
+        "NotificationAlertPolicyNodeTarget" => {
+            "Exact Fleet Node target used by alert-policy v2.".into()
+        }
         "NotificationAlertPolicyPage" => {
             "Bounded cursor page of personal notification alert policies.".into()
         }

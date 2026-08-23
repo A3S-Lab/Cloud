@@ -39,6 +39,11 @@ const ALERT_POLICY: NotificationAlertPolicy = {
   organizationId: ORGANIZATION_ID,
   policyId: POLICY_ID,
   source: 'edge.gateway-certificate-expiry-status.v1',
+  target: {
+    kind: 'environment',
+    projectId: '019c0000-0000-7000-8000-000000000007',
+    environmentId: '019c0000-0000-7000-8000-000000000008',
+  },
   projectId: '019c0000-0000-7000-8000-000000000007',
   environmentId: '019c0000-0000-7000-8000-000000000008',
   notifyOnRecovery: true,
@@ -51,6 +56,17 @@ const ALERT_POLICY: NotificationAlertPolicy = {
   createdAt: '2026-08-14T01:02:03Z',
   revokedAt: null,
 };
+
+const NODE_ID = '019c0000-0000-7000-8000-00000000000d';
+const NODE_ALERT_POLICY = {
+  ...ALERT_POLICY,
+  policyId: '019c0000-0000-7000-8000-00000000000e',
+  source: 'fleet.node-availability-status.v1',
+  target: { kind: 'node', nodeId: NODE_ID },
+  projectId: null,
+  environmentId: null,
+  definitionSchema: 'cloud.notification.alert-policy.v2',
+} satisfies NotificationAlertPolicy;
 
 const SUBSCRIPTION: OutboundNotificationSubscription = {
   organizationId: ORGANIZATION_ID,
@@ -239,12 +255,16 @@ describe('notification commands', () => {
       environment: environment(),
       fetch: async (...args) => {
         calls.push(args);
-        return envelope({ policies: [ALERT_POLICY], nextCursor: null });
+        return envelope({ policies: [ALERT_POLICY, NODE_ALERT_POLICY], nextCursor: null });
       },
     });
     expect(listExitCode).toBe(0);
     expect(listOutput.stdout()).toContain('POLICY ID');
     expect(listOutput.stdout()).toContain('edge.gateway-certificate-expiry-status.v1');
+    expect(listOutput.stdout()).toContain(
+      `environment:${ALERT_POLICY.projectId}/${ALERT_POLICY.environmentId}`,
+    );
+    expect(listOutput.stdout()).toContain(`node:${NODE_ID}`);
 
     const getOutput = capture();
     const getExitCode = await runCli(['notification-alert-policies', 'get', POLICY_ID], {

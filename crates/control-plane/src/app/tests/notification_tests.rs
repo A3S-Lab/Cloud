@@ -3,12 +3,13 @@
 use super::*;
 use crate::modules::notifications::{
     INotificationRepository, Notification, NotificationAlertPolicyDefinition,
-    NotificationAlertPolicySpec, NotificationAlertSource, NotificationScope, NotificationSeverity,
-    OutboundNotificationChannel, OutboundNotificationConnectorTarget,
-    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
+    NotificationAlertPolicySpec, NotificationAlertPolicyTarget, NotificationAlertSource,
+    NotificationScope, NotificationSeverity, OutboundNotificationChannel,
+    OutboundNotificationConnectorTarget, OutboundNotificationSubscriptionDefinition,
+    OutboundNotificationSubscriptionSpec,
 };
 use crate::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, NodeId,
 };
 
 const NOTIFICATION_MEMBER_TOKEN: &str =
@@ -789,6 +790,14 @@ async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface
         created["data"]["policy"]["definitionSchema"],
         "cloud.notification.alert-policy.v1"
     );
+    assert_eq!(
+        created["data"]["policy"]["target"],
+        json!({
+            "kind": "environment",
+            "projectId": project,
+            "environmentId": environment,
+        })
+    );
     assert_eq!(created["data"]["policy"]["definitionAcl"], definition_acl);
     assert!(created["data"]["policy"]
         .get("recipientPrincipalId")
@@ -968,6 +977,59 @@ async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface
         mcp_revoke["result"]["structuredContent"]["data"]["policy"]["state"],
         "revoked"
     );
+
+    let node_id = enroll_notification_alert_node(&app, &organization).await?;
+    let node_acl = notification_node_alert_policy_acl(&node_id, true)?;
+    let node_created = app
+        .call(post_acl_as(
+            &root,
+            "notification-node-alert-create",
+            node_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(node_created.status(), 201);
+    let node_created = response_json(&node_created)?;
+    assert_eq!(
+        node_created["data"]["policy"]["source"],
+        "fleet.node-availability-status.v1"
+    );
+    assert_eq!(
+        node_created["data"]["policy"]["definitionSchema"],
+        "cloud.notification.alert-policy.v2"
+    );
+    assert_eq!(
+        node_created["data"]["policy"]["target"],
+        json!({"kind": "node", "nodeId": node_id})
+    );
+    assert!(node_created["data"]["policy"]["projectId"].is_null());
+    assert!(node_created["data"]["policy"]["environmentId"].is_null());
+    assert_eq!(node_created["data"]["policy"]["definitionAcl"], node_acl);
+    let node_policy_id = node_created["data"]["policy"]["policyId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("Node alert policy ID is missing".into()))?
+        .to_owned();
+
+    let node_get = app
+        .call(get_as(format!("{root}/{node_policy_id}"), PROJECT_TOKEN))
+        .await?;
+    assert_eq!(node_get.status(), 200);
+    assert_eq!(
+        response_json(&node_get)?["data"]["target"],
+        json!({"kind": "node", "nodeId": node_id})
+    );
+    let mcp_node_get = app
+        .call(mcp_tool_call_as(
+            10,
+            "a3s_cloud_notification_alert_policies_get",
+            json!({"policyId": node_policy_id}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&mcp_node_get)?["result"]["structuredContent"]["data"]["target"],
+        json!({"kind": "node", "nodeId": node_id})
+    );
     Ok(())
 }
 
@@ -995,12 +1057,71 @@ fn notification_alert_policy_acl(
     };
     NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
         source: NotificationAlertSource::WorkloadDeploymentHealthV1,
-        project_id: ProjectId::from_uuid(parse(project_id, "project ID")?),
-        environment_id: EnvironmentId::from_uuid(parse(environment_id, "environment ID")?),
+        target: NotificationAlertPolicyTarget::Environment {
+            project_id: ProjectId::from_uuid(parse(project_id, "project ID")?),
+            environment_id: EnvironmentId::from_uuid(parse(environment_id, "environment ID")?),
+        },
         notify_on_recovery,
     })
     .map(|definition| definition.canonical_acl().to_owned())
     .map_err(BootError::Internal)
+}
+
+fn notification_node_alert_policy_acl(node_id: &str, notify_on_recovery: bool) -> Result<String> {
+    let node_id = Uuid::parse_str(node_id)
+        .map(NodeId::from_uuid)
+        .map_err(|error| BootError::Internal(format!("invalid Node ID: {error}")))?;
+    NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+        source: NotificationAlertSource::FleetNodeAvailabilityStatusV1,
+        target: NotificationAlertPolicyTarget::Node { node_id },
+        notify_on_recovery,
+    })
+    .map(|definition| definition.canonical_acl().to_owned())
+    .map_err(BootError::Internal)
+}
+
+async fn enroll_notification_alert_node(
+    app: &BootApplication,
+    organization: &str,
+) -> Result<String> {
+    let enrollment_secret = format!("a3sn_{}", "e".repeat(64));
+    let issued = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/enrollment-tokens"),
+            "notification-alert-node-token",
+            json!({
+                "name": "notification-alert-node",
+                "token": enrollment_secret,
+                "expiresAt": Utc::now() + chrono::Duration::minutes(10)
+            }),
+        ))
+        .await?;
+    assert_eq!(issued.status(), 201);
+
+    let enrolled = app
+        .call(
+            BootRequest::new(HttpMethod::Post, "/api/v1/node-control/enroll")
+                .with_header("content-type", "application/json")
+                .with_body(
+                    json!({
+                        "schema": "a3s.cloud.node-enrollment-request.v1",
+                        "enrollment_token": enrollment_secret,
+                        "node_name": "notification-alert-node",
+                        "agent_instance_id": Uuid::now_v7(),
+                        "agent_version": "1.0.0",
+                        "csr_pem": "-----BEGIN CERTIFICATE REQUEST-----\ndGVzdA==\n-----END CERTIFICATE REQUEST-----\n",
+                        "runtime_capabilities": runtime_capabilities()
+                    })
+                    .to_string()
+                    .into_bytes(),
+                ),
+        )
+        .await?;
+    assert_eq!(enrolled.status(), 201);
+    response_json(&enrolled)?["node_id"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| BootError::Internal("Node enrollment response has no Node ID".into()))
 }
 
 fn outbound_subscription_acl_with_budget(

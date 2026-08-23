@@ -47,8 +47,13 @@ export function notificationMutationResult(result: NotificationMutationResult): 
 const ALERT_POLICY_COLUMNS: readonly TableColumn<NotificationAlertPolicy>[] = [
   { header: 'CREATED AT', value: (row) => row.createdAt },
   { header: 'SOURCE', value: (row) => row.source },
-  { header: 'PROJECT ID', value: (row) => row.projectId },
-  { header: 'ENVIRONMENT ID', value: (row) => row.environmentId },
+  {
+    header: 'TARGET',
+    value: (row) =>
+      row.target.kind === 'environment'
+        ? `environment:${row.target.projectId}/${row.target.environmentId}`
+        : `node:${row.target.nodeId}`,
+  },
   { header: 'RECOVERY', value: (row) => row.notifyOnRecovery },
   { header: 'STATE', value: (row) => row.state },
   { header: 'VERSION', value: (row) => row.aggregateVersion },
