@@ -684,9 +684,18 @@ keyset pages to return the requested number of visible records consistently
 across REST, SSE, and Management MCP. Unknown, missing, and denied subjects are
 hidden; workflow input cannot supply ownership, and Operations does not persist
 a resource-scope index.
-Planned `C0.3` security incident timelines correlate authorized audit and
-AnySentry/OpenTelemetry evidence references for investigation and notification;
-they cannot enforce policy or mutate an owning aggregate.
+Frozen `C0.3-S1a` starts the security-investigation read model with an exact
+Gateway MCP Route policy timeline. It decodes only Edge-owned schema-v1 policy-
+created/revised Outbox facts and correlates them to the same request's shared
+audit metadata by tenant, Route, action, occurrence, and correlation identity.
+The read is owner/admin-only, bounded, descending-keyset paged, and redacted:
+`audit_records.details` is never selected, while a missing match remains an
+explicit gap and an ambiguous match fails closed. It is a rebuildable query over
+existing authorities, not a persisted incident or evidence store. Later `S1`
+slices may correlate authorized Gateway denials, Agent semantics, Runtime/Box/
+host evidence, and AnySentry/OpenTelemetry references only after those owners
+provide durable typed facts. Investigation and notification cannot enforce
+policy or mutate an owning aggregate.
 
 ### 3.13 Agent execution (`A1.1` foundation; native `A1.2` recovery verified, sub-gate in progress)
 

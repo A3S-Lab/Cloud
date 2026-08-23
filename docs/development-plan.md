@@ -2879,13 +2879,30 @@ node.
   existing reconciler emits bounded typed missing-data, firing, and recovery
   transitions. Notifications may project those facts but never poll telemetry,
   infer health from silence, or mutate the monitored resource.
-- Add a tenant-scoped security investigation projection that correlates
-  authorized Gateway denials/policy revisions, Agent semantic events,
-  Runtime/Box and host evidence, shared audit records, and AnySentry or
-  OpenTelemetry references into one bounded incident timeline. Detection rules
-  may open, update, or close an incident and notify responders, but enforcement
-  remains an explicit audited command to Identity, Edge/Gateway, Workloads, or
-  another owning context.
+- Frozen as `C0.3-S1a`: begin security investigation with one owner/admin-only,
+  `cloud:read` Gateway MCP Route policy timeline over the existing transactional
+  Outbox and shared audit records. Admit only exact schema-v1
+  `edge.mcp-route-policy.created` and `edge.mcp-route-policy.revised` owner facts
+  after the Edge decoder validates the closed payload and envelope. Correlate an
+  event only when organization, Route aggregate, action, canonical occurrence
+  time, and correlation/request ID all match. Descending keyset pagination uses
+  `(occurred_at, event_id)`; expose a missing audit match as an evidence gap and
+  fail closed on duplicate matches. Public output is limited to typed policy-
+  revision metadata and optional audit/actor references, and neither the query
+  nor its DTO may read or project `audit_records.details`. Migration `141` may
+  add only partial query indexes over those existing tables. REST/OpenAPI
+  `1.55.0`, maintained client, CLI, and one read-only Management MCP operation
+  reuse the same query and owner/admin guard. Add no incident/detection state,
+  evidence copy, writer, policy engine, denial inference, enforcement command,
+  table, queue, scheduler, event rail, configuration field, parser, or non-ACL
+  configuration.
+- In later `C0.3-S1` slices, extend the tenant-scoped investigation timeline
+  with authorized Gateway denials, Agent semantic events, Runtime/Box and host
+  evidence, and AnySentry or OpenTelemetry references only after the owning
+  contexts supply durable, typed, tenant-authorizable evidence. Detection rules
+  may then open, update, or close an incident and notify responders, but
+  enforcement remains an explicit audited command to Identity, Edge/Gateway,
+  Workloads, or another owning context.
 - Extend the implemented tenant-administrator audit query with explicit
   retention policy, signed export, and correlation across Flow, node commands,
   and provider resources. Reuse the same shared records and read projection;
