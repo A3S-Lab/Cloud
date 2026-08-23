@@ -67,8 +67,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 142;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "142";
+const CLOUD_MIGRATION_COUNT: i64 = 143;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "143";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -3117,7 +3117,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'workflow_step_projections'::regclass and conname = 'workflow_step_projections_selected_handle_routing_check'",
         ))
         .await?;
-    for expected in ["'branch'", "'execution'", "'service'", "'failed'"] {
+    for expected in [
+        "'branch'",
+        "'execution'",
+        "'service'",
+        "'output'",
+        "'failed'",
+    ] {
         assert!(
             selected_handle_routing_constraint.contains(expected),
             "selected-handle routing constraint omitted {expected}: {selected_handle_routing_constraint}"
@@ -3166,6 +3172,42 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 now()
             );
 
+            insert into workflow_step_projection_service_probe (
+                organization_id,
+                project_id,
+                workflow_run_id,
+                step_id,
+                kind,
+                status,
+                flow_step_id,
+                attempt_generation,
+                selected_handle,
+                result,
+                result_digest,
+                error,
+                default_output_evidence,
+                evidence_references,
+                last_flow_sequence,
+                updated_at
+            ) values (
+                '00000000-0000-0000-0000-000000000001',
+                '00000000-0000-0000-0000-000000000002',
+                '00000000-0000-0000-0000-000000000003',
+                'answer',
+                'output',
+                'failed',
+                'workflow:answer',
+                1,
+                'error',
+                null,
+                null,
+                'Application Answer was forbidden',
+                null,
+                '[]'::jsonb,
+                8,
+                now()
+            );
+
             do $migration_123$
             begin
                 begin
@@ -3210,6 +3252,51 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 end;
             end
             $migration_123$;
+
+            do $migration_143$
+            begin
+                begin
+                    insert into workflow_step_projection_service_probe (
+                        organization_id,
+                        project_id,
+                        workflow_run_id,
+                        step_id,
+                        kind,
+                        status,
+                        flow_step_id,
+                        attempt_generation,
+                        selected_handle,
+                        result,
+                        result_digest,
+                        error,
+                        default_output_evidence,
+                        evidence_references,
+                        last_flow_sequence,
+                        updated_at
+                    ) values (
+                        '00000000-0000-0000-0000-000000000001',
+                        '00000000-0000-0000-0000-000000000002',
+                        '00000000-0000-0000-0000-000000000003',
+                        'invalid-answer',
+                        'output',
+                        'completed',
+                        'workflow:invalid-answer',
+                        1,
+                        'error',
+                        '{}'::jsonb,
+                        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+                        null,
+                        null,
+                        '[]'::jsonb,
+                        9,
+                        now()
+                    );
+                    raise exception 'completed Output projection retained a selected handle';
+                exception
+                    when check_violation then null;
+                end;
+            end
+            $migration_143$;
             "#,
         )
         .await?;

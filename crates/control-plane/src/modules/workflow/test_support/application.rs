@@ -116,11 +116,25 @@ pub(crate) fn application_answers_workflow_run_input() -> Result<WorkflowRunInpu
     Ok(input)
 }
 
+pub(crate) fn routed_application_answer_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = application_answer_workflow_run_input()?;
+    route_application_answer_failure(&mut input)?;
+    Ok(input)
+}
+
 pub(crate) fn application_frame_answer_workflow_run_input(
     ordinal: u32,
 ) -> Result<(WorkflowRunInput, WorkflowCompositeFrame, WorkflowRunInput), String> {
     let (parent, child) = application_frame_answer_parent()?;
     let (frame, child) = application_frame_answer_child(&parent, &child, ordinal)?;
+    Ok((parent, frame, child))
+}
+
+pub(crate) fn routed_application_frame_answer_workflow_run_input(
+    ordinal: u32,
+) -> Result<(WorkflowRunInput, WorkflowCompositeFrame, WorkflowRunInput), String> {
+    let (parent, frame, mut child) = application_frame_answer_workflow_run_input(ordinal)?;
+    route_application_answer_failure(&mut child)?;
     Ok((parent, frame, child))
 }
 
@@ -349,6 +363,42 @@ fn application_frame_answer_child(
     Ok((frame, child))
 }
 
+fn route_application_answer_failure(input: &mut WorkflowRunInput) -> Result<(), String> {
+    for step in &mut input.plan.steps {
+        step.failure = Some(if step.id == TEST_ANSWER_STEP_ID {
+            routed_failure_contract()
+        } else {
+            unsupported_failure_contract()
+        });
+    }
+    input.plan.edges.extend([
+        edge("answer-output", TEST_ANSWER_STEP_ID, "output", None),
+        edge(
+            "answer-error-output",
+            TEST_ANSWER_STEP_ID,
+            "output",
+            Some("error"),
+        ),
+    ]);
+    input
+        .plan
+        .edges
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V7.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V7.into();
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "routed Application Answer WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V15.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V15.into();
+    input.validate()?;
+    Ok(())
+}
+
 pub(crate) fn application_variable_workflow_run_input() -> Result<WorkflowRunInput, String> {
     let mut input = typed_variable_workflow_run_input()?;
     let schema_digest = input
@@ -543,6 +593,78 @@ pub(crate) fn routed_application_variable_workflow_run_input() -> Result<Workflo
     input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V14.into();
     input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14.into();
     input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V14.into();
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn routed_application_answer_and_variable_workflow_run_input(
+) -> Result<WorkflowRunInput, String> {
+    let mut input = routed_application_variable_workflow_run_input()?;
+    let mut answer = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun test plan has no Output step".to_owned())?;
+    answer.id = TEST_ANSWER_STEP_ID.into();
+    answer.failure = Some(routed_failure_contract());
+    let descriptor = answer
+        .descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun test Answer has no descriptor binding".to_owned())?;
+    descriptor.step_id = TEST_ANSWER_STEP_ID.into();
+    descriptor.descriptor_id = "application.answer".into();
+    let output_index = input
+        .plan
+        .steps
+        .iter()
+        .position(|step| step.id == "output")
+        .ok_or_else(|| "WorkflowRun test plan has no Output position".to_owned())?;
+    input.plan.steps.insert(output_index, answer);
+    input
+        .plan
+        .edges
+        .retain(|edge| edge.id != "assign-conversation-output");
+    input.plan.edges.extend([
+        edge(
+            "assign-conversation-answer",
+            TEST_APPLICATION_VARIABLE_STEP_ID,
+            TEST_ANSWER_STEP_ID,
+            None,
+        ),
+        edge("answer-output", TEST_ANSWER_STEP_ID, "output", None),
+        edge(
+            "answer-error-output",
+            TEST_ANSWER_STEP_ID,
+            "output",
+            Some("error"),
+        ),
+    ]);
+    input
+        .plan
+        .edges
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V7.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V7.into();
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "routed Application Answer and variable WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V15.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V15.into();
+    input.application_projection = Some(
+        WorkflowRunApplicationProjection::from_application_variables(
+            &input.plan,
+            "output".into(),
+            vec![TEST_ANSWER_STEP_ID.into()],
+            vec![TEST_APPLICATION_VARIABLE_STEP_ID.into()],
+            vec![TEST_APPLICATION_VARIABLE_STEP_ID.into()],
+        )?,
+    );
     input.validate()?;
     Ok(input)
 }

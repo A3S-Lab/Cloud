@@ -239,7 +239,7 @@ impl WorkflowStepProjection {
             && self.kind != WorkflowStepKind::Branch
             && !(matches!(
                 self.kind,
-                WorkflowStepKind::Execution | WorkflowStepKind::Service
+                WorkflowStepKind::Execution | WorkflowStepKind::Service | WorkflowStepKind::Output
             ) && self.status == WorkflowStepProjectionStatus::Failed)
         {
             return Err(
@@ -379,6 +379,32 @@ mod tests {
                 observed_at: timestamp(8, 2),
             })
             .expect("routed Service failure projection");
+        projection.validate().expect("valid stored projection");
+    }
+
+    #[test]
+    fn failed_output_projection_may_retain_a_descriptor_bound_handle() {
+        let mut projection = WorkflowStepProjection::pending(
+            OrganizationId::new(),
+            ProjectId::new(),
+            WorkflowRunId::new(),
+            "answer".into(),
+            WorkflowStepKind::Output,
+            timestamp(8, 0),
+        )
+        .expect("pending projection");
+        projection
+            .project_flow(WorkflowStepFlowState {
+                status: WorkflowStepProjectionStatus::Failed,
+                attempt_generation: 1,
+                selected_handle: Some("error".into()),
+                result: None,
+                error: Some("Application Answer was forbidden".into()),
+                default_output_evidence: None,
+                last_flow_sequence: 4,
+                observed_at: timestamp(8, 2),
+            })
+            .expect("routed Output failure projection");
         projection.validate().expect("valid stored projection");
     }
 }

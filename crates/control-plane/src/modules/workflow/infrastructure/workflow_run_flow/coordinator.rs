@@ -17,8 +17,9 @@ use crate::modules::executions::{
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
 use crate::modules::workflow::domain::{
-    IWorkflowRunCoordinator, WorkflowApplicationAnswerHookMetadata,
-    WorkflowApplicationAnswerResumePayload, WorkflowApplicationVariableSnapshotHookMetadata,
+    IWorkflowRunCoordinator, WorkflowApplicationAnswerFailureResumePayload,
+    WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
+    WorkflowApplicationVariableSnapshotHookMetadata,
     WorkflowApplicationVariableSnapshotResumePayload,
     WorkflowApplicationVariableWriteFailureResumePayload,
     WorkflowApplicationVariableWriteHookMetadata, WorkflowApplicationVariableWriteResumePayload,
@@ -26,7 +27,7 @@ use crate::modules::workflow::domain::{
     WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionStepOutput,
     WorkflowRunCoordinationError, WorkflowRunRecord, WorkflowRunStatus,
     WorkflowStepFailureClassification, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
+    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -274,10 +275,37 @@ impl FlowWorkflowRunCoordinator {
         request
             .validate()
             .map_err(WorkflowRunCoordinationError::Unavailable)?;
-        let write = port
-            .append_answer(&request)
-            .await
-            .map_err(|error| application_effect_unavailable("append Answer", error))?;
+        let write = match port.append_answer(&request).await {
+            Ok(write) => write,
+            Err(error) => {
+                let classification = application_answer_failure_classification(
+                    &record.run.execution_input,
+                    &hook.metadata.step_id,
+                    &error,
+                );
+                let Some(classification) = classification else {
+                    return Err(application_effect_unavailable("append Answer", error));
+                };
+                let payload = WorkflowApplicationAnswerFailureResumePayload::new(
+                    &hook.metadata,
+                    classification,
+                )
+                .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                return self
+                    .engine
+                    .resume_hook(
+                        &record.run.flow_run_id,
+                        &hook.metadata.flow_hook_id(),
+                        serde_json::to_value(payload).map_err(|error| {
+                            WorkflowRunCoordinationError::Unavailable(error.to_string())
+                        })?,
+                    )
+                    .await
+                    .map_err(|error| {
+                        unavailable_at("resume Application Answer failure hook", error)
+                    });
+            }
+        };
         let message = &write.value;
         message
             .validate()
@@ -969,7 +997,38 @@ fn application_variable_failure_classification(
     step_id: &str,
     error: &ApplicationError,
 ) -> Option<WorkflowStepFailureClassification> {
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V14
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V14 | WORKFLOW_RUN_INPUT_SCHEMA_V15
+    ) || !input
+        .plan
+        .edges
+        .iter()
+        .any(|edge| edge.source == step_id && edge.source_handle.as_deref() == Some("error"))
+    {
+        return None;
+    }
+    match error {
+        ApplicationError::Invalid(_) => Some(WorkflowStepFailureClassification::ApplicationInvalid),
+        ApplicationError::NotFound(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationNotFound)
+        }
+        ApplicationError::Conflict(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationConflict)
+        }
+        ApplicationError::Forbidden(_) => {
+            Some(WorkflowStepFailureClassification::ApplicationForbidden)
+        }
+        ApplicationError::Unavailable(_) | ApplicationError::Internal(_) => None,
+    }
+}
+
+fn application_answer_failure_classification(
+    input: &crate::modules::workflow::domain::WorkflowRunInput,
+    step_id: &str,
+    error: &ApplicationError,
+) -> Option<WorkflowStepFailureClassification> {
+    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V15
         || !input
             .plan
             .edges

@@ -906,7 +906,7 @@ publish, current, and exact-history CQRS. This management surface adds no
 session, invocation, delivery, graph, Flow, provider, Secret, or Gateway state;
 those production capabilities remain gated by `APP0.2` through `APP0.6`.
 
-`APP0.2-C1` through `C14` freezes and persists the next
+`APP0.2-C1` through `C15` freezes and persists the next
 Applications-owned records and exposes only project-member management
 admission. `ApplicationEndUser`
 is scoped to one Application and may link explicitly to an Identity Principal
@@ -1011,6 +1011,20 @@ Flow records redacted `cloud.workflow.step-failure.v3`, selects the declared
 may complete the parent. `Unavailable` and `Internal` keep the Hook unresolved
 for the existing idempotent retry path. Raw owner errors and variable values do
 not enter failure evidence; historic v1-v13 behavior is unchanged.
+
+C15 admits a failure edge only for the exact Applications-owned
+`application.answer` Output descriptor. That graph emits Plan v7 and
+Application-composed Run v15 for both roots and semantic composite children.
+The existing Answer Hook carries only its root/frame authority plus the closed
+Applications classification. Flow records redacted
+`cloud.workflow.step-failure.v4`, selects `error`, keeps the Answer Output
+failed, and may complete the parent through the reachable ordinary branch.
+`Unavailable` and `Internal` keep the Hook unresolved. Frame failure evidence
+preserves the root effect identity, logical path, and ordinal without producing
+a child Application lifecycle effect. Migration `143` admits only failed
+Output selected-handle projection evidence; completed Output aliases remain
+invalid, raw owner errors and Answer content are excluded, and historic v1-v14
+behavior is unchanged.
 
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse
@@ -2992,6 +3006,11 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   `cloud.workflow.step-failure.v3`; transient or internal errors remain
   unresolved, and the Applications repository remains the sole variable/CAS
   authority.
+  An exact Application Answer Output error edge emits Plan v7/Run v15. The same
+  closed deterministic terminal classifications derive redacted
+  `cloud.workflow.step-failure.v4` for root or frame-bound Answers; transient or
+  internal errors remain unresolved, and Applications remains the sole Answer
+  and message authority.
 - An immutable Workflow variable contract declares invocation, node-output,
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
@@ -3559,13 +3578,18 @@ terminal provider classification. Plans v1-v4 and Run inputs v1-v8 remain
 byte-stable. An exact Application conversation-variable descriptor error edge
 emits `cloud.workflow.plan.v6`; immutable Run v14 maps only deterministic
 terminal owner rejections to redacted failure v3 and the declared edge. Plans
-v1-v5 and Run inputs v1-v13 retain their exact behavior. Migration `122` adds nullable default-output evidence to the
+v1-v5 and Run inputs v1-v13 retain their exact behavior. An exact Application
+Answer descriptor error edge emits `cloud.workflow.plan.v7`; immutable Run v15
+maps the same closed terminal classifications to redacted failure v4 and the
+declared root or frame-local edge. Plans v1-v6 and Run inputs v1-v14 retain
+their exact behavior. Migration `122` adds nullable default-output evidence to the
 existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
-still proves the exact descriptor binding and declared handle. Descriptor-bound
-Application variable snapshot/CAS access and deterministic failure routing are
-implemented; unsupported, transient, or drifted owner access remains
-fail-closed.
+still proves the exact descriptor binding and declared handle. Migration `143`
+widens only that structural handle constraint for failed Output projections;
+completed Output selected handles remain rejected. Descriptor-bound Application
+variable snapshot/CAS and Answer access plus deterministic failure routing are
+implemented; unsupported, transient, or drifted owner access remains fail-closed.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

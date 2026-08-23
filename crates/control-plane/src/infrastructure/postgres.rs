@@ -1344,6 +1344,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/142_audit_attribution_snapshots.sql"
             )),
         ),
+        Migration::new(
+            "143",
+            "Workflow Application Answer step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/143_workflow_application_answer_step_projections.sql"
+            )),
+        ),
     ]
 }
 
@@ -3134,6 +3142,36 @@ mod workflow_connector_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 123 added duplicate state or policy: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod workflow_application_answer_step_projection_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/143_workflow_application_answer_step_projections.sql"
+    ));
+
+    #[test]
+    fn migration_143_admits_only_failed_output_routing_evidence() {
+        for expected in [
+            "drop constraint workflow_step_projections_selected_handle_routing_check",
+            "add constraint workflow_step_projections_selected_handle_routing_check check",
+            "selected_handle is null",
+            "kind = 'branch'",
+            "kind in ('execution', 'service', 'output')",
+            "status = 'failed'",
+            "Application Answer route",
+            "immutable WorkflowRun plan",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in ["create table", "add column", "create queue", "retry"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 143 added duplicate state or policy: {forbidden}"
             );
         }
     }

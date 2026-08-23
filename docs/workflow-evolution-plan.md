@@ -165,6 +165,13 @@ redacted `cloud.workflow.step-failure.v3` data on the ordinary DAG while the
 Service source projection remains failed. `Unavailable` and `Internal` leave
 the write Hook unresolved for the existing idempotent retry path. Plans v1-v5
 and Run inputs v1-v13 retain their exact bytes and replay behavior.
+An exact Application Answer descriptor error edge emits Plan v7 and immutable
+WorkflowRun input/runtime/Flow v15. The same closed deterministic terminal
+classifications become redacted `cloud.workflow.step-failure.v4` data on the
+ordinary DAG for root and composite-frame Answers while the source Output
+projection remains failed. `Unavailable` and `Internal` leave the Answer Hook
+unresolved. Plans v1-v6 and Run inputs v1-v14 retain their exact bytes and
+replay behavior.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -285,7 +292,7 @@ links its Flow identity, resumes digest-bound results, and propagates parent
 cancellation/timeout before termination. Iteration is initially sequential
 under its declared concurrency ceiling. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
-implemented through Run v11-v14. Remaining non-Execution error semantics,
+implemented through Run v11-v15. Remaining non-Execution error semantics,
 business-service and remaining Agent/MCP/model/Tool capability dispatch,
 compensation, expanded cross-surface evidence, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
@@ -310,6 +317,13 @@ only deterministic terminal owner rejections to failure v3 and the declared
 handle; transient or internal owner errors stay unresolved. The existing
 migration `123` already admits the failed Service projection shape, so this
 slice adds no migration or public OpenAPI schema.
+Runtime v15 admits only an Application-composed Plan v7 with the exact
+`application.answer` descriptor and error edge. It maps only deterministic
+terminal owner rejections to failure v4 and the declared root or frame-local
+handle; transient or internal owner errors stay unresolved. Migration `143`
+widens only the existing projection constraint for failed Output selected-
+handle evidence and still rejects completed Output aliases. This slice adds no
+public OpenAPI schema or second message, retry, or orchestration authority.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -333,12 +347,14 @@ and folds updates and exports in ordinal order. Authorized inspection reads
 parent and reduced composite materialization from immutable input and Flow
 history. Descriptor-bound Application reads/writes are implemented through Run
 v12 and their deterministic write-failure branches through Plan v6/Run v14;
-unsupported or transient owner observations still fail closed. Typed
+descriptor-bound root/frame Answer failures are implemented through Plan
+v7/Run v15. Unsupported or transient owner observations still fail closed. Typed
 finite-Execution failure branches are implemented through Plan v3/Run v4 and
 exact default-output fallback through Plan v4/Run v7. Descriptor-bound
 Connector failure branches are implemented through Plan v5/Run v9. Application
 composite Answer frames use Run v13 root/child authority and stable zero-based
-ordinals; other non-Execution error branches remain unimplemented parts of
+ordinals; their deterministic Answer failures retain that root authority in
+Run v15. Other non-Execution error branches remain unimplemented parts of
 `W0.3`.
 
 ### 4.3 Compiler rules

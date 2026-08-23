@@ -50,7 +50,8 @@ AI application platform parity manifest.
 | [0043](0043-root-bound-repeated-application-answer-frames.md) | Bind repeated v13 composite Answer frames to one root Application invocation with stable zero-based ordinals |
 | [0044](0044-replay-pinned-bounded-flow-step-retries.md) | Pin finite capped infrastructure-step retries only to new Flow histories while preserving legacy replay bytes |
 | [0045](0045-descriptor-bound-application-variable-failure-routes.md) | Route deterministic Application variable write rejections through descriptor-bound ordinary DAG edges |
+| [0046](0046-descriptor-bound-application-answer-failure-routes.md) | Route deterministic Application Answer write rejections through descriptor-bound ordinary DAG edges |
 
-All forty-five decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All forty-six decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

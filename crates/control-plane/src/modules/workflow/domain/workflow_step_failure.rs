@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA: &str = "cloud.workflow.step-failure.v1";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V2: &str = "cloud.workflow.step-failure.v2";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3: &str = "cloud.workflow.step-failure.v3";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4: &str = "cloud.workflow.step-failure.v4";
 pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
     "cloud.workflow.step-default-output.v1";
 
@@ -183,6 +184,23 @@ impl WorkflowStepFailureOutput {
         Ok(value)
     }
 
+    pub(crate) fn application_answer(
+        step: &ResolvedWorkflowRunStep,
+        classification: WorkflowStepFailureClassification,
+    ) -> Result<Self, String> {
+        let message = application_answer_failure_message(classification)
+            .ok_or_else(|| "Workflow Application failure classification is invalid".to_owned())?;
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4.into(),
+            step_id: step.plan.id.clone(),
+            classification,
+            message: message.into(),
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
         self.validate_observation(step)?;
         let failure =
@@ -213,13 +231,20 @@ impl WorkflowStepFailureOutput {
             return Ok(());
         }
         if self.classification.is_application() {
-            if !is_application_variable_step(step) {
-                return Err(
-                    "Workflow Application failure requires the exact variable assignment step"
-                        .into(),
-                );
+            match self.schema.as_str() {
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3 if is_application_variable_step(step) => {
+                    return Ok(())
+                }
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4 if is_application_answer_step(step) => {
+                    return Ok(())
+                }
+                _ => {
+                    return Err(
+                        "Workflow Application failure requires its exact descriptor-bound step"
+                            .into(),
+                    )
+                }
             }
-            return Ok(());
         }
         if step.plan.kind != WorkflowStepKind::Execution {
             return Err("Workflow execution failure requires an Execution step".into());
@@ -287,6 +312,12 @@ impl WorkflowStepFailureOutput {
             }
             (WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3, classification, None)
                 if application_failure_message(classification) == Some(self.message.as_str()) =>
+            {
+                Ok(())
+            }
+            (WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4, classification, None)
+                if application_answer_failure_message(classification)
+                    == Some(self.message.as_str()) =>
             {
                 Ok(())
             }
@@ -391,6 +422,16 @@ fn is_application_variable_step(step: &ResolvedWorkflowRunStep) -> bool {
         })
 }
 
+fn is_application_answer_step(step: &ResolvedWorkflowRunStep) -> bool {
+    step.plan.kind == WorkflowStepKind::Output
+        && step.plan.capability.is_none()
+        && step
+            .plan
+            .descriptor
+            .as_ref()
+            .is_some_and(|descriptor| descriptor.descriptor_id == "application.answer")
+}
+
 fn application_failure_message(
     classification: WorkflowStepFailureClassification,
 ) -> Option<&'static str> {
@@ -406,6 +447,26 @@ fn application_failure_message(
         }
         WorkflowStepFailureClassification::ApplicationForbidden => {
             Some("Application variable assignment was forbidden")
+        }
+        _ => None,
+    }
+}
+
+fn application_answer_failure_message(
+    classification: WorkflowStepFailureClassification,
+) -> Option<&'static str> {
+    match classification {
+        WorkflowStepFailureClassification::ApplicationInvalid => {
+            Some("Application Answer was rejected as invalid")
+        }
+        WorkflowStepFailureClassification::ApplicationNotFound => {
+            Some("Application Answer authority was not found")
+        }
+        WorkflowStepFailureClassification::ApplicationConflict => {
+            Some("Application Answer conflicted with current state")
+        }
+        WorkflowStepFailureClassification::ApplicationForbidden => {
+            Some("Application Answer was forbidden")
         }
         _ => None,
     }
@@ -436,9 +497,10 @@ fn validate_failure_execution_authority(
 mod tests {
     use super::*;
     use crate::modules::workflow::test_support::{
+        routed_application_answer_workflow_run_input,
         routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
-        routed_execution_workflow_run_input, TEST_APPLICATION_VARIABLE_STEP_ID,
-        TEST_CONNECTOR_STEP_ID, TEST_EXECUTION_STEP_ID,
+        routed_execution_workflow_run_input, TEST_ANSWER_STEP_ID,
+        TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_EXECUTION_STEP_ID,
     };
 
     #[test]
@@ -492,6 +554,66 @@ mod tests {
         .expect("v3 Application variable conflict");
         forged.message = "raw owner conflict: private session state".into();
         assert!(forged.validate(&step).is_err());
+    }
+
+    #[test]
+    fn application_answer_failures_are_redacted_exact_v4_owner_observations() {
+        let input = routed_application_answer_workflow_run_input()
+            .expect("routed Application Answer WorkflowRun input");
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == TEST_ANSWER_STEP_ID)
+            .expect("Application Answer step");
+        let cases = [
+            (
+                WorkflowStepFailureClassification::ApplicationInvalid,
+                "Application Answer was rejected as invalid",
+            ),
+            (
+                WorkflowStepFailureClassification::ApplicationNotFound,
+                "Application Answer authority was not found",
+            ),
+            (
+                WorkflowStepFailureClassification::ApplicationConflict,
+                "Application Answer conflicted with current state",
+            ),
+            (
+                WorkflowStepFailureClassification::ApplicationForbidden,
+                "Application Answer was forbidden",
+            ),
+        ];
+        for (classification, message) in cases {
+            let failure = WorkflowStepFailureOutput::application_answer(&step, classification)
+                .expect("v4 Application Answer failure");
+            assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4);
+            assert_eq!(failure.classification, classification);
+            assert_eq!(failure.message, message);
+            assert!(failure.details.is_none());
+            failure.validate(&step).expect("valid v4 failure");
+        }
+
+        let variable = routed_application_variable_workflow_run_input()
+            .expect("routed Application variable input")
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == TEST_APPLICATION_VARIABLE_STEP_ID)
+            .expect("Application variable step");
+        let answer_failure = WorkflowStepFailureOutput::application_answer(
+            &step,
+            WorkflowStepFailureClassification::ApplicationConflict,
+        )
+        .expect("v4 Answer failure");
+        assert!(answer_failure.validate(&variable).is_err());
+
+        let variable_failure = WorkflowStepFailureOutput::application_variable(
+            &variable,
+            WorkflowStepFailureClassification::ApplicationConflict,
+        )
+        .expect("v3 variable failure");
+        assert!(variable_failure.validate(&step).is_err());
     }
 
     #[test]

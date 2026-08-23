@@ -5,11 +5,101 @@ use crate::modules::workflow::test_support::{
     application_nested_frame_answer_authorities, application_variable_workflow_run_input,
     application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
     connector_workflow_run_input_v6, human_decision_workflow_run_input,
+    routed_application_answer_and_variable_workflow_run_input,
+    routed_application_answer_workflow_run_input,
+    routed_application_frame_answer_workflow_run_input,
     routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
     routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
     TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
     TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v15_application_answer_failure_route_is_exact_frame_capable_and_version_fenced() {
+    let input = routed_application_answer_workflow_run_input()
+        .expect("valid routed Application Answer input");
+    assert_eq!(input.plan.schema, WORKFLOW_PLAN_SCHEMA_V7);
+    assert_eq!(
+        input.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V7
+    );
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V15);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V15);
+    input.validate().expect("valid v15 input");
+
+    let mut historic_alias = input.clone();
+    historic_alias.schema = WORKFLOW_RUN_INPUT_SCHEMA_V11.into();
+    historic_alias.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11.into();
+    historic_alias.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V11.into();
+    assert!(historic_alias.validate().is_err());
+
+    let mut plan_alias = input.clone();
+    plan_alias.plan.schema = WORKFLOW_PLAN_SCHEMA_V6.into();
+    plan_alias.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V6.into();
+    assert!(plan_alias.plan.validate().is_err());
+
+    let mut compiler_alias = input.clone();
+    compiler_alias.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V6.into();
+    assert!(compiler_alias.plan.validate().is_err());
+
+    let mut descriptor_alias = input.clone();
+    descriptor_alias
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == TEST_ANSWER_STEP_ID)
+        .and_then(|step| step.descriptor.as_mut())
+        .expect("Application Answer descriptor")
+        .descriptor_id = "application.response".into();
+    assert!(descriptor_alias.plan.validate().is_err());
+
+    let (_, frame, child) = routed_application_frame_answer_workflow_run_input(1)
+        .expect("valid routed Application frame Answer input");
+    assert_eq!(child.schema, WORKFLOW_RUN_INPUT_SCHEMA_V15);
+    assert_eq!(
+        child.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15
+    );
+    assert_eq!(child.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V15);
+    let projection = child
+        .application_projection
+        .as_ref()
+        .expect("frame projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
+    );
+    projection
+        .frame_authority
+        .as_ref()
+        .expect("frame authority")
+        .validate_for_frame(&frame)
+        .expect("exact frame authority");
+    child.validate().expect("valid v15 frame input");
+
+    let coexistence = routed_application_answer_and_variable_workflow_run_input()
+        .expect("valid routed Answer and variable input");
+    assert_eq!(coexistence.plan.schema, WORKFLOW_PLAN_SCHEMA_V7);
+    assert_eq!(coexistence.schema, WORKFLOW_RUN_INPUT_SCHEMA_V15);
+    let projection = coexistence
+        .application_projection
+        .as_ref()
+        .expect("coexisting Application projection");
+    assert_eq!(
+        projection.schema,
+        WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V3
+    );
+    assert_eq!(projection.answer_step_ids, [TEST_ANSWER_STEP_ID]);
+    assert_eq!(
+        projection.variable_assignment_step_ids,
+        [TEST_APPLICATION_VARIABLE_STEP_ID]
+    );
+    coexistence.validate().expect("valid v15 coexistence input");
+}
 
 #[test]
 fn v14_application_variable_failure_route_is_exact_and_version_fenced() {

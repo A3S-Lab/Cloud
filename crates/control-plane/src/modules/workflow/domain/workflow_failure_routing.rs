@@ -14,6 +14,7 @@ pub(crate) fn validate_descriptor_failure_routes(
     workflow: &WorkflowSpec,
     failures: &BTreeMap<&str, &WorkflowStepFailureContract>,
     application_variable_steps: &BTreeSet<&str>,
+    application_answer_steps: &BTreeSet<&str>,
 ) -> Result<bool, String> {
     let steps = workflow
         .steps
@@ -35,7 +36,7 @@ pub(crate) fn validate_descriptor_failure_routes(
             continue;
         }
         routed = true;
-        if !supports_failure_route(source, application_variable_steps) {
+        if !supports_failure_route(source, application_variable_steps, application_answer_steps) {
             return Err(format!(
                 "Workflow failure route {:?} targets unsupported {} step {:?}",
                 edge.id,
@@ -66,6 +67,15 @@ pub(crate) fn has_application_variable_failure_route(
 ) -> bool {
     workflow.edges.iter().any(|edge| {
         edge.source_handle.is_some() && application_variable_steps.contains(edge.source.as_str())
+    })
+}
+
+pub(crate) fn has_application_answer_failure_route(
+    workflow: &WorkflowSpec,
+    application_answer_steps: &BTreeSet<&str>,
+) -> bool {
+    workflow.edges.iter().any(|edge| {
+        edge.source_handle.is_some() && application_answer_steps.contains(edge.source.as_str())
     })
 }
 
@@ -108,12 +118,16 @@ pub(crate) fn descriptor_failure_output(
 fn supports_failure_route(
     step: &WorkflowStepSpec,
     application_variable_steps: &BTreeSet<&str>,
+    application_answer_steps: &BTreeSet<&str>,
 ) -> bool {
     step.kind == WorkflowStepKind::Execution
         || is_connector_step(step)
         || (step.kind == WorkflowStepKind::Service
             && step.capability.is_none()
             && application_variable_steps.contains(step.id.as_str()))
+        || (step.kind == WorkflowStepKind::Output
+            && step.capability.is_none()
+            && application_answer_steps.contains(step.id.as_str()))
 }
 
 fn is_connector_step(step: &WorkflowStepSpec) -> bool {
@@ -128,7 +142,7 @@ mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::Sha256Digest;
     use crate::modules::workflow::domain::{
-        CapabilityOwner, CapabilityReference, CapabilityType, WorkflowEdgeSpec,
+        CapabilityOwner, CapabilityReference, CapabilityType, WorkflowContract, WorkflowEdgeSpec,
         WorkflowStepRetryClassification, WorkflowStepSpec,
     };
 
@@ -220,6 +234,7 @@ mod tests {
                 &routed_workflow(WorkflowStepKind::Execution),
                 &execution_failures,
                 &no_application_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -229,6 +244,7 @@ mod tests {
                 &routed_connector_workflow(),
                 &execution_failures,
                 &no_application_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -237,6 +253,7 @@ mod tests {
             &routed_workflow(WorkflowStepKind::Transform),
             &execution_failures,
             &no_application_steps,
+            &no_application_steps,
         )
         .expect_err("Transform failure routes remain gated");
         assert!(unsupported.contains("unsupported transform step"));
@@ -244,6 +261,7 @@ mod tests {
         let unbound_service = validate_descriptor_failure_routes(
             &routed_workflow(WorkflowStepKind::Service),
             &execution_failures,
+            &no_application_steps,
             &no_application_steps,
         )
         .expect_err("unbound Service failure routes remain gated");
@@ -254,15 +272,38 @@ mod tests {
                 &routed_workflow(WorkflowStepKind::Service),
                 &execution_failures,
                 &BTreeSet::from(["run"]),
+                &no_application_steps,
             ),
             Ok(true)
         );
+
+        let answer_workflow = routed_workflow(WorkflowStepKind::Output);
+        WorkflowContract::from_spec(answer_workflow.clone())
+            .expect("candidate handled Output route");
+        assert_eq!(
+            validate_descriptor_failure_routes(
+                &answer_workflow,
+                &execution_failures,
+                &no_application_steps,
+                &BTreeSet::from(["run"]),
+            ),
+            Ok(true)
+        );
+        let unbound_output = validate_descriptor_failure_routes(
+            &answer_workflow,
+            &execution_failures,
+            &no_application_steps,
+            &no_application_steps,
+        )
+        .expect_err("ordinary Output failure routes remain gated");
+        assert!(unbound_output.contains("unsupported output step"));
 
         let string_failure = failure(WorkflowDataType::String);
         let string_failures = BTreeMap::from([("run", &string_failure)]);
         let invalid = validate_descriptor_failure_routes(
             &routed_workflow(WorkflowStepKind::Execution),
             &string_failures,
+            &no_application_steps,
             &no_application_steps,
         )
         .expect_err("failure values must be objects");

@@ -23,17 +23,20 @@ use crate::modules::shared_kernel::domain::{
     PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    IWorkflowRunCoordinator, WorkflowRun, WorkflowRunFlowState, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepProjectionStatus,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V10,
-    WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13,
-    WORKFLOW_RUN_FLOW_VERSION_V14,
+    IWorkflowRunCoordinator, WorkflowApplicationAnswerFailureResumePayload, WorkflowRun,
+    WorkflowRunFlowState, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
+    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_FLOW_VERSION_V10, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V14, WORKFLOW_RUN_FLOW_VERSION_V15,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
     application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
     application_variable_workflow_run_input, application_workflow_run_input,
-    routed_application_variable_workflow_run_input, workflow_run_input,
+    routed_application_answer_and_variable_workflow_run_input,
+    routed_application_answer_workflow_run_input,
+    routed_application_frame_answer_workflow_run_input,
+    routed_application_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
     TEST_APPLICATION_VARIABLE_STEP_ID,
 };
 use a3s_flow::{FlowEngine, RuntimeBuildCompatibility, RuntimeBuildId, WorkflowSpec};
@@ -60,6 +63,7 @@ struct RecordingApplicationEffects {
     drift_answer_evidence_once: AtomicBool,
     lose_variable_response_once: AtomicBool,
     drift_variable_evidence_once: AtomicBool,
+    answer_error: Mutex<Option<ApplicationError>>,
     variable_error: Mutex<Option<ApplicationError>>,
 }
 
@@ -72,6 +76,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(None),
         }
     }
@@ -84,6 +89,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(None),
         }
     }
@@ -96,6 +102,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(true),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(None),
         }
     }
@@ -108,6 +115,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(true),
             drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(None),
         }
     }
@@ -120,6 +128,7 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(true),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(None),
         }
     }
@@ -135,7 +144,24 @@ impl RecordingApplicationEffects {
             drift_answer_evidence_once: AtomicBool::new(false),
             lose_variable_response_once: AtomicBool::new(false),
             drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(None),
             variable_error: Mutex::new(Some(error)),
+        }
+    }
+
+    fn with_answer_error(
+        sessions: Arc<dyn IApplicationSessionRepository>,
+        error: ApplicationError,
+    ) -> Self {
+        Self {
+            inner: WorkflowApplicationEffectsService::new(sessions),
+            calls: Mutex::new(Vec::new()),
+            lose_answer_response_once: AtomicBool::new(false),
+            drift_answer_evidence_once: AtomicBool::new(false),
+            lose_variable_response_once: AtomicBool::new(false),
+            drift_variable_evidence_once: AtomicBool::new(false),
+            answer_error: Mutex::new(Some(error)),
+            variable_error: Mutex::new(None),
         }
     }
 
@@ -167,6 +193,9 @@ impl IWorkflowApplicationEffectsPort for RecordingApplicationEffects {
             .lock()
             .await
             .push(RecordedApplicationEffect::Answer(request.clone()));
+        if let Some(error) = self.answer_error.lock().await.clone() {
+            return Err(error);
+        }
         let mut write = self.inner.append_answer(request).await?;
         if self.lose_answer_response_once.swap(false, Ordering::SeqCst) {
             return Err(ApplicationError::Unavailable(
@@ -441,6 +470,44 @@ async fn application_answer_workflow_fixture() -> (FlowEngine, WorkflowRunRecord
     (engine, record, actor)
 }
 
+async fn routed_application_answer_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, PrincipalId)
+{
+    let mut input = routed_application_answer_workflow_run_input()
+        .expect("routed Application Answer WorkflowRun input");
+    let requested_at = canonical_timestamp(Utc::now());
+    input.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+    input.project_id = ProjectId::new();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = requested_at + Duration::hours(1);
+    input
+        .validate()
+        .expect("valid routed Application Answer WorkflowRun input");
+    let actor = PrincipalId::new();
+    let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-answer-test@2").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                WORKFLOW_RUN_FLOW_NAME,
+                WORKFLOW_RUN_FLOW_VERSION_V15,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start routed Application Answer WorkflowRun Flow");
+    (engine, record, actor)
+}
+
 async fn application_frame_answer_workflow_fixture() -> (
     FlowEngine,
     WorkflowRunId,
@@ -481,6 +548,41 @@ async fn application_frame_answer_workflow_fixture() -> (
             .expect("start Application frame Answer WorkflowRun Flow");
     }
     (engine, parent.workflow_run_id, records, actor)
+}
+
+async fn routed_application_frame_answer_workflow_fixture(
+) -> (FlowEngine, WorkflowRunId, WorkflowRunRecord, PrincipalId) {
+    let (parent, _, mut input) = routed_application_frame_answer_workflow_run_input(1)
+        .expect("routed Application frame Answer WorkflowRun input");
+    let requested_at = canonical_timestamp(Utc::now());
+    input.requested_at = requested_at;
+    input.deadline_at = requested_at + Duration::hours(1);
+    input
+        .validate()
+        .expect("valid routed Application frame Answer WorkflowRun input");
+    let actor = PrincipalId::new();
+    let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-frame-answer-test@2").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                WORKFLOW_RUN_FLOW_NAME,
+                WORKFLOW_RUN_FLOW_VERSION_V15,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start routed Application frame Answer WorkflowRun Flow");
+    (engine, parent.workflow_run_id, record, actor)
 }
 
 async fn application_variable_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, PrincipalId) {
@@ -555,6 +657,44 @@ async fn routed_application_variable_workflow_fixture(
         )
         .await
         .expect("start routed Application variable WorkflowRun Flow");
+    (engine, record, actor)
+}
+
+async fn routed_application_answer_and_variable_workflow_fixture(
+) -> (FlowEngine, WorkflowRunRecord, PrincipalId) {
+    let mut input = routed_application_answer_and_variable_workflow_run_input()
+        .expect("routed Application Answer and variable WorkflowRun input");
+    let requested_at = canonical_timestamp(Utc::now());
+    input.organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+    input.project_id = ProjectId::new();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = requested_at + Duration::hours(1);
+    input
+        .validate()
+        .expect("valid routed Application Answer and variable WorkflowRun input");
+    let actor = PrincipalId::new();
+    let (run, steps) = WorkflowRun::create(input.clone(), actor).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-application-answer-variable-test@1").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                WORKFLOW_RUN_FLOW_NAME,
+                WORKFLOW_RUN_FLOW_VERSION_V15,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded WorkflowRun input"),
+        )
+        .await
+        .expect("start routed Application Answer and variable WorkflowRun Flow");
     (engine, record, actor)
 }
 
@@ -757,6 +897,59 @@ async fn deterministic_application_variable_rejection_completes_the_error_branch
             .count(),
         1
     );
+}
+
+#[tokio::test]
+async fn v15_answer_route_preserves_the_coexisting_variable_failure_route() {
+    let (engine, record, actor) = routed_application_answer_and_variable_workflow_fixture().await;
+    let binding = bind_application_invocation(&record, actor).await;
+    let effects = Arc::new(RecordingApplicationEffects::with_variable_error(
+        binding.sessions.clone(),
+        ApplicationError::Forbidden("private-v15-variable-sentinel".into()),
+    ));
+    let coordinator = FlowWorkflowRunCoordinator::with_application_effects(engine, effects.clone());
+
+    coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("v15 Application variable snapshot");
+    let completed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("v15 routed Application variable rejection")
+        .expect("completed v15 WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let assignment = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_APPLICATION_VARIABLE_STEP_ID)
+        .expect("Application variable step projection");
+    assert_eq!(assignment.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(assignment.selected_handle.as_deref(), Some("error"));
+    assert_eq!(
+        assignment.error.as_deref(),
+        Some("Application variable assignment was forbidden")
+    );
+    assert!(assignment.result.is_none());
+    assert!(completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_ANSWER_STEP_ID)
+        .is_some_and(|answer| answer.status == WorkflowStepProjectionStatus::Skipped));
+    assert_eq!(
+        effects
+            .calls()
+            .await
+            .iter()
+            .filter(|effect| matches!(effect, RecordedApplicationEffect::Variables(_)))
+            .count(),
+        1
+    );
+    assert!(effects
+        .calls()
+        .await
+        .iter()
+        .all(|effect| !matches!(effect, RecordedApplicationEffect::Answer(_))));
 }
 
 #[tokio::test]
@@ -1001,6 +1194,225 @@ async fn answer_commit_precedes_final_output_and_terminal_projection() {
             .len(),
         3
     );
+}
+
+#[tokio::test]
+async fn deterministic_answer_owner_failures_route_redacted_error_and_do_not_repeat_the_write() {
+    let cases = [
+        (
+            ApplicationError::Invalid("raw invalid Answer body".into()),
+            WorkflowStepFailureClassification::ApplicationInvalid,
+            "Application Answer was rejected as invalid",
+        ),
+        (
+            ApplicationError::NotFound("raw missing invocation".into()),
+            WorkflowStepFailureClassification::ApplicationNotFound,
+            "Application Answer authority was not found",
+        ),
+        (
+            ApplicationError::Conflict("raw private session version".into()),
+            WorkflowStepFailureClassification::ApplicationConflict,
+            "Application Answer conflicted with current state",
+        ),
+        (
+            ApplicationError::Forbidden("raw tenant policy detail".into()),
+            WorkflowStepFailureClassification::ApplicationForbidden,
+            "Application Answer was forbidden",
+        ),
+    ];
+
+    for (owner_error, classification, stable_message) in cases {
+        let raw_error = owner_error.to_string();
+        let (engine, record, actor) = routed_application_answer_workflow_fixture().await;
+        let binding = bind_application_invocation(&record, actor).await;
+        let effects = Arc::new(RecordingApplicationEffects::with_answer_error(
+            binding.sessions.clone(),
+            owner_error,
+        ));
+        let coordinator =
+            FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+        let completed = coordinator
+            .reconcile(&record, record.run.requested_at)
+            .await
+            .expect("routed Application Answer reconciliation")
+            .expect("completed WorkflowRun projection");
+        assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+        let answer = completed
+            .steps
+            .iter()
+            .find(|step| step.step_id == TEST_ANSWER_STEP_ID)
+            .expect("Answer projection");
+        assert_eq!(answer.status, WorkflowStepProjectionStatus::Failed);
+        assert_eq!(answer.selected_handle.as_deref(), Some("error"));
+        assert_eq!(answer.error.as_deref(), Some(stable_message));
+        assert!(answer.result.is_none());
+        assert!(!answer
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains(&raw_error));
+
+        let snapshot = engine
+            .snapshot(&record.run.flow_run_id)
+            .await
+            .expect("completed Flow snapshot");
+        let hook = snapshot
+            .hooks
+            .values()
+            .find(|hook| hook.hook_id.starts_with("workflow-application-answer:"))
+            .expect("Answer hook");
+        let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(
+            hook.payload.clone().expect("received failure payload"),
+        )
+        .expect("failure payload");
+        assert_eq!(payload.classification, classification);
+        assert!(payload.frame_authority.is_none());
+        assert!(!serde_json::to_string(&payload)
+            .expect("encoded payload")
+            .contains(&raw_error));
+
+        let messages = binding
+            .sessions
+            .list_messages(
+                record.run.organization_id,
+                record.run.project_id,
+                binding.application_id,
+                binding.session_id,
+                0,
+                10,
+            )
+            .await
+            .expect("messages after rejected Answer");
+        assert!(messages
+            .iter()
+            .all(|message| message.kind != ApplicationMessageKind::Answer));
+
+        coordinator
+            .reconcile(&record, record.run.requested_at)
+            .await
+            .expect("routed Answer replay")
+            .expect("replayed WorkflowRun projection");
+        assert_eq!(
+            effects
+                .calls()
+                .await
+                .iter()
+                .filter(|call| matches!(call, RecordedApplicationEffect::Answer(_)))
+                .count(),
+            1,
+            "received failure hook must suppress a repeated Answer write"
+        );
+    }
+}
+
+#[tokio::test]
+async fn transient_answer_owner_failures_leave_the_hook_unresolved_for_retry() {
+    for owner_error in [
+        ApplicationError::Unavailable("temporary Answer repository outage".into()),
+        ApplicationError::Internal("indeterminate Answer owner result".into()),
+    ] {
+        let (engine, record, actor) = routed_application_answer_workflow_fixture().await;
+        let binding = bind_application_invocation(&record, actor).await;
+        let effects = Arc::new(RecordingApplicationEffects::with_answer_error(
+            binding.sessions.clone(),
+            owner_error,
+        ));
+        let coordinator =
+            FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+        coordinator
+            .reconcile(&record, record.run.requested_at)
+            .await
+            .expect_err("transient Answer owner failure");
+        let snapshot = engine
+            .snapshot(&record.run.flow_run_id)
+            .await
+            .expect("waiting Flow snapshot");
+        assert!(snapshot.hooks.values().any(|hook| {
+            hook.status == a3s_flow::HookStatus::Active
+                && hook.hook_id.starts_with("workflow-application-answer:")
+        }));
+        assert_eq!(
+            effects
+                .calls()
+                .await
+                .iter()
+                .filter(|call| matches!(call, RecordedApplicationEffect::Answer(_)))
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn deterministic_frame_answer_failure_keeps_root_effect_identity_and_local_error_route() {
+    let (engine, application_workflow_run_id, record, actor) =
+        routed_application_frame_answer_workflow_fixture().await;
+    let binding = bind_application_invocation_to(&record, application_workflow_run_id, actor).await;
+    let raw_error = "raw nested frame authorization context";
+    let effects = Arc::new(RecordingApplicationEffects::with_answer_error(
+        binding.sessions.clone(),
+        ApplicationError::Forbidden(raw_error.into()),
+    ));
+    let coordinator =
+        FlowWorkflowRunCoordinator::with_application_effects(engine.clone(), effects.clone());
+
+    let completed = coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("routed frame Answer reconciliation")
+        .expect("completed child WorkflowRun projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let answer = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_ANSWER_STEP_ID)
+        .expect("frame Answer projection");
+    assert_eq!(answer.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(answer.selected_handle.as_deref(), Some("error"));
+    assert_eq!(
+        answer.error.as_deref(),
+        Some("Application Answer was forbidden")
+    );
+    assert!(!answer
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains(raw_error));
+
+    let snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("completed frame Flow snapshot");
+    let hook = snapshot
+        .hooks
+        .values()
+        .find(|hook| hook.hook_id.starts_with("workflow-application-answer:"))
+        .expect("frame Answer hook");
+    let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(
+        hook.payload.clone().expect("frame failure payload"),
+    )
+    .expect("frame failure payload");
+    let authority = payload.frame_authority.expect("frame authority");
+    assert_eq!(
+        authority.application_workflow_run_id,
+        application_workflow_run_id
+    );
+    assert_eq!(authority.frame_ordinal, 1);
+
+    coordinator
+        .reconcile(&record, record.run.requested_at)
+        .await
+        .expect("frame Answer replay")
+        .expect("replayed child WorkflowRun projection");
+    let calls = effects.calls().await;
+    let [RecordedApplicationEffect::Answer(request)] = calls.as_slice() else {
+        panic!("frame failure emitted unexpected lifecycle effects: {calls:#?}")
+    };
+    assert_eq!(request.effect.workflow_run_id, application_workflow_run_id);
+    assert_eq!(request.effect.effect_ordinal, 1);
+    assert!(request.effect.step_id.starts_with("frame-answer-"));
 }
 
 #[tokio::test]

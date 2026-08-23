@@ -77,7 +77,12 @@ pub(super) fn validate_workflow(
         return Err("Workflow input step cannot have incoming edges".into());
     }
     for output in &outputs {
-        if !outgoing[output].is_empty() {
+        // Output is the coarse Flow kind used by both terminal workflow.output
+        // nodes and the Applications-owned application.answer port. Only a
+        // candidate handled route may continue structurally here; immutable
+        // semantic contracts later prove that the source is the exact Answer
+        // descriptor and reject every ordinary Output alias.
+        if !outgoing[output].is_empty() && !non_branch_routes.contains(output) {
             return Err(format!(
                 "Workflow output step {output:?} cannot have outgoing edges"
             ));

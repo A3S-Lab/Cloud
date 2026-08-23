@@ -1,6 +1,6 @@
 use super::{
-    ResolvedWorkflowRunStep, WorkflowApplicationFrameAuthority, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    ResolvedWorkflowRunStep, WorkflowApplicationFrameAuthority, WorkflowRunInput,
+    WorkflowStepFailureClassification, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationMessageId, OrganizationId, PlanRevisionId, ProjectId,
@@ -16,6 +16,10 @@ pub const WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA: &str =
     "cloud.workflow.application-answer-resume.v1";
 pub const WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2: &str =
     "cloud.workflow.application-answer-resume.v2";
+pub const WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA: &str =
+    "cloud.workflow.application-answer-failure-resume.v1";
+pub const WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA_V2: &str =
+    "cloud.workflow.application-answer-failure-resume.v2";
 pub const WORKFLOW_APPLICATION_ANSWER_STEP_ATTEMPT: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +224,79 @@ impl WorkflowApplicationAnswerResumePayload {
         {
             return Err("Workflow Application Answer resume authority is invalid".into());
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowApplicationAnswerFailureResumePayload {
+    pub schema: String,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub workflow_run_id: WorkflowRunId,
+    pub step_id: String,
+    pub step_attempt: u32,
+    pub flow_run_id: String,
+    pub flow_hook_id: String,
+    pub classification: WorkflowStepFailureClassification,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_authority: Option<WorkflowApplicationFrameAuthority>,
+}
+
+impl WorkflowApplicationAnswerFailureResumePayload {
+    pub fn new(
+        metadata: &WorkflowApplicationAnswerHookMetadata,
+        classification: WorkflowStepFailureClassification,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema: if metadata.frame_authority.is_some() {
+                WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA_V2.into()
+            } else {
+                WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA.into()
+            },
+            organization_id: metadata.organization_id,
+            project_id: metadata.project_id,
+            workflow_run_id: metadata.workflow_run_id,
+            step_id: metadata.step_id.clone(),
+            step_attempt: metadata.step_attempt,
+            flow_run_id: metadata.workflow_run_id.to_string(),
+            flow_hook_id: metadata.flow_hook_id(),
+            classification,
+            frame_authority: metadata.frame_authority.clone(),
+        };
+        value.validate(metadata)?;
+        Ok(value)
+    }
+
+    pub fn validate(&self, metadata: &WorkflowApplicationAnswerHookMetadata) -> Result<(), String> {
+        metadata.validate()?;
+        let schema_matches = matches!(
+            (self.schema.as_str(), metadata.frame_authority.as_ref()),
+            (WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA, None)
+                | (
+                    WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA_V2,
+                    Some(_)
+                )
+        );
+        if !schema_matches
+            || self.organization_id != metadata.organization_id
+            || self.project_id != metadata.project_id
+            || self.workflow_run_id != metadata.workflow_run_id
+            || self.step_id != metadata.step_id
+            || self.step_attempt != metadata.step_attempt
+            || self.flow_run_id != metadata.workflow_run_id.to_string()
+            || self.flow_hook_id != metadata.flow_hook_id()
+            || !self.classification.is_application()
+            || self.frame_authority != metadata.frame_authority
+        {
+            return Err("Workflow Application Answer failure resume authority is invalid".into());
+        }
+        canonical_json_bounded(
+            self,
+            WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+            "Workflow Application Answer failure resume",
+        )?;
         Ok(())
     }
 }

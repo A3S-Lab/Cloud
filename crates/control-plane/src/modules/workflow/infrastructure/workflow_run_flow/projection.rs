@@ -1,7 +1,7 @@
 use super::workflow::{
-    application_answer_result, application_variable_write_resolution,
+    application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
-    ApplicationVariableWriteResolution, ExecutionResolution,
+    ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -236,8 +236,12 @@ pub fn project_workflow_run_record(
                     .find(|event| event.sequence == sequence)
                     .map(|event| event.timestamp)
                     .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let failure = application_failures.get(&projection.step_id).cloned();
                 let step_status = match hook.status {
                     HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received if failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
                     HookStatus::Received => WorkflowStepProjectionStatus::Completed,
                     HookStatus::Disposed | HookStatus::Cancelled => {
                         WorkflowStepProjectionStatus::Cancelled
@@ -249,10 +253,10 @@ pub fn project_workflow_run_record(
                     ))
                     }
                 };
-                let result = if hook.status == HookStatus::Received {
+                let completed_result = completed.get(&projection.step_id);
+                let result = if step_status == WorkflowStepProjectionStatus::Completed {
                     Some(
-                        completed
-                            .get(&projection.step_id)
+                        completed_result
                             .ok_or_else(|| {
                                 format!(
                                     "Workflow Application Answer step {:?} has no received result",
@@ -265,12 +269,16 @@ pub fn project_workflow_run_record(
                 } else {
                     None
                 };
+                let selected_handle = failure
+                    .as_ref()
+                    .and(completed_result)
+                    .and_then(|result| result.selected_handle.clone());
                 (
                     step_status,
                     metadata.step_attempt,
                     result,
-                    None,
-                    None,
+                    selected_handle,
+                    failure,
                     sequence,
                     at,
                 )
@@ -762,15 +770,24 @@ pub(super) fn completed_workflow_steps(
                         hook.hook_id
                     )
                 })?;
-                let result = application_answer_result(
+                let resolution = application_answer_resolution(
                     &snapshot.run_id,
                     &metadata.flow_hook_id(),
+                    input,
                     resolved,
                     &metadata,
                     payload,
                 )
                 .map_err(|error| error.to_string())?;
-                completed.insert(result.step_id.clone(), result);
+                match resolution {
+                    ApplicationAnswerResolution::Completed(result) => {
+                        completed.insert(result.step_id.clone(), *result);
+                    }
+                    ApplicationAnswerResolution::Failed { result, message } => {
+                        completed.insert(result.step_id.clone(), *result);
+                        application_failures.insert(resolved.plan.id.clone(), message);
+                    }
+                }
             }
             continue;
         }

@@ -6,15 +6,19 @@ use super::{
 };
 use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep,
-    WorkflowApplicationAnswerHookMetadata, WorkflowApplicationAnswerResumePayload,
-    WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowApplicationAnswerFailureResumePayload, WorkflowApplicationAnswerHookMetadata,
+    WorkflowApplicationAnswerResumePayload, WorkflowApplicationVariableSnapshotHookMetadata,
     WorkflowApplicationVariableWriteFailureResumePayload,
     WorkflowApplicationVariableWriteHookMetadata, WorkflowEdgeSpec, WorkflowExecutionHookMetadata,
     WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepDefaultOutputEvidence,
     WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepKind,
+    WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA,
+    WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA_V2,
+    WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA, WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2,
     WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA,
     WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
+    WORKFLOW_RUN_INPUT_SCHEMA_V15,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -27,6 +31,14 @@ enum ResolvedState {
 }
 
 pub(super) enum ApplicationVariableWriteResolution {
+    Completed(Box<WorkflowLocalStepResult>),
+    Failed {
+        result: Box<WorkflowLocalStepResult>,
+        message: String,
+    },
+}
+
+pub(super) enum ApplicationAnswerResolution {
     Completed(Box<WorkflowLocalStepResult>),
     Failed {
         result: Box<WorkflowLocalStepResult>,
@@ -505,13 +517,18 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 )));
             }
             if let Some(payload) = context.hook_payload(&hook_id) {
-                let result = application_answer_result(
+                let resolution = application_answer_resolution(
                     &invocation.run_id,
                     &hook_id,
+                    &input,
                     step,
                     &metadata,
                     payload,
                 )?;
+                let result = match resolution {
+                    ApplicationAnswerResolution::Completed(result) => *result,
+                    ApplicationAnswerResolution::Failed { result, .. } => *result,
+                };
                 resolved.insert(
                     step.plan.id.clone(),
                     ResolvedState::Active(Box::new(result)),
@@ -727,7 +744,10 @@ pub(super) fn application_variable_write_resolution(
                 .map(ApplicationVariableWriteResolution::Completed)
         }
         Some(WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA)
-            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V14 =>
+            if matches!(
+                input.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V14 | WORKFLOW_RUN_INPUT_SCHEMA_V15
+            ) =>
         {
             let payload = serde_json::from_value::<
                 WorkflowApplicationVariableWriteFailureResumePayload,
@@ -898,6 +918,47 @@ pub(super) fn application_answer_result(
         .validate(step)
         .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
     Ok(result)
+}
+
+pub(super) fn application_answer_resolution(
+    run_id: &str,
+    hook_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowApplicationAnswerHookMetadata,
+    observed: &Value,
+) -> Result<ApplicationAnswerResolution, FlowError> {
+    match observed.get("schema").and_then(Value::as_str) {
+        Some(WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA)
+        | Some(WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2) => {
+            application_answer_result(run_id, hook_id, step, metadata, observed)
+                .map(Box::new)
+                .map(ApplicationAnswerResolution::Completed)
+        }
+        Some(WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA)
+        | Some(WORKFLOW_APPLICATION_ANSWER_FAILURE_RESUME_SCHEMA_V2)
+            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V15 =>
+        {
+            let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(
+                observed.clone(),
+            )
+            .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+            payload
+                .validate(metadata)
+                .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+            if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+                return Err(application_answer_payload_drift(run_id, &step.plan.id));
+            }
+            let failure =
+                WorkflowStepFailureOutput::application_answer(step, payload.classification)
+                    .map_err(|_| application_answer_payload_drift(run_id, &step.plan.id))?;
+            let message = failure.message.clone();
+            let result = failure_route_result(run_id, input, step, failure)?
+                .ok_or_else(|| application_answer_payload_drift(run_id, &step.plan.id))?;
+            Ok(ApplicationAnswerResolution::Failed { result, message })
+        }
+        _ => Err(application_answer_payload_drift(run_id, &step.plan.id)),
+    }
 }
 
 fn application_answer_payload_drift(run_id: &str, step_id: &str) -> FlowError {

@@ -613,6 +613,199 @@ fn compiler_emits_v11_only_for_exact_application_answer_and_rejects_standalone_d
     assert!(!frame_projection.projects_application_lifecycle());
     assert!(frame_projection.supports_application_frames());
     frame_input.validate().expect("valid v13 frame input");
+
+    let mut routed_workflow = bound_workflow.clone();
+    routed_workflow.edges.extend([
+        WorkflowEdgeSpec {
+            id: "answer-output".into(),
+            source: "answer".into(),
+            target: "output".into(),
+            source_handle: None,
+        },
+        WorkflowEdgeSpec {
+            id: "answer-error-output".into(),
+            source: "answer".into(),
+            target: "output".into(),
+            source_handle: Some("error".into()),
+        },
+    ]);
+    let routed_contract =
+        WorkflowContract::from_spec(routed_workflow.clone()).expect("routed Answer workflow");
+    let mut routed_answer_descriptor = descriptor(
+        "application.answer",
+        WorkflowStepKind::Output,
+        "content",
+        "message",
+    );
+    routed_answer_descriptor.revision = "1.1.0".into();
+    routed_answer_descriptor.owner = WorkflowStepOwner::Applications;
+    routed_answer_descriptor.execution_class = WorkflowStepExecutionClass::OwningApplicationPort;
+    routed_answer_descriptor.required_bindings = vec![WorkflowStepBindingKind::ReleaseReference];
+    routed_answer_descriptor.failure = WorkflowStepFailureContract {
+        error_output: Some(WorkflowStepPort {
+            name: "error".into(),
+            value_type: WorkflowDataType::Object,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }),
+        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let routed_registry =
+        WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+            id: "support.application-answer-routed".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            descriptors: vec![
+                descriptor(
+                    "workflow.input",
+                    WorkflowStepKind::Input,
+                    "invocation",
+                    "value",
+                ),
+                routed_answer_descriptor,
+                descriptor(
+                    "workflow.output",
+                    WorkflowStepKind::Output,
+                    "result",
+                    "value",
+                ),
+            ],
+        })
+        .expect("routed Answer registry");
+    let routed_bindings =
+        WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+            id: "support.application-answer-routed".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            bindings: [
+                ("input", "workflow.input", "1.0.0"),
+                ("answer", "application.answer", "1.1.0"),
+                ("output", "workflow.output", "1.0.0"),
+            ]
+            .into_iter()
+            .map(
+                |(step_id, descriptor_id, descriptor_revision)| WorkflowStepDescriptorBinding {
+                    step_id: step_id.into(),
+                    descriptor_id: descriptor_id.into(),
+                    descriptor_revision: descriptor_revision.into(),
+                    semantic_digest: routed_registry
+                        .resolve(descriptor_id, descriptor_revision)
+                        .expect("routed Answer descriptor")
+                        .semantic_digest()
+                        .clone(),
+                },
+            )
+            .collect(),
+        })
+        .expect("routed Answer bindings");
+    let routed_semantics = WorkflowRevisionSemanticContracts::create(
+        &routed_workflow,
+        routed_bindings,
+        routed_registry,
+        revision
+            .semantic_contracts
+            .as_ref()
+            .expect("Answer semantic contracts")
+            .variable_contract()
+            .clone(),
+    )
+    .expect("routed Answer semantic contracts");
+    let routed_revision_id = WorkflowRevisionId::new();
+    let routed_revision = WorkflowRevision::initial_with_semantic_contracts(
+        organization_id,
+        project_id,
+        definition_id,
+        routed_revision_id,
+        routed_contract.clone(),
+        revision.payloads.clone(),
+        routed_semantics,
+        principal_id,
+        now,
+    )
+    .expect("routed Answer revision");
+    let routed_definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        definition_id,
+        routed_workflow.name.clone(),
+        routed_workflow.description.clone(),
+        routed_revision_id,
+        routed_contract.digest().clone(),
+        principal_id,
+        now,
+    )
+    .expect("routed Answer definition");
+    let routed_goal = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: "Routed Application Answer goal".into(),
+        workflow_definition_id: definition_id,
+        workflow_revision_id: routed_revision_id,
+        workflow_digest: routed_contract.digest().clone(),
+        ontology_id,
+        ontology_revision_id,
+        ontology_digest: ontology_contract.digest().clone(),
+        environment_id: None,
+        input: json!({}),
+    })
+    .expect("routed Answer goal");
+    let routed_compiled = WorkflowPlanCompiler::compile_goal(
+        WorkflowGoalId::new(),
+        PlanRevisionId::new(),
+        routed_goal,
+        &routed_definition,
+        &routed_revision,
+        &ontology_revision,
+        principal_id,
+        now,
+    )
+    .expect("compiled routed Answer goal");
+    assert_eq!(
+        WorkflowPlanCompiler::compiler_revision(&routed_revision),
+        WORKFLOW_PLAN_COMPILER_REVISION_V7
+    );
+    assert_eq!(
+        routed_compiled.plan_revision.plan.schema,
+        WORKFLOW_PLAN_SCHEMA_V7
+    );
+    WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &routed_compiled.goal,
+        &routed_compiled.plan_revision,
+        &routed_revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect_err("standalone routed Answer dispatch");
+    let routed_run = WorkflowRunCompiler::compile_for_application(
+        WorkflowRunId::new(),
+        &routed_compiled.goal,
+        &routed_compiled.plan_revision,
+        &routed_revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("routed Application Answer run");
+    assert_eq!(
+        routed_run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V15
+    );
+    assert_eq!(
+        routed_run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15
+    );
+    assert_eq!(
+        routed_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V15
+    );
+    routed_run
+        .run
+        .execution_input
+        .validate()
+        .expect("valid v15 compiler output");
 }
 
 #[test]
