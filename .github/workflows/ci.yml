@@ -73,6 +73,22 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Certify immutable accepted BuildPlans
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-developer-build-plans.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_developer_build_plans_are_exact_immutable_and_replay_safe \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Accepted BuildPlan PostgreSQL gate failed::$detail"
+          exit 1
+
       - name: Certify verified recipient-contact authority
         run: |
           log="$RUNNER_TEMP/a3s-cloud-recipient-contact-authority.log"

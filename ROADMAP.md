@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1` implements bounded canonical source-layout snapshots plus deterministic Dockerfile and A3S Asset ACL BuildPlan proposals. Acceptance, persistence, interfaces, build/deployment composition, profiles, previews, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance and persistence. Production composition, interfaces, build/deployment handoff, profiles, previews, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -947,6 +947,19 @@ reuses the Assets-owned manifest parser, and explicit Asset ACL intent takes
 precedence over heuristic detection. This slice has no Source-revision
 acceptance, persistence, public interface, build execution, Workload projection,
 Route publication, or scheduler.
+
+Component-only `P0.1-C2` implements the acceptance boundary. Canonical
+`a3s.cloud.build-plan.v1` embeds the exact C1 proposal and binds one existing
+Sources-owned `SourceRevisionId`; its digest excludes actor, time, checkout, and
+adapter state. One deterministic BuildPlan identity and the database natural
+key admit exactly one immutable plan per Source revision and project root.
+Authorization precedes idempotency replay and exact Sources evidence admission.
+Migration `146` plus the A3S ORM repository reparse canonical ACL on reads and
+atomically store the accepted plan, idempotency reference, audit record, and
+Outbox event; database constraints recheck exact tenant/project/environment,
+source identity, commit, recipe, and time ordering. The internal handler and
+adapters are not yet production-composed or publicly exposed, and this slice starts no BuildRun,
+creates no Workload/Route, and owns no scheduler.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

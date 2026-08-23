@@ -157,6 +157,25 @@ impl BuildPlanProposal {
             .then_with(|| self.spec.detector.cmp(&other.spec.detector))
             .then_with(|| self.digest.cmp(&other.digest))
     }
+
+    pub(crate) fn nested_block(&self) -> Block {
+        let mut block = proposal_document(&self.spec)
+            .blocks
+            .into_iter()
+            .next()
+            .expect("BuildPlan proposal document always has one root block");
+        block.name = "proposal".into();
+        block
+    }
+
+    pub(crate) fn from_nested_block(block: &Block) -> Result<Self, String> {
+        if block.name != "proposal" {
+            return Err("accepted BuildPlan proposal block is invalid".into());
+        }
+        let mut root = block.clone();
+        root.name = BUILD_PLAN_BLOCK.into();
+        Self::from_spec(parse_proposal(&Document { blocks: vec![root] })?)
+    }
 }
 
 fn proposal_document(spec: &BuildPlanProposalSpec) -> Document {

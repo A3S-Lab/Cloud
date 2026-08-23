@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 145;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "145";
+const CLOUD_MIGRATION_COUNT: i64 = 146;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "146";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -158,6 +158,8 @@ mod cancellation_support;
 mod connectors_support;
 #[path = "support/deployment_flow.rs"]
 mod deployment_flow_support;
+#[path = "support/developer_build_plans.rs"]
+mod developer_build_plans_support;
 #[path = "support/durable_cells.rs"]
 mod durable_cells_support;
 #[path = "support/edge_certificate_lifecycle.rs"]
@@ -647,6 +649,19 @@ async fn postgres_schema_migration_is_one_shot_and_service_startup_is_read_only(
     run_isolated_postgres(&admin_url, exercise_postgres_schema_authority)
         .await
         .expect("PostgreSQL one-shot schema authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_developer_build_plans_are_exact_immutable_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        developer_build_plans_support::exercise_developer_build_plan_persistence,
+    )
+    .await
+    .expect("PostgreSQL accepted BuildPlan persistence gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -20,7 +20,7 @@ pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     AgentConversationId, AgentExecutionId, ApiTokenId, ApplicationEndUserId, ApplicationId,
     ApplicationInvocationId, ApplicationMessageId, ApplicationReleaseId, ApplicationSessionId,
-    AssetId, AssetReleaseId, BuildRunId, ConnectorProfileId, ConnectorRevisionId,
+    AssetId, AssetReleaseId, BuildPlanId, BuildRunId, ConnectorProfileId, ConnectorRevisionId,
     ConversationVariableRevisionId, DeploymentId, DomainClaimId, DurableCellApplicationId,
     DurableCellApplicationRevisionId, EnrollmentTokenId, EnvironmentId, ExecutionId,
     ExecutionTemplateId, ExecutionTemplateRevisionId, ExternalIdentityLinkId,

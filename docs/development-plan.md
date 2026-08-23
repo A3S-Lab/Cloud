@@ -422,7 +422,7 @@ supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| P0 | In progress; unavailable | Component-only `P0.1-C1` implements bounded canonical source-layout snapshots, a typed detector port, deterministic Dockerfile and A3S Asset ACL detectors, canonical `a3s.cloud.build-plan-proposal.v1` ACL evidence, fixed precedence, closed diagnostics, and fail-closed proposal bounds. The Asset detector reuses the Assets-owned manifest parser. Source acceptance, accepted-plan persistence, interfaces, build/deployment composition, workload profiles, previews, monorepos, and Compose import remain open. |
+| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance. C2 adds `a3s.cloud.build-plan.v1`, deterministic identity, authorization-first exact Sources admission, and migration `146` A3S ORM persistence with canonical read checks, idempotency, audit, and Outbox. Production composition, interfaces, build/deployment handoff, workload profiles, previews, monorepos, and Compose import remain open. |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
@@ -1657,9 +1657,30 @@ boundary:
   and parsed by `a3s-acl`, with exact source, detector-revision, evidence,
   project-root, and existing Sources-owned `BuildRecipe` digests/values.
 
-The slice is deliberately transient and component-only. It accepts no Source
-revision, persists no accepted plan, exposes no public API/client/CLI/MCP
-surface, starts no BuildRun, creates no Workload or Route, and owns no scheduler.
+The C1 slice is deliberately transient and component-only. It accepts no Source
+revision and persists no accepted plan.
+
+Component-only `P0.1-C2` now defines the independent acceptance authority:
+
+- Canonical `a3s.cloud.build-plan.v1` embeds the exact proposal and adds the
+  existing Sources-owned `SourceRevisionId`; plan identity and digest exclude
+  caller, time, checkout directory, and persistence adapter state.
+- `BuildPlanId` is deterministic for Organization, Source revision, and project
+  root. Both repositories enforce one immutable accepted plan per Source
+  revision/project root, converge independent idempotency keys on that natural
+  record, and reject a competing contract.
+- An authorization-first internal command resolves exact source identity,
+  commit, recipe, scope, and acceptance-time evidence through a typed Sources
+  port before persistence. Sources remains the only revision acceptance owner.
+- Migration `146` and the A3S ORM PostgreSQL repository reparse canonical ACL on
+  every read and atomically persist the plan, idempotency reference, audit, and
+  Outbox. Foreign keys and a source-admission trigger fence exact tenant,
+  Project, Environment, revision, source identity, commit, recipe, and time
+  ordering; accepted rows reject update and deletion.
+
+C2 still exposes no public API/client/CLI/MCP surface and is not yet registered
+in production composition. It starts no BuildRun, creates no Workload or Route,
+and owns no scheduler. Those handoffs remain later owner-reviewed P0 slices.
 
 ### Exit gate
 

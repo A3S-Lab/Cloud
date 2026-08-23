@@ -99,6 +99,7 @@ identifier!(GatewayCertificateId);
 identifier!(McpCredentialId);
 identifier!(SecretId);
 identifier!(SourceRevisionId);
+identifier!(BuildPlanId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);

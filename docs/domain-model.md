@@ -112,6 +112,7 @@ distributes committed facts after the corresponding database transaction.
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
 | BuildPlan proposal | A transient, canonical, reviewable P0 detection result bound to an exact source-layout identity, detector revision, evidence digest, project root, and Sources-owned build recipe; it is not accepted desired state. |
+| Accepted BuildPlan | An immutable Developer Workflows-owned acceptance contract bound to one exact Sources-owned revision and project root; actor/time are audit facts outside its deterministic ACL digest. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -396,9 +397,20 @@ bounded, sorted, and independent of a local checkout directory.
 The initial closed detector set contains Dockerfile and A3S Asset ACL detection.
 The latter consumes the Assets-owned `.a3s/asset.acl` parser and is authoritative
 over heuristics, so P0 does not reinterpret or copy Asset semantics. This context
-does not accept Source revisions, own build execution or Artifacts, persist an
-accepted desired plan, create Workloads or Routes, expose product interfaces, or
-schedule work.
+does not accept Source revisions or own build execution, Artifacts, Workloads,
+Routes, product interfaces, or scheduling.
+
+Component-only `P0.1-C2` owns the explicit acceptance decision without taking
+Sources authority. Canonical `a3s.cloud.build-plan.v1` embeds one exact C1
+proposal plus its existing `SourceRevisionId`. Its digest excludes actor, time,
+checkout, and adapter state; a deterministic `BuildPlanId` and natural key admit
+one immutable acceptance per Source revision/project root. An
+authorization-first internal command verifies exact source identity, commit,
+recipe, scope, and time through a typed Sources port. Migration `146` persists
+canonical ACL, redundant closed evidence, idempotency, audit, and Outbox
+atomically, reparses ACL on reads, and rejects mutation. Production composition,
+public interfaces, and all BuildRun/Workload/Route/scheduler handoffs remain
+outside this slice.
 
 ### 3.4 Asset hosting
 

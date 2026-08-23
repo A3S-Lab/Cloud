@@ -3,10 +3,17 @@ use crate::modules::developer_workflows::infrastructure::{
     AssetAclBuildPlanDetector, DockerfileBuildPlanDetector,
 };
 use crate::modules::developer_workflows::BuildPlanDetectionService;
-use crate::modules::shared_kernel::domain::{GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId, Sha256Digest,
+    SourceRevisionId,
+};
+use chrono::{Duration, TimeZone, Utc};
 use std::sync::Arc;
+use uuid::Uuid;
 
 const BUILD_PLAN_FIXTURE: &str = include_str!("../../../../../../contracts/p0.1/build-plan.acl");
+const ACCEPTED_BUILD_PLAN_FIXTURE: &str =
+    include_str!("../../../../../../contracts/p0.1/accepted-build-plan.acl");
 
 #[test]
 fn checked_in_build_plan_contract_is_canonical_and_closed() {
@@ -27,6 +34,65 @@ fn checked_in_build_plan_contract_is_canonical_and_closed() {
         "detector_revision = \"p0.1-c2\"",
     ))
     .is_err());
+}
+
+#[test]
+fn accepted_build_plan_is_canonical_deterministic_and_caller_independent() {
+    let source_revision_id = SourceRevisionId::from_uuid(
+        Uuid::parse_str("018f0f70-0000-7000-8000-000000000001").expect("Source revision ID"),
+    );
+    let proposal = BuildPlanProposal::parse_acl(BUILD_PLAN_FIXTURE).expect("proposal fixture");
+    let contract = AcceptedBuildPlanContract::from_proposal(source_revision_id, proposal)
+        .expect("accepted contract");
+    assert_eq!(contract.canonical_acl(), ACCEPTED_BUILD_PLAN_FIXTURE);
+    assert_eq!(
+        contract.digest().as_str(),
+        "sha256:f6e940409aff4da48f6100ceeebda852e5aa27c2d540044a0b67bdfd482d8c44"
+    );
+    assert_eq!(
+        AcceptedBuildPlanContract::parse_acl(contract.canonical_acl()).expect("round trip"),
+        contract
+    );
+
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let at = Utc
+        .with_ymd_and_hms(2026, 8, 24, 0, 0, 0)
+        .single()
+        .expect("timestamp");
+    let first = AcceptedBuildPlan::accept(
+        organization_id,
+        project_id,
+        environment_id,
+        contract.clone(),
+        PrincipalId::new(),
+        at,
+    )
+    .expect("first acceptance");
+    let second = AcceptedBuildPlan::accept(
+        organization_id,
+        project_id,
+        environment_id,
+        contract.clone(),
+        PrincipalId::new(),
+        at + Duration::seconds(1),
+    )
+    .expect("second caller");
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.contract.digest(), second.contract.digest());
+    assert_ne!(first.accepted_by, second.accepted_by);
+
+    let unknown = contract.canonical_acl().replace(
+        "  schema = \"a3s.cloud.build-plan.v1\"\n",
+        "  schema = \"a3s.cloud.build-plan.v1\"\n  unknown = true\n",
+    );
+    assert!(AcceptedBuildPlanContract::parse_acl(&unknown).is_err());
+    let wrong_proposal_digest = contract.canonical_acl().replace(
+        contract.spec().proposal.digest().as_str(),
+        &format!("sha256:{}", "0".repeat(64)),
+    );
+    assert!(AcceptedBuildPlanContract::parse_acl(&wrong_proposal_digest).is_err());
 }
 
 #[test]
