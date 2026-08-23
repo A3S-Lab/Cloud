@@ -9,7 +9,7 @@ use crate::modules::security::domain::{
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, RouteId};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{
-    bound, coalesce, select_from, sql_function, Database, OrderDirection, PostgresDialect,
+    bound, cast, coalesce, select_from, sql_function, Database, OrderDirection, PostgresDialect,
     PostgresExecutor,
 };
 use async_trait::async_trait;
@@ -49,28 +49,30 @@ impl IGatewayRoutePolicyTimelineRepository for PostgresGatewayRoutePolicyTimelin
             AuditRecords::audit_id().expression(),
             bound::<Uuid>(Uuid::nil()).expression(),
         ]);
+        let text_key =
+            |key: &'static str| cast::<String, String>(bound::<String>(key), "text").expression();
         let event_document = sql_function::<Value>(
             "jsonb_build_object",
             [
-                bound::<String>("event_id").expression(),
+                text_key("event_id"),
                 OutboxEvents::event_id().expression(),
-                bound::<String>("event_key").expression(),
+                text_key("event_key"),
                 OutboxEvents::event_key().expression(),
-                bound::<String>("schema_version").expression(),
+                text_key("schema_version"),
                 OutboxEvents::schema_version().expression(),
-                bound::<String>("organization_id").expression(),
+                text_key("organization_id"),
                 OutboxEvents::organization_id().expression(),
-                bound::<String>("aggregate_id").expression(),
+                text_key("aggregate_id"),
                 OutboxEvents::aggregate_id().expression(),
-                bound::<String>("aggregate_version").expression(),
+                text_key("aggregate_version"),
                 OutboxEvents::aggregate_version().expression(),
-                bound::<String>("occurred_at").expression(),
+                text_key("occurred_at"),
                 OutboxEvents::occurred_at().expression(),
-                bound::<String>("correlation_id").expression(),
+                text_key("correlation_id"),
                 OutboxEvents::correlation_id().expression(),
-                bound::<String>("causation_id").expression(),
+                text_key("causation_id"),
                 OutboxEvents::causation_id().expression(),
-                bound::<String>("payload").expression(),
+                text_key("payload"),
                 OutboxEvents::payload().expression(),
             ],
         );

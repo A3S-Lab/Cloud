@@ -19,4 +19,5 @@ fn security_timeline_reuses_typed_owner_facts_without_reading_private_audit_deta
     assert!(source.contains("select_from::<OutboxEvents>()"));
     assert!(source.contains("left_join::<AuditRecords>"));
     assert!(source.contains("jsonb_build_object"));
+    assert!(source.contains("cast::<String, String>(bound::<String>(key), \"text\")"));
 }
