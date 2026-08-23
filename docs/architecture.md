@@ -318,7 +318,7 @@ Correctness must remain intact when Redis is empty or unavailable. It never
 owns conversations, commands, queues, locks, cursors, approvals, checkpoints,
 leases, desired state, or durable usage.
 
-Frozen `C0.3-PA2b` keeps signed audit export inside that Audit boundary. It
+Implemented `C0.3-PA2b` keeps signed audit export inside that Audit boundary. It
 canonicalizes one bounded, explicitly time-windowed page from the existing
 redacted read projection and signs only its DSSE pre-authentication encoding
 through an Audit-owned port. The composition root reuses the existing local or

@@ -346,6 +346,27 @@ redacted `profile_missing` projection. The [complete PA2a CI
 run](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460) passes all ten
 jobs.
 
+## Signed audit page export
+
+REST contract `1.57.0` adds the read-only
+`a3s_cloud_audit_records_export` tool over the exact same owner/admin Audit
+query. Callers must provide inclusive RFC 3339 `from` and `to` timestamps no
+more than 31 days apart and may reuse every existing redacted filter, opaque
+cursor, and one-through-200 limit. The tool returns one canonical
+`a3s.cloud.audit-export.v1` page in a DSSE envelope with an Ed25519 signature,
+SHA-256 key ID, public key, and optional Vault key version for offline
+verification. The embedded public key proves signature consistency, not
+deployment identity by itself; an offline consumer must compare it or its key
+ID with an independently trusted fingerprint.
+
+The export contains only the same eleven public `AuditRecord` fields. It never
+contains shared `details`, attribution profile contents, signing secrets,
+prompts, responses, or commercial data. REST and MCP dispatch the same query
+handler and signer port; signer failure and malformed output fail closed. This
+single read-only addition takes the exact catalogs to 134 administrator and 74
+`cloud:read` tools and adds no repository, export table, object copy, retention
+deletion, queue, scheduler, or SIEM push.
+
 ## Recipient-contact self-service
 
 `a3s_cloud_recipient_contacts_list` and
@@ -778,7 +799,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 133-tool administrator and 73-tool
+current focused source runner requires exact 134-tool administrator and 74-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

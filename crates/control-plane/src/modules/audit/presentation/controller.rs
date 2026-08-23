@@ -1,6 +1,6 @@
-use super::dto::AuditRecordPageResponse;
+use super::dto::{AuditExportResponse, AuditRecordPageResponse};
 use crate::modules::audit::application::{
-    ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
+    ExportAuditRecords, ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
 };
 use crate::modules::audit::domain::{AuditAttributionStatus, AuditRecordFilter};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -21,45 +21,50 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
+    let export_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_guard(OrganizationAdministratorGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+        .get(
+            "/{organization_id}/audit-records/export",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&export_bus);
+                async move {
+                    let parameters: AuditRecordParameters = request.query()?;
+                    parameters.validate_limit()?;
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(ExportAuditRecords {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            filter: parameters.filter(),
+                            cursor: parameters.cursor,
+                            limit: parameters.limit,
+                        })
+                        .await?
+                    {
+                        Ok(export) => BootResponse::json(&AuditExportResponse::from(export)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .get(
             "/{organization_id}/audit-records",
             move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
                 async move {
                     let parameters: AuditRecordParameters = request.query()?;
-                    if parameters.limit == 0 || parameters.limit > MAXIMUM_AUDIT_RECORD_LIMIT {
-                        return Err(BootError::BadRequest(format!(
-                            "audit record limit must be between 1 and {MAXIMUM_AUDIT_RECORD_LIMIT}"
-                        )));
-                    }
+                    parameters.validate_limit()?;
                     let request_id = request_id(&request)?;
                     match bus
                         .execute(ListAuditRecords {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            filter: AuditRecordFilter {
-                                actor_principal_id: parameters
-                                    .actor_principal_id
-                                    .map(PrincipalId::from_uuid),
-                                action: parameters.action,
-                                aggregate_id: parameters.aggregate_id,
-                                request_id: parameters.request_id,
-                                project_id: parameters.project_id.map(ProjectId::from_uuid),
-                                environment_id: parameters
-                                    .environment_id
-                                    .map(EnvironmentId::from_uuid),
-                                attribution_profile_id: parameters
-                                    .attribution_profile_id
-                                    .map(ProjectAttributionProfileId::from_uuid),
-                                attribution_status: parameters.attribution_status,
-                                from: parameters.from,
-                                to: parameters.to,
-                            },
+                            filter: parameters.filter(),
                             cursor: parameters.cursor,
                             limit: parameters.limit,
                         })
@@ -100,6 +105,34 @@ struct AuditRecordParameters {
     cursor: Option<String>,
     #[serde(default = "default_limit")]
     limit: usize,
+}
+
+impl AuditRecordParameters {
+    fn validate_limit(&self) -> Result<()> {
+        if self.limit == 0 || self.limit > MAXIMUM_AUDIT_RECORD_LIMIT {
+            return Err(BootError::BadRequest(format!(
+                "audit record limit must be between 1 and {MAXIMUM_AUDIT_RECORD_LIMIT}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn filter(&self) -> AuditRecordFilter {
+        AuditRecordFilter {
+            actor_principal_id: self.actor_principal_id.map(PrincipalId::from_uuid),
+            action: self.action.clone(),
+            aggregate_id: self.aggregate_id,
+            request_id: self.request_id,
+            project_id: self.project_id.map(ProjectId::from_uuid),
+            environment_id: self.environment_id.map(EnvironmentId::from_uuid),
+            attribution_profile_id: self
+                .attribution_profile_id
+                .map(ProjectAttributionProfileId::from_uuid),
+            attribution_status: self.attribution_status,
+            from: self.from,
+            to: self.to,
+        }
+    }
 }
 
 const fn default_limit() -> usize {

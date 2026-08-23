@@ -428,6 +428,12 @@ fn operation_description(
                 .into(),
         );
     }
+    if method == "get" && path.ends_with("/audit-records/export") {
+        sentences.push(
+            "The inclusive from/to window is required and may span at most 31 days; the result is one canonical redacted page in a verifiable Ed25519 DSSE envelope."
+                .into(),
+        );
+    }
     if path.ends_with("/stream") {
         sentences.push(
             "The response is a resumable server-sent event stream; reconnect with the documented cursor or Last-Event-ID value."
@@ -463,6 +469,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         ("get", "/health/live") => return "Check control-plane liveness".into(),
         ("get", "/health/ready") => return "Check control-plane readiness".into(),
         ("get", "/platform") => return "Get platform diagnostics".into(),
+        ("get", "/organizations/{organization_id}/audit-records/export") => {
+            return "Export a signed audit page".into()
+        }
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
         ("post", "/webhooks/github") => return "Receive a GitHub webhook".into(),
         ("get", "/organizations/{organization_id}/search") => {
@@ -854,8 +863,8 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
         "actorPrincipalId" => "Principal UUID used to filter audit records by actor.".into(),
         "aggregateId" => "Aggregate UUID used to filter audit records by target.".into(),
         "requestId" => "Request UUID used to correlate an audit record with an API call.".into(),
-        "projectId" if path.ends_with("/audit-records") => "Exact request-time Project UUID used to filter audit records.".into(),
-        "environmentId" if path.ends_with("/audit-records") => "Exact request-time child Environment UUID used to filter audit records.".into(),
+        "projectId" if path.contains("/audit-records") => "Exact request-time Project UUID used to filter audit records.".into(),
+        "environmentId" if path.contains("/audit-records") => "Exact request-time child Environment UUID used to filter audit records.".into(),
         "attributionProfileId" => "Immutable request-time Project attribution-profile UUID used to filter audit records.".into(),
         "attributionStatus" => "Closed request-time Project attribution status used to filter audit records.".into(),
         "code" => "Short-lived authorization code returned by the identity provider.".into(),
@@ -880,6 +889,9 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
 }
 
 fn response_data_description(method: &str, path: &str, summary: &str) -> String {
+    if method == "get" && path.ends_with("/audit-records/export") {
+        return "One canonical redacted audit page in a DSSE envelope with its Ed25519 public verification key and key identity.".into();
+    }
     if path.ends_with("/stream") {
         return format!(
             "A resumable stream for {}.",

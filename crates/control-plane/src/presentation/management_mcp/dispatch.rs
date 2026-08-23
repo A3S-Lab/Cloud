@@ -11,7 +11,7 @@ use super::arguments::{
     RouteArguments, WorkloadArguments, WorkloadLogArguments,
 };
 use super::artifacts::BuildRunMutationArguments;
-use super::audit::AuditRecordListArguments;
+use super::audit::{AuditRecordExportArguments, AuditRecordListArguments};
 use super::catalog::ManagementTool;
 use super::connectors::{
     ConnectorProfileArguments, ConnectorRevisionArguments, CreateConnectorProfileArguments,
@@ -1192,6 +1192,10 @@ pub async fn execute(
         ManagementTool::AuditRecordsList => {
             let arguments = arguments::parse::<AuditRecordListArguments>(arguments).ok()?;
             audit::list_audit_records(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::AuditRecordsExport => {
+            let arguments = arguments::parse::<AuditRecordExportArguments>(arguments).ok()?;
+            audit::export_audit_records(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::SecurityGatewayRoutePolicyTimelineList => {
             let arguments =

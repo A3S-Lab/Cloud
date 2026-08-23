@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { AuditRecordPage, CloudFetch } from '@a3s/cloud-client';
+import type { AuditExport, AuditRecordPage, CloudFetch } from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
@@ -28,6 +28,19 @@ const PAGE: AuditRecordPage = {
     },
   ],
   nextCursor: `v1:1786582923000000:${AUDIT_ID}`,
+};
+
+const SIGNED_EXPORT: AuditExport = {
+  envelope: {
+    payloadType: 'application/vnd.a3s.cloud.audit-export.v1+json',
+    payload: 'e30=',
+    signatures: [{ keyId: 'a'.repeat(64), signature: 'c2lnbmF0dXJl' }],
+  },
+  signingKey: {
+    algorithm: 'ed25519',
+    keyId: 'a'.repeat(64),
+    publicKey: 'cHVibGljLWtleQ==',
+  },
 };
 
 function envelope(data: unknown): Response {
@@ -60,7 +73,7 @@ function capture() {
   };
 }
 
-describe('audit-records list command', () => {
+describe('audit-records commands', () => {
   it('calls the shared bounded client query and renders redacted history', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -107,6 +120,32 @@ describe('audit-records list command', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('exports the complete signed envelope for an explicit bounded window', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(
+      ['audit-records', 'export', '--from=2026-08-01T00:00:00Z', '--to=2026-08-13T00:00:00Z', '--limit=25'],
+      {
+        ...output.runtime,
+        environment: {
+          A3S_CLOUD_TOKEN: 'token',
+          A3S_CLOUD_ORGANIZATION_ID: ORGANIZATION_ID,
+        },
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope(SIGNED_EXPORT);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(String(calls[0]?.[0])).toContain(`/organizations/${ORGANIZATION_ID}/audit-records/export?`);
+    expect(String(calls[0]?.[0])).toContain('from=2026-08-01T00%3A00%3A00Z');
+    expect(output.stdout()).toContain('application/vnd.a3s.cloud.audit-export.v1+json');
+    expect(output.stdout()).toContain('"payload": "e30="');
+    expect(output.stderr()).toBe('');
+  });
+
   it.each([
     [['audit-records', 'list', '--limit=0'], 'audit record limit must be between 1 and 200'],
     [['audit-records', 'list', '--cursor='], 'option --cursor requires a value'],
@@ -115,6 +154,11 @@ describe('audit-records list command', () => {
     [
       ['audit-records', 'list', '--from=2026-08-14T00:00:00Z', '--to=2026-08-13T00:00:00Z'],
       'audit from timestamp must not exceed to timestamp',
+    ],
+    [['audit-records', 'export', '--from=2026-08-01T00:00:00Z'], '--to is required'],
+    [
+      ['audit-records', 'export', '--from=2026-07-01T00:00:00Z', '--to=2026-08-02T00:00:00Z'],
+      'audit export window must not exceed 31 days',
     ],
     [['organizations', 'list', `--request-id=${REQUEST_ID}`], '--actor-principal, --action, --aggregate'],
   ])('rejects invalid or misplaced options before transport %#', async (argv, message) => {

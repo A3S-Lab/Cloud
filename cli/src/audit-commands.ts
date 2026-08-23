@@ -2,8 +2,10 @@ import {
   DEFAULT_AUDIT_RECORD_LIMIT,
   MAX_AUDIT_RECORD_LIMIT,
   type AuditAttributionStatus,
+  type AuditExportQuery,
   type AuditRecordQuery,
   type CloudApi,
+  encodeAuditExportQuery,
   encodeAuditRecordQuery,
 } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
@@ -18,9 +20,10 @@ import type { CloudContext } from './context';
 import { parseUuid, requireOrganization } from './context';
 import { usageError } from './errors';
 import type { CommandResult } from './results';
-import { auditRecordsResult } from './audit-results';
+import { auditExportResult, auditRecordsResult } from './audit-results';
 
-const AUDIT_COMMAND = 'audit-records list';
+const AUDIT_LIST_COMMAND = 'audit-records list';
+const AUDIT_EXPORT_COMMAND = 'audit-records export';
 
 export async function executeAuditCommand(
   command: string,
@@ -28,10 +31,10 @@ export async function executeAuditCommand(
   context: CloudContext,
   cloudApi: () => CloudApi
 ): Promise<CommandResult | undefined> {
-  if (command !== AUDIT_COMMAND) {
+  if (command !== AUDIT_LIST_COMMAND && command !== AUDIT_EXPORT_COMMAND) {
     return undefined;
   }
-  requireArity(arguments_.positionals, 2, AUDIT_COMMAND);
+  requireArity(arguments_.positionals, 2, command);
   rejectIdempotencyOption(arguments_);
   rejectFileOption(arguments_);
   rejectExpectedVersionOption(arguments_);
@@ -40,7 +43,7 @@ export async function executeAuditCommand(
     throw usageError('--stream is valid only for log commands');
   }
 
-  const query: AuditRecordQuery = {
+  const selection = {
     actorPrincipalId: optionalUuid(arguments_.auditActorPrincipalId, 'audit actor Principal ID'),
     action: arguments_.auditAction,
     aggregateId: optionalUuid(arguments_.auditAggregateId, 'audit aggregate ID'),
@@ -49,10 +52,29 @@ export async function executeAuditCommand(
     environmentId: optionalUuid(arguments_.environmentId, 'audit Environment ID'),
     attributionProfileId: optionalUuid(arguments_.auditAttributionProfileId, 'audit attribution profile ID'),
     attributionStatus: arguments_.auditAttributionStatus as AuditAttributionStatus | undefined,
-    from: arguments_.auditFrom,
-    to: arguments_.auditTo,
     cursor: arguments_.cursor,
     limit: auditLimit(arguments_.limit),
+  };
+  if (command === AUDIT_EXPORT_COMMAND) {
+    const query: AuditExportQuery = {
+      ...selection,
+      from: requireAuditTimestamp(arguments_.auditFrom, '--from'),
+      to: requireAuditTimestamp(arguments_.auditTo, '--to'),
+    };
+    try {
+      encodeAuditExportQuery(query);
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof RangeError) {
+        throw usageError(error.message);
+      }
+      throw error;
+    }
+    return auditExportResult(await cloudApi().exportAuditRecords(requireOrganization(context), query));
+  }
+  const query: AuditRecordQuery = {
+    ...selection,
+    from: arguments_.auditFrom,
+    to: arguments_.auditTo,
   };
   try {
     encodeAuditRecordQuery(query);
@@ -66,7 +88,7 @@ export async function executeAuditCommand(
 }
 
 export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedArguments): void {
-  if (command === AUDIT_COMMAND) {
+  if (command === AUDIT_LIST_COMMAND || command === AUDIT_EXPORT_COMMAND) {
     return;
   }
   if (
@@ -80,9 +102,16 @@ export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedA
     arguments_.auditTo !== undefined
   ) {
     throw usageError(
-      '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list'
+      '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list or export'
     );
   }
+}
+
+function requireAuditTimestamp(value: string | undefined, option: string): string {
+  if (value === undefined) {
+    throw usageError(`${option} is required for audit-records export`);
+  }
+  return value;
 }
 
 function optionalUuid(value: string | undefined, label: string): string | undefined {

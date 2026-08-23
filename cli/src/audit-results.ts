@@ -1,4 +1,4 @@
-import type { AuditRecord, AuditRecordPage } from '@a3s/cloud-client';
+import type { AuditExport, AuditRecord, AuditRecordPage } from '@a3s/cloud-client';
 import { renderTable, sanitizeCell, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
@@ -20,5 +20,12 @@ export function auditRecordsResult(page: AuditRecordPage): CommandResult {
   return {
     json: page,
     table: page.nextCursor ? `${table}Next cursor: ${sanitizeCell(page.nextCursor)}\n` : table,
+  };
+}
+
+export function auditExportResult(export_: AuditExport): CommandResult {
+  return {
+    json: export_,
+    table: `${JSON.stringify(export_, null, 2)}\n`,
   };
 }

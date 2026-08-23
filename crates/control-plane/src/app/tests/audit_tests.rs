@@ -176,6 +176,59 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         "profile_bound"
     );
 
+    let export_from = url::form_urlencoded::byte_serialize(
+        (now - chrono::Duration::seconds(1)).to_rfc3339().as_bytes(),
+    )
+    .collect::<String>();
+    let export_to = url::form_urlencoded::byte_serialize(
+        (now + chrono::Duration::seconds(3)).to_rfc3339().as_bytes(),
+    )
+    .collect::<String>();
+    let export = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/audit-records/export?from={export_from}&to={export_to}&limit=2"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(export.status(), 200);
+    let export = response_json(&export)?;
+    let payload = verified_audit_export_payload(&export["data"])?;
+    assert_eq!(payload["schema"], "a3s.cloud.audit-export.v1");
+    assert_eq!(payload["organizationId"], organization);
+    assert_eq!(payload["filter"]["limit"], 2);
+    assert_eq!(payload["records"].as_array().map(Vec::len), Some(2));
+    assert!(payload["nextCursor"].is_string());
+    assert!(!payload.to_string().contains("details"));
+    for private in ["labels", "businessOwnerReference", "costAttributionCode"] {
+        assert!(!payload.to_string().contains(private));
+    }
+
+    let export_mcp = app
+        .call(mcp_tool_call_as(
+            3,
+            "a3s_cloud_audit_records_export",
+            json!({
+                "from": (now - chrono::Duration::seconds(1)).to_rfc3339(),
+                "to": (now + chrono::Duration::seconds(3)).to_rfc3339(),
+                "attributionStatus": "profile_bound",
+                "limit": 1
+            }),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(export_mcp.status(), 200);
+    let export_mcp = response_json(&export_mcp)?;
+    assert_eq!(export_mcp["result"]["isError"], false);
+    let mcp_payload =
+        verified_audit_export_payload(&export_mcp["result"]["structuredContent"]["data"])?;
+    assert_eq!(mcp_payload["records"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        mcp_payload["records"][0]["attributionStatus"],
+        "profile_bound"
+    );
+
     let filtered = app
         .call(get_as(
             format!(
@@ -207,6 +260,15 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         ))
         .await?;
     assert_eq!(member_denied.status(), 403);
+    let member_export_denied = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/audit-records/export?from={export_from}&to={export_to}"
+            ),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_export_denied.status(), 403);
     let member_mcp = app
         .call(mcp_tool_call_as(
             2,
@@ -217,6 +279,19 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         .await?;
     assert_eq!(member_mcp.status(), 200);
     assert_eq!(response_json(&member_mcp)?["error"]["code"], -32602);
+    let member_export_mcp = app
+        .call(mcp_tool_call_as(
+            4,
+            "a3s_cloud_audit_records_export",
+            json!({
+                "from": now.to_rfc3339(),
+                "to": (now + chrono::Duration::seconds(3)).to_rfc3339()
+            }),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_export_mcp.status(), 200);
+    assert_eq!(response_json(&member_export_mcp)?["error"]["code"], -32602);
     let cross_tenant = app
         .call(get_as(
             format!("/api/v1/organizations/{other_organization}/audit-records"),
@@ -248,8 +323,72 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
             response.status()
         );
     }
+    for suffix in [
+        "to=2026-08-13T00%3A00%3A00Z",
+        "from=2026-07-01T00%3A00%3A00Z&to=2026-08-02T00%3A00%3A00Z",
+    ] {
+        let response = app
+            .call(get_as(
+                format!("/api/v1/organizations/{organization}/audit-records/export?{suffix}"),
+                ADMIN_TOKEN,
+            ))
+            .await?;
+        assert!(
+            matches!(response.status(), 400 | 422),
+            "unexpected export status for {suffix}: {}",
+            response.status()
+        );
+    }
     assert_eq!(audit.query_count(), query_count);
     Ok(())
+}
+
+fn verified_audit_export_payload(export: &Value) -> Result<Value> {
+    let payload_type = export["envelope"]["payloadType"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("audit export payload type is missing".into()))?;
+    assert_eq!(
+        payload_type,
+        "application/vnd.a3s.cloud.audit-export.v1+json"
+    );
+    let payload = STANDARD
+        .decode(
+            export["envelope"]["payload"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("audit export payload is missing".into()))?,
+        )
+        .map_err(|error| BootError::Internal(format!("invalid audit export payload: {error}")))?;
+    let signature = STANDARD
+        .decode(
+            export["envelope"]["signatures"][0]["signature"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("audit export signature is missing".into()))?,
+        )
+        .map_err(|error| BootError::Internal(format!("invalid audit export signature: {error}")))?;
+    let public_key = STANDARD
+        .decode(
+            export["signingKey"]["publicKey"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("audit export public key is missing".into()))?,
+        )
+        .map_err(|error| {
+            BootError::Internal(format!("invalid audit export public key: {error}"))
+        })?;
+    let key_id = format!("{:x}", Sha256::digest(&public_key));
+    assert_eq!(export["signingKey"]["algorithm"], "ed25519");
+    assert_eq!(export["signingKey"]["keyId"], key_id);
+    assert_eq!(export["envelope"]["signatures"][0]["keyId"], key_id);
+    let pae = crate::modules::shared_kernel::domain::dsse_pae_bounded(
+        payload_type,
+        &payload,
+        crate::modules::audit::MAXIMUM_AUDIT_EXPORT_BYTES,
+    )
+    .map_err(BootError::Internal)?;
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key)
+        .verify(&pae, &signature)
+        .map_err(|_| BootError::Internal("audit export signature did not verify".into()))?;
+    serde_json::from_slice(&payload)
+        .map_err(|error| BootError::Internal(format!("invalid audit export document: {error}")))
 }
 
 fn parse_audit_uuid(value: &str) -> Result<Uuid> {

@@ -1,10 +1,10 @@
-use crate::modules::audit::domain::{
-    AuditRecordCursor, AuditRecordFilter, AuditRecordPage, IAuditRecordRepository,
-};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::audit::domain::{AuditRecordFilter, AuditRecordPage, IAuditRecordRepository};
+use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
+
+use super::audit_record_page::query_audit_record_page;
 
 pub const DEFAULT_AUDIT_RECORD_LIMIT: usize = 50;
 pub const MAXIMUM_AUDIT_RECORD_LIMIT: usize = 200;
@@ -39,38 +39,14 @@ impl QueryHandler<ListAuditRecords> for ListAuditRecordsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<AuditRecordPage>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
-            if query.limit == 0 || query.limit > MAXIMUM_AUDIT_RECORD_LIMIT {
-                return Ok(Err(ApplicationError::Invalid(format!(
-                    "audit record limit must be between 1 and {MAXIMUM_AUDIT_RECORD_LIMIT}"
-                ))));
-            }
-            if let Err(error) = query.filter.validate() {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
-            let cursor = match query.cursor.as_deref().map(AuditRecordCursor::parse) {
-                Some(Ok(value)) => Some(value),
-                Some(Err(error)) => return Ok(Err(ApplicationError::Invalid(error))),
-                None => None,
-            };
-            let mut records = match repository
-                .list_page(
-                    query.organization_id,
-                    &query.filter,
-                    cursor,
-                    query.limit + 1,
-                )
-                .await
-            {
-                Ok(records) => records,
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let next_cursor = (records.len() > query.limit)
-                .then(|| AuditRecordCursor::after(&records[query.limit - 1]).encode());
-            records.truncate(query.limit);
-            Ok(Ok(AuditRecordPage {
-                records,
-                next_cursor,
-            }))
+            Ok(query_audit_record_page(
+                repository.as_ref(),
+                query.organization_id,
+                &query.filter,
+                query.cursor.as_deref(),
+                query.limit,
+            )
+            .await)
         })
     }
 }

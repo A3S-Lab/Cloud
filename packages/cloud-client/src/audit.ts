@@ -25,6 +25,53 @@ export interface AuditRecordPage {
   nextCursor: string | null;
 }
 
+export interface AuditExportDsseSignature {
+  keyId: string;
+  signature: string;
+}
+
+export interface AuditExportDsseEnvelope {
+  payloadType: 'application/vnd.a3s.cloud.audit-export.v1+json';
+  payload: string;
+  signatures: AuditExportDsseSignature[];
+}
+
+export interface AuditExportSigningKey {
+  algorithm: 'ed25519';
+  keyId: string;
+  publicKey: string;
+  keyVersion?: number;
+}
+
+export interface AuditExport {
+  envelope: AuditExportDsseEnvelope;
+  signingKey: AuditExportSigningKey;
+}
+
+export interface AuditExportFilter {
+  actorPrincipalId: string | null;
+  action: string | null;
+  aggregateId: string | null;
+  requestId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+  attributionProfileId: string | null;
+  attributionStatus: AuditAttributionStatus | null;
+  from: string;
+  to: string;
+  limit: number;
+}
+
+export interface AuditExportDocument {
+  schema: 'a3s.cloud.audit-export.v1';
+  organizationId: string;
+  filter: AuditExportFilter;
+  cursor: string | null;
+  generatedAt: string;
+  records: AuditRecord[];
+  nextCursor: string | null;
+}
+
 export interface AuditRecordQuery {
   actorPrincipalId?: string;
   action?: string;
@@ -40,8 +87,14 @@ export interface AuditRecordQuery {
   limit?: number;
 }
 
+export type AuditExportQuery = Omit<AuditRecordQuery, 'from' | 'to'> & {
+  from: string;
+  to: string;
+};
+
 export const DEFAULT_AUDIT_RECORD_LIMIT = 50;
 export const MAX_AUDIT_RECORD_LIMIT = 200;
+export const MAX_AUDIT_EXPORT_WINDOW_DAYS = 31;
 
 const ACTION_PATTERN = /^[a-z-]+(?:\.[a-z-]+){2,}$/;
 
@@ -101,5 +154,17 @@ export function encodeAuditRecordQuery(query: AuditRecordQuery = {}): URLSearchP
     throw new RangeError(`audit record limit must be between 1 and ${MAX_AUDIT_RECORD_LIMIT}`);
   }
   parameters.set('limit', String(limit));
+  return parameters;
+}
+
+export function encodeAuditExportQuery(query: AuditExportQuery): URLSearchParams {
+  if (query.from === undefined || query.to === undefined) {
+    throw new TypeError('audit export requires both from and to timestamps');
+  }
+  const parameters = encodeAuditRecordQuery(query);
+  const windowMilliseconds = Date.parse(query.to) - Date.parse(query.from);
+  if (windowMilliseconds > MAX_AUDIT_EXPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000) {
+    throw new RangeError(`audit export window must not exceed ${MAX_AUDIT_EXPORT_WINDOW_DAYS} days`);
+  }
   return parameters;
 }

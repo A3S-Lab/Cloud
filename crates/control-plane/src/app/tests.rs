@@ -7,8 +7,14 @@ use crate::config::{
     SmtpConfig, SourcesConfig,
 };
 use crate::modules::agents::InMemoryAgentRepository;
-use crate::modules::artifacts::InMemoryBuildRunRepository;
-use crate::modules::audit::{AuditAttributionStatus, AuditRecord, InMemoryAuditRecordRepository};
+use crate::modules::artifacts::{
+    BuildEvidenceSigningError, BuildEvidenceSigningKey, IBuildEvidenceSigner,
+    InMemoryBuildRunRepository, VerifiedBuildEvidenceSignature,
+};
+use crate::modules::audit::{
+    AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecord,
+    IAuditExportSigner, InMemoryAuditRecordRepository, VerifiedAuditExportSignature,
+};
 use crate::modules::connectors::InMemoryConnectorProfileRepository;
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
@@ -69,12 +75,123 @@ use a3s_use_extension::{
     PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage, PluginCatalogSearch,
     VerifiedRegistryMetadata, MAX_BOOTSTRAP_ROOT_BYTES,
 };
-use base64::engine::general_purpose::STANDARD_NO_PAD;
+use async_trait::async_trait;
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+struct TestAuditExportSigner {
+    key: Ed25519KeyPair,
+    key_id: String,
+}
+
+impl TestAuditExportSigner {
+    fn new() -> Self {
+        let key = Ed25519KeyPair::from_seed_unchecked(&[0x43; 32])
+            .expect("test audit export Ed25519 key");
+        let key_id = format!("{:x}", Sha256::digest(key.public_key().as_ref()));
+        Self { key, key_id }
+    }
+}
+
+#[async_trait]
+impl IAuditExportSigner for TestAuditExportSigner {
+    async fn sign(
+        &self,
+        pae: &[u8],
+    ) -> std::result::Result<VerifiedAuditExportSignature, AuditExportSigningError> {
+        VerifiedAuditExportSignature::new(
+            AuditExportSigningKey {
+                algorithm: "ed25519".into(),
+                key_id: self.key_id.clone(),
+                public_key: STANDARD.encode(self.key.public_key().as_ref()),
+                key_version: None,
+            },
+            self.key.sign(pae).as_ref().to_vec(),
+        )
+    }
+}
+
+struct VersionedBuildEvidenceSigner {
+    key: BuildEvidenceSigningKey,
+}
+
+#[async_trait]
+impl IBuildEvidenceSigner for VersionedBuildEvidenceSigner {
+    async fn sign(
+        &self,
+        _pae: &[u8],
+    ) -> std::result::Result<VerifiedBuildEvidenceSignature, BuildEvidenceSigningError> {
+        VerifiedBuildEvidenceSignature::new(self.key.clone(), vec![0x31; 64])
+    }
+}
+
+#[tokio::test]
+async fn audit_export_composition_preserves_external_signing_key_versions() {
+    let key = Ed25519KeyPair::from_seed_unchecked(&[0x71; 32]).expect("Ed25519 key");
+    let public_key = key.public_key().as_ref();
+    let signer = BuildEvidenceAuditExportSigner {
+        signer: Arc::new(VersionedBuildEvidenceSigner {
+            key: BuildEvidenceSigningKey {
+                algorithm: "ed25519".into(),
+                key_id: format!("sha256:{:x}", Sha256::digest(public_key)),
+                public_key: STANDARD.encode(public_key),
+                key_version: Some(7),
+            },
+        }),
+    };
+
+    let signature = signer.sign(b"DSSEv1 1 x 0 ").await.expect("signature");
+    assert_eq!(
+        signature.key.key_id,
+        format!("{:x}", Sha256::digest(public_key))
+    );
+    assert_eq!(signature.key.key_version, Some(7));
+    assert_eq!(signature.signature, vec![0x31; 64]);
+}
+
+#[tokio::test]
+async fn audit_export_composition_reloads_one_purpose_separated_local_key() {
+    let root = tempfile::tempdir().expect("security state directory");
+    let mut config = config();
+    config.security.state_dir = root.path().to_string_lossy().into_owned();
+    let pae = b"DSSEv1 1 x 0 ";
+
+    let first = audit_export_signer(&config, None)
+        .await
+        .expect("first audit export signer")
+        .sign(pae)
+        .await
+        .expect("first signature");
+    let second = audit_export_signer(&config, None)
+        .await
+        .expect("reloaded audit export signer")
+        .sign(pae)
+        .await
+        .expect("reloaded signature");
+
+    assert_eq!(first.key, second.key);
+    assert_eq!(first.key.key_version, None);
+    assert!(root.path().join("audit-export/signing-key.pk8").is_file());
+    let public_key = STANDARD
+        .decode(&first.key.public_key)
+        .expect("audit export public key");
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key)
+        .verify(pae, &first.signature)
+        .expect("first audit export signature");
+    ring::signature::UnparsedPublicKey::new(
+        &ring::signature::ED25519,
+        STANDARD
+            .decode(&second.key.public_key)
+            .expect("reloaded audit export public key"),
+    )
+    .verify(pae, &second.signature)
+    .expect("reloaded audit export signature");
+}
 
 mod agent_execution_tests;
 mod api_contract_tests;
@@ -1052,6 +1169,7 @@ fn config() -> CloudConfig {
             gateway_certificate_authority: SecurityProviderKind::Local,
             key_encryption: SecurityProviderKind::Local,
             build_evidence_signing: SecurityProviderKind::Local,
+            audit_export_signing: SecurityProviderKind::Local,
             recipient_contact_proof: SecurityProviderKind::Local,
             recipient_contact_proof_key_id: "recipient-contact-v1".into(),
             vault_address_env: "A3S_CLOUD_VAULT_ADDR".into(),
@@ -1063,6 +1181,7 @@ fn config() -> CloudConfig {
             vault_transit_mount: "transit".into(),
             vault_transit_key: "a3s-cloud".into(),
             vault_build_evidence_signing_key: "a3s-cloud-build-evidence".into(),
+            vault_audit_export_signing_key: "a3s-cloud-audit-export".into(),
             vault_recipient_contact_proof_key: "a3s-cloud-recipient-contact-proof".into(),
             vault_timeout_ms: 5_000,
         },
@@ -1860,6 +1979,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
+            audit_export_signer: Arc::new(TestAuditExportSigner::new()),
             security_investigations: security_investigations
                 .unwrap_or_else(|| Arc::new(InMemoryGatewayRoutePolicyTimelineRepository::new())),
             notifications,

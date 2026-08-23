@@ -43,7 +43,11 @@ use crate::modules::assets::{
     ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
     UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
-use crate::modules::audit::{AuditModule, IAuditRecordRepository, ListAuditRecordsHandler};
+use crate::modules::audit::{
+    AuditExportSigningError, AuditExportSigningKey, AuditModule, ExportAuditRecordsHandler,
+    IAuditExportSigner, IAuditRecordRepository, ListAuditRecordsHandler,
+    VerifiedAuditExportSignature,
+};
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
@@ -269,6 +273,7 @@ use a3s_boot::{
 use a3s_event::{NatsConfig, StorageType};
 use a3s_orm::PostgresExecutor;
 use a3s_use_extension::MAX_BOOTSTRAP_ROOT_BYTES;
+use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -457,6 +462,11 @@ async fn build_api_worker_application(
         None
     };
     let vault_credentials = config.vault_credentials()?;
+    let audit_export_signer = if config.server.role.serves_management_api() {
+        Some(audit_export_signer(&config, vault_credentials.as_ref()).await?)
+    } else {
+        None
+    };
     let key_encryption = key_encryption_provider(&config, vault_credentials.as_ref())?;
     let recipient_contact_proof =
         recipient_contact_proof_provider(&config, vault_credentials.as_ref())?;
@@ -1560,6 +1570,11 @@ async fn build_api_worker_application(
                 form_semantic_core,
                 search,
                 audit_records,
+                audit_export_signer: audit_export_signer.ok_or_else(|| {
+                    ControlPlaneStartupError::Framework(BootError::Internal(
+                        "management process is missing its audit export signer".into(),
+                    ))
+                })?,
                 security_investigations,
                 notifications,
                 alert_policies,
@@ -1724,6 +1739,7 @@ struct ManagementApplicationDependencies {
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
+    audit_export_signer: Arc<dyn IAuditExportSigner>,
     security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     notifications: Arc<dyn INotificationRepository>,
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
@@ -1797,6 +1813,7 @@ fn build_management_application_with_health(
         form_semantic_core,
         search,
         audit_records,
+        audit_export_signer,
         security_investigations,
         notifications,
         alert_policies,
@@ -2976,7 +2993,10 @@ fn build_management_application_with_health(
                     SearchResourcesHandler::new(search),
                 )
                 .query_handler::<crate::modules::audit::ListAuditRecords, _>(
-                    ListAuditRecordsHandler::new(audit_records),
+                    ListAuditRecordsHandler::new(Arc::clone(&audit_records)),
+                )
+                .query_handler::<crate::modules::audit::ExportAuditRecords, _>(
+                    ExportAuditRecordsHandler::new(audit_records, audit_export_signer),
                 )
                 .query_handler::<crate::modules::security::ListGatewayRoutePolicyTimeline, _>(
                     ListGatewayRoutePolicyTimelineHandler::new(security_investigations),
@@ -3668,6 +3688,81 @@ async fn build_evidence_signer(
                 .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
             ))
         }
+    }
+}
+
+async fn audit_export_signer(
+    config: &CloudConfig,
+    credentials: Option<&(String, String)>,
+) -> std::result::Result<Arc<dyn IAuditExportSigner>, ControlPlaneStartupError> {
+    let signer: Arc<dyn IBuildEvidenceSigner> = match config.security.audit_export_signing {
+        SecurityProviderKind::Local => Arc::new(
+            LocalBuildEvidenceSigner::load_or_create(
+                std::path::Path::new(&config.security.state_dir)
+                    .join("audit-export/signing-key.pk8"),
+            )
+            .await
+            .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+        ),
+        SecurityProviderKind::Vault => {
+            let (address, token) = credentials.ok_or_else(|| {
+                ControlPlaneStartupError::Security("Vault credentials were not resolved".into())
+            })?;
+            Arc::new(
+                VaultBuildEvidenceSigner::new(
+                    address,
+                    token,
+                    config.security.vault_transit_mount.clone(),
+                    config.security.vault_audit_export_signing_key.clone(),
+                    Duration::from_millis(config.security.vault_timeout_ms),
+                )
+                .map_err(|error| ControlPlaneStartupError::Security(error.to_string()))?,
+            )
+        }
+    };
+    Ok(Arc::new(BuildEvidenceAuditExportSigner { signer }))
+}
+
+struct BuildEvidenceAuditExportSigner {
+    signer: Arc<dyn IBuildEvidenceSigner>,
+}
+
+#[async_trait]
+impl IAuditExportSigner for BuildEvidenceAuditExportSigner {
+    async fn sign(
+        &self,
+        pae: &[u8],
+    ) -> std::result::Result<VerifiedAuditExportSignature, AuditExportSigningError> {
+        let signature = self.signer.sign(pae).await.map_err(|error| match error {
+            crate::modules::artifacts::BuildEvidenceSigningError::Invalid(message) => {
+                AuditExportSigningError::Invalid(message)
+            }
+            crate::modules::artifacts::BuildEvidenceSigningError::Unavailable(message) => {
+                AuditExportSigningError::Unavailable(message)
+            }
+            crate::modules::artifacts::BuildEvidenceSigningError::Rejected(message) => {
+                AuditExportSigningError::Rejected(message)
+            }
+        })?;
+        let key_id = signature
+            .key
+            .key_id
+            .strip_prefix("sha256:")
+            .ok_or_else(|| {
+                AuditExportSigningError::Rejected(
+                    "shared Ed25519 signer returned an incompatible key ID".into(),
+                )
+            })?
+            .to_owned();
+        VerifiedAuditExportSignature::new(
+            AuditExportSigningKey {
+                algorithm: signature.key.algorithm,
+                key_id,
+                public_key: signature.key.public_key,
+                key_version: signature.key.key_version,
+            },
+            signature.signature,
+        )
     }
 }
 

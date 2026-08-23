@@ -1,4 +1,6 @@
-use crate::modules::audit::domain::{AuditRecord, AuditRecordPage};
+use crate::modules::audit::domain::{
+    AuditExport, AuditExportDsseEnvelope, AuditExportSigningKey, AuditRecord, AuditRecordPage,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -53,6 +55,22 @@ impl From<AuditRecordPage> for AuditRecordPageResponse {
                 .map(AuditRecordResponse::from)
                 .collect(),
             next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditExportResponse {
+    pub envelope: AuditExportDsseEnvelope,
+    pub signing_key: AuditExportSigningKey,
+}
+
+impl From<AuditExport> for AuditExportResponse {
+    fn from(export: AuditExport) -> Self {
+        Self {
+            envelope: export.envelope,
+            signing_key: export.signing_key,
         }
     }
 }

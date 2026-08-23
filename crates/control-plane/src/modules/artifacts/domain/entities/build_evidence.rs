@@ -845,25 +845,11 @@ pub fn sha256_digest(value: &[u8]) -> String {
 }
 
 pub fn dsse_pae(payload_type: &str, payload: &[u8]) -> Result<Vec<u8>, String> {
-    if payload_type.is_empty()
-        || payload_type.len() > 255
-        || !payload_type
-            .bytes()
-            .all(|byte| byte.is_ascii_graphic() && byte != b' ')
-        || payload.len() > MAX_CANONICAL_DOCUMENT_BYTES
-    {
-        return Err("DSSE payload type or body exceeds its protocol bounds".into());
-    }
-    let prefix = format!(
-        "DSSEv1 {} {} {} ",
-        payload_type.len(),
+    crate::modules::shared_kernel::domain::dsse_pae_bounded(
         payload_type,
-        payload.len()
-    );
-    let mut pae = Vec::with_capacity(prefix.len().saturating_add(payload.len()));
-    pae.extend_from_slice(prefix.as_bytes());
-    pae.extend_from_slice(payload);
-    Ok(pae)
+        payload,
+        MAX_CANONICAL_DOCUMENT_BYTES,
+    )
 }
 
 fn validate_platforms(platforms: &[BuildPlatform]) -> Result<(), String> {

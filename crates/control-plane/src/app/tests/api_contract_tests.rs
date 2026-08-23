@@ -1191,6 +1191,36 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             "profile_bound"
         ])
     );
+    let audit_export =
+        &document["paths"]["/organizations/{organization_id}/audit-records/export"]["get"];
+    assert_eq!(audit_export["tags"], json!(["Audit"]));
+    assert_eq!(audit_export["summary"], "Export a signed audit page");
+    assert!(audit_export["description"]
+        .as_str()
+        .is_some_and(|description| description.contains("Ed25519 DSSE envelope")));
+    assert!(audit_export["x-a3s-response-data"]
+        .as_str()
+        .is_some_and(|description| description.contains("public verification key")));
+    assert!(audit_export["responses"]["200"].is_object());
+    assert!(audit_export["responses"]["403"].is_object());
+    let audit_export_parameters = audit_export["parameters"]
+        .as_array()
+        .expect("audit export query parameters");
+    for name in ["from", "to"] {
+        let parameter = audit_export_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .unwrap_or_else(|| panic!("missing audit export parameter `{name}`"));
+        assert_eq!(parameter["required"], true);
+        assert_eq!(parameter["schema"]["format"], "date-time");
+    }
+    assert_eq!(
+        audit_export_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == "limit")
+            .expect("audit export limit parameter")["schema"]["maximum"],
+        200
+    );
     let notification_collection =
         &document["paths"]["/organizations/{organization_id}/notifications"]["get"];
     assert_eq!(notification_collection["tags"], json!(["Notifications"]));

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.56.0" src="https://img.shields.io/badge/REST_contract-1.56.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.57.0" src="https://img.shields.io/badge/REST_contract-1.57.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -61,7 +61,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.56.0`](openapi/v1.json), maintained
+  [OpenAPI `1.57.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) reuse the same application commands
   and queries within their surface-specific privacy boundaries. The contract
@@ -112,6 +112,19 @@ The code on `main` separates implemented mechanics from released capability:
   stability, tenant/reference rejection, filtering, pagination, and redaction;
   the [complete PA2a CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460)
   passes all ten jobs.
+  Contract `1.57.0` implements the first signed-audit slice: an owner/admin can
+  export one explicitly time-windowed, one-through-200 page of those same
+  eleven redacted fields as canonical `a3s.cloud.audit-export.v1` JSON in a
+  DSSE envelope. The response carries one Ed25519 signature, SHA-256 key ID,
+  public key, and optional external key version for offline verification.
+  Consumers authenticate the deployment signer by comparing that key ID or
+  public key with an independently trusted fingerprint; the response does not
+  treat its own embedded public key as a trust anchor.
+  Development persists a purpose-separated local key; production requires a
+  purpose-separated Vault Transit key. REST, client, CLI, and the new read-only
+  Management MCP tool share one handler, taking the catalogs to 134
+  administrator and 74 read-only tools without adding a migration, export
+  table, object copy, retention deletion, queue, or SIEM delivery path.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

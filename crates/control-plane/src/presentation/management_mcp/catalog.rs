@@ -115,6 +115,7 @@ pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
+pub const AUDIT_RECORDS_EXPORT: &str = "a3s_cloud_audit_records_export";
 pub const SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST: &str =
     "a3s_cloud_security_gateway_route_policy_timeline_list";
 pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
@@ -290,6 +291,7 @@ pub enum ManagementTool {
     NodesGet,
     OperationsList,
     AuditRecordsList,
+    AuditRecordsExport,
     SecurityGatewayRoutePolicyTimelineList,
     NotificationsList,
     NotificationsGet,
@@ -334,7 +336,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 133] = [
+    const ALL: [Self; 134] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -441,6 +443,7 @@ impl ManagementTool {
         Self::NodesGet,
         Self::OperationsList,
         Self::AuditRecordsList,
+        Self::AuditRecordsExport,
         Self::SecurityGatewayRoutePolicyTimelineList,
         Self::NotificationsList,
         Self::NotificationsGet,
@@ -602,6 +605,7 @@ impl ManagementTool {
             Self::NodesGet => NODES_GET,
             Self::OperationsList => OPERATIONS_LIST,
             Self::AuditRecordsList => AUDIT_RECORDS_LIST,
+            Self::AuditRecordsExport => AUDIT_RECORDS_EXPORT,
             Self::SecurityGatewayRoutePolicyTimelineList => {
                 SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST
             }
@@ -698,6 +702,7 @@ impl ManagementTool {
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
+            | Self::AuditRecordsExport
             | Self::SecurityGatewayRoutePolicyTimelineList
             | Self::NotificationsList
             | Self::NotificationsGet
@@ -791,6 +796,7 @@ impl ManagementTool {
                 | Self::MembershipInvitationsCreate
                 | Self::MembershipInvitationsRevoke
                 | Self::AuditRecordsList
+                | Self::AuditRecordsExport
                 | Self::SecurityGatewayRoutePolicyTimelineList
                 | Self::ResourceGrantsList
                 | Self::ResourceGrantsGet
@@ -1586,6 +1592,12 @@ impl ManagementTool {
                 audit_record_list_schema(),
                 true,
             ),
+            Self::AuditRecordsExport => (
+                "Export a signed audit page",
+                "Export one bounded, redacted audit page in a verifiable DSSE envelope for an explicit time window of at most 31 days.",
+                audit_record_export_schema(),
+                true,
+            ),
             Self::SecurityGatewayRoutePolicyTimelineList => (
                 "List Gateway Route policy security timeline",
                 "List one bounded, redacted investigation timeline over exact Edge owner facts and correlated shared audit metadata.",
@@ -1991,6 +2003,12 @@ fn audit_record_list_schema() -> Value {
         },
         "additionalProperties": false
     })
+}
+
+fn audit_record_export_schema() -> Value {
+    let mut schema = audit_record_list_schema();
+    schema["required"] = json!(["from", "to"]);
+    schema
 }
 
 fn security_gateway_route_policy_timeline_schema() -> Value {

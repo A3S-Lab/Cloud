@@ -452,6 +452,7 @@ pub struct SecurityConfig {
     pub gateway_certificate_authority: SecurityProviderKind,
     pub key_encryption: SecurityProviderKind,
     pub build_evidence_signing: SecurityProviderKind,
+    pub audit_export_signing: SecurityProviderKind,
     pub recipient_contact_proof: SecurityProviderKind,
     pub recipient_contact_proof_key_id: String,
     pub vault_address_env: String,
@@ -463,6 +464,7 @@ pub struct SecurityConfig {
     pub vault_transit_mount: String,
     pub vault_transit_key: String,
     pub vault_build_evidence_signing_key: String,
+    pub vault_audit_export_signing_key: String,
     pub vault_recipient_contact_proof_key: String,
     pub vault_timeout_ms: u64,
 }
@@ -758,6 +760,7 @@ impl CloudConfig {
                 "gateway_certificate_authority",
                 "key_encryption",
                 "build_evidence_signing",
+                "audit_export_signing",
                 "recipient_contact_proof",
                 "recipient_contact_proof_key_id",
                 "vault_address_env",
@@ -769,6 +772,7 @@ impl CloudConfig {
                 "vault_transit_mount",
                 "vault_transit_key",
                 "vault_build_evidence_signing_key",
+                "vault_audit_export_signing_key",
                 "vault_recipient_contact_proof_key",
                 "vault_timeout_ms",
             ],
@@ -1001,6 +1005,10 @@ impl CloudConfig {
                     "build_evidence_signing",
                     &string(security, "build_evidence_signing")?,
                 )?,
+                audit_export_signing: SecurityProviderKind::parse(
+                    "audit_export_signing",
+                    &string(security, "audit_export_signing")?,
+                )?,
                 recipient_contact_proof: SecurityProviderKind::parse(
                     "recipient_contact_proof",
                     &string(security, "recipient_contact_proof")?,
@@ -1018,6 +1026,7 @@ impl CloudConfig {
                     security,
                     "vault_build_evidence_signing_key",
                 )?,
+                vault_audit_export_signing_key: string(security, "vault_audit_export_signing_key")?,
                 vault_recipient_contact_proof_key: string(
                     security,
                     "vault_recipient_contact_proof_key",
@@ -1628,6 +1637,10 @@ impl CloudConfig {
                 &self.security.vault_build_evidence_signing_key,
             ),
             (
+                "vault_audit_export_signing_key",
+                &self.security.vault_audit_export_signing_key,
+            ),
+            (
                 "vault_recipient_contact_proof_key",
                 &self.security.vault_recipient_contact_proof_key,
             ),
@@ -1635,6 +1648,17 @@ impl CloudConfig {
             if !valid_provider_segment(value) {
                 return Err(ConfigError::Invalid(format!("security.{label} is invalid")));
             }
+        }
+        if self.security.vault_audit_export_signing_key == self.security.vault_transit_key
+            || self.security.vault_audit_export_signing_key
+                == self.security.vault_build_evidence_signing_key
+            || self.security.vault_audit_export_signing_key
+                == self.security.vault_recipient_contact_proof_key
+        {
+            return Err(ConfigError::Invalid(
+                "security.vault_audit_export_signing_key must be purpose-separated from other Vault keys"
+                    .into(),
+            ));
         }
         if self.security.vault_timeout_ms == 0 || self.security.vault_timeout_ms > 60_000 {
             return Err(ConfigError::Invalid(
@@ -1646,10 +1670,11 @@ impl CloudConfig {
                 || self.security.gateway_certificate_authority != SecurityProviderKind::Vault
                 || self.security.key_encryption != SecurityProviderKind::Vault
                 || self.security.build_evidence_signing != SecurityProviderKind::Vault
+                || self.security.audit_export_signing != SecurityProviderKind::Vault
                 || self.security.recipient_contact_proof != SecurityProviderKind::Vault)
         {
             return Err(ConfigError::Invalid(
-                "production security requires external Vault node PKI, Gateway PKI, Transit encryption, build evidence signing, and recipient-contact proof providers".into(),
+                "production security requires external Vault node PKI, Gateway PKI, Transit encryption, build evidence signing, audit export signing, and recipient-contact proof providers".into(),
             ));
         }
         if self.security.profile == SecurityProfile::Production
@@ -1767,6 +1792,7 @@ impl CloudConfig {
             && self.security.gateway_certificate_authority != SecurityProviderKind::Vault
             && self.security.key_encryption != SecurityProviderKind::Vault
             && self.security.build_evidence_signing != SecurityProviderKind::Vault
+            && self.security.audit_export_signing != SecurityProviderKind::Vault
             && self.security.recipient_contact_proof != SecurityProviderKind::Vault
         {
             return Ok(None);
@@ -2499,6 +2525,7 @@ security {
   gateway_certificate_authority = "local"
   key_encryption = "local"
   build_evidence_signing = "local"
+  audit_export_signing = "local"
   recipient_contact_proof = "local"
   recipient_contact_proof_key_id = "recipient-contact-v1"
   vault_address_env = "A3S_CLOUD_VAULT_ADDR"
@@ -2510,6 +2537,7 @@ security {
   vault_transit_mount = "transit"
   vault_transit_key = "a3s-cloud"
   vault_build_evidence_signing_key = "a3s-cloud-build-evidence"
+  vault_audit_export_signing_key = "a3s-cloud-audit-export"
   vault_recipient_contact_proof_key = "a3s-cloud-recipient-contact-proof"
   vault_timeout_ms = 5000
 }
@@ -2601,6 +2629,10 @@ security {
             SecurityProviderKind::Local
         );
         assert_eq!(
+            config.security.audit_export_signing,
+            SecurityProviderKind::Local
+        );
+        assert_eq!(
             config.security.recipient_contact_proof,
             SecurityProviderKind::Local
         );
@@ -2611,6 +2643,10 @@ security {
         assert_eq!(
             config.security.vault_build_evidence_signing_key,
             "a3s-cloud-build-evidence"
+        );
+        assert_eq!(
+            config.security.vault_audit_export_signing_key,
+            "a3s-cloud-audit-export"
         );
         assert_eq!(
             config.security.vault_recipient_contact_proof_key,
@@ -2754,6 +2790,41 @@ security {
         assert!(matches!(
             config.vault_credentials(),
             Err(ConfigError::Invalid(message)) if message.contains(ADDRESS_ENV)
+        ));
+    }
+
+    #[test]
+    fn vault_credentials_are_required_when_only_audit_export_signing_uses_vault() {
+        const ADDRESS_ENV: &str = "A3S_CLOUD_TEST_AUDIT_EXPORT_VAULT_ADDR_MUST_BE_UNSET";
+        const TOKEN_ENV: &str = "A3S_CLOUD_TEST_AUDIT_EXPORT_VAULT_TOKEN_MUST_BE_UNSET";
+        assert!(std::env::var_os(ADDRESS_ENV).is_none());
+        assert!(std::env::var_os(TOKEN_ENV).is_none());
+        let config = CloudConfig::parse(
+            &VALID
+                .replace(
+                    "audit_export_signing = \"local\"",
+                    "audit_export_signing = \"vault\"",
+                )
+                .replace("A3S_CLOUD_VAULT_ADDR", ADDRESS_ENV)
+                .replace("A3S_CLOUD_VAULT_TOKEN", TOKEN_ENV),
+        )
+        .expect("development config with Vault audit export signing");
+
+        assert!(matches!(
+            config.vault_credentials(),
+            Err(ConfigError::Invalid(message)) if message.contains(ADDRESS_ENV)
+        ));
+    }
+
+    #[test]
+    fn audit_export_vault_key_must_be_purpose_separated() {
+        let aliased = VALID.replace(
+            "vault_audit_export_signing_key = \"a3s-cloud-audit-export\"",
+            "vault_audit_export_signing_key = \"a3s-cloud-build-evidence\"",
+        );
+        assert!(matches!(
+            CloudConfig::parse(&aliased),
+            Err(ConfigError::Invalid(message)) if message.contains("purpose-separated")
         ));
     }
 
@@ -3045,6 +3116,10 @@ security {
                 "build_evidence_signing = \"vault\"",
             )
             .replace(
+                "audit_export_signing = \"local\"",
+                "audit_export_signing = \"vault\"",
+            )
+            .replace(
                 "recipient_contact_proof = \"local\"",
                 "recipient_contact_proof = \"vault\"",
             )
@@ -3074,6 +3149,11 @@ security {
         assert!(CloudConfig::parse(&production_s3.replace(
             "recipient_contact_proof = \"vault\"",
             "recipient_contact_proof = \"local\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&production_s3.replace(
+            "audit_export_signing = \"vault\"",
+            "audit_export_signing = \"local\""
         ))
         .is_err());
         assert!(CloudConfig::parse(

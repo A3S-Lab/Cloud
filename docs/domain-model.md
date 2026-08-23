@@ -686,13 +686,13 @@ at or before `occurred_at`, ordered by `(created_at, id)`, and persist either
 Project-pointer changes never rewrite the selection, and tenant or reference
 mismatch fails closed. The bounded read model may expose the typed references
 and closed status for exact filtering, but never `details`, labels,
-business-owner text, or cost-attribution text. Signed export remains later work
-and cannot precede this prerequisite.
+business-owner text, or cost-attribution text. The signed-page export described
+below was permitted only after this prerequisite passed its retained gate.
 The [retained PostgreSQL 17 H0
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176670880)
 proves migration `142`, all four statuses, occurrence-time profile stability,
 tenant/reference rejection, filtering, pagination, and private-detail exclusion.
-Frozen `C0.3-PA2b` adds no second durable model. One query handler obtains an
+Implemented `C0.3-PA2b` adds no second durable model. One query handler obtains an
 explicitly time-windowed, one-through-200 page from the same repository,
 projects only the eleven public fields, canonicalizes schema
 `a3s.cloud.audit-export.v1`, and asks an Audit-owned signer port for one
@@ -700,6 +700,9 @@ Ed25519 DSSE signature. The signed payload binds the tenant, complete canonical
 filter, input and next cursor, generation time, ordered records, and payload
 type. Its public verification metadata contains only the signing algorithm,
 SHA-256 key ID, Ed25519 public key, and optional external key version. A
+consumer verifies deployment identity only by comparing that key ID or public
+key with an independently trusted fingerprint; response-supplied public
+material is not its own trust anchor. A
 purpose-separated development key is restart-stable beneath
 `security.state_dir`; production delegates to the existing Vault Transit client
 through the sole `security` A3S ACL and never receives private key bytes. The

@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.56.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.57.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2893,6 +2893,33 @@ describe('CloudApi', () => {
     );
   });
 
+  it('exports one bounded signed audit page with a required explicit window', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({
+        envelope: {
+          payloadType: 'application/vnd.a3s.cloud.audit-export.v1+json',
+          payload: 'e30=',
+          signatures: [{ keyId: 'a'.repeat(64), signature: 'signature' }],
+        },
+        signingKey: { algorithm: 'ed25519', keyId: 'a'.repeat(64), publicKey: 'public-key' },
+      });
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    await api.exportAuditRecords('organization / one', {
+      from: '2026-08-01T00:00:00Z',
+      to: '2026-08-13T00:00:00Z',
+      action: 'identity.membership.created',
+      limit: 25,
+    });
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/audit-records/export?' +
+        'action=identity.membership.created&from=2026-08-01T00%3A00%3A00Z&' +
+        'to=2026-08-13T00%3A00%3A00Z&limit=25'
+    );
+  });
+
   it('rejects invalid audit query values before transport', () => {
     let called = false;
     const api = new CloudApi('caller-token', '/api/v1', {
@@ -2927,6 +2954,17 @@ describe('CloudApi', () => {
         to: '2026-08-13T00:00:00Z',
       })
     ).toThrow('audit from timestamp must not exceed to timestamp');
+    expect(() =>
+      api.exportAuditRecords('organization', {
+        from: '2026-07-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+      })
+    ).toThrow('audit export window must not exceed 31 days');
+    expect(() =>
+      api.exportAuditRecords('organization', {
+        from: '2026-08-01T00:00:00Z',
+      } as never)
+    ).toThrow('audit export requires both from and to timestamps');
     expect(called).toBe(false);
   });
 

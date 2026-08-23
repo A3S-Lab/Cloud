@@ -27,7 +27,14 @@ import {
   validateApplicationReleaseAcl,
   validateApplicationResponseMode,
 } from './applications';
-import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
+import {
+  type AuditExport,
+  type AuditExportQuery,
+  type AuditRecordPage,
+  type AuditRecordQuery,
+  encodeAuditExportQuery,
+  encodeAuditRecordQuery,
+} from './audit';
 import {
   encodeSecurityTimelineQuery,
   type GatewayRoutePolicyTimelinePage,
@@ -292,7 +299,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.56.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.57.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1761,6 +1768,18 @@ export class CloudApi {
     const parameters = encodeAuditRecordQuery(query);
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/audit-records?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  exportAuditRecords(
+    organizationId: string,
+    query: AuditExportQuery,
+    signal?: AbortSignal
+  ): Promise<AuditExport> {
+    const parameters = encodeAuditExportQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/audit-records/export?${parameters.toString()}`,
       signal
     );
   }

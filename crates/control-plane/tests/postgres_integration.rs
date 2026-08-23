@@ -1,4 +1,7 @@
-use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod, QueueOptions};
+use a3s_boot::{
+    BootError, BootRequest, BootResponse, CqrsContext, HttpMethod, ModuleRef, QueryHandler,
+    QueueOptions,
+};
 use a3s_cloud_control_plane::app::{
     build_application_with_source_resolver,
     build_application_with_source_resolver_and_oidc_provider,
@@ -14,6 +17,7 @@ use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
     PostgresBootstrapError, PostgresMigrationReport,
 };
+use a3s_cloud_control_plane::modules::artifacts::{IBuildEvidenceSigner, LocalBuildEvidenceSigner};
 use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
@@ -21,8 +25,9 @@ use a3s_cloud_control_plane::modules::assets::{
     LocalAssetGitRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::audit::{
-    AuditAttributionStatus, AuditRecordCursor, AuditRecordFilter, IAuditRecordRepository,
-    PostgresAuditRecordRepository,
+    AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecordCursor,
+    AuditRecordFilter, ExportAuditRecords, ExportAuditRecordsHandler, IAuditExportSigner,
+    IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
@@ -64,6 +69,49 @@ use uuid::Uuid;
 
 const CLOUD_MIGRATION_COUNT: i64 = 142;
 const LATEST_CLOUD_MIGRATION_VERSION: &str = "142";
+
+struct IntegrationAuditExportSigner {
+    signer: Arc<dyn IBuildEvidenceSigner>,
+}
+
+#[async_trait]
+impl IAuditExportSigner for IntegrationAuditExportSigner {
+    async fn sign(
+        &self,
+        pae: &[u8],
+    ) -> Result<VerifiedAuditExportSignature, AuditExportSigningError> {
+        let signature = self.signer.sign(pae).await.map_err(|error| match error {
+            a3s_cloud_control_plane::modules::artifacts::BuildEvidenceSigningError::Invalid(
+                message,
+            ) => AuditExportSigningError::Invalid(message),
+            a3s_cloud_control_plane::modules::artifacts::BuildEvidenceSigningError::Unavailable(
+                message,
+            ) => AuditExportSigningError::Unavailable(message),
+            a3s_cloud_control_plane::modules::artifacts::BuildEvidenceSigningError::Rejected(
+                message,
+            ) => AuditExportSigningError::Rejected(message),
+        })?;
+        let key_id = signature
+            .key
+            .key_id
+            .strip_prefix("sha256:")
+            .ok_or_else(|| {
+                AuditExportSigningError::Rejected(
+                    "shared Ed25519 signer returned an incompatible key ID".into(),
+                )
+            })?
+            .to_owned();
+        VerifiedAuditExportSignature::new(
+            AuditExportSigningKey {
+                algorithm: signature.key.algorithm,
+                key_id,
+                public_key: signature.key.public_key,
+                key_version: signature.key.key_version,
+            },
+            signature.signature,
+        )
+    }
+}
 
 async fn migrate_and_connect_for_test(
     url: &str,
@@ -702,19 +750,19 @@ async fn postgres_oidc_http_flow_survives_restart_and_commits_exactly_once() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated() {
+async fn postgres_audit_query_and_signed_export_are_tenant_scoped_filtered_and_keyset_paginated() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
     run_isolated_postgres(&admin_url, exercise_postgres_audit_query)
         .await
-        .expect("PostgreSQL tenant audit query gate");
+        .expect("PostgreSQL tenant audit query and signed export gate");
 }
 
 async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
-    let repository = PostgresAuditRecordRepository::new(executor);
+    let repository = Arc::new(PostgresAuditRecordRepository::new(executor));
     let organization_id = OrganizationId::new();
     let hidden_organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -1059,6 +1107,63 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].id, expected_id);
     }
+
+    let signing_root = tempfile::tempdir()?;
+    let signing_key_path = signing_root.path().join("audit-export/signing-key.pk8");
+    let local_signer = LocalBuildEvidenceSigner::load_or_create(&signing_key_path).await?;
+    let key_id = local_signer.key_id().to_owned();
+    assert_eq!(
+        LocalBuildEvidenceSigner::load_or_create(&signing_key_path)
+            .await?
+            .key_id(),
+        key_id
+    );
+    let export_handler = ExportAuditRecordsHandler::new(
+        repository.clone(),
+        Arc::new(IntegrationAuditExportSigner {
+            signer: Arc::new(local_signer),
+        }),
+    )
+    .with_clock(Arc::new(move || now + chrono::Duration::seconds(4)));
+    let export = export_handler
+        .execute(
+            ExportAuditRecords {
+                organization_id,
+                filter: AuditRecordFilter {
+                    actor_principal_id: Some(
+                        a3s_cloud_control_plane::modules::shared_kernel::domain::PrincipalId::from_uuid(
+                            actor_id,
+                        ),
+                    ),
+                    request_id: Some(request_id),
+                    from: Some(now),
+                    to: Some(now + chrono::Duration::seconds(3)),
+                    ..AuditRecordFilter::default()
+                },
+                cursor: None,
+                limit: 2,
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await??;
+    assert_eq!(
+        export.signing_key.key_id,
+        key_id.strip_prefix("sha256:").expect("SHA-256 key ID")
+    );
+    let verified_payload = export.verify().map_err(std::io::Error::other)?;
+    let export_payload: Value = serde_json::from_slice(&verified_payload)?;
+    assert_eq!(export_payload["schema"], "a3s.cloud.audit-export.v1");
+    assert_eq!(export_payload["records"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        export_payload["records"][0]["id"],
+        profile_bound_id.to_string()
+    );
+    assert_eq!(
+        export_payload["records"][1]["id"],
+        profile_missing_id.to_string()
+    );
+    assert!(export_payload["nextCursor"].is_string());
+    assert!(!export_payload.to_string().contains("must-not-be-projected"));
 
     assert!(database
         .execute(

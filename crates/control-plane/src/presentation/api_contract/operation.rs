@@ -242,6 +242,8 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
+    let is_audit_record_query =
+        path.ends_with("/audit-records") || path.ends_with("/audit-records/export");
     if is_asset_git_advertisement(path) {
         upsert_parameter(
             parameters,
@@ -306,7 +308,7 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
     }
     if method == "get"
         && (path.ends_with("/operations")
-            || path.ends_with("/audit-records")
+            || is_audit_record_query
             || path.ends_with("/build-runs")
             || path.ends_with("/agent-conversations")
             || path.ends_with("/executions")
@@ -348,7 +350,7 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 "maximum": MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
                 "default": DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT
             })
-        } else if path.ends_with("/audit-records")
+        } else if is_audit_record_query
             || is_connector_profile_collection_path(path)
             || is_connector_revision_collection_path(path)
         {
@@ -384,7 +386,7 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             }),
         );
     }
-    if method == "get" && path.ends_with("/audit-records") {
+    if method == "get" && is_audit_record_query {
         for (name, format) in [
             ("actorPrincipalId", Some("uuid")),
             ("aggregateId", Some("uuid")),
@@ -419,7 +421,13 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             }
             upsert_parameter(
                 parameters,
-                json!({"name": name, "in": "query", "required": false, "schema": schema}),
+                json!({
+                    "name": name,
+                    "in": "query",
+                    "required": path.ends_with("/audit-records/export")
+                        && matches!(name, "from" | "to"),
+                    "schema": schema
+                }),
             );
         }
     }

@@ -423,6 +423,17 @@ exact profile reference, and closed status to the existing seven typed fields.
 It cannot expose shared `details`, profile labels, business-owner or cost-code
 text, or create a client-side audit store.
 
+`exportAuditRecords` implements REST contract `1.57.0` over that same query.
+It requires explicit inclusive `from` and `to` timestamps, rejects windows
+wider than 31 days before transport, and retains the same exact filters,
+opaque cursor, and one-through-200 limit. The result is the complete DSSE
+envelope plus its Ed25519 public verification key, SHA-256 key ID, and optional
+external key version. The client never receives private signing material and
+does not treat response-supplied public material as a trust anchor: callers
+must compare the key ID or public key with an independently trusted deployment
+fingerprint. It does not create a second audit store, retention policy, object
+copy, manifest, or SIEM-delivery authority.
+
 `createMembership` is the single Principal-plus-Membership mutation retained in
 REST contract `1.29.0`. Callers choose the closed `human` or `service` Principal
 kind explicitly; the client does not expose a second service-only creation
