@@ -1800,10 +1800,9 @@ firings, both production heartbeat and replay-safe revoke resolutions,
 disjoint two-page concurrency, three atomic rollback boundaries, restart
 silence, tenant isolation, typed bounded payloads, and private-data exclusion.
 N4h adds no public surface, alert-policy version, Notifications poller,
-configuration field, queue, scheduler, timer authority, or event rail. A
-following N4i slice may admit the closed facts through an exact-node policy
-target and the existing Node Resource Grant evaluator only on top of this
-verified owner evidence.
+configuration field, queue, scheduler, timer authority, or event rail. N4i now
+admits the closed facts through an exact-node policy target and the existing
+Node Resource Grant evaluator only on top of this verified owner evidence.
 
 #### Fleet node-availability alert source (`C0.3-N4i` verified)
 
@@ -1854,10 +1853,11 @@ typed Environment-or-Node `target`. Nullable legacy `projectId` and
 `environmentId` response projections remain populated for v1 and null for v2;
 the canonical ACL, schema, and digest remain authoritative. The
 [retained PostgreSQL 17 and NATS JetStream H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469/job/97138232995)
-verifies migration `140`, exact-Node policy persistence and replay,
-current-grant filtering, critical firing, opt-in recovery, durable delivery,
-and terminal replay; the [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469)
-passes all ten jobs. Fleet remains the sole heartbeat and availability
+verifies migration `140`, exact-Node policy persistence/replay, critical
+firing, opt-in recovery, stale/initial/replay silence, durable delivery, and
+terminal replay; the [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32616589469)
+passes all ten jobs, including current-grant and REST/MCP cross-surface gates.
+Fleet remains the sole heartbeat and availability
 authority. Notifications does not poll Fleet, infer health
 from silence, add a threshold or severity rule, copy Node state, or introduce a
 health/incident table, mutable counter, timer, scheduler, queue, second event
