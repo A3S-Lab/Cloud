@@ -160,6 +160,25 @@ fn detection_rejects_overflow_instead_of_truncating() {
         .map(|index| inspected(&format!("service-{index}/Dockerfile"), b"FROM scratch\n"))
         .collect();
     assert!(service().detect(&layout('1', entries)).is_err());
+
+    let diagnostics = (0..=MAX_BUILD_PLAN_DIAGNOSTICS)
+        .map(|_| {
+            BuildPlanDetectionDiagnostic::new(
+                BuildPlanDetectionDiagnosticCode::EmptyDockerfile,
+                Some("Dockerfile".into()),
+            )
+            .expect("diagnostic")
+        })
+        .collect();
+    let detector =
+        BuildPlanDetectionService::new(vec![Arc::new(DiagnosticFloodDetector { diagnostics })])
+            .expect("flood detector service");
+    assert!(detector
+        .detect(&layout(
+            '5',
+            vec![inspected("Dockerfile", b"FROM scratch\n")]
+        ))
+        .is_err());
 }
 
 #[test]
@@ -187,6 +206,40 @@ fn source_layout_is_canonical_and_plan_digest_binds_the_exact_tree() {
         ))
         .expect("second tree");
     assert_ne!(first.proposals[0].digest(), second.proposals[0].digest());
+
+    let canonical = service()
+        .detect(&layout(
+            '6',
+            vec![
+                inspected("Dockerfile", b"FROM scratch\n"),
+                inspected("api/Dockerfile", b"FROM scratch\n"),
+            ],
+        ))
+        .expect("canonical detection");
+    let mut reordered = canonical.clone();
+    reordered.proposals.reverse();
+    assert!(reordered.validate().is_err());
+
+    let mut duplicate = canonical;
+    duplicate.proposals.push(duplicate.proposals[0].clone());
+    assert!(duplicate.validate().is_err());
+}
+
+struct DiagnosticFloodDetector {
+    diagnostics: Vec<BuildPlanDetectionDiagnostic>,
+}
+
+impl IBuildPlanDetector for DiagnosticFloodDetector {
+    fn kind(&self) -> BuildPlanDetectorKind {
+        BuildPlanDetectorKind::Dockerfile
+    }
+
+    fn detect(&self, _layout: &SourceLayoutSnapshot) -> Result<BuildPlanDetectorOutput, String> {
+        Ok(BuildPlanDetectorOutput::heuristic(
+            Vec::new(),
+            self.diagnostics.clone(),
+        ))
+    }
 }
 
 fn service() -> BuildPlanDetectionService {

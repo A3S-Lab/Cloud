@@ -7,6 +7,7 @@ use crate::modules::sources::domain::BuildRecipe;
 use a3s_acl::builder::{list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 pub const BUILD_PLAN_PROPOSAL_SCHEMA: &str = "a3s.cloud.build-plan-proposal.v1";
@@ -147,6 +148,14 @@ impl BuildPlanProposal {
 
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
+    }
+
+    pub(crate) fn canonical_cmp(&self, other: &Self) -> Ordering {
+        self.spec
+            .project_root
+            .cmp(&other.spec.project_root)
+            .then_with(|| self.spec.detector.cmp(&other.spec.detector))
+            .then_with(|| self.digest.cmp(&other.digest))
     }
 }
 

@@ -1,8 +1,8 @@
 use crate::modules::developer_workflows::domain::{
     BuildPlanDetection, BuildPlanDetectionDiagnostic, BuildPlanDetectionDiagnosticCode,
-    BuildPlanDetectorKind, BuildPlanDetectorMatch, BuildPlanDetectorOutput, IBuildPlanDetector,
-    SourceLayoutEntryKind, SourceLayoutSnapshot, MAX_BUILD_PLAN_DETECTORS,
-    MAX_BUILD_PLAN_PROPOSALS,
+    BuildPlanDetectorKind, BuildPlanDetectorMatch, BuildPlanDetectorOutput, BuildPlanProposal,
+    IBuildPlanDetector, SourceLayoutEntryKind, SourceLayoutSnapshot, MAX_BUILD_PLAN_DETECTORS,
+    MAX_BUILD_PLAN_DIAGNOSTICS, MAX_BUILD_PLAN_PROPOSALS,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -46,6 +46,11 @@ impl BuildPlanDetectionService {
                     break;
                 }
             }
+            if proposals.len() > MAX_BUILD_PLAN_PROPOSALS
+                || diagnostics.len() > MAX_BUILD_PLAN_DIAGNOSTICS
+            {
+                return Err("BuildPlan detection exceeded its result bounds".into());
+            }
         }
         if proposals.is_empty() && diagnostics.is_empty() {
             diagnostics.push(BuildPlanDetectionDiagnostic::new(
@@ -53,27 +58,19 @@ impl BuildPlanDetectionService {
                 None,
             )?);
         }
-        if proposals.len() > MAX_BUILD_PLAN_PROPOSALS {
-            return Err("BuildPlan detection exceeded the proposal bound".into());
+        if proposals.len() > MAX_BUILD_PLAN_PROPOSALS
+            || diagnostics.len() > MAX_BUILD_PLAN_DIAGNOSTICS
+        {
+            return Err("BuildPlan detection exceeded its result bounds".into());
         }
-        proposals.sort_by(|left, right| {
-            left.spec()
-                .project_root
-                .cmp(&right.spec().project_root)
-                .then_with(|| left.spec().detector.cmp(&right.spec().detector))
-                .then_with(|| left.digest().cmp(right.digest()))
-        });
+        proposals.sort_by(BuildPlanProposal::canonical_cmp);
         if proposals
             .windows(2)
             .any(|pair| pair[0].spec().project_root == pair[1].spec().project_root)
         {
             return Err("BuildPlan detectors produced an ambiguous project root".into());
         }
-        diagnostics.sort_by(|left, right| {
-            left.code
-                .cmp(&right.code)
-                .then_with(|| left.path.cmp(&right.path))
-        });
+        diagnostics.sort();
         diagnostics.dedup();
         let detection = BuildPlanDetection {
             source: layout.identity().clone(),
@@ -97,6 +94,9 @@ impl BuildPlanDetectionService {
         }
         if output.proposals.len() > MAX_BUILD_PLAN_PROPOSALS {
             return Err("BuildPlan detector exceeded the proposal bound".into());
+        }
+        if output.diagnostics.len() > MAX_BUILD_PLAN_DIAGNOSTICS {
+            return Err("BuildPlan detector exceeded the diagnostic bound".into());
         }
         for proposal in &output.proposals {
             proposal.validate()?;

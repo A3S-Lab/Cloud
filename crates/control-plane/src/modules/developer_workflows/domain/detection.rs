@@ -1,8 +1,11 @@
 use super::{BuildPlanDetectorKind, BuildPlanProposal, SourceLayoutIdentity, SourceLayoutSnapshot};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 pub const MAX_BUILD_PLAN_DETECTORS: usize = 8;
 pub const MAX_BUILD_PLAN_PROPOSALS: usize = 16;
+pub const MAX_BUILD_PLAN_DIAGNOSTICS: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildPlanDetectorMatch {
@@ -29,7 +32,7 @@ impl BuildPlanDetectionDiagnosticCode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildPlanDetectionDiagnostic {
     pub code: BuildPlanDetectionDiagnosticCode,
@@ -109,19 +112,31 @@ impl BuildPlanDetection {
         if self.proposals.len() > MAX_BUILD_PLAN_PROPOSALS {
             return Err("BuildPlan detection contains too many proposals".into());
         }
-        let mut previous_root: Option<&str> = None;
+        if self.diagnostics.len() > MAX_BUILD_PLAN_DIAGNOSTICS {
+            return Err("BuildPlan detection contains too many diagnostics".into());
+        }
+        let mut roots = BTreeSet::new();
         for proposal in &self.proposals {
             proposal.validate()?;
             if proposal.spec().source != self.source {
                 return Err("BuildPlan proposal changed its source layout identity".into());
             }
-            if previous_root == Some(proposal.spec().project_root.as_str()) {
+            if !roots.insert(proposal.spec().project_root.as_str()) {
                 return Err("BuildPlan detection contains an ambiguous project root".into());
             }
-            previous_root = Some(&proposal.spec().project_root);
+        }
+        if self
+            .proposals
+            .windows(2)
+            .any(|pair| pair[0].canonical_cmp(&pair[1]) != Ordering::Less)
+        {
+            return Err("BuildPlan detection proposals are not canonical".into());
         }
         for diagnostic in &self.diagnostics {
             BuildPlanDetectionDiagnostic::new(diagnostic.code, diagnostic.path.clone())?;
+        }
+        if self.diagnostics.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err("BuildPlan detection diagnostics are not canonical".into());
         }
         Ok(())
     }
