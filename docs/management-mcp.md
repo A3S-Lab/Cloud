@@ -394,6 +394,14 @@ catalogs to 135 administrator and 75 read-only tools. No audit copy, persisted
 export, object namespace, queue, Connector, SIEM push, or commercial authority
 is added.
 
+The [successful PA2c Management MCP
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767287)
+proves strict empty arguments, administrator-only `cloud:read`, the exact
+135/75 catalogs, and real shared-handler dispatch. The [PostgreSQL 17 H0
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767294)
+proves the persisted retention authority, and the [complete PA2c main CI
+run](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148) is successful.
+
 ## Recipient-contact self-service
 
 `a3s_cloud_recipient_contacts_list` and

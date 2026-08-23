@@ -164,8 +164,21 @@ The code on `main` separates implemented mechanics from released capability:
   client, CLI, and one read-only Management MCP tool expose the configured and
   applied semantic digests, both boundaries, scheduling state, and monotonic
   version through one query handler, taking the catalogs to 135 administrator
-  and 75 read-only tools. Multi-page manifests and authorized SIEM delivery
-  remain separate follow-ons.
+  and 75 read-only tools. The [successful PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767294)
+  proves migration `144`, tenant isolation, logical retention gaps, late-write
+  rejection, bounded cleanup, and rollback/concurrency atomicity. The
+  [Management MCP
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767287)
+  proves the exact 135/75 catalogs and shared handler, the [TypeScript client
+  and CLI
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767217)
+  proves maintained-surface parity, and the [complete PA2c main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148) passes all ten
+  jobs. The same main commit's broader [real A3S Box provider
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905141/job/97224763345)
+  is also successful. Multi-page manifests and authorized SIEM delivery remain
+  separate follow-ons.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

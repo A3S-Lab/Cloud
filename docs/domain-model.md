@@ -713,7 +713,7 @@ The [successful PA2b PostgreSQL 17 H0
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306605)
 and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087)
 verify these boundaries.
-Implemented `C0.3-PA2c` adds one deployment-wide
+Verified `C0.3-PA2c` adds one deployment-wide
 `a3s.cloud.audit-retention-policy.v1`, derived only from the required top-level
 `audit` A3S ACL. Migration `144` owns exactly one state row per organization:
 an inclusive `records_available_from` watermark, an exclusive
@@ -733,8 +733,11 @@ death cannot expose a false boundary or partial cleanup. A relaxed policy
 cannot resurrect deleted history. The owner/admin `cloud:read` status query
 returns the configured/applied digests, both boundaries, counters, schedule,
 and version through REST/OpenAPI `1.58.0`, maintained client, CLI, and
-Management MCP; none of those surfaces can mutate policy. Multi-page manifests
-and authorized SIEM delivery remain separate lifecycles.
+Management MCP; none of those surfaces can mutate policy. The [PostgreSQL 17
+H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767294)
+and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148)
+verify the persisted and cross-surface boundaries. Multi-page manifests and
+authorized SIEM delivery remain separate lifecycles.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`
