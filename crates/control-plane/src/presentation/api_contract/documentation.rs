@@ -434,6 +434,12 @@ fn operation_description(
                 .into(),
         );
     }
+    if method == "get" && path.ends_with("/audit-records/retention") {
+        sentences.push(
+            "The configured semantic policy and durable per-organization availability/deletion watermarks make historical gaps explicit."
+                .into(),
+        );
+    }
     if path.ends_with("/stream") {
         sentences.push(
             "The response is a resumable server-sent event stream; reconnect with the documented cursor or Last-Event-ID value."
@@ -471,6 +477,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         ("get", "/platform") => return "Get platform diagnostics".into(),
         ("get", "/organizations/{organization_id}/audit-records/export") => {
             return "Export a signed audit page".into()
+        }
+        ("get", "/organizations/{organization_id}/audit-records/retention") => {
+            return "Get audit retention status".into()
         }
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
         ("post", "/webhooks/github") => return "Receive a GitHub webhook".into(),
@@ -891,6 +900,9 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
 fn response_data_description(method: &str, path: &str, summary: &str) -> String {
     if method == "get" && path.ends_with("/audit-records/export") {
         return "One canonical redacted audit page in a DSSE envelope with its Ed25519 public verification key and key identity.".into();
+    }
+    if method == "get" && path.ends_with("/audit-records/retention") {
+        return "The configured audit retention duration and semantic digest plus the durable applied digest, inclusive availability watermark, physical-deletion boundary, aggregate deleted-record count, schedule, and monotonic state version.".into();
     }
     if path.ends_with("/stream") {
         return format!(

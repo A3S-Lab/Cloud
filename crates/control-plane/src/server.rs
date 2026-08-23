@@ -1,6 +1,7 @@
 use crate::infrastructure::FlowOperationCoordinator;
 use crate::modules::agents::AgentExecutionReconciler;
 use crate::modules::artifacts::application::BuildRunReconciler;
+use crate::modules::audit::AuditRetentionWorker;
 use crate::modules::edge::{
     GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
     GatewayRolloutRollbackReconciler, McpCredentialDeliveryReceiptSweeper,
@@ -61,6 +62,7 @@ struct WorkerProcesses {
     replica_deployment_materializer: ReplicaDeploymentMaterializer,
     replica_retirement_reconciler: ReplicaRetirementReconciler,
     workload_reconciler: WorkloadRuntimeReconciler,
+    audit_retention_worker: AuditRetentionWorker,
     log_retention_worker: LogRetentionWorker,
     log_compaction_worker: LogCompactionWorker,
     outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
@@ -98,6 +100,7 @@ impl ControlPlaneWorkers {
         replica_deployment_materializer: ReplicaDeploymentMaterializer,
         replica_retirement_reconciler: ReplicaRetirementReconciler,
         workload_reconciler: WorkloadRuntimeReconciler,
+        audit_retention_worker: AuditRetentionWorker,
         log_retention_worker: LogRetentionWorker,
         log_compaction_worker: LogCompactionWorker,
         outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
@@ -128,6 +131,7 @@ impl ControlPlaneWorkers {
                 replica_deployment_materializer,
                 replica_retirement_reconciler,
                 workload_reconciler,
+                audit_retention_worker,
                 log_retention_worker,
                 log_compaction_worker,
                 outbound_notification_consumer,
@@ -285,6 +289,7 @@ impl ControlPlane {
                 replica_deployment_materializer,
                 replica_retirement_reconciler,
                 workload_reconciler,
+                audit_retention_worker,
                 log_retention_worker,
                 log_compaction_worker,
                 outbound_notification_consumer,
@@ -415,6 +420,12 @@ impl ControlPlane {
                 "Workload Runtime reconciler",
                 shutdown_receiver.clone(),
                 move |shutdown| workload_reconciler.run(shutdown),
+            );
+            spawn_worker(
+                &mut workers,
+                "audit retention worker",
+                shutdown_receiver.clone(),
+                move |shutdown| audit_retention_worker.run(shutdown),
             );
             spawn_worker(
                 &mut workers,

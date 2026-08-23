@@ -29,14 +29,20 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
-it('pins the current signed-audit management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(134);
-  expect(READ_ONLY_TOOLS).toHaveLength(74);
+it('pins the current signed-audit and retention management MCP catalogs', () => {
+  expect(ADMIN_TOOLS).toHaveLength(135);
+  expect(READ_ONLY_TOOLS).toHaveLength(75);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);
   expect(READ_ONLY_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
+  ]);
+  expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_retention_get')).toEqual([
+    'a3s_cloud_audit_retention_get',
+  ]);
+  expect(READ_ONLY_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_retention_get')).toEqual([
+    'a3s_cloud_audit_retention_get',
   ]);
 });
 
@@ -371,6 +377,34 @@ conformanceIt(
       expect(record.attributionStatus).toBe('profile_missing');
       expect(record).not.toHaveProperty('details');
     }
+
+    const restRetention = await restEnvelope(
+      `${environment.baseUrl}/organizations/${organizationId}/audit-records/retention`,
+      'GET',
+      authenticatedHeaders(environment.readOnlyToken, 'c0:mcp:audit-retention-read'),
+      undefined,
+      200,
+      credentials,
+      'REST audit retention status'
+    );
+    const retentionStatus = await callTool(
+      environment,
+      environment.readOnlyToken,
+      109,
+      'a3s_cloud_audit_retention_get',
+      {},
+      credentials,
+      'MCP audit retention status'
+    );
+    expect(retentionStatus.result.isError).toBe(false);
+    expect(retentionStatus.structured.data).toEqual(restRetention.body.data);
+    const retentionData = objectValue(retentionStatus.structured.data, 'audit retention data');
+    expect(retentionData.organizationId).toBe(organizationId);
+    expect(typeof retentionData.retentionMs).toBe('number');
+    expect(String(retentionData.policyDigest)).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(typeof retentionData.currentPolicyApplied).toBe('boolean');
+    expect(typeof retentionData.totalDeletedRecords).toBe('number');
+    expect(typeof retentionData.version).toBe('number');
 
     const formEvidence = await proveFormConformance(environment, organizationId, projectId, credentials);
     const { formId, releaseId: formReleaseId } = formEvidence;

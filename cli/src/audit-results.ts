@@ -1,4 +1,4 @@
-import type { AuditExport, AuditRecord, AuditRecordPage } from '@a3s/cloud-client';
+import type { AuditExport, AuditRecord, AuditRecordPage, AuditRetentionStatus } from '@a3s/cloud-client';
 import { renderTable, sanitizeCell, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
@@ -27,5 +27,12 @@ export function auditExportResult(export_: AuditExport): CommandResult {
   return {
     json: export_,
     table: `${JSON.stringify(export_, null, 2)}\n`,
+  };
+}
+
+export function auditRetentionResult(status: AuditRetentionStatus): CommandResult {
+  return {
+    json: status,
+    table: `${JSON.stringify(status, null, 2)}\n`,
   };
 }

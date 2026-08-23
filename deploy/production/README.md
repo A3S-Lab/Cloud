@@ -41,6 +41,13 @@ endpoint, bucket, Registry, Vault roles, authenticated TLS SMTP relay, and sourc
 external HTTPS S3, authenticated HTTPS Registry publication, and Vault-backed
 PKI, encryption, and evidence signing.
 
+Set the required `audit` block deliberately for the deployment's legal and
+operational retention requirement. `retention_ms` is the one semantic policy;
+the poll and organization/record batches bound Worker scheduling and cleanup
+work. Shortening retention advances per-organization availability
+monotonically, and later lengthening it cannot restore already unavailable or
+deleted history. Back up and review the policy before rollout.
+
 Box never creates a Secret mount or falls back to disk. Before `compose up`,
 mount a private tmpfs at `<A3S_HOME>/runtime-secrets`, owned by the account that
 runs Box and mode `0700`. For an `A3S_HOME` of `/var/lib/a3s-box`:

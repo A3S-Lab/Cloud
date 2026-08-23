@@ -434,6 +434,14 @@ must compare the key ID or public key with an independently trusted deployment
 fingerprint. It does not create a second audit store, retention policy, object
 copy, manifest, or SIEM-delivery authority.
 
+`getAuditRetentionStatus` implements REST contract `1.58.0`. It performs one
+owner/admin organization read with no query parameters and returns the
+configured semantic duration/digest, applied digest, logical availability and
+physical-deletion boundaries, deleted count, sweep schedule, and monotonic
+version. The client cannot set a policy, infer that hidden records still
+exist, move a watermark, or perform cleanup; the sole deployment A3S ACL,
+PostgreSQL state, and Worker remain authoritative.
+
 `createMembership` is the single Principal-plus-Membership mutation retained in
 REST contract `1.29.0`. Callers choose the closed `human` or `service` Principal
 kind explicitly; the client does not expose a second service-only creation

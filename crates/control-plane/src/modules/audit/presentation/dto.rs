@@ -1,5 +1,6 @@
 use crate::modules::audit::domain::{
     AuditExport, AuditExportDsseEnvelope, AuditExportSigningKey, AuditRecord, AuditRecordPage,
+    AuditRetentionStatus,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -71,6 +72,44 @@ impl From<AuditExport> for AuditExportResponse {
         Self {
             envelope: export.envelope,
             signing_key: export.signing_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditRetentionStatusResponse {
+    pub organization_id: Uuid,
+    pub retention_ms: u64,
+    pub policy_digest: String,
+    pub applied_policy_digest: Option<String>,
+    pub current_policy_applied: bool,
+    pub records_available_from: Option<DateTime<Utc>>,
+    pub records_deleted_before: Option<DateTime<Utc>>,
+    pub total_deleted_records: u64,
+    pub last_swept_at: Option<DateTime<Utc>>,
+    pub last_completed_at: Option<DateTime<Utc>>,
+    pub next_scan_at: DateTime<Utc>,
+    pub version: u64,
+}
+
+impl From<AuditRetentionStatus> for AuditRetentionStatusResponse {
+    fn from(status: AuditRetentionStatus) -> Self {
+        Self {
+            organization_id: status.organization_id.as_uuid(),
+            retention_ms: status.retention_ms,
+            policy_digest: status.policy_digest.to_string(),
+            applied_policy_digest: status
+                .applied_policy_digest
+                .map(|digest| digest.to_string()),
+            current_policy_applied: status.current_policy_applied,
+            records_available_from: status.records_available_from,
+            records_deleted_before: status.records_deleted_before,
+            total_deleted_records: status.total_deleted_records,
+            last_swept_at: status.last_swept_at,
+            last_completed_at: status.last_completed_at,
+            next_scan_at: status.next_scan_at,
+            version: status.version,
         }
     }
 }

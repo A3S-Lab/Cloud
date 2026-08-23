@@ -1,7 +1,10 @@
 use super::tool_result;
-use crate::modules::audit::presentation::{AuditExportResponse, AuditRecordPageResponse};
+use crate::modules::audit::presentation::{
+    AuditExportResponse, AuditRecordPageResponse, AuditRetentionStatusResponse,
+};
 use crate::modules::audit::{
-    AuditAttributionStatus, AuditRecordFilter, ExportAuditRecords, ListAuditRecords,
+    AuditAttributionStatus, AuditRecordFilter, ExportAuditRecords, GetAuditRetentionStatus,
+    ListAuditRecords,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
@@ -117,6 +120,22 @@ pub async fn export_audit_records(
         .await?
     {
         Ok(export) => tool_result::success(200, AuditExportResponse::from(export), request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_audit_retention_status(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetAuditRetentionStatus { organization_id })
+        .await?
+    {
+        Ok(status) => {
+            tool_result::success(200, AuditRetentionStatusResponse::from(status), request_id)
+        }
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

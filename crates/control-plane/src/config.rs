@@ -1,3 +1,6 @@
+use crate::modules::audit::{
+    MAXIMUM_AUDIT_RETENTION_BATCH_SIZE, MAXIMUM_AUDIT_RETENTION_MS, MINIMUM_AUDIT_RETENTION_MS,
+};
 use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
 use crate::modules::identity::domain::value_objects::{
     OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId, RecipientEmailAddress,
@@ -382,6 +385,14 @@ pub struct LogsConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditConfig {
+    pub retention_ms: u64,
+    pub retention_poll_ms: u64,
+    pub retention_organization_batch_size: usize,
+    pub retention_record_batch_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeConfig {
     pub entrypoint_address: String,
     pub management_address: String,
@@ -487,6 +498,7 @@ pub struct CloudConfig {
     pub builds: BuildsConfig,
     pub registry: RegistryConfig,
     pub sources: SourcesConfig,
+    pub audit: AuditConfig,
     pub logs: LogsConfig,
     pub edge: EdgeConfig,
     pub fleet: FleetConfig,
@@ -717,6 +729,16 @@ impl CloudConfig {
                 "tombstone_retention_ms",
                 "tombstone_compaction_poll_ms",
                 "tombstone_compaction_batch_size",
+            ],
+        )?;
+        let audit = one_block(&document, "audit")?;
+        validate_block(
+            audit,
+            &[
+                "retention_ms",
+                "retention_poll_ms",
+                "retention_organization_batch_size",
+                "retention_record_batch_size",
             ],
         )?;
         let edge = one_block(&document, "edge")?;
@@ -959,6 +981,15 @@ impl CloudConfig {
                 tombstone_retention_ms: integer(logs, "tombstone_retention_ms")?,
                 tombstone_compaction_poll_ms: integer(logs, "tombstone_compaction_poll_ms")?,
                 tombstone_compaction_batch_size: integer(logs, "tombstone_compaction_batch_size")?,
+            },
+            audit: AuditConfig {
+                retention_ms: integer(audit, "retention_ms")?,
+                retention_poll_ms: integer(audit, "retention_poll_ms")?,
+                retention_organization_batch_size: integer(
+                    audit,
+                    "retention_organization_batch_size",
+                )?,
+                retention_record_batch_size: integer(audit, "retention_record_batch_size")?,
             },
             edge: EdgeConfig {
                 entrypoint_address: string(edge, "entrypoint_address")?,
@@ -1506,6 +1537,21 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        if !(MINIMUM_AUDIT_RETENTION_MS..=MAXIMUM_AUDIT_RETENTION_MS)
+            .contains(&self.audit.retention_ms)
+            || self.audit.retention_poll_ms == 0
+            || self.audit.retention_poll_ms > 86_400_000
+            || self.audit.retention_poll_ms > self.audit.retention_ms
+            || self.audit.retention_organization_batch_size == 0
+            || self.audit.retention_organization_batch_size > MAXIMUM_AUDIT_RETENTION_BATCH_SIZE
+            || self.audit.retention_record_batch_size == 0
+            || self.audit.retention_record_batch_size > MAXIMUM_AUDIT_RETENTION_BATCH_SIZE
+        {
+            return Err(ConfigError::Invalid(
+                "audit retention must be 1 day to 10 years with a bounded poll interval and organization/record batches of 1 to 10000"
+                    .into(),
+            ));
+        }
         if !(60_000..=315_576_000_000).contains(&self.logs.tombstone_retention_ms)
             || self.logs.tombstone_compaction_poll_ms == 0
             || self.logs.tombstone_compaction_poll_ms > 86_400_000
@@ -1890,6 +1936,7 @@ pub enum ConfigError {
 fn validate_root(document: &Document) -> Result<(), ConfigError> {
     let allowed = [
         "artifacts",
+        "audit",
         "assets",
         "auth",
         "builds",
@@ -2487,6 +2534,12 @@ sources {
   allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
   denied_repositories = []
 }
+audit {
+  retention_ms = 7776000000
+  retention_poll_ms = 60000
+  retention_organization_batch_size = 32
+  retention_record_batch_size = 256
+}
 logs {
   retention_ms = 604800000
   retention_poll_ms = 60000
@@ -2616,6 +2669,10 @@ security {
         assert_eq!(config.sources.github_authority_batch_size, 100);
         assert_eq!(config.sources.checkout_max_files, 100_000);
         assert_eq!(config.objects.provider, ObjectStorageProviderKind::Local);
+        assert_eq!(config.audit.retention_ms, 7_776_000_000);
+        assert_eq!(config.audit.retention_poll_ms, 60_000);
+        assert_eq!(config.audit.retention_organization_batch_size, 32);
+        assert_eq!(config.audit.retention_record_batch_size, 256);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
         assert_eq!(config.edge.domain_verification_timeout_ms, 5_000);
@@ -2767,7 +2824,34 @@ security {
         assert!(config.sources.github_app_slug.is_empty());
         assert!(config.sources.github_app_private_key_env.is_empty());
         assert_eq!(config.logs.retention_ms, 604_800_000);
+        assert_eq!(config.audit.retention_ms, 7_776_000_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
+    }
+
+    #[test]
+    fn audit_retention_configuration_is_required_closed_and_bounded() {
+        for invalid in [
+            VALID.replace("retention_ms = 7776000000", "retention_ms = 86399999"),
+            VALID.replace("retention_poll_ms = 60000", "retention_poll_ms = 0"),
+            VALID.replace(
+                "retention_organization_batch_size = 32",
+                "retention_organization_batch_size = 10001",
+            ),
+            VALID.replace(
+                "retention_record_batch_size = 256",
+                "retention_record_batch_size = 0",
+            ),
+            VALID.replace(
+                "  retention_record_batch_size = 256\n}",
+                "  retention_record_batch_size = 256\n  archive_bucket = \"shadow\"\n}",
+            ),
+            VALID.replace(
+                "audit {\n  retention_ms = 7776000000\n  retention_poll_ms = 60000\n  retention_organization_batch_size = 32\n  retention_record_batch_size = 256\n}\n",
+                "",
+            ),
+        ] {
+            assert!(CloudConfig::parse(&invalid).is_err());
+        }
     }
 
     #[test]

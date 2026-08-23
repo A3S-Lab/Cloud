@@ -1197,6 +1197,10 @@ pub async fn execute(
             let arguments = arguments::parse::<AuditRecordExportArguments>(arguments).ok()?;
             audit::export_audit_records(query_bus, organization_id, arguments, request_id).await
         }
+        ManagementTool::AuditRetentionGet => {
+            arguments::parse::<EmptyArguments>(arguments).ok()?;
+            audit::get_audit_retention_status(query_bus, organization_id, request_id).await
+        }
         ManagementTool::SecurityGatewayRoutePolicyTimelineList => {
             let arguments =
                 arguments::parse::<SecurityGatewayRoutePolicyTimelineArguments>(arguments).ok()?;

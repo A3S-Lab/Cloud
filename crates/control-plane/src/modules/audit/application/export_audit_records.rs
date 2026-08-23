@@ -250,7 +250,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_invalid_windows_before_storage_and_fails_closed_when_signing_is_unavailable() {
+    async fn rejects_invalid_and_retention_gap_windows_before_signing_and_fails_closed_when_signing_is_unavailable(
+    ) {
         let repository = Arc::new(InMemoryAuditRecordRepository::new());
         let signer = Arc::new(TestSigner::new());
         let handler = ExportAuditRecordsHandler::new(repository.clone(), signer.clone());
@@ -275,6 +276,33 @@ mod tests {
         assert_eq!(repository.query_count(), 0);
         assert_eq!(signer.calls.load(Ordering::Relaxed), 0);
 
+        let retained_organization = OrganizationId::new();
+        repository
+            .register_organization(retained_organization)
+            .await;
+        crate::modules::audit::AuditRetentionWorker::new(
+            repository.clone(),
+            std::time::Duration::from_secs(24 * 60 * 60),
+            std::time::Duration::from_secs(1),
+            1,
+            10,
+        )
+        .expect("retention worker")
+        .run_once(now)
+        .await
+        .expect("retention sweep");
+        let retention_gap = handler
+            .execute(
+                query(retained_organization, now - chrono::Duration::days(2), now),
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("framework")
+            .expect_err("expired export range");
+        assert!(matches!(retention_gap, ApplicationError::Conflict(_)));
+        assert_eq!(repository.query_count(), 1);
+        assert_eq!(signer.calls.load(Ordering::Relaxed), 0);
+
         let unavailable =
             ExportAuditRecordsHandler::new(repository.clone(), Arc::new(UnavailableSigner));
         let error = unavailable
@@ -290,6 +318,6 @@ mod tests {
             ApplicationError::Unavailable("audit export signer is unavailable".into())
         );
         assert!(!error.to_string().contains("private provider detail"));
-        assert_eq!(repository.query_count(), 1);
+        assert_eq!(repository.query_count(), 2);
     }
 }

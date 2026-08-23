@@ -229,6 +229,42 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         "profile_bound"
     );
 
+    let retention = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/audit-records/retention"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(retention.status(), 200);
+    let retention = response_json(&retention)?;
+    assert_eq!(retention["data"]["organizationId"], organization);
+    assert_eq!(retention["data"]["retentionMs"], 7_776_000_000_u64);
+    assert!(retention["data"]["policyDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
+    assert_eq!(retention["data"]["appliedPolicyDigest"], Value::Null);
+    assert_eq!(retention["data"]["currentPolicyApplied"], false);
+    assert_eq!(retention["data"]["recordsAvailableFrom"], Value::Null);
+    assert_eq!(retention["data"]["recordsDeletedBefore"], Value::Null);
+    assert_eq!(retention["data"]["totalDeletedRecords"], 0);
+    assert_eq!(retention["data"]["version"], 0);
+
+    let retention_mcp = app
+        .call(mcp_tool_call_as(
+            5,
+            "a3s_cloud_audit_retention_get",
+            json!({}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(retention_mcp.status(), 200);
+    let retention_mcp = response_json(&retention_mcp)?;
+    assert_eq!(retention_mcp["result"]["isError"], false);
+    assert_eq!(
+        retention_mcp["result"]["structuredContent"]["data"],
+        retention["data"]
+    );
+
     let filtered = app
         .call(get_as(
             format!(
@@ -269,6 +305,13 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         ))
         .await?;
     assert_eq!(member_export_denied.status(), 403);
+    let member_retention_denied = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/audit-records/retention"),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_retention_denied.status(), 403);
     let member_mcp = app
         .call(mcp_tool_call_as(
             2,
@@ -292,6 +335,19 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         .await?;
     assert_eq!(member_export_mcp.status(), 200);
     assert_eq!(response_json(&member_export_mcp)?["error"]["code"], -32602);
+    let member_retention_mcp = app
+        .call(mcp_tool_call_as(
+            6,
+            "a3s_cloud_audit_retention_get",
+            json!({}),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_retention_mcp.status(), 200);
+    assert_eq!(
+        response_json(&member_retention_mcp)?["error"]["code"],
+        -32602
+    );
     let cross_tenant = app
         .call(get_as(
             format!("/api/v1/organizations/{other_organization}/audit-records"),

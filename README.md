@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.57.0" src="https://img.shields.io/badge/REST_contract-1.57.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.58.0" src="https://img.shields.io/badge/REST_contract-1.58.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -73,7 +73,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.57.0`](openapi/v1.json), maintained
+  [OpenAPI `1.58.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) reuse the same application commands
   and queries within their surface-specific privacy boundaries. The contract
@@ -151,6 +151,21 @@ The code on `main` separates implemented mechanics from released capability:
   the implementation commit's [real A3S Box provider
   job](https://github.com/A3S-Lab/Cloud/actions/runs/32639523519/job/97194351057)
   also remains green.
+  Contract `1.58.0` implements the first audit-retention authority without a
+  second audit store. One required deployment-wide `audit` block in the sole
+  A3S ACL selects an exact semantic duration and bounded Worker cadence.
+  Migration `144` gives every organization one monotonic logical-availability
+  watermark and one physical-deletion completion boundary. Audit inserts and
+  reads share-lock that state: late writes and explicit windows or cursors
+  below the watermark fail closed, while a page can never cross a concurrent
+  advance. The Worker claims due tenants with `FOR UPDATE SKIP LOCKED`, applies
+  one global record budget through typed A3S ORM deletion, and commits each
+  cycle's state and deletion together. Owner/admin REST, the maintained
+  client, CLI, and one read-only Management MCP tool expose the configured and
+  applied semantic digests, both boundaries, scheduling state, and monotonic
+  version through one query handler, taking the catalogs to 135 administrator
+  and 75 read-only tools. Multi-page manifests and authorized SIEM delivery
+  remain separate follow-ons.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

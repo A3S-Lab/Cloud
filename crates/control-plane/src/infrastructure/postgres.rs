@@ -1352,6 +1352,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/143_workflow_application_answer_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "144",
+            "monotonic audit retention authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/144_audit_retention_authority.sql"
+            )),
+        ),
     ]
 }
 
@@ -2750,6 +2758,66 @@ mod audit_attribution_snapshot_migration_tests {
             assert!(
                 !canonical.contains(forbidden),
                 "migration 142 adds forbidden authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod audit_retention_authority_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/144_audit_retention_authority.sql"
+    ));
+
+    #[test]
+    fn migration_144_establishes_one_monotonic_audit_retention_authority() {
+        let canonical = MIGRATION
+            .to_ascii_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for expected in [
+            "create table audit_retention_states",
+            "organization_id uuid primary key references organizations(id) on delete cascade",
+            "records_available_from timestamptz",
+            "records_deleted_before timestamptz",
+            "applied_policy_digest text",
+            "total_deleted_records bigint not null default 0",
+            "next_scan_at timestamptz not null default '1970-01-01 00:00:00+00'",
+            "insert into audit_retention_states (organization_id) select id from organizations",
+            "organizations_create_audit_retention_state",
+            "audit_retention_states_monotonic",
+            "new.version <> old.version + 1",
+            "new.records_available_from < old.records_available_from",
+            "new.records_deleted_before < old.records_deleted_before",
+            "new.next_scan_at < old.next_scan_at",
+            "new.last_swept_at < old.last_swept_at",
+            "audit_records_enforce_retention_boundary",
+            "from audit_retention_states state",
+            "for share",
+            "new.occurred_at < retained_from",
+            "using errcode = '23514'",
+            "audit_retention_states_next_scan_idx",
+        ] {
+            assert!(
+                canonical.contains(expected),
+                "migration 144 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "details::",
+            "details ->",
+            "create table export",
+            "create table siem",
+            "create table legal_hold",
+            "signing_key",
+            "pg_cron",
+            "scheduler",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 144 duplicated audit authority through {forbidden}"
             );
         }
     }

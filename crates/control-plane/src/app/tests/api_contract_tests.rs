@@ -1221,6 +1221,23 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             .expect("audit export limit parameter")["schema"]["maximum"],
         200
     );
+    let audit_retention =
+        &document["paths"]["/organizations/{organization_id}/audit-records/retention"]["get"];
+    assert_eq!(audit_retention["tags"], json!(["Audit"]));
+    assert_eq!(audit_retention["summary"], "Get audit retention status");
+    assert!(audit_retention["description"]
+        .as_str()
+        .is_some_and(|description| description.contains("watermarks")));
+    assert!(audit_retention["x-a3s-response-data"]
+        .as_str()
+        .is_some_and(|description| description.contains("semantic digest")));
+    assert!(audit_retention["responses"]["200"].is_object());
+    assert!(audit_retention["responses"]["403"].is_object());
+    assert!(audit_retention["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters
+            .iter()
+            .all(|parameter| parameter["in"] != "query")));
     let notification_collection =
         &document["paths"]["/organizations/{organization_id}/notifications"]["get"];
     assert_eq!(notification_collection["tags"], json!(["Notifications"]));

@@ -707,12 +707,34 @@ purpose-separated development key is restart-stable beneath
 `security.state_dir`; production delegates to the existing Vault Transit client
 through the sole `security` A3S ACL and never receives private key bytes. The
 envelope is returned directly and is not an aggregate, audit fact, object-store
-copy, retention receipt, or SIEM delivery record. Retention deletion and
-complete multi-page export manifests remain later work.
+copy, retention receipt, or SIEM delivery record. Complete multi-page export
+manifests remain later work.
 The [successful PA2b PostgreSQL 17 H0
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306605)
 and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087)
 verify these boundaries.
+Implemented `C0.3-PA2c` adds one deployment-wide
+`a3s.cloud.audit-retention-policy.v1`, derived only from the required top-level
+`audit` A3S ACL. Migration `144` owns exactly one state row per organization:
+an inclusive `records_available_from` watermark, an exclusive
+`records_deleted_before` completion boundary, the applied policy digest,
+aggregate deleted count, bounded next scan, and monotonic version. Existing
+and future organizations receive the same authority. Audit inserts take a
+shared state lock and reject occurrences below the availability watermark.
+List and signed-export pages hold that lock across boundary validation and
+redacted selection; explicit timestamps or cursors below it are conflicts and
+physical backlog below it is never projected.
+
+The Worker selects due state rows with `FOR UPDATE SKIP LOCKED`, advances
+watermarks monotonically, and spends one global record-deletion budget per
+cycle through typed A3S ORM. It marks physical completion only when no older
+row remains. State and deletion share one transaction, so rollback or process
+death cannot expose a false boundary or partial cleanup. A relaxed policy
+cannot resurrect deleted history. The owner/admin `cloud:read` status query
+returns the configured/applied digests, both boundaries, counters, schedule,
+and version through REST/OpenAPI `1.58.0`, maintained client, CLI, and
+Management MCP; none of those surfaces can mutate policy. Multi-page manifests
+and authorized SIEM delivery remain separate lifecycles.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`

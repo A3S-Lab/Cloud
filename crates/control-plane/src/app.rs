@@ -44,7 +44,8 @@ use crate::modules::assets::{
     UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
 use crate::modules::audit::{
-    AuditExportSigningError, AuditExportSigningKey, AuditModule, ExportAuditRecordsHandler,
+    AuditExportSigningError, AuditExportSigningKey, AuditModule, AuditRetentionPolicy,
+    AuditRetentionWorker, ExportAuditRecordsHandler, GetAuditRetentionStatusHandler,
     IAuditExportSigner, IAuditRecordRepository, ListAuditRecordsHandler,
     VerifiedAuditExportSignature,
 };
@@ -307,6 +308,8 @@ pub enum ControlPlaneStartupError {
     Edge(String),
     #[error("could not initialize log retention or compaction: {0}")]
     LogMaintenance(String),
+    #[error("could not initialize audit retention: {0}")]
+    AuditMaintenance(String),
     #[error("could not initialize shared object storage: {0}")]
     ObjectStorage(String),
     #[error("could not bind deployment infrastructure: {0}")]
@@ -500,6 +503,7 @@ async fn build_api_worker_application(
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search = adapters.search;
     let audit_records = adapters.audit_records;
+    let audit_retention_repository = Arc::clone(&audit_records);
     let security_investigations = adapters.security_investigations;
     let notifications = adapters.notifications.notifications;
     let alert_policies = adapters.notifications.alert_policies;
@@ -1373,6 +1377,14 @@ async fn build_api_worker_application(
             config.logs.retention_batch_size,
         )
         .map_err(ControlPlaneStartupError::LogMaintenance)?;
+        let audit_retention_worker = AuditRetentionWorker::new(
+            audit_retention_repository,
+            Duration::from_millis(config.audit.retention_ms),
+            Duration::from_millis(config.audit.retention_poll_ms),
+            config.audit.retention_organization_batch_size,
+            config.audit.retention_record_batch_size,
+        )
+        .map_err(ControlPlaneStartupError::AuditMaintenance)?;
         let log_compaction_worker = LogCompactionWorker::new(
             log_retention_repository,
             Duration::from_millis(config.logs.tombstone_retention_ms),
@@ -1480,6 +1492,7 @@ async fn build_api_worker_application(
             replica_deployment_materializer,
             replica_retirement_reconciler,
             workload_reconciler,
+            audit_retention_worker,
             log_retention_worker,
             log_compaction_worker,
             outbound_notification_consumer,
@@ -1788,6 +1801,9 @@ fn build_management_application_with_health(
             "a non-management process cannot acquire management dependencies".into(),
         ));
     }
+    let audit_retention_policy =
+        AuditRetentionPolicy::new(Duration::from_millis(config.audit.retention_ms))
+            .map_err(BootError::Internal)?;
 
     let ManagementApplicationDependencies {
         management,
@@ -2994,6 +3010,12 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::audit::ListAuditRecords, _>(
                     ListAuditRecordsHandler::new(Arc::clone(&audit_records)),
+                )
+                .query_handler::<crate::modules::audit::GetAuditRetentionStatus, _>(
+                    GetAuditRetentionStatusHandler::new(
+                        Arc::clone(&audit_records),
+                        audit_retention_policy,
+                    ),
                 )
                 .query_handler::<crate::modules::audit::ExportAuditRecords, _>(
                     ExportAuditRecordsHandler::new(audit_records, audit_export_signer),
