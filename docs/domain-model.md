@@ -692,7 +692,7 @@ The [retained PostgreSQL 17 H0
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460/job/97176670880)
 proves migration `142`, all four statuses, occurrence-time profile stability,
 tenant/reference rejection, filtering, pagination, and private-detail exclusion.
-Implemented `C0.3-PA2b` adds no second durable model. One query handler obtains an
+Verified `C0.3-PA2b` adds no second durable model. One query handler obtains an
 explicitly time-windowed, one-through-200 page from the same repository,
 projects only the eleven public fields, canonicalizes schema
 `a3s.cloud.audit-export.v1`, and asks an Audit-owned signer port for one
@@ -709,6 +709,10 @@ through the sole `security` A3S ACL and never receives private key bytes. The
 envelope is returned directly and is not an aggregate, audit fact, object-store
 copy, retention receipt, or SIEM delivery record. Retention deletion and
 complete multi-page export manifests remain later work.
+The [successful PA2b PostgreSQL 17 H0
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306605)
+and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087)
+verify these boundaries.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`

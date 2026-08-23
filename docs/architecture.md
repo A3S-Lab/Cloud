@@ -307,7 +307,7 @@ second entry in an authority row must be redesigned before implementation.
 | Deployment storage topology | Create-only, secret-free digests in PostgreSQL `infrastructure_bindings` for the one object root and Hosted Git filesystem identity | A storage backend attesting itself, mutable runtime overrides, ref/object mirrors, or a second topology registry |
 | Mutable workload data and distributed volume intent | Data context plus typed `S0` provider contracts and fencing | Workflow filesystems, Agent volume managers, provider JSON as desired state, or unfenced shared writers |
 | Unified capability discovery | Search projection over exact owning-context release references | Copied release rows, a second package registry, or a catalog that can mutate source identities |
-| Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection; verified `C0.3-PA2a` adds explicit request-time Project/Environment/immutable-profile references and a closed attribution status to that same authority through [main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32632245460) | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, current-pointer lookup for historical facts, scope inference from private details, or public unstructured details |
+| Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection; verified `C0.3-PA2a` adds explicit request-time Project/Environment/immutable-profile references and a closed attribution status, while verified `C0.3-PA2b` adds one bounded canonical signed page through [main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087) | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, current-pointer lookup for historical facts, scope inference from private details, or public unstructured details |
 | Security detection and investigation | `C0.3` read projections over exact typed owner facts and shared audit metadata; later AnySentry/OpenTelemetry references remain owner-authorized | A security control plane, direct telemetry enforcement, a second incident/audit store, or hidden node commands |
 | Client sequence transport | Shared cursor, gap, polling, and SSE primitives | Controller-local cursor codecs or best-effort in-memory streams |
 | Production autoscaling | The `H0.5` Workloads autoscaler | Gateway, inference backend, or metrics-provider scaling loops |
@@ -318,7 +318,7 @@ Correctness must remain intact when Redis is empty or unavailable. It never
 owns conversations, commands, queues, locks, cursors, approvals, checkpoints,
 leases, desired state, or durable usage.
 
-Implemented `C0.3-PA2b` keeps signed audit export inside that Audit boundary. It
+Verified `C0.3-PA2b` keeps signed audit export inside that Audit boundary. It
 canonicalizes one bounded, explicitly time-windowed page from the existing
 redacted read projection and signs only its DSSE pre-authentication encoding
 through an Audit-owned port. The composition root reuses the existing local or

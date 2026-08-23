@@ -367,6 +367,12 @@ single read-only addition takes the exact catalogs to 134 administrator and 74
 `cloud:read` tools and adds no repository, export table, object copy, retention
 deletion, queue, scheduler, or SIEM push.
 
+The [successful PA2b Management MCP
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306596)
+proves the exact 134/74 catalogs, annotations, permissions, strict arguments,
+and real shared-handler dispatch. The [complete PA2b main CI
+run](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087) is successful.
+
 ## Recipient-contact self-service
 
 `a3s_cloud_recipient_contacts_list` and
