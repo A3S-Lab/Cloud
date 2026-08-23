@@ -318,6 +318,16 @@ Correctness must remain intact when Redis is empty or unavailable. It never
 owns conversations, commands, queues, locks, cursors, approvals, checkpoints,
 leases, desired state, or durable usage.
 
+Frozen `C0.3-PA2b` keeps signed audit export inside that Audit boundary. It
+canonicalizes one bounded, explicitly time-windowed page from the existing
+redacted read projection and signs only its DSSE pre-authentication encoding
+through an Audit-owned port. The composition root reuses the existing local or
+Vault Transit Ed25519 mechanism with a purpose-separated key selected by the
+sole `security` A3S ACL. No presentation adapter receives a private key, no
+export document reads `audit_records.details`, and no export table, audit copy,
+object namespace, queue, scheduler, or SIEM transport is introduced by this
+first signed-page gate.
+
 If A3S ORM lacks a required typed query, expression, lock, or transaction
 primitive, the primitive is added and certified in A3S ORM through its normal
 issue, pull-request, release, and compatibility-lock flow. Cloud does not use

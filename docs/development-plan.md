@@ -2002,8 +2002,9 @@ node.
   while PostgreSQL rejects UPDATE, DELETE, and cross-project lineage. It adds
   neither commercial billing authority nor another migration mechanism.
   `C0.3` remains in progress because, although `C0.3-PA2a` request-time audit
-  attribution is verified, later cross-layer security investigation, product
-  usage-fact profile snapshots, and audit retention/export remain open.
+  attribution is verified, `C0.3-PA2b` is only frozen and later cross-layer
+  security investigation, product usage-fact profile snapshots, audit
+  retention, and complete SIEM export remain open.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -2948,10 +2949,44 @@ node.
   This slice adds no usage ledger, export, retention deletion, signing
   key/provider, table, writer, queue, scheduler, event rail, configuration,
   pricing, balance, invoice, settlement, or entitlement authority.
-- Extend the implemented tenant-administrator audit query with explicit
-  retention policy, signed export, and correlation across Flow, node commands,
-  and provider resources. Reuse the same shared records and read projection;
-  do not add another audit authority.
+- Frozen next as `C0.3-PA2b`: expose one owner/admin-only, `cloud:read` signed
+  export page over exactly the existing redacted `AuditRecord` repository and
+  filters. Require explicit inclusive `from` and `to` timestamps no more than
+  31 days apart; accept the existing cursor and one-through-200 limit so every
+  database read remains bounded. The canonical schema
+  `a3s.cloud.audit-export.v1` contains the exact organization, canonical filter
+  and window, input and next cursor, injected generation time, and the same
+  eleven public fields for each record in descending `(occurred_at, audit_id)`
+  order. It must never contain `audit_records.details`, profile labels,
+  business-owner text, cost-attribution text, Secrets, prompts, responses, or
+  commercial balance data.
+  Wrap those canonical JSON bytes in one DSSE envelope with payload type
+  `application/vnd.a3s.cloud.audit-export.v1+json`. Return one Ed25519 signature
+  together with the SHA-256 key ID, public key, and optional external key
+  version needed for offline verification. Audit owns a typed asynchronous
+  signing port; the composition root extracts the existing bounded Ed25519
+  implementation and selects a purpose-separated `audit_export_signing`
+  provider/key through the sole `security` A3S ACL. Development uses one
+  restart-stable private local key below `security.state_dir`; production must
+  use the existing Vault Transit client and never materialize private key bytes.
+  Provider unavailability, invalid/malformed signatures, local verification
+  failure, unauthorized tenancy, invalid range/limit, and cursor/filter failure
+  all fail closed.
+  REST/OpenAPI `1.57.0`, the maintained client, CLI, and one new read-only
+  Management MCP operation call the same handler, taking the exact catalogs to
+  134 administrator and 74 read-only tools. Focused and PostgreSQL gates cover
+  canonical-byte stability under an injected clock, exact cross-surface page
+  parity, key restart stability and versioned rotation metadata, mocked Vault
+  protocol rejection, offline verification, payload/signature tampering,
+  tenant/role denial, pagination, attribution stability, and private-data
+  exclusion. PA2b adds no migration, audit/export/retention table, writer,
+  persisted envelope, object copy, S0 namespace, deletion, retention scheduler,
+  queue, event rail, Connector/SIEM push, or commercial authority.
+- After PA2b is verified, extend the same audit authority with explicit
+  retention policy, chained or persisted multi-page manifests, authorized SIEM
+  delivery, and correlation across Flow, node commands, and provider resources.
+  Reuse the same shared records and read projection; do not add another audit
+  authority.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,
