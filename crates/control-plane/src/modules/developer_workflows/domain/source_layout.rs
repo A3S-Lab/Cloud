@@ -110,13 +110,12 @@ impl SourceLayoutEntry {
             (SourceLayoutEntryKind::Symlink, Some(_)) => {
                 return Err("source layout cannot inspect symlink content".into())
             }
-            (SourceLayoutEntryKind::Regular, Some(content)) => {
+            (SourceLayoutEntryKind::Regular, Some(content))
                 if content.len() > MAX_SOURCE_LAYOUT_INSPECTED_FILE_BYTES
                     || content.len() as u64 != self.size_bytes
-                    || Sha256Digest::from_bytes(content) != self.content_digest
-                {
-                    return Err("source layout inspected content is invalid".into());
-                }
+                    || Sha256Digest::from_bytes(content) != self.content_digest =>
+            {
+                return Err("source layout inspected content is invalid".into());
             }
             _ => {}
         }
