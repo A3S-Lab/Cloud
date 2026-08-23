@@ -684,14 +684,17 @@ keyset pages to return the requested number of visible records consistently
 across REST, SSE, and Management MCP. Unknown, missing, and denied subjects are
 hidden; workflow input cannot supply ownership, and Operations does not persist
 a resource-scope index.
-Frozen `C0.3-S1a` starts the security-investigation read model with an exact
+Verified `C0.3-S1a` implements the security-investigation read model with an exact
 Gateway MCP Route policy timeline. It decodes only Edge-owned schema-v1 policy-
 created/revised Outbox facts and correlates them to the same request's shared
 audit metadata by tenant, Route, action, occurrence, and correlation identity.
 The read is owner/admin-only, bounded, descending-keyset paged, and redacted:
 `audit_records.details` is never selected, while a missing match remains an
 explicit gap and an ambiguous match fails closed. It is a rebuildable query over
-existing authorities, not a persisted incident or evidence store. Later `S1`
+existing authorities, not a persisted incident or evidence store. The
+[retained PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528129)
+proves typed correlation, stable pagination, tenancy, redaction, explicit gaps,
+and duplicate-match rejection through migration `141`. Later `S1`
 slices may correlate authorized Gateway denials, Agent semantics, Runtime/Box/
 host evidence, and AnySentry/OpenTelemetry references only after those owners
 provide durable typed facts. Investigation and notification cannot enforce
@@ -3605,7 +3608,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Accelerator topology/health and node Artifact-cache observations | Planned node-agent extensions plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
 | Inference request, attempt and token usage facts, including the request-time project/environment and immutable attribution reference | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
-| Security detection and investigation timeline | Rebuildable `C0.3` projection over shared audit records and authorized AnySentry/OpenTelemetry evidence references; the source audit/evidence systems retain fact authority |
+| Security detection and investigation timeline | Rebuildable `C0.3-S1a` projection over exact Edge-owned Outbox facts and shared audit metadata; later authorized AnySentry/OpenTelemetry references remain owner-gated, and every source audit/evidence system retains fact authority |
 | Operation history | A3S Flow PostgreSQL event store |
 | Operation summary | Rebuildable PostgreSQL projection |
 | Provider resource and live health | Node agent plus Runtime provider |

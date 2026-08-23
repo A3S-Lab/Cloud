@@ -753,14 +753,21 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 132-tool administrator and 72-tool
+current focused source runner requires exact 133-tool administrator and 73-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
 record; returns the same `404` business-error contract for foreign and missing
 Projects; and queries the shared tenant audit history with the read-only
 administrator token while proving the response omits internal `details`. It
-also creates an Ontology through REST, replays it through
+also exposes the owner/admin-only Gateway MCP Route policy security timeline as
+one `cloud:read` operation over the shared query handler. The [successful
+PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528129)
+retains its typed correlation, gap, ambiguity, tenancy, pagination, and
+redaction boundaries, while the [successful Management MCP
+job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528171)
+retains the exact catalog and annotations. The scenario also creates an
+Ontology through REST, replays it through
 MCP, exercises all seven Ontology tools with a read-only token where
 applicable, rejects a breaking revision without its target migration rule,
 publishes the explicit migration, and proves historical replay after later
