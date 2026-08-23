@@ -1755,6 +1755,49 @@ or add a configurable threshold, severity rule, certificate state, incident
 table, arbitrary selector, payload expression, timer, scheduler, queue, second
 event rail, or configuration format.
 
+#### Fleet node-availability fact (`C0.3-N4h` frozen)
+
+Fleet remains authoritative for Node lifecycle and heartbeat observation. The
+next admissible alert prerequisite is a Worker-only bounded availability
+reconciler over that authority. Backup status stays blocked until Data owns an
+executable backup lifecycle; a documented `data.backup.completed` key,
+hosted-Git backup, object-namespace seal, log, or absent record is not a backup
+status fact.
+
+Only non-Pending, non-Revoked Nodes participate. At the strict boundary
+`evaluated_at > last_observed_at + heartbeat_timeout`, the existing `fleet` A3S
+ACL-selected timeout produces schema-v1 `fleet.node.unavailable`; equality is
+still online. A later heartbeat produces schema-v1
+`fleet.node.availability-resolved` only when its canonical observation time
+strictly advances, with reason `heartbeat_restored`. Explicit Node revocation
+resolves one open firing with reason `node_revoked`. Initial and fresh
+observation, Pending Nodes, Ready/Draining-only state changes, heartbeat replay,
+repeated scans, timeout drift without a new heartbeat, and an already resolved
+or revoked subject emit no fact.
+
+The exact Node is the fact subject. An unavailable fact uses phase version
+`2 * node.aggregate_version`; a resolution uses
+`2 * node.aggregate_version - 1`. Heartbeat or revocation advances the Node, so
+resolution orders after the prior firing and before another possible firing at
+that new Node version. Event identity is deterministic from the Node, closed
+event key, and phase. The payload is bounded to organization and Node identity,
+Node and phase versions, closed status/reason, last observation, the timeout
+deadline where applicable, and detection or resolution time. It cannot carry
+capabilities, inventory, commands, logs, metrics, provider text, credentials,
+or arbitrary diagnostics.
+
+Migration `139` owns one per-Node Fleet fact-head/cursor rather than querying
+the unbounded Outbox as current state. Heartbeat or revoke, fact-head, and typed
+Outbox fact lock in one order and commit atomically. Bounded
+`FOR UPDATE SKIP LOCKED` pages make concurrent Worker replicas disjoint;
+transaction, process, or Outbox failure leaves no partial transition. The
+cursor is exactly-once owner evidence, not a generic health/incident store or a
+Notifications projection. N4h adds no public surface, alert-policy version,
+Notifications poller, configuration field, queue, scheduler, timer authority,
+or event rail. A following N4i slice may admit the closed facts through an
+exact-node policy target and the existing Node Resource Grant evaluator only
+after retained PostgreSQL owner evidence passes.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical

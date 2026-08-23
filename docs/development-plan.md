@@ -2777,6 +2777,50 @@ node.
   built-in mail server, copied contact store, direct HTTP fallback, mutable retry
   counter, sleep, timer, queue, scheduler, second event rail, or non-ACL
   configuration.
+- Frozen as `C0.3-N4h`: Fleet, not Notifications, owns the first explicit node-
+  availability missing-data fact. Backup status remains blocked because Data has
+  no executable backup lifecycle; hosted-Git backups, object seals,
+  `data.backup.completed` documentation, logs, and silence are not substitute
+  authority. A Worker-only bounded `NodeAvailabilityReconciler` uses the
+  existing `fleet` A3S ACL's heartbeat interval and timeout through one Fleet
+  repository port. It adds no configuration field, generic scheduler, queue, or
+  event rail.
+
+  Only non-Pending, non-Revoked Nodes participate. At the strict boundary
+  `evaluated_at > last_observed_at + heartbeat_timeout`, the reconciler emits
+  schema-v1 `fleet.node.unavailable`; equality remains online. A later heartbeat
+  resolves an open firing only when its canonical `last_observed_at` strictly
+  advances, using schema-v1 `fleet.node.availability-resolved` with closed reason
+  `heartbeat_restored`. Explicit revocation resolves one open firing with reason
+  `node_revoked`. Initial/fresh observation, Pending Nodes, a Ready/Draining-only
+  state change, heartbeat replay, repeated scans, timeout drift without a new
+  heartbeat, and already-resolved or revoked subjects are silent.
+
+  The exact Node ID is the stable subject. Unavailable uses aggregate phase
+  `2 * node.aggregate_version`; resolution uses
+  `2 * node.aggregate_version - 1`. Heartbeat or revocation therefore places
+  resolution after its firing and before another possible firing at the new
+  Node version. Deterministic event identity binds the Node, closed key, and
+  phase. Payloads retain only organization and Node IDs, Node and phase versions,
+  closed status/reason, last observation, the unavailable deadline, and
+  detection or resolution time. Capabilities, inventory, commands, logs,
+  metrics, provider/private errors, credentials, and arbitrary diagnostics are
+  forbidden.
+
+  Migration `139` adds one Fleet-owned per-Node fact-head/cursor because the
+  unbounded Outbox is not a current-state query store. It is not a generic
+  health or incident table. Heartbeat/revoke, fact-head, and Outbox writes lock
+  the same Node/head order and commit atomically. Bounded
+  `FOR UPDATE SKIP LOCKED` scans make concurrent Workers disjoint; transaction,
+  process, or Outbox failure leaves no partial fact, while restart and replay are
+  silent. The retained PostgreSQL 17 gate must prove strict deadline equality,
+  first firing, duplicate/concurrent scan silence, heartbeat and revoke
+  resolution, second firing at the next phase, rollback, restart, tenant
+  isolation, bounded paging, typed payloads, and private-data exclusion. N4h
+  adds no Notifications source or polling, alert-policy version, REST/client/
+  CLI/MCP surface, mutable retry counter, generic timer, or second authority.
+  The following N4i slice may add an exact-node alert-policy-v2 target and
+  current Node Resource Grant revalidation only after this owner evidence passes.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
   backup status, node availability,
   operation latency, and resource signals only after each owning context or its
