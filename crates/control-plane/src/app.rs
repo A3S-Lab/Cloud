@@ -45,9 +45,9 @@ use crate::modules::assets::{
 };
 use crate::modules::audit::{
     AuditExportSigningError, AuditExportSigningKey, AuditModule, AuditRetentionPolicy,
-    AuditRetentionWorker, ExportAuditRecordsHandler, GetAuditRetentionStatusHandler,
-    IAuditExportSigner, IAuditRecordRepository, ListAuditRecordsHandler,
-    VerifiedAuditExportSignature,
+    AuditRetentionWorker, ExportAuditManifestHandler, ExportAuditRecordsHandler,
+    GetAuditRetentionStatusHandler, IAuditExportSigner, IAuditRecordRepository,
+    ListAuditRecordsHandler, VerifiedAuditExportSignature,
 };
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
@@ -3014,6 +3014,13 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::audit::GetAuditRetentionStatus, _>(
                     GetAuditRetentionStatusHandler::new(
                         Arc::clone(&audit_records),
+                        audit_retention_policy.clone(),
+                    ),
+                )
+                .query_handler::<crate::modules::audit::ExportAuditManifest, _>(
+                    ExportAuditManifestHandler::new(
+                        Arc::clone(&audit_records),
+                        Arc::clone(&audit_export_signer),
                         audit_retention_policy,
                     ),
                 )

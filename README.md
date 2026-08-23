@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.58.0" src="https://img.shields.io/badge/REST_contract-1.58.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.59.0" src="https://img.shields.io/badge/REST_contract-1.59.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -70,7 +70,7 @@ The code on `main` separates implemented mechanics from released capability:
   passes the complete foundation suite against that exact lock, so `F0` is
   `Verified` again.
 - **Implemented / stable management contract** — committed
-  [OpenAPI `1.58.0`](openapi/v1.json), maintained
+  [OpenAPI `1.59.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) reuse the same application commands
   and queries within their surface-specific privacy boundaries. The contract
@@ -174,8 +174,23 @@ The code on `main` separates implemented mechanics from released capability:
   run](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148) passes all ten
   jobs. The same main commit's broader [real A3S Box provider
   job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905141/job/97224763345)
-  is also successful. Multi-page manifests and authorized SIEM delivery remain
-  separate follow-ons.
+  is also successful.
+  Contract `1.59.0` implements a synchronous complete audit-export bundle over
+  the same Audit authority. One PostgreSQL transaction exclusively locks the
+  organization's retention row, validates its watermark, and captures no more
+  than eight one-through-200-record pages plus one overflow sentinel. Signing
+  occurs after the transaction: all existing `a3s.cloud.audit-export.v1` pages
+  and one `a3s.cloud.audit-export-manifest.v1` DSSE envelope must use the same
+  Ed25519 key. The manifest binds the exact filter and required maximum-31-day
+  window, page size, captured retention digests and watermarks, counts, cursor
+  chain, signing-key IDs, and page payload digests. Empty selections return a
+  signed zero-page manifest; overflow, signer/key drift, partial signing, or
+  offline mismatch fails closed without a partial response. REST, client, CLI,
+  and one read-only Management MCP tool share the handler, taking the catalogs
+  to 136 administrator and 76 read-only tools. This in-memory response adds no
+  migration, export table, object copy, queue, scheduler, Connector, SIEM
+  delivery, or commercial authority; PA2d remote-provider certification and
+  authorized SIEM delivery remain separate gates.
 - **Verified recipient-contact authority and delivery / implemented self-service** — Identity
   now owns exact human-Principal email contacts, bounded one-time verification
   challenges, an HMAC-SHA-256 signer/verifier port, version-checked terminal

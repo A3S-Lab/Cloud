@@ -79,6 +79,19 @@ profile in the selected Project. `project-attribution update <owner>` requires
 bounded transport validation through the maintained client and never derives
 ownership, billing, or usage truth locally.
 
+`audit-records export` returns one signed redacted audit page for an explicit
+inclusive window of at most 31 days. `audit-records export-manifest` implements
+REST contract `1.59.0`: it accepts the same exact filters and required window,
+uses `--limit=<1..200>` as the page size (default 200), rejects `--cursor`, and
+prints the complete zero-through-eight-page bundle without transforming its
+DSSE envelopes. The signed manifest binds the captured retention state,
+counts, cursor chain, shared key identities, and page payload digests. Callers
+must verify every signature and compare the returned key with an independently
+trusted deployment fingerprint. The CLI never persists a partial bundle or
+creates an export store, object copy, Connector, SIEM, or commercial authority.
+`audit-records retention` remains the read-only view of the configured and
+applied retention policy and organization watermarks.
+
 `notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]`
 reads only the authenticated Principal's server-authorized in-app inbox;
 `notifications get <notification-id>` reads one exact visible record.
@@ -271,6 +284,9 @@ projects create <name>
 project-attribution get [profile-id]
 project-attribution update <owner> --expected-version=<version> [--cost-attribution-code=<code>] [--label=<key=value> ...]
 audit-records list [--actor-principal=<id>] [--action=<key>] [--aggregate=<id>] [--request-id=<id>] [--project=<id>] [--environment=<id>] [--attribution-profile=<id>] [--attribution-status=<legacy_unknown|not_applicable|profile_missing|profile_bound>] [--from=<timestamp>] [--to=<timestamp>] [--cursor=<cursor>] [--limit=<1..200>]
+audit-records export [filters] --from=<timestamp> --to=<timestamp> [--cursor=<cursor>] [--limit=<1..200>]
+audit-records export-manifest [filters] --from=<timestamp> --to=<timestamp> [--limit=<1..200>]
+audit-records retention
 notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]
 notifications get <notification-id>
 notifications read <notification-id> --expected-version=<version>

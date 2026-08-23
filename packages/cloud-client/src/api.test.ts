@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.58.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.59.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2920,6 +2920,36 @@ describe('CloudApi', () => {
     );
   });
 
+  it('exports one complete bounded audit manifest without a client cursor', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({
+        manifest: {
+          envelope: {
+            payloadType: 'application/vnd.a3s.cloud.audit-export-manifest.v1+json',
+            payload: 'e30=',
+            signatures: [{ keyId: 'a'.repeat(64), signature: 'signature' }],
+          },
+          signingKey: { algorithm: 'ed25519', keyId: 'a'.repeat(64), publicKey: 'public-key' },
+        },
+        pages: [],
+      });
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    await api.exportAuditRecordManifest('organization / one', {
+      from: '2026-08-01T00:00:00Z',
+      to: '2026-08-13T00:00:00Z',
+      action: 'identity.membership.created',
+      pageSize: 125,
+    });
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/audit-records/export/manifest?' +
+        'action=identity.membership.created&from=2026-08-01T00%3A00%3A00Z&' +
+        'to=2026-08-13T00%3A00%3A00Z&pageSize=125'
+    );
+  });
+
   it('gets the organization audit retention authority without query ambiguity', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
@@ -2992,6 +3022,20 @@ describe('CloudApi', () => {
         from: '2026-08-01T00:00:00Z',
       } as never)
     ).toThrow('audit export requires both from and to timestamps');
+    expect(() =>
+      api.exportAuditRecordManifest('organization', {
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        pageSize: 201,
+      })
+    ).toThrow('audit export manifest page size must be between 1 and 200');
+    expect(() =>
+      api.exportAuditRecordManifest('organization', {
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        cursor: 'v1:1786582923000000:019c0000-0000-7000-8000-000000000001',
+      } as never)
+    ).toThrow('audit export manifest does not accept cursor or limit; use pageSize');
     expect(called).toBe(false);
   });
 

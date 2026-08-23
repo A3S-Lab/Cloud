@@ -106,7 +106,7 @@ impl QueryHandler<ExportAuditRecords> for ExportAuditRecordsHandler {
     }
 }
 
-fn map_signing_error(error: AuditExportSigningError) -> ApplicationError {
+pub(super) fn map_signing_error(error: AuditExportSigningError) -> ApplicationError {
     match error {
         AuditExportSigningError::Unavailable(_) => {
             ApplicationError::Unavailable("audit export signer is unavailable".into())

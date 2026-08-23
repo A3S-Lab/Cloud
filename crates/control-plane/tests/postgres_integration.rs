@@ -26,9 +26,9 @@ use a3s_cloud_control_plane::modules::assets::{
 };
 use a3s_cloud_control_plane::modules::audit::{
     AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecordCursor,
-    AuditRecordFilter, AuditRetentionWorker, ExportAuditRecords, ExportAuditRecordsHandler,
-    IAuditExportSigner, IAuditRecordRepository, PostgresAuditRecordRepository,
-    VerifiedAuditExportSignature,
+    AuditRecordFilter, AuditRetentionPolicy, AuditRetentionWorker, ExportAuditManifest,
+    ExportAuditManifestHandler, ExportAuditRecords, ExportAuditRecordsHandler, IAuditExportSigner,
+    IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
@@ -763,7 +763,7 @@ async fn postgres_audit_query_signed_export_and_retention_are_tenant_scoped_boun
 async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
-    let repository = Arc::new(PostgresAuditRecordRepository::new(executor));
+    let repository = Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
     let organization_id = OrganizationId::new();
     let hidden_organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -1119,13 +1119,11 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
             .key_id(),
         key_id
     );
-    let export_handler = ExportAuditRecordsHandler::new(
-        repository.clone(),
-        Arc::new(IntegrationAuditExportSigner {
-            signer: Arc::new(local_signer),
-        }),
-    )
-    .with_clock(Arc::new(move || now + chrono::Duration::seconds(4)));
+    let audit_signer: Arc<dyn IAuditExportSigner> = Arc::new(IntegrationAuditExportSigner {
+        signer: Arc::new(local_signer),
+    });
+    let export_handler = ExportAuditRecordsHandler::new(repository.clone(), audit_signer.clone())
+        .with_clock(Arc::new(move || now + chrono::Duration::seconds(4)));
     let export = export_handler
         .execute(
             ExportAuditRecords {
@@ -1165,6 +1163,175 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
     );
     assert!(export_payload["nextCursor"].is_string());
     assert!(!export_payload.to_string().contains("must-not-be-projected"));
+
+    let manifest_handler = ExportAuditManifestHandler::new(
+        repository.clone(),
+        audit_signer,
+        AuditRetentionPolicy::new(Duration::from_secs(24 * 60 * 60))
+            .map_err(std::io::Error::other)?,
+    )
+    .with_clock(Arc::new(move || now + chrono::Duration::seconds(4)));
+    let manifest = manifest_handler
+        .execute(
+            ExportAuditManifest {
+                organization_id,
+                filter: AuditRecordFilter {
+                    actor_principal_id: Some(
+                        a3s_cloud_control_plane::modules::shared_kernel::domain::PrincipalId::from_uuid(
+                            actor_id,
+                        ),
+                    ),
+                    request_id: Some(request_id),
+                    from: Some(now),
+                    to: Some(now + chrono::Duration::seconds(3)),
+                    ..AuditRecordFilter::default()
+                },
+                page_size: 2,
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await??;
+    let manifest_document = manifest.verify().map_err(std::io::Error::other)?;
+    assert_eq!(manifest_document.record_count, 4);
+    assert_eq!(manifest_document.page_count, 2);
+    assert_eq!(manifest_document.filter.page_size, 2);
+    assert_eq!(manifest_document.retention.records_available_from, None);
+    assert_eq!(manifest_document.retention.applied_policy_digest, None);
+    assert!(!manifest_document.retention.current_policy_applied);
+    assert_eq!(manifest.pages.len(), 2);
+    assert!(manifest
+        .pages
+        .iter()
+        .all(|page| page.signing_key == manifest.manifest.signing_key));
+    assert_eq!(
+        manifest.manifest.signing_key.key_id,
+        key_id.strip_prefix("sha256:").expect("SHA-256 key ID")
+    );
+    assert!(!serde_json::to_string(&manifest)?.contains("must-not-be-projected"));
+
+    let capture_organization_id = OrganizationId::new();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(capture_organization_id.as_uuid())
+            .append(", 'Audit capture tenant', 'audit-capture-tenant', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    let captured_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(captured_id)
+            .append(", ")
+            .bind(capture_organization_id.as_uuid())
+            .append(", null, 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'not_applicable', '{\"private\":\"capture\"}'::jsonb)"),
+        )
+        .await?;
+    let capture_filter = AuditRecordFilter {
+        from: Some(now - chrono::Duration::seconds(1)),
+        to: Some(now + chrono::Duration::seconds(2)),
+        ..AuditRecordFilter::default()
+    };
+    let table_lock = executor.pool().get().await?;
+    table_lock
+        .batch_execute("begin; lock table audit_records in access exclusive mode")
+        .await?;
+    let capture_repository = repository.clone();
+    let capture_filter_task = capture_filter.clone();
+    let capture_task = tokio::spawn(async move {
+        capture_repository
+            .capture_export_snapshot(capture_organization_id, &capture_filter_task, 3)
+            .await
+    });
+    let probe_database = Database::new(PostgresDialect, executor.clone());
+    let mut capture_holds_retention_lock = false;
+    for _ in 0..100 {
+        if probe_database
+            .fetch_one_as(
+                sql_query::<Uuid>(
+                    "select organization_id from audit_retention_states where organization_id = ",
+                )
+                .bind(capture_organization_id.as_uuid())
+                .append(" for share nowait"),
+            )
+            .await
+            .is_err()
+        {
+            capture_holds_retention_lock = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        capture_holds_retention_lock,
+        "audit manifest capture did not acquire the retention row before selection"
+    );
+    let concurrent_id = Uuid::now_v7();
+    let insert_database = Database::new(PostgresDialect, executor.clone());
+    let insert_task = tokio::spawn(async move {
+        insert_database
+            .execute(
+                sql_query::<()>(
+                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+                )
+                .bind(concurrent_id)
+                .append(", ")
+                .bind(capture_organization_id.as_uuid())
+                .append(", null, 'identity.membership.created', ")
+                .bind(Uuid::now_v7())
+                .append(", ")
+                .bind(now + chrono::Duration::seconds(1))
+                .append(", ")
+                .bind(Uuid::now_v7())
+                .append(", 'not_applicable', '{}'::jsonb)"),
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        !insert_task.is_finished(),
+        "audit insert crossed the manifest capture's exclusive retention lock"
+    );
+    table_lock.batch_execute("rollback").await?;
+    let snapshot = capture_task.await??;
+    assert_eq!(
+        snapshot
+            .records
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>(),
+        vec![captured_id]
+    );
+    assert_eq!(insert_task.await??.rows_affected, 1);
+    let after_capture = repository
+        .capture_export_snapshot(capture_organization_id, &capture_filter, 3)
+        .await?;
+    assert_eq!(
+        after_capture
+            .records
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>(),
+        vec![concurrent_id, captured_id]
+    );
+    database
+        .execute(
+            sql_query::<()>("delete from organizations where id = ")
+                .bind(capture_organization_id.as_uuid()),
+        )
+        .await?;
 
     assert!(database
         .execute(

@@ -151,6 +151,7 @@ Commands:
   operations list       List recent operations in the selected organization
   audit-records list    List bounded, redacted organization audit history (owner/admin)
   audit-records export  Export one signed, redacted audit page for an explicit time window (owner/admin)
+  audit-records export-manifest  Atomically export up to eight signed audit pages and their signed manifest (owner/admin)
   audit-records retention  Show the enforced audit retention policy and organization watermarks (owner/admin)
   security-investigations timeline ROUTE_ID List bounded Gateway Route policy evidence (owner/admin)
   notifications list    List the authenticated Principal's authorized in-app inbox

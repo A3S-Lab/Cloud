@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import type { AuditExport, AuditRecordPage, AuditRetentionStatus, CloudFetch } from '@a3s/cloud-client';
+import type {
+  AuditExport,
+  AuditExportManifestBundle,
+  AuditRecordPage,
+  AuditRetentionStatus,
+  CloudFetch,
+} from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
@@ -41,6 +47,18 @@ const SIGNED_EXPORT: AuditExport = {
     keyId: 'a'.repeat(64),
     publicKey: 'cHVibGljLWtleQ==',
   },
+};
+
+const SIGNED_MANIFEST: AuditExportManifestBundle = {
+  manifest: {
+    envelope: {
+      payloadType: 'application/vnd.a3s.cloud.audit-export-manifest.v1+json',
+      payload: 'e30=',
+      signatures: [{ keyId: 'a'.repeat(64), signature: 'c2lnbmF0dXJl' }],
+    },
+    signingKey: SIGNED_EXPORT.signingKey,
+  },
+  pages: [SIGNED_EXPORT],
 };
 
 const RETENTION_STATUS: AuditRetentionStatus = {
@@ -161,6 +179,41 @@ describe('audit-records commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('exports the complete signed multi-page manifest without accepting a cursor', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(
+      [
+        'audit-records',
+        'export-manifest',
+        '--from=2026-08-01T00:00:00Z',
+        '--to=2026-08-13T00:00:00Z',
+        '--limit=125',
+      ],
+      {
+        ...output.runtime,
+        environment: {
+          A3S_CLOUD_TOKEN: 'token',
+          A3S_CLOUD_ORGANIZATION_ID: ORGANIZATION_ID,
+        },
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope(SIGNED_MANIFEST);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(String(calls[0]?.[0])).toContain(
+      `/organizations/${ORGANIZATION_ID}/audit-records/export/manifest?`
+    );
+    expect(String(calls[0]?.[0])).toContain('pageSize=125');
+    expect(String(calls[0]?.[0])).not.toContain('cursor=');
+    expect(output.stdout()).toContain('application/vnd.a3s.cloud.audit-export-manifest.v1+json');
+    expect(output.stdout()).toContain('application/vnd.a3s.cloud.audit-export.v1+json');
+    expect(output.stderr()).toBe('');
+  });
+
   it('shows the enforced retention policy and monotonic organization watermarks', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -199,6 +252,26 @@ describe('audit-records commands', () => {
     [
       ['audit-records', 'export', '--from=2026-07-01T00:00:00Z', '--to=2026-08-02T00:00:00Z'],
       'audit export window must not exceed 31 days',
+    ],
+    [
+      [
+        'audit-records',
+        'export-manifest',
+        '--from=2026-08-01T00:00:00Z',
+        '--to=2026-08-02T00:00:00Z',
+        `--cursor=v1:1786582923000000:${AUDIT_ID}`,
+      ],
+      '--cursor is not valid for audit-records export-manifest',
+    ],
+    [
+      [
+        'audit-records',
+        'export-manifest',
+        '--from=2026-08-01T00:00:00Z',
+        '--to=2026-08-02T00:00:00Z',
+        '--limit=201',
+      ],
+      'audit export manifest page size must be between 1 and 200',
     ],
     [
       ['audit-records', 'retention', '--limit=1'],

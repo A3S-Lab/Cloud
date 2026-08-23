@@ -10,7 +10,7 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Duration, Utc};
 use ring::signature::{UnparsedPublicKey, ED25519};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ pub const MAXIMUM_AUDIT_EXPORT_BYTES: usize = 1024 * 1024;
 pub const MAXIMUM_AUDIT_EXPORT_WINDOW_DAYS: i64 = 31;
 const MAXIMUM_AUDIT_EXPORT_RECORDS: usize = 200;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportFilter {
     pub actor_principal_id: Option<PrincipalId>,
@@ -73,7 +73,7 @@ impl AuditExportFilter {
         })
     }
 
-    fn record_filter(&self) -> AuditRecordFilter {
+    pub(super) fn record_filter(&self) -> AuditRecordFilter {
         AuditRecordFilter {
             actor_principal_id: self.actor_principal_id,
             action: self.action.clone(),
@@ -89,7 +89,7 @@ impl AuditExportFilter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportRecord {
     pub id: Uuid,
@@ -141,7 +141,7 @@ impl AuditExportRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportDocument {
     pub schema: String,
@@ -230,7 +230,7 @@ impl AuditExportDocument {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportSigningKey {
     pub algorithm: String,
@@ -259,7 +259,7 @@ impl AuditExportSigningKey {
         Ok(())
     }
 
-    fn public_key_bytes(&self) -> Result<[u8; 32], String> {
+    pub(super) fn public_key_bytes(&self) -> Result<[u8; 32], String> {
         let bytes = STANDARD
             .decode(&self.public_key)
             .map_err(|_| "audit export public key is not canonical base64".to_owned())?;
@@ -311,14 +311,14 @@ pub trait IAuditExportSigner: Send + Sync {
     ) -> Result<VerifiedAuditExportSignature, AuditExportSigningError>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportDsseSignature {
     pub key_id: String,
     pub signature: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExportDsseEnvelope {
     pub payload_type: String,
@@ -326,7 +326,7 @@ pub struct AuditExportDsseEnvelope {
     pub signatures: Vec<AuditExportDsseSignature>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditExport {
     pub envelope: AuditExportDsseEnvelope,

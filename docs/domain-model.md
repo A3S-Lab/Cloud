@@ -708,7 +708,7 @@ purpose-separated development key is restart-stable beneath
 through the sole `security` A3S ACL and never receives private key bytes. The
 envelope is returned directly and is not an aggregate, audit fact, object-store
 copy, retention receipt, or SIEM delivery record. Complete multi-page export
-manifests remain later work.
+was intentionally deferred from that gate to `C0.3-PA2d`.
 The [successful PA2b PostgreSQL 17 H0
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087/job/97197306605)
 and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32640730087)
@@ -736,10 +736,11 @@ and version through REST/OpenAPI `1.58.0`, maintained client, CLI, and
 Management MCP; none of those surfaces can mutate policy. The [PostgreSQL 17
 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767294)
 and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148)
-verify the persisted and cross-surface boundaries. Multi-page manifests and
-authorized SIEM delivery remain separate lifecycles.
+verify the persisted and cross-surface boundaries. Persisted manifest and
+authorized SIEM-delivery lifecycles remain separate from transient PA2d export.
 
-Frozen `C0.3-PA2d` adds a transient `AuditExportSnapshot`, not a durable
+Implemented `C0.3-PA2d` (remote certification pending) adds a transient
+`AuditExportSnapshot`, not a durable
 aggregate. It contains one organization's captured retention state and at most
 eight pages of records selected under one exclusive retention-row lock. The
 application releases that lock, partitions the immutable selection into the
@@ -752,7 +753,8 @@ generation time, and the total record/page counts. A ninth page is rejected
 before signing; zero records yield a signed zero-page manifest. The response is
 returned atomically only after every page and the manifest verify with one
 Ed25519 key. No snapshot, page, envelope, or manifest is persisted, and no
-object-storage or delivery ownership is implied.
+object-storage or delivery ownership is implied. Remote PostgreSQL and
+cross-surface certification remain pending.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`

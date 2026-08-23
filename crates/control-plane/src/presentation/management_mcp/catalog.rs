@@ -5,6 +5,9 @@ use crate::modules::applications::{
     DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
     MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
+use crate::modules::audit::{
+    DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
+};
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -116,6 +119,7 @@ pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const AUDIT_RECORDS_EXPORT: &str = "a3s_cloud_audit_records_export";
+pub const AUDIT_RECORDS_EXPORT_MANIFEST: &str = "a3s_cloud_audit_records_export_manifest";
 pub const AUDIT_RETENTION_GET: &str = "a3s_cloud_audit_retention_get";
 pub const SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST: &str =
     "a3s_cloud_security_gateway_route_policy_timeline_list";
@@ -293,6 +297,7 @@ pub enum ManagementTool {
     OperationsList,
     AuditRecordsList,
     AuditRecordsExport,
+    AuditRecordsExportManifest,
     AuditRetentionGet,
     SecurityGatewayRoutePolicyTimelineList,
     NotificationsList,
@@ -338,7 +343,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 135] = [
+    const ALL: [Self; 136] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -446,6 +451,7 @@ impl ManagementTool {
         Self::OperationsList,
         Self::AuditRecordsList,
         Self::AuditRecordsExport,
+        Self::AuditRecordsExportManifest,
         Self::AuditRetentionGet,
         Self::SecurityGatewayRoutePolicyTimelineList,
         Self::NotificationsList,
@@ -609,6 +615,7 @@ impl ManagementTool {
             Self::OperationsList => OPERATIONS_LIST,
             Self::AuditRecordsList => AUDIT_RECORDS_LIST,
             Self::AuditRecordsExport => AUDIT_RECORDS_EXPORT,
+            Self::AuditRecordsExportManifest => AUDIT_RECORDS_EXPORT_MANIFEST,
             Self::AuditRetentionGet => AUDIT_RETENTION_GET,
             Self::SecurityGatewayRoutePolicyTimelineList => {
                 SECURITY_GATEWAY_ROUTE_POLICY_TIMELINE_LIST
@@ -707,6 +714,7 @@ impl ManagementTool {
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
             | Self::AuditRecordsExport
+            | Self::AuditRecordsExportManifest
             | Self::AuditRetentionGet
             | Self::SecurityGatewayRoutePolicyTimelineList
             | Self::NotificationsList
@@ -802,6 +810,7 @@ impl ManagementTool {
                 | Self::MembershipInvitationsRevoke
                 | Self::AuditRecordsList
                 | Self::AuditRecordsExport
+                | Self::AuditRecordsExportManifest
                 | Self::AuditRetentionGet
                 | Self::SecurityGatewayRoutePolicyTimelineList
                 | Self::ResourceGrantsList
@@ -1604,6 +1613,12 @@ impl ManagementTool {
                 audit_record_export_schema(),
                 true,
             ),
+            Self::AuditRecordsExportManifest => (
+                "Export a complete signed audit manifest",
+                "Atomically capture zero through eight redacted audit pages and return them with one verifiable signed manifest for an explicit time window of at most 31 days.",
+                audit_record_export_manifest_schema(),
+                true,
+            ),
             Self::AuditRetentionGet => (
                 "Get audit retention status",
                 "Get the configured semantic audit retention policy and durable per-organization availability and physical-deletion watermarks.",
@@ -2009,8 +2024,8 @@ fn audit_record_list_schema() -> Value {
             "limit": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
-                "default": DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT
+                "maximum": MAXIMUM_AUDIT_RECORD_LIMIT,
+                "default": DEFAULT_AUDIT_RECORD_LIMIT
             }
         },
         "additionalProperties": false
@@ -2019,6 +2034,26 @@ fn audit_record_list_schema() -> Value {
 
 fn audit_record_export_schema() -> Value {
     let mut schema = audit_record_list_schema();
+    schema["required"] = json!(["from", "to"]);
+    schema
+}
+
+fn audit_record_export_manifest_schema() -> Value {
+    let mut schema = audit_record_list_schema();
+    let properties = schema["properties"]
+        .as_object_mut()
+        .expect("audit record properties");
+    properties.remove("cursor");
+    properties.remove("limit");
+    properties.insert(
+        "pageSize".into(),
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAXIMUM_AUDIT_RECORD_LIMIT,
+            "default": DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE
+        }),
+    );
     schema["required"] = json!(["from", "to"]);
     schema
 }

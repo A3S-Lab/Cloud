@@ -214,6 +214,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_recipient_contacts_revoke` | Principal self-command | `identity:write`; exact Principal, positive expected version, and idempotency required |
 | `a3s_cloud_audit_records_list` | Administrator query | `cloud:read` plus organization administrator role |
 | `a3s_cloud_audit_records_export` | Administrator query | `cloud:read` plus organization administrator role; explicit bounded time window required |
+| `a3s_cloud_audit_records_export_manifest` | Administrator query | `cloud:read` plus organization administrator role; complete bounded capture with required window and no input cursor |
 | `a3s_cloud_audit_retention_get` | Administrator query | `cloud:read` plus organization administrator role; empty arguments and read-only status only |
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
@@ -401,6 +402,28 @@ proves strict empty arguments, administrator-only `cloud:read`, the exact
 job](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148/job/97224767294)
 proves the persisted retention authority, and the [complete PA2c main CI
 run](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148) is successful.
+
+## Complete signed audit manifest
+
+REST contract `1.59.0` adds the read-only
+`a3s_cloud_audit_records_export_manifest` tool over the same owner/admin Audit
+handler as REST, the maintained client, and CLI. Callers provide the exact
+redacted filters plus required inclusive RFC 3339 `from` and `to` timestamps no
+more than 31 days apart. The strict input schema accepts `pageSize` from 1
+through 200 (default 200), accepts neither `cursor` nor `limit`, and rejects
+unknown properties before dispatch.
+
+One transaction captures zero through eight complete pages with the current
+retention state. The result contains the existing signed
+`a3s.cloud.audit-export.v1` pages plus one signed
+`a3s.cloud.audit-export-manifest.v1` envelope binding their ordered counts,
+cursors, shared Ed25519 key identities, SHA-256 payload digests, exact filter,
+and retention digests/watermarks. Capacity overflow fails as `422` before
+signing; signer failure, key drift, partial signing, and verification mismatch
+return no partial bundle. This read-only addition takes the exact catalogs to
+136 administrator and 76 read-only tools and adds no migration, export store,
+object namespace, queue, Connector, SIEM delivery, or commercial authority.
+Remote PostgreSQL and cross-surface certification remain pending for PA2d.
 
 ## Recipient-contact self-service
 
@@ -834,14 +857,15 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 135-tool administrator and 75-tool
+current focused source runner requires exact 136-tool administrator and 76-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
 record; returns the same `404` business-error contract for foreign and missing
 Projects; and queries the shared tenant audit history with the read-only
 administrator token while proving the response omits internal `details`. It
-also proves REST/MCP equality for the read-only audit-retention status and
+also proves REST/MCP equality for the complete signed audit manifest and the
+read-only audit-retention status and
 exposes the owner/admin-only Gateway MCP Route policy security timeline as
 one `cloud:read` operation over the shared query handler. The [successful
 PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32626495022/job/97162528129)

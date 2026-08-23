@@ -1,6 +1,6 @@
 use crate::modules::audit::domain::{
-    AuditExport, AuditExportDsseEnvelope, AuditExportSigningKey, AuditRecord, AuditRecordPage,
-    AuditRetentionStatus,
+    AuditExport, AuditExportDsseEnvelope, AuditExportManifest, AuditExportManifestBundle,
+    AuditExportSigningKey, AuditRecord, AuditRecordPage, AuditRetentionStatus,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -72,6 +72,42 @@ impl From<AuditExport> for AuditExportResponse {
         Self {
             envelope: export.envelope,
             signing_key: export.signing_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditExportManifestResponse {
+    pub envelope: AuditExportDsseEnvelope,
+    pub signing_key: AuditExportSigningKey,
+}
+
+impl From<AuditExportManifest> for AuditExportManifestResponse {
+    fn from(manifest: AuditExportManifest) -> Self {
+        Self {
+            envelope: manifest.envelope,
+            signing_key: manifest.signing_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditExportManifestBundleResponse {
+    pub manifest: AuditExportManifestResponse,
+    pub pages: Vec<AuditExportResponse>,
+}
+
+impl From<AuditExportManifestBundle> for AuditExportManifestBundleResponse {
+    fn from(bundle: AuditExportManifestBundle) -> Self {
+        Self {
+            manifest: AuditExportManifestResponse::from(bundle.manifest),
+            pages: bundle
+                .pages
+                .into_iter()
+                .map(AuditExportResponse::from)
+                .collect(),
         }
     }
 }

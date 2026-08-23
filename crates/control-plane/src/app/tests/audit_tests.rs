@@ -229,6 +229,74 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         "profile_bound"
     );
 
+    let manifest = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/audit-records/export/manifest?from={export_from}&to={export_to}&pageSize=2"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(manifest.status(), 200);
+    let manifest = response_json(&manifest)?;
+    let manifest_payload = verified_audit_manifest_payload(&manifest["data"]["manifest"])?;
+    assert_eq!(
+        manifest_payload["schema"],
+        "a3s.cloud.audit-export-manifest.v1"
+    );
+    assert_eq!(manifest_payload["organizationId"], organization);
+    assert_eq!(manifest_payload["filter"]["pageSize"], 2);
+    assert_eq!(manifest_payload["recordCount"], 3);
+    assert_eq!(manifest_payload["pageCount"], 2);
+    assert_eq!(manifest["data"]["pages"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        manifest_payload["pages"][0]["nextCursor"],
+        manifest_payload["pages"][1]["cursor"]
+    );
+    assert_eq!(manifest_payload["pages"][1]["nextCursor"], Value::Null);
+    assert_eq!(
+        manifest_payload["retention"]["retentionMs"],
+        7_776_000_000_u64
+    );
+    assert_eq!(
+        manifest_payload["retention"]["appliedPolicyDigest"],
+        Value::Null
+    );
+    for page in manifest["data"]["pages"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("audit manifest pages are missing".into()))?
+    {
+        let page_payload = verified_audit_export_payload(page)?;
+        assert_eq!(page_payload["generatedAt"], manifest_payload["generatedAt"]);
+        assert_eq!(
+            page["signingKey"],
+            manifest["data"]["manifest"]["signingKey"]
+        );
+    }
+    assert!(!manifest.to_string().contains("details"));
+
+    let manifest_mcp = app
+        .call(mcp_tool_call_as(
+            7,
+            "a3s_cloud_audit_records_export_manifest",
+            json!({
+                "from": (now - chrono::Duration::seconds(1)).to_rfc3339(),
+                "to": (now + chrono::Duration::seconds(3)).to_rfc3339(),
+                "attributionStatus": "profile_bound",
+                "pageSize": 1
+            }),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(manifest_mcp.status(), 200);
+    let manifest_mcp = response_json(&manifest_mcp)?;
+    assert_eq!(manifest_mcp["result"]["isError"], false);
+    let mcp_manifest_data = &manifest_mcp["result"]["structuredContent"]["data"];
+    let mcp_manifest_payload = verified_audit_manifest_payload(&mcp_manifest_data["manifest"])?;
+    assert_eq!(mcp_manifest_payload["recordCount"], 1);
+    assert_eq!(mcp_manifest_payload["pageCount"], 1);
+    assert_eq!(mcp_manifest_data["pages"].as_array().map(Vec::len), Some(1));
+
     let retention = app
         .call(get_as(
             format!("/api/v1/organizations/{organization}/audit-records/retention"),
@@ -312,6 +380,15 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         ))
         .await?;
     assert_eq!(member_retention_denied.status(), 403);
+    let member_manifest_denied = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/audit-records/export/manifest?from={export_from}&to={export_to}"
+            ),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_manifest_denied.status(), 403);
     let member_mcp = app
         .call(mcp_tool_call_as(
             2,
@@ -335,6 +412,22 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
         .await?;
     assert_eq!(member_export_mcp.status(), 200);
     assert_eq!(response_json(&member_export_mcp)?["error"]["code"], -32602);
+    let member_manifest_mcp = app
+        .call(mcp_tool_call_as(
+            8,
+            "a3s_cloud_audit_records_export_manifest",
+            json!({
+                "from": now.to_rfc3339(),
+                "to": (now + chrono::Duration::seconds(3)).to_rfc3339()
+            }),
+            AUDIT_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(member_manifest_mcp.status(), 200);
+    assert_eq!(
+        response_json(&member_manifest_mcp)?["error"]["code"],
+        -32602
+    );
     let member_retention_mcp = app
         .call(mcp_tool_call_as(
             6,
@@ -395,6 +488,26 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
             response.status()
         );
     }
+    for suffix in [
+        "to=2026-08-13T00%3A00%3A00Z",
+        "from=2026-08-01T00%3A00%3A00Z&to=2026-08-02T00%3A00%3A00Z&pageSize=0",
+        "from=2026-08-01T00%3A00%3A00Z&to=2026-08-02T00%3A00%3A00Z&pageSize=201",
+        "from=2026-08-01T00%3A00%3A00Z&to=2026-08-02T00%3A00%3A00Z&cursor=forbidden",
+    ] {
+        let response = app
+            .call(get_as(
+                format!(
+                    "/api/v1/organizations/{organization}/audit-records/export/manifest?{suffix}"
+                ),
+                ADMIN_TOKEN,
+            ))
+            .await?;
+        assert!(
+            matches!(response.status(), 400 | 422),
+            "unexpected manifest export status for {suffix}: {}",
+            response.status()
+        );
+    }
     assert_eq!(audit.query_count(), query_count);
     Ok(())
 }
@@ -445,6 +558,58 @@ fn verified_audit_export_payload(export: &Value) -> Result<Value> {
         .map_err(|_| BootError::Internal("audit export signature did not verify".into()))?;
     serde_json::from_slice(&payload)
         .map_err(|error| BootError::Internal(format!("invalid audit export document: {error}")))
+}
+
+fn verified_audit_manifest_payload(manifest: &Value) -> Result<Value> {
+    let payload_type = manifest["envelope"]["payloadType"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("audit manifest payload type is missing".into()))?;
+    assert_eq!(
+        payload_type,
+        "application/vnd.a3s.cloud.audit-export-manifest.v1+json"
+    );
+    let payload = STANDARD
+        .decode(
+            manifest["envelope"]["payload"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("audit manifest payload is missing".into()))?,
+        )
+        .map_err(|error| BootError::Internal(format!("invalid audit manifest payload: {error}")))?;
+    let signature = STANDARD
+        .decode(
+            manifest["envelope"]["signatures"][0]["signature"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("audit manifest signature is missing".into()))?,
+        )
+        .map_err(|error| {
+            BootError::Internal(format!("invalid audit manifest signature: {error}"))
+        })?;
+    let public_key = STANDARD
+        .decode(
+            manifest["signingKey"]["publicKey"]
+                .as_str()
+                .ok_or_else(|| {
+                    BootError::Internal("audit manifest public key is missing".into())
+                })?,
+        )
+        .map_err(|error| {
+            BootError::Internal(format!("invalid audit manifest public key: {error}"))
+        })?;
+    let key_id = format!("{:x}", Sha256::digest(&public_key));
+    assert_eq!(manifest["signingKey"]["algorithm"], "ed25519");
+    assert_eq!(manifest["signingKey"]["keyId"], key_id);
+    assert_eq!(manifest["envelope"]["signatures"][0]["keyId"], key_id);
+    let pae = crate::modules::shared_kernel::domain::dsse_pae_bounded(
+        payload_type,
+        &payload,
+        crate::modules::audit::MAXIMUM_AUDIT_EXPORT_MANIFEST_BYTES,
+    )
+    .map_err(BootError::Internal)?;
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public_key)
+        .verify(&pae, &signature)
+        .map_err(|_| BootError::Internal("audit manifest signature did not verify".into()))?;
+    serde_json::from_slice(&payload)
+        .map_err(|error| BootError::Internal(format!("invalid audit manifest document: {error}")))
 }
 
 fn parse_audit_uuid(value: &str) -> Result<Uuid> {

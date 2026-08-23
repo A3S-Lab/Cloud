@@ -1221,6 +1221,43 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             .expect("audit export limit parameter")["schema"]["maximum"],
         200
     );
+    let audit_manifest =
+        &document["paths"]["/organizations/{organization_id}/audit-records/export/manifest"]["get"];
+    assert_eq!(audit_manifest["tags"], json!(["Audit"]));
+    assert_eq!(
+        audit_manifest["summary"],
+        "Export a complete signed audit manifest"
+    );
+    assert!(audit_manifest["description"]
+        .as_str()
+        .is_some_and(|description| description.contains("at most eight complete pages")));
+    assert!(audit_manifest["x-a3s-response-data"]
+        .as_str()
+        .is_some_and(|description| description.contains("captured retention state")));
+    assert!(audit_manifest["responses"]["200"].is_object());
+    assert!(audit_manifest["responses"]["403"].is_object());
+    assert!(audit_manifest["responses"]["422"].is_object());
+    let audit_manifest_parameters = audit_manifest["parameters"]
+        .as_array()
+        .expect("audit manifest query parameters");
+    for name in ["from", "to"] {
+        let parameter = audit_manifest_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .unwrap_or_else(|| panic!("missing audit manifest parameter `{name}`"));
+        assert_eq!(parameter["required"], true);
+        assert_eq!(parameter["schema"]["format"], "date-time");
+    }
+    let page_size = audit_manifest_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "pageSize")
+        .expect("audit manifest page-size parameter");
+    assert_eq!(page_size["schema"]["minimum"], 1);
+    assert_eq!(page_size["schema"]["maximum"], 200);
+    assert_eq!(page_size["schema"]["default"], 200);
+    assert!(audit_manifest_parameters
+        .iter()
+        .all(|parameter| !matches!(parameter["name"].as_str(), Some("cursor" | "limit"))));
     let audit_retention =
         &document["paths"]["/organizations/{organization_id}/audit-records/retention"]["get"];
     assert_eq!(audit_retention["tags"], json!(["Audit"]));

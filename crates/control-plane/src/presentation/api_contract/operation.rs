@@ -8,6 +8,9 @@ use crate::modules::applications::{
     DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
     MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
+use crate::modules::audit::{
+    DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
+};
 use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
@@ -242,8 +245,10 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
+    let is_audit_export_manifest = path.ends_with("/audit-records/export/manifest");
     let is_audit_record_query =
         path.ends_with("/audit-records") || path.ends_with("/audit-records/export");
+    let has_audit_filters = is_audit_record_query || is_audit_export_manifest;
     if is_asset_git_advertisement(path) {
         upsert_parameter(
             parameters,
@@ -350,8 +355,14 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 "maximum": MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
                 "default": DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT
             })
-        } else if is_audit_record_query
-            || is_connector_profile_collection_path(path)
+        } else if is_audit_record_query {
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_AUDIT_RECORD_LIMIT,
+                "default": DEFAULT_AUDIT_RECORD_LIMIT
+            })
+        } else if is_connector_profile_collection_path(path)
             || is_connector_revision_collection_path(path)
         {
             json!({
@@ -386,7 +397,7 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             }),
         );
     }
-    if method == "get" && is_audit_record_query {
+    if method == "get" && has_audit_filters {
         for (name, format) in [
             ("actorPrincipalId", Some("uuid")),
             ("aggregateId", Some("uuid")),
@@ -400,6 +411,9 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             ("to", Some("date-time")),
             ("cursor", None),
         ] {
+            if is_audit_export_manifest && name == "cursor" {
+                continue;
+            }
             let mut schema = json!({"type": "string", "minLength": 1});
             if let Some(format) = format {
                 schema["format"] = json!(format);
@@ -424,12 +438,27 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 json!({
                     "name": name,
                     "in": "query",
-                    "required": path.ends_with("/audit-records/export")
+                    "required": (path.ends_with("/audit-records/export")
+                        || is_audit_export_manifest)
                         && matches!(name, "from" | "to"),
                     "schema": schema
                 }),
             );
         }
+    }
+    if method == "get" && is_audit_export_manifest {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "pageSize", "in": "query", "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_AUDIT_RECORD_LIMIT,
+                    "default": DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE
+                }
+            }),
+        );
     }
     if method == "get" && is_security_gateway_route_policy_timeline_path(path) {
         for parameter in [

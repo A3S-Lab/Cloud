@@ -63,6 +63,17 @@ export interface AuditExport {
   signingKey: AuditExportSigningKey;
 }
 
+export interface AuditExportManifestDsseEnvelope {
+  payloadType: 'application/vnd.a3s.cloud.audit-export-manifest.v1+json';
+  payload: string;
+  signatures: AuditExportDsseSignature[];
+}
+
+export interface AuditExportManifest {
+  envelope: AuditExportManifestDsseEnvelope;
+  signingKey: AuditExportSigningKey;
+}
+
 export interface AuditExportFilter {
   actorPrincipalId: string | null;
   action: string | null;
@@ -87,6 +98,55 @@ export interface AuditExportDocument {
   nextCursor: string | null;
 }
 
+export interface AuditExportManifestFilter {
+  actorPrincipalId: string | null;
+  action: string | null;
+  aggregateId: string | null;
+  requestId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+  attributionProfileId: string | null;
+  attributionStatus: AuditAttributionStatus | null;
+  from: string;
+  to: string;
+  pageSize: number;
+}
+
+export interface AuditExportManifestRetention {
+  retentionMs: number;
+  policyDigest: string;
+  appliedPolicyDigest: string | null;
+  currentPolicyApplied: boolean;
+  recordsAvailableFrom: string | null;
+  recordsDeletedBefore: string | null;
+  version: number;
+}
+
+export interface AuditExportManifestPage {
+  index: number;
+  cursor: string | null;
+  nextCursor: string | null;
+  recordCount: number;
+  signingKeyId: string;
+  payloadSha256: string;
+}
+
+export interface AuditExportManifestDocument {
+  schema: 'a3s.cloud.audit-export-manifest.v1';
+  organizationId: string;
+  filter: AuditExportManifestFilter;
+  generatedAt: string;
+  retention: AuditExportManifestRetention;
+  recordCount: number;
+  pageCount: number;
+  pages: AuditExportManifestPage[];
+}
+
+export interface AuditExportManifestBundle {
+  manifest: AuditExportManifest;
+  pages: AuditExport[];
+}
+
 export interface AuditRecordQuery {
   actorPrincipalId?: string;
   action?: string;
@@ -107,9 +167,17 @@ export type AuditExportQuery = Omit<AuditRecordQuery, 'from' | 'to'> & {
   to: string;
 };
 
+export type AuditExportManifestQuery = Omit<AuditRecordQuery, 'from' | 'to' | 'cursor' | 'limit'> & {
+  from: string;
+  to: string;
+  pageSize?: number;
+};
+
 export const DEFAULT_AUDIT_RECORD_LIMIT = 50;
 export const MAX_AUDIT_RECORD_LIMIT = 200;
 export const MAX_AUDIT_EXPORT_WINDOW_DAYS = 31;
+export const DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE = 200;
+export const MAX_AUDIT_EXPORT_MANIFEST_PAGES = 8;
 
 const ACTION_PATTERN = /^[a-z-]+(?:\.[a-z-]+){2,}$/;
 
@@ -181,5 +249,23 @@ export function encodeAuditExportQuery(query: AuditExportQuery): URLSearchParams
   if (windowMilliseconds > MAX_AUDIT_EXPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000) {
     throw new RangeError(`audit export window must not exceed ${MAX_AUDIT_EXPORT_WINDOW_DAYS} days`);
   }
+  return parameters;
+}
+
+export function encodeAuditExportManifestQuery(query: AuditExportManifestQuery): URLSearchParams {
+  const untypedQuery = query as AuditExportManifestQuery & Pick<AuditRecordQuery, 'cursor' | 'limit'>;
+  if (untypedQuery.cursor !== undefined || untypedQuery.limit !== undefined) {
+    throw new TypeError('audit export manifest does not accept cursor or limit; use pageSize');
+  }
+  const { pageSize = DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, ...filter } = query;
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_AUDIT_RECORD_LIMIT) {
+    throw new RangeError(`audit export manifest page size must be between 1 and ${MAX_AUDIT_RECORD_LIMIT}`);
+  }
+  const parameters = encodeAuditExportQuery({
+    ...filter,
+    limit: pageSize,
+  });
+  parameters.delete('limit');
+  parameters.set('pageSize', String(pageSize));
   return parameters;
 }

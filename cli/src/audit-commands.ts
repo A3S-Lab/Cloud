@@ -1,10 +1,13 @@
 import {
+  DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE,
   DEFAULT_AUDIT_RECORD_LIMIT,
   MAX_AUDIT_RECORD_LIMIT,
   type AuditAttributionStatus,
+  type AuditExportManifestQuery,
   type AuditExportQuery,
   type AuditRecordQuery,
   type CloudApi,
+  encodeAuditExportManifestQuery,
   encodeAuditExportQuery,
   encodeAuditRecordQuery,
 } from '@a3s/cloud-client';
@@ -20,10 +23,16 @@ import type { CloudContext } from './context';
 import { parseUuid, requireOrganization } from './context';
 import { usageError } from './errors';
 import type { CommandResult } from './results';
-import { auditExportResult, auditRecordsResult, auditRetentionResult } from './audit-results';
+import {
+  auditExportManifestResult,
+  auditExportResult,
+  auditRecordsResult,
+  auditRetentionResult,
+} from './audit-results';
 
 const AUDIT_LIST_COMMAND = 'audit-records list';
 const AUDIT_EXPORT_COMMAND = 'audit-records export';
+const AUDIT_EXPORT_MANIFEST_COMMAND = 'audit-records export-manifest';
 const AUDIT_RETENTION_COMMAND = 'audit-records retention';
 
 export async function executeAuditCommand(
@@ -35,6 +44,7 @@ export async function executeAuditCommand(
   if (
     command !== AUDIT_LIST_COMMAND &&
     command !== AUDIT_EXPORT_COMMAND &&
+    command !== AUDIT_EXPORT_MANIFEST_COMMAND &&
     command !== AUDIT_RETENTION_COMMAND
   ) {
     return undefined;
@@ -61,14 +71,36 @@ export async function executeAuditCommand(
     environmentId: optionalUuid(arguments_.environmentId, 'audit Environment ID'),
     attributionProfileId: optionalUuid(arguments_.auditAttributionProfileId, 'audit attribution profile ID'),
     attributionStatus: arguments_.auditAttributionStatus as AuditAttributionStatus | undefined,
-    cursor: arguments_.cursor,
-    limit: auditLimit(arguments_.limit),
   };
+  if (command === AUDIT_EXPORT_MANIFEST_COMMAND) {
+    if (arguments_.cursor !== undefined) {
+      throw usageError('--cursor is not valid for audit-records export-manifest');
+    }
+    const query: AuditExportManifestQuery = {
+      ...selection,
+      from: requireAuditTimestamp(arguments_.auditFrom, '--from', command),
+      to: requireAuditTimestamp(arguments_.auditTo, '--to', command),
+      pageSize: auditManifestPageSize(arguments_.limit),
+    };
+    try {
+      encodeAuditExportManifestQuery(query);
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof RangeError) {
+        throw usageError(error.message);
+      }
+      throw error;
+    }
+    return auditExportManifestResult(
+      await cloudApi().exportAuditRecordManifest(requireOrganization(context), query)
+    );
+  }
   if (command === AUDIT_EXPORT_COMMAND) {
     const query: AuditExportQuery = {
       ...selection,
-      from: requireAuditTimestamp(arguments_.auditFrom, '--from'),
-      to: requireAuditTimestamp(arguments_.auditTo, '--to'),
+      cursor: arguments_.cursor,
+      limit: auditLimit(arguments_.limit),
+      from: requireAuditTimestamp(arguments_.auditFrom, '--from', command),
+      to: requireAuditTimestamp(arguments_.auditTo, '--to', command),
     };
     try {
       encodeAuditExportQuery(query);
@@ -84,6 +116,8 @@ export async function executeAuditCommand(
     ...selection,
     from: arguments_.auditFrom,
     to: arguments_.auditTo,
+    cursor: arguments_.cursor,
+    limit: auditLimit(arguments_.limit),
   };
   try {
     encodeAuditRecordQuery(query);
@@ -100,6 +134,7 @@ export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedA
   if (
     command === AUDIT_LIST_COMMAND ||
     command === AUDIT_EXPORT_COMMAND ||
+    command === AUDIT_EXPORT_MANIFEST_COMMAND ||
     command === AUDIT_RETENTION_COMMAND
   ) {
     return;
@@ -115,7 +150,7 @@ export function rejectMisplacedAuditOptions(command: string, arguments_: ParsedA
     arguments_.auditTo !== undefined
   ) {
     throw usageError(
-      '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list or export'
+      '--actor-principal, --action, --aggregate, --request-id, --attribution-profile, --attribution-status, --from, and --to are valid only for audit-records list, export, or export-manifest'
     );
   }
 }
@@ -139,9 +174,9 @@ function rejectAuditQueryOptions(arguments_: ParsedArguments): void {
   }
 }
 
-function requireAuditTimestamp(value: string | undefined, option: string): string {
+function requireAuditTimestamp(value: string | undefined, option: string, command: string): string {
   if (value === undefined) {
-    throw usageError(`${option} is required for audit-records export`);
+    throw usageError(`${option} is required for ${command}`);
   }
   return value;
 }
@@ -162,4 +197,18 @@ function auditLimit(value: string | undefined): number {
     throw usageError(`audit record limit must be between 1 and ${MAX_AUDIT_RECORD_LIMIT}`);
   }
   return limit;
+}
+
+function auditManifestPageSize(value: string | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE;
+  }
+  if (!/^[0-9]+$/u.test(value)) {
+    throw usageError('audit export manifest page size must be an integer');
+  }
+  const pageSize = Number(value);
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_AUDIT_RECORD_LIMIT) {
+    throw usageError(`audit export manifest page size must be between 1 and ${MAX_AUDIT_RECORD_LIMIT}`);
+  }
+  return pageSize;
 }

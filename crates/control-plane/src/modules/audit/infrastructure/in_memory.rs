@@ -1,6 +1,7 @@
 use crate::modules::audit::domain::{
-    validate_retained_query_window, AuditRecord, AuditRecordCursor, AuditRecordFilter,
-    AuditRetentionReport, AuditRetentionState, AuditRetentionSweep, IAuditRecordRepository,
+    validate_retained_query_window, AuditExportSnapshot, AuditRecord, AuditRecordCursor,
+    AuditRecordFilter, AuditRetentionReport, AuditRetentionState, AuditRetentionSweep,
+    IAuditRecordRepository,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, OrganizationId, RepositoryError};
 use async_trait::async_trait;
@@ -121,6 +122,55 @@ impl IAuditRecordRepository for InMemoryAuditRecordRepository {
             .get(&organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn capture_export_snapshot(
+        &self,
+        organization_id: OrganizationId,
+        filter: &AuditRecordFilter,
+        maximum_records: usize,
+    ) -> Result<AuditExportSnapshot, RepositoryError> {
+        if maximum_records == 0 {
+            return Err(RepositoryError::Storage(
+                "audit export snapshot bound must be positive".into(),
+            ));
+        }
+        self.query_count.fetch_add(1, AtomicOrdering::Relaxed);
+        let mut store = self.store.write().await;
+        let state = store
+            .retention
+            .entry(organization_id)
+            .or_insert_with(|| initial_state(organization_id))
+            .clone();
+        validate_retained_query_window(state.records_available_from, filter, None)
+            .map_err(RepositoryError::Conflict)?;
+        let mut records = store
+            .records
+            .iter()
+            .filter(|record| record.organization_id == organization_id)
+            .filter(|record| {
+                state
+                    .records_available_from
+                    .is_none_or(|boundary| record.occurred_at >= boundary)
+            })
+            .filter(|record| filter.matches(record))
+            .cloned()
+            .collect::<Vec<_>>();
+        records.sort_by(|left, right| {
+            right
+                .occurred_at
+                .cmp(&left.occurred_at)
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        records.truncate(maximum_records);
+        let snapshot = AuditExportSnapshot {
+            retention_state: state,
+            records,
+        };
+        snapshot
+            .validate(organization_id, filter, maximum_records)
+            .map_err(RepositoryError::Storage)?;
+        Ok(snapshot)
     }
 
     async fn sweep_retention(

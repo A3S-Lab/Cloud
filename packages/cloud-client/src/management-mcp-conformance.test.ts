@@ -30,13 +30,19 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current signed-audit and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(135);
-  expect(READ_ONLY_TOOLS).toHaveLength(75);
+  expect(ADMIN_TOOLS).toHaveLength(136);
+  expect(READ_ONLY_TOOLS).toHaveLength(76);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);
   expect(READ_ONLY_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
+  ]);
+  expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export_manifest')).toEqual([
+    'a3s_cloud_audit_records_export_manifest',
+  ]);
+  expect(READ_ONLY_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export_manifest')).toEqual([
+    'a3s_cloud_audit_records_export_manifest',
   ]);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_retention_get')).toEqual([
     'a3s_cloud_audit_retention_get',
@@ -376,6 +382,52 @@ conformanceIt(
       expect(record.attributionProfileId).toBeNull();
       expect(record.attributionStatus).toBe('profile_missing');
       expect(record).not.toHaveProperty('details');
+    }
+
+    const manifestFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const manifestTo = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const manifestQuery = new URLSearchParams({
+      action: 'workflow.ontology.created',
+      aggregateId: ontologyId,
+      from: manifestFrom,
+      to: manifestTo,
+      pageSize: '1',
+    });
+    const restManifest = await restEnvelope(
+      `${environment.baseUrl}/organizations/${organizationId}/audit-records/export/manifest?${manifestQuery.toString()}`,
+      'GET',
+      authenticatedHeaders(environment.readOnlyToken, 'c0:mcp:audit-manifest-rest'),
+      undefined,
+      200,
+      credentials,
+      'REST complete audit manifest'
+    );
+    const mcpManifest = await callTool(
+      environment,
+      environment.readOnlyToken,
+      110,
+      'a3s_cloud_audit_records_export_manifest',
+      {
+        action: 'workflow.ontology.created',
+        aggregateId: ontologyId,
+        from: manifestFrom,
+        to: manifestTo,
+        pageSize: 1,
+      },
+      credentials,
+      'MCP complete audit manifest'
+    );
+    expect(mcpManifest.result.isError).toBe(false);
+    for (const [label, value] of [
+      ['REST complete audit manifest', restManifest.body.data],
+      ['MCP complete audit manifest', mcpManifest.structured.data],
+    ] as const) {
+      const bundle = objectValue(value, label);
+      const manifest = objectValue(bundle.manifest, `${label} envelope`);
+      const envelope = objectValue(manifest.envelope, `${label} DSSE envelope`);
+      expect(envelope.payloadType).toBe('application/vnd.a3s.cloud.audit-export-manifest.v1+json');
+      expect(arrayValue(bundle.pages, `${label} pages`)).toHaveLength(1);
+      expect(JSON.stringify(bundle)).not.toContain('details');
     }
 
     const restRetention = await restEnvelope(

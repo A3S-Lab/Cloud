@@ -3,9 +3,9 @@ use crate::infrastructure::{
     AuditRetentionStates, PostgresPersistenceError,
 };
 use crate::modules::audit::domain::{
-    validate_retained_query_window, AuditAttributionStatus, AuditRecord, AuditRecordCursor,
-    AuditRecordFilter, AuditRetentionReport, AuditRetentionState, AuditRetentionSweep,
-    IAuditRecordRepository,
+    validate_retained_query_window, AuditAttributionStatus, AuditExportSnapshot, AuditRecord,
+    AuditRecordCursor, AuditRecordFilter, AuditRetentionReport, AuditRetentionState,
+    AuditRetentionSweep, IAuditRecordRepository,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
@@ -179,6 +179,49 @@ impl IAuditRecordRepository for PostgresAuditRecordRepository {
             .map_err(storage)?
             .ok_or(RepositoryError::NotFound)?;
         decode_retention_state(row)
+    }
+
+    async fn capture_export_snapshot(
+        &self,
+        organization_id: OrganizationId,
+        filter: &AuditRecordFilter,
+        maximum_records: usize,
+    ) -> Result<AuditExportSnapshot, RepositoryError> {
+        if maximum_records == 0 {
+            return Err(RepositoryError::Storage(
+                "audit export snapshot bound must be positive".into(),
+            ));
+        }
+        let filter = filter.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let state = load_retention_state_for_update(transaction, organization_id)
+                        .await?
+                        .ok_or(RepositoryError::NotFound)?;
+                    validate_retained_query_window(state.records_available_from, &filter, None)
+                        .map_err(RepositoryError::Conflict)?;
+                    let records = query_records(
+                        transaction,
+                        organization_id,
+                        &filter,
+                        None,
+                        state.records_available_from,
+                        maximum_records,
+                    )
+                    .await?;
+                    let snapshot = AuditExportSnapshot {
+                        retention_state: state,
+                        records,
+                    };
+                    snapshot
+                        .validate(organization_id, &filter, maximum_records)
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    Ok(snapshot)
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 
     async fn sweep_retention(
@@ -391,6 +434,22 @@ async fn load_retention_state_for_share(
         retention_state_query()
             .filter(AuditRetentionStates::organization_id().eq(organization_id.as_uuid()))
             .for_share(),
+    )
+    .await?
+    .map(decode_retention_state)
+    .transpose()
+    .map_err(Into::into)
+}
+
+async fn load_retention_state_for_update(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+) -> Result<Option<AuditRetentionState>, PostgresPersistenceError> {
+    fetch_optional::<AuditRetentionStateRow, _>(
+        transaction,
+        retention_state_query()
+            .filter(AuditRetentionStates::organization_id().eq(organization_id.as_uuid()))
+            .for_update(),
     )
     .await?
     .map(decode_retention_state)

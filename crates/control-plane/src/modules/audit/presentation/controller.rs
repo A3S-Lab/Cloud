@@ -1,6 +1,10 @@
-use super::dto::{AuditExportResponse, AuditRecordPageResponse, AuditRetentionStatusResponse};
+use super::dto::{
+    AuditExportManifestBundleResponse, AuditExportResponse, AuditRecordPageResponse,
+    AuditRetentionStatusResponse,
+};
 use crate::modules::audit::application::{
-    ExportAuditRecords, GetAuditRetentionStatus, ListAuditRecords, DEFAULT_AUDIT_RECORD_LIMIT,
+    ExportAuditManifest, ExportAuditRecords, GetAuditRetentionStatus, ListAuditRecords,
+    DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT,
     MAXIMUM_AUDIT_RECORD_LIMIT,
 };
 use crate::modules::audit::domain::{AuditAttributionStatus, AuditRecordFilter};
@@ -23,11 +27,38 @@ use uuid::Uuid;
 
 pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let export_bus = Arc::clone(&bus);
+    let manifest_bus = Arc::clone(&bus);
     let retention_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_guard(OrganizationAdministratorGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+        .get(
+            "/{organization_id}/audit-records/export/manifest",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&manifest_bus);
+                async move {
+                    let parameters: AuditExportManifestParameters = request.query()?;
+                    parameters.validate_page_size()?;
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(ExportAuditManifest {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            filter: parameters.filter(),
+                            page_size: parameters.page_size,
+                        })
+                        .await?
+                    {
+                        Ok(bundle) => {
+                            BootResponse::json(&AuditExportManifestBundleResponse::from(bundle))
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .get(
             "/{organization_id}/audit-records/export",
             move |request: BootRequest| {
@@ -104,6 +135,61 @@ pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AuditExportManifestParameters {
+    #[serde(default)]
+    actor_principal_id: Option<Uuid>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    aggregate_id: Option<Uuid>,
+    #[serde(default)]
+    request_id: Option<Uuid>,
+    #[serde(default)]
+    project_id: Option<Uuid>,
+    #[serde(default)]
+    environment_id: Option<Uuid>,
+    #[serde(default)]
+    attribution_profile_id: Option<Uuid>,
+    #[serde(default)]
+    attribution_status: Option<AuditAttributionStatus>,
+    #[serde(default)]
+    from: Option<DateTime<Utc>>,
+    #[serde(default)]
+    to: Option<DateTime<Utc>>,
+    #[serde(default = "default_manifest_page_size")]
+    page_size: usize,
+}
+
+impl AuditExportManifestParameters {
+    fn validate_page_size(&self) -> Result<()> {
+        if self.page_size == 0 || self.page_size > MAXIMUM_AUDIT_RECORD_LIMIT {
+            return Err(BootError::BadRequest(format!(
+                "audit export manifest page size must be between 1 and {MAXIMUM_AUDIT_RECORD_LIMIT}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn filter(&self) -> AuditRecordFilter {
+        AuditRecordFilter {
+            actor_principal_id: self.actor_principal_id.map(PrincipalId::from_uuid),
+            action: self.action.clone(),
+            aggregate_id: self.aggregate_id,
+            request_id: self.request_id,
+            project_id: self.project_id.map(ProjectId::from_uuid),
+            environment_id: self.environment_id.map(EnvironmentId::from_uuid),
+            attribution_profile_id: self
+                .attribution_profile_id
+                .map(ProjectAttributionProfileId::from_uuid),
+            attribution_status: self.attribution_status,
+            from: self.from,
+            to: self.to,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AuditRecordParameters {
     #[serde(default)]
     actor_principal_id: Option<Uuid>,
@@ -161,6 +247,10 @@ impl AuditRecordParameters {
 
 const fn default_limit() -> usize {
     DEFAULT_AUDIT_RECORD_LIMIT
+}
+
+const fn default_manifest_page_size() -> usize {
+    DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE
 }
 
 fn request_id(request: &BootRequest) -> Result<Uuid> {

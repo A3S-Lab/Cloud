@@ -437,7 +437,20 @@ external key version. The client never receives private signing material and
 does not treat response-supplied public material as a trust anchor: callers
 must compare the key ID or public key with an independently trusted deployment
 fingerprint. It does not create a second audit store, retention policy, object
-copy, manifest, or SIEM-delivery authority.
+copy, or SIEM-delivery authority.
+
+`exportAuditRecordManifest` implements REST contract `1.59.0` over one
+complete bounded capture. It requires the same explicit inclusive `from` and
+`to` window of at most 31 days and the same exact filters, rejects runtime
+`cursor` or `limit` input, and accepts `pageSize` from 1 through 200 with a
+default of 200. The server returns zero through eight existing signed audit
+pages plus one signed `a3s.cloud.audit-export-manifest.v1` envelope. Its
+canonical payload binds the exact request, captured retention policy and
+watermarks, page and record counts, cursor chain, shared key identities, and
+each page's SHA-256 payload digest. The client transports the atomic bundle;
+it does not treat embedded public material as a trust anchor, persist an
+export, retry a partial result, or create object-storage, Connector, SIEM, or
+commercial authority.
 
 `getAuditRetentionStatus` implements REST contract `1.58.0`. It performs one
 owner/admin organization read with no query parameters and returns the

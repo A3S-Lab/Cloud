@@ -307,7 +307,7 @@ second entry in an authority row must be redesigned before implementation.
 | Deployment storage topology | Create-only, secret-free digests in PostgreSQL `infrastructure_bindings` for the one object root and Hosted Git filesystem identity | A storage backend attesting itself, mutable runtime overrides, ref/object mirrors, or a second topology registry |
 | Mutable workload data and distributed volume intent | Data context plus typed `S0` provider contracts and fencing | Workflow filesystems, Agent volume managers, provider JSON as desired state, or unfenced shared writers |
 | Unified capability discovery | Search projection over exact owning-context release references | Copied release rows, a second package registry, or a catalog that can mutate source identities |
-| Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection; verified `C0.3-PA2a` adds explicit request-time Project/Environment/immutable-profile references and a closed attribution status, verified `C0.3-PA2b` adds one bounded canonical signed page, and verified `C0.3-PA2c` adds one deployment policy with per-organization monotonic availability and deletion-completion watermarks through migration `144` | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, current-pointer lookup for historical facts, scope inference from private details, public unstructured details, or a second retention scheduler/store |
+| Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection; verified `C0.3-PA2a` adds explicit request-time Project/Environment/immutable-profile references and a closed attribution status, verified `C0.3-PA2b` adds one bounded canonical signed page, verified `C0.3-PA2c` adds one deployment policy with per-organization monotonic availability and deletion-completion watermarks through migration `144`, and implemented `C0.3-PA2d` atomically returns a transient complete same-key signed manifest bundle | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, current-pointer lookup for historical facts, scope inference from private details, public unstructured details, or a second retention scheduler/store |
 | Security detection and investigation | `C0.3` read projections over exact typed owner facts and shared audit metadata; later AnySentry/OpenTelemetry references remain owner-authorized | A security control plane, direct telemetry enforcement, a second incident/audit store, or hidden node commands |
 | Client sequence transport | Shared cursor, gap, polling, and SSE primitives | Controller-local cursor codecs or best-effort in-memory streams |
 | Production autoscaling | The `H0.5` Workloads autoscaler | Gateway, inference backend, or metrics-provider scaling loops |
@@ -344,7 +344,8 @@ and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148
 verify these boundaries. Persisted multi-page manifests, object copies, and
 SIEM delivery remain outside this slice.
 
-Frozen `C0.3-PA2d` extends only the same Audit read boundary with a synchronous,
+Implemented `C0.3-PA2d` (remote certification pending) extends only the same
+Audit read boundary with a synchronous,
 complete, bounded multi-page bundle. One transaction locks the organization's
 retention row exclusively, validates its watermark, and captures no more than
 eight requested pages plus one overflow sentinel. That brief lock serializes

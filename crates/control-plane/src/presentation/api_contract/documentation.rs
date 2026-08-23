@@ -434,6 +434,12 @@ fn operation_description(
                 .into(),
         );
     }
+    if method == "get" && path.ends_with("/audit-records/export/manifest") {
+        sentences.push(
+            "The inclusive from/to window is required and may span at most 31 days; one transaction captures at most eight complete pages, which are returned with a signed retention-bound manifest or fail without a partial result."
+                .into(),
+        );
+    }
     if method == "get" && path.ends_with("/audit-records/retention") {
         sentences.push(
             "The configured semantic policy and durable per-organization availability/deletion watermarks make historical gaps explicit."
@@ -477,6 +483,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         ("get", "/platform") => return "Get platform diagnostics".into(),
         ("get", "/organizations/{organization_id}/audit-records/export") => {
             return "Export a signed audit page".into()
+        }
+        ("get", "/organizations/{organization_id}/audit-records/export/manifest") => {
+            return "Export a complete signed audit manifest".into()
         }
         ("get", "/organizations/{organization_id}/audit-records/retention") => {
             return "Get audit retention status".into()
@@ -874,6 +883,7 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
         "requestId" => "Request UUID used to correlate an audit record with an API call.".into(),
         "projectId" if path.contains("/audit-records") => "Exact request-time Project UUID used to filter audit records.".into(),
         "environmentId" if path.contains("/audit-records") => "Exact request-time child Environment UUID used to filter audit records.".into(),
+        "pageSize" if path.ends_with("/audit-records/export/manifest") => "Number of records in each signed page; the complete bundle contains at most eight pages.".into(),
         "attributionProfileId" => "Immutable request-time Project attribution-profile UUID used to filter audit records.".into(),
         "attributionStatus" => "Closed request-time Project attribution status used to filter audit records.".into(),
         "code" => "Short-lived authorization code returned by the identity provider.".into(),
@@ -900,6 +910,9 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
 fn response_data_description(method: &str, path: &str, summary: &str) -> String {
     if method == "get" && path.ends_with("/audit-records/export") {
         return "One canonical redacted audit page in a DSSE envelope with its Ed25519 public verification key and key identity.".into();
+    }
+    if method == "get" && path.ends_with("/audit-records/export/manifest") {
+        return "Zero through eight canonical signed audit pages plus one signed manifest binding their digests, cursor chain, shared signing key, counts, exact filter, and captured retention state.".into();
     }
     if method == "get" && path.ends_with("/audit-records/retention") {
         return "The configured audit retention duration and semantic digest plus the durable applied digest, inclusive availability watermark, physical-deletion boundary, aggregate deleted-record count, schedule, and monotonic state version.".into();

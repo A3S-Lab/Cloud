@@ -418,6 +418,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_operations_list",
             "a3s_cloud_audit_records_list",
             "a3s_cloud_audit_records_export",
+            "a3s_cloud_audit_records_export_manifest",
             "a3s_cloud_audit_retention_get",
             "a3s_cloud_security_gateway_route_policy_timeline_list",
             "a3s_cloud_notifications_list",
@@ -443,6 +444,26 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         .into_iter()
         .flatten()
         .all(|tool| tool["annotations"]["readOnlyHint"] == true));
+    let audit_manifest = listed_tool(&read_only_tools, "a3s_cloud_audit_records_export_manifest")?;
+    assert_eq!(
+        audit_manifest["inputSchema"]["required"],
+        json!(["from", "to"])
+    );
+    assert!(audit_manifest["inputSchema"]["properties"]
+        .get("cursor")
+        .is_none());
+    assert!(audit_manifest["inputSchema"]["properties"]
+        .get("limit")
+        .is_none());
+    assert_eq!(
+        audit_manifest["inputSchema"]["properties"]["pageSize"],
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 200
+        })
+    );
 
     let project_writer_tools = list_tools(&app, PROJECT_TOKEN, 2).await?;
     assert!(tool_names(&project_writer_tools).contains(&"a3s_cloud_projects_create"));
@@ -595,6 +616,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_operations_list",
             "a3s_cloud_audit_records_list",
             "a3s_cloud_audit_records_export",
+            "a3s_cloud_audit_records_export_manifest",
             "a3s_cloud_audit_retention_get",
             "a3s_cloud_security_gateway_route_policy_timeline_list",
             "a3s_cloud_notifications_list",

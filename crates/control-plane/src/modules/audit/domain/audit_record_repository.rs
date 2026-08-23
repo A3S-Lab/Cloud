@@ -1,6 +1,6 @@
 use super::{
-    AuditRecord, AuditRecordCursor, AuditRecordFilter, AuditRetentionReport, AuditRetentionState,
-    AuditRetentionSweep,
+    AuditExportSnapshot, AuditRecord, AuditRecordCursor, AuditRecordFilter, AuditRetentionReport,
+    AuditRetentionState, AuditRetentionSweep,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
 use async_trait::async_trait;
@@ -17,6 +17,17 @@ pub trait IAuditRecordRepository: Send + Sync {
         after: Option<AuditRecordCursor>,
         limit: usize,
     ) -> Result<Vec<AuditRecord>, RepositoryError>;
+
+    /// Captures one complete bounded export selection and its retention state in a single
+    /// transaction. The implementation must exclusively lock that organization's retention row
+    /// across boundary validation and selection so inserts and retention advancement cannot cross
+    /// the capture point. The lock must be released before callers sign the returned snapshot.
+    async fn capture_export_snapshot(
+        &self,
+        organization_id: OrganizationId,
+        filter: &AuditRecordFilter,
+        maximum_records: usize,
+    ) -> Result<AuditExportSnapshot, RepositoryError>;
 
     async fn retention_state(
         &self,
