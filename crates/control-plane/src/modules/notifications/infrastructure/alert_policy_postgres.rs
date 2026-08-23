@@ -7,11 +7,11 @@ use crate::infrastructure::{
 use crate::modules::notifications::domain::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
     NotificationAlertPolicy, NotificationAlertPolicyCursor, NotificationAlertPolicyDefinition,
-    NotificationAlertSource, RevokeNotificationAlertPolicyWrite, NOTIFICATION_ALERT_POLICY_SCHEMA,
+    NotificationAlertPolicyTarget, NotificationAlertSource, RevokeNotificationAlertPolicyWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, OrganizationId,
-    PrincipalId, ProjectId, RepositoryError,
+    IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, OrganizationId, PrincipalId,
+    RepositoryError,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, Row, SqlQuery,
@@ -20,15 +20,16 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_POLICIES: &str = "select organization_id, id, recipient_principal_id, source, project_id, environment_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_alert_policies";
+const SELECT_POLICIES: &str = "select organization_id, id, recipient_principal_id, source, project_id, environment_id, node_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at from notification_alert_policies";
 
 struct AlertPolicyRow {
     organization_id: Uuid,
     id: Uuid,
     recipient_principal_id: Uuid,
     source: String,
-    project_id: Uuid,
-    environment_id: Uuid,
+    project_id: Option<Uuid>,
+    environment_id: Option<Uuid>,
+    node_id: Option<Uuid>,
     notify_on_recovery: bool,
     definition_schema: String,
     canonical_acl: String,
@@ -48,14 +49,15 @@ impl FromRow for AlertPolicyRow {
             source: decode(row, 3)?,
             project_id: decode(row, 4)?,
             environment_id: decode(row, 5)?,
-            notify_on_recovery: decode(row, 6)?,
-            definition_schema: decode(row, 7)?,
-            canonical_acl: decode(row, 8)?,
-            definition_digest: decode(row, 9)?,
-            aggregate_version: decode(row, 10)?,
-            created_by: decode(row, 11)?,
-            created_at: decode(row, 12)?,
-            revoked_at: decode(row, 13)?,
+            node_id: decode(row, 6)?,
+            notify_on_recovery: decode(row, 7)?,
+            definition_schema: decode(row, 8)?,
+            canonical_acl: decode(row, 9)?,
+            definition_digest: decode(row, 10)?,
+            aggregate_version: decode(row, 11)?,
+            created_by: decode(row, 12)?,
+            created_at: decode(row, 13)?,
+            revoked_at: decode(row, 14)?,
         })
     }
 }
@@ -81,10 +83,11 @@ fn decode_policy(row: AlertPolicyRow) -> Result<NotificationAlertPolicy, Postgre
                 ))
             })?;
     let spec = definition.spec();
-    if row.definition_schema != NOTIFICATION_ALERT_POLICY_SCHEMA
+    if row.definition_schema != definition.schema()
         || row.source != spec.source.as_str()
-        || row.project_id != spec.project_id.as_uuid()
-        || row.environment_id != spec.environment_id.as_uuid()
+        || row.project_id != spec.target.project_id().map(|id| id.as_uuid())
+        || row.environment_id != spec.target.environment_id().map(|id| id.as_uuid())
+        || row.node_id != spec.target.node_id().map(|id| id.as_uuid())
         || row.notify_on_recovery != spec.notify_on_recovery
     {
         return Err(PostgresPersistenceError::Invariant(
@@ -146,7 +149,7 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                     let inserted = execute(
                         transaction,
                         sql_query::<()>(
-                            "insert into notification_alert_policies (organization_id, id, recipient_principal_id, source, project_id, environment_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
+                            "insert into notification_alert_policies (organization_id, id, recipient_principal_id, source, project_id, environment_id, node_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) values (",
                         )
                         .bind(policy.organization_id.as_uuid())
                         .append(", ")
@@ -156,13 +159,15 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                         .append(", ")
                         .bind(spec.source.as_str())
                         .append(", ")
-                        .bind(spec.project_id.as_uuid())
+                        .bind(spec.target.project_id().map(|id| id.as_uuid()))
                         .append(", ")
-                        .bind(spec.environment_id.as_uuid())
+                        .bind(spec.target.environment_id().map(|id| id.as_uuid()))
+                        .append(", ")
+                        .bind(spec.target.node_id().map(|id| id.as_uuid()))
                         .append(", ")
                         .bind(spec.notify_on_recovery)
                         .append(", ")
-                        .bind(NOTIFICATION_ALERT_POLICY_SCHEMA)
+                        .bind(policy.definition.schema())
                         .append(", ")
                         .bind(policy.definition.canonical_acl())
                         .append(", ")
@@ -211,8 +216,9 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                                 "recipientPrincipalId": policy.recipient_principal_id,
                                 "definitionDigest": policy.definition.digest(),
                                 "source": spec.source.as_str(),
-                                "projectId": spec.project_id,
-                                "environmentId": spec.environment_id,
+                                "projectId": spec.target.project_id(),
+                                "environmentId": spec.target.environment_id(),
+                                "nodeId": spec.target.node_id(),
                                 "notifyOnRecovery": spec.notify_on_recovery,
                             }),
                         },
@@ -385,21 +391,30 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
         &self,
         organization_id: OrganizationId,
         source: NotificationAlertSource,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
+        target: NotificationAlertPolicyTarget,
         occurred_at: DateTime<Utc>,
     ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
+        let mut query = policy_query()
+            .append(" where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and source = ")
+            .bind(source.as_str());
+        query = match target {
+            NotificationAlertPolicyTarget::Environment {
+                project_id,
+                environment_id,
+            } => query
+                .append(" and project_id = ")
+                .bind(project_id.as_uuid())
+                .append(" and environment_id = ")
+                .bind(environment_id.as_uuid()),
+            NotificationAlertPolicyTarget::Node { node_id } => {
+                query.append(" and node_id = ").bind(node_id.as_uuid())
+            }
+        };
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
-                policy_query()
-                    .append(" where organization_id = ")
-                    .bind(organization_id.as_uuid())
-                    .append(" and source = ")
-                    .bind(source.as_str())
-                    .append(" and project_id = ")
-                    .bind(project_id.as_uuid())
-                    .append(" and environment_id = ")
-                    .bind(environment_id.as_uuid())
+                query
                     .append(" and created_at <= ")
                     .bind(occurred_at)
                     .append(" and revoked_at is null order by created_at, id"),

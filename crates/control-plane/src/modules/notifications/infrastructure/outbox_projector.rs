@@ -12,11 +12,11 @@ use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, INotificationRepository, Notification,
-    NotificationAlertPolicy, NotificationAlertSource, NotificationScope, NotificationSeverity,
+    NotificationAlertPolicy, NotificationAlertPolicyTarget, NotificationAlertSource,
+    NotificationScope, NotificationSeverity,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    ResourceName,
+    canonical_timestamp, OrganizationId, PrincipalId, RepositoryError, ResourceName,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentHealthChanged,
@@ -95,6 +95,9 @@ impl OutboxNotificationProjector {
             "workload.deployment.failed" | "workload.deployment.healthy" => {
                 return self.workload_deployment_health_notifications(message).await;
             }
+            "fleet.node.unavailable" | "fleet.node.availability-resolved" => {
+                return self.node_availability_notifications(message).await;
+            }
             _ => return Ok(Vec::new()),
         };
 
@@ -148,8 +151,7 @@ impl OutboxNotificationProjector {
         &self,
         message: &OutboxMessage,
         source: NotificationAlertSource,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
+        target: NotificationAlertPolicyTarget,
     ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
         let (Some(alert_policies), Some(resource_grants)) =
             (&self.alert_policies, &self.resource_grants)
@@ -160,15 +162,11 @@ impl OutboxNotificationProjector {
             .list_active_alert_policies_for_source(
                 OrganizationId::from_uuid(message.organization_id),
                 source,
-                project_id,
-                environment_id,
+                target,
                 message.occurred_at,
             )
             .await?;
-        let scope = NotificationScope::Environment {
-            project_id,
-            environment_id,
-        };
+        let scope = target.scope();
         let mut authorized = Vec::with_capacity(policies.len());
         for policy in policies {
             let Some(membership) = self
@@ -229,7 +227,14 @@ impl OutboxNotificationProjector {
         let payload = decode_domain_claim(message)?;
         let source = NotificationAlertSource::EdgeDomainClaimStatusV1;
         let policies = self
-            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .authorized_alert_policies(
+                message,
+                source,
+                NotificationAlertPolicyTarget::Environment {
+                    project_id: payload.project_id,
+                    environment_id: payload.environment_id,
+                },
+            )
             .await?;
         let scope = NotificationScope::Environment {
             project_id: payload.project_id,
@@ -300,7 +305,14 @@ impl OutboxNotificationProjector {
         let payload = decode_gateway_certificate_renewal(message)?;
         let source = NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1;
         let policies = self
-            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .authorized_alert_policies(
+                message,
+                source,
+                NotificationAlertPolicyTarget::Environment {
+                    project_id: payload.project_id,
+                    environment_id: payload.environment_id,
+                },
+            )
             .await?;
         let scope = NotificationScope::Environment {
             project_id: payload.project_id,
@@ -386,7 +398,14 @@ impl OutboxNotificationProjector {
         let payload = decode_workload_deployment_health(message)?;
         let source = NotificationAlertSource::WorkloadDeploymentHealthV1;
         let policies = self
-            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .authorized_alert_policies(
+                message,
+                source,
+                NotificationAlertPolicyTarget::Environment {
+                    project_id: payload.project_id,
+                    environment_id: payload.environment_id,
+                },
+            )
             .await?;
         let scope = NotificationScope::Environment {
             project_id: payload.project_id,
@@ -679,8 +698,14 @@ fn validate_identity_payload(
 #[path = "outbox_projector_gateway_certificate_expiry.rs"]
 mod gateway_certificate_expiry;
 
+#[path = "outbox_projector_node_availability.rs"]
+mod node_availability;
+
 #[cfg(test)]
 use gateway_certificate_expiry::decode_gateway_certificate_expiry;
+
+#[cfg(test)]
+use node_availability::decode_node_availability;
 
 #[cfg(test)]
 #[path = "outbox_projector_tests.rs"]

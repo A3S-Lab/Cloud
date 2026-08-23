@@ -227,8 +227,10 @@ async fn create_alert_policy_for_source(
 ) -> NotificationAlertPolicy {
     let definition = NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
         source,
-        project_id,
-        environment_id,
+        target: NotificationAlertPolicyTarget::Environment {
+            project_id,
+            environment_id,
+        },
         notify_on_recovery,
     })
     .expect("alert policy definition");
@@ -545,3 +547,6 @@ mod gateway_certificate_expiry;
 
 #[path = "outbox_projector_workload_tests.rs"]
 mod workload;
+
+#[path = "outbox_projector_node_availability_tests.rs"]
+mod node_availability;

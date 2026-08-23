@@ -1859,6 +1859,7 @@ fn build_management_application_with_health(
     let list_notification_alert_policies = Arc::clone(&alert_policies);
     let get_notification_alert_policies = alert_policies;
     let notification_alert_policy_environments = Arc::clone(&environments);
+    let notification_alert_policy_nodes = Arc::clone(&nodes);
     let create_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let revoke_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let list_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
@@ -2355,6 +2356,7 @@ fn build_management_application_with_health(
                 >(CreateNotificationAlertPolicyHandler::new(
                     create_notification_alert_policies,
                     notification_alert_policy_environments,
+                    notification_alert_policy_nodes,
                 ))
                 .command_handler::<
                     crate::modules::notifications::RevokeNotificationAlertPolicy,

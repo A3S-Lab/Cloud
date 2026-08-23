@@ -1293,6 +1293,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/139_fleet_node_availability_facts.sql"
             )),
         ),
+        Migration::new(
+            "140",
+            "notification alert policy Node targets",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/140_notification_alert_policy_node_target.sql"
+            )),
+        ),
     ]
 }
 
@@ -2462,6 +2470,53 @@ mod fleet_node_availability_fact_migration_tests {
             assert!(
                 !canonical.contains(forbidden),
                 "migration 139 persists forbidden material through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_alert_policy_node_target_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/140_notification_alert_policy_node_target.sql"
+    ));
+
+    #[test]
+    fn migration_140_enforces_one_closed_environment_or_node_target() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        let canonical = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+        for expected in [
+            "alter column project_id drop not null",
+            "alter column environment_id drop not null",
+            "add column node_id uuid",
+            "references nodes (organization_id, id)",
+            "definition_schema = 'cloud.notification.alert-policy.v1'",
+            "definition_schema = 'cloud.notification.alert-policy.v2'",
+            "source = 'fleet.node-availability-status.v1'",
+            "and project_id is null and environment_id is null and node_id is not null",
+            "notification_alert_policies_active_environment_source_scope_idx",
+            "notification_alert_policies_active_node_source_scope_idx",
+            "notification_alert_policies_environment_source_scope_idx",
+            "notification_alert_policies_node_source_scope_idx",
+            "or new.node_id is distinct from old.node_id",
+        ] {
+            assert!(
+                canonical.contains(expected),
+                "migration 140 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table notification_incident",
+            "create table node_health",
+            "create table notification_queue",
+            "threshold",
+            "retry_count",
+            "next_attempt_at",
+        ] {
+            assert!(
+                !canonical.contains(forbidden),
+                "migration 140 adds forbidden alert authority through {forbidden}"
             );
         }
     }

@@ -1,7 +1,6 @@
 use super::alert_policy::alert_policy_not_found;
 use super::MAXIMUM_NOTIFICATION_LIMIT;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, NotificationAlertPolicy, NotificationAlertPolicyCursor,
     NotificationAlertPolicyPage,
@@ -166,9 +165,10 @@ impl QueryHandler<ListNotificationAlertPolicies> for ListNotificationAlertPolici
 }
 
 fn is_visible(policy: &NotificationAlertPolicy, resource_access: &ResourceAccessEvaluator) -> bool {
-    let spec = policy.definition.spec();
-    resource_access.allows(ResourceGrantScope::Environment {
-        project_id: spec.project_id,
-        environment_id: spec.environment_id,
-    })
+    policy
+        .definition
+        .spec()
+        .target
+        .scope()
+        .is_visible_to(resource_access)
 }

@@ -1,9 +1,9 @@
+use crate::modules::fleet::domain::repositories::INodeRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
     NotificationAlertPolicy, NotificationAlertPolicyDefinition, NotificationAlertPolicyEvent,
-    RevokeNotificationAlertPolicyWrite,
+    NotificationAlertPolicyTarget, RevokeNotificationAlertPolicyWrite,
 };
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -54,16 +54,19 @@ pub struct NotificationAlertPolicyMutationResult {
 pub struct CreateNotificationAlertPolicyHandler {
     notifications: Arc<dyn INotificationAlertPolicyRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    nodes: Arc<dyn INodeRepository>,
 }
 
 impl CreateNotificationAlertPolicyHandler {
     pub fn new(
         notifications: Arc<dyn INotificationAlertPolicyRepository>,
         environments: Arc<dyn IEnvironmentRepository>,
+        nodes: Arc<dyn INodeRepository>,
     ) -> Self {
         Self {
             notifications,
             environments,
+            nodes,
         }
     }
 }
@@ -79,6 +82,7 @@ impl CommandHandler<CreateNotificationAlertPolicy> for CreateNotificationAlertPo
     > {
         let notifications = Arc::clone(&self.notifications);
         let environments = Arc::clone(&self.environments);
+        let nodes = Arc::clone(&self.nodes);
         Box::pin(async move {
             if command.organization_id.as_uuid().is_nil()
                 || command.actor_principal_id.as_uuid().is_nil()
@@ -94,37 +98,48 @@ impl CommandHandler<CreateNotificationAlertPolicy> for CreateNotificationAlertPo
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
             let spec = definition.spec();
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
-                    project_id: spec.project_id,
-                    environment_id: spec.environment_id,
-                })
-            {
+            if !spec.target.scope().is_visible_to(&command.resource_access) {
                 return Ok(Err(alert_policy_not_found()));
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    spec.project_id,
-                    spec.environment_id,
-                )
-                .await
-            {
-                Ok(Some(environment))
-                    if environment.organization_id == command.organization_id
-                        && environment.project_id == spec.project_id
-                        && environment.id == spec.environment_id => {}
-                Ok(Some(_)) => {
-                    return Err(BootError::Internal(
-                        "environment lookup returned inconsistent identity".into(),
-                    ))
+            match spec.target {
+                NotificationAlertPolicyTarget::Environment {
+                    project_id,
+                    environment_id,
+                } => match environments
+                    .find(command.organization_id, project_id, environment_id)
+                    .await
+                {
+                    Ok(Some(environment))
+                        if environment.organization_id == command.organization_id
+                            && environment.project_id == project_id
+                            && environment.id == environment_id => {}
+                    Ok(Some(_)) => {
+                        return Err(BootError::Internal(
+                            "environment lookup returned inconsistent identity".into(),
+                        ))
+                    }
+                    Ok(None)
+                    | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
+                        return Ok(Err(alert_policy_not_found()))
+                    }
+                    Err(error) => return Ok(Err(error.into())),
+                },
+                NotificationAlertPolicyTarget::Node { node_id } => {
+                    match nodes.find(command.organization_id, node_id).await {
+                        Ok(node)
+                            if node.organization_id == command.organization_id
+                                && node.id == node_id => {}
+                        Ok(_) => {
+                            return Err(BootError::Internal(
+                                "Node lookup returned inconsistent identity".into(),
+                            ))
+                        }
+                        Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
+                            return Ok(Err(alert_policy_not_found()))
+                        }
+                        Err(error) => return Ok(Err(error.into())),
+                    }
                 }
-                Ok(None)
-                | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(alert_policy_not_found()))
-                }
-                Err(error) => return Ok(Err(error.into())),
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
@@ -245,13 +260,7 @@ impl CommandHandler<RevokeNotificationAlertPolicy> for RevokeNotificationAlertPo
                 Err(error) => return Ok(Err(error.into())),
             };
             let spec = existing.definition.spec();
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
-                    project_id: spec.project_id,
-                    environment_id: spec.environment_id,
-                })
-            {
+            if !spec.target.scope().is_visible_to(&command.resource_access) {
                 return Ok(Err(alert_policy_not_found()));
             }
             let canonical = serde_json::to_vec(&serde_json::json!({

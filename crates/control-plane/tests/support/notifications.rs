@@ -18,6 +18,10 @@ use a3s_cloud_control_plane::modules::edge::domain::events::{
     GatewayCertificateRenewalStatus,
 };
 use a3s_cloud_control_plane::modules::edge::domain::DomainClaimState;
+use a3s_cloud_control_plane::modules::fleet::domain::events::{
+    NodeAvailabilityChanged, NodeAvailabilityResolutionReason, NodeAvailabilitySnapshot,
+};
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeState;
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, IIntegrationEventProjector, OutboxMessage, OutboxRelay, OutboxRelayConfig,
@@ -30,8 +34,9 @@ use a3s_cloud_control_plane::modules::notifications::{
     IOutboundNotificationDeliveryRepository, IOutboundNotificationDispatcher,
     IOutboundNotificationRepository, MarkNotificationReadWrite, Notification,
     NotificationAlertPolicy, NotificationAlertPolicyDefinition, NotificationAlertPolicyEvent,
-    NotificationAlertPolicySpec, NotificationAlertSource, NotificationScope, NotificationSeverity,
-    OutboundNotificationChannel, OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
+    NotificationAlertPolicySpec, NotificationAlertPolicyTarget, NotificationAlertSource,
+    NotificationScope, NotificationSeverity, OutboundNotificationChannel,
+    OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
     OutboundNotificationDeliveryAdmission, OutboundNotificationDispatchResult,
     OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
     OutboundNotificationSubscriptionEvent, OutboundNotificationSubscriptionSpec,

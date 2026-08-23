@@ -13,8 +13,9 @@ mod outbound_subscription;
 
 pub use alert_policy::{
     NotificationAlertPolicy, NotificationAlertPolicyCursor, NotificationAlertPolicyDefinition,
-    NotificationAlertPolicyPage, NotificationAlertPolicySpec, NotificationAlertSource,
-    NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, NOTIFICATION_ALERT_POLICY_SCHEMA,
+    NotificationAlertPolicyPage, NotificationAlertPolicySpec, NotificationAlertPolicyTarget,
+    NotificationAlertSource, NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES,
+    NOTIFICATION_ALERT_POLICY_SCHEMA, NOTIFICATION_ALERT_POLICY_SCHEMA_V2,
 };
 pub use alert_policy_repository::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,

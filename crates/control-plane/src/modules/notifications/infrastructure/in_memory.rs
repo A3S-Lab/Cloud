@@ -3,16 +3,15 @@ use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, INotificationRepository,
     IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
     MarkNotificationReadWrite, Notification, NotificationAlertPolicy,
-    NotificationAlertPolicyCursor, NotificationAlertSource, NotificationCursor,
-    OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
+    NotificationAlertPolicyCursor, NotificationAlertPolicyTarget, NotificationAlertSource,
+    NotificationCursor, OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
     OutboundNotificationSmtpAttemptRecord, OutboundNotificationSubscription,
     OutboundNotificationSubscriptionCursor, OutboundNotificationTerminalReceipt,
     RevokeNotificationAlertPolicyWrite, RevokeOutboundNotificationSubscriptionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, NotificationId,
-    NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    Sha256Digest,
+    IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, NotificationId,
+    NotificationSubscriptionId, OrganizationId, PrincipalId, RepositoryError, Sha256Digest,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -369,8 +368,7 @@ impl INotificationAlertPolicyRepository for InMemoryNotificationRepository {
                 && existing.organization_id == policy.organization_id
                 && existing.recipient_principal_id == policy.recipient_principal_id
                 && existing_spec.source == spec.source
-                && existing_spec.project_id == spec.project_id
-                && existing_spec.environment_id == spec.environment_id
+                && existing_spec.target == spec.target
         }) {
             return Err(RepositoryError::Conflict(
                 "an active notification alert policy already owns this exact source scope".into(),
@@ -482,8 +480,7 @@ impl INotificationAlertPolicyRepository for InMemoryNotificationRepository {
         &self,
         organization_id: OrganizationId,
         source: NotificationAlertSource,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
+        target: NotificationAlertPolicyTarget,
         occurred_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
         let mut policies = self
@@ -494,7 +491,7 @@ impl INotificationAlertPolicyRepository for InMemoryNotificationRepository {
             .values()
             .filter(|policy| {
                 policy.organization_id == organization_id
-                    && policy.matches(source, project_id, environment_id, occurred_at)
+                    && policy.matches(source, target, occurred_at)
             })
             .cloned()
             .collect::<Vec<_>>();

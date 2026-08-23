@@ -56,8 +56,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 139;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "139";
+const CLOUD_MIGRATION_COUNT: i64 = 140;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "140";
 
 async fn migrate_and_connect_for_test(
     url: &str,

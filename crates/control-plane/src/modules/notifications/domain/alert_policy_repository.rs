@@ -1,7 +1,10 @@
-use super::{NotificationAlertPolicy, NotificationAlertPolicyCursor, NotificationAlertSource};
+use super::{
+    NotificationAlertPolicy, NotificationAlertPolicyCursor, NotificationAlertPolicyTarget,
+    NotificationAlertSource,
+};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, NotificationAlertPolicyId, OrganizationId,
-    PrincipalId, ProjectId, RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId, NotificationAlertPolicyId,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -89,8 +92,12 @@ pub struct NotificationAlertPolicyEvent {
     pub recipient_principal_id: PrincipalId,
     pub definition_digest: String,
     pub source: String,
-    pub project_id: ProjectId,
-    pub environment_id: EnvironmentId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<EnvironmentId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<NodeId>,
     pub notify_on_recovery: bool,
     pub state: String,
 }
@@ -106,7 +113,7 @@ impl NotificationAlertPolicyEvent {
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
-            schema_version: 1,
+            schema_version: policy.definition.event_schema_version(),
             organization_id: policy.organization_id.as_uuid(),
             aggregate_id: policy.id.as_uuid(),
             aggregate_version: policy.aggregate_version,
@@ -118,8 +125,9 @@ impl NotificationAlertPolicyEvent {
                 recipient_principal_id: policy.recipient_principal_id,
                 definition_digest: policy.definition.digest().to_string(),
                 source: spec.source.as_str().into(),
-                project_id: spec.project_id,
-                environment_id: spec.environment_id,
+                project_id: spec.target.project_id(),
+                environment_id: spec.target.environment_id(),
+                node_id: spec.target.node_id(),
                 notify_on_recovery: spec.notify_on_recovery,
                 state: if policy.is_active() {
                     "active".into()
@@ -168,8 +176,7 @@ pub trait INotificationAlertPolicyRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
         source: NotificationAlertSource,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
+        target: NotificationAlertPolicyTarget,
         occurred_at: DateTime<Utc>,
     ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError>;
 }
@@ -185,7 +192,7 @@ fn validate_policy_event(
         || actor_principal_id.as_uuid().is_nil()
         || request_id.is_nil()
         || event.event_key != event_key
-        || event.schema_version != 1
+        || event.schema_version != policy.definition.event_schema_version()
         || event.organization_id != policy.organization_id.as_uuid()
         || event.aggregate_id != policy.id.as_uuid()
         || event.aggregate_version != policy.aggregate_version
@@ -202,8 +209,9 @@ fn validate_policy_event(
         || payload.recipient_principal_id != policy.recipient_principal_id
         || payload.definition_digest != policy.definition.digest().as_str()
         || payload.source != spec.source.as_str()
-        || payload.project_id != spec.project_id
-        || payload.environment_id != spec.environment_id
+        || payload.project_id != spec.target.project_id()
+        || payload.environment_id != spec.target.environment_id()
+        || payload.node_id != spec.target.node_id()
         || payload.notify_on_recovery != spec.notify_on_recovery
         || payload.state
             != if policy.is_active() {

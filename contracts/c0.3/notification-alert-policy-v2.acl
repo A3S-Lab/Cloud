@@ -1,0 +1,6 @@
+notification_alert_policy {
+  node_id = "33333333-3333-4333-8333-333333333333"
+  notify_on_recovery = true
+  schema = "cloud.notification.alert-policy.v2"
+  source = "fleet.node-availability-status.v1"
+}

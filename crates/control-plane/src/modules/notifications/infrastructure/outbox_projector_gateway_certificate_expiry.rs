@@ -4,7 +4,8 @@ use crate::modules::edge::domain::events::{
 };
 use crate::modules::integration_events::OutboxMessage;
 use crate::modules::notifications::domain::{
-    Notification, NotificationAlertSource, NotificationScope, NotificationSeverity,
+    Notification, NotificationAlertPolicyTarget, NotificationAlertSource, NotificationScope,
+    NotificationSeverity,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -17,7 +18,14 @@ impl OutboxNotificationProjector {
         let payload = decode_gateway_certificate_expiry(message)?;
         let source = NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1;
         let policies = self
-            .authorized_alert_policies(message, source, payload.project_id, payload.environment_id)
+            .authorized_alert_policies(
+                message,
+                source,
+                NotificationAlertPolicyTarget::Environment {
+                    project_id: payload.project_id,
+                    environment_id: payload.environment_id,
+                },
+            )
             .await?;
         let scope = NotificationScope::Environment {
             project_id: payload.project_id,

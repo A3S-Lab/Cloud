@@ -156,7 +156,9 @@ impl NodeAvailabilityChanged {
         let resolved_at = canonical_timestamp(resolved_at);
         let valid_transition = match reason {
             NodeAvailabilityResolutionReason::HeartbeatRestored => {
-                snapshot.participates() && snapshot.last_observed_at > firing.last_observed_at
+                snapshot.participates()
+                    && snapshot.last_observed_at > firing.last_observed_at
+                    && snapshot.last_observed_at <= resolved_at
             }
             NodeAvailabilityResolutionReason::NodeRevoked => {
                 snapshot.state == NodeState::Revoked
@@ -249,6 +251,7 @@ impl NodeAvailabilityChanged {
             NodeAvailabilityFactStatus::Unavailable => {
                 payload.resolution_reason.is_none()
                     && payload.resolved_at.is_none()
+                    && payload.timeout_deadline_at > payload.last_observed_at
                     && event.causation_id.is_none()
                     && event.correlation_id == event.event_id
                     && event.occurred_at == payload.detected_at
@@ -256,6 +259,15 @@ impl NodeAvailabilityChanged {
             NodeAvailabilityFactStatus::Resolved => {
                 payload.resolution_reason.is_some()
                     && payload.resolved_at == Some(event.occurred_at)
+                    && match payload.resolution_reason {
+                        Some(NodeAvailabilityResolutionReason::HeartbeatRestored) => {
+                            payload.last_observed_at <= event.occurred_at
+                        }
+                        Some(NodeAvailabilityResolutionReason::NodeRevoked) => {
+                            payload.timeout_deadline_at > payload.last_observed_at
+                        }
+                        None => false,
+                    }
                     && event.causation_id == Some(event.correlation_id)
                     && !event.correlation_id.is_nil()
             }
@@ -275,7 +287,6 @@ impl NodeAvailabilityChanged {
             || canonical_timestamp(payload.last_observed_at) != payload.last_observed_at
             || canonical_timestamp(payload.timeout_deadline_at) != payload.timeout_deadline_at
             || canonical_timestamp(payload.detected_at) != payload.detected_at
-            || payload.timeout_deadline_at <= payload.last_observed_at
             || payload.detected_at <= payload.timeout_deadline_at
             || payload.resolved_at.is_some_and(|resolved_at| {
                 canonical_timestamp(resolved_at) != resolved_at || resolved_at < payload.detected_at
@@ -368,6 +379,31 @@ mod tests {
         .expect("heartbeat resolution");
         assert_eq!(resolution.aggregate_version, 5);
         assert_eq!(resolution.causation_id, Some(firing.event_id));
+        assert_eq!(
+            NodeAvailabilityChanged::decode_envelope(&resolution)
+                .expect("typed heartbeat resolution")
+                .resolution_reason,
+            Some(NodeAvailabilityResolutionReason::HeartbeatRestored)
+        );
+
+        let delayed_observation = NodeAvailabilitySnapshot {
+            last_observed_at: observed_at + Duration::seconds(5),
+            node_aggregate_version: 3,
+            ..first
+        };
+        let delayed_resolution = NodeAvailabilityChanged::resolved_envelope(
+            delayed_observation,
+            firing_identity,
+            NodeAvailabilityResolutionReason::HeartbeatRestored,
+            deadline + Duration::seconds(12),
+        )
+        .expect("delayed heartbeat still advances the firing observation");
+        assert_eq!(
+            NodeAvailabilityChanged::decode_envelope(&delayed_resolution)
+                .expect("typed delayed-heartbeat resolution")
+                .last_observed_at,
+            delayed_observation.last_observed_at
+        );
 
         let second = NodeAvailabilityChanged::unavailable_envelope(
             recovered,

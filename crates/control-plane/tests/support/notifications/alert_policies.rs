@@ -10,6 +10,11 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
     recipient: PrincipalId,
     created_at: chrono::DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let environment_target = NotificationAlertPolicyTarget::Environment {
+        project_id,
+        environment_id,
+    };
+    let availability_node_id = NodeId::new();
     let membership_id = MembershipId::new();
     database
         .execute(
@@ -26,12 +31,30 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
                 .append(", null)"),
         )
         .await?;
+    database
+        .execute(
+            sql_query::<()>("insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(availability_node_id.as_uuid())
+                .append(", 'Notification availability node', 'notification-availability-node', 'ready', ")
+                .bind(Uuid::now_v7())
+                .append(", '1.0.0', 'test-runtime', 'test-build', ")
+                .bind(format!("sha256:{}", "a".repeat(64)))
+                .append(", ")
+                .bind(serde_json::json!({"runtimeProvider": "test-runtime"}))
+                .append(", ")
+                .bind(created_at)
+                .append(", ")
+                .bind(created_at)
+                .append(", 1)"),
+        )
+        .await?;
 
     let repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
     let definition = NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
         source: NotificationAlertSource::EdgeDomainClaimStatusV1,
-        project_id,
-        environment_id,
+        target: environment_target,
         notify_on_recovery: true,
     })?;
     let policy = NotificationAlertPolicy::create(
@@ -66,8 +89,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .list_active_alert_policies_for_source(
                 organization_id,
                 NotificationAlertSource::EdgeDomainClaimStatusV1,
-                project_id,
-                environment_id,
+                environment_target,
                 policy.created_at,
             )
             .await?,
@@ -95,8 +117,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
     let certificate_definition =
         NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
             source: NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
-            project_id,
-            environment_id,
+            target: environment_target,
             notify_on_recovery: true,
         })?;
     let certificate_policy = NotificationAlertPolicy::create(
@@ -127,8 +148,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .list_active_alert_policies_for_source(
                 organization_id,
                 NotificationAlertSource::EdgeGatewayCertificateRenewalStatusV1,
-                project_id,
-                environment_id,
+                environment_target,
                 certificate_policy.created_at,
             )
             .await?,
@@ -138,8 +158,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
     let workload_definition =
         NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
             source: NotificationAlertSource::WorkloadDeploymentHealthV1,
-            project_id,
-            environment_id,
+            target: environment_target,
             notify_on_recovery: true,
         })?;
     let workload_policy = NotificationAlertPolicy::create(
@@ -168,8 +187,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .list_active_alert_policies_for_source(
                 organization_id,
                 NotificationAlertSource::WorkloadDeploymentHealthV1,
-                project_id,
-                environment_id,
+                environment_target,
                 workload_policy.created_at,
             )
             .await?,
@@ -179,8 +197,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
     let certificate_expiry_definition =
         NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
             source: NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1,
-            project_id,
-            environment_id,
+            target: environment_target,
             notify_on_recovery: true,
         })?;
     let certificate_expiry_policy = NotificationAlertPolicy::create(
@@ -211,19 +228,61 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .list_active_alert_policies_for_source(
                 organization_id,
                 NotificationAlertSource::EdgeGatewayCertificateExpiryStatusV1,
-                project_id,
-                environment_id,
+                environment_target,
                 certificate_expiry_policy.created_at,
             )
             .await?,
         vec![certificate_expiry_policy.clone()]
+    );
+
+    let node_target = NotificationAlertPolicyTarget::Node {
+        node_id: availability_node_id,
+    };
+    let node_definition =
+        NotificationAlertPolicyDefinition::from_spec(NotificationAlertPolicySpec {
+            source: NotificationAlertSource::FleetNodeAvailabilityStatusV1,
+            target: node_target,
+            notify_on_recovery: true,
+        })?;
+    let node_policy = NotificationAlertPolicy::create(
+        organization_id,
+        NotificationAlertPolicyId::new(),
+        recipient,
+        node_definition,
+        recipient,
+        policy.created_at + ChronoDuration::milliseconds(4),
+    )?;
+    let node_create_write =
+        notification_alert_policy_create_write(&node_policy, "postgres:node-alert:create")?;
+    assert!(
+        !repository
+            .create_alert_policy(node_create_write.clone())
+            .await?
+            .replayed
+    );
+    assert!(
+        repository
+            .create_alert_policy(node_create_write)
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        repository
+            .list_active_alert_policies_for_source(
+                organization_id,
+                NotificationAlertSource::FleetNodeAvailabilityStatusV1,
+                node_target,
+                node_policy.created_at,
+            )
+            .await?,
+        vec![node_policy.clone()]
     );
     assert_eq!(
         repository
             .list_alert_policy_page(organization_id, recipient, None, 50)
             .await?
             .len(),
-        4
+        5
     );
     assert_rejected(
         database
@@ -313,8 +372,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
         .list_active_alert_policies_for_source(
             organization_id,
             NotificationAlertSource::EdgeDomainClaimStatusV1,
-            project_id,
-            environment_id,
+            environment_target,
             revoked.revoked_at.expect("revoked at"),
         )
         .await?
@@ -712,6 +770,162 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             && !notification.body.contains("private")
     }));
 
+    let stale_node_firing =
+        notification_node_availability_message(NodeAvailabilityChanged::unavailable_envelope(
+            NodeAvailabilitySnapshot {
+                organization_id,
+                node_id: availability_node_id,
+                state: NodeState::Ready,
+                node_aggregate_version: 2,
+                last_observed_at: policy.created_at - ChronoDuration::seconds(30),
+            },
+            policy.created_at - ChronoDuration::seconds(20),
+            policy.created_at - ChronoDuration::seconds(19),
+        )?);
+    persist_outbox_message(database, &stale_node_firing).await?;
+    projector.project(&stale_node_firing).await?;
+    let stale_firing = NodeAvailabilityChanged::firing(&DomainEventEnvelope {
+        event_id: stale_node_firing.event_id,
+        event_key: stale_node_firing.event_key.clone(),
+        schema_version: stale_node_firing.schema_version,
+        organization_id: stale_node_firing.organization_id,
+        aggregate_id: stale_node_firing.aggregate_id,
+        aggregate_version: stale_node_firing.aggregate_version,
+        occurred_at: stale_node_firing.occurred_at,
+        correlation_id: stale_node_firing.correlation_id,
+        causation_id: stale_node_firing.causation_id,
+        payload: stale_node_firing.payload.clone(),
+    })?;
+    let initial_node_resolution =
+        notification_node_availability_message(NodeAvailabilityChanged::resolved_envelope(
+            NodeAvailabilitySnapshot {
+                organization_id,
+                node_id: availability_node_id,
+                state: NodeState::Ready,
+                node_aggregate_version: 3,
+                last_observed_at: policy.created_at + ChronoDuration::seconds(19),
+            },
+            stale_firing,
+            NodeAvailabilityResolutionReason::HeartbeatRestored,
+            policy.created_at + ChronoDuration::seconds(20),
+        )?);
+    persist_outbox_message(database, &initial_node_resolution).await?;
+    projector.project(&initial_node_resolution).await?;
+
+    let node_firing =
+        notification_node_availability_message(NodeAvailabilityChanged::unavailable_envelope(
+            NodeAvailabilitySnapshot {
+                organization_id,
+                node_id: availability_node_id,
+                state: NodeState::Ready,
+                node_aggregate_version: 4,
+                last_observed_at: policy.created_at + ChronoDuration::seconds(21),
+            },
+            policy.created_at + ChronoDuration::seconds(31),
+            policy.created_at + ChronoDuration::seconds(32),
+        )?);
+    persist_outbox_message(database, &node_firing).await?;
+    projector.project(&node_firing).await?;
+    projector.project(&node_firing).await?;
+    let open_node_firing = NodeAvailabilityChanged::firing(&DomainEventEnvelope {
+        event_id: node_firing.event_id,
+        event_key: node_firing.event_key.clone(),
+        schema_version: node_firing.schema_version,
+        organization_id: node_firing.organization_id,
+        aggregate_id: node_firing.aggregate_id,
+        aggregate_version: node_firing.aggregate_version,
+        occurred_at: node_firing.occurred_at,
+        correlation_id: node_firing.correlation_id,
+        causation_id: node_firing.causation_id,
+        payload: node_firing.payload.clone(),
+    })?;
+    let node_resolution =
+        notification_node_availability_message(NodeAvailabilityChanged::resolved_envelope(
+            NodeAvailabilitySnapshot {
+                organization_id,
+                node_id: availability_node_id,
+                state: NodeState::Ready,
+                node_aggregate_version: 5,
+                last_observed_at: policy.created_at + ChronoDuration::seconds(33),
+            },
+            open_node_firing,
+            NodeAvailabilityResolutionReason::HeartbeatRestored,
+            policy.created_at + ChronoDuration::seconds(34),
+        )?);
+    persist_outbox_message(database, &node_resolution).await?;
+    projector.project(&node_resolution).await?;
+    projector.project(&node_resolution).await?;
+
+    let node_notifications = repository
+        .list_page(organization_id, recipient, false, None, 50)
+        .await?
+        .into_iter()
+        .filter(|notification| {
+            matches!(
+                notification.source_event_key.as_str(),
+                "fleet.node.unavailable" | "fleet.node.availability-resolved"
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(node_notifications.len(), 2);
+    assert_eq!(
+        node_notifications
+            .iter()
+            .map(|notification| (
+                notification.source_event_key.as_str(),
+                notification.severity,
+                notification.source_aggregate_version,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "fleet.node.availability-resolved",
+                NotificationSeverity::Information,
+                9,
+            ),
+            ("fleet.node.unavailable", NotificationSeverity::Critical, 8),
+        ]
+    );
+    assert!(node_notifications.iter().all(|notification| {
+        notification.scope
+            == NotificationScope::Node {
+                node_id: availability_node_id,
+            }
+            && !notification.body.contains("capabilities")
+            && !notification.body.contains("credential")
+    }));
+
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update notification_alert_policies set node_id = null where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(node_policy.id.as_uuid()),
+            )
+            .await,
+        "mutate a notification alert policy Node target",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("insert into notification_alert_policies (organization_id, id, recipient_principal_id, source, project_id, environment_id, node_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, aggregate_version, created_by, created_at, revoked_at) select organization_id, ")
+                    .bind(Uuid::now_v7())
+                    .append(", recipient_principal_id, source, ")
+                    .bind(project_id.as_uuid())
+                    .append(", ")
+                    .bind(environment_id.as_uuid())
+                    .append(", node_id, notify_on_recovery, definition_schema, canonical_acl, definition_digest, 2, created_by, created_at, created_at from notification_alert_policies where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(node_policy.id.as_uuid()),
+            )
+            .await,
+        "persist a cross-kind notification alert policy target",
+    );
+
     assert_rejected(
         database
             .execute(
@@ -754,10 +968,10 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
             .bind(organization_id.as_uuid())
             .append(" and recipient_principal_id = ")
             .bind(recipient.as_uuid())
-            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed', 'workload.deployment.failed', 'workload.deployment.healthy', 'edge.gateway-certificate.expiring', 'edge.gateway-certificate.expiry-resolved'))"),
+            .append(" and source_event_key in ('edge.domain-claim.rejected', 'edge.domain-claim.verified', 'edge.gateway-certificate.renewal-failed', 'edge.gateway-certificate.renewed', 'workload.deployment.failed', 'workload.deployment.healthy', 'edge.gateway-certificate.expiring', 'edge.gateway-certificate.expiry-resolved', 'fleet.node.unavailable', 'fleet.node.availability-resolved'))"),
         )
         .await?;
-    assert_eq!(evidence, (4, 4, 1, 5, 10));
+    assert_eq!(evidence, (5, 5, 1, 6, 12));
     Ok(())
 }
 
@@ -976,6 +1190,22 @@ fn notification_workload_deployment_health_message(
         })?,
         delivery_attempts: 1,
     })
+}
+
+fn notification_node_availability_message(event: DomainEventEnvelope) -> OutboxMessage {
+    OutboxMessage {
+        event_id: event.event_id,
+        event_key: event.event_key,
+        schema_version: event.schema_version,
+        organization_id: event.organization_id,
+        aggregate_id: event.aggregate_id,
+        aggregate_version: event.aggregate_version,
+        occurred_at: event.occurred_at,
+        correlation_id: event.correlation_id,
+        causation_id: event.causation_id,
+        payload: event.payload,
+        delivery_attempts: 1,
+    }
 }
 
 async fn persist_outbox_message(
