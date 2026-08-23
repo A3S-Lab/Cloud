@@ -655,6 +655,9 @@ async fn seed_certificate(
     node: &SeededNode,
     issued_at: DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let fingerprint_hex = node.node_id.as_uuid().simple().to_string().repeat(2);
+    assert_eq!(fingerprint_hex.len(), 64);
+    assert!(fingerprint_hex.bytes().all(|byte| byte.is_ascii_hexdigit()));
     Database::new(PostgresDialect, executor.clone())
         .execute(
             sql_query::<()>(
@@ -666,10 +669,7 @@ async fn seed_certificate(
             .append(", ")
             .bind(format!("availability-{}", node.node_id))
             .append(", ")
-            .bind(format!(
-                "sha256:{:0>64}",
-                node.node_id.as_uuid().simple()
-            ))
+            .bind(format!("sha256:{fingerprint_hex}"))
             .append(", 'certificate', 'ca', ")
             .bind(issued_at)
             .append(", ")
