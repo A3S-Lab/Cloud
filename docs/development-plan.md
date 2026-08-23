@@ -2723,18 +2723,18 @@ node.
   migration, business rule, configuration, event, provider, queue, scheduler,
   notification subscription, general SMTP channel, or second authorization
   path.
-- Frozen as `C0.3-N5e`: add general SMTP only as a fourth immutable version of
-  the existing personal outbound-subscription ACL. Version 4 is SMTP-only and
-  replaces the exact Connector revision attributes with one opaque
+- Implemented and verified as `C0.3-N5e`: general SMTP is a fourth immutable
+  version of the existing personal outbound-subscription ACL. Version 4 is
+  SMTP-only and replaces the exact Connector revision attributes with one opaque
   `recipient_contact_id`; it retains the severity floor, one-through-eight
   immutable Provider-attempt budget, and an optional bounded event-time
   suppression cutoff. Existing v1-v3 canonical ACL bytes and Connector
-  delivery-v1/v2 facts must parse and replay unchanged. The in-memory domain is
+  delivery-v1/v2 facts parse and replay unchanged. The in-memory domain is
   a closed Connector-or-recipient-contact target union, and migration `138`
   makes the same exactly-one-target rule, channel binding, and immutability
   database-enforced.
 
-  Subscription creation and each SMTP dispatch must call an
+  Subscription creation and each SMTP dispatch call an
   organization-scoped Identity resolver for the exact owner Principal and
   contact. Only an active human Principal with an active Membership and an
   active verified contact is admissible. The subscription and delivery-v3 fact
@@ -2745,10 +2745,10 @@ node.
   Event rather than being misclassified as revocation.
 
   Notifications owns a per-delivery-generation SMTP reservation, lease,
-  `dispatching` fence, and closed terminal evidence in migration `138`. It may
-  share only the N5c transport's low-level TLS, EHLO, authentication, envelope,
+  `dispatching` fence, and closed terminal evidence in migration `138`. It
+  shares only the N5c transport's low-level TLS, EHLO, authentication, envelope,
   and byte-submission implementation selected by the sole top-level `smtp` A3S
-  ACL. It must not call Identity's proof/message workflow, synthesize Connector
+  ACL. It does not call Identity's proof/message workflow, synthesize Connector
   IDs, or write Connector C6 attempts/evidence. Contact resolution, bounded
   fixed plain-text message composition, connection, TLS, EHLO, and
   authentication all finish before the fence; the fence commits before the
@@ -2766,10 +2766,14 @@ node.
   PostgreSQL evidence, audit/idempotency payloads, logs, diagnostics, and
   `Debug`. REST/OpenAPI `1.53.0`, the maintained client, CLI, and the existing
   four Management MCP operations expose a closed Connector-or-contact target
-  union and add no endpoint or tool. The retained PostgreSQL 17, NATS JetStream,
-  and authenticated required-STARTTLS Mailpit gate must cover accepted delivery,
-  one explicit transient retry, permanent rejection, authority-obsolete silence,
-  ambiguous terminal replay, exact exhaustion, and terminal ACK-only replay.
+  union and add no endpoint or tool. The
+  [successful H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447/job/97113956621)
+  proves accepted delivery, one explicit transient retry, permanent rejection,
+  authority-obsolete silence, ambiguous terminal replay, exact exhaustion, and
+  terminal ACK-only replay over PostgreSQL 17, NATS JetStream, and authenticated
+  required-STARTTLS Mailpit; the
+  [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447)
+  passes all ten jobs.
   This slice adds no template language, arbitrary headers, HTML/attachments,
   built-in mail server, copied contact store, direct HTTP fallback, mutable retry
   counter, sleep, timer, queue, scheduler, second event rail, or non-ACL

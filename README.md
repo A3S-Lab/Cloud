@@ -119,12 +119,17 @@ The code on `main` separates implemented mechanics from released capability:
   Management MCP exposes only redacted self list/get and optimistic revoke, so
   mailbox and proof never become model-visible arguments. Its
   [main CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32598405161)
-  passes the Rust, client/CLI, cross-surface, and Management MCP gates. General
-  email is still unavailable, but N5e now freezes its safe implementation:
-  Notifications will pin only an opaque verified-contact ID, re-resolve Identity
-  authority before every attempt, own its SMTP fence/evidence, and reuse only
-  the low-level TLS/authenticated SMTP session transport without widening the
-  HTTP-only Connector contract.
+  passes the Rust, client/CLI, cross-surface, and Management MCP gates. N5e now
+  implements General Notifications SMTP for an exact opaque verified-contact
+  ID: Notifications re-resolves Identity authority before every attempt, owns
+  its SMTP fence/evidence, and reuses only the low-level TLS/authenticated SMTP
+  session transport without widening the HTTP-only Connector contract. The
+  retained [H0 provider job](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447/job/97113956621)
+  proves migration `138`, bounded retry/exhaustion, terminal ambiguity and
+  replay, authority-obsolete silence, and authenticated required-STARTTLS
+  delivery over PostgreSQL 17, NATS JetStream, and Mailpit; the
+  [complete CI run](https://github.com/A3S-Lab/Cloud/actions/runs/32607194447)
+  passes all ten jobs.
 - **Implemented / split-process capability boundary** — dedicated Worker and
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the

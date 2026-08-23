@@ -300,9 +300,10 @@ Focused HTTP, OpenAPI, maintained-client, CLI, Management MCP catalog,
 permission, lifecycle, replay, strict-input, and redaction tests pass across
 this boundary.
 
-`C0.3-N5e` freezes the general Notifications SMTP composition. It does not add
-another contact or subscription aggregate. `cloud.notification.outbound-subscription.v4`
-is SMTP-only and binds the exact recipient Principal's opaque
+`C0.3-N5e` implements and provider-certifies the general Notifications SMTP
+composition. It does not add another contact or subscription aggregate.
+`cloud.notification.outbound-subscription.v4` is SMTP-only and binds the exact
+recipient Principal's opaque
 `RecipientContactId`, existing severity floor and immutable one-through-eight
 attempt budget, with an optional bounded event-time cutoff. The domain target is
 a closed Connector-or-recipient-contact union: signed webhook and
@@ -330,6 +331,12 @@ post-fence results become exact Delivered, Rejected, Retryable, or terminal
 Indeterminate evidence. Only Retryable evidence admits the next generation;
 equality with the pinned bound yields Exhausted. Terminal receipts commit before
 A3S Event ACK, and post-terminal replay is ACK-only.
+
+The [retained H0 provider job](https://github.com/A3S-Lab/Cloud/actions/runs/32607176166/job/97113905343)
+proves migration `138`, the exact authority and fence transitions, accepted,
+rejected, retryable/exhausted, indeterminate, and obsolete outcomes, terminal
+ACK-only replay, and provider-call isolation over PostgreSQL 17, NATS JetStream,
+and authenticated required-STARTTLS Mailpit.
 
 ### 3.2 Projects
 
