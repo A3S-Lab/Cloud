@@ -2,6 +2,9 @@
 fn audit_query_reuses_the_shared_records_through_typed_a3s_orm() {
     let source = include_str!("postgres.rs");
     for forbidden in [
+        "AuditRecords::details()",
+        "ProjectAttributionProfiles",
+        "project_attribution_profiles",
         "sql_query",
         "SqlQuery",
         "sqlx::",
