@@ -1805,6 +1805,60 @@ following N4i slice may admit the closed facts through an exact-node policy
 target and the existing Node Resource Grant evaluator only on top of this
 verified owner evidence.
 
+#### Fleet node-availability alert source (`C0.3-N4i` frozen)
+
+Notifications adds canonical `cloud.notification.alert-policy.v2` only for one
+required exact `node_id` target and the closed
+`fleet.node-availability-status.v1` source. Existing v1 canonical ACL bytes are
+unchanged: v1 still requires exactly `project_id` and `environment_id`, forbids
+`node_id`, and admits only its four existing environment-scoped source families.
+V2 forbids both project/environment fields and may not select a v1 source, while
+v1 may not select the Fleet source. The schema and source therefore determine
+one closed Environment-or-Node target without an arbitrary selector or a second
+policy lifecycle.
+
+The Fleet source accepts only schema-v1 `fleet.node.unavailable` and
+`fleet.node.availability-resolved`. The projector reconstructs the complete
+event envelope and decodes `NodeAvailabilityChanged`, which pins key and status,
+organization and exact Node subject, deterministic event identity,
+phase-encoded aggregate version, canonical observation/deadline/detection/
+resolution timestamps, correlation and causation, and the closed absent or
+`heartbeat_restored`/`node_revoked` resolution reason. Unknown fields,
+cross-tenant or nil identities, malformed timestamps, key/status or phase
+drift, unsupported schema, forged event identity, and inconsistent recovery
+shape fail closed.
+
+An unavailable fact becomes one critical personal notification scoped to the
+exact Node. A resolved fact becomes informational only when recovery is enabled
+and the latest already-projected fact for the same recipient, source family,
+and Node after policy creation and before the resolution phase is
+`fleet.node.unavailable`. Initial resolution, resolution after a stale
+pre-policy firing, repeated resolution, another Node's resolution, and relay
+replay remain silent. Both a restored heartbeat and explicit Node revocation
+close a covered firing. Immutable inbox history supplies recovery ordering;
+Notifications stores no copied Node state or mutable incident.
+
+Creation resolves the exact Node in the policy organization and evaluates its
+current `ResourceGrantScope::Node`. Every delayed owner fact rechecks the
+recipient's active Membership and current grants before projection. A
+restricted member's project or environment grant cannot authorize a Node, while
+organization-wide roles continue through the same evaluator. Migration `140`
+may add the tenant-scoped Node foreign key, nullable legacy environment columns
+under a strict v1/v2 source/target XOR, separate active Environment and Node
+uniqueness/query indexes, and Node target immutability in the existing
+active-to-revoked trigger.
+
+REST/OpenAPI `1.54.0`, the maintained client, CLI, and four existing Management
+MCP operations may expose the same create/list/get/revoke CQRS with a closed
+typed Environment-or-Node `target`. Nullable legacy `projectId` and
+`environmentId` response projections remain populated for v1 and null for v2;
+the canonical ACL, schema, and digest remain authoritative. Implementation and
+retained PostgreSQL/NATS evidence remain open. Fleet remains the sole heartbeat
+and availability authority. Notifications does not poll Fleet, infer health
+from silence, add a threshold or severity rule, copy Node state, or introduce a
+health/incident table, mutable counter, timer, scheduler, queue, second event
+rail, endpoint, tool, compatibility parser, or non-ACL configuration.
+
 ### 3.21 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical

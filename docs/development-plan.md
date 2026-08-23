@@ -2825,8 +2825,48 @@ node.
   CLI/MCP surface, mutable retry counter, generic timer, or second authority.
   The following N4i slice may add an exact-node alert-policy-v2 target and
   current Node Resource Grant revalidation on top of this verified owner evidence.
+- Frozen as `C0.3-N4i`: add canonical
+  `cloud.notification.alert-policy.v2` only for the closed
+  `fleet.node-availability-status.v1` source and one required exact `node_id`.
+  Preserve every v1 canonical ACL byte and its four project/environment source
+  families. V1 continues to require `project_id` plus `environment_id` and to
+  forbid `node_id`; v2 requires `node_id`, forbids both project/environment
+  fields, and may not select a v1 source. A schema therefore determines exactly
+  one target kind without a compatibility parser or another policy lifecycle.
+
+  Admit only exact schema-v1 `fleet.node.unavailable` and
+  `fleet.node.availability-resolved` owner facts by reconstructing their event
+  envelope and using `NodeAvailabilityChanged` to validate key/status, tenant,
+  exact Node subject, deterministic event identity, phase-encoded aggregate
+  version, canonical timestamps, correlation/causation, and the closed
+  `heartbeat_restored` or `node_revoked` resolution reason. Unavailable is one
+  critical Node-scoped notification. Resolution is informational only when the
+  policy opts in and the same recipient has a most-recent policy-covered
+  projected unavailable fact for that exact Node after policy creation. Initial
+  or repeated resolution, stale pre-policy firing, another Node, replay, an
+  unsupported key, malformed payload, and schema drift stay silent or fail
+  closed as appropriate.
+
+  Policy creation must resolve the exact Node inside the organization and use
+  the existing Resource Grant evaluator. Projection must re-resolve the active
+  Membership and its current grants before every write; a restricted member
+  needs that exact Node grant, while project and environment grants never cross
+  scope kinds. Migration `140` may add nullable `node_id`, make the legacy
+  project/environment columns nullable only under a strict schema/source/target
+  XOR, add the tenant-scoped Node foreign key, pin all target columns in the
+  revoke-only trigger, and replace nullable uniqueness with separate partial
+  environment and Node indexes. REST/OpenAPI `1.54.0`, the maintained client,
+  CLI, and the same four Management MCP operations may expose a closed typed
+  Environment-or-Node `target`; the legacy `projectId` and `environmentId`
+  response fields remain nullable compatibility projections and are null for a
+  Node policy. Implementation and retained PostgreSQL/NATS evidence remain
+  open. Reuse the existing inbox history, Outbox, outbound subscription, A3S
+  Event, and C6 delivery rails. Add no Node poller or copied state, second policy
+  lifecycle, health/incident table, mutable counter, threshold/severity rule,
+  arbitrary selector or expression, timer, scheduler, queue, second event rail,
+  endpoint, tool, compatibility parser, or non-ACL configuration.
 - In later `C0.3-N4` slices, extend the closed source registry over authoritative
-  backup status, node availability,
+  backup status,
   operation latency, and resource signals only after each owning context or its
   existing reconciler emits bounded typed missing-data, firing, and recovery
   transitions. Notifications may project those facts but never poll telemetry,
