@@ -282,8 +282,7 @@ impl AuditExportManifestDocument {
             }
             let is_last = offset + 1 == self.pages.len();
             if (!is_last && page.record_count != self.filter.page_size)
-                || (is_last && page.next_cursor.is_some())
-                || (!is_last && page.next_cursor.is_none())
+                || is_last == page.next_cursor.is_some()
             {
                 return Err("audit export manifest page partition is invalid".into());
             }
