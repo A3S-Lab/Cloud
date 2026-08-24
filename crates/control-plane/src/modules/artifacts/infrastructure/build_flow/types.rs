@@ -3,7 +3,7 @@ use crate::modules::artifacts::domain::{
     ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId, NodeId, OrganizationId};
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::{NodeBoxBuildOutput, NodeBoxBuildRequest};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

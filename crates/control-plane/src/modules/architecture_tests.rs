@@ -224,6 +224,54 @@ fn flow_contract_enters_only_the_workflow_dag_compiler() {
 }
 
 #[test]
+fn artifacts_domain_enters_sources_only_through_published_language() {
+    const SOURCES_PREFIX: &str = "crate::modules::sources::";
+    const PUBLISHED_PREFIX: &str = "crate::modules::sources::published::";
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("artifacts") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source.lines().filter(|line| line.contains(SOURCES_PREFIX)) {
+            if !line.contains(PUBLISHED_PREFIX) {
+                violations.insert(format!("{} contains {line:?}", display(relative)));
+            }
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts Domain imported Sources internals instead of its published language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn published_languages_never_alias_owner_domain_models() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if layer(relative) != Some("published") {
+            return;
+        }
+        let Some(owner) = context(relative) else {
+            return;
+        };
+        let owner_domain = format!("crate::modules::{owner}::domain");
+        for line in source.lines().filter(|line| line.contains(&owner_domain)) {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "a published language aliases its owner's internal domain model:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn shared_kernel_never_depends_on_a_bounded_context() {
     let mut violations = BTreeSet::new();
 

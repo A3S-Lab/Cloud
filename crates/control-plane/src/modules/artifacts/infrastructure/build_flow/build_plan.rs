@@ -1,6 +1,6 @@
 use super::BuildFlowConfig;
 use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus, BuildSource};
-use crate::modules::sources::domain::BuildPlatform;
+use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
 use a3s_box_runtime::{BoxBuildPlan, BuildCachePolicy};
 use a3s_cloud_contracts::{
     validate_cloud_artifact, NodeBoxBuildCacheInput, NodeBoxBuildOutput, NodeBoxBuildPlan,
@@ -104,10 +104,7 @@ fn validate_projection(
     Ok(())
 }
 
-fn canonical_plan(
-    recipe: &crate::modules::sources::domain::BuildRecipe,
-    platform: &BuildPlatform,
-) -> Result<BoxBuildPlan, String> {
+fn canonical_plan(recipe: &BuildRecipe, platform: &BuildPlatform) -> Result<BoxBuildPlan, String> {
     let target = recipe
         .target()
         .map(|target| format!("  target = \"{target}\"\n"))

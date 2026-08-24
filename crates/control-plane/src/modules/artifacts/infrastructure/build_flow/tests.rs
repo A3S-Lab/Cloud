@@ -5,9 +5,10 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{
-    BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
-    NewExternalSourceRevision,
+    ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
 };
+use crate::modules::sources::publish_source_build_input;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE;
 use chrono::{Duration, Utc};
 
@@ -140,7 +141,8 @@ fn prepared_build() -> Result<(BuildRun, BuildSource), Box<dyn std::error::Error
         )?,
         now,
     )?;
-    let source = BuildSource::from_external_revision(&revision)?;
+    let input = publish_source_build_input(&revision)?;
+    let source = BuildSource::from_source_input(&input)?;
     Ok((build, source))
 }
 

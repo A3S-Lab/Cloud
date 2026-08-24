@@ -12,9 +12,10 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{
-    BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
-    NewExternalSourceRevision,
+    ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
 };
+use crate::modules::sources::publish_source_build_input;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
     NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
@@ -246,7 +247,8 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
     let signer = Arc::new(LocalBuildEvidenceSigner::load_or_create(&key_path).await?);
     let generator = BoxBuildEvidenceGenerator::new(validator, signer)?;
     let attested_at = requested_at + Duration::milliseconds(10);
-    let source = BuildSource::from_external_revision(&revision)?;
+    let input = publish_source_build_input(&revision)?;
+    let source = BuildSource::from_source_input(&input)?;
     let evidence = generator.generate(&build, &source, attested_at).await?;
 
     evidence.validate()?;

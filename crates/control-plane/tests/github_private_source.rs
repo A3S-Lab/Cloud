@@ -6,14 +6,14 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
-    BuildRecipe, ExternalSourceRevision, GitProvider, GitReference, GitRepository,
-    GithubInstallationId, GithubInstallationTokenRequest, IGithubInstallationTokenService,
-    ISourceCheckout, ISourceResolver, NewExternalSourceRevision, SourceCheckoutRequest,
-    SourceResolutionRequest,
+    ExternalSourceRevision, GitProvider, GitReference, GitRepository, GithubInstallationId,
+    GithubInstallationTokenRequest, IGithubInstallationTokenService, ISourceCheckout,
+    ISourceResolver, NewExternalSourceRevision, SourceCheckoutRequest, SourceResolutionRequest,
 };
+use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
 use a3s_cloud_control_plane::modules::sources::{
-    GitSourceCheckout, GithubInstallationTokenIssuer, GithubSourceResolver,
-    InMemoryGithubConnectionRepository,
+    publish_source_build_input, GitSourceCheckout, GithubInstallationTokenIssuer,
+    GithubSourceResolver, InMemoryGithubConnectionRepository,
 };
 use chrono::Utc;
 use serde::Serialize;
@@ -113,7 +113,8 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
         source_revision_id,
         revision.accepted_at,
     );
-    let source = BuildSource::from_external_revision(&revision)?;
+    let input = publish_source_build_input(&revision)?;
+    let source = BuildSource::from_source_input(&input)?;
     let directory = tempfile::tempdir()?;
     let checkout = Arc::new(
         GitSourceCheckout::new(

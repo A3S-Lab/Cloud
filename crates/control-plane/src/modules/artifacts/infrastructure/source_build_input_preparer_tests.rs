@@ -7,6 +7,8 @@ use crate::modules::sources::domain::{
     ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
     SourceProviderCredential,
 };
+use crate::modules::sources::publish_source_build_input;
+use crate::modules::sources::published::BuildRecipe;
 use crate::modules::sources::{GithubInstallationTokenIssuer, InMemoryGithubConnectionRepository};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -19,7 +21,8 @@ async fn prepared_source_is_deterministic_and_replayed_without_credentials(
     tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
     tokio::fs::write(source_directory.join("message.txt"), "deterministic\n").await?;
     let (build, revision) = build_and_revision()?;
-    let source = BuildSource::from_external_revision(&revision)?;
+    let input = publish_source_build_input(&revision)?;
+    let source = BuildSource::from_source_input(&input)?;
     let checkout = Arc::new(ReplayCheckout::new(
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         false,
@@ -47,7 +50,8 @@ async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::e
     tokio::fs::create_dir(&source_directory).await?;
     tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
     let (build, revision) = build_and_revision()?;
-    let source = BuildSource::from_external_revision(&revision)?;
+    let input = publish_source_build_input(&revision)?;
+    let source = BuildSource::from_source_input(&input)?;
     let checkout = Arc::new(ReplayCheckout::new(
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         true,
@@ -96,9 +100,9 @@ fn build_and_revision() -> Result<(BuildRun, ExternalSourceRevision), String> {
         id: source_revision_id,
         repository,
         commit_sha: GitCommitSha::parse("a".repeat(40))?,
-        recipe: crate::modules::sources::domain::BuildRecipe::dockerfile(
-            crate::modules::sources::domain::BuildRecipe::SCHEMA,
-            crate::modules::sources::domain::BuildRecipe::DOCKERFILE_KIND,
+        recipe: BuildRecipe::dockerfile(
+            BuildRecipe::SCHEMA,
+            BuildRecipe::DOCKERFILE_KIND,
             ".",
             "Dockerfile",
             None,

@@ -15,8 +15,11 @@ use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, OrganizationId, RepositoryError,
 };
-use a3s_cloud_control_plane::modules::sources::domain::{BuildRecipe, ISourceRevisionRepository};
-use a3s_cloud_control_plane::modules::sources::PostgresSourceRevisionRepository;
+use a3s_cloud_control_plane::modules::sources::domain::ISourceRevisionRepository;
+use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
+use a3s_cloud_control_plane::modules::sources::{
+    publish_source_build_input, PostgresSourceRevisionRepository,
+};
 use a3s_flow::{
     FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, PostgresEventStore, WorkflowSpec,
 };
@@ -179,8 +182,9 @@ impl IBuildSourceResolver for PostgresBuildSourceResolver {
             .find(build.organization_id, source_revision_id)
             .await
             .map_err(map_source_repository_error)?;
-        BuildSource::from_external_revision(&revision)
-            .map_err(BuildSourceResolutionError::Integrity)
+        let input =
+            publish_source_build_input(&revision).map_err(BuildSourceResolutionError::Integrity)?;
+        BuildSource::from_source_input(&input).map_err(BuildSourceResolutionError::Integrity)
     }
 }
 

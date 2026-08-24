@@ -21,7 +21,9 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::sources::domain::{
     AcceptSourceRevision, ISourceRevisionRepository, SourceRevisionAccepted,
 };
-use a3s_cloud_control_plane::modules::sources::PostgresSourceRevisionRepository;
+use a3s_cloud_control_plane::modules::sources::{
+    publish_source_build_input, PostgresSourceRevisionRepository,
+};
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler, HttpHealthCheck,
     IWorkloadRepository, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
@@ -148,7 +150,8 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
         std::time::Duration::from_secs(30),
     )?);
     let evidence_generator = BoxBuildEvidenceGenerator::new(outputs, signer)?;
-    let source = BuildSource::from_external_revision(&inputs.source.revision)?;
+    let source_input = publish_source_build_input(&inputs.source.revision)?;
+    let source = BuildSource::from_source_input(&source_input)?;
     let build_evidence = evidence_generator
         .generate(&build, &source, next_time(&mut at))
         .await?;

@@ -1,5 +1,5 @@
 use crate::modules::artifacts::domain::ValidatedOciBuildOutput;
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::NodeBoxBuildOutput;
 use async_trait::async_trait;
 

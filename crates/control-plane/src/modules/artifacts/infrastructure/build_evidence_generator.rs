@@ -420,7 +420,7 @@ mod tests {
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
     };
-    use crate::modules::sources::domain::BuildPlatform;
+    use crate::modules::sources::published::BuildPlatform;
     #[test]
     fn spdx_covers_every_reachable_oci_descriptor_with_digest_and_graph_metadata() {
         let now = Utc::now();

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// Closed provider vocabulary published by the Sources context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GitProvider {

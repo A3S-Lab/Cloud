@@ -1,4 +1,5 @@
-use super::{GitCommitSha, GitProvider};
+use super::GitProvider;
+use crate::modules::shared_kernel::domain::GitCommitSha;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;

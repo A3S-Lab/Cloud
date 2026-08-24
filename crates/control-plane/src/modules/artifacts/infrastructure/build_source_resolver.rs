@@ -6,6 +6,7 @@ use crate::modules::assets::domain::{
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::sources::domain::ISourceRevisionRepository;
+use crate::modules::sources::publish_source_build_input;
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -54,7 +55,9 @@ impl IBuildSourceResolver for CloudBuildSourceResolver {
                 {
                     return Err(BuildSourceResolutionError::Conflict);
                 }
-                BuildSource::from_external_revision(&revision)
+                let input = publish_source_build_input(&revision)
+                    .map_err(BuildSourceResolutionError::Integrity)?;
+                BuildSource::from_source_input(&input)
                     .map_err(BuildSourceResolutionError::Integrity)
             }
             BuildSubject::AssetRelease {

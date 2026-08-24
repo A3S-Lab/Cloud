@@ -5,7 +5,7 @@ use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_diges
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, OperationId, SourceRevisionId,
 };
-use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};

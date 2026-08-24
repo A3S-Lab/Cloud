@@ -2,9 +2,11 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
+pub mod published;
 
 pub use application::{
-    GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
+    publish_source_build_input, GithubConnectionAuthorityReconcileReport,
+    GithubConnectionAuthorityReconciler,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{

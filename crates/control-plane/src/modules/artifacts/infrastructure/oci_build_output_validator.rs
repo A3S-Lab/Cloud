@@ -4,7 +4,7 @@ use crate::modules::artifacts::domain::{
     BuildArtifact, BuildOutputValidationError, IBuildOutputValidator, OciDescriptor,
     ValidatedOciBuildOutput,
 };
-use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
 use a3s_cloud_contracts::{
     validate_cloud_artifact, NodeBoxBuildOutput, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };

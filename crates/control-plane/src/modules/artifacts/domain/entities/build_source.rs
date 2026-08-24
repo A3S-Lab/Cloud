@@ -1,6 +1,6 @@
 use super::BuildSubject;
 use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId, Sha256Digest};
-use crate::modules::sources::domain::{BuildRecipe, ExternalSourceRevision, GitRepository};
+use crate::modules::sources::published::{BuildRecipe, GitRepository, SourceBuildInputSnapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildSourceLocation {
@@ -25,18 +25,18 @@ pub struct BuildSource {
 }
 
 impl BuildSource {
-    pub fn from_external_revision(revision: &ExternalSourceRevision) -> Result<Self, String> {
+    pub fn from_source_input(input: &SourceBuildInputSnapshot) -> Result<Self, String> {
         Self::external(
-            revision.organization_id,
+            input.organization_id(),
             BuildSubject::external_source_revision(
-                revision.project_id,
-                revision.environment_id,
-                revision.id,
+                input.project_id(),
+                input.environment_id(),
+                input.source_revision_id(),
             ),
-            revision.repository.clone(),
-            revision.commit_sha.clone(),
-            revision.recipe.clone(),
-            revision.recipe_digest.clone(),
+            input.repository().clone(),
+            input.commit_sha().clone(),
+            input.recipe().clone(),
+            input.recipe_digest().as_str().to_owned(),
         )
     }
 

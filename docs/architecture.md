@@ -625,16 +625,31 @@ The Infrastructure namespace remains frozen migration debt until the shared
 Flow composition consumes the same root facade without overlapping its active
 Workflow work.
 
+Sources publishes build admission through
+`sources::published::SourceBuildInputSnapshot`, schema
+`a3s.cloud.source-build-input.v1`. Sources Domain performs aggregate validation
+and its Application service performs the sole projection exposed by the root
+facade; the immutable snapshot carries only exact tenant, Project, Environment,
+revision, canonical repository, commit, recipe, and typed recipe-digest values.
+Its recipe, platform, provider, and repository types physically belong to
+`published`; this is not a renamed re-export of the owner's Domain. Artifacts
+Domain translates that language into its local `BuildSource` and cannot import
+Sources internals by architecture test. A second generic fitness test prevents
+every published layer from aliasing its owner's Domain. The current Artifacts
+Infrastructure adapter still reads the Sources repository before invoking the
+owner projection; a later consumer-owned input-reader port will remove that
+composition debt without changing either domain model.
+
 ### 6.2 Bounded contexts
 
 | Context | Responsibility | State |
 | --- | --- | --- |
 | Identity | Organizations, principals, tokens, membership, grants, authorization, exact verified-recipient contacts, and planned enterprise federation/provisioning/session policy | Current foundation; `C0.3-N5a` implements the component-only recipient-contact domain, migration `136`, repositories, CQRS boundary, proof adapter, and internal resolver. The [successful PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32583260303/job/97055668058) proves the exact lifecycle and redacted evidence. `C0.3-N5b` implements the asynchronous proof port, restart-stable local and production Vault Transit HMAC providers, fail-closed `security` A3S ACL selection, and API/Worker CQRS composition without another configuration authority; its [successful Rust 1.88 CI job](https://github.com/A3S-Lab/Cloud/actions/runs/32586365680/job/97063223412) covers the local/Vault protocol, composition, strict Clippy, documentation, and full workspace gates without claiming live Vault conformance. `C0.3-N5c` implements a Worker-only, durable/manual-ack SMTP challenge consumer whose Identity-owned migration `137` records only a pre-dispatch lease/fence and closed terminal outcome; it prepares TLS/auth/proof before persisting `dispatching`, permits one SMTP submission, makes every unknown post-fence outcome terminal, and excludes mailbox/proof/message/credential/provider text from durable or diagnostic evidence. The [successful PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084) proves migration, authority drift, redaction, dispatch fencing, authenticated required STARTTLS, one submission, terminal replay, and Relay/Worker composition; the same run's [Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071082) retains the full workspace gates. `C0.3-N5d` implements that exact-owner authenticated REST/OpenAPI `1.52.0`, maintained-client, stdin-safe CLI, and redacted-safe Management MCP surface over the existing CQRS; focused cross-surface, catalog, permission, lifecycle, replay, strict-input, and redaction tests pass, while no mailbox or proof may enter CLI argv/output or MCP arguments. Enterprise `C0.5` remains planned |
 | Projects | Projects, environments, tenant boundaries, and immutable attribution-profile lineage | Current; `C0.3-PA1` verified on PostgreSQL 17 |
-| Sources | External source identities, revisions, webhooks, and subscriptions | Current |
+| Sources | External source identities, revisions, webhooks, subscriptions, and the immutable versioned source-build-input published language | Current; aggregate-to-build projection is Sources-owned and Artifacts Domain is contract-only |
 | Developer Workflows | Bounded source-layout inspection, versioned reviewable BuildPlan proposals, and immutable acceptance decisions; accepted source, build, deployment, route, and scheduling authority stays with existing owners | Component-only `P0.1-C1/C2` implement canonical exact-source Dockerfile/Asset ACL detection plus `a3s.cloud.build-plan.v1`, deterministic identity, exact Sources admission, and migration `146` A3S ORM persistence with idempotency/audit/Outbox. Production composition, interfaces, build/deployment handoff, profiles, previews, monorepos, and imports remain unavailable |
 | Assets | Agent, MCP, and Skill identities, hosted Git, immutable release lifecycle, Agent deployment, and Skill-to-Agent-Workload release binding | `A0.1` and `A0.2` verified; `A0.3` through `A0.5` implemented but awaiting retained provider and PostgreSQL/Box lifecycle evidence |
-| Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current |
+| Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current; Domain consumes Sources only through its published build language, while the Infrastructure repository adapter remains migration debt |
 | Executions | Generic finite Runtime Task product, immutable ACL-native ExecutionTemplate revisions, cancellation lifecycle, and one typed Workflow child port | Current; finite Workflow binding implemented, retained real-provider verification pending |
 | Workloads | Service desired state, placement, replicas, claims, deployment, rollout, autoscaling policy, and bounded typed rollout-health facts | Current; `C0.3-N4d` schema-v1 failed/healthy owner facts over the existing deployment state machine and transactional Outbox are verified by the [PostgreSQL 17.5 H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/32557820241/job/96994701683) |
 | Fleet | Nodes, enrollment, inventory, command leases, observations, claims, and fencing | Current; `C0.3-N4h` implements a Worker-only bounded node-availability fact reconciler, migration `139` fact-head cursor, silent first-observation baseline, and atomic heartbeat/revoke-plus-Outbox recovery boundary. The [retained PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32611449889/job/97125126982) verifies strict deadlines, production recovery, concurrency, rollback, restart, tenancy, and bounded private-data-free facts; Notifications admits the facts only through N4i's implemented exact-Node policy and current-grant boundary |

@@ -1,5 +1,5 @@
 use crate::modules::artifacts::domain::OciDescriptor;
-use crate::modules::sources::domain::BuildPlatform;
+use crate::modules::sources::published::BuildPlatform;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

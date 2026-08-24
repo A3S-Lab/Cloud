@@ -13,7 +13,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId,
     OrganizationId, ProjectId, SourceRevisionId,
 };
-use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
+use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
     NodeBoxBuildOutput, NodeBoxBuildPlatform, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,

@@ -139,10 +139,10 @@ snapshot or an application port result.
 
 | Module | Unique authority | Current assessment | Required optimization |
 | --- | --- | --- | --- |
-| Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. Application handlers directly query Projects/Identity repositories for scope. | Publish SourceRevision and BuildRecipe snapshots; introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
+| Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. It now owns the versioned `a3s.cloud.source-build-input.v1` published snapshot and the sole Application projection exposed by its root facade; Artifacts Domain enters Sources only through that language. Other Application handlers still directly query Projects/Identity repositories for scope. | Migrate remaining consumers to the published BuildRecipe/input language, replace foreign aggregate readers with owner adapters over consumer ports, and introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
 | Developer Workflows | Reviewable BuildPlan, workload-profile proposal/acceptance, preview intent, and later monorepo/import decisions | Correct product purpose, but the domain directly imports Sources, Executions, Workloads, and Assets domain types. That couples a review model to four owners' internal evolution. | Replace foreign aggregates with local proposal value objects plus exact owner references. Compilation and acceptance use consumer-owned ports to Sources, Artifacts, Executions, Workloads, and Edge. No build, scheduler, deployment, or route lifecycle moves here. |
 | Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain code directly embeds Artifacts BuildRun and Sources BuildRecipe types. Assets and Artifacts persistence form a bidirectional atomic publication dependency. | Publish build outcome/provenance snapshots from Artifacts. Assets owns release publication through an idempotent application port or Outbox-fed process manager. Remove Artifacts-owned writes to Assets tables. |
-| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port now belongs to Application, so Domain no longer imports Tokio or carries object-store transport errors. Presentation is crate-private behind explicit root exports. Infrastructure remains public migration debt while the concurrent shared Flow composition still imports its runtime registry directly. Remaining debt is substantive: domain code imports Sources aggregates, persistence directly calls Assets hosted-release helpers, and build-log queries consume Fleet application DTOs. | Add SourceInput, BuildLogPage, and HostedBuildOutcome published contracts. Replace the Assets table write with an intent/fact handoff whose replay state is explicit; privatize Infrastructure after the shared Flow composition consumes the root facade. |
+| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain no longer imports a Sources aggregate or `sources::domain`; it translates only the owner-published immutable input and recipe language into local `BuildSource`. Presentation is crate-private. Infrastructure remains public migration debt while concurrent Flow composition imports its runtime registry, and its resolver still loads a Sources repository before requesting the owner projection. Assets table writes and Fleet log DTO reuse remain substantive debt. | Replace the transitional Sources repository dependency with an Artifacts-owned input-reader port implemented by Sources, add BuildLogPage and HostedBuildOutcome contracts, replace the Assets table write with an explicit replayable intent/fact handoff, and privatize Infrastructure after shared Flow composition consumes the root facade. |
 
 ### 5.3 Execution and traffic plane
 
@@ -284,6 +284,20 @@ Assets, and Fleet relationships belong to Wave 2 and are still frozen debt.
 3. Replace the Artifacts-to-Assets table write with an idempotent durable
    publication handoff.
 4. Replace Fleet log DTO reuse with an owner log-query port.
+
+Item 1's owner contract is implemented as the immutable
+`a3s.cloud.source-build-input.v1` published language. Sources alone validates
+`ExternalSourceRevision`, and its Application service performs the sole pure
+projection through the Sources root facade; Artifacts Domain consumes only the
+minimal typed snapshot and the Sources-published recipe vocabulary. The
+recipe, platform, provider, and canonical repository types physically belong
+to the published layer rather than being aliases for Domain internals.
+Executable architecture tests reject both a future Artifacts Domain import of
+a Sources-internal path and any published layer that imports its owner's Domain.
+The current Artifacts Infrastructure resolver still loads the Sources
+repository at the composition edge; replacing that adapter with a
+consumer-owned input-reader port remains an explicit follow-up and does not
+weaken the Domain boundary.
 
 ### Wave 3: execution and traffic boundaries
 

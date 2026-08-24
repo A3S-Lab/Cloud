@@ -1,7 +1,7 @@
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+    canonical_timestamp, EnvironmentId, GitCommitSha, OrganizationId, ProjectId, SourceRevisionId,
 };
-use crate::modules::sources::domain::value_objects::{BuildRecipe, GitCommitSha, GitRepository};
+use crate::modules::sources::published::{BuildRecipe, GitRepository};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +34,7 @@ pub struct NewExternalSourceRevision {
 impl ExternalSourceRevision {
     pub fn accept(input: NewExternalSourceRevision) -> Result<Self, String> {
         let recipe_digest = input.recipe.digest()?;
-        Ok(Self {
+        Self {
             organization_id: input.organization_id,
             project_id: input.project_id,
             environment_id: input.environment_id,
@@ -45,10 +45,18 @@ impl ExternalSourceRevision {
             recipe_digest,
             aggregate_version: 1,
             accepted_at: canonical_timestamp(input.accepted_at),
-        })
+        }
+        .validate()
     }
 
     pub fn restore(mut revision: Self) -> Result<Self, String> {
+        if revision.organization_id.as_uuid().is_nil()
+            || revision.project_id.as_uuid().is_nil()
+            || revision.environment_id.as_uuid().is_nil()
+            || revision.id.as_uuid().is_nil()
+        {
+            return Err("source revision identity cannot contain nil IDs".into());
+        }
         if revision.aggregate_version != 1 {
             return Err("immutable source revision aggregate version must be 1".into());
         }

@@ -135,7 +135,7 @@ mod tests {
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
     };
-    use crate::modules::sources::domain::BuildPlatform;
+    use crate::modules::sources::published::BuildPlatform;
 
     #[test]
     fn build_run_response_uses_the_public_camel_case_contract() {

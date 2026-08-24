@@ -387,6 +387,17 @@ App JWT and persists only typed lifecycle/account observations plus generic
 check health. The same authority boundary is required immediately before any
 private-repository credential is issued.
 
+For synchronous build admission, Sources publishes one immutable
+`SourceBuildInputSnapshot` under schema
+`a3s.cloud.source-build-input.v1`. A Sources Application service exposed by the
+root facade projects it only from a fully validated `ExternalSourceRevision`.
+The snapshot contains the minimum exact build input: Organization, Project,
+Environment and revision identities, canonical repository, full commit ID,
+versioned `BuildRecipe`, and a typed recipe digest. It excludes
+connection/provider state, credentials, timestamps, and aggregate version
+metadata. Consumers cannot construct or mutate an unvalidated snapshot; they
+do not receive Sources aggregate behavior or repository semantics.
+
 ### 3.3.1 Developer workflows
 
 Owns bounded, deterministic inspection of an already identified source layout
@@ -496,6 +507,14 @@ size, and blob inventory. A retry can present only the immediate terminal
 parent's matching receipts back to Box. Cloud does not persist a second cache
 aggregate, interpret Box cache internals, or bypass full OCI admission,
 publication, and evidence generation on a cache hit.
+
+For an external source, Artifacts Domain receives only the Sources-owned
+`SourceBuildInputSnapshot` and translates it into the local immutable
+`BuildSource` read model. It imports the versioned recipe vocabulary through
+`sources::published`, never `ExternalSourceRevision` or another Sources
+internal. The current Infrastructure resolver's direct Sources repository read
+is transitional composition debt; it does not enter the Artifacts domain and
+will be replaced by an Artifacts-owned input-reader port.
 
 Primary aggregate:
 

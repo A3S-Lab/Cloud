@@ -1,0 +1,17 @@
+//! Stable, owner-published language for consumers of the Sources context.
+//!
+//! Consumer contexts depend on these immutable values instead of Sources
+//! aggregates, repositories, or application handlers. These types physically
+//! belong to the published layer, so the boundary is not an alias for the
+//! owner's internal domain model.
+
+mod build_recipe;
+mod git_provider;
+mod git_repository;
+mod source_build_input;
+
+pub use build_recipe::{BuildPlatform, BuildRecipe};
+pub use git_provider::GitProvider;
+pub use git_repository::GitRepository;
+pub use source_build_input::SourceBuildInputSnapshot;
+pub(in crate::modules::sources) use source_build_input::ValidatedSourceBuildInputProjection;

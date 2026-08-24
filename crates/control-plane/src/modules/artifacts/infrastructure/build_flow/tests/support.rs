@@ -24,10 +24,12 @@ use crate::modules::shared_kernel::domain::{
     SourceRevisionId,
 };
 use crate::modules::sources::domain::{
-    AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-    GitRepository, ISourceRevisionRepository, NewExternalSourceRevision,
+    AcceptSourceRevision, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
+    ISourceRevisionRepository, NewExternalSourceRevision,
 };
 use crate::modules::sources::infrastructure::persistence::InMemorySourceRevisionRepository;
+use crate::modules::sources::publish_source_build_input;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_box_runtime::BoxBuildPlan;
 use a3s_cloud_contracts::{
     artifact_uri, DomainEventEnvelope, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
@@ -177,8 +179,9 @@ impl IBuildSourceResolver for FixtureBuildSourceResolver {
             .find(build.organization_id, source_revision_id)
             .await
             .map_err(|error| BuildSourceResolutionError::Storage(error.to_string()))?;
-        BuildSource::from_external_revision(&revision)
-            .map_err(BuildSourceResolutionError::Integrity)
+        let input =
+            publish_source_build_input(&revision).map_err(BuildSourceResolutionError::Integrity)?;
+        BuildSource::from_source_input(&input).map_err(BuildSourceResolutionError::Integrity)
     }
 }
 

@@ -4,7 +4,7 @@ use crate::modules::artifacts::domain::{
     BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, OciPublicationRequest,
 };
 use crate::modules::artifacts::infrastructure::{NodeArtifactObjectStore, OciBuildOutputValidator};
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
     NodeBoxBuildOutput, NodeBoxBuildPlatform, RegistryCredentialMaterial, BOX_BUILD_OUTPUT_NAME,

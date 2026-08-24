@@ -7,7 +7,7 @@ use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
     SourceRevisionId,
 };
-use crate::modules::sources::domain::BuildPlatform;
+use crate::modules::sources::published::BuildPlatform;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
     NodeBoxBuildOutput, NodeBoxBuildPlatform, DURABLE_CELL_BUNDLE_MEDIA_TYPE,

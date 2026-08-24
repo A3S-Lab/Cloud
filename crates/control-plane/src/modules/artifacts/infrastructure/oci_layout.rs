@@ -7,7 +7,7 @@ use crate::modules::artifacts::domain::{
     BuildOutputValidationError, OciDescriptor, OCI_IMAGE_INDEX_MEDIA_TYPE,
     OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
-use crate::modules::sources::domain::BuildPlatform;
+use crate::modules::sources::published::BuildPlatform;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap, VecDeque};
