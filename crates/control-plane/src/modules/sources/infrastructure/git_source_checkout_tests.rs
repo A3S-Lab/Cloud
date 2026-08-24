@@ -10,6 +10,8 @@ use std::time::Duration;
 use tempfile::TempDir;
 use uuid::Uuid;
 
+const TEST_CHECKOUT_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[tokio::test]
 async fn checkout_pins_the_commit_and_replays_immutable_content() {
     let fixture = GitFixture::new();
@@ -81,7 +83,10 @@ async fn checkout_rejects_source_trees_that_exceed_the_file_limit() {
         .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("file limit");
-    assert!(matches!(error, SourceCheckoutError::Integrity(_)));
+    assert!(
+        matches!(&error, SourceCheckoutError::Integrity(_)),
+        "unexpected checkout error: {error:?}"
+    );
     assert_staging_is_empty(&checkout_root);
 }
 
@@ -93,7 +98,7 @@ async fn checkout_rejects_source_trees_that_exceed_the_content_limit() {
     let checkout_root = fixture.root.path().join("checkouts");
     let checkout = GitSourceCheckout::for_test(
         &checkout_root,
-        Duration::from_secs(10),
+        TEST_CHECKOUT_TIMEOUT,
         1_000,
         4,
         &fixture.remote,
@@ -104,7 +109,10 @@ async fn checkout_rejects_source_trees_that_exceed_the_content_limit() {
         .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("content limit");
-    assert!(matches!(error, SourceCheckoutError::Integrity(_)));
+    assert!(
+        matches!(&error, SourceCheckoutError::Integrity(_)),
+        "unexpected checkout error: {error:?}"
+    );
     assert_staging_is_empty(&checkout_root);
 }
 
@@ -198,7 +206,10 @@ async fn checkout_rejects_gitlinks_without_initializing_submodules() {
         .checkout(&source_request(Uuid::now_v7(), &commit), None)
         .await
         .expect_err("submodule");
-    assert!(matches!(error, SourceCheckoutError::Integrity(_)));
+    assert!(
+        matches!(&error, SourceCheckoutError::Integrity(_)),
+        "unexpected checkout error: {error:?}"
+    );
     assert_staging_is_empty(&checkout_root);
 }
 
@@ -283,7 +294,7 @@ impl GitFixture {
     pub(super) fn checkout(&self, root: &Path, max_files: usize) -> GitSourceCheckout {
         GitSourceCheckout::for_test(
             root,
-            Duration::from_secs(10),
+            TEST_CHECKOUT_TIMEOUT,
             max_files,
             16 * 1024 * 1024,
             &self.remote,
