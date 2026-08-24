@@ -91,6 +91,7 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             "node.output",
             "node.template",
             "node.user-input",
+            "node.variable-aggregator",
         ]
     );
 }
@@ -261,7 +262,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
         .collect::<Vec<_>>();
     assert_eq!(
         decisions.len(),
-        48,
+        51,
         "decision register changed unexpectedly"
     );
     for decision in decisions {
