@@ -15,6 +15,7 @@ use a3s_cloud_control_plane::modules::sources::{
     },
     PostgresSourceRevisionRepository,
 };
+use a3s_orm::DatabaseError;
 use chrono::Duration as ChronoDuration;
 
 pub(super) async fn exercise_developer_build_plan_persistence(
@@ -202,9 +203,10 @@ pub(super) async fn exercise_developer_build_plan_persistence(
         )
         .await
         .expect_err("accepted BuildPlan mutation must fail");
-    assert!(mutation
-        .to_string()
-        .contains("accepted BuildPlans are immutable"));
+    assert_eq!(
+        database_error_message(&mutation),
+        Some("accepted BuildPlans are immutable")
+    );
 
     let mismatched_identity = database
         .execute(
@@ -219,9 +221,10 @@ pub(super) async fn exercise_developer_build_plan_persistence(
         )
         .await
         .expect_err("mismatched Source identity must fail");
-    assert!(mismatched_identity
-        .to_string()
-        .contains("accepted BuildPlan does not match its exact Source revision"));
+    assert_eq!(
+        database_error_message(&mismatched_identity),
+        Some("accepted BuildPlan does not match its exact Source revision")
+    );
 
     let mismatched_commit = database
         .execute(
@@ -236,9 +239,10 @@ pub(super) async fn exercise_developer_build_plan_persistence(
         )
         .await
         .expect_err("mismatched Source evidence must fail");
-    assert!(mismatched_commit
-        .to_string()
-        .contains("accepted BuildPlan does not match its exact Source revision"));
+    assert_eq!(
+        database_error_message(&mismatched_commit),
+        Some("accepted BuildPlan does not match its exact Source revision")
+    );
 
     Ok(())
 }
@@ -357,4 +361,11 @@ async fn seed_scope(
 
 fn digest(seed: char) -> Sha256Digest {
     Sha256Digest::parse(format!("sha256:{}", seed.to_string().repeat(64))).expect("test digest")
+}
+
+fn database_error_message(error: &DatabaseError<PostgresError>) -> Option<&str> {
+    let DatabaseError::Execute(PostgresError::Database(error)) = error else {
+        return None;
+    };
+    error.as_db_error().map(|error| error.message())
 }
