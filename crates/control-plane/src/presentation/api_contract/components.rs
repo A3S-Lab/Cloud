@@ -1,3 +1,4 @@
+use super::workflow_components::install_workflow_component_schemas;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
@@ -47,10 +48,18 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     let security_gateway_route_policy_timeline_page_success = typed_success_response_schema(
         "#/components/schemas/SecurityGatewayRoutePolicyTimelinePage",
     );
+    let workflow_definition_success =
+        typed_success_response_schema("#/components/schemas/WorkflowDefinition");
+    let workflow_definition_list_success =
+        typed_success_response_schema("#/components/schemas/WorkflowDefinitionList");
+    let workflow_revision_summary_list_success =
+        typed_success_response_schema("#/components/schemas/WorkflowRevisionSummaryList");
+    let workflow_revision_success =
+        typed_success_response_schema("#/components/schemas/WorkflowRevision");
+    let workflow_definition_mutation_success =
+        typed_success_response_schema("#/components/schemas/WorkflowDefinitionMutation");
     let outbound_notification_subscription = outbound_notification_subscription_schema();
-    components.insert(
-        "schemas".into(),
-        json!({
+    let mut schema_components = json!({
             "ApiSuccessResponse": {
                 "type": "object",
                 "additionalProperties": false,
@@ -313,8 +322,32 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "OutboundNotificationSubscriptionSuccessResponse": outbound_subscription_success,
             "OutboundNotificationSubscriptionPageSuccessResponse": outbound_subscription_page_success,
             "OutboundNotificationSubscriptionMutationSuccessResponse": outbound_subscription_mutation_success
-        }),
+        })
+        .as_object()
+        .cloned()
+        .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
+    install_workflow_component_schemas(&mut schema_components);
+    schema_components.insert(
+        "WorkflowDefinitionSuccessResponse".into(),
+        workflow_definition_success,
     );
+    schema_components.insert(
+        "WorkflowDefinitionListSuccessResponse".into(),
+        workflow_definition_list_success,
+    );
+    schema_components.insert(
+        "WorkflowRevisionSummaryListSuccessResponse".into(),
+        workflow_revision_summary_list_success,
+    );
+    schema_components.insert(
+        "WorkflowRevisionSuccessResponse".into(),
+        workflow_revision_success,
+    );
+    schema_components.insert(
+        "WorkflowDefinitionMutationSuccessResponse".into(),
+        workflow_definition_mutation_success,
+    );
+    components.insert("schemas".into(), Value::Object(schema_components));
 
     let mut response_components = Map::new();
     for status in [200, 201, 202, 303] {
@@ -399,6 +432,40 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/OutboundNotificationSubscriptionMutationSuccessResponse",
+            ),
+        );
+    }
+    response_components.insert(
+        "WorkflowDefinitionSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/WorkflowDefinitionSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "WorkflowDefinitionListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/WorkflowDefinitionListSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "WorkflowRevisionSummaryListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/WorkflowRevisionSummaryListSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "WorkflowRevisionSuccess200".into(),
+        response_component(200, "#/components/schemas/WorkflowRevisionSuccessResponse"),
+    );
+    for status in [200, 201] {
+        response_components.insert(
+            format!("WorkflowDefinitionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/WorkflowDefinitionMutationSuccessResponse",
             ),
         );
     }

@@ -56,7 +56,8 @@ AI application platform parity manifest.
 | [0049](0049-descriptor-bound-branch-failure-routes.md) | Route deterministic Workflow-local Branch failures through descriptor-bound ordinary DAG edges |
 | [0050](0050-descriptor-bound-composite-failure-routes.md) | Route deterministic composite-region failures through descriptor-bound ordinary DAG edges |
 | [0051](0051-workflow-local-variable-aggregation.md) | Aggregate mutually exclusive branch values through one exact typed Workflow-local step |
+| [0052](0052-workflow-local-list-operations.md) | Process typed arrays through one exact bounded Workflow-local step |
 
-All fifty-one decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All fifty-two decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

@@ -1139,6 +1139,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             notification_outbound_subscription_success_component(method, path, status)
         {
             component
+        } else if let Some(component) = workflow_success_component(method, path, status) {
+            component
         } else if let Some(component) = asset_git_success_component(path) {
             component.to_owned()
         } else if path.ends_with("/stream") {
@@ -1956,8 +1958,37 @@ fn is_workflow_definition_mutation_path(path: &str) -> bool {
     path.ends_with("/workflow-definitions") || is_workflow_revision_mutation_path(path)
 }
 
+fn is_workflow_definition_collection_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/workflow-definitions")
+}
+
+fn is_workflow_definition_item_path(path: &str) -> bool {
+    path.ends_with("/workflow-definitions/{workflow_definition_id}")
+}
+
 fn is_workflow_revision_mutation_path(path: &str) -> bool {
     path.contains("/workflow-definitions/{workflow_definition_id}/") && path.ends_with("/revisions")
+}
+
+fn is_workflow_revision_item_path(path: &str) -> bool {
+    path.contains("/workflow-definitions/{workflow_definition_id}/")
+        && path.ends_with("/revisions/{workflow_revision_id}")
+}
+
+fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<String> {
+    if method == "post" && is_workflow_definition_mutation_path(path) {
+        Some(format!("WorkflowDefinitionMutationSuccess{status}"))
+    } else if method == "get" && is_workflow_definition_collection_path(path) {
+        Some("WorkflowDefinitionListSuccess200".into())
+    } else if method == "get" && is_workflow_definition_item_path(path) {
+        Some("WorkflowDefinitionSuccess200".into())
+    } else if method == "get" && is_workflow_revision_mutation_path(path) {
+        Some("WorkflowRevisionSummaryListSuccess200".into())
+    } else if method == "get" && is_workflow_revision_item_path(path) {
+        Some("WorkflowRevisionSuccess200".into())
+    } else {
+        None
+    }
 }
 
 fn is_workflow_goal_mutation_path(path: &str) -> bool {

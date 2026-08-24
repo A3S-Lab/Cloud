@@ -174,6 +174,7 @@ mod tests {
             [
                 "node.human-input",
                 "node.if-else",
+                "node.list-operator",
                 "node.output",
                 "node.template",
                 "node.user-input",

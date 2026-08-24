@@ -11,12 +11,21 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 mod codec;
+mod list_operator;
 mod variable_aggregate;
 
+pub use list_operator::{
+    WorkflowListOperatorConfiguration, WorkflowListOperatorExtract,
+    WorkflowListOperatorFilterCondition, WorkflowListOperatorFilterOperator,
+    WorkflowListOperatorOperand, WorkflowListOperatorOrder, WorkflowListOperatorOrderDirection,
+    WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA, WORKFLOW_LIST_OPERATOR_MAX_CONDITIONS,
+    WORKFLOW_LIST_OPERATOR_MAX_ITEMS,
+};
+
 pub use variable_aggregate::{
-    WorkflowLocalTransformConfiguration, WorkflowVariableAggregateCandidate,
-    WorkflowVariableAggregateConfiguration, WorkflowVariableAggregateGroup,
-    WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA, WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES,
+    WorkflowVariableAggregateCandidate, WorkflowVariableAggregateConfiguration,
+    WorkflowVariableAggregateGroup, WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
+    WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES,
     WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES_PER_GROUP, WORKFLOW_VARIABLE_AGGREGATE_MAX_GROUPS,
 };
 
@@ -67,6 +76,22 @@ impl WorkflowPayloadKind {
 pub struct WorkflowBranchRoute {
     pub handle: String,
     pub equals: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "configuration", rename_all = "snake_case")]
+pub enum WorkflowLocalTransformConfiguration {
+    ListOperator(WorkflowListOperatorConfiguration),
+    VariableAggregate(WorkflowVariableAggregateConfiguration),
+}
+
+impl WorkflowLocalTransformConfiguration {
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::ListOperator(configuration) => configuration.validate(),
+            Self::VariableAggregate(configuration) => configuration.validate(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,7 +241,16 @@ impl WorkflowStepConfiguration {
             Some(WorkflowLocalTransformConfiguration::VariableAggregate(configuration)) => {
                 Some(configuration)
             }
-            None => None,
+            Some(WorkflowLocalTransformConfiguration::ListOperator(_)) | None => None,
+        }
+    }
+
+    pub const fn list_operator(&self) -> Option<&WorkflowListOperatorConfiguration> {
+        match self.local_transform.as_ref() {
+            Some(WorkflowLocalTransformConfiguration::ListOperator(configuration)) => {
+                Some(configuration)
+            }
+            Some(WorkflowLocalTransformConfiguration::VariableAggregate(_)) | None => None,
         }
     }
 }
@@ -642,6 +676,10 @@ const fn content_kind(content: &WorkflowPayloadContent) -> WorkflowPayloadKind {
 const fn content_schema_name(content: &WorkflowPayloadContent) -> &'static str {
     match content {
         WorkflowPayloadContent::Configuration(WorkflowStepConfiguration {
+            local_transform: Some(WorkflowLocalTransformConfiguration::ListOperator(_)),
+            ..
+        }) => WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA,
+        WorkflowPayloadContent::Configuration(WorkflowStepConfiguration {
             local_transform: Some(WorkflowLocalTransformConfiguration::VariableAggregate(_)),
             ..
         }) => WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
@@ -684,6 +722,9 @@ fn payload_schema(kind: WorkflowPayloadKind, declared_schema: &str) -> Result<Sc
     match (kind, declared_schema) {
         (WorkflowPayloadKind::Configuration, WORKFLOW_CONFIGURATION_SCHEMA) => {
             configuration_schema()
+        }
+        (WorkflowPayloadKind::Configuration, WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA) => {
+            list_operator::configuration_schema()
         }
         (WorkflowPayloadKind::Configuration, WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA) => {
             variable_aggregate::configuration_schema()
@@ -839,6 +880,25 @@ fn parse_configuration(
     root: &Block,
     declared_schema: &str,
 ) -> Result<WorkflowStepConfiguration, String> {
+    if declared_schema == WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA {
+        let step_kind = WorkflowStepKind::parse(&required_string(root, "step_kind")?)?;
+        list_operator::validate_transform_kind(step_kind)?;
+        let value = WorkflowStepConfiguration {
+            step_kind,
+            template: None,
+            selector: None,
+            default_handle: None,
+            message: None,
+            details: None,
+            expires_after_seconds: None,
+            routes: Vec::new(),
+            local_transform: Some(WorkflowLocalTransformConfiguration::ListOperator(
+                list_operator::parse_configuration(root)?,
+            )),
+        };
+        value.validate()?;
+        return Ok(value);
+    }
     if declared_schema == WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA {
         let step_kind = WorkflowStepKind::parse(&required_string(root, "step_kind")?)?;
         variable_aggregate::validate_transform_kind(step_kind)?;
@@ -960,6 +1020,13 @@ fn payload_document(content: &WorkflowPayloadContent) -> Result<Document, String
             let mut root = BlockBuilder::new("configuration")
                 .attr("schema", string(content_schema_name(content)))
                 .attr("step_kind", string(value.step_kind.as_str()));
+            if let Some(WorkflowLocalTransformConfiguration::ListOperator(configuration)) =
+                &value.local_transform
+            {
+                return Ok(Document {
+                    blocks: vec![list_operator::configuration_block(configuration)?],
+                });
+            }
             if let Some(WorkflowLocalTransformConfiguration::VariableAggregate(configuration)) =
                 &value.local_transform
             {

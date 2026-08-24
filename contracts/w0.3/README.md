@@ -103,6 +103,33 @@ Workflow payload-schema registry. It adds no table, column, mutable variable
 store, worker, queue, scheduler, provider call, or second orchestration
 mechanism.
 
+## Workflow-local List Operator
+
+`list-operator.acl` is the canonical configuration fixture for
+`cloud.workflow.configuration.list-operator.v1`. An admitted step uses the
+exact Workflow-owned `workflow.list-operator` descriptor, remains the existing
+`transform` kind, and has no capability or policy binding. It freezes one
+typed array source, at most 64 contiguous zero-based conditions, optional
+one-based extraction, optional typed ordering, and an optional positive limit.
+The source and numeric controls are bounded to 10,000 items.
+
+Publication requires the input schema, descriptor ports, and direct variable
+reads to cover the source and every dynamic filter or extraction input exactly.
+The source is required; operation inputs remain optional so an empty source
+does not force their resolution. The output descriptor and schema expose
+required array `result` plus optional item-typed `first_record` and
+`last_record`. Runtime v21 consumes
+only the authoritative typed projection, validates every object, string,
+number, or boolean item, and applies filter, extract, order, then limit in that
+fixed order. Empty input succeeds before operation operands are resolved;
+invalid types, parameters, and extraction indices fail closed. Plan v2-v11
+remain unchanged; only graphs containing this configuration emit WorkflowRun
+input/runtime/Flow v21. Runtime build `a3s-cloud-workflows@23` retains `@1`
+through `@22` for exact replay. Constraint-only migration `151` widens the
+existing closed Workflow payload-schema registry. It adds no table, column,
+mutable list store, worker, queue, scheduler, provider call, or second
+orchestration mechanism.
+
 ## Descriptor-bound Workflow-local Transform failure route
 
 The `workflow.transform` descriptor declares one required static object error

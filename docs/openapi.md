@@ -11,7 +11,18 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.61.0`.
+The current semantic contract version is `1.62.0`.
+
+Contract `1.62.0` adds the versioned Workflow payload schema
+`cloud.workflow.configuration.list-operator.v1`. Existing Workflow
+definition create/revise envelopes continue to carry configuration as bounded
+A3S ACL text. Definition, revision-summary, revision, and mutation responses
+now reference closed reusable schemas; `payloads` is a discriminated union and
+its `schema` enum includes the List Operator and Variable Aggregator values.
+The new schema freezes bounded typed filter, one-based extraction, ordering,
+and limit semantics for the internally available Workflow-local List Operator.
+The maintained TypeScript client enumerates the same schema value. No route,
+JSON property, authorization boundary, or response envelope is added.
 
 Contract `1.61.0` adds the versioned Workflow payload schema
 `cloud.workflow.configuration.variable-aggregate.v1`. Existing Workflow
@@ -69,7 +80,8 @@ These URNs are correlations, not embedded evidence or an authorization grant.
 Reading any referenced owner resource still requires its normal authorization
 boundary. Populating this existing field did not itself change a route or JSON
 shape; contract `1.60.0` was introduced by the separate diagnostics operation,
-and `1.61.0` adds the Variable Aggregator payload-schema semantics above.
+`1.61.0` adds Variable Aggregator payload semantics, and `1.62.0` adds List
+Operator payload semantics as described above.
 
 ## Contract completeness
 

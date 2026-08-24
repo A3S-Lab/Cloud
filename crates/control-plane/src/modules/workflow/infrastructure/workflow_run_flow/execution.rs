@@ -8,13 +8,14 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde_json::Value;
 
+mod list_operator;
 mod variable_aggregate;
 
 pub(super) fn execute_local_step(
@@ -41,12 +42,15 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
     if let Some(failure) = input.routed_failure.as_ref() {
         if !matches!(
             input.runtime_contract_revision.as_str(),
-            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+                | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
         ) || input.step.plan.kind != WorkflowStepKind::Subworkflow
             || input.composite_region_result.is_some()
         {
@@ -106,9 +110,28 @@ pub(super) fn execute_local_step(
     let (output, selected_handle) = match input.step.plan.kind {
         WorkflowStepKind::Input => (input.workflow_input.clone(), None),
         WorkflowStepKind::Transform => {
+            if let Some(configuration) = input.step.configuration.list_operator() {
+                if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21 {
+                    return Err("Workflow List Operator requires runtime contract v21".into());
+                }
+                return finish_local_transform(
+                    input,
+                    list_operator::execute(
+                        configuration,
+                        &input.effective_input,
+                        input.typed_projection_authoritative,
+                    )?,
+                );
+            }
             if let Some(configuration) = input.step.configuration.variable_aggregate() {
-                if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20 {
-                    return Err("Workflow Variable Aggregator requires runtime contract v20".into());
+                if !matches!(
+                    input.runtime_contract_revision.as_str(),
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
+                ) {
+                    return Err(
+                        "Workflow Variable Aggregator requires runtime contract v20 or v21".into(),
+                    );
                 }
                 return finish_local_transform(
                     input,

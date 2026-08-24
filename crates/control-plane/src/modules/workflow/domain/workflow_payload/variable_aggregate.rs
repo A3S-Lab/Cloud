@@ -13,20 +13,6 @@ pub const WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES_PER_GROUP: usize = 64;
 pub const WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "configuration", rename_all = "snake_case")]
-pub enum WorkflowLocalTransformConfiguration {
-    VariableAggregate(WorkflowVariableAggregateConfiguration),
-}
-
-impl WorkflowLocalTransformConfiguration {
-    pub fn validate(&self) -> Result<(), String> {
-        match self {
-            Self::VariableAggregate(configuration) => configuration.validate(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowVariableAggregateCandidate {
     pub input_port: String,

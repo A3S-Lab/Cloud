@@ -130,12 +130,13 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.61.0` and enumerates
-`cloud.workflow.configuration.variable-aggregate.v1` in returned Workflow
-payloads. Publication still transports that configuration as bounded ACL text;
-Cloud alone parses it, proves the exact descriptor/schema/typed-read binding,
-and selects WorkflowRun input/runtime/Flow v20. The client does not implement
-candidate selection or infer aggregation output.
+The client targets REST contract `1.62.0` and enumerates
+`cloud.workflow.configuration.variable-aggregate.v1` and
+`cloud.workflow.configuration.list-operator.v1` in returned Workflow payloads.
+Publication still transports those configurations as bounded ACL text; Cloud
+alone parses them, proves each exact descriptor/schema/typed-read binding, and
+selects WorkflowRun input/runtime/Flow v20 or v21. The client does not execute
+candidate selection or list operations, and it does not infer their outputs.
 
 Composite Plan v2 runs pin WorkflowRun runtime/Flow v3. The server dispatches
 each Iteration or Loop ordinal through one authority-bound Flow hook and a

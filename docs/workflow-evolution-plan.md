@@ -235,6 +235,21 @@ Constraint-only migration `149` widens the existing closed Workflow payload
 schema registry for this configuration and the already supported policy v2/v3
 schemas without adding a table or column.
 
+The Workflow-local List Operator also remains the `transform` kind and is bound
+to the exact `workflow.list-operator` descriptor. Its versioned
+`cloud.workflow.configuration.list-operator.v1` ACL freezes one typed array
+source, bounded contiguous filter conditions, optional one-based extraction,
+optional typed ordering, and an optional positive limit. Publication requires
+one exact required direct source read, exact optional direct operation reads,
+and exact descriptor/data-schema input and output coverage. Plan remains
+v2-v11; immutable WorkflowRun input/runtime/Flow v21
+validates every source item and applies filter, extract, order, then limit over
+the authoritative typed projection. Empty input succeeds before dynamic
+operands are resolved, while invalid types or extraction bounds fail closed.
+Runtime build `a3s-cloud-workflows@23` explicitly retains `@1` through `@22`.
+Constraint-only migration `151` widens only the existing closed Workflow
+payload-schema registry.
+
 Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`
 field from verified Flow history. Execution terminal observations retain exact
@@ -383,11 +398,12 @@ under its declared concurrency ceiling. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
 implemented through Run v11-v15. Workflow-local Transform, Output, and Branch
 failure routes are implemented through Run v16-v18, descriptor-bound
-Iteration/Loop failure routes are implemented through Run v19, and exact typed
-Variable Aggregation is implemented through Run v20. Current finite
+Iteration/Loop failure routes are implemented through Run v19, exact typed
+Variable Aggregation is implemented through Run v20, and typed List Operator
+execution is implemented through Run v21. Current finite
 Execution and Connector projections retain bounded owning-context evidence
 URNs. The
-remaining List Operator, business-service, and Agent/MCP/model/Tool capability dispatch,
+remaining business-service and Agent/MCP/model/Tool capability dispatch,
 compensation, full provider conformance, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
@@ -467,6 +483,8 @@ v17, Workflow-local Branch failure branches through Plan v10/Run v18, and
 descriptor-bound Iteration/Loop failure branches through Plan v11/Run v19.
 Exact Workflow-local Variable Aggregation is implemented through Run v20 while
 retaining Plan v2-v11 and every earlier runtime semantic.
+Exact Workflow-local List Operator execution is implemented through Run v21,
+retains the same Plans, and composes every earlier runtime semantic.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.
@@ -481,8 +499,10 @@ history remains an explicit diagnostic outcome, messages are fixed and
 redaction-safe, and the projection introduces no table, event log, metrics
 authority, evidence body, cache, worker, or scheduler.
 REST/OpenAPI `1.61.0` and the maintained client additionally enumerate the
-`cloud.workflow.configuration.variable-aggregate.v1` payload schema without a
-new route or JSON property. Business-service, List Operator, and remaining
+`cloud.workflow.configuration.variable-aggregate.v1` payload schema;
+REST/OpenAPI `1.62.0` adds
+`cloud.workflow.configuration.list-operator.v1`. Neither version adds a new
+route or JSON property. Business-service and remaining
 Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.

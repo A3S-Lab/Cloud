@@ -9,6 +9,8 @@ use a3s_use_extension::{
 };
 use std::collections::BTreeSet;
 
+mod workflow_response_schemas;
+
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
 
 #[test]

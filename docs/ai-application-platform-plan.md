@@ -44,7 +44,7 @@ alter a verified A3S release. That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The fifty-one authority decisions are
+implementation is not a public capability. The fifty-two authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -509,7 +509,7 @@ Webhook Trigger) and does not count the category header as a separate node.
 | Iteration | `subworkflow` / `workflow.iteration` | `W0.3` composite-region slice |
 | Loop | `subworkflow` / `workflow.loop` | `W0.3` composite-region slice |
 | Document Extractor | `service` / `knowledge.document-extract` | `K0.2` plus `W0.4` |
-| List Operator | `transform` / `workflow.list-operator` | `W0.3` |
+| List Operator | `transform` / `workflow.list-operator` | `W0.3`, implemented internally through Run v21 |
 | Human Input | `human_decision` / `workflow.human-input` | `W0.3` HumanTask public-surface completion |
 | Answer | `output` / `application.answer` | `APP0.2` plus `W0.3` ordered stream semantics |
 | Output | `output` / `workflow.output` | `W0.3` reachable-sink aggregation correction |
@@ -521,8 +521,17 @@ contiguous candidate priority, optional type-exact direct reads, and exact
 input/output descriptor and data-schema coverage. WorkflowRun v20 consumes only
 the authoritative typed projection and selects the first available non-null
 candidate. Constraint-only migration `149` widens the existing closed payload
-schema registry without adding a table or column. List Operator remains a
-separate open `W0.3` backend slice.
+schema registry without adding a table or column.
+
+The internal List Operator uses the versioned
+`cloud.workflow.configuration.list-operator.v1` ACL payload. Publication
+requires the exact Workflow-owned descriptor, one bounded typed array source,
+contiguous filter conditions, exact required dynamic reads, and exact
+input/output descriptor and data-schema coverage. WorkflowRun v21 consumes
+only the authoritative typed projection and applies filter, one-based extract,
+typed order, then limit in that fixed order. Constraint-only migration `151`
+widens the same closed payload-schema registry without adding a table or
+column.
 
 Node parity is a cross-gate result. Adding a descriptor or drawing a node in a
 Designer does not make that node available. Its type checks, authorization,

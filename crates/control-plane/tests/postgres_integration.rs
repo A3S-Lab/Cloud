@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 150;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "150";
+const CLOUD_MIGRATION_COUNT: i64 = 151;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "151";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -3643,6 +3643,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     for schema in [
+        "cloud.workflow.configuration.list-operator.v1",
         "cloud.workflow.configuration.v1",
         "cloud.workflow.configuration.variable-aggregate.v1",
         "cloud.workflow.data-schema.v1",

@@ -9,8 +9,8 @@ use crate::modules::workflow::domain::{
     WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorStepOutput,
     WorkflowStepKind, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -57,6 +57,7 @@ impl WorkflowConnectorResponseStepInput {
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
             )
             || self.step.plan.kind != WorkflowStepKind::Service
             || self.step.plan.id != self.metadata.step_id

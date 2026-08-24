@@ -85,6 +85,7 @@ async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_sur
         [
             "node.human-input",
             "node.if-else",
+            "node.list-operator",
             "node.output",
             "node.template",
             "node.user-input",

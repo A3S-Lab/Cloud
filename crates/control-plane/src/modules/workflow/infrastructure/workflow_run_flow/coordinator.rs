@@ -29,7 +29,7 @@ use crate::modules::workflow::domain::{
     WorkflowStepFailureClassification, WorkflowStepKind, WorkflowStepProjectionStatus,
     WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
     WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17, WORKFLOW_RUN_INPUT_SCHEMA_V18,
-    WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20,
+    WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20, WORKFLOW_RUN_INPUT_SCHEMA_V21,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -1008,6 +1008,7 @@ fn application_variable_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V18
             | WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
+            | WORKFLOW_RUN_INPUT_SCHEMA_V21
     ) || !input
         .plan
         .edges
@@ -1044,6 +1045,7 @@ fn application_answer_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V18
             | WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
+            | WORKFLOW_RUN_INPUT_SCHEMA_V21
     ) || !input
         .plan
         .edges

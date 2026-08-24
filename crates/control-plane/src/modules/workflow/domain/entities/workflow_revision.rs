@@ -3,10 +3,10 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    validate_variable_aggregate_binding, CapabilityType, WorkflowContract, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy, WorkflowRevisionSemanticContracts,
-    WorkflowSpec, WorkflowStepFailureContract, WorkflowStepKind, WorkflowStepSpec,
-    WORKFLOW_DEFINITION_SCHEMA,
+    validate_list_operator_binding, validate_variable_aggregate_binding, CapabilityType,
+    WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy,
+    WorkflowRevisionSemanticContracts, WorkflowSpec, WorkflowStepFailureContract, WorkflowStepKind,
+    WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -322,6 +322,16 @@ impl WorkflowRevision {
             )
         })
     }
+
+    pub(crate) fn has_list_operator_configuration(&self) -> bool {
+        self.payloads.iter().any(|payload| {
+            matches!(
+                payload.content(),
+                WorkflowPayloadContent::Configuration(configuration)
+                    if configuration.list_operator().is_some()
+            )
+        })
+    }
 }
 
 fn validate_runtime_dispatch_support(
@@ -436,6 +446,13 @@ fn validate_payload_bindings(
             .transpose()?;
         validate_retry_policy_binding(step, policy)?;
         validate_default_output_policy_binding(step, policy, output_schema, semantic_contracts)?;
+        validate_list_operator_binding(
+            step,
+            configuration,
+            input_schema,
+            output_schema,
+            semantic_contracts,
+        )?;
         validate_variable_aggregate_binding(
             step,
             configuration,

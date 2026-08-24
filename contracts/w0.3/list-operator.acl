@@ -1,0 +1,37 @@
+configuration {
+  schema = "cloud.workflow.configuration.list-operator.v1"
+  step_kind = "transform"
+  source_port = "items"
+  item_type = "object"
+
+  condition "supported_type" {
+    ordinal = 0
+    key = "type"
+    value_type = "string"
+    operator = "in"
+    operand_json = "[\"document\",\"image\"]"
+  }
+
+  condition "minimum_size" {
+    ordinal = 1
+    key = "size"
+    value_type = "number"
+    operator = "greater_than_or_equal"
+    operand_port = "minimum_size"
+    operand_type = "number"
+  }
+
+  extract {
+    input_port = "serial"
+  }
+
+  order {
+    key = "size"
+    value_type = "number"
+    direction = "desc"
+  }
+
+  limit {
+    size = 5
+  }
+}

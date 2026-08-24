@@ -892,5 +892,7 @@ fn semantic_revision_lineage_cannot_downgrade_to_legacy_authority() {
 mod application_tests;
 
 mod execution_fallback;
+#[path = "workflow_revision_semantic_contracts_tests/list_operator.rs"]
+mod list_operator;
 #[path = "workflow_revision_semantic_contracts_tests/variable_aggregate.rs"]
 mod variable_aggregate;

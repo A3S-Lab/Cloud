@@ -3845,7 +3845,21 @@ from the authoritative typed projection and validates its concrete group type.
 Run inputs v1-v19 retain their exact behavior. Constraint-only migration `149`
 widens the existing closed payload-schema registry for this configuration and
 the already supported policy v2/v3 schemas; canonical ACL parsing remains the
-semantic authority. Migration `122` adds nullable default-output evidence to
+semantic authority. A Workflow-owned List Operator also remains Transform and
+owns one immutable `cloud.workflow.configuration.list-operator.v1` payload.
+Publication binds it to the exact `workflow.list-operator` Workflow-local
+descriptor and requires the data schemas, descriptor ports, and type-exact
+direct reads to cover its required array source and optional dynamic operands
+exactly.
+The output contract exposes required array `result` and optional item-typed
+`first_record` and `last_record`. Its Plan remains v2-v11; immutable Run v21
+validates object, string, number, or boolean items and applies bounded filter,
+one-based extract, typed order, and limit operations in that fixed order over
+the authoritative projection. Empty input succeeds before operands are
+resolved; invalid types and extraction bounds fail closed. Run inputs v1-v20
+retain their exact behavior, runtime build `a3s-cloud-workflows@23` retains
+`@1` through `@22`, and constraint-only migration `151` widens only the closed
+payload-schema registry. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

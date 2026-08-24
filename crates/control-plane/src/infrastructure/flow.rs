@@ -19,7 +19,7 @@ pub(crate) const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
 const FLOW_TASK_RETRIES: u32 = 3;
 const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
-pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@22";
+pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@23";
 pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] = &[
     "a3s-cloud-workflows@1",
     "a3s-cloud-workflows@2",
@@ -42,6 +42,7 @@ pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] = &[
     "a3s-cloud-workflows@19",
     "a3s-cloud-workflows@20",
     "a3s-cloud-workflows@21",
+    "a3s-cloud-workflows@22",
 ];
 
 #[derive(Debug, thiserror::Error)]

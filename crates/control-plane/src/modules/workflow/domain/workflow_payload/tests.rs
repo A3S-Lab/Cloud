@@ -185,6 +185,126 @@ fn variable_aggregate_configuration_rejects_ambiguous_priority_and_simple_groups
 }
 
 #[test]
+fn list_operator_configuration_is_closed_ordered_and_versioned() {
+    let fixture = include_str!("../../../../../../../contracts/w0.3/list-operator.acl");
+    let parsed = WorkflowPayload::parse_acl(WorkflowPayloadKind::Configuration, fixture)
+        .expect("List Operator conformance fixture");
+    assert_eq!(parsed.schema(), WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA);
+
+    let configuration = WorkflowListOperatorConfiguration {
+        source_port: "items".into(),
+        item_type: WorkflowDataType::Object,
+        conditions: vec![
+            WorkflowListOperatorFilterCondition {
+                id: "minimum_size".into(),
+                ordinal: 1,
+                key: Some("size".into()),
+                value_type: WorkflowDataType::Number,
+                operator: WorkflowListOperatorFilterOperator::GreaterThanOrEqual,
+                operand: Some(WorkflowListOperatorOperand::InputPort {
+                    input_port: "minimum_size".into(),
+                    value_type: WorkflowDataType::Number,
+                }),
+            },
+            WorkflowListOperatorFilterCondition {
+                id: "supported_type".into(),
+                ordinal: 0,
+                key: Some("type".into()),
+                value_type: WorkflowDataType::String,
+                operator: WorkflowListOperatorFilterOperator::In,
+                operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!([
+                    "document", "image"
+                ]))),
+            },
+        ],
+        extract: Some(WorkflowListOperatorExtract::InputPort {
+            input_port: "serial".into(),
+        }),
+        order: Some(WorkflowListOperatorOrder {
+            key: Some("size".into()),
+            value_type: WorkflowDataType::Number,
+            direction: WorkflowListOperatorOrderDirection::Desc,
+        }),
+        limit: Some(5),
+    };
+    let mut step = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    step.local_transform = Some(WorkflowLocalTransformConfiguration::ListOperator(
+        configuration.clone(),
+    ));
+    let payload = WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(step))
+        .expect("List Operator configuration");
+
+    assert_eq!(payload.canonical_acl(), parsed.canonical_acl());
+    assert_eq!(payload.digest(), parsed.digest());
+    assert_eq!(
+        WorkflowPayload::restore(
+            WorkflowPayloadKind::Configuration,
+            payload.canonical_acl(),
+            payload.digest().as_str(),
+        )
+        .expect("restored List Operator")
+        .content(),
+        &WorkflowPayloadContent::Configuration(WorkflowStepConfiguration {
+            step_kind: WorkflowStepKind::Transform,
+            template: None,
+            selector: None,
+            default_handle: None,
+            message: None,
+            details: None,
+            expires_after_seconds: None,
+            routes: Vec::new(),
+            local_transform: Some(WorkflowLocalTransformConfiguration::ListOperator(
+                configuration,
+            )),
+        })
+    );
+
+    let legacy_claim = payload.canonical_acl().replace(
+        WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA,
+        WORKFLOW_CONFIGURATION_SCHEMA,
+    );
+    assert!(WorkflowPayload::parse_acl(WorkflowPayloadKind::Configuration, &legacy_claim).is_err());
+}
+
+#[test]
+fn list_operator_configuration_rejects_ambiguous_or_unbounded_operations() {
+    let condition = || WorkflowListOperatorFilterCondition {
+        id: "minimum".into(),
+        ordinal: 0,
+        key: None,
+        value_type: WorkflowDataType::Number,
+        operator: WorkflowListOperatorFilterOperator::GreaterThan,
+        operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!(3))),
+    };
+    let mut configuration = WorkflowListOperatorConfiguration {
+        source_port: "items".into(),
+        item_type: WorkflowDataType::Number,
+        conditions: vec![condition()],
+        extract: None,
+        order: None,
+        limit: Some(10),
+    };
+    configuration
+        .validate()
+        .expect("valid numeric List Operator");
+
+    configuration.conditions.push(condition());
+    assert!(configuration.validate().is_err());
+    configuration.conditions.pop();
+
+    configuration.conditions[0].operator = WorkflowListOperatorFilterOperator::Contains;
+    assert!(configuration.validate().is_err());
+    configuration.conditions[0] = condition();
+
+    configuration.extract = Some(WorkflowListOperatorExtract::Literal { index: 0 });
+    assert!(configuration.validate().is_err());
+    configuration.extract = None;
+
+    configuration.limit = Some(WORKFLOW_LIST_OPERATOR_MAX_ITEMS + 1);
+    assert!(configuration.validate().is_err());
+}
+
+#[test]
 fn policy_records_dynamic_choice_inputs() {
     let policy = WorkflowPolicy {
         mode: WorkflowPolicyMode::RecordedChoice,

@@ -40,6 +40,7 @@ export interface WorkflowPayload {
   kind: WorkflowPayloadKind;
   schema:
     | 'cloud.workflow.configuration.v1'
+    | 'cloud.workflow.configuration.list-operator.v1'
     | 'cloud.workflow.configuration.variable-aggregate.v1'
     | 'cloud.workflow.data-schema.v1'
     | 'cloud.workflow.policy.v1'
