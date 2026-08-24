@@ -675,11 +675,14 @@ Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v18
 identities remain explicit registry entries rather than compatibility guesses.
 
 User-authored Workflow revision publication has a separate closed dispatch-
-admission fence. Descriptor-owned `admission` metadata cannot assert that an
-owning application port exists: only the currently composed Workflow-local,
-composite, finite Execution, Connector, and exact Application variable/Answer
-paths are accepted. Unwired Agent, MCP, model, Tool, and Memory descriptors fail
-before persistence. Exact Applications-generated presets retain deferred
+admission fence. Semantic-free revisions admit only Workflow-local,
+HumanDecision, finite Execution, and Connector steps; Subworkflow requires its
+immutable descriptor/composite-region authority. Descriptor-owned `admission`
+metadata cannot assert that an owning application port exists: only the
+currently composed Workflow-local, composite, finite Execution, Connector, and
+exact Application variable/Answer paths are accepted. Unwired Agent, MCP,
+model, Tool, and Memory steps fail before persistence with or without caller
+descriptors. Exact Applications-generated presets retain deferred
 composition semantics without claiming runtime availability, while restore
 remains structurally compatible with immutable historic snapshots. This
 boundary adds no runtime router, store, or public protocol.

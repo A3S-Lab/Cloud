@@ -15,10 +15,10 @@ use crate::modules::workflow::domain::{
     WorkflowVariableScope, WorkflowVariableStorageClass,
 };
 use crate::modules::workflow::{
-    AssignmentPolicyRef, HumanTaskInteractionSpec, WorkflowContract, WorkflowDataSchema,
-    WorkflowDataType, WorkflowEdgeSpec, WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowSpec, WorkflowStepConfiguration, WorkflowStepKind,
-    WorkflowStepSpec,
+    AssignmentPolicyRef, CapabilityReference, CapabilityType, HumanTaskInteractionSpec,
+    WorkflowContract, WorkflowDataSchema, WorkflowDataType, WorkflowEdgeSpec, WorkflowGoalContract,
+    WorkflowGoalSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowSpec,
+    WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec,
 };
 use a3s_form_core::{
     digest_interaction_value, parse_json, FormInteractionOutcome, FormInteractionRequest,
@@ -1178,6 +1178,73 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
 }
 
 #[tokio::test]
+async fn user_authored_legacy_provider_publication_fails_closed_for_create_and_revise() -> Result<()>
+{
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "workflow-provider-admission", "Provider admission").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "workflow-provider-admission-project",
+        "Provider admission",
+    )
+    .await?;
+    let collection =
+        format!("/api/v1/organizations/{organization}/projects/{project}/workflow-definitions");
+    let provider =
+        legacy_provider_workflow_transport(WorkflowStepKind::Agent, CapabilityType::AgentRelease)
+            .map_err(BootError::Internal)?;
+
+    let rejected_create = app
+        .call(post_json(
+            &collection,
+            "workflow-provider-create-rejected",
+            provider.clone(),
+        ))
+        .await?;
+    assert_eq!(rejected_create.status(), 422);
+
+    let valid = app
+        .call(post_json(
+            &collection,
+            "workflow-provider-valid-base",
+            workflow_fixture("Provider admission base")
+                .map_err(BootError::Internal)?
+                .transport,
+        ))
+        .await?;
+    assert_eq!(valid.status(), 201);
+    let valid = response_json(&valid)?;
+    let definition_id = required_string(
+        &valid["data"]["workflowDefinition"]["id"],
+        "WorkflowDefinition ID",
+    )?;
+    let definition_root =
+        format!("/api/v1/organizations/{organization}/workflow-definitions/{definition_id}");
+
+    let rejected_revise = app
+        .call(
+            post_json(
+                format!("{definition_root}/revisions"),
+                "workflow-provider-revise-rejected",
+                provider,
+            )
+            .with_header("x-a3s-expected-version", "1"),
+        )
+        .await?;
+    assert_eq!(rejected_revise.status(), 422);
+    let unchanged = app.call(get_as(definition_root, ADMIN_TOKEN)).await?;
+    assert_eq!(
+        response_json(&unchanged)?["data"]["currentRevisionNumber"],
+        1
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
@@ -2135,6 +2202,94 @@ pub(super) fn semantic_workflow_fixture(
     description: &str,
 ) -> std::result::Result<WorkflowFixture, String> {
     workflow_fixture_with_semantics(description, true)
+}
+
+fn legacy_provider_workflow_transport(
+    kind: WorkflowStepKind,
+    capability_type: CapabilityType,
+) -> std::result::Result<Value, String> {
+    let data_schema =
+        WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
+            value_type: WorkflowDataType::Any,
+            fields: Vec::new(),
+        }))?;
+    let input_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Input),
+        ))?;
+    let provider_configuration = WorkflowPayload::from_content(
+        WorkflowPayloadContent::Configuration(WorkflowStepConfiguration::empty(kind)),
+    )?;
+    let output_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Output),
+        ))?;
+    let payloads = vec![
+        input_configuration,
+        provider_configuration,
+        output_configuration,
+        data_schema,
+    ];
+    let schema_digest = payloads[3].digest().clone();
+    let mut provider = workflow_step("provider", kind, &payloads[1], &schema_digest);
+    provider.capability = Some(CapabilityReference {
+        owner: capability_type.owner(),
+        capability_type,
+        resource_id: Uuid::now_v7(),
+        revision: "release-1".into(),
+        digest: Sha256Digest::parse(format!("sha256:{}", "e".repeat(64)))?,
+        capability: format!("{}.invoke", kind.as_str()),
+    });
+    let contract = WorkflowContract::from_spec(WorkflowSpec {
+        name: "Legacy provider".into(),
+        description: "Structurally valid legacy provider graph".into(),
+        steps: vec![
+            workflow_step(
+                "input",
+                WorkflowStepKind::Input,
+                &payloads[0],
+                &schema_digest,
+            ),
+            provider,
+            workflow_step(
+                "output",
+                WorkflowStepKind::Output,
+                &payloads[2],
+                &schema_digest,
+            ),
+        ],
+        edges: vec![
+            WorkflowEdgeSpec {
+                id: "input-provider".into(),
+                source: "input".into(),
+                target: "provider".into(),
+                source_handle: None,
+            },
+            WorkflowEdgeSpec {
+                id: "provider-output".into(),
+                source: "provider".into(),
+                target: "output".into(),
+                source_handle: None,
+            },
+        ],
+    })?;
+    crate::modules::workflow::WorkflowRevision::initial(
+        OrganizationId::new(),
+        ProjectId::new(),
+        WorkflowDefinitionId::new(),
+        WorkflowRevisionId::new(),
+        contract.clone(),
+        payloads.clone(),
+        PrincipalId::new(),
+        Utc::now(),
+    )?;
+    Ok(json!({
+        "definitionAcl": contract.canonical_acl(),
+        "payloads": payloads.iter().map(|payload| json!({
+            "kind": payload.kind().as_str(),
+            "acl": payload.canonical_acl(),
+        })).collect::<Vec<_>>(),
+    }))
 }
 
 fn workflow_fixture_with_semantics(

@@ -145,11 +145,14 @@ step/capability types, owner/execution class, semantic/configuration/default-
 policy digests, required bindings, typed failure behavior, compiler ranges,
 fail-closed admission, and presentation isolation. Its representative fixture
 is execution-conformance evidence, not a global catalog or availability claim.
-User-authored publication additionally proves that every bound descriptor has a
-current Cloud runtime dispatch path. Caller-provided admission metadata cannot
-enable unwired Agent, MCP, model, Tool, Memory, or other owning-context ports;
-finite Execution, Connector Service, exact Application variable/Answer ports,
-Workflow-local steps, and composite regions remain admitted. Exact
+User-authored publication additionally proves that every graph step has a
+current Cloud runtime dispatch path. Descriptor-bearing revisions validate each
+bound descriptor; semantic-free revisions admit only Workflow-local,
+HumanDecision, finite Execution, and Connector Service steps. Caller-provided
+admission metadata cannot enable unwired Agent, MCP, model, Tool, Memory, or
+other owning-context ports, and Subworkflow requires descriptor/composite-region
+authority. Exact Application variable/Answer ports and semantic composite
+regions remain admitted. Exact
 Applications-generated presets retain their deferred internal composition
 contract without claiming runtime availability. Historic restored snapshots
 retain structural compatibility, and this check changes no persisted or public
@@ -221,9 +224,11 @@ dispatch rejection without owning-context evidence retains no reference. No
 historical terminal projection is mutated or backfilled.
 
 The same user-authored publication boundary now rejects structurally valid
-descriptors whose owning Cloud runtime port is not implemented. Provider nodes
-therefore fail at revision publication instead of entering a run that can only
-terminate at the local-executor fallback. This is an availability fence, not
+descriptors whose owning Cloud runtime port is not implemented, as well as
+semantic-free Agent, MCP, model, Tool, Memory, and Subworkflow steps. Provider
+nodes therefore fail at revision publication instead of entering a run that can
+only terminate at the local-executor fallback; semantic-free Subworkflow cannot
+bypass its immutable region authority. This is an availability fence, not
 implementation of the remaining provider ports.
 
 The separate catalog projection composes the frozen parity manifest's exact

@@ -4550,11 +4550,14 @@ PostgreSQL/provider gates still govern verification. Business-service
 and remaining provider capability dispatch, compensation, expanded clean
 provider evidence, and public availability remain open; no UI mechanism is required.
 
-User-authored Workflow revision publication also treats descriptor admission
-metadata as necessary but not sufficient: each bound step must map to a dispatch
-path wired into the current Cloud runtime. Structurally valid caller-provided
-Agent, MCP, model, Tool, and Memory descriptors therefore fail before
-persistence instead of reaching the unsupported local-executor fallback. Exact
+User-authored Workflow revision publication also requires every graph step to
+map to a dispatch path wired into the current Cloud runtime. Semantic-free
+revisions admit Workflow-local, HumanDecision, finite Execution, and Connector
+steps only; Subworkflow requires immutable descriptor/composite-region
+authority. Descriptor admission metadata remains necessary but not sufficient,
+so structurally valid caller-provided Agent, MCP, model, Tool, and Memory steps
+fail before persistence instead of reaching the unsupported local-executor
+fallback. Exact
 Applications-generated presets retain their deferred internal composition
 contract without claiming provider availability. Restore deliberately keeps the
 older structural rule so immutable historic snapshots remain readable. The

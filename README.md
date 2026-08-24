@@ -395,10 +395,11 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. User-authored publication also checks every
-    admitted descriptor against the closed set of Cloud runtime dispatch paths,
-    so caller-supplied Agent, MCP, model, Tool, and Memory descriptors cannot
-    self-declare availability before their owning ports land. Exact
+    copied evidence bodies. User-authored publication also checks both legacy
+    graphs and every admitted descriptor against the closed set of Cloud runtime
+    dispatch paths. Semantic-free Agent, MCP, model, Tool, Memory, and
+    Subworkflow steps are rejected; caller-supplied descriptors for the first
+    five cannot self-declare availability before their owning ports land. Exact
     Applications-generated presets remain deferred internal composition
     evidence, historic snapshots remain readable, and the public API shape is
     unchanged. This is not public HTTP Request availability;

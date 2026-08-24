@@ -2073,14 +2073,18 @@ Plan v1 histories. The checked-in descriptor fixtures are execution-conformance
 evidence, not a global registry or public availability claim.
 
 User-authored Workflow revision publication now applies a runtime-dispatch
-admission fence after structural descriptor validation. An admitted descriptor
-must map to a currently wired Workflow-local, composite, finite Execution,
-Connector, or exact Application variable/Answer path; caller-provided Agent,
-MCP, model, Tool, and Memory descriptors cannot self-enable unavailable ports.
-Exact Applications-generated presets remain deferred internal composition
-evidence. Historic snapshots remain structurally readable, and the fence adds
-no migration or public API shape. Tests cover all five unwired provider kinds,
-the internal preset path, and supported runtime publication paths.
+admission fence to both semantic-free and descriptor-bearing graphs.
+Semantic-free publication admits only Workflow-local, HumanDecision, finite
+Execution, and Connector steps; Subworkflow requires immutable descriptor and
+composite-region authority. An admitted descriptor must map to a currently wired
+Workflow-local, composite, finite Execution, Connector, or exact Application
+variable/Answer path; caller-provided Agent, MCP, model, Tool, and Memory
+descriptors cannot self-enable unavailable ports. Exact Applications-generated
+presets remain deferred internal composition evidence. Historic snapshots remain
+structurally readable, and the fence adds no migration or public API shape.
+Tests cover all five unwired provider kinds, semantic-free Subworkflow, both
+public mutation paths, the internal preset path, and supported runtime
+publication paths.
 
 Built-in discovery is a separate read-only projection. The parity manifest is
 the sole source of the exact 23-node acceptance inventory, owner, gate,

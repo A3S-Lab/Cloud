@@ -20,6 +20,14 @@ not a runtime availability claim. Restore remains structural so historic
 snapshots stay readable. This fence adds no store, migration, or public protocol
 shape.
 
+The same publication boundary covers semantic-free Plan v1 input. Only the
+already wired legacy kinds are accepted: Workflow-local steps, HumanDecision,
+finite Execution, and Connector Service. Agent, MCP, model, Tool, and Memory
+require their future owning ports, while Subworkflow requires immutable
+descriptor and composite-region semantics. This restriction applies only to new
+user-authored create/revise requests; stored legacy revisions remain readable
+and replay-compatible.
+
 The fixture contains five representative admitted descriptors so Workflow-local
 Input, Transform, If / Else, and Output steps plus the existing finite Executions
 application port are covered. It is not the production built-in catalog, does not advertise all 23

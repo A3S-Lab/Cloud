@@ -1,8 +1,9 @@
 use super::ReviseWorkflowDefinition;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, WorkflowRevisionId};
-use crate::modules::workflow::application::resource_access;
-use crate::modules::workflow::application::WorkflowDefinitionMutationResult;
+use crate::modules::workflow::application::{
+    resource_access, validate_user_authored_runtime_support, WorkflowDefinitionMutationResult,
+};
 use crate::modules::workflow::domain::{
     IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite, WorkflowCompositeRegions,
     WorkflowContract, WorkflowDefinitionRecord, WorkflowPayload, WorkflowRevision,
@@ -84,6 +85,11 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 },
                 None => None,
             };
+            if let Err(error) =
+                validate_user_authored_runtime_support(&contract, semantic_contracts.as_ref())
+            {
+                return Ok(Err(ApplicationError::Invalid(error)));
+            }
             let revision_id = WorkflowRevisionId::new();
             let revision_result = match semantic_contracts {
                 Some(semantic_contracts) => WorkflowRevision::successor_with_semantic_contracts(
@@ -182,7 +188,7 @@ fn parse_semantic_contracts(
     contract: &WorkflowContract,
     value: crate::modules::workflow::application::WorkflowSemanticContractAcls,
 ) -> Result<WorkflowRevisionSemanticContracts, String> {
-    let contracts = WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+    WorkflowRevisionSemanticContracts::create_with_optional_contracts(
         contract.spec(),
         WorkflowStepDescriptorBindings::parse_acl(&value.descriptor_bindings_acl)?,
         WorkflowStepDescriptorRegistry::parse_acl(&value.descriptor_registry_acl)?,
@@ -197,7 +203,5 @@ fn parse_semantic_contracts(
             .as_deref()
             .map(WorkflowCompositeRegions::parse_acl)
             .transpose()?,
-    )?;
-    contracts.validate_user_authored_runtime_support(contract.spec())?;
-    Ok(contracts)
+    )
 }

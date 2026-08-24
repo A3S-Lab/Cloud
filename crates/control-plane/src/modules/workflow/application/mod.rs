@@ -14,6 +14,7 @@ pub use workflow_composite_execution_port::{
     IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionApplicationService,
     WorkflowCompositeExecutionRequest,
 };
+pub(crate) use workflow_definition_publication::validate_user_authored_runtime_support;
 pub use workflow_definition_publication::{
     IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
     WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
