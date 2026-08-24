@@ -805,7 +805,7 @@ impl WorkflowRevisionSemanticContracts {
         Ok(())
     }
 
-    pub(crate) fn validate_user_authored_runtime_support(
+    pub(crate) fn validate_runtime_dispatch_support(
         &self,
         workflow: &WorkflowSpec,
     ) -> Result<(), String> {

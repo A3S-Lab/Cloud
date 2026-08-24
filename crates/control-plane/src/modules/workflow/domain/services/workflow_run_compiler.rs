@@ -146,6 +146,7 @@ impl WorkflowRunCompiler {
                     .into(),
             );
         }
+        workflow_revision.validate_runtime_dispatch_support()?;
         if let Some(frame) = application_frame.as_ref() {
             frame.validate_for_child(
                 goal.organization_id,

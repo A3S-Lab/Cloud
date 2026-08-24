@@ -691,10 +691,13 @@ metadata cannot assert that an owning application port exists: only the
 currently composed Workflow-local, composite, finite Execution, Connector, and
 exact Application variable/Answer paths are accepted. Unwired Agent, MCP,
 model, Tool, and Memory steps fail before persistence with or without caller
-descriptors. Exact Applications-generated presets retain deferred
-composition semantics without claiming runtime availability, while restore
-remains structurally compatible with immutable historic snapshots. This
-boundary adds no runtime router, store, or public protocol.
+descriptors. Exact Applications-generated presets retain deferred composition
+semantics without claiming runtime availability. Restore remains structurally
+compatible with immutable historic revisions, Plans, Goals, and persisted Run
+histories, but both new Goal/Plan compilation and new Run compilation reapply
+the same dispatch fence. An unwired historic revision or internal provider
+preset cannot therefore create a new execution. This boundary adds no runtime
+router, store, or public protocol.
 
 New Operation histories also pin runtime build `a3s-cloud-workflows@20` and
 the immutable `cloud.flow.bounded-step-retries-v1` marker. Agent, Build, Data

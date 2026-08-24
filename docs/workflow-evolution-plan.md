@@ -152,10 +152,12 @@ HumanDecision, finite Execution, and Connector Service steps. Caller-provided
 admission metadata cannot enable unwired Agent, MCP, model, Tool, Memory, or
 other owning-context ports, and Subworkflow requires descriptor/composite-region
 authority. Exact Application variable/Answer ports and semantic composite
-regions remain admitted. Exact
-Applications-generated presets retain their deferred internal composition
-contract without claiming runtime availability. Historic restored snapshots
-retain structural compatibility, and this check changes no persisted or public
+regions remain admitted. Exact Applications-generated presets retain their
+deferred internal composition contract without claiming runtime availability.
+Historic restored revisions, Plans, Goals, and persisted Run histories retain
+structural compatibility, but new Goal/Plan and Run compilation rechecks the
+same dispatch set. An unwired historic revision or internal provider preset
+cannot launch a new execution, and this check changes no persisted or public
 protocol shape.
 Migration `103` snapshots the exact admitted registry under WorkflowRevision,
 and Plan v2 pins exact descriptor semantic digests while existing Plan v1
@@ -229,7 +231,9 @@ semantic-free Agent, MCP, model, Tool, Memory, and Subworkflow steps. Provider
 nodes therefore fail at revision publication instead of entering a run that can
 only terminate at the local-executor fallback; semantic-free Subworkflow cannot
 bypass its immutable region authority. This is an availability fence, not
-implementation of the remaining provider ports.
+implementation of the remaining provider ports. The same fence runs when a new
+Goal/Plan or Run is compiled, closing historic-revision and internal-preset
+bypasses without changing existing persisted replay.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact

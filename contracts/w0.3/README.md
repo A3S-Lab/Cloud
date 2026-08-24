@@ -17,16 +17,19 @@ and Answer ports. Agent, MCP, model, Tool, Memory, and any other unwired
 owning-context descriptor cannot self-declare availability. Exact
 Applications-generated presets remain deferred internal composition evidence,
 not a runtime availability claim. Restore remains structural so historic
-snapshots stay readable. This fence adds no store, migration, or public protocol
-shape.
+revisions, Plans, Goals, and persisted Run histories stay readable. Every new
+Goal/Plan or Run compilation rechecks the same dispatch set, so an unwired
+historic revision or internal provider preset cannot launch a new execution.
+This fence adds no store, migration, or public protocol shape.
 
 The same publication boundary covers semantic-free Plan v1 input. Only the
 already wired legacy kinds are accepted: Workflow-local steps, HumanDecision,
 finite Execution, and Connector Service. Agent, MCP, model, Tool, and Memory
 require their future owning ports, while Subworkflow requires immutable
 descriptor and composite-region semantics. This restriction applies only to new
-user-authored create/revise requests; stored legacy revisions remain readable
-and replay-compatible.
+user-authored create/revise requests and new execution compilation; stored
+legacy revisions and already-persisted Run histories remain readable and
+replay-compatible.
 
 The fixture contains five representative admitted descriptors so Workflow-local
 Input, Transform, If / Else, and Output steps plus the existing finite Executions

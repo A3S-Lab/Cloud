@@ -1,9 +1,7 @@
 use super::ReviseWorkflowDefinition;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, WorkflowRevisionId};
-use crate::modules::workflow::application::{
-    resource_access, validate_user_authored_runtime_support, WorkflowDefinitionMutationResult,
-};
+use crate::modules::workflow::application::{resource_access, WorkflowDefinitionMutationResult};
 use crate::modules::workflow::domain::{
     IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite, WorkflowCompositeRegions,
     WorkflowContract, WorkflowDefinitionRecord, WorkflowPayload, WorkflowRevision,
@@ -85,11 +83,6 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 },
                 None => None,
             };
-            if let Err(error) =
-                validate_user_authored_runtime_support(&contract, semantic_contracts.as_ref())
-            {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
             let revision_id = WorkflowRevisionId::new();
             let revision_result = match semantic_contracts {
                 Some(semantic_contracts) => WorkflowRevision::successor_with_semantic_contracts(
@@ -114,6 +107,9 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            if let Err(error) = revision.validate_runtime_dispatch_support() {
+                return Ok(Err(ApplicationError::Invalid(error)));
+            }
             if revision.contract.digest() == parent.contract.digest()
                 && revision.payload_set_digest == parent.payload_set_digest
                 && revision.semantic_contract_set_digest() == parent.semantic_contract_set_digest()

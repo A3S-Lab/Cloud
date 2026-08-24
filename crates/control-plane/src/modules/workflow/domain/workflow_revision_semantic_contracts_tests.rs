@@ -303,7 +303,7 @@ fn new_user_publication_cannot_self_admit_unwired_provider_dispatch() {
         )
         .expect("deferred internal composition remains structurally valid");
         let error = contracts
-            .validate_user_authored_runtime_support(&provider_workflow)
+            .validate_runtime_dispatch_support(&provider_workflow)
             .expect_err("unwired user-authored dispatch must remain unavailable");
         assert!(
             error.contains("has no admitted Cloud runtime dispatch port"),

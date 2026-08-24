@@ -2080,11 +2080,14 @@ composite-region authority. An admitted descriptor must map to a currently wired
 Workflow-local, composite, finite Execution, Connector, or exact Application
 variable/Answer path; caller-provided Agent, MCP, model, Tool, and Memory
 descriptors cannot self-enable unavailable ports. Exact Applications-generated
-presets remain deferred internal composition evidence. Historic snapshots remain
-structurally readable, and the fence adds no migration or public API shape.
-Tests cover all five unwired provider kinds, semantic-free Subworkflow, both
-public mutation paths, the internal preset path, and supported runtime
-publication paths.
+presets remain deferred internal composition evidence. Historic revisions,
+Plans, Goals, and persisted Run histories remain structurally readable, while
+new Goal/Plan and Run compilation rechecks the same runtime set. An unwired
+historic revision or internal provider preset therefore cannot launch a new
+execution. The fence adds no migration or public API shape. Tests cover all five
+unwired provider kinds, semantic-free Subworkflow, both public mutation paths,
+the internal preset path, supported runtime publication paths, and the historic
+Plan/Run compilation boundary.
 
 Built-in discovery is a separate read-only projection. The parity manifest is
 the sole source of the exact 23-node acceptance inventory, owner, gate,

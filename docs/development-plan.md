@@ -4557,11 +4557,14 @@ steps only; Subworkflow requires immutable descriptor/composite-region
 authority. Descriptor admission metadata remains necessary but not sufficient,
 so structurally valid caller-provided Agent, MCP, model, Tool, and Memory steps
 fail before persistence instead of reaching the unsupported local-executor
-fallback. Exact
-Applications-generated presets retain their deferred internal composition
-contract without claiming provider availability. Restore deliberately keeps the
-older structural rule so immutable historic snapshots remain readable. The
-fence adds no table, migration, protocol version, or provider implementation.
+fallback. Exact Applications-generated presets retain their deferred internal
+composition contract without claiming provider availability. Restore
+deliberately keeps the older structural rule so immutable historic revisions,
+Plans, Goals, and persisted Run histories remain readable. New Goal/Plan and
+Run compilation rechecks the same closed dispatch set, preventing an unwired
+historic revision or internal provider preset from launching a new execution.
+The fence adds no table, migration, protocol version, or provider
+implementation.
 
 The shared Operations adapter now pins the exact A3S Flow `1.0.0` release with
 A3S Boot `0.2.0` PostgreSQL task management, isolated ORM-backed

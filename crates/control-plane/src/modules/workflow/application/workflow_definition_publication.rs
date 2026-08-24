@@ -11,8 +11,8 @@ use crate::modules::workflow::domain::{
     CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, WorkflowCompositeRegions,
     WorkflowContract, WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload,
     WorkflowRevision, WorkflowRevisionPublished, WorkflowRevisionSemanticContracts,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepKind,
-    WorkflowVariableContract, WorkflowVariableDefaults,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowVariableContract,
+    WorkflowVariableDefaults,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -49,35 +49,6 @@ pub enum WorkflowDefinitionPublicationProvenance {
     UserAuthored,
     /// One exact Applications-owned preset retained ahead of its provider gate.
     ApplicationsPreset,
-}
-
-pub(crate) fn validate_user_authored_runtime_support(
-    contract: &WorkflowContract,
-    semantic_contracts: Option<&WorkflowRevisionSemanticContracts>,
-) -> Result<(), String> {
-    if let Some(contracts) = semantic_contracts {
-        return contracts.validate_user_authored_runtime_support(contract.spec());
-    }
-    for step in &contract.spec().steps {
-        if matches!(
-            step.kind,
-            WorkflowStepKind::Input
-                | WorkflowStepKind::Output
-                | WorkflowStepKind::Transform
-                | WorkflowStepKind::Branch
-                | WorkflowStepKind::HumanDecision
-                | WorkflowStepKind::Execution
-                | WorkflowStepKind::Service
-        ) {
-            continue;
-        }
-        return Err(format!(
-            "Workflow step {:?} kind {:?} has no admitted Cloud runtime dispatch port without immutable descriptor semantic contracts",
-            step.id,
-            step.kind.as_str()
-        ));
-    }
-    Ok(())
 }
 
 #[async_trait]
@@ -142,13 +113,6 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
             .map(|value| parse_semantic_contracts(&contract, value))
             .transpose()
             .map_err(ApplicationError::Invalid)?;
-        if request.provenance == WorkflowDefinitionPublicationProvenance::UserAuthored {
-            // Graph shape and descriptor admission are revision-owned input,
-            // not proof that this Cloud runtime has the owning dispatch port.
-            // Historic restore and exact Applications presets remain structural.
-            validate_user_authored_runtime_support(&contract, semantic_contracts.as_ref())
-                .map_err(ApplicationError::Invalid)?;
-        }
         let now = Utc::now();
         let revision = match semantic_contracts {
             Some(semantic_contracts) => WorkflowRevision::initial_with_semantic_contracts(
@@ -174,6 +138,14 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
             ),
         }
         .map_err(ApplicationError::Invalid)?;
+        if request.provenance == WorkflowDefinitionPublicationProvenance::UserAuthored {
+            // Graph shape and descriptor admission are revision-owned input,
+            // not proof that this Cloud runtime has the owning dispatch port.
+            // Historic restore and exact Applications presets remain structural.
+            revision
+                .validate_runtime_dispatch_support()
+                .map_err(ApplicationError::Invalid)?;
+        }
         let canonical = canonical_publication_request(
             request.organization_id,
             request.project_id,

@@ -297,5 +297,6 @@ fn validate_authorities(
             "Workflow goal authority references do not match the exact admitted revisions".into(),
         );
     }
+    workflow_revision.validate_runtime_dispatch_support()?;
     Ok(())
 }

@@ -4,7 +4,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     CapabilityType, WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
-    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowStepFailureContract,
+    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowSpec, WorkflowStepFailureContract,
     WorkflowStepKind, WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
@@ -307,6 +307,39 @@ impl WorkflowRevision {
             .as_ref()
             .map(WorkflowRevisionSemanticContracts::digest)
     }
+
+    pub(crate) fn validate_runtime_dispatch_support(&self) -> Result<(), String> {
+        validate_runtime_dispatch_support(self.contract.spec(), self.semantic_contracts.as_ref())
+    }
+}
+
+fn validate_runtime_dispatch_support(
+    workflow: &WorkflowSpec,
+    semantic_contracts: Option<&WorkflowRevisionSemanticContracts>,
+) -> Result<(), String> {
+    if let Some(contracts) = semantic_contracts {
+        return contracts.validate_runtime_dispatch_support(workflow);
+    }
+    for step in &workflow.steps {
+        if matches!(
+            step.kind,
+            WorkflowStepKind::Input
+                | WorkflowStepKind::Output
+                | WorkflowStepKind::Transform
+                | WorkflowStepKind::Branch
+                | WorkflowStepKind::HumanDecision
+                | WorkflowStepKind::Execution
+                | WorkflowStepKind::Service
+        ) {
+            continue;
+        }
+        return Err(format!(
+            "Workflow step {:?} kind {:?} has no admitted Cloud runtime dispatch port without immutable descriptor semantic contracts",
+            step.id,
+            step.kind.as_str()
+        ));
+    }
+    Ok(())
 }
 
 fn validate_payload_bindings(
@@ -567,6 +600,309 @@ pub(crate) fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256D
     let encoded = serde_json::to_vec(&entries)
         .map_err(|error| format!("could not encode Workflow payload set: {error}"))?;
     Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(encoded)))
+}
+
+#[cfg(test)]
+mod runtime_dispatch_tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{
+        OntologyId, OntologyRevisionId, PlanRevisionId, WorkflowGoalId, WorkflowRunId,
+    };
+    use crate::modules::workflow::domain::{
+        CapabilityReference, OntologyContract, OntologyObjectType, OntologyRevision, OntologySpec,
+        PlanRevision, WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowEdgeSpec,
+        WorkflowGoal, WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayloadContent, WorkflowPlan,
+        WorkflowPlanCompiler, WorkflowPlanStep, WorkflowRunCompiler, WorkflowSpec,
+        WorkflowStepConfiguration, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_SCHEMA,
+    };
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn digest(character: char) -> Sha256Digest {
+        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
+    }
+
+    fn workflow(kind: WorkflowStepKind) -> WorkflowSpec {
+        let step = |id: &str, kind: WorkflowStepKind| WorkflowStepSpec {
+            id: id.into(),
+            label: id.into(),
+            kind,
+            configuration_digest: digest('a'),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            policy_digest: None,
+            capability: None,
+        };
+        WorkflowSpec {
+            name: "Runtime dispatch".into(),
+            description: String::new(),
+            steps: vec![
+                step("input", WorkflowStepKind::Input),
+                step("target", kind),
+                step("output", WorkflowStepKind::Output),
+            ],
+            edges: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn semantic_free_runtime_admission_is_closed_over_the_wired_dispatch_set() {
+        for supported in [
+            WorkflowStepKind::Input,
+            WorkflowStepKind::Output,
+            WorkflowStepKind::Transform,
+            WorkflowStepKind::Branch,
+            WorkflowStepKind::HumanDecision,
+            WorkflowStepKind::Execution,
+            WorkflowStepKind::Service,
+        ] {
+            validate_runtime_dispatch_support(&workflow(supported), None)
+                .expect("wired semantic-free dispatch");
+        }
+        for unsupported in [
+            WorkflowStepKind::Agent,
+            WorkflowStepKind::Mcp,
+            WorkflowStepKind::Model,
+            WorkflowStepKind::Tool,
+            WorkflowStepKind::Memory,
+            WorkflowStepKind::Subworkflow,
+        ] {
+            let error = validate_runtime_dispatch_support(&workflow(unsupported), None)
+                .expect_err("unwired semantic-free dispatch must fail closed");
+            assert!(
+                error.contains("has no admitted Cloud runtime dispatch port"),
+                "unexpected {unsupported:?} admission error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn new_plan_and_run_compilation_reject_historic_unwired_revisions() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let definition_id = WorkflowDefinitionId::new();
+        let revision_id = WorkflowRevisionId::new();
+        let principal_id = PrincipalId::new();
+        let now = Utc::now();
+
+        let data_schema =
+            WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
+                value_type: WorkflowDataType::Object,
+                fields: Vec::new(),
+            }))
+            .expect("data schema");
+        let configuration = |kind| {
+            WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+                WorkflowStepConfiguration::empty(kind),
+            ))
+            .expect("step configuration")
+        };
+        let input_configuration = configuration(WorkflowStepKind::Input);
+        let agent_configuration = configuration(WorkflowStepKind::Agent);
+        let output_configuration = configuration(WorkflowStepKind::Output);
+        let step = |id: &str,
+                    kind: WorkflowStepKind,
+                    configuration: &WorkflowPayload,
+                    capability| WorkflowStepSpec {
+            id: id.into(),
+            label: id.into(),
+            kind,
+            configuration_digest: configuration.digest().clone(),
+            input_schema_digest: data_schema.digest().clone(),
+            output_schema_digest: data_schema.digest().clone(),
+            policy_digest: None,
+            capability,
+        };
+        let workflow = WorkflowSpec {
+            name: "Historic provider workflow".into(),
+            description: String::new(),
+            steps: vec![
+                step("input", WorkflowStepKind::Input, &input_configuration, None),
+                step(
+                    "agent",
+                    WorkflowStepKind::Agent,
+                    &agent_configuration,
+                    Some(CapabilityReference {
+                        owner: CapabilityType::AgentRelease.owner(),
+                        capability_type: CapabilityType::AgentRelease,
+                        resource_id: Uuid::now_v7(),
+                        revision: "release-1".into(),
+                        digest: digest('d'),
+                        capability: "agent.invoke".into(),
+                    }),
+                ),
+                step(
+                    "output",
+                    WorkflowStepKind::Output,
+                    &output_configuration,
+                    None,
+                ),
+            ],
+            edges: vec![
+                WorkflowEdgeSpec {
+                    id: "input-agent".into(),
+                    source: "input".into(),
+                    target: "agent".into(),
+                    source_handle: None,
+                },
+                WorkflowEdgeSpec {
+                    id: "agent-output".into(),
+                    source: "agent".into(),
+                    target: "output".into(),
+                    source_handle: None,
+                },
+            ],
+        };
+        let contract = WorkflowContract::from_spec(workflow.clone()).expect("workflow contract");
+        let revision = WorkflowRevision::initial(
+            organization_id,
+            project_id,
+            definition_id,
+            revision_id,
+            contract.clone(),
+            vec![
+                data_schema,
+                input_configuration,
+                agent_configuration,
+                output_configuration,
+            ],
+            principal_id,
+            now,
+        )
+        .expect("historic revision remains structurally readable");
+        let definition = WorkflowDefinition::create(
+            organization_id,
+            project_id,
+            definition_id,
+            workflow.name.clone(),
+            workflow.description.clone(),
+            revision_id,
+            contract.digest().clone(),
+            principal_id,
+            now,
+        )
+        .expect("definition");
+        let ontology_id = OntologyId::new();
+        let ontology_revision_id = OntologyRevisionId::new();
+        let ontology_contract = OntologyContract::from_spec(OntologySpec {
+            name: "Historic provider ontology".into(),
+            description: String::new(),
+            object_types: vec![OntologyObjectType {
+                id: "request".into(),
+                label: "Request".into(),
+                schema_digest: digest('e'),
+                key_fields: vec!["id".into()],
+            }],
+            relation_types: Vec::new(),
+            rules: Vec::new(),
+        })
+        .expect("ontology contract");
+        let ontology_revision = OntologyRevision::initial(
+            organization_id,
+            project_id,
+            ontology_id,
+            ontology_revision_id,
+            ontology_contract.clone(),
+            principal_id,
+            now,
+        );
+        let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+            name: "Historic provider goal".into(),
+            workflow_definition_id: definition_id,
+            workflow_revision_id: revision_id,
+            workflow_digest: contract.digest().clone(),
+            ontology_id,
+            ontology_revision_id,
+            ontology_digest: ontology_contract.digest().clone(),
+            environment_id: None,
+            input: json!({}),
+        })
+        .expect("goal contract");
+
+        let plan_error = WorkflowPlanCompiler::compile_goal(
+            WorkflowGoalId::new(),
+            PlanRevisionId::new(),
+            goal_contract.clone(),
+            &definition,
+            &revision,
+            &ontology_revision,
+            principal_id,
+            now,
+        )
+        .expect_err("historic unwired revision must not compile a new Plan");
+        assert!(
+            plan_error.contains("has no admitted Cloud runtime dispatch port"),
+            "unexpected Plan admission error: {plan_error}"
+        );
+
+        let goal_id = WorkflowGoalId::new();
+        let plan_revision = PlanRevision::create(
+            organization_id,
+            project_id,
+            goal_id,
+            PlanRevisionId::new(),
+            WorkflowPlan {
+                schema: WORKFLOW_PLAN_SCHEMA.into(),
+                compiler_revision: WORKFLOW_PLAN_COMPILER_REVISION.into(),
+                workflow_definition_id: definition_id,
+                workflow_revision_id: revision_id,
+                workflow_digest: contract.digest().clone(),
+                workflow_payload_set_digest: revision.payload_set_digest.clone(),
+                semantic_contract_set_digest: None,
+                variable_contract_digest: None,
+                composite_regions_digest: None,
+                ontology_id,
+                ontology_revision_id,
+                ontology_digest: ontology_contract.digest().clone(),
+                environment_id: None,
+                input_digest: goal_contract.input_digest().clone(),
+                steps: workflow
+                    .steps
+                    .iter()
+                    .map(|step| WorkflowPlanStep {
+                        id: step.id.clone(),
+                        kind: step.kind,
+                        configuration_digest: step.configuration_digest.clone(),
+                        input_schema_digest: step.input_schema_digest.clone(),
+                        output_schema_digest: step.output_schema_digest.clone(),
+                        policy_digest: step.policy_digest.clone(),
+                        capability: step.capability.clone(),
+                        descriptor: None,
+                        failure: None,
+                        default_output: None,
+                    })
+                    .collect(),
+                edges: workflow.edges.clone(),
+            },
+            principal_id,
+            now,
+        )
+        .expect("historic Plan remains readable");
+        let goal = WorkflowGoal::create(
+            organization_id,
+            project_id,
+            goal_id,
+            goal_contract,
+            &plan_revision,
+            principal_id,
+            now,
+        )
+        .expect("historic Goal remains readable");
+        let run_error = WorkflowRunCompiler::compile(
+            WorkflowRunId::new(),
+            &goal,
+            &plan_revision,
+            &revision,
+            None,
+            principal_id,
+            now,
+        )
+        .expect_err("historic unwired revision must not compile a new Run");
+        assert!(
+            run_error.contains("has no admitted Cloud runtime dispatch port"),
+            "unexpected Run admission error: {run_error}"
+        );
+    }
 }
 
 #[cfg(test)]

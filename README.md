@@ -401,8 +401,11 @@ creating their own control planes:
     Subworkflow steps are rejected; caller-supplied descriptors for the first
     five cannot self-declare availability before their owning ports land. Exact
     Applications-generated presets remain deferred internal composition
-    evidence, historic snapshots remain readable, and the public API shape is
-    unchanged. This is not public HTTP Request availability;
+    evidence. Historic revisions, Plans, Goals, and persisted Run histories
+    remain readable, but every new Goal/Plan or Run compilation rechecks the
+    same closed dispatch set. Unwired internal provider presets therefore cannot
+    launch a new execution before their owning ports land. The public API shape
+    is unchanged. This is not public HTTP Request availability;
     business-service and remaining Agent/MCP/model/Tool dispatch, compensation,
     retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
