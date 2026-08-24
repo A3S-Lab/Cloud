@@ -196,6 +196,16 @@ fn list_operator_configuration_is_closed_ordered_and_versioned() {
         item_type: WorkflowDataType::Object,
         conditions: vec![
             WorkflowListOperatorFilterCondition {
+                id: "supported_type".into(),
+                ordinal: 0,
+                key: Some("type".into()),
+                value_type: WorkflowDataType::String,
+                operator: WorkflowListOperatorFilterOperator::In,
+                operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!([
+                    "document", "image"
+                ]))),
+            },
+            WorkflowListOperatorFilterCondition {
                 id: "minimum_size".into(),
                 ordinal: 1,
                 key: Some("size".into()),
@@ -205,16 +215,6 @@ fn list_operator_configuration_is_closed_ordered_and_versioned() {
                     input_port: "minimum_size".into(),
                     value_type: WorkflowDataType::Number,
                 }),
-            },
-            WorkflowListOperatorFilterCondition {
-                id: "supported_type".into(),
-                ordinal: 0,
-                key: Some("type".into()),
-                value_type: WorkflowDataType::String,
-                operator: WorkflowListOperatorFilterOperator::In,
-                operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!([
-                    "document", "image"
-                ]))),
             },
         ],
         extract: Some(WorkflowListOperatorExtract::InputPort {

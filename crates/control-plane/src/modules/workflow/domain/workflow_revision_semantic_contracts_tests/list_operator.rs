@@ -377,8 +377,6 @@ fn fixture(descriptor_id: &str, operation_input_required: bool) -> Fixture {
         workflow,
         payloads: vec![
             input_schema,
-            array_schema,
-            number_schema,
             operator_input_schema,
             operator_output_schema,
             final_output_schema,
@@ -416,24 +414,23 @@ fn publication_requires_the_exact_descriptor_and_deferred_direct_inputs() {
         .contains("operation inputs optional"));
 
     let mut missing = fixture("workflow.list-operator", false);
-    let generic_configuration = missing
-        .workflow
-        .steps
-        .iter()
-        .find(|step| step.id == "output")
-        .expect("output")
-        .configuration_digest
-        .clone();
+    let generic_configuration = WorkflowPayload::from_content(
+        WorkflowPayloadContent::Configuration(WorkflowStepConfiguration::empty(
+            WorkflowStepKind::Transform,
+        )),
+    )
+    .expect("generic transform configuration");
     missing
         .workflow
         .steps
         .iter_mut()
         .find(|step| step.id == "list")
         .expect("list")
-        .configuration_digest = generic_configuration;
+        .configuration_digest = generic_configuration.digest().clone();
     missing
         .payloads
         .retain(|payload| payload.schema() != WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA);
+    missing.payloads.push(generic_configuration);
     assert!(publish(missing)
         .expect_err("missing exact configuration")
         .contains("lost its exact configuration"));
