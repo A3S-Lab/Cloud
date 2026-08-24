@@ -4,7 +4,8 @@ pub mod infrastructure;
 
 pub use application::{
     AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult, BuildPlanDetectionService,
-    BuildPlanSourceRevisionEvidence, IBuildPlanSourceRevisionPort,
+    BuildPlanSourceRevisionEvidence, CompiledScheduledTaskProfile, CompiledServiceProfile,
+    CompiledWorkloadProfile, IBuildPlanSourceRevisionPort, WorkloadProfileCompilationService,
 };
 pub use domain::*;
 pub use infrastructure::{

@@ -5,6 +5,7 @@ mod detection;
 mod events;
 mod repository;
 pub(crate) mod source_layout;
+mod workload_profile;
 
 pub use accepted_build_plan::AcceptedBuildPlan;
 pub use accepted_build_plan_contract::{
@@ -28,6 +29,15 @@ pub use source_layout::{
     MAX_SOURCE_LAYOUT_CONTENT_BYTES, MAX_SOURCE_LAYOUT_ENTRIES,
     MAX_SOURCE_LAYOUT_INSPECTED_FILE_BYTES,
 };
+pub use workload_profile::{
+    ScheduledTaskCatchUpPolicy, ScheduledTaskHistoryPolicy, ScheduledTaskRetryPolicy,
+    ScheduledTaskSchedule, WorkloadProfileContract, WorkloadProfileContractSpec,
+    WorkloadProfileKind, WorkloadProfileResources, WorkloadProfileSpec,
+    WORKLOAD_PROFILE_MAX_ACL_BYTES, WORKLOAD_PROFILE_SCHEMA,
+};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod workload_profile_tests;
