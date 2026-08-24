@@ -156,8 +156,8 @@ use crate::modules::identity::{
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 use crate::modules::integration_events::{
-    A3sEventPublisher, EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay,
-    OutboxRelayConfig,
+    A3sEventPublisher, EventPublishError, IEventPublisher, IIntegrationEventProjector,
+    IOutboxRepository, OutboxRelay, OutboxRelayConfig,
 };
 use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
@@ -1247,17 +1247,21 @@ async fn build_api_worker_application(
     let outbox_relay = if run_relay {
         Some(build_outbox_relay(
             &config,
-            postgres_adapters.outbox(),
-            event_publisher.clone().ok_or_else(|| {
-                ControlPlaneStartupError::Framework(BootError::Internal(
-                    "relay process is missing its event publisher".into(),
-                ))
-            })?,
-            Arc::clone(&notifications),
-            Arc::clone(&assets),
-            Arc::clone(&memberships),
-            Arc::clone(&alert_policies),
-            Arc::clone(&resource_grants),
+            OutboxRelayDependencies {
+                outbox: postgres_adapters.outbox(),
+                events: event_publisher.clone().ok_or_else(|| {
+                    ControlPlaneStartupError::Framework(BootError::Internal(
+                        "relay process is missing its event publisher".into(),
+                    ))
+                })?,
+                projectors: build_outbox_projectors(
+                    Arc::clone(&notifications),
+                    Arc::clone(&assets),
+                    Arc::clone(&memberships),
+                    Arc::clone(&alert_policies),
+                    Arc::clone(&resource_grants),
+                ),
+            },
         )?)
     } else {
         None
@@ -1671,13 +1675,17 @@ async fn build_relay_application(
     } = PostgresAdapterFactory::new(executor.clone()).relay();
     let outbox_relay = build_outbox_relay(
         &config,
-        outbox,
-        event_publisher.clone(),
-        notifications,
-        assets,
-        memberships,
-        alert_policies,
-        resource_grants,
+        OutboxRelayDependencies {
+            outbox,
+            events: event_publisher.clone(),
+            projectors: build_outbox_projectors(
+                notifications,
+                assets,
+                memberships,
+                alert_policies,
+                resource_grants,
+            ),
+        },
     )?;
     let readiness = relay_readiness(executor, event_publisher);
     let application = build_process_status_application(&config, readiness)?;
@@ -1687,19 +1695,19 @@ async fn build_relay_application(
     ))
 }
 
-fn build_outbox_relay(
-    config: &CloudConfig,
+struct OutboxRelayDependencies {
     outbox: Arc<dyn IOutboxRepository>,
     events: Arc<dyn IEventPublisher>,
-    notifications: Arc<dyn INotificationRepository>,
-    assets: Arc<dyn IAssetRepository>,
-    memberships: Arc<dyn IMembershipRepository>,
-    alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
-    resource_grants: Arc<dyn IResourceGrantRepository>,
+    projectors: Vec<Arc<dyn IIntegrationEventProjector>>,
+}
+
+fn build_outbox_relay(
+    config: &CloudConfig,
+    dependencies: OutboxRelayDependencies,
 ) -> std::result::Result<OutboxRelay, ControlPlaneStartupError> {
     let relay = OutboxRelay::new(
-        outbox,
-        events,
+        dependencies.outbox,
+        dependencies.events,
         OutboxRelayConfig {
             batch_size: config.events.batch_size,
             poll_interval: Duration::from_millis(config.events.poll_interval_ms),
@@ -1709,13 +1717,27 @@ fn build_outbox_relay(
             maximum_backoff: Duration::from_millis(config.events.retry_max_ms),
         },
     )
-    .map_err(ControlPlaneStartupError::Outbox)?
-    .with_projector(Arc::new(
-        OutboxNotificationProjector::new(notifications, memberships)
-            .with_alert_policies(alert_policies, resource_grants),
-    ))
-    .with_projector(Arc::new(HostedBuildOutcomeProjector::new(assets)));
-    Ok(relay)
+    .map_err(ControlPlaneStartupError::Outbox)?;
+    Ok(dependencies
+        .projectors
+        .into_iter()
+        .fold(relay, OutboxRelay::with_projector))
+}
+
+fn build_outbox_projectors(
+    notifications: Arc<dyn INotificationRepository>,
+    assets: Arc<dyn IAssetRepository>,
+    memberships: Arc<dyn IMembershipRepository>,
+    alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
+    resource_grants: Arc<dyn IResourceGrantRepository>,
+) -> Vec<Arc<dyn IIntegrationEventProjector>> {
+    vec![
+        Arc::new(
+            OutboxNotificationProjector::new(notifications, memberships)
+                .with_alert_policies(alert_policies, resource_grants),
+        ),
+        Arc::new(HostedBuildOutcomeProjector::new(assets)),
+    ]
 }
 
 struct ManagementSurfaceDependencies {
