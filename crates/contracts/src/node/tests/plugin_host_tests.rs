@@ -4,15 +4,15 @@ use crate::{
     NodePluginHostCapabilitiesRequest,
 };
 use a3s_use_core::{
-    PluginDesiredState, PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
-    PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult,
+    PlanScopeKind, PluginDesiredState, PluginHostApplyRequest, PluginHostApplyResult,
+    PluginHostCapabilities, PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult,
     PluginHostEnablementPlanStatus, PluginHostObservationRequest, PluginHostObservationResult,
     PluginHostObservationStatus, PluginHostPackageState, PluginHostPlanRequest, PluginManagedScope,
     PluginObservedState, PluginOperationAction, PluginPackageId, PluginSurfaceKind,
     PluginSurfaceRef, PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_APPLY_RESULT_SCHEMA,
     PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA,
     PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_OBSERVATION_RESULT_SCHEMA,
-    PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_MANAGED_SCOPE_SCHEMA,
+    PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_MANAGED_SCOPE_SCHEMA_V2,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -21,10 +21,10 @@ const DIGEST_B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const DIGEST_C: &str = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const DIGEST_D: &str = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 const HOST_CAPABILITIES_DIGEST: &str =
-    "sha256:0896cbd13d4a563edda6fd5a8f53f94a66d0b6002d8629cdf83e573ed4acebdb";
+    "sha256:5d0b242024397727a858cc66c319396271388bb89ac36352ae5354335072f1bb";
 
 fn plugin_capabilities() -> PluginHostCapabilities {
-    PluginHostCapabilities::v4("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
+    PluginHostCapabilities::v6("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
         .expect("Plugin Host capabilities")
 }
 
@@ -36,8 +36,9 @@ fn capabilities_digest() -> String {
 
 fn managed_scope() -> PluginManagedScope {
     PluginManagedScope {
-        schema: PLUGIN_MANAGED_SCOPE_SCHEMA.into(),
+        schema: PLUGIN_MANAGED_SCOPE_SCHEMA_V2.into(),
         host_id: "host:node-01".into(),
+        scope_kind: PlanScopeKind::Workspace,
         scope_id: "workspace:research".into(),
         authority_id: "cloud:organization-01".into(),
         fence_generation: 7,
@@ -107,7 +108,7 @@ fn installed_state(package_generation: u64) -> PluginHostPackageState {
 
 #[test]
 fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
-    plugin_capabilities().validate().expect("v4 capabilities");
+    plugin_capabilities().validate().expect("v6 capabilities");
     assert_eq!(capabilities_digest(), HOST_CAPABILITIES_DIGEST);
 
     let capability_request =

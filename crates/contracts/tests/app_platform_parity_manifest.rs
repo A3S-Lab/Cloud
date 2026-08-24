@@ -301,4 +301,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
     ));
     assert!(MANIFEST
         .contains("implementation:migrations/145_workflow_transform_failure_step_projections.sql"));
+    assert!(MANIFEST
+        .contains("doc:docs/decisions/app-platform/0051-workflow-local-variable-aggregation.md"));
+    assert!(MANIFEST.contains("contract:contracts/w0.3/variable-aggregate.acl"));
 }
