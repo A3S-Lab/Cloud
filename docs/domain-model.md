@@ -1211,6 +1211,15 @@ retention, and reference lifecycle. Both use typed adapters over the same
 immutable-object infrastructure; neither treats Search/vector data or object
 provider state as business truth.
 
+The current Files foundation implements one `UserFile` aggregate whose
+`upload_id` and expiry form the bounded upload session; it does not create a
+second upload aggregate. Domain accepts only a matching
+`UserFileObjectWrite` durable receipt. The consumer-owned
+`IUserFileObjectStore`, async byte stream, and storage error vocabulary live in
+Files Application, while Infrastructure adapts the deployment's single
+immutable-object client. Provider keys, buckets, streams, and storage failures
+do not enter the aggregate.
+
 Primary aggregates and immutable records:
 
 - `KnowledgeBase` and `KnowledgeBaseRevision`
@@ -1218,7 +1227,9 @@ Primary aggregates and immutable records:
 - `KnowledgeTag` and immutable metadata-schema revisions
 - `IndexRevision` and `RetrievalPolicyRevision`
 - `ExternalKnowledgeBinding`, `KnowledgePipeline`, and `KnowledgePipelineRelease`
-- `UserFile` and `FileUploadSession`
+- implemented `UserFile`; a separately durable `FileUploadSession` remains a
+  target only if later multipart/quota semantics require an independent
+  consistency boundary
 
 `Automations` owns schedule, webhook, plugin-event, and source-event definitions
 that create new exact-target invocations. It owns deduplication, filtering,
@@ -2104,6 +2115,16 @@ exact fetch/alarm/WebSocket handlers, conditional create/overwrite plus
 read-after-write storage, distinct public/internal Runtime ports, and bounded
 Cell names and traffic. Construction and restoration use `a3s-acl` and bind a
 canonical digest.
+
+The target a3s-runtime contract generalizes the provider-neutral subset as a
+composable `NamedStatefulService` capability profile on an ordinary Runtime
+`Service`. It can version per-key serial turns, activation/idle eviction,
+alarms, hibernatable connections, durable acknowledgement, and fencing
+evidence. It is not a third Runtime Unit kind and owns no Cell aggregate,
+SQLite layout, alarm queue, epoch, retention, or route policy. The currently
+pinned a3s-runtime `0.2` does not yet implement this profile, so Cloud's exact
+provider admission remains the current boundary and upstream conformance is an
+open gate.
 
 The implemented `cloud.durable-cell.application.v1` ACL binds an existing
 `BuildRun`, bounded bundle digest and main ESM module, compatibility date and

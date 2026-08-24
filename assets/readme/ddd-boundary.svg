@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud DDD module and interface boundary</title>
+  <desc id="desc">Presentation depends on application, application depends on domain, and infrastructure implements inward-owned ports. Other contexts collaborate only through an owning application port or a committed integration event.</desc>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#67b7ff"/></marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#b7f56a"/></marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#8fa298"/></marker>
+  </defs>
+
+  <rect width="1200" height="600" rx="24" fill="#0a0f0c"/>
+  <rect x="1" y="1" width="1198" height="598" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
+  <text x="48" y="54" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="34" font-weight="760">Dependencies point inward; side effects stay behind ports.</text>
+  <text x="48" y="84" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">ONE BOUNDED CONTEXT / FOUR LAYERS / TWO LEGAL CROSS-CONTEXT RELATIONS</text>
+
+  <!-- Inputs -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="48" y="146" width="202" height="90" rx="12" fill="#0d1720" stroke="#3e6e8d"/>
+    <text x="66" y="177" fill="#67b7ff" font-size="18" font-weight="700">INBOUND ADAPTERS</text>
+    <text x="66" y="207" fill="#eff7f1" font-size="20" font-weight="700">REST · CLI · MCP</text>
+    <rect x="48" y="266" width="202" height="90" rx="12" fill="#101812" stroke="#53665b"/>
+    <text x="66" y="297" fill="#9eb0a6" font-size="18" font-weight="700">DURABLE INPUTS</text>
+    <text x="66" y="327" fill="#eff7f1" font-size="20" font-weight="700">Flow · A3S Event</text>
+  </g>
+
+  <!-- Context boundary -->
+  <rect x="292" y="116" width="620" height="412" rx="18" fill="#0e1712" stroke="#719b46" stroke-width="2"/>
+  <rect x="312" y="130" width="208" height="27" rx="6" fill="#0a0f0c"/>
+  <text x="326" y="149" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">BOUNDED CONTEXT</text>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="332" y="176" width="540" height="70" rx="10" fill="#101812" stroke="#3e6e8d"/>
+    <text x="354" y="204" fill="#eff7f1" font-size="22" font-weight="700">Presentation</text>
+    <text x="354" y="231" fill="#9fb2a8" font-size="18">authenticate · map DTO · dispatch command/query</text>
+
+    <rect x="332" y="270" width="540" height="82" rx="10" fill="#101812" stroke="#719b46"/>
+    <text x="354" y="300" fill="#eff7f1" font-size="22" font-weight="700">Application</text>
+    <text x="354" y="327" fill="#b1c2b8" font-size="18">use case · authorization · transaction · owner port</text>
+
+    <rect x="332" y="376" width="260" height="118" rx="10" fill="#172118" stroke="#b7f56a" stroke-width="2"/>
+    <text x="354" y="407" fill="#eff7f1" font-size="22" font-weight="700">Domain</text>
+    <text x="354" y="435" fill="#d7ff9f" font-size="18">aggregate · invariant</text>
+    <text x="354" y="463" fill="#d7ff9f" font-size="18">value · event · repository port</text>
+
+    <rect x="612" y="376" width="260" height="118" rx="10" fill="#101812" stroke="#806f39"/>
+    <text x="634" y="407" fill="#eff7f1" font-size="22" font-weight="700">Infrastructure</text>
+    <text x="634" y="435" fill="#c2b995" font-size="18">implements inward ports</text>
+    <text x="634" y="463" fill="#c2b995" font-size="18">ORM · provider · transport</text>
+  </g>
+
+  <!-- Dependency arrows -->
+  <path d="M250 191h82M250 311h52v-70h30" fill="none" stroke="#67b7ff" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <path d="M602 246v24M602 352v24" fill="none" stroke="#b7f56a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M612 435h-20" fill="none" stroke="#b7f56a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+
+  <!-- Providers and other contexts -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="952" y="146" width="200" height="90" rx="12" fill="#101812" stroke="#53665b"/>
+    <text x="970" y="177" fill="#9eb0a6" font-size="18" font-weight="700">OUTBOUND PORT</text>
+    <text x="970" y="207" fill="#eff7f1" font-size="20" font-weight="700">Owner application</text>
+    <rect x="952" y="266" width="200" height="90" rx="12" fill="#101812" stroke="#53665b"/>
+    <text x="970" y="297" fill="#9eb0a6" font-size="18" font-weight="700">PROVIDER</text>
+    <text x="970" y="327" fill="#eff7f1" font-size="20" font-weight="700">ORM · Runtime · S3</text>
+    <rect x="952" y="386" width="200" height="108" rx="12" fill="#17160f" stroke="#806f39"/>
+    <text x="970" y="417" fill="#f2c66d" font-size="18" font-weight="700">INTEGRATION FACT</text>
+    <text x="970" y="447" fill="#eff7f1" font-size="20" font-weight="700">Outbox → Event</text>
+    <text x="970" y="475" fill="#c2b995" font-size="18">after owner commit</text>
+  </g>
+  <path d="M872 311h80M872 435h48v-124h32" fill="none" stroke="#8fa298" stroke-width="2.5" marker-end="url(#arrow-gray)"/>
+  <path d="M872 465h48v-25h32" fill="none" stroke="#f2c66d" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-gray)"/>
+
+  <line x1="48" y1="554" x2="1152" y2="554" stroke="#2d4035"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
+    <text x="48" y="580" fill="#67b7ff">PORT: CONSUMER → OWNER</text>
+    <text x="420" y="580" fill="#f2c66d">FACT: OWNER COMMIT → OUTBOX</text>
+    <text x="1152" y="580" fill="#8fa298" text-anchor="end">FORBIDDEN: DOMAIN → INFRA / FOREIGN TABLE</text>
+  </g>
+</svg>

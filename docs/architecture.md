@@ -223,7 +223,7 @@ failed to carry.
 | Product semantics | Product bounded contexts | Agent execution, Workflow run, hosted MCP release, Durable Cell application, inference deployment, and their immutable revisions | Node placement, process identity, provider journals, or applied routes |
 | Durable coordination | Operations and A3S Flow | Intent-before-work correlation, deterministic workflow identity, timers, retry, cancellation, and replay | Product aggregate truth, provider-local retry rails, or interface state |
 | Cloud execution projection | Executions, Workloads, and Fleet | Finite Execution, desired Service fleet, placement, Claims, versioned node command, and exact receipt | Product-specific schedulers, provider mechanics, or request-path behavior |
-| Provider-neutral unit lifecycle | A3S Runtime | Exactly `Task` and `Service`, immutable generation, apply, inspect, stop, remove, health, endpoints, and capability evidence | Agent, Cell, MCP, model, Workflow, route, retention, or tenant policy |
+| Provider-neutral unit lifecycle | A3S Runtime | Exactly `Task` and `Service` Unit kinds; immutable generation, apply, inspect, stop, remove, health, endpoints, and composable versioned capability profiles | Agent, Cell, MCP, model, Workflow, route, retention, or tenant policy |
 | Local and request-path mechanism | A3S Box, A3S OCI Runtime, selected data providers, and A3S Gateway | Process/isolation/network/storage mechanisms and applied request policy | Cloud desired state, semantic execution history, or another scheduler |
 
 A product type compiles downward to an existing shape and receives only exact,
@@ -243,11 +243,15 @@ hold:
 5. it introduces no business aggregate, placement decision, route policy,
    retention policy, or provider-native desired-state authority.
 
-Outbound networking, pause/resume, checkpoint/restore, and fenced volume
-attachment can pass this test as generic capabilities. Cell ownership, alarm
-delivery, Agent Tool events, MCP discovery, and model routing cannot. Those
-remain with their product or provider owner even when they use Runtime
-mechanisms.
+Outbound networking, pause/resume, checkpoint/restore, fenced volume
+attachment, and a provider-neutral named-stateful-service profile can pass
+this test as generic capabilities. Such a profile may specify per-key serial
+turns, activation and idle eviction, alarms, hibernatable connections, durable
+acknowledgement, and fencing evidence without knowing what a Durable Cell is.
+The selected provider still owns concrete Cell identity resolution, SQLite
+lineage, alarm queues, residency, peer forwarding, and epochs. Agent Tool
+events, MCP discovery, model routing, and all product policy remain with their
+product or provider owner.
 
 The Runtime Unit granularity is one provider process or replica generation,
 never one logical product entity. One Cell provider replica may host many
@@ -255,6 +259,12 @@ named Cells; one Harness Service may execute many admitted Agent commands.
 Creating one Runtime Unit per Cell, conversation, Workflow step, MCP method,
 or model request is prohibited unless that item independently satisfies the
 existing finite-Task contract rather than gaining a product-specific class.
+
+`NamedStatefulService` is therefore a target composable capability profile on
+an ordinary Runtime `Service`, never a third Runtime Unit kind. The currently
+pinned a3s-runtime `0.2` contract exposes Task and Service but not this profile;
+Cloud must not claim provider-neutral conformance until the profile, receipts,
+and provider tests exist upstream.
 
 ## 4. Single-authority map
 
@@ -573,18 +583,38 @@ presentation -> application -> domain
 ```
 
 - Domain code owns aggregates, value objects, repository ports, service ports,
-  events, and invariants. It has no framework, SQL, HTTP, Flow, Runtime, or
-  provider imports.
+  events, and invariants. It has no framework, SQL, HTTP transport, Flow
+  engine, Runtime implementation, or provider imports. A pure versioned
+  published contract may enter only at an explicitly named translation
+  boundary; product domains otherwise translate it into local value objects.
 - Application code owns commands, queries, policies, use-case transactions,
   and port orchestration.
 - Infrastructure code implements repositories and external adapters.
 - Presentation code maps authenticated inputs to command/query buses and maps
   results to the common API envelope.
 
-Cross-context mutation occurs through an owning application port or a durable
-integration fact. One context never writes another context's tables.
+Cross-context mutation occurs through a consumer-owned port implemented by the
+owning context's public application contract, or through a durable integration
+fact after the owner's commit. One context never imports another context's
+repository, infrastructure adapter, presentation DTO, or table mapping.
+Concrete adapter wiring exists only in the crate composition root.
 `shared_kernel` contains genuinely stable cross-context types and mechanisms,
 not business ownership or convenience wrappers.
+
+| Relation | Legal dependency | Illegal shortcut |
+| --- | --- | --- |
+| Inbound request | Presentation -> Application | Controller -> repository/provider |
+| Use case | Application -> local Domain and consumer-owned ports | Application -> foreign aggregate/repository |
+| Side effect | Infrastructure implements an inward-owned port | Domain -> ORM/HTTP/Runtime/provider |
+| Synchronous collaboration | Consumer port -> owner public application contract | Foreign infrastructure/helper/table |
+| Asynchronous collaboration | Owner commit -> Outbox -> versioned fact | Publish-before-commit or shared mutable row |
+| Pure shared language | Explicit versioned contract at a named boundary | Re-exporting an owner's internal domain model |
+
+Each bounded context exposes a narrow facade containing deliberate contracts
+and application entry points. `infrastructure` and `presentation` are
+crate-private implementation details. Existing public outer-layer modules and
+foreign outer-layer imports are migration debt frozen by architecture fitness
+tests; the allowlists may shrink but must not grow.
 
 ### 6.2 Bounded contexts
 
@@ -609,7 +639,7 @@ not business ownership or convenience wrappers.
 | Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor, typed-variable, composite-region, and per-step provider-retry semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, exact Connector capability ownership, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, digest-bound variable defaults, bounded composite policy/child bindings, deterministic composite frame/export and ordered region reducers, Flow-backed sequential Iteration/Loop child WorkflowRun dispatch/linkage/cancellation/recovery, Plan v3/Run v4 descriptor-bound typed finite-Execution failure routing, Plan v4/Run v7 exact finite-Execution default-output fallback with typed projection evidence, Plan v5/Run v9 descriptor-bound typed Connector failure routing, Plan v6/Run v14 descriptor-bound typed Application-variable failure routing, Plan v7/Run v15 descriptor-bound typed Application-Answer failure routing, Plan v8/Run v16 Transform, Plan v9/Run v17 Output, and Plan v10/Run v18 Branch failure routing, initial typed-variable Flow projection, Flow-derived authorized variable inspection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, finite `execution`, the Connectors-owned exact-attempt port, immutable policy v2 retry budgets, Run v5 Connector observation/wait/retry interpretation, Run v6 immutable response-object references, the Connectors-owned terminal-evidence read boundary, Run v8 strict schema-bound JSON response consumption, and bounded finite-Execution/Connector/HumanDecision/Subworkflow evidence correlations are implemented. APP0.2-C7 supplies the Applications-owned variable/Answer/final-output/terminal consumer port; C9 adds Run v10 final-output/terminal reconciliation with exact replay; C10 adds descriptor-bound Answer dispatch through Run v11; C11 adds two-phase Application-variable snapshot/CAS dispatch and inspection through Run v12; C13 adds Run v13 root/child frame authority, stable repeated-Answer ordinals, and child lifecycle suppression; C14 adds redacted deterministic Application-variable failures through v14; C15 adds redacted deterministic root/frame Answer failures through v15 and migration `143`. Business-service and remaining Agent/MCP/model/Tool ports, compensation, full provider conformance, and public availability remain |
 | Applications | Application identities, immutable releases, six authoring/delivery projections including classic/New Agent distinction, sessions, messages/variants, conversation variables, toolkit/feedback/annotation/publication policy, and managed application delivery | `APP0.1` implements strong identities, canonical immutable release ACL, exact Workflow revision/digest evidence, release/head invariants, migration `124` PostgreSQL/A3S ORM persistence, authorization before replay, and REST/OpenAPI `1.42.0` plus maintained client, CLI, and six Management MCP tools over the same CQRS/repository. `APP0.2-C1` through `C15` add and persist Application-scoped end users, exact-release sessions, invocation correlation, ordered input/Answer/final-output messages, optimistic immutable conversation variables, stable exactly-once Workflow semantic effects, and immutable invocation execution authority through migrations `125`-`127`, and compile exact Model/Agent preset wrappers through Workflow's shared canonical publication port. Internal commands use stored authority to create, adopt, or cancel deterministic ordinary Workflow Goals, Plans, and Runs through the existing Workflow compilers, repositories, and state machine. Project authorization precedes exact session/invocation/cancellation and bounded cursor replay; C8 exposes the Principal-owned open/read/request subset through REST/OpenAPI `1.43.0`, and C12 exposes close/cancel/complete replay through `1.44.0`, the maintained client, CLI, and eight total `application:write` delivery tools. The internal Workflow consumer port resolves all Application scope from the bound Run and recovers exact Answer/final-output/variable/terminal effects without caller-owned session versions; v10 reconciles aggregate final output before terminal state, v11 dispatches exact Answer ports, and v12 snapshots and dispatches exact Application-variable ports before CAS assignment and reconstructs their latest values from Flow history. C13 carries immutable root/path/frame authority through v13 so repeated composite child Answers use stable zero-based ordinals without child lifecycle effects; C14 maps only deterministic terminal Application-variable write rejections to redacted v14 failure branches; C15 maps deterministic root/frame Answer write rejections to redacted v15 failure branches while transient owner errors remain unresolved. Migration `143` admits only failed Output selected-handle evidence. Graph, provider, Secret, application credential, answer stream, grant, and Gateway state remain with their owners or later gates; public delivery and later APP0 gates remain unavailable |
 | Knowledge | Knowledge Bases, documents, General/Parent-child/Q&A and multimodal chunks, metadata, ingestion intent, index/retrieval policy, citations, external Knowledge bindings, and immutable KnowledgePipelineRelease-to-Workflow bindings | Planned `K0`; pipeline execution reuses `W0` and Flow, while Search/vector indexes remain rebuildable projections |
-| Files | User upload sessions, metadata, scan/quota/retention state, and typed immutable-object references | Planned `K0.1`; bytes reuse the shared immutable-object client and are not Build Artifacts |
+| Files | User upload sessions, metadata, scan/quota/retention state, and typed immutable-object references | Component `K0.1-C1` foundation implemented. Domain owns the aggregate, ACL, and exact durable-write receipt; Application owns the byte-stream/object-store port; Infrastructure adapts the shared immutable-object client. Persistence, use cases, quota transactions, and interfaces remain unavailable; bytes are not Build Artifacts |
 | Automations | Schedule, webhook, plugin-event, and source-event definitions that create exact-release invocations with deduplication, filtering, concurrency, and misfire policy | Planned `AUT0`; Flow timers remain scoped to existing runs and P0 scheduled Task profiles adapt to this one invocation-schedule authority |
 | Connectors | Reusable outbound HTTP/business connection profiles, immutable revisions, exact Secret-version bindings/materialization, egress policy, bounded request/response contracts, one provider-neutral execution port, durable exact-attempt fencing/recovery, immutable terminal execution evidence, one Workflow exact-attempt adapter, an immutable per-step retry budget, and typed immutable response objects | Component-only `AUT0.5-C1` execution plus verified `C2`-`C6` foundations are implemented; `C7` exposes the same profile/revision CQRS through REST/OpenAPI `1.36.0`, the maintained client, CLI, and six Management MCP tools. `C8` binds exact WorkflowRun/plan/step-attempt and Connector profile/revision/digest authority to the same C6 execution/evidence path; `C9` freezes its attempt budget and fallback delay; `C10` writes an accepted bounded response through the sole shared immutable-object authority before terminal evidence and exposes only its exact reference, digest, and length to WorkflowRun v6; `C11` authorizes exact transient reads only after matching accepted terminal evidence and revalidating the object. WorkflowRun v8 consumes that port through a no-retry Flow step and persists only strict schema-validated bounded JSON as ordinary typed node output. Plan v5/Run v9 routes closed provider and response-validation failures through the exact descriptor edge as bounded v2 values while preserving the failed source projection; v8 remains fail closed without a route, v7 retains default-output semantics, v6 remains reference-only, and v5 remains digest-only. `C0.3-N2b` composes the first NATS A3S Event consumer with C6, while `N2c`-`N2e` retain Notification delivery decisions. General provider wiring, revocation/recovery operations, retained integration evidence, and product availability remain planned; callers never create direct HTTP or object-storage clients |
 | Evolution | Authorized evidence-dataset manifests, evaluation suites, experiments, candidate revisions, promotion decisions, and rollback evidence | Planned `EV0` |
@@ -1645,6 +1675,17 @@ distinct internal endpoint is restricted to provider peers and the Node
 Agent's typed operator adapter. Runtime does not gain a Cell unit class, Fleet
 does not gain a Cell scheduler, and Gateway does not gain owner lookup or
 stickiness.
+
+The target a3s-runtime boundary adds a composable
+`NamedStatefulService` capability profile to that ordinary Service. It defines
+provider-neutral requirements and conformance for per-key serial turns,
+activation and idle eviction, alarms, hibernatable connections, durable
+acknowledgement, and fencing evidence. It does not define a Cloud application,
+Cell aggregate, storage layout, placement policy, route, retention policy, or
+provider control protocol. Until the upstream profile and conformance suite
+exist, Durable Cells continues to pin these requirements in Cloud/provider
+admission and must describe the Runtime abstraction as planned rather than
+implemented.
 
 The Runtime Unit is the Cell provider replica, not an individual named Cell.
 The governed Agent Runtime projection is a sibling consumer of the same

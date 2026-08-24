@@ -92,11 +92,16 @@ Cell is never a Runtime Unit: its SQLite lineage, ownership epoch, alarm,
 WebSocket residency, activation, and eviction remain inside the selected
 provider and S0 namespace.
 
-No `Cell`, `DurableObject`, or `AgentRuntime` class is added to A3S Runtime.
-Only provider-neutral mechanisms that satisfy the technical architecture's
-promotion test may move down, such as generic outbound networking,
-pause/resume, checkpoint/restore, or fenced volume attachment. Product policy
-and provider protocol remain above or behind that boundary.
+No `Cell`, `DurableObject`, or `AgentRuntime` Unit class is added to A3S
+Runtime. The target Runtime abstraction is a composable
+`NamedStatefulService` capability profile on an ordinary `Service`. It may
+version and prove provider-neutral per-key serial turns, activation/idle
+eviction, alarms, hibernatable connections, durable acknowledgement, and
+fencing evidence. Product identity, provider storage layout, concrete alarm
+queue, ownership epoch, peer protocol, retention, and route policy remain
+above or behind that boundary. The currently pinned a3s-runtime `0.2` does not
+yet implement this profile, so the plan treats it as an upstream gate rather
+than delivered behavior.
 
 The Node Agent's typed Cell operator adapter is permitted only as bounded,
 read-only adoption evidence for an exact healthy Runtime Service generation.

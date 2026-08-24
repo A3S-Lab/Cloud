@@ -1,9 +1,11 @@
 use crate::infrastructure::{
     ImmutableObjectClient, ImmutableObjectError, ImmutableObjectVerification,
 };
+use crate::modules::files::application::{
+    IUserFileObjectStore, UserFileObjectError, UserFileObjectReader,
+};
 use crate::modules::files::domain::{
-    IUserFileObjectStore, UserFileContentReference, UserFileObjectError, UserFileObjectReader,
-    UserFileObjectWrite, USER_FILE_MAX_BYTES,
+    UserFileContentReference, UserFileObjectWrite, USER_FILE_MAX_BYTES,
 };
 use async_trait::async_trait;
 use std::path::PathBuf;

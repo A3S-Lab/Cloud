@@ -28,3 +28,6 @@ pub mod workflow;
 pub mod workloads;
 
 pub use platform::PlatformModule;
+
+#[cfg(test)]
+mod architecture_tests;

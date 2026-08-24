@@ -1,35 +1,14 @@
-use super::UserFileContentReference;
+use crate::modules::files::domain::{UserFileContentReference, UserFileObjectWrite};
 use async_trait::async_trait;
 use std::pin::Pin;
 use tokio::io::AsyncRead;
 
+/// Application-boundary byte stream accepted by the Files storage port.
+///
+/// The UserFile domain reasons only about immutable content references and a
+/// matching durable-write receipt. Streaming and async-runtime mechanics stay
+/// outside the aggregate boundary.
 pub type UserFileObjectReader = Pin<Box<dyn AsyncRead + Send + Unpin + 'static>>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserFileObjectWrite {
-    reference: UserFileContentReference,
-    replayed: bool,
-}
-
-impl UserFileObjectWrite {
-    pub(in crate::modules::files) fn stored(
-        reference: UserFileContentReference,
-        replayed: bool,
-    ) -> Self {
-        Self {
-            reference,
-            replayed,
-        }
-    }
-
-    pub const fn reference(&self) -> &UserFileContentReference {
-        &self.reference
-    }
-
-    pub const fn replayed(&self) -> bool {
-        self.replayed
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UserFileObjectError {
@@ -45,6 +24,10 @@ pub enum UserFileObjectError {
     Unavailable(String),
 }
 
+/// Consumer-owned port for persisting and verifying exact UserFile bytes.
+///
+/// Implementations adapt the deployment's single immutable-object authority;
+/// this interface does not make Files an object-provider owner.
 #[async_trait]
 pub trait IUserFileObjectStore: Send + Sync {
     async fn put(

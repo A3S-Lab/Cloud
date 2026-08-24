@@ -1,0 +1,232 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1040" viewBox="0 0 1200 1040" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud bounded-context ownership map</title>
+  <desc id="desc">A detailed map of current and target A3S Cloud bounded contexts grouped into governance, supply, product semantics, coordination and execution, and read projections. Dashed green boxes are target contexts. Durable Cells owns named stateful-service intent, while Data and S0 own general stateful storage.</desc>
+
+  <rect width="1200" height="1040" rx="24" fill="#0a0f0c"/>
+  <rect x="1" y="1" width="1198" height="1038" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
+
+  <text x="48" y="54" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="34" font-weight="760">Bounded contexts own decisions, not layers of a shared model.</text>
+  <text x="48" y="86" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">EACH BOX OWNS ITS AGGREGATES; COLLABORATION CROSSES TYPED PORTS OR COMMITTED FACTS</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="1.2">
+    <text x="48" y="139" fill="#67b7ff">GOVERNANCE</text>
+    <line x1="48" y1="151" x2="174" y2="151" stroke="#3e6e8d" stroke-width="2"/>
+    <text x="48" y="257" fill="#67b7ff">SUPPLY</text>
+    <line x1="48" y1="269" x2="174" y2="269" stroke="#3e6e8d" stroke-width="2"/>
+    <text x="48" y="375" fill="#b7f56a">PRODUCT</text>
+    <text x="48" y="397" fill="#b7f56a">SEMANTICS</text>
+    <line x1="48" y1="409" x2="174" y2="409" stroke="#719b46" stroke-width="2"/>
+    <text x="48" y="671" fill="#f2c66d">COORDINATION</text>
+    <text x="48" y="693" fill="#f2c66d">+ EXECUTION</text>
+    <line x1="48" y1="705" x2="174" y2="705" stroke="#806f39" stroke-width="2"/>
+    <text x="48" y="875" fill="#9eb0a6">FACTS + READS</text>
+    <line x1="48" y1="887" x2="174" y2="887" stroke="#53665b" stroke-width="2"/>
+  </g>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <!-- Governance -->
+    <g transform="translate(202 112)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Identity</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">principals · grants · contacts</text>
+    </g>
+    <g transform="translate(440 112)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Projects</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">projects · environments</text>
+    </g>
+    <g transform="translate(678 112)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Secrets</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">versions · materialization</text>
+    </g>
+
+    <!-- Supply -->
+    <g transform="translate(202 230)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Sources</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">connections · revisions</text>
+    </g>
+    <g transform="translate(440 230)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="20" font-weight="700">Developer Workflows</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">plans · profiles · previews</text>
+    </g>
+    <g transform="translate(678 230)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Assets</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">Agent · MCP · Skill releases</text>
+    </g>
+    <g transform="translate(916 230)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#67b7ff"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Artifacts</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">builds · bytes · provenance</text>
+    </g>
+
+    <!-- Product semantics row one -->
+    <g transform="translate(202 348)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Applications</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">releases · sessions · effects</text>
+    </g>
+    <g transform="translate(440 348)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Workflow</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">ontology · plans · runs</text>
+    </g>
+    <g transform="translate(678 348)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Agents</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">conversations · executions</text>
+    </g>
+    <g transform="translate(916 348)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Connectors</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">profiles · attempts · evidence</text>
+    </g>
+
+    <!-- Product semantics row two -->
+    <g transform="translate(202 442)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <circle cx="18" cy="19" r="5" fill="#0a0f0c" stroke="#b7f56a" stroke-width="2"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Automations</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">target · triggers · receipts</text>
+    </g>
+    <g transform="translate(440 442)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Plugins</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">registry · assignments</text>
+    </g>
+    <g transform="translate(678 442)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Files</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">uploads · object refs</text>
+    </g>
+    <g transform="translate(916 442)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Durable Cells</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">named stateful-service intent</text>
+    </g>
+
+    <!-- Product semantics row three -->
+    <g transform="translate(202 536)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <circle cx="18" cy="19" r="5" fill="#0a0f0c" stroke="#b7f56a" stroke-width="2"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Inference</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">target · models · routes</text>
+    </g>
+    <g transform="translate(440 536)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#b7f56a"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Forms</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">releases · submissions</text>
+    </g>
+    <g transform="translate(678 536)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#719b46" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <circle cx="18" cy="19" r="5" fill="#0a0f0c" stroke="#b7f56a" stroke-width="2"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Evolution</text>
+      <text x="18" y="57" fill="#b1c2b8" font-size="18">target · evidence · policy</text>
+    </g>
+
+    <!-- Coordination and execution -->
+    <g transform="translate(202 654)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="20" font-weight="700">Operations / Flow</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">durable work · replay</text>
+    </g>
+    <g transform="translate(440 654)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Executions</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">finite Task intent</text>
+    </g>
+    <g transform="translate(678 654)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Workloads</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">Service · rollout · claims</text>
+    </g>
+    <g transform="translate(916 654)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Fleet</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">nodes · commands · fencing</text>
+    </g>
+    <g transform="translate(202 748)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Data / S0</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">storage · backup · fencing</text>
+    </g>
+    <g transform="translate(440 748)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#806f39" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#f2c66d"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Edge</text>
+      <text x="18" y="57" fill="#c2b995" font-size="18">routes · TLS · snapshots</text>
+    </g>
+    <g transform="translate(678 748)">
+      <rect width="222" height="78" rx="11" fill="#0d1720" stroke="#3e6e8d" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <text x="18" y="28" fill="#67b7ff" font-size="20" font-weight="700">a3s-runtime / Box</text>
+      <text x="18" y="57" fill="#9fb7c8" font-size="18">Task · Service · profiles</text>
+    </g>
+    <g transform="translate(916 748)">
+      <rect width="222" height="78" rx="11" fill="#0d1720" stroke="#3e6e8d" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <text x="18" y="28" fill="#67b7ff" font-size="20" font-weight="700">A3S Gateway</text>
+      <text x="18" y="57" fill="#9fb7c8" font-size="18">applied request state</text>
+    </g>
+
+    <!-- Facts and reads -->
+    <g transform="translate(202 852)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#53665b" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#9eb0a6"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="20" font-weight="700">Integration Events</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">Outbox · publication</text>
+    </g>
+    <g transform="translate(440 852)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#53665b" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#9eb0a6"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Notifications</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">inbox · delivery evidence</text>
+    </g>
+    <g transform="translate(678 852)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#53665b" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#9eb0a6"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="21" font-weight="700">Search</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">rebuildable projections</text>
+    </g>
+    <g transform="translate(916 852)">
+      <rect width="222" height="78" rx="11" fill="#101812" stroke="#53665b" stroke-width="1.5"/>
+      <circle cx="18" cy="19" r="5" fill="#9eb0a6"/>
+      <text x="32" y="28" fill="#eff7f1" font-size="20" font-weight="700">Audit / Security</text>
+      <text x="18" y="57" fill="#9fb2a8" font-size="18">append facts · investigate</text>
+    </g>
+  </g>
+
+  <line x1="48" y1="972" x2="1152" y2="972" stroke="#2d4035"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
+    <circle cx="62" cy="1003" r="5" fill="#b7f56a"/>
+    <text x="77" y="1009" fill="#b7f56a">DOMAIN</text>
+    <circle cx="248" cy="1003" r="5" fill="#0a0f0c" stroke="#b7f56a" stroke-width="2"/>
+    <text x="263" y="1009" fill="#b7f56a">TARGET / DASHED</text>
+    <circle cx="493" cy="1003" r="5" fill="#67b7ff"/>
+    <text x="508" y="1009" fill="#67b7ff">EXTERNAL</text>
+    <circle cx="684" cy="1003" r="5" fill="#9eb0a6"/>
+    <text x="699" y="1009" fill="#9eb0a6">PROJECTION / FACT</text>
+    <text x="1152" y="1009" fill="#7f9288" text-anchor="end">NO FOREIGN TABLE WRITES</text>
+  </g>
+</svg>
