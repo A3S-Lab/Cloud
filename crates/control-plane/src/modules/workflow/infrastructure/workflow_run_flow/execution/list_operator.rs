@@ -133,9 +133,10 @@ fn validate_operand(
     ) && condition.value_type == WorkflowDataType::String
     {
         if operand.is_string()
-            || operand
-                .as_array()
-                .is_some_and(|items| items.iter().all(Value::is_string))
+            || (condition.allows_string_sequence_operand()
+                && operand
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(Value::is_string)))
         {
             return Ok(());
         }
@@ -735,7 +736,7 @@ mod tests {
         assert_eq!(
             run(
                 WorkflowListOperatorFilterOperator::In,
-                Some(json!(["alpha", "beta"])),
+                Some(json!("alphabet")),
                 json!(["alpha", "gamma"]),
             ),
             json!(["alpha"])
@@ -743,7 +744,7 @@ mod tests {
         assert_eq!(
             run(
                 WorkflowListOperatorFilterOperator::NotIn,
-                Some(json!(["alpha", "beta"])),
+                Some(json!("alphabet")),
                 json!(["alpha", "gamma"]),
             ),
             json!(["gamma"])

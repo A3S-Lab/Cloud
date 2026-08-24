@@ -31,8 +31,12 @@ bounded to 10,000. Conditions are unique and use contiguous zero-based
 ordinals. String conditions admit contains, prefix, suffix, equality,
 membership, emptiness, and their closed negative forms. Number conditions
 admit equality and ordered comparisons; boolean conditions admit equality and
-inequality. Operands are either bounded canonical JSON literals or exact typed
-input ports.
+inequality. Object arrays adapt file-compatible records through the closed
+fields `name`, `type`, `extension`, `mime_type`, `transfer_method`, `url`,
+`related_id`, and `size`. The enum-like `type` and `transfer_method` fields
+admit only membership filters, while `size` alone uses numeric comparisons;
+ordering uses the corresponding string or numeric field type. Operands are
+either bounded canonical JSON literals or exact typed input ports.
 
 Publication requires the input data schema, descriptor ports, and direct
 variable reads to cover the source and every dynamic operand or extraction

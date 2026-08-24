@@ -397,11 +397,12 @@ creating their own control planes:
     non-null candidate without another store or scheduler. Run v21 adds the
     exact Workflow-local List Operator over authoritative typed reads. Its
     versioned ACL freezes the array item type, ordered filters, optional
-    one-based extraction, typed ordering, and limit; runtime applies them in
-    that fixed order and returns `result`, optional `first_record`, and optional
-    `last_record`. Constraint-only migration `151` widens only the existing
-    payload-schema registry. The maintained client enumerates Plan v5-v11,
-    failure v2-v8, and both exact local-transform configuration schemas.
+    one-based extraction, typed ordering, and limit, including the closed
+    file-compatible field matrix for object arrays; runtime applies them in
+    that fixed order and returns `result`, optional `first_record`, and
+    optional `last_record`. Constraint-only migration `151` widens only the
+    existing payload-schema registry. The maintained client enumerates Plan
+    v5-v11, failure v2-v8, and both exact local-transform configuration schemas.
     Verified terminal finite Execution projections
     now retain exact child Execution and Operation URNs, while received
     Connector observations retain exact attempt URNs in the existing bounded,

@@ -111,7 +111,11 @@ exact Workflow-owned `workflow.list-operator` descriptor, remains the existing
 `transform` kind, and has no capability or policy binding. It freezes one
 typed array source, at most 64 contiguous zero-based conditions, optional
 one-based extraction, optional typed ordering, and an optional positive limit.
-The source and numeric controls are bounded to 10,000 items.
+The source and numeric controls are bounded to 10,000 items. Object arrays are
+file-compatible records: filters and ordering accept only `name`, `type`,
+`extension`, `mime_type`, `transfer_method`, `url`, `related_id`, and `size`;
+`type` and `transfer_method` admit only membership filters, and `size` is the
+sole numeric field.
 
 Publication requires the input schema, descriptor ports, and direct variable
 reads to cover the source and every dynamic filter or extraction input exactly.

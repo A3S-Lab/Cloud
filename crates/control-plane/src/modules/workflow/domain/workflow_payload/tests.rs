@@ -296,11 +296,68 @@ fn list_operator_configuration_rejects_ambiguous_or_unbounded_operations() {
     assert!(configuration.validate().is_err());
     configuration.conditions[0] = condition();
 
+    configuration.item_type = WorkflowDataType::String;
+    configuration.conditions[0] = WorkflowListOperatorFilterCondition {
+        id: "member".into(),
+        ordinal: 0,
+        key: None,
+        value_type: WorkflowDataType::String,
+        operator: WorkflowListOperatorFilterOperator::In,
+        operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!([
+            "alpha", "beta"
+        ]))),
+    };
+    assert!(configuration.validate().is_err());
+    configuration.item_type = WorkflowDataType::Number;
+    configuration.conditions[0] = condition();
+
     configuration.extract = Some(WorkflowListOperatorExtract::Literal { index: 0 });
     assert!(configuration.validate().is_err());
     configuration.extract = None;
 
     configuration.limit = Some(WORKFLOW_LIST_OPERATOR_MAX_ITEMS + 1);
+    assert!(configuration.validate().is_err());
+}
+
+#[test]
+fn list_operator_object_operations_use_the_closed_file_field_matrix() {
+    let mut configuration = WorkflowListOperatorConfiguration {
+        source_port: "items".into(),
+        item_type: WorkflowDataType::Object,
+        conditions: vec![WorkflowListOperatorFilterCondition {
+            id: "supported_type".into(),
+            ordinal: 0,
+            key: Some("type".into()),
+            value_type: WorkflowDataType::String,
+            operator: WorkflowListOperatorFilterOperator::In,
+            operand: Some(WorkflowListOperatorOperand::Literal(serde_json::json!([
+                "document", "image"
+            ]))),
+        }],
+        extract: None,
+        order: Some(WorkflowListOperatorOrder {
+            key: Some("size".into()),
+            value_type: WorkflowDataType::Number,
+            direction: WorkflowListOperatorOrderDirection::Asc,
+        }),
+        limit: None,
+    };
+    configuration
+        .validate()
+        .expect("valid file-compatible object operations");
+
+    configuration.conditions[0].operator = WorkflowListOperatorFilterOperator::Equals;
+    assert!(configuration.validate().is_err());
+    configuration.conditions[0].operator = WorkflowListOperatorFilterOperator::In;
+
+    configuration.conditions[0].key = Some("owner".into());
+    assert!(configuration.validate().is_err());
+    configuration.conditions[0].key = Some("type".into());
+
+    configuration.order.as_mut().expect("order").value_type = WorkflowDataType::String;
+    assert!(configuration.validate().is_err());
+    configuration.order.as_mut().expect("order").value_type = WorkflowDataType::Number;
+    configuration.order.as_mut().expect("order").key = Some("owner".into());
     assert!(configuration.validate().is_err());
 }
 

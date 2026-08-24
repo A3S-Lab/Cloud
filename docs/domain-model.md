@@ -3855,10 +3855,13 @@ The output contract exposes required array `result` and optional item-typed
 `first_record` and `last_record`. Its Plan remains v2-v11; immutable Run v21
 validates object, string, number, or boolean items and applies bounded filter,
 one-based extract, typed order, and limit operations in that fixed order over
-the authoritative projection. Empty input succeeds before operands are
-resolved; invalid types and extraction bounds fail closed. Run inputs v1-v20
-retain their exact behavior, runtime build `a3s-cloud-workflows@23` retains
-`@1` through `@22`, and constraint-only migration `151` widens only the closed
+the authoritative projection. Object operations use only the closed
+file-compatible `name`, `type`, `extension`, `mime_type`, `transfer_method`,
+`url`, `related_id`, and `size` field matrix. Empty input succeeds before
+operands are resolved; invalid types and extraction bounds fail closed. Run
+inputs v1-v20 retain their exact behavior, runtime build
+`a3s-cloud-workflows@23` retains `@1` through `@22`, and constraint-only
+migration `151` widens only the closed
 payload-schema registry. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation

@@ -15,6 +15,10 @@ pub const WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA: &str =
 pub const WORKFLOW_LIST_OPERATOR_MAX_CONDITIONS: usize = 64;
 pub const WORKFLOW_LIST_OPERATOR_MAX_ITEMS: u32 = 10_000;
 const WORKFLOW_LIST_OPERATOR_MAX_LITERAL_BYTES: usize = 16 * 1024;
+const LIST_OPERATOR_FILE_TEXT_FIELDS: [&str; 5] =
+    ["name", "extension", "mime_type", "url", "related_id"];
+const LIST_OPERATOR_FILE_ENUM_FIELDS: [&str; 2] = ["type", "transfer_method"];
+const LIST_OPERATOR_FILE_SIZE_FIELD: &str = "size";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -140,15 +144,14 @@ impl WorkflowListOperatorFilterCondition {
         validate_identifier("Workflow List Operator condition", &self.id)?;
         match item_type {
             WorkflowDataType::Object => {
-                validate_identifier(
-                    "Workflow List Operator object key",
-                    self.key.as_deref().ok_or_else(|| {
-                        format!(
-                            "Workflow List Operator condition {:?} requires an object key",
-                            self.id
-                        )
-                    })?,
-                )?;
+                let key = self.key.as_deref().ok_or_else(|| {
+                    format!(
+                        "Workflow List Operator condition {:?} requires an object key",
+                        self.id
+                    )
+                })?;
+                validate_identifier("Workflow List Operator object key", key)?;
+                validate_file_filter_field(key, &self.value_type, self.operator)?;
             }
             _ if self.key.is_some() => {
                 return Err(format!(
@@ -191,7 +194,12 @@ impl WorkflowListOperatorFilterCondition {
     fn validate_operand(&self, operand: &WorkflowListOperatorOperand) -> Result<(), String> {
         match operand {
             WorkflowListOperatorOperand::Literal(value) => {
-                validate_operand_value(self.operator, &self.value_type, value)?;
+                validate_operand_value(
+                    self.operator,
+                    &self.value_type,
+                    value,
+                    self.allows_string_sequence_operand(),
+                )?;
                 canonical_json_bounded(
                     value,
                     WORKFLOW_LIST_OPERATOR_MAX_LITERAL_BYTES,
@@ -204,7 +212,12 @@ impl WorkflowListOperatorFilterCondition {
                 value_type,
             } => {
                 validate_identifier("Workflow List Operator operand input port", input_port)?;
-                if operand_type_supported(self.operator, &self.value_type, value_type) {
+                if operand_type_supported(
+                    self.operator,
+                    &self.value_type,
+                    value_type,
+                    self.allows_string_sequence_operand(),
+                ) {
                     Ok(())
                 } else {
                     Err(format!(
@@ -214,6 +227,17 @@ impl WorkflowListOperatorFilterCondition {
                 }
             }
         }
+    }
+
+    pub(crate) fn allows_string_sequence_operand(&self) -> bool {
+        matches!(
+            self.operator,
+            WorkflowListOperatorFilterOperator::In | WorkflowListOperatorFilterOperator::NotIn
+        ) && self.value_type == WorkflowDataType::String
+            && self
+                .key
+                .as_deref()
+                .is_some_and(|key| LIST_OPERATOR_FILE_ENUM_FIELDS.contains(&key))
     }
 }
 
@@ -277,12 +301,19 @@ pub struct WorkflowListOperatorOrder {
 impl WorkflowListOperatorOrder {
     fn validate(&self, item_type: &WorkflowDataType) -> Result<(), String> {
         match item_type {
-            WorkflowDataType::Object => validate_identifier(
-                "Workflow List Operator order key",
-                self.key.as_deref().ok_or_else(|| {
+            WorkflowDataType::Object => {
+                let key = self.key.as_deref().ok_or_else(|| {
                     "Workflow List Operator object order requires a key".to_owned()
-                })?,
-            )?,
+                })?;
+                validate_identifier("Workflow List Operator order key", key)?;
+                let expected_type = file_order_field_type(key)?;
+                if self.value_type != expected_type {
+                    return Err(format!(
+                        "Workflow List Operator object order key {key:?} must use {} values",
+                        expected_type.as_str()
+                    ));
+                }
+            }
             _ if self.key.is_some() => {
                 return Err("Workflow List Operator scalar order cannot declare a key".into())
             }
@@ -299,6 +330,52 @@ impl WorkflowListOperatorOrder {
         } else {
             Err("Workflow List Operator order requires a scalar value type".into())
         }
+    }
+}
+
+fn validate_file_filter_field(
+    key: &str,
+    value_type: &WorkflowDataType,
+    operator: WorkflowListOperatorFilterOperator,
+) -> Result<(), String> {
+    if LIST_OPERATOR_FILE_TEXT_FIELDS.contains(&key) {
+        if value_type == &WorkflowDataType::String {
+            return Ok(());
+        }
+    } else if LIST_OPERATOR_FILE_ENUM_FIELDS.contains(&key) {
+        if value_type == &WorkflowDataType::String
+            && matches!(
+                operator,
+                WorkflowListOperatorFilterOperator::In | WorkflowListOperatorFilterOperator::NotIn
+            )
+        {
+            return Ok(());
+        }
+    } else if key == LIST_OPERATOR_FILE_SIZE_FIELD {
+        if value_type == &WorkflowDataType::Number {
+            return Ok(());
+        }
+    } else {
+        return Err(format!(
+            "Workflow List Operator object filter key {key:?} is not supported"
+        ));
+    }
+    Err(format!(
+        "Workflow List Operator object filter key {key:?} has an incompatible operator or value type"
+    ))
+}
+
+fn file_order_field_type(key: &str) -> Result<WorkflowDataType, String> {
+    if LIST_OPERATOR_FILE_TEXT_FIELDS.contains(&key)
+        || LIST_OPERATOR_FILE_ENUM_FIELDS.contains(&key)
+    {
+        Ok(WorkflowDataType::String)
+    } else if key == LIST_OPERATOR_FILE_SIZE_FIELD {
+        Ok(WorkflowDataType::Number)
+    } else {
+        Err(format!(
+            "Workflow List Operator object order key {key:?} is not supported"
+        ))
     }
 }
 
@@ -414,16 +491,15 @@ fn operand_type_supported(
     operator: WorkflowListOperatorFilterOperator,
     value_type: &WorkflowDataType,
     operand_type: &WorkflowDataType,
+    string_sequence_allowed: bool,
 ) -> bool {
     if matches!(
         operator,
         WorkflowListOperatorFilterOperator::In | WorkflowListOperatorFilterOperator::NotIn
     ) && value_type == &WorkflowDataType::String
     {
-        matches!(
-            operand_type,
-            WorkflowDataType::String | WorkflowDataType::Array
-        )
+        operand_type == &WorkflowDataType::String
+            || (string_sequence_allowed && operand_type == &WorkflowDataType::Array)
     } else {
         operand_type == value_type
     }
@@ -433,6 +509,7 @@ fn validate_operand_value(
     operator: WorkflowListOperatorFilterOperator,
     value_type: &WorkflowDataType,
     value: &Value,
+    string_sequence_allowed: bool,
 ) -> Result<(), String> {
     if matches!(
         operator,
@@ -440,9 +517,10 @@ fn validate_operand_value(
     ) && value_type == &WorkflowDataType::String
     {
         if value.is_string()
-            || value
-                .as_array()
-                .is_some_and(|items| items.iter().all(Value::is_string))
+            || (string_sequence_allowed
+                && value
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(Value::is_string)))
         {
             return Ok(());
         }
