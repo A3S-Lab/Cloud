@@ -3,9 +3,10 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    CapabilityType, WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
-    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowSpec, WorkflowStepFailureContract,
-    WorkflowStepKind, WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
+    validate_variable_aggregate_binding, CapabilityType, WorkflowContract, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy, WorkflowRevisionSemanticContracts,
+    WorkflowSpec, WorkflowStepFailureContract, WorkflowStepKind, WorkflowStepSpec,
+    WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -311,6 +312,16 @@ impl WorkflowRevision {
     pub(crate) fn validate_runtime_dispatch_support(&self) -> Result<(), String> {
         validate_runtime_dispatch_support(self.contract.spec(), self.semantic_contracts.as_ref())
     }
+
+    pub(crate) fn has_variable_aggregate_configuration(&self) -> bool {
+        self.payloads.iter().any(|payload| {
+            matches!(
+                payload.content(),
+                WorkflowPayloadContent::Configuration(configuration)
+                    if configuration.variable_aggregate().is_some()
+            )
+        })
+    }
 }
 
 fn validate_runtime_dispatch_support(
@@ -390,12 +401,15 @@ fn validate_payload_bindings(
             ));
         }
         referenced.insert(step.configuration_digest.clone());
-        require_payload(
+        let input_payload = require_payload(
             &by_digest,
             &step.input_schema_digest,
             WorkflowPayloadKind::DataSchema,
             &step.id,
         )?;
+        let WorkflowPayloadContent::DataSchema(input_schema) = input_payload.content() else {
+            return Err("Workflow input schema payload content has the wrong kind".into());
+        };
         referenced.insert(step.input_schema_digest.clone());
         let output_payload = require_payload(
             &by_digest,
@@ -422,6 +436,13 @@ fn validate_payload_bindings(
             .transpose()?;
         validate_retry_policy_binding(step, policy)?;
         validate_default_output_policy_binding(step, policy, output_schema, semantic_contracts)?;
+        validate_variable_aggregate_binding(
+            step,
+            configuration,
+            input_schema,
+            output_schema,
+            semantic_contracts,
+        )?;
         if step.kind == WorkflowStepKind::Branch {
             let failure = semantic_contracts
                 .map(|contracts| contracts.failure_contract(&step.id))

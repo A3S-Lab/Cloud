@@ -78,6 +78,31 @@ Application composite Answer frames are implemented by `APP0.2-C13` without
 changing this finite-Execution contract. Compensation and other provider error
 branches remain unavailable.
 
+## Workflow-local Variable Aggregator
+
+`variable-aggregate.acl` is the canonical grouped configuration fixture for
+`cloud.workflow.configuration.variable-aggregate.v1`. An admitted step uses the
+exact Workflow-owned `workflow.variable-aggregate` descriptor, remains the
+existing `transform` kind, has no capability or policy binding, and reads only
+its immutable optional direct-value candidate ports. Each group freezes one
+concrete non-null type and a contiguous zero-based candidate priority. Simple
+mode declares exactly one `output` group; grouped mode emits one object per
+configured output port, whose required `output` field contains the first
+available non-null candidate.
+
+Publication requires the input schema, descriptor ports, and variable reads to
+cover the candidate set exactly. It also requires the output schema and
+descriptor to cover the simple or grouped output shape exactly. Runtime v20
+uses the authoritative typed variable projection, never scans dependency maps,
+and fails closed when no candidate is available or the selected value drifts
+from its declared type. Plan v2-v11 remain unchanged; only graphs containing
+this configuration emit WorkflowRun input/runtime/Flow v20. Runtime build
+`a3s-cloud-workflows@22` retains `@1` through `@21` for exact replay. This
+slice uses constraint-only migration `149` to widen the existing closed
+Workflow payload-schema registry. It adds no table, column, mutable variable
+store, worker, queue, scheduler, provider call, or second orchestration
+mechanism.
+
 ## Descriptor-bound Workflow-local Transform failure route
 
 The `workflow.transform` descriptor declares one required static object error

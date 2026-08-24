@@ -59,6 +59,13 @@ pub(super) fn positive_integer(value: f64) -> Result<u64, String> {
     Ok(value as u64)
 }
 
+pub(super) fn non_negative_integer(value: f64) -> Result<u64, String> {
+    if !value.is_finite() || value < 0.0 || value.fract() != 0.0 || value > u64::MAX as f64 {
+        return Err("Workflow payload number must be a non-negative integer".into());
+    }
+    Ok(value as u64)
+}
+
 pub(super) fn parse_retry_policy(block: &Block) -> Result<WorkflowRetryPolicy, String> {
     Ok(WorkflowRetryPolicy {
         maximum_attempts: u32::try_from(positive_integer(required_number(

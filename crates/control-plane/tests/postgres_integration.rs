@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 148;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "148";
+const CLOUD_MIGRATION_COUNT: i64 = 149;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "149";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -3635,6 +3635,24 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         assert!(
             !workflow_step_kind_constraint.contains(&format!("'{unavailable}'")),
             "WorkflowStepProjection admitted unavailable kind {unavailable}"
+        );
+    }
+    let workflow_payload_schema_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'workflow_revision_payloads'::regclass and conname = 'workflow_revision_payloads_schema_check'",
+        ))
+        .await?;
+    for schema in [
+        "cloud.workflow.configuration.v1",
+        "cloud.workflow.configuration.variable-aggregate.v1",
+        "cloud.workflow.data-schema.v1",
+        "cloud.workflow.policy.v1",
+        "cloud.workflow.policy.v2",
+        "cloud.workflow.policy.v3",
+    ] {
+        assert!(
+            workflow_payload_schema_constraint.contains(&format!("'{schema}'")),
+            "Workflow payload schema constraint omitted {schema}: {workflow_payload_schema_constraint}"
         );
     }
     let selected_handle_routing_constraint = database

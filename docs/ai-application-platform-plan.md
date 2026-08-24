@@ -44,7 +44,7 @@ alter a verified A3S release. That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The forty-eight authority decisions are
+implementation is not a public capability. The fifty-one authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -337,8 +337,8 @@ exact 23-node `a3s.cloud.app-platform.workflow-node-profiles.v1` ACL binds the
 canonical parity-manifest digest and adds only coarse kind, execution class, and
 semantic profiles. Cloud fails closed on coverage, ordering, owner/class, or
 digest drift and exposes one project-authorized result through REST `1.31.0`,
-the maintained client, `workflow-nodes list`, and Management MCP. Five entries
-are internal, eighteen remain unavailable, none are public, and `parityClaim`
+the maintained client, `workflow-nodes list`, and Management MCP. Six entries
+are internal, seventeen remain unavailable, none are public, and `parityClaim`
 remains false. The projection adds no catalog table, migration, index, writer,
 worker, cache, or Flow state. Only a WorkflowRevision-owned exact descriptor
 snapshot can admit execution semantics.
@@ -502,7 +502,7 @@ Webhook Trigger) and does not count the category header as a separate node.
 | Code | `execution` / `execution.code` | `W0.4` plus Executions, A3S Code, Runtime, and Box |
 | Template | `transform` / `workflow.template` | `W0.3` |
 | Variable Assigner | `service` / `application.conversation-variable-assign` | `APP0.2` plus `W0.4` |
-| Variable Aggregator | `transform` / `workflow.variable-aggregate` | `W0.3` |
+| Variable Aggregator | `transform` / `workflow.variable-aggregate` | `W0.3`, implemented internally through Run v20 |
 | HTTP Request | `service` / `connector.http` | `AUT0.5` plus `W0.4` |
 | Tool | `tool` / `use.tool` | `W0.4` plus `U0.4` |
 | Parameter Extractor | `model` / `model.parameter-extract` | `W0.4` plus `I0.2` |
@@ -513,6 +513,16 @@ Webhook Trigger) and does not count the category header as a separate node.
 | Human Input | `human_decision` / `workflow.human-input` | `W0.3` HumanTask public-surface completion |
 | Answer | `output` / `application.answer` | `APP0.2` plus `W0.3` ordered stream semantics |
 | Output | `output` / `workflow.output` | `W0.3` reachable-sink aggregation correction |
+
+The internal Variable Aggregator uses the versioned
+`cloud.workflow.configuration.variable-aggregate.v1` ACL payload. Publication
+requires the exact Workflow-owned descriptor, bounded concrete groups,
+contiguous candidate priority, optional type-exact direct reads, and exact
+input/output descriptor and data-schema coverage. WorkflowRun v20 consumes only
+the authoritative typed projection and selects the first available non-null
+candidate. Constraint-only migration `149` widens the existing closed payload
+schema registry without adding a table or column. List Operator remains a
+separate open `W0.3` backend slice.
 
 Node parity is a cross-gate result. Adding a descriptor or drawing a node in a
 Designer does not make that node available. Its type checks, authorization,

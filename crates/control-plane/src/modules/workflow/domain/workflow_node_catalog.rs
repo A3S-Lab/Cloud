@@ -177,6 +177,7 @@ mod tests {
                 "node.output",
                 "node.template",
                 "node.user-input",
+                "node.variable-aggregator",
             ]
         );
         assert!(catalog.nodes.iter().all(|node| {

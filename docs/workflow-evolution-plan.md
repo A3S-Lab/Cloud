@@ -221,6 +221,20 @@ non-deterministic runtime error and is never converted into handled data. Plans
 v1-v10 and Run inputs v1-v18 retain their exact bytes and replay behavior;
 runtime build `a3s-cloud-workflows@21` explicitly retains `@1` through `@20`.
 
+The Workflow-local Variable Aggregator remains the `transform` kind and is
+bound to the exact `workflow.variable-aggregate` descriptor. Its versioned
+`cloud.workflow.configuration.variable-aggregate.v1` ACL freezes bounded
+simple or grouped outputs, concrete types, and contiguous zero-based candidate
+priority. Publication requires exact optional direct variable reads and exact
+descriptor/data-schema input and output coverage. Its Plan remains v2-v11;
+immutable WorkflowRun input/runtime/Flow v20 consumes only authoritative typed
+projection, skips missing or null candidates, selects the first value by
+ordinal, and fails closed on exhaustion or type drift. Runtime build
+`a3s-cloud-workflows@22` explicitly retains `@1` through `@21`.
+Constraint-only migration `149` widens the existing closed Workflow payload
+schema registry for this configuration and the already supported policy v2/v3
+schemas without adding a table or column.
+
 Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`
 field from verified Flow history. Execution terminal observations retain exact
@@ -252,7 +266,7 @@ The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
 digest-bound kind/execution-class/semantic-profile ACL. REST `1.31.0`, the
 maintained client, CLI, and Management MCP call one project-authorized Workflow
-query. Five entries are internal, eighteen remain unavailable, none are public,
+query. Six entries are internal, seventeen remain unavailable, none are public,
 and the projection cannot admit descriptors. It has no persistent catalog
 management, table, migration, writer, worker, or Flow state.
 
@@ -368,11 +382,12 @@ cancellation/timeout before termination. Iteration is initially sequential
 under its declared concurrency ceiling. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
 implemented through Run v11-v15. Workflow-local Transform, Output, and Branch
-failure routes are implemented through Run v16-v18, and descriptor-bound
-Iteration/Loop failure routes are implemented through Run v19. Current finite
+failure routes are implemented through Run v16-v18, descriptor-bound
+Iteration/Loop failure routes are implemented through Run v19, and exact typed
+Variable Aggregation is implemented through Run v20. Current finite
 Execution and Connector projections retain bounded owning-context evidence
 URNs. The
-remaining business-service and Agent/MCP/model/Tool capability dispatch,
+remaining List Operator, business-service, and Agent/MCP/model/Tool capability dispatch,
 compensation, full provider conformance, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
@@ -450,6 +465,8 @@ Run v15. Workflow-local Transform failure branches are implemented through
 Plan v8/Run v16, Workflow-local Output failure branches through Plan v9/Run
 v17, Workflow-local Branch failure branches through Plan v10/Run v18, and
 descriptor-bound Iteration/Loop failure branches through Plan v11/Run v19.
+Exact Workflow-local Variable Aggregation is implemented through Run v20 while
+retaining Plan v2-v11 and every earlier runtime semantic.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.
@@ -463,7 +480,10 @@ most 256 exact evidence references with explicit truncation. Missing Flow
 history remains an explicit diagnostic outcome, messages are fixed and
 redaction-safe, and the projection introduces no table, event log, metrics
 authority, evidence body, cache, worker, or scheduler.
-Business-service and remaining Agent/MCP/model/Tool failure semantics,
+REST/OpenAPI `1.61.0` and the maintained client additionally enumerate the
+`cloud.workflow.configuration.variable-aggregate.v1` payload schema without a
+new route or JSON property. Business-service, List Operator, and remaining
+Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.
 

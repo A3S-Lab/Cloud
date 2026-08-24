@@ -1,0 +1,25 @@
+configuration {
+  schema = "cloud.workflow.configuration.variable-aggregate.v1"
+  step_kind = "transform"
+  group_enabled = true
+
+  group "message" {
+    output_type = "string"
+
+    candidate "preferred_message" {
+      ordinal = 0
+    }
+
+    candidate "fallback_message" {
+      ordinal = 1
+    }
+  }
+
+  group "score" {
+    output_type = "number"
+
+    candidate "primary_score" {
+      ordinal = 0
+    }
+  }
+}

@@ -479,6 +479,13 @@ impl WorkflowRevisionSemanticContracts {
         Ok(&self.descriptor_for_step(step_id)?.spec().failure)
     }
 
+    pub(crate) fn descriptor_spec(
+        &self,
+        step_id: &str,
+    ) -> Result<&super::WorkflowStepDescriptorSpec, String> {
+        Ok(self.descriptor_for_step(step_id)?.spec())
+    }
+
     fn descriptor_for_step(
         &self,
         step_id: &str,

@@ -11,6 +11,14 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 mod codec;
+mod variable_aggregate;
+
+pub use variable_aggregate::{
+    WorkflowLocalTransformConfiguration, WorkflowVariableAggregateCandidate,
+    WorkflowVariableAggregateConfiguration, WorkflowVariableAggregateGroup,
+    WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA, WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES,
+    WORKFLOW_VARIABLE_AGGREGATE_MAX_CANDIDATES_PER_GROUP, WORKFLOW_VARIABLE_AGGREGATE_MAX_GROUPS,
+};
 
 use codec::{
     canonical_default_output_bytes, optional_number, optional_string, parse_default_output,
@@ -72,6 +80,8 @@ pub struct WorkflowStepConfiguration {
     pub details: Option<String>,
     pub expires_after_seconds: Option<u64>,
     pub routes: Vec<WorkflowBranchRoute>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_transform: Option<WorkflowLocalTransformConfiguration>,
 }
 
 impl WorkflowStepConfiguration {
@@ -85,6 +95,7 @@ impl WorkflowStepConfiguration {
             details: None,
             expires_after_seconds: None,
             routes: Vec::new(),
+            local_transform: None,
         }
     }
 
@@ -95,12 +106,14 @@ impl WorkflowStepConfiguration {
         let has_decision = self.message.is_some()
             || self.details.is_some()
             || self.expires_after_seconds.is_some();
+        let has_local_transform = self.local_transform.is_some();
         match self.step_kind {
-            WorkflowStepKind::Input => {
-                reject_extra_configuration(has_template || has_branch || has_decision, "input")
-            }
+            WorkflowStepKind::Input => reject_extra_configuration(
+                has_template || has_branch || has_decision || has_local_transform,
+                "input",
+            ),
             WorkflowStepKind::Output => {
-                if has_branch || has_decision {
+                if has_branch || has_decision || has_local_transform {
                     return Err("Workflow output configuration contains unrelated fields".into());
                 }
                 if let Some(template) = &self.template {
@@ -112,14 +125,21 @@ impl WorkflowStepConfiguration {
                 if has_branch || has_decision {
                     return Err("Workflow transform configuration contains unrelated fields".into());
                 }
-                validate_template(
-                    self.template
-                        .as_deref()
-                        .ok_or_else(|| "Workflow transform requires a template".to_owned())?,
-                )
+                match (&self.template, &self.local_transform) {
+                    (Some(template), None) => validate_template(template),
+                    (None, Some(configuration)) => configuration.validate(),
+                    (None, None) => Err(
+                        "Workflow transform requires a template or local transform configuration"
+                            .into(),
+                    ),
+                    (Some(_), Some(_)) => Err(
+                        "Workflow transform cannot combine a template and local transform configuration"
+                            .into(),
+                    ),
+                }
             }
             WorkflowStepKind::Branch => {
-                if has_template || has_decision {
+                if has_template || has_decision || has_local_transform {
                     return Err("Workflow branch configuration contains unrelated fields".into());
                 }
                 validate_selector(
@@ -150,7 +170,7 @@ impl WorkflowStepConfiguration {
                 Ok(())
             }
             WorkflowStepKind::HumanDecision => {
-                if has_template || has_branch {
+                if has_template || has_branch || has_local_transform {
                     return Err(
                         "Workflow human-decision configuration contains unrelated fields".into(),
                     );
@@ -185,9 +205,18 @@ impl WorkflowStepConfiguration {
             | WorkflowStepKind::Service
             | WorkflowStepKind::Memory
             | WorkflowStepKind::Subworkflow => reject_extra_configuration(
-                has_template || has_branch || has_decision,
+                has_template || has_branch || has_decision || has_local_transform,
                 self.step_kind.as_str(),
             ),
+        }
+    }
+
+    pub const fn variable_aggregate(&self) -> Option<&WorkflowVariableAggregateConfiguration> {
+        match self.local_transform.as_ref() {
+            Some(WorkflowLocalTransformConfiguration::VariableAggregate(configuration)) => {
+                Some(configuration)
+            }
+            None => None,
         }
     }
 }
@@ -526,7 +555,7 @@ impl WorkflowPayload {
         validate_closed_schema(&document, &schema)?;
         let content = match kind {
             WorkflowPayloadKind::Configuration => {
-                WorkflowPayloadContent::Configuration(parse_configuration(root)?)
+                WorkflowPayloadContent::Configuration(parse_configuration(root, &declared_schema)?)
             }
             WorkflowPayloadKind::DataSchema => {
                 WorkflowPayloadContent::DataSchema(parse_data_schema(root)?)
@@ -612,6 +641,10 @@ const fn content_kind(content: &WorkflowPayloadContent) -> WorkflowPayloadKind {
 
 const fn content_schema_name(content: &WorkflowPayloadContent) -> &'static str {
     match content {
+        WorkflowPayloadContent::Configuration(WorkflowStepConfiguration {
+            local_transform: Some(WorkflowLocalTransformConfiguration::VariableAggregate(_)),
+            ..
+        }) => WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
         WorkflowPayloadContent::Configuration(_) => WORKFLOW_CONFIGURATION_SCHEMA,
         WorkflowPayloadContent::DataSchema(_) => WORKFLOW_DATA_SCHEMA,
         WorkflowPayloadContent::Policy(value) if value.default_output.is_some() => {
@@ -651,6 +684,9 @@ fn payload_schema(kind: WorkflowPayloadKind, declared_schema: &str) -> Result<Sc
     match (kind, declared_schema) {
         (WorkflowPayloadKind::Configuration, WORKFLOW_CONFIGURATION_SCHEMA) => {
             configuration_schema()
+        }
+        (WorkflowPayloadKind::Configuration, WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA) => {
+            variable_aggregate::configuration_schema()
         }
         (WorkflowPayloadKind::DataSchema, WORKFLOW_DATA_SCHEMA) => data_schema_schema(),
         (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA) => policy_schema(1),
@@ -799,7 +835,29 @@ fn validate_closed_schema(document: &Document, schema: &Schema) -> Result<(), St
     ))
 }
 
-fn parse_configuration(root: &Block) -> Result<WorkflowStepConfiguration, String> {
+fn parse_configuration(
+    root: &Block,
+    declared_schema: &str,
+) -> Result<WorkflowStepConfiguration, String> {
+    if declared_schema == WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA {
+        let step_kind = WorkflowStepKind::parse(&required_string(root, "step_kind")?)?;
+        variable_aggregate::validate_transform_kind(step_kind)?;
+        let value = WorkflowStepConfiguration {
+            step_kind,
+            template: None,
+            selector: None,
+            default_handle: None,
+            message: None,
+            details: None,
+            expires_after_seconds: None,
+            routes: Vec::new(),
+            local_transform: Some(WorkflowLocalTransformConfiguration::VariableAggregate(
+                variable_aggregate::parse_configuration(root)?,
+            )),
+        };
+        value.validate()?;
+        return Ok(value);
+    }
     let expires_after_seconds = optional_number(root, "expires_after_seconds")?
         .map(positive_integer)
         .transpose()?;
@@ -824,6 +882,7 @@ fn parse_configuration(root: &Block) -> Result<WorkflowStepConfiguration, String
         details: optional_string(root, "details")?,
         expires_after_seconds,
         routes,
+        local_transform: None,
     };
     value.validate()?;
     Ok(value)
@@ -899,8 +958,38 @@ fn payload_document(content: &WorkflowPayloadContent) -> Result<Document, String
     let root = match content {
         WorkflowPayloadContent::Configuration(value) => {
             let mut root = BlockBuilder::new("configuration")
-                .attr("schema", string(WORKFLOW_CONFIGURATION_SCHEMA))
+                .attr("schema", string(content_schema_name(content)))
                 .attr("step_kind", string(value.step_kind.as_str()));
+            if let Some(WorkflowLocalTransformConfiguration::VariableAggregate(configuration)) =
+                &value.local_transform
+            {
+                root = root.attr("group_enabled", boolean(configuration.group_enabled));
+                let mut groups = configuration.groups.iter().collect::<Vec<_>>();
+                groups.sort_by(|left, right| left.output_port.cmp(&right.output_port));
+                for group in groups {
+                    let mut group_block = BlockBuilder::new("group")
+                        .label(&group.output_port)
+                        .attr("output_type", string(group.output_type.as_str()));
+                    let mut candidates = group.candidates.iter().collect::<Vec<_>>();
+                    candidates.sort_by(|left, right| {
+                        left.ordinal
+                            .cmp(&right.ordinal)
+                            .then_with(|| left.input_port.cmp(&right.input_port))
+                    });
+                    for candidate in candidates {
+                        group_block = group_block.nested_block(
+                            BlockBuilder::new("candidate")
+                                .label(&candidate.input_port)
+                                .attr("ordinal", number(f64::from(candidate.ordinal)))
+                                .build(),
+                        );
+                    }
+                    root = root.nested_block(group_block.build());
+                }
+                return Ok(Document {
+                    blocks: vec![root.build()],
+                });
+            }
             for (key, item) in [
                 ("template", value.template.as_deref()),
                 ("selector", value.selector.as_deref()),

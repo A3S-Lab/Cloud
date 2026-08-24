@@ -684,10 +684,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.variable-aggregator" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["contract:contracts/w0.3/variable-aggregate.acl", "doc:docs/decisions/app-platform/0051-workflow-local-variable-aggregation.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_variable_aggregate_binding.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/variable_aggregate.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_revision_semantic_contracts_tests/variable_aggregate.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/variable_aggregate.rs"]
     gate = "W0.3"
     label = "Variable Aggregator"
     owner = "workflow"

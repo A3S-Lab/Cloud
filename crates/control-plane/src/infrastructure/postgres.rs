@@ -1392,6 +1392,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/148_workflow_composite_failure_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "149",
+            "Workflow payload schema versions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/149_workflow_payload_schema_versions.sql"
+            )),
+        ),
     ]
 }
 
@@ -1402,6 +1410,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/workflow_composite_failure_migration.rs"]
 mod workflow_composite_failure_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/workflow_payload_schema_versions_migration.rs"]
+mod workflow_payload_schema_versions_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

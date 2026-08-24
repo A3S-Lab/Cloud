@@ -7,12 +7,15 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde_json::Value;
+
+mod variable_aggregate;
 
 pub(super) fn execute_local_step(
     input: &WorkflowLocalStepInput,
@@ -37,11 +40,14 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
     if let Some(failure) = input.routed_failure.as_ref() {
-        if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
-            || input.step.plan.kind != WorkflowStepKind::Subworkflow
+        if !matches!(
+            input.runtime_contract_revision.as_str(),
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19 | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
+        ) || input.step.plan.kind != WorkflowStepKind::Subworkflow
             || input.composite_region_result.is_some()
         {
             return Err("Workflow routed failure materializer has invalid authority".into());
@@ -100,6 +106,19 @@ pub(super) fn execute_local_step(
     let (output, selected_handle) = match input.step.plan.kind {
         WorkflowStepKind::Input => (input.workflow_input.clone(), None),
         WorkflowStepKind::Transform => {
+            if let Some(configuration) = input.step.configuration.variable_aggregate() {
+                if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20 {
+                    return Err("Workflow Variable Aggregator requires runtime contract v20".into());
+                }
+                return finish_local_transform(
+                    input,
+                    variable_aggregate::execute(
+                        configuration,
+                        &input.effective_input,
+                        input.typed_projection_authoritative,
+                    )?,
+                );
+            }
             let template = input
                 .step
                 .configuration
@@ -173,6 +192,24 @@ pub(super) fn execute_local_step(
         output,
         output_digest,
         selected_handle,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    result.validate(&input.step)?;
+    Ok(result)
+}
+
+fn finish_local_transform(
+    input: &WorkflowLocalStepInput,
+    output: Value,
+) -> Result<WorkflowLocalStepResult, String> {
+    validate_data_schema(&input.step.output_schema, &output, "Workflow step output")?;
+    let result = WorkflowLocalStepResult {
+        step_id: input.step.plan.id.clone(),
+        kind: input.step.plan.kind,
+        output_digest: value_digest(&output, "Workflow step output")?,
+        output,
+        selected_handle: None,
         composite_region_result: None,
         default_output_evidence: None,
     };

@@ -55,6 +55,7 @@ fn branch_candidates_and_human_expiry_fail_closed() {
                 equals: "other".into(),
             },
         ],
+        local_transform: None,
     };
     WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(branch.clone()))
         .expect("branch");
@@ -66,6 +67,121 @@ fn branch_candidates_and_human_expiry_fail_closed() {
     decision.message = Some("Approve?".into());
     decision.expires_after_seconds = Some(30 * 24 * 60 * 60 + 1);
     assert!(decision.validate().is_err());
+}
+
+#[test]
+fn variable_aggregate_configuration_is_closed_ordered_and_versioned() {
+    let fixture = include_str!("../../../../../../../contracts/w0.3/variable-aggregate.acl");
+    WorkflowPayload::parse_acl(WorkflowPayloadKind::Configuration, fixture)
+        .expect("Variable Aggregator conformance fixture");
+
+    let configuration = WorkflowVariableAggregateConfiguration {
+        group_enabled: true,
+        groups: vec![
+            WorkflowVariableAggregateGroup {
+                output_port: "primary".into(),
+                output_type: WorkflowDataType::String,
+                candidates: vec![
+                    WorkflowVariableAggregateCandidate {
+                        input_port: "left".into(),
+                        ordinal: 0,
+                    },
+                    WorkflowVariableAggregateCandidate {
+                        input_port: "right".into(),
+                        ordinal: 1,
+                    },
+                ],
+            },
+            WorkflowVariableAggregateGroup {
+                output_port: "secondary".into(),
+                output_type: WorkflowDataType::Number,
+                candidates: vec![WorkflowVariableAggregateCandidate {
+                    input_port: "fallback".into(),
+                    ordinal: 0,
+                }],
+            },
+        ],
+    };
+    let mut step = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    step.local_transform = Some(WorkflowLocalTransformConfiguration::VariableAggregate(
+        configuration.clone(),
+    ));
+    let payload = WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(step))
+        .expect("Variable Aggregator configuration");
+
+    let mut reordered = configuration.clone();
+    reordered.groups.reverse();
+    for group in &mut reordered.groups {
+        group.candidates.reverse();
+    }
+    let mut reordered_step = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    reordered_step.local_transform = Some(WorkflowLocalTransformConfiguration::VariableAggregate(
+        reordered,
+    ));
+    let reordered_payload =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(reordered_step))
+            .expect("reordered Variable Aggregator configuration");
+
+    assert_eq!(
+        payload.schema(),
+        WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA
+    );
+    assert_eq!(payload.canonical_acl(), reordered_payload.canonical_acl());
+    assert_eq!(payload.digest(), reordered_payload.digest());
+    assert!(payload.canonical_acl().contains("group_enabled = true"));
+    assert!(payload.canonical_acl().contains("candidate \"left\""));
+    assert_eq!(
+        WorkflowPayload::restore(
+            WorkflowPayloadKind::Configuration,
+            payload.canonical_acl(),
+            payload.digest().as_str(),
+        )
+        .expect("restored Variable Aggregator")
+        .content(),
+        &WorkflowPayloadContent::Configuration(WorkflowStepConfiguration {
+            step_kind: WorkflowStepKind::Transform,
+            template: None,
+            selector: None,
+            default_handle: None,
+            message: None,
+            details: None,
+            expires_after_seconds: None,
+            routes: Vec::new(),
+            local_transform: Some(WorkflowLocalTransformConfiguration::VariableAggregate(
+                configuration,
+            )),
+        })
+    );
+
+    let v1_claim = payload.canonical_acl().replace(
+        WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
+        WORKFLOW_CONFIGURATION_SCHEMA,
+    );
+    assert!(WorkflowPayload::parse_acl(WorkflowPayloadKind::Configuration, &v1_claim).is_err());
+}
+
+#[test]
+fn variable_aggregate_configuration_rejects_ambiguous_priority_and_simple_groups() {
+    let candidate = |input_port: &str, ordinal| WorkflowVariableAggregateCandidate {
+        input_port: input_port.into(),
+        ordinal,
+    };
+    let mut configuration = WorkflowVariableAggregateConfiguration {
+        group_enabled: false,
+        groups: vec![WorkflowVariableAggregateGroup {
+            output_port: "result".into(),
+            output_type: WorkflowDataType::String,
+            candidates: vec![candidate("left", 0)],
+        }],
+    };
+    assert!(configuration.validate().is_err());
+
+    configuration.groups[0].output_port = "output".into();
+    configuration.groups[0].candidates = vec![candidate("left", 0), candidate("right", 0)];
+    assert!(configuration.validate().is_err());
+
+    configuration.groups[0].candidates = vec![candidate("left", 0), candidate("right", 1)];
+    configuration.validate().expect("valid simple aggregation");
 }
 
 #[test]

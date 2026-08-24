@@ -11,7 +11,17 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.60.0`.
+The current semantic contract version is `1.61.0`.
+
+Contract `1.61.0` adds the versioned Workflow payload schema
+`cloud.workflow.configuration.variable-aggregate.v1`. Existing Workflow
+definition create/revise envelopes continue to carry configuration as bounded
+A3S ACL text, and revision responses continue to return the existing
+`payloads[].schema` string plus canonical ACL and digest. The new schema freezes
+bounded typed candidate groups for the internally available Workflow-local
+Variable Aggregator. The maintained TypeScript client enumerates the new schema
+value. No route, JSON property, authorization boundary, or response envelope is
+added.
 
 Contract `1.60.0` adds the project-authorized
 `GET /organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics`
@@ -58,8 +68,8 @@ authorized Flow-derived run history.
 These URNs are correlations, not embedded evidence or an authorization grant.
 Reading any referenced owner resource still requires its normal authorization
 boundary. Populating this existing field did not itself change a route or JSON
-shape; the current contract is `1.60.0` because of the separate diagnostics
-operation.
+shape; contract `1.60.0` was introduced by the separate diagnostics operation,
+and `1.61.0` adds the Variable Aggregator payload-schema semantics above.
 
 ## Contract completeness
 

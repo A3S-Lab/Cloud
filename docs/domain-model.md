@@ -3808,8 +3808,19 @@ descriptor error edge emits `cloud.workflow.plan.v11`; immutable Run v19
 materializes deterministic child, policy, or local-finalization failure as
 fixed redacted failure v8 and routes only the exact descriptor edge. Plans
 v1-v10 and Run inputs v1-v18 retain their exact behavior; resume-authority drift
-remains non-deterministic. Migration `122` adds nullable default-output evidence to the
-existing step projection. Migration `123` admits the already wired Service
+remains non-deterministic. A Workflow-owned Variable Aggregator remains the
+existing Transform kind and owns one immutable
+`cloud.workflow.configuration.variable-aggregate.v1` payload. Publication
+binds it to the exact `workflow.variable-aggregate` Workflow-local descriptor,
+requires optional type-exact direct reads for every bounded ordered candidate,
+and proves the exact simple or grouped input/output schemas and ports. Its Plan
+remains v2-v11; immutable Run v20 selects the first available non-null candidate
+from the authoritative typed projection and validates its concrete group type.
+Run inputs v1-v19 retain their exact behavior. Constraint-only migration `149`
+widens the existing closed payload-schema registry for this configuration and
+the already supported policy v2/v3 schemas; canonical ACL parsing remains the
+semantic authority. Migration `122` adds nullable default-output evidence to
+the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`
 widens only that structural handle constraint for failed Output projections;

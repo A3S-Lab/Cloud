@@ -88,6 +88,7 @@ async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_sur
             "node.output",
             "node.template",
             "node.user-input",
+            "node.variable-aggregator",
         ]
     );
     let by_id = |id: &str| {
