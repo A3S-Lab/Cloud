@@ -5875,7 +5875,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!((outbox_events, idempotency_records), (57, 43));
+    let hosted_build_outcomes = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from outbox_events where event_key = 'artifact.hosted-build.succeeded'",
+        ))
+        .await?;
+    assert_eq!(hosted_build_outcomes, 2);
+    assert_eq!((outbox_events, idempotency_records), (59, 45));
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
