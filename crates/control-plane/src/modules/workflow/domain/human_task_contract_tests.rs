@@ -1,6 +1,7 @@
 use super::{
-    FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, HumanTaskInteractionSpec,
-    HumanTaskRecord, HumanTaskStatus, WorkflowDecision, WorkflowDecisionOutcome,
+    human_decision_evidence_references, FlowResumeDisposition, FlowResumePayload,
+    FlowResumeReceipt, HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStatus,
+    WorkflowDecision, WorkflowDecisionOutcome,
 };
 use crate::modules::shared_kernel::domain::{PrincipalId, WorkflowDecisionId};
 use crate::modules::workflow::test_support::{
@@ -162,6 +163,24 @@ fn records_expiry_and_cancellation_as_bound_decisions() {
     )
     .expect("expiry decision");
     let expiry_payload = FlowResumePayload::from_decision(&expired).expect("expiry payload");
+    assert_eq!(
+        human_decision_evidence_references(
+            expiry_payload.human_task_id,
+            expiry_payload.workflow_decision_id,
+            expiry_payload.form_submission_id,
+        )
+        .expect("expiry evidence references"),
+        [
+            format!(
+                "urn:a3s:cloud:workflow:human-task:{}",
+                expiry_payload.human_task_id
+            ),
+            format!(
+                "urn:a3s:cloud:workflow:workflow-decision:{}",
+                expiry_payload.workflow_decision_id
+            ),
+        ]
+    );
     let timeout_receipt = FlowResumeReceipt::from_run_timed_out(
         &expiry_payload,
         &expiring.flow_run_id,
@@ -191,6 +210,24 @@ fn records_expiry_and_cancellation_as_bound_decisions() {
     .expect("cancellation decision");
     let cancellation_payload =
         FlowResumePayload::from_decision(&cancellation).expect("cancellation payload");
+    assert_eq!(
+        human_decision_evidence_references(
+            cancellation_payload.human_task_id,
+            cancellation_payload.workflow_decision_id,
+            cancellation_payload.form_submission_id,
+        )
+        .expect("cancellation evidence references"),
+        [
+            format!(
+                "urn:a3s:cloud:workflow:human-task:{}",
+                cancellation_payload.human_task_id
+            ),
+            format!(
+                "urn:a3s:cloud:workflow:workflow-decision:{}",
+                cancellation_payload.workflow_decision_id
+            ),
+        ]
+    );
     let cancelled_receipt = FlowResumeReceipt::from_run_cancelled(
         &cancellation_payload,
         &cancelled.flow_run_id,

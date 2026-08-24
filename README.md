@@ -599,11 +599,14 @@ creating their own control planes:
     v5-v10 and failure v2-v7. Verified terminal finite Execution projections
     now retain exact child Execution and Operation URNs, while received
     Connector observations retain exact attempt URNs in the existing bounded,
-    sorted `evidenceReferences` field. These are authorization-neutral
-    correlations reconstructed from Flow history, not copied provider bodies.
-    This is not public HTTP Request availability; business-service and
-    remaining Agent/MCP/model/Tool dispatch, compensation, retained provider
-    evidence, and later `W0` gates remain open.
+    sorted `evidenceReferences` field. Received HumanDecision resumes retain
+    exact HumanTask and WorkflowDecision URNs, plus the accepted FormSubmission
+    URN for interactive outcomes. Automatic expiry and cancellation add no
+    synthetic submission. These are authorization-neutral correlations
+    reconstructed from Flow history, not copied evidence bodies. This is not
+    public HTTP Request availability; business-service and remaining
+    Agent/MCP/model/Tool dispatch, compensation, retained provider evidence,
+    and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` carries start, run-scoped

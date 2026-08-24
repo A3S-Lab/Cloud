@@ -818,6 +818,14 @@ async fn flow_engine_suspends_human_decision_on_an_authority_bound_hook() -> Res
         completed_step.result,
         Some(serde_json::to_value(&resume_payload.output)?)
     );
+    assert_eq!(
+        completed_step.evidence_references,
+        [
+            format!("urn:a3s:cloud:forms:submission:{}", submission.id),
+            format!("urn:a3s:cloud:workflow:human-task:{}", task.id),
+            format!("urn:a3s:cloud:workflow:workflow-decision:{}", decision.id),
+        ]
+    );
     Ok(())
 }
 
@@ -829,18 +837,22 @@ async fn expiry_resume_winning_the_race_commits_hook_evidence_before_typed_timeo
     input.deadline_at = input.requested_at + chrono::Duration::seconds(1);
     input.validate().map_err(FlowError::Runtime)?;
     let run_id = input.workflow_run_id.to_string();
-    let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default()));
+    let (run, steps) =
+        WorkflowRun::create(input.clone(), PrincipalId::new()).map_err(FlowError::Runtime)?;
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id = RuntimeBuildId::new("a3s-cloud-human-expiry-test@1")?;
+    let spec = WorkflowSpec::rust_embedded(
+        WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION,
+        "a3s-cloud",
+        "main",
+    )
+    .with_runtime_build(runtime_build_id.clone());
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id))
+        .build();
     engine
-        .start_with_id(
-            &run_id,
-            WorkflowSpec::rust_embedded(
-                WORKFLOW_RUN_FLOW_NAME,
-                WORKFLOW_RUN_FLOW_VERSION,
-                "cloud",
-                "workflow_run",
-            ),
-            serde_json::to_value(&input)?,
-        )
+        .start_with_id(&run_id, spec, serde_json::to_value(&input)?)
         .await?;
     let history = engine.history(&run_id).await?;
     let hook_id = format!("workflow-human:{TEST_HUMAN_STEP_ID}:1");
@@ -928,6 +940,21 @@ async fn expiry_resume_winning_the_race_commits_hook_evidence_before_typed_timeo
         Some(a3s_flow::WorkflowTerminalOutcome::TimedOut { deadline, .. })
             if deadline == input.deadline_at
     ));
+    let projected = project_workflow_run_record(&record, &snapshot, &history)
+        .map_err(FlowError::Runtime)?
+        .expect("expired HumanDecision projection");
+    let human_step = projected
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_HUMAN_STEP_ID)
+        .expect("expired human-decision projection");
+    assert_eq!(
+        human_step.evidence_references,
+        [
+            format!("urn:a3s:cloud:workflow:human-task:{}", task.id),
+            format!("urn:a3s:cloud:workflow:workflow-decision:{}", decision.id),
+        ]
+    );
     Ok(())
 }
 

@@ -419,7 +419,10 @@ export type WorkflowStepProjectionStatus =
 export type WorkflowStepEvidenceReference =
   | `urn:a3s:cloud:connectors:attempt:${string}`
   | `urn:a3s:cloud:executions:execution:${string}`
-  | `urn:a3s:cloud:operations:operation:${string}`;
+  | `urn:a3s:cloud:forms:submission:${string}`
+  | `urn:a3s:cloud:operations:operation:${string}`
+  | `urn:a3s:cloud:workflow:human-task:${string}`
+  | `urn:a3s:cloud:workflow:workflow-decision:${string}`;
 
 export interface StartWorkflowRunInput {
   workflowGoalId: string;

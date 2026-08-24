@@ -47,7 +47,7 @@ pub(crate) use workflow_run_variable_runtime::{
 };
 pub(crate) use workflow_step_evidence_reference::{
     connector_attempt_evidence_references, execution_evidence_references,
-    validate_evidence_references,
+    human_decision_evidence_references, validate_evidence_references,
 };
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};

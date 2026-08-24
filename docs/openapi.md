@@ -23,18 +23,25 @@ WorkflowRun responses already expose the bounded
 closed, canonical URN families:
 
 - `urn:a3s:cloud:executions:execution:<uuid>`;
-- `urn:a3s:cloud:operations:operation:<uuid>`; and
-- `urn:a3s:cloud:connectors:attempt:<uuid>`.
+- `urn:a3s:cloud:operations:operation:<uuid>`;
+- `urn:a3s:cloud:connectors:attempt:<uuid>`;
+- `urn:a3s:cloud:workflow:human-task:<uuid>`;
+- `urn:a3s:cloud:workflow:workflow-decision:<uuid>`; and
+- `urn:a3s:cloud:forms:submission:<uuid>`.
 
 The array is sorted, duplicate-free, limited to 32 entries, and reconstructed
 only from verified A3S Flow history. An Execution terminal observation retains
 its exact child Execution and Operation identities. A received Connector
 observation retains its deterministic attempt identity, including deferred or
 indeterminate outcomes; a dispatch rejection without owning-context evidence
-retains no reference. These URNs are correlations, not embedded evidence or an
-authorization grant. Reading any referenced owner resource still requires its
-normal authorized API. Populating this existing field changes no route or JSON
-shape, so the contract remains `1.59.0`.
+retains no reference. A received HumanDecision resume retains the exact
+HumanTask and WorkflowDecision identities; interactive submit, approve, and
+reject outcomes also retain the accepted FormSubmission identity, while
+automatic expiry and cancellation have no synthetic submission reference.
+These URNs are correlations, not embedded evidence or an authorization grant.
+Reading any referenced owner resource still requires its normal authorization
+boundary. Populating this existing field changes no route or JSON shape, so the
+contract remains `1.59.0`.
 
 ## Contract completeness
 

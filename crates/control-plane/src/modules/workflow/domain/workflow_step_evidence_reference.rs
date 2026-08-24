@@ -2,12 +2,16 @@ use super::entities::{
     WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
 };
 use super::WorkflowExecutionStepOutput;
+use crate::modules::shared_kernel::domain::{FormSubmissionId, HumanTaskId, WorkflowDecisionId};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
 const EXECUTION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:executions:execution:";
 const OPERATION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:operations:operation:";
 const CONNECTOR_ATTEMPT_REFERENCE_PREFIX: &str = "urn:a3s:cloud:connectors:attempt:";
+const FORM_SUBMISSION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:forms:submission:";
+const HUMAN_TASK_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:human-task:";
+const WORKFLOW_DECISION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:workflow-decision:";
 
 pub(crate) fn execution_evidence_references(
     output: &WorkflowExecutionStepOutput,
@@ -26,6 +30,25 @@ pub(crate) fn connector_attempt_evidence_references(
         attempt_ids
             .into_iter()
             .map(|attempt_id| format!("{CONNECTOR_ATTEMPT_REFERENCE_PREFIX}{attempt_id}")),
+    )
+}
+
+pub(crate) fn human_decision_evidence_references(
+    human_task_id: HumanTaskId,
+    workflow_decision_id: WorkflowDecisionId,
+    form_submission_id: Option<FormSubmissionId>,
+) -> Result<Vec<String>, String> {
+    checked_evidence_references(
+        [
+            Some(format!("{HUMAN_TASK_REFERENCE_PREFIX}{human_task_id}")),
+            Some(format!(
+                "{WORKFLOW_DECISION_REFERENCE_PREFIX}{workflow_decision_id}"
+            )),
+            form_submission_id
+                .map(|submission_id| format!("{FORM_SUBMISSION_REFERENCE_PREFIX}{submission_id}")),
+        ]
+        .into_iter()
+        .flatten(),
     )
 }
 
@@ -65,6 +88,9 @@ fn valid_reference(reference: &str) -> bool {
         EXECUTION_REFERENCE_PREFIX,
         OPERATION_REFERENCE_PREFIX,
         CONNECTOR_ATTEMPT_REFERENCE_PREFIX,
+        FORM_SUBMISSION_REFERENCE_PREFIX,
+        HUMAN_TASK_REFERENCE_PREFIX,
+        WORKFLOW_DECISION_REFERENCE_PREFIX,
     ]
     .into_iter()
     .find_map(|prefix| reference.strip_prefix(prefix))
@@ -123,6 +149,41 @@ mod tests {
             [
                 format!("{CONNECTOR_ATTEMPT_REFERENCE_PREFIX}{first}"),
                 format!("{CONNECTOR_ATTEMPT_REFERENCE_PREFIX}{second}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn human_decision_references_retain_task_decision_and_optional_submission_authority() {
+        let human_task_id = HumanTaskId::from_uuid(
+            Uuid::parse_str("019c0000-0000-7000-8000-000000000003").expect("HumanTask"),
+        );
+        let workflow_decision_id = WorkflowDecisionId::from_uuid(
+            Uuid::parse_str("019c0000-0000-7000-8000-000000000002").expect("WorkflowDecision"),
+        );
+        let form_submission_id = FormSubmissionId::from_uuid(
+            Uuid::parse_str("019c0000-0000-7000-8000-000000000001").expect("FormSubmission"),
+        );
+
+        assert_eq!(
+            human_decision_evidence_references(
+                human_task_id,
+                workflow_decision_id,
+                Some(form_submission_id),
+            )
+            .expect("interactive HumanDecision evidence references"),
+            [
+                format!("{FORM_SUBMISSION_REFERENCE_PREFIX}{form_submission_id}"),
+                format!("{HUMAN_TASK_REFERENCE_PREFIX}{human_task_id}"),
+                format!("{WORKFLOW_DECISION_REFERENCE_PREFIX}{workflow_decision_id}"),
+            ]
+        );
+        assert_eq!(
+            human_decision_evidence_references(human_task_id, workflow_decision_id, None)
+                .expect("automatic HumanDecision evidence references"),
+            [
+                format!("{HUMAN_TASK_REFERENCE_PREFIX}{human_task_id}"),
+                format!("{WORKFLOW_DECISION_REFERENCE_PREFIX}{workflow_decision_id}"),
             ]
         );
     }

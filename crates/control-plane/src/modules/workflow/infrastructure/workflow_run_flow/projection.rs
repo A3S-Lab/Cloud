@@ -7,11 +7,12 @@ use super::workflow::{
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
-    execution_evidence_references, flow_step_id, WorkflowCompositeFrameResolution,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata,
-    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
-    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
-    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
+    execution_evidence_references, flow_step_id, human_decision_evidence_references,
+    FlowResumePayload, WorkflowCompositeFrameResolution, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
+    WorkflowExecutionResumeResolution, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
+    WorkflowStepProjectionStatus,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
@@ -130,6 +131,11 @@ pub fn project_workflow_run_record(
         } else {
             None
         };
+        let human_evidence_references = human_hook
+            .as_ref()
+            .map(|(hook, _)| projected_human_decision_evidence_references(hook, &snapshot.run_id))
+            .transpose()?
+            .unwrap_or_default();
         let execution_hook = if resolved.plan.kind == WorkflowStepKind::Execution {
             execution_hook(&record.run.execution_input, resolved, snapshot)?
         } else {
@@ -636,6 +642,8 @@ pub fn project_workflow_run_record(
                 execution_evidence_references
             } else if resolved.plan.kind == WorkflowStepKind::Service {
                 connector_evidence_references
+            } else if resolved.plan.kind == WorkflowStepKind::HumanDecision {
+                human_evidence_references
             } else {
                 Vec::new()
             },
@@ -693,6 +701,35 @@ fn projected_execution_evidence_references(
         }
         WorkflowExecutionResumeResolution::Rejected { .. } => Ok(Vec::new()),
     }
+}
+
+fn projected_human_decision_evidence_references(
+    hook: &HookSnapshot,
+    flow_run_id: &str,
+) -> Result<Vec<String>, String> {
+    if hook.status != HookStatus::Received {
+        return Ok(Vec::new());
+    }
+    let observed = hook.payload.as_ref().ok_or_else(|| {
+        format!(
+            "Workflow human-decision hook {:?} has no payload",
+            hook.hook_id
+        )
+    })?;
+    let payload = serde_json::from_value::<FlowResumePayload>(observed.clone())
+        .map_err(|error| format!("Workflow human-decision resume payload is invalid: {error}"))?;
+    payload.validate()?;
+    if payload.workflow_run_id.to_string() != flow_run_id
+        || payload.flow_run_id != flow_run_id
+        || payload.flow_hook_id != hook.hook_id
+    {
+        return Err("Workflow human-decision evidence authority drifted".into());
+    }
+    human_decision_evidence_references(
+        payload.human_task_id,
+        payload.workflow_decision_id,
+        payload.form_submission_id,
+    )
 }
 
 fn replay_compatible_evidence_references(
