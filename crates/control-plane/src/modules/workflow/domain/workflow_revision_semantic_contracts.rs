@@ -1,11 +1,11 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
     has_application_answer_failure_route, has_application_variable_failure_route,
-    has_workflow_output_failure_route, validate_descriptor_failure_routes, CapabilityType,
-    WorkflowCompositeRegions, WorkflowDataType, WorkflowPlan, WorkflowSpec,
-    WorkflowStepBindingKind, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBindings,
-    WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass, WorkflowStepFallbackMode,
-    WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
+    has_branch_failure_route, has_workflow_output_failure_route,
+    validate_descriptor_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowDataType,
+    WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
     WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableDefaults,
     WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
@@ -554,6 +554,20 @@ impl WorkflowRevisionSemanticContracts {
         has_workflow_output_failure_route(workflow, &steps)
     }
 
+    pub(crate) fn has_branch_failure_route(&self, workflow: &WorkflowSpec) -> bool {
+        let failures = workflow
+            .steps
+            .iter()
+            .filter(|step| step.kind == WorkflowStepKind::Branch)
+            .filter_map(|step| {
+                self.descriptor_for_step(&step.id)
+                    .ok()
+                    .map(|descriptor| (step.id.as_str(), &descriptor.spec().failure))
+            })
+            .collect::<BTreeMap<_, _>>();
+        has_branch_failure_route(workflow, &failures)
+    }
+
     pub(crate) fn default_output_contract(
         &self,
         step_id: &str,
@@ -603,6 +617,12 @@ impl WorkflowRevisionSemanticContracts {
         {
             return Err("Workflow plan semantic contract authority drifted".into());
         }
+        let workflow = plan.workflow_spec()?;
+        if self.has_branch_failure_route(&workflow)
+            && plan.schema != super::WORKFLOW_PLAN_SCHEMA_V10
+        {
+            return Err("Workflow descriptor-bound Branch failure routes require Plan v10".into());
+        }
         for step in &plan.steps {
             let expected = self
                 .descriptor_bindings
@@ -647,6 +667,9 @@ impl WorkflowRevisionSemanticContracts {
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 super::WORKFLOW_PLAN_SCHEMA_V9
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V10
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 _ => {

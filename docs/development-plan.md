@@ -452,7 +452,11 @@ failure v5, and projection migration `145`. Descriptor-bound Workflow-local
 Output failure routing is implemented through Plan v9, WorkflowRun
 input/runtime/Flow v17, fixed redacted failure v6, and migration `143`'s existing
 failed Output projection shape. Runtime build `a3s-cloud-workflows@19` retains
-`@1` through `@18` for replay. The
+`@1` through `@18` for replay. Descriptor-bound Workflow-local Branch failure
+routing is implemented through Plan v10, WorkflowRun input/runtime/Flow v18,
+fixed redacted failure v7, and the existing failed Branch projection shape.
+Current runtime build `a3s-cloud-workflows@20` retains `@1` through `@19` for
+replay. The
 milestone remains in progress: business-service and remaining
 Agent/MCP/model/Tool dispatch, compensation, expanded provider conformance,
 `W0.5`, and public availability remain open.
@@ -848,8 +852,8 @@ commit and query tenant-scoped desired state.
   its `FormReleaseRef`, request, submission, canonicalization, and digest types,
   and calls its compiler and evaluator through one application port without a
   Cloud copy.
-- New Operation histories pin runtime build `a3s-cloud-workflows@19` and patch
-  marker `cloud.flow.bounded-step-retries-v1`. The former `@1` through `@18`
+- New Operation histories pin runtime build `a3s-cloud-workflows@20` and patch
+  marker `cloud.flow.bounded-step-retries-v1`. The former `@1` through `@19`
   generations are explicit replay-compatible migration entries; unknown
   pinned generations fail closed. Legacy unpinned histories remain replayable
   only as visible migration debt, and Cloud does not create new unpinned
@@ -2419,8 +2423,8 @@ node.
   `cloud.workflow.step-failure.v2` data on the ordinary DAG. Historic v8 still
   fails closed without that interpretation, v7 retains default-output behavior,
   v6 output stays reference-only, and v5 output stays digest-only and
-  byte-compatible. Current replay build `a3s-cloud-workflows@19` keeps
-  versions/builds `@1` through `@18` explicitly replayable. Migration `123`
+  byte-compatible. Current replay build `a3s-cloud-workflows@20` keeps
+  versions/builds `@1` through `@19` explicitly replayable. Migration `123`
   only admits the already wired Service projection
   shape and its failed selected handle; it adds no table, queue, timer worker,
   scheduler, retry counter, child Operation,
@@ -2475,6 +2479,17 @@ node.
   aliases. Plans v1-v8, Run inputs v1-v16, and runtime builds `@1` through `@18`
   retain exact replay, with no new table, column, OpenAPI shape, queue, or retry
   rail.
+- Implemented as component-only `W0.3` local Branch failure interpretation:
+  only an exact Workflow-owned Branch descriptor with semantic profile
+  `workflow.if-else` and one required static object `error` edge emits Plan v10
+  and WorkflowRun input/runtime/Flow v18. Missing or invalid selector evaluation
+  runs once without retry and materializes fixed redacted
+  `cloud.workflow.step-failure.v7` data on the ordinary DAG. The source Branch
+  projection remains failed with the exact descriptor handle while its error
+  sink may complete the parent. Business routes and the default remain disjoint
+  ordinary If / Else handles. Plans v1-v9, Run inputs v1-v17, and runtime builds
+  `@1` through `@19` retain exact replay, with no migration, new table, column,
+  OpenAPI shape, queue, or retry rail.
 - Implemented as `C0.3-N2f`: REST/OpenAPI `1.37.0`, the maintained client, CLI,
   and four Management MCP tools expose the existing recipient-bound outbound
   subscription create/list/get/revoke CQRS. Bounded keyset reads apply current
@@ -4577,6 +4592,7 @@ Follow the detailed gates in
    Plan v7/Run v15 descriptor-bound Application-Answer failure routing,
    Plan v8/Run v16 descriptor-bound Workflow-local Transform failure routing,
    Plan v9/Run v17 descriptor-bound Workflow-local Output failure routing,
+   Plan v10/Run v18 descriptor-bound Workflow-local Branch failure routing,
    while retaining the no-duplicate authority tests;
 2. retain protected `W0.3` runs, reachable-sink Output aggregation, the
    immutable bounded composite policy/child-binding foundation, and the

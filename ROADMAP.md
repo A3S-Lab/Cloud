@@ -2188,7 +2188,10 @@ compensation, and retained real-provider recovery evidence. Workflow-local
 Transform failure routing is implemented through Plan v8/Run v16 with fixed
 redacted failure-v5 data and migration `145`; Workflow-local Output failure
 routing is implemented through Plan v9/Run v17 with fixed redacted failure-v6
-data and the existing migration `143` Output projection shape.
+data and the existing migration `143` Output projection shape. Workflow-local
+Branch failure routing is implemented through Plan v10/Run v18 with fixed
+redacted failure-v7 data; descriptor error handles remain disjoint from
+ordinary If / Else handles and reuse the existing failed Branch projection.
 
 The shared execution substrate now pins A3S Flow `1.0.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.1`-backed PostgreSQL stores. Workflow
@@ -2197,7 +2200,7 @@ single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
 and `a3s_boot` schemas. One process-level supervisor now observes every
 mandatory worker exit, error, and panic and fails serving before a background
 path can disappear silently. New Cloud Operation
-runs pin runtime build `a3s-cloud-workflows@19`; the former `@1` through `@18`
+runs pin runtime build `a3s-cloud-workflows@20`; the former `@1` through `@19`
 generations are admitted only through the explicit compatibility set, while
 legacy unpinned histories remain replayable as migration debt. Composite-only
 Plan v2 runs pin WorkflowRun input/runtime/Flow v3; descriptor-bound Plan v3
@@ -2218,7 +2221,11 @@ ordinary DAG. Migration `145` only widens failed Transform selected-handle
 evidence. An exact Workflow-local Output error edge pins Plan v9 and Run v17,
 executes once without retry, and projects fixed redacted failure v6 through the
 ordinary DAG. It reuses migration `143`'s failed Output selected-handle shape.
-Historic v1-v16 inputs retain their bytes and replay behavior.
+An exact Workflow-local Branch error edge pins Plan v10 and Run v18, executes
+once without retry, and projects fixed redacted failure v7 through the ordinary
+DAG without reclassifying business branch handles. No migration is required
+because the existing failed Branch selected-handle projection is already exact.
+Historic v1-v17 inputs retain their bytes and replay behavior.
 PostgreSQL tests cover queue
 draining, bounded retries, terminal-failure readiness, and the existing nine
 Build Flow `SIGKILL` boundaries. The exact root compatibility lock now publishes this

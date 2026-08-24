@@ -11,6 +11,7 @@ pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3: &str = "cloud.workflow.step-fa
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4: &str = "cloud.workflow.step-failure.v4";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5: &str = "cloud.workflow.step-failure.v5";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6: &str = "cloud.workflow.step-failure.v6";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7: &str = "cloud.workflow.step-failure.v7";
 pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
     "cloud.workflow.step-default-output.v1";
 
@@ -233,6 +234,18 @@ impl WorkflowStepFailureOutput {
         Ok(value)
     }
 
+    pub(crate) fn local_branch(step: &ResolvedWorkflowRunStep) -> Result<Self, String> {
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7.into(),
+            step_id: step.plan.id.clone(),
+            classification: WorkflowStepFailureClassification::WorkflowLocalInvalid,
+            message: workflow_branch_failure_message().into(),
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
         self.validate_observation(step)?;
         let failure =
@@ -286,6 +299,9 @@ impl WorkflowStepFailureOutput {
                     return Ok(())
                 }
                 WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6 if is_workflow_output_step(step) => {
+                    return Ok(())
+                }
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7 if is_workflow_branch_step(step) => {
                     return Ok(())
                 }
                 _ => {}
@@ -379,6 +395,11 @@ impl WorkflowStepFailureOutput {
                 WorkflowStepFailureClassification::WorkflowLocalInvalid,
                 None,
             ) if self.message == workflow_output_failure_message() => Ok(()),
+            (
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
+                WorkflowStepFailureClassification::WorkflowLocalInvalid,
+                None,
+            ) if self.message == workflow_branch_failure_message() => Ok(()),
             _ => Err("Workflow step failure details do not match their classification".into()),
         }
     }
@@ -390,6 +411,10 @@ const fn workflow_local_failure_message() -> &'static str {
 
 const fn workflow_output_failure_message() -> &'static str {
     "Workflow Output evaluation was invalid"
+}
+
+const fn workflow_branch_failure_message() -> &'static str {
+    "Workflow Branch evaluation was invalid"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -508,6 +533,12 @@ fn is_workflow_output_step(step: &ResolvedWorkflowRunStep) -> bool {
             .is_some_and(|descriptor| descriptor.descriptor_id == "workflow.output")
 }
 
+fn is_workflow_branch_step(step: &ResolvedWorkflowRunStep) -> bool {
+    step.plan.kind == WorkflowStepKind::Branch
+        && step.plan.capability.is_none()
+        && step.plan.descriptor.is_some()
+}
+
 fn application_failure_message(
     classification: WorkflowStepFailureClassification,
 ) -> Option<&'static str> {
@@ -573,7 +604,8 @@ fn validate_failure_execution_authority(
 mod tests {
     use super::*;
     use crate::modules::workflow::test_support::{
-        output_failure_workflow_run_input, routed_application_answer_workflow_run_input,
+        branch_failure_workflow_run_input, output_failure_workflow_run_input,
+        routed_application_answer_workflow_run_input,
         routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
         routed_execution_workflow_run_input, transform_failure_workflow_run_input,
         TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
@@ -633,6 +665,29 @@ mod tests {
 
         let mut forged = failure;
         forged.message = "raw output error: private input".into();
+        assert!(forged.validate(&step).is_err());
+    }
+
+    #[test]
+    fn branch_failures_are_redacted_exact_v7_local_observations() {
+        let input = branch_failure_workflow_run_input().expect("routed Branch input");
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == TEST_EXECUTION_STEP_ID)
+            .expect("Branch step");
+        let failure = WorkflowStepFailureOutput::local_branch(&step).expect("v7 Branch failure");
+        assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7);
+        assert_eq!(
+            failure.classification,
+            WorkflowStepFailureClassification::WorkflowLocalInvalid
+        );
+        assert_eq!(failure.message, workflow_branch_failure_message());
+        assert!(failure.details.is_none());
+
+        let mut forged = failure;
+        forged.message = "raw selector error: private input".into();
         assert!(forged.validate(&step).is_err());
     }
 

@@ -43,12 +43,12 @@ converges through one PostgreSQL authority and one durable execution path.
 The code on `main` separates implemented mechanics from released capability:
 
 > [!TIP]
-> **Workflow proof — Plan v9 / Run v17.** A descriptor-bound Workflow-local
-> Output error edge now executes once without retry, emits a fixed redacted
-> failure-v6 value, and may complete the parent through the ordinary DAG while
-> the source projection remains failed. Plan v8/Run v16 retains deterministic
-> Transform routing, and builds `@1` through `@18` keep their exact replay
-> behavior. [Decision 0048](docs/decisions/app-platform/0048-descriptor-bound-output-failure-routes.md)
+> **Workflow proof — Plan v10 / Run v18.** A descriptor-bound Workflow-local
+> Branch error edge now executes once without retry, emits a fixed redacted
+> failure-v7 value, and may complete the parent through the ordinary DAG while
+> preserving ordinary If / Else handles. Plan v9/Run v17 retains deterministic
+> Output routing, and builds `@1` through `@19` keep their exact replay behavior.
+> [Decision 0049](docs/decisions/app-platform/0049-descriptor-bound-branch-failure-routes.md)
 > records the new authority and replay boundary; W0.3 remains in progress.
 
 - **Implemented / durable foundation update** — `main` pins A3S Flow `1.0.0`
@@ -60,9 +60,9 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@19` and the
+  New Operations pin replay generation `a3s-cloud-workflows@20` and the
   `cloud.flow.bounded-step-retries-v1` marker. Their infrastructure steps use
-  eight attempts with a 30-second capped backoff; `@1` through `@18` retain
+  eight attempts with a 30-second capped backoff; `@1` through `@19` retain
   their exact replay policy through the explicit Flow compatibility set, which
   readiness exposes with the remaining unpinned migration switch. Cloud and
   Code resolve one exact Flow revision. The

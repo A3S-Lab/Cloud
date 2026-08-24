@@ -34,7 +34,16 @@ pub(crate) fn validate_descriptor_failure_routes(
             )
         })?;
         if source.kind == WorkflowStepKind::Branch {
-            continue;
+            let Some(failure) = failures.get(source.id.as_str()) else {
+                continue;
+            };
+            if failure
+                .error_output
+                .as_ref()
+                .is_none_or(|output| output.name != handle)
+            {
+                continue;
+            }
         }
         routed = true;
         if !supports_failure_route(
@@ -113,6 +122,29 @@ pub(crate) fn has_transform_failure_route(workflow: &WorkflowSpec) -> bool {
     })
 }
 
+pub(crate) fn has_branch_failure_route(
+    workflow: &WorkflowSpec,
+    failures: &BTreeMap<&str, &WorkflowStepFailureContract>,
+) -> bool {
+    let steps = workflow
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    workflow.edges.iter().any(|edge| {
+        let Some(handle) = edge.source_handle.as_deref() else {
+            return false;
+        };
+        steps
+            .get(edge.source.as_str())
+            .is_some_and(|step| step.kind == WorkflowStepKind::Branch)
+            && failures
+                .get(edge.source.as_str())
+                .and_then(|failure| failure.error_output.as_ref())
+                .is_some_and(|output| output.name == handle)
+    })
+}
+
 pub(crate) fn has_workflow_output_failure_route(
     workflow: &WorkflowSpec,
     workflow_output_steps: &BTreeSet<&str>,
@@ -151,6 +183,7 @@ fn supports_failure_route(
     workflow_output_steps: &BTreeSet<&str>,
 ) -> bool {
     step.kind == WorkflowStepKind::Transform
+        || step.kind == WorkflowStepKind::Branch
         || step.kind == WorkflowStepKind::Execution
         || is_connector_step(step)
         || (step.kind == WorkflowStepKind::Service
@@ -366,5 +399,31 @@ mod tests {
         )
         .expect_err("failure values must be objects");
         assert!(invalid.contains("required static object value"));
+    }
+
+    #[test]
+    fn branch_routes_distinguish_descriptor_failure_from_business_handles() {
+        let branch_failure = failure(WorkflowDataType::Object);
+        let failures = BTreeMap::from([("run", &branch_failure)]);
+        let no_application_steps = BTreeSet::new();
+        let no_workflow_output_steps = BTreeSet::new();
+        let mut workflow = routed_workflow(WorkflowStepKind::Branch);
+        workflow.edges.push(WorkflowEdgeSpec {
+            id: "run-matched".into(),
+            source: "run".into(),
+            target: "output".into(),
+            source_handle: Some("matched".into()),
+        });
+
+        assert_eq!(
+            validate_descriptor_failure_routes(
+                &workflow,
+                &failures,
+                &no_application_steps,
+                &no_application_steps,
+                &no_workflow_output_steps,
+            ),
+            Ok(true)
+        );
     }
 }

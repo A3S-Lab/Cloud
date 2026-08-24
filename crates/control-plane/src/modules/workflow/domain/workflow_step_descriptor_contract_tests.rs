@@ -123,6 +123,38 @@ fn transform_descriptor() -> WorkflowStepDescriptorSpec {
     }
 }
 
+fn branch_descriptor() -> WorkflowStepDescriptorSpec {
+    WorkflowStepDescriptorSpec {
+        id: "workflow.branch".into(),
+        revision: "1.0.0".into(),
+        owner: WorkflowStepOwner::Workflow,
+        kind: Some(WorkflowStepKind::Branch),
+        semantic_profile: "workflow.if-else".into(),
+        execution_class: WorkflowStepExecutionClass::WorkflowLocal,
+        input_ports: vec![port("current", WorkflowDataType::Object)],
+        output_ports: vec![port("value", WorkflowDataType::Object)],
+        configuration_schema_digest: digest('f'),
+        default_policy_digest: None,
+        required_bindings: Vec::new(),
+        allowed_capability_types: Vec::new(),
+        failure: WorkflowStepFailureContract {
+            error_output: Some(port("error", WorkflowDataType::Object)),
+            retry_classification: WorkflowStepRetryClassification::NotRetryable,
+            fallback: WorkflowStepFallbackMode::FailureBranch,
+            failure_branch: true,
+        },
+        minimum_compiler_schema_version: 2,
+        maximum_compiler_schema_version: 3,
+        admission: WorkflowStepDescriptorAdmission::Admitted,
+        unavailable_reason: None,
+        presentation: WorkflowStepPresentationSpec {
+            label: "If / Else".into(),
+            summary: "Selects one deterministic Workflow-local branch".into(),
+            icon_key: "workflow.branch".into(),
+        },
+    }
+}
+
 fn output_descriptor() -> WorkflowStepDescriptorSpec {
     WorkflowStepDescriptorSpec {
         id: "workflow.output".into(),
@@ -162,6 +194,7 @@ fn registry_spec() -> WorkflowStepDescriptorRegistrySpec {
         compiler_schema_version: 2,
         descriptors: vec![
             execution_descriptor(),
+            branch_descriptor(),
             input_descriptor("User Input"),
             output_descriptor(),
             transform_descriptor(),
@@ -175,7 +208,7 @@ fn registry_is_canonical_digest_addressed_and_restorable() {
     assert_eq!(registry.id(), "cloud.builtin");
     assert_eq!(registry.revision(), "1.0.0");
     assert_eq!(registry.compiler_schema_version(), 2);
-    assert_eq!(registry.descriptors().len(), 4);
+    assert_eq!(registry.descriptors().len(), 5);
     assert!(registry.digest().as_str().starts_with("sha256:"));
     assert_eq!(
         WorkflowStepDescriptorRegistry::parse_acl(registry.canonical_acl()).expect("parsed"),
@@ -276,7 +309,7 @@ fn checked_in_registry_rejects_schema_and_authority_drift() {
 fn presentation_and_admission_metadata_do_not_change_execution_semantics() {
     let first = WorkflowStepDescriptorRegistry::from_spec(registry_spec()).expect("first");
     let mut changed_presentation = registry_spec();
-    changed_presentation.descriptors[1].presentation = presentation("Invocation Input");
+    changed_presentation.descriptors[2].presentation = presentation("Invocation Input");
     let second =
         WorkflowStepDescriptorRegistry::from_spec(changed_presentation).expect("presentation");
 
@@ -294,8 +327,8 @@ fn presentation_and_admission_metadata_do_not_change_execution_semantics() {
     assert_ne!(first.digest(), second.digest());
 
     let mut unavailable = registry_spec();
-    unavailable.descriptors[1].admission = WorkflowStepDescriptorAdmission::Unavailable;
-    unavailable.descriptors[1].unavailable_reason = Some("provider gate is not verified".into());
+    unavailable.descriptors[2].admission = WorkflowStepDescriptorAdmission::Unavailable;
+    unavailable.descriptors[2].unavailable_reason = Some("provider gate is not verified".into());
     let unavailable =
         WorkflowStepDescriptorRegistry::from_spec(unavailable).expect("unavailable registry");
     assert_eq!(
@@ -335,15 +368,15 @@ fn duplicate_identity_and_admission_drift_fail_closed() {
     assert!(WorkflowStepDescriptorRegistry::from_spec(duplicate).is_err());
 
     let mut admitted_reason = registry_spec();
-    admitted_reason.descriptors[1].unavailable_reason = Some("should not exist".into());
+    admitted_reason.descriptors[2].unavailable_reason = Some("should not exist".into());
     assert!(WorkflowStepDescriptorRegistry::from_spec(admitted_reason).is_err());
 
     let mut missing_reason = registry_spec();
-    missing_reason.descriptors[1].admission = WorkflowStepDescriptorAdmission::Unavailable;
+    missing_reason.descriptors[2].admission = WorkflowStepDescriptorAdmission::Unavailable;
     assert!(WorkflowStepDescriptorRegistry::from_spec(missing_reason).is_err());
 
     let mut invalid_port = registry_spec();
-    invalid_port.descriptors[1].output_ports[0].name = "nested.value".into();
+    invalid_port.descriptors[2].output_ports[0].name = "nested.value".into();
     assert!(WorkflowStepDescriptorRegistry::from_spec(invalid_port).is_err());
 }
 

@@ -43,6 +43,46 @@ descriptor_registry "cloud.builtin" {
       summary = "Runs one exact Executions-owned template"
     }
   }
+  descriptor "workflow.branch" "1.0.0" {
+    admission = "admitted"
+    allowed_capability_types = []
+    configuration_schema_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    execution_class = "workflow_local"
+    kind = "branch"
+    maximum_compiler_schema_version = 3
+    minimum_compiler_schema_version = 2
+    owner = "workflow"
+    required_bindings = []
+    semantic_profile = "workflow.if-else"
+    input "current" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    output "value" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    error_output "error" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    failure {
+      failure_branch = true
+      fallback = "failure_branch"
+      retry_classification = "not_retryable"
+    }
+    presentation {
+      icon_key = "workflow.branch"
+      label = "If / Else"
+      summary = "Selects one deterministic Workflow-local branch"
+    }
+  }
   descriptor "workflow.input" "1.0.0" {
     admission = "admitted"
     allowed_capability_types = []

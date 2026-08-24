@@ -4,8 +4,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     CapabilityType, WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
-    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowStepKind, WorkflowStepSpec,
-    WORKFLOW_DEFINITION_SCHEMA,
+    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowStepFailureContract,
+    WorkflowStepKind, WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -390,7 +390,10 @@ fn validate_payload_bindings(
         validate_retry_policy_binding(step, policy)?;
         validate_default_output_policy_binding(step, policy, output_schema, semantic_contracts)?;
         if step.kind == WorkflowStepKind::Branch {
-            validate_branch_handles(contract, &step.id, configuration)?;
+            let failure = semantic_contracts
+                .map(|contracts| contracts.failure_contract(&step.id))
+                .transpose()?;
+            validate_branch_handles(contract, &step.id, configuration, failure)?;
         }
     }
     let stored = payloads
@@ -500,6 +503,7 @@ fn validate_branch_handles(
     contract: &WorkflowContract,
     step_id: &str,
     configuration: &crate::modules::workflow::domain::WorkflowStepConfiguration,
+    failure: Option<&WorkflowStepFailureContract>,
 ) -> Result<(), String> {
     let configured = configuration
         .routes
@@ -515,6 +519,14 @@ fn validate_branch_handles(
             "Workflow branch {step_id:?} default handle is not a declared route"
         ));
     }
+    let failure_handle = failure
+        .and_then(|contract| contract.error_output.as_ref())
+        .map(|output| output.name.as_str());
+    if failure_handle.is_some_and(|handle| configured.contains(handle)) {
+        return Err(format!(
+            "Workflow branch {step_id:?} descriptor error handle conflicts with a business route"
+        ));
+    }
     let outgoing = contract
         .spec()
         .edges
@@ -522,9 +534,14 @@ fn validate_branch_handles(
         .filter(|edge| edge.source == step_id)
         .filter_map(|edge| edge.source_handle.as_deref())
         .collect::<BTreeSet<_>>();
-    if configured != outgoing {
+    let ordinary_outgoing = outgoing
+        .iter()
+        .copied()
+        .filter(|handle| Some(*handle) != failure_handle)
+        .collect::<BTreeSet<_>>();
+    if configured != ordinary_outgoing {
         return Err(format!(
-            "Workflow branch {step_id:?} routes do not exactly match its outgoing handles"
+            "Workflow branch {step_id:?} routes do not exactly match its ordinary outgoing handles"
         ));
     }
     Ok(())

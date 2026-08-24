@@ -1,8 +1,9 @@
 use super::workflow::{
     application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
-    local_output_failure_route_result, local_transform_failure_route_result,
-    ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
+    local_branch_failure_route_result, local_output_failure_route_result,
+    local_transform_failure_route_result, ApplicationAnswerResolution,
+    ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -911,17 +912,24 @@ pub(super) fn completed_workflow_steps(
                     }
                 }
             }
-            WorkflowStepKind::Transform | WorkflowStepKind::Output => {
+            WorkflowStepKind::Transform | WorkflowStepKind::Branch | WorkflowStepKind::Output => {
                 let durable_step_id = flow_step_id(&resolved.plan.id);
                 if snapshot
                     .steps
                     .get(&durable_step_id)
                     .is_some_and(|step| step.status == StepStatus::Failed)
                 {
-                    let result = if resolved.plan.kind == WorkflowStepKind::Transform {
-                        local_transform_failure_route_result(&snapshot.run_id, input, resolved)
-                    } else {
-                        local_output_failure_route_result(&snapshot.run_id, input, resolved)
+                    let result = match resolved.plan.kind {
+                        WorkflowStepKind::Transform => {
+                            local_transform_failure_route_result(&snapshot.run_id, input, resolved)
+                        }
+                        WorkflowStepKind::Branch => {
+                            local_branch_failure_route_result(&snapshot.run_id, input, resolved)
+                        }
+                        WorkflowStepKind::Output => {
+                            local_output_failure_route_result(&snapshot.run_id, input, resolved)
+                        }
+                        _ => return Err("Workflow local failure projection kind drifted".into()),
                     }
                     .map_err(|error| error.to_string())?;
                     if let Some(result) = result {

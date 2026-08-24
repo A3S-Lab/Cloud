@@ -9,8 +9,8 @@ execution class, configuration/default-policy digests, required bindings,
 allowed existing `CapabilityType` values, typed failure behavior, compiler
 compatibility, admission metadata, and a separate presentation digest.
 
-The fixture contains four representative admitted descriptors so Workflow-local
-Input, Transform, and Output steps plus the existing finite Executions
+The fixture contains five representative admitted descriptors so Workflow-local
+Input, Transform, If / Else, and Output steps plus the existing finite Executions
 application port are covered. It is not the production built-in catalog, does not advertise all 23
 application-platform nodes, and does not change public parity availability.
 `step-descriptor-bindings.acl` freezes the separate, presentation-independent
@@ -89,6 +89,27 @@ selected-handle evidence and still rejects completed aliases. Runtime build
 `a3s-cloud-workflows@19` retains `@1` through `@18` for exact replay. Plans
 v1-v8 and Run inputs v1-v16 keep their bytes and behavior. This slice adds no
 table, column, retry engine, queue, worker, scheduler, or second Flow mechanism.
+
+## Descriptor-bound Workflow-local Branch failure route
+
+The `workflow.branch` descriptor with semantic profile `workflow.if-else`
+declares one required static object error output named `error`, a non-retryable
+classification, and failure-branch fallback. Configuration routes and the
+default remain ordinary business handles and must be disjoint from `error`.
+Selecting the descriptor error port emits `cloud.workflow.plan.v10` and
+immutable WorkflowRun input/runtime/Flow v18. Missing or invalid selector
+evaluation runs exactly once, resumes ordinary DAG interpretation, and produces
+the bounded redacted `cloud.workflow.step-failure.v7` value. The failed Branch
+projection records the exact `error` handle while its error sink may complete
+the parent run.
+
+Runtime v18 never copies selector diagnostics into handled DAG data or the
+public step projection. The existing failed Branch selected-handle projection
+already carries the exact descriptor handle, so no migration is required.
+Runtime build `a3s-cloud-workflows@20` retains `@1` through `@19` for exact
+replay. Plans v1-v9 and Run inputs v1-v17 keep their bytes and behavior. This
+slice adds no table, column, retry engine, queue, worker, scheduler, or second
+Flow mechanism.
 
 ## Typed variable scopes
 

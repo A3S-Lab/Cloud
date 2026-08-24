@@ -18,17 +18,19 @@ use crate::modules::workflow::domain::{
     WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2, WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V11,
     WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V14,
-    WORKFLOW_RUN_FLOW_VERSION_V16, WORKFLOW_RUN_FLOW_VERSION_V17, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_FLOW_VERSION_V16, WORKFLOW_RUN_FLOW_VERSION_V17, WORKFLOW_RUN_FLOW_VERSION_V18,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6,
+    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
 };
 use crate::modules::workflow::test_support::{
     accepted_submission, application_answer_workflow_run_input,
     application_answers_workflow_run_input, application_frame_answer_workflow_run_input,
-    application_variable_workflow_run_input, composite_workflow_run_input, digest,
-    exclusive_output_workflow_run_input, human_decision_form_release,
-    human_decision_workflow_run_input, multi_output_workflow_run_input,
-    output_failure_workflow_run_input, routed_application_variable_workflow_run_input, timestamp,
+    application_variable_workflow_run_input, branch_failure_workflow_run_input,
+    composite_workflow_run_input, digest, exclusive_output_workflow_run_input,
+    human_decision_form_release, human_decision_workflow_run_input,
+    multi_output_workflow_run_input, output_failure_workflow_run_input,
+    routed_application_variable_workflow_run_input, timestamp,
     transform_failure_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
     TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_EXECUTION_STEP_ID,
     TEST_HUMAN_STEP_ID, TEST_SECOND_ANSWER_STEP_ID,
@@ -217,6 +219,77 @@ async fn v17_output_failure_completes_its_error_branch_and_projects_redacted_fai
         .as_deref()
         .unwrap_or_default()
         .contains("missing"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn v18_branch_failure_completes_its_error_branch_and_projects_redacted_failure(
+) -> Result<(), FlowError> {
+    let mut input = branch_failure_workflow_run_input().map_err(FlowError::Runtime)?;
+    input.requested_at = chrono::Utc::now();
+    input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+    input.validate().map_err(FlowError::Runtime)?;
+    let run_id = input.workflow_run_id.to_string();
+    let runtime_build = RuntimeBuildId::new("a3s-cloud-workflows@20")?;
+    let spec = WorkflowSpec::rust_embedded(
+        WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION_V18,
+        "a3s-cloud",
+        "main",
+    )
+    .with_runtime_build(runtime_build.clone());
+    let (run, steps) = WorkflowRun::create(input.clone(), PrincipalId::new())
+        .map_err(FlowError::InvalidWorkflow)?;
+    let record = WorkflowRunRecord { run, steps };
+    let engine = FlowEngine::builder(Arc::new(WorkflowRunFlowRuntime::default()))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build))
+        .build();
+    engine
+        .start_with_id(run_id.clone(), spec, serde_json::to_value(&input)?)
+        .await?;
+    let snapshot = engine.snapshot(&run_id).await?;
+    assert_eq!(snapshot.status, WorkflowRunStatus::Completed);
+    let branch = snapshot
+        .steps
+        .get(&flow_step_id(TEST_EXECUTION_STEP_ID))
+        .expect("Branch step");
+    assert_eq!(branch.status, StepStatus::Failed);
+    assert_eq!(branch.attempt, 1);
+    assert_eq!(
+        snapshot
+            .output
+            .as_ref()
+            .and_then(|output| output.get("failure_output"))
+            .and_then(|output| output.get("schema")),
+        Some(&json!(WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7))
+    );
+
+    let history = engine.history(&run_id).await?;
+    let projected = project_workflow_run_record(&record, &snapshot, &history)
+        .map_err(FlowError::Runtime)?
+        .expect("changed projection");
+    let branch = projected
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
+        .expect("Branch projection");
+    assert_eq!(branch.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(branch.selected_handle.as_deref(), Some("error"));
+    assert_eq!(
+        branch.error.as_deref(),
+        Some("Workflow Branch evaluation was invalid")
+    );
+    assert!(!branch
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("missing"));
+    let skipped = projected
+        .steps
+        .iter()
+        .find(|step| step.step_id == "output")
+        .expect("ordinary output projection");
+    assert_eq!(skipped.status, WorkflowStepProjectionStatus::Skipped);
     Ok(())
 }
 

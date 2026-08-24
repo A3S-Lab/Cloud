@@ -186,6 +186,14 @@ runs once without retry, becomes fixed redacted
 Output projection failed with the exact selected handle. Plans v1-v8 and Run
 inputs v1-v16 retain their exact bytes and replay behavior; runtime build
 `a3s-cloud-workflows@19` explicitly retains `@1` through `@18`.
+An exact Workflow-local Branch descriptor error edge emits Plan v10 and immutable
+WorkflowRun input/runtime/Flow v18. Missing or invalid selector evaluation runs
+once without retry, becomes fixed redacted
+`cloud.workflow.step-failure.v7` data on the ordinary DAG, and leaves the source
+Branch projection failed with the exact selected handle. Descriptor error
+handles are disjoint from ordinary If / Else handles. Plans v1-v9 and Run inputs
+v1-v17 retain their exact bytes and replay behavior; runtime build
+`a3s-cloud-workflows@20` explicitly retains `@1` through `@19`.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact

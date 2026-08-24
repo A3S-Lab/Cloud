@@ -363,6 +363,106 @@ fn output_failure_route_fixture() -> FailureRouteFixture {
     fixture
 }
 
+fn branch_failure_route_fixture() -> FailureRouteFixture {
+    let mut fixture = failure_route_fixture();
+    let mut branch_configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Branch);
+    branch_configuration.selector = Some("current.missing".into());
+    branch_configuration.routes = vec![WorkflowBranchRoute {
+        handle: "matched".into(),
+        equals: "matched".into(),
+    }];
+    branch_configuration.default_handle = Some("matched".into());
+    let branch_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(branch_configuration))
+            .expect("Branch configuration");
+    let branch_step = fixture
+        .workflow
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "execute")
+        .expect("Execution step");
+    let execution_configuration_digest = branch_step.configuration_digest.clone();
+    branch_step.kind = WorkflowStepKind::Branch;
+    branch_step.configuration_digest = branch_configuration.digest().clone();
+    branch_step.policy_digest = None;
+    branch_step.capability = None;
+    fixture
+        .workflow
+        .edges
+        .iter_mut()
+        .find(|edge| edge.id == "execute-output")
+        .expect("ordinary Branch route")
+        .source_handle = Some("matched".into());
+    fixture
+        .payloads
+        .retain(|payload| payload.digest() != &execution_configuration_digest);
+    fixture.payloads.push(branch_configuration);
+
+    let mut branch_descriptor = descriptor(
+        "workflow.branch",
+        WorkflowStepKind::Branch,
+        "input",
+        "result",
+    );
+    branch_descriptor.semantic_profile = "workflow.if-else".into();
+    branch_descriptor.failure = WorkflowStepFailureContract {
+        error_output: Some(port("error")),
+        retry_classification: WorkflowStepRetryClassification::NotRetryable,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.branch-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: vec![
+            descriptor(
+                "workflow.input",
+                WorkflowStepKind::Input,
+                "invocation",
+                "value",
+            ),
+            branch_descriptor,
+            descriptor(
+                "workflow.output",
+                WorkflowStepKind::Output,
+                "result",
+                "value",
+            ),
+        ],
+    })
+    .expect("Branch failure route registry");
+    let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: "support.branch-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        bindings: [
+            ("input", "workflow.input"),
+            ("execute", "workflow.branch"),
+            ("failure_output", "workflow.output"),
+            ("output", "workflow.output"),
+        ]
+        .into_iter()
+        .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+            step_id: step_id.into(),
+            descriptor_id: descriptor_id.into(),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: registry
+                .resolve(descriptor_id, "1.0.0")
+                .expect("descriptor")
+                .semantic_digest()
+                .clone(),
+        })
+        .collect(),
+    })
+    .expect("Branch failure route bindings");
+    let variables = fixture.semantic_contracts.variable_contract().clone();
+    fixture.semantic_contracts =
+        WorkflowRevisionSemanticContracts::create(&fixture.workflow, bindings, registry, variables)
+            .expect("Branch failure route semantics");
+    fixture
+}
+
 fn connector_failure_route_fixture() -> FailureRouteFixture {
     let mut fixture = failure_route_fixture();
     let connector_configuration =
@@ -812,6 +912,85 @@ fn compiler_emits_plan_v9_and_run_v17_for_output_failure_routes() {
         .execution_input
         .validate()
         .expect("valid run v17 input");
+}
+
+#[test]
+fn compiler_emits_plan_v10_and_run_v18_for_branch_failure_routes() {
+    let (compiled, revision, principal_id, now) =
+        compile_execution_fallback_fixture(branch_failure_route_fixture(), "Routed Branch goal");
+    assert_eq!(compiled.plan_revision.plan.schema, WORKFLOW_PLAN_SCHEMA_V10);
+    assert_eq!(
+        compiled.plan_revision.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V10
+    );
+    let run = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("compiled run v18");
+    assert_eq!(
+        run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V18
+    );
+    assert_eq!(
+        run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18
+    );
+    assert_eq!(
+        run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V18
+    );
+    run.run
+        .execution_input
+        .validate()
+        .expect("valid run v18 input");
+}
+
+#[test]
+fn branch_business_routes_cannot_alias_the_descriptor_error_handle() {
+    let mut fixture = branch_failure_route_fixture();
+    let branch_step = fixture
+        .workflow
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "execute")
+        .expect("Branch step");
+    let previous_configuration_digest = branch_step.configuration_digest.clone();
+    let mut configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Branch);
+    configuration.selector = Some("current.priority".into());
+    configuration.routes = vec![WorkflowBranchRoute {
+        handle: "error".into(),
+        equals: "high".into(),
+    }];
+    configuration.default_handle = Some("error".into());
+    let configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(configuration))
+            .expect("conflicting Branch configuration");
+    branch_step.configuration_digest = configuration.digest().clone();
+    fixture
+        .payloads
+        .retain(|payload| payload.digest() != &previous_configuration_digest);
+    fixture.payloads.push(configuration);
+
+    let contract = WorkflowContract::from_spec(fixture.workflow).expect("Workflow contract");
+    let error = WorkflowRevision::initial_with_semantic_contracts(
+        OrganizationId::new(),
+        ProjectId::new(),
+        WorkflowDefinitionId::new(),
+        WorkflowRevisionId::new(),
+        contract,
+        fixture.payloads,
+        fixture.semantic_contracts,
+        PrincipalId::new(),
+        Utc::now(),
+    )
+    .expect_err("business route alias must fail closed");
+    assert!(error.contains("descriptor error handle conflicts with a business route"));
 }
 
 fn compile_execution_fallback_fixture(

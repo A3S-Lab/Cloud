@@ -25,11 +25,11 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -115,6 +115,10 @@ pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, 
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
             crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V17,
         ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V18,
+        ),
     ]
     .into_iter()
 }
@@ -160,8 +164,17 @@ impl WorkflowLocalStepResult {
         if self.step_id != expected.plan.id || self.kind != expected.plan.kind {
             return Err("Workflow local step result identity drifted".into());
         }
-        let routed_failure =
-            self.kind != WorkflowStepKind::Branch && self.selected_handle.is_some();
+        let branch_failure = self.kind == WorkflowStepKind::Branch
+            && self.selected_handle.as_deref().is_some_and(|selected| {
+                expected
+                    .plan
+                    .failure
+                    .as_ref()
+                    .and_then(|failure| descriptor_failure_output(failure).ok())
+                    .is_some_and(|output| output.name == selected)
+            });
+        let routed_failure = self.selected_handle.is_some()
+            && (self.kind != WorkflowStepKind::Branch || branch_failure);
         if let Some(evidence) = self.default_output_evidence.as_ref() {
             if routed_failure || self.kind != WorkflowStepKind::Execution {
                 return Err("Workflow default-output result has invalid control flow".into());
@@ -206,7 +219,7 @@ impl WorkflowLocalStepResult {
         if digest != self.output_digest {
             return Err("Workflow local step output digest does not match".into());
         }
-        if self.kind == WorkflowStepKind::Branch {
+        if self.kind == WorkflowStepKind::Branch && !routed_failure {
             let selected = self
                 .selected_handle
                 .as_deref()
@@ -303,6 +316,7 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16
                         | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17
+                        | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18
                 ) {
                     return Err(FlowError::Runtime(
                         "WorkflowRun step runtime contract revision is unsupported".into(),

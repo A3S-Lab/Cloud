@@ -267,7 +267,8 @@ export interface WorkflowStepFailureOutput {
     | 'cloud.workflow.step-failure.v3'
     | 'cloud.workflow.step-failure.v4'
     | 'cloud.workflow.step-failure.v5'
-    | 'cloud.workflow.step-failure.v6';
+    | 'cloud.workflow.step-failure.v6'
+    | 'cloud.workflow.step-failure.v7';
   stepId: string;
   classification: WorkflowStepFailureClassification;
   message: string;
@@ -305,7 +306,8 @@ export interface WorkflowPlan {
     | 'cloud.workflow.plan.v6'
     | 'cloud.workflow.plan.v7'
     | 'cloud.workflow.plan.v8'
-    | 'cloud.workflow.plan.v9';
+    | 'cloud.workflow.plan.v9'
+    | 'cloud.workflow.plan.v10';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
@@ -315,7 +317,8 @@ export interface WorkflowPlan {
     | 'cloud.workflow.plan-compiler.v6'
     | 'cloud.workflow.plan-compiler.v7'
     | 'cloud.workflow.plan-compiler.v8'
-    | 'cloud.workflow.plan-compiler.v9';
+    | 'cloud.workflow.plan-compiler.v9'
+    | 'cloud.workflow.plan-compiler.v10';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
@@ -346,7 +349,8 @@ export interface WorkflowPlanRevision {
     | 'cloud.workflow.plan.v6'
     | 'cloud.workflow.plan.v7'
     | 'cloud.workflow.plan.v8'
-    | 'cloud.workflow.plan.v9';
+    | 'cloud.workflow.plan.v9'
+    | 'cloud.workflow.plan.v10';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
@@ -356,7 +360,8 @@ export interface WorkflowPlanRevision {
     | 'cloud.workflow.plan-compiler.v6'
     | 'cloud.workflow.plan-compiler.v7'
     | 'cloud.workflow.plan-compiler.v8'
-    | 'cloud.workflow.plan-compiler.v9';
+    | 'cloud.workflow.plan-compiler.v9'
+    | 'cloud.workflow.plan-compiler.v10';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;
