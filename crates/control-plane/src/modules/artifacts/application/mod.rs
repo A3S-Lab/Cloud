@@ -1,5 +1,6 @@
 mod build_run_reconciler;
 mod commands;
+mod node_artifact_store;
 mod queries;
 pub(crate) mod resource_access;
 
@@ -10,6 +11,10 @@ pub use build_run_reconciler::{
 pub use commands::{
     CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, RetryBuildRun,
     RetryBuildRunHandler, RetryBuildRunResult,
+};
+pub use node_artifact_store::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
+    NodeArtifactWrite, OpenNodeArtifact,
 };
 pub use queries::{
     BuildRunLogPage, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler,

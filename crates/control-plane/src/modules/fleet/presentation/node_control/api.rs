@@ -3,7 +3,7 @@ use crate::modules::agents::application::{
     AcceptAgentCodeEventBatch, AcceptAgentCodeEventBatchHandler,
 };
 use crate::modules::agents::domain::IAgentRepository;
-use crate::modules::artifacts::domain::{
+use crate::modules::artifacts::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
 use crate::modules::edge::application::{SignGatewayCertificate, SignGatewayCertificateHandler};

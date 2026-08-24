@@ -1,4 +1,4 @@
-use crate::modules::artifacts::domain::{
+use crate::modules::artifacts::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
 use crate::modules::assets::application::resource_access::AssetResourceAccess;

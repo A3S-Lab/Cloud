@@ -2,7 +2,7 @@ use crate::infrastructure::{
     ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead,
     ImmutableObjectVerification,
 };
-use crate::modules::artifacts::domain::{
+use crate::modules::artifacts::application::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
     NodeArtifactWrite, OpenNodeArtifact,
 };

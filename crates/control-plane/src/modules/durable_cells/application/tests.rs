@@ -3,7 +3,7 @@ use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
 use crate::modules::artifacts::domain::{BuildArtifact, BuildRun};
-use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
+use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
     DurableCellApplicationDesiredState, DurableCellClassSpec, DurableCellRollbackPolicy,

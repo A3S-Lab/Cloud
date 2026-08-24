@@ -1,5 +1,5 @@
 use super::AssetCatalogApplicationService;
-use crate::modules::artifacts::domain::{
+use crate::modules::artifacts::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
     NodeArtifactWrite, OpenNodeArtifact,
 };

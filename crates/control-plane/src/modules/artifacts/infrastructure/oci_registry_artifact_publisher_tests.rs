@@ -1,7 +1,7 @@
 use super::*;
+use crate::modules::artifacts::application::{INodeArtifactStore, NodeArtifactDescriptor};
 use crate::modules::artifacts::domain::{
-    BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, INodeArtifactStore,
-    NodeArtifactDescriptor, OciPublicationRequest,
+    BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, OciPublicationRequest,
 };
 use crate::modules::artifacts::infrastructure::{NodeArtifactObjectStore, OciBuildOutputValidator};
 use crate::modules::sources::domain::BuildRecipe;

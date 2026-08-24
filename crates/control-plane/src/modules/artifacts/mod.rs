@@ -1,13 +1,14 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
-pub mod presentation;
+mod presentation;
 
 pub use application::{
     BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence,
     GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs,
-    GetBuildRunLogsHandler, ListBuildRuns, ListBuildRunsHandler, RetryBuildRun,
-    RetryBuildRunHandler, RetryBuildRunResult,
+    GetBuildRunLogsHandler, INodeArtifactStore, ListBuildRuns, ListBuildRunsHandler,
+    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
+    OpenNodeArtifact, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
 };
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,
@@ -17,15 +18,13 @@ pub use domain::{
     BuildRunStatus, BuildSource, BuildSourceLocation, BuildSourceResolutionError, BuildSubject,
     DsseEnvelope, DsseSignature, IBuildArtifactPublisher, IBuildEvidenceGenerator,
     IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
-    IBuildSourceResolver, INodeArtifactStore, InTotoSubject, NodeArtifactDescriptor,
-    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OciDescriptor,
-    OciPublicationRequest, OciPublicationTarget, OpenNodeArtifact, PreparedBuildInput,
-    PublishedOciArtifact, RequestBuildRetryBundle, SlsaBuildDefinition, SlsaBuilder,
-    SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
-    SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
-    SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship,
-    ValidatedOciBuildOutput, VerifiedBuildEvidenceSignature, BUILD_EVIDENCE_SCHEMA,
-    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, OCI_IMAGE_INDEX_MEDIA_TYPE,
+    IBuildSourceResolver, InTotoSubject, OciDescriptor, OciPublicationRequest,
+    OciPublicationTarget, PreparedBuildInput, PublishedOciArtifact, RequestBuildRetryBundle,
+    SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters,
+    SlsaProvenancePredicate, SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails,
+    SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage,
+    SpdxRelationship, ValidatedOciBuildOutput, VerifiedBuildEvidenceSignature,
+    BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, OCI_IMAGE_INDEX_MEDIA_TYPE,
     OCI_IMAGE_MANIFEST_MEDIA_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use infrastructure::{
@@ -35,4 +34,7 @@ pub use infrastructure::{
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
-pub use presentation::ArtifactsModule;
+pub(crate) use presentation::{
+    ArtifactsModule, BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
+    CancelBuildRunResponse, RetryBuildRunResponse,
+};

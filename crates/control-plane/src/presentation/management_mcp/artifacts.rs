@@ -1,6 +1,6 @@
 use super::arguments::{BuildRunArguments, BuildRunListArguments, BuildRunLogArguments};
 use super::tool_result;
-use crate::modules::artifacts::presentation::{
+use crate::modules::artifacts::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse,
     RetryBuildRunResponse,
 };

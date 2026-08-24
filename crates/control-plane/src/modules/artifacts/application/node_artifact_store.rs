@@ -4,6 +4,11 @@ use async_trait::async_trait;
 use std::pin::Pin;
 use tokio::io::AsyncRead;
 
+/// Streaming byte source accepted by the Artifacts application boundary.
+///
+/// The transport type deliberately lives outside Domain: domain decisions
+/// receive only admitted artifact values and receipts, never an async runtime
+/// reader or an object-store mechanism.
 pub type NodeArtifactReader = Pin<Box<dyn AsyncRead + Send + Unpin + 'static>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +61,10 @@ pub enum NodeArtifactStoreError {
     Storage(String),
 }
 
+/// Consumer-owned byte transport port for admitted node artifacts.
+///
+/// Implementations may use the shared immutable-object client, but callers
+/// cannot observe that provider and Domain cannot depend on its async runtime.
 #[async_trait]
 pub trait INodeArtifactStore: Send + Sync {
     async fn put(

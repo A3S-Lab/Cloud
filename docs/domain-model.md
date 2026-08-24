@@ -485,15 +485,17 @@ the validated OCI result. Before cleanup, the Flow generates
 deterministic SPDX 2.3 and SLSA provenance documents, signs their DSSE PAE with
 an Ed25519 local or Vault Transit provider, verifies the exact public key and
 signature locally, and freezes the complete `BuildEvidence` on the BuildRun.
-The node-transfer store persists command-scoped directory archives by digest so
-source, output, and cache bytes can cross the existing mTLS node boundary
-without making transfer storage a build or cache authority. Each Box output
-carries bounded per-platform cache Artifacts and Box-issued receipts that bind
-source, canonical plan, platform, descriptor, size, and blob inventory. A retry
-can present only the immediate terminal parent's matching receipts back to Box.
-Cloud does not persist a second cache aggregate, interpret Box cache internals,
-or bypass full OCI admission, publication, and evidence generation on a cache
-hit.
+The Application-owned node-transfer port streams command-scoped directory
+archives by digest so source, output, and cache bytes can cross the existing
+mTLS node boundary without making transfer storage a build or cache authority.
+Its shared immutable-object implementation remains Infrastructure; Domain sees
+only admitted Artifact values and immutable receipts, never an async reader or
+storage error. Each Box output carries bounded per-platform cache Artifacts and
+Box-issued receipts that bind source, canonical plan, platform, descriptor,
+size, and blob inventory. A retry can present only the immediate terminal
+parent's matching receipts back to Box. Cloud does not persist a second cache
+aggregate, interpret Box cache internals, or bypass full OCI admission,
+publication, and evidence generation on a cache hit.
 
 Primary aggregate:
 
@@ -3484,6 +3486,9 @@ identity includes the immutable Cloud URI, digest, and media type. Upload
 identity additionally includes the exact output size and returns a replayable
 `RuntimeOutputArtifact` receipt. The control-plane store and node cache both
 rehash bytes; neither accepts a caller- or transport-asserted digest alone.
+The streaming reader and store contract are an Artifacts Application port;
+Fleet and Assets consume that published boundary rather than importing an
+Artifacts Domain service or concrete object-store adapter.
 
 Node-local blobs use `a3s-node-artifact://sha256/<digest>` and remain internal
 until the mTLS upload returns `a3s-cloud-artifact://sha256/<digest>`. Mount and

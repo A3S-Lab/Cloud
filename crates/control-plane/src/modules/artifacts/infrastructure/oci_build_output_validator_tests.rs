@@ -1,8 +1,9 @@
 use super::*;
+use crate::modules::artifacts::application::{INodeArtifactStore, NodeArtifactDescriptor};
 use crate::modules::artifacts::domain::{
     canonical_json, dsse_pae, sha256_digest, BuildRun, BuildSource, IBuildEvidenceGenerator,
-    IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor, OciDescriptor,
-    OciPublicationTarget, PublishedOciArtifact, DSSE_PAYLOAD_TYPE,
+    IBuildOutputValidator, OciDescriptor, OciPublicationTarget, PublishedOciArtifact,
+    DSSE_PAYLOAD_TYPE,
 };
 use crate::modules::artifacts::infrastructure::{
     BoxBuildEvidenceGenerator, LocalBuildEvidenceSigner, NodeArtifactObjectStore,

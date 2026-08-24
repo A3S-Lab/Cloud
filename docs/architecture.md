@@ -616,6 +616,15 @@ crate-private implementation details. Existing public outer-layer modules and
 foreign outer-layer imports are migration debt frozen by architecture fitness
 tests; the allowlists may shrink but must not grow.
 
+Artifacts applies this rule to node-artifact transport: its async byte reader,
+descriptor, error vocabulary, and store trait are an Application-owned port.
+The Domain contains admitted artifact semantics and immutable receipts, not a
+Tokio reader or object-store mechanism. Presentation adapters are reachable
+only through deliberate root-facade types and that namespace is crate-private.
+The Infrastructure namespace remains frozen migration debt until the shared
+Flow composition consumes the same root facade without overlapping its active
+Workflow work.
+
 ### 6.2 Bounded contexts
 
 | Context | Responsibility | State |

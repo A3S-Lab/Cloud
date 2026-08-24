@@ -1,7 +1,9 @@
+use crate::modules::artifacts::application::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
+};
 use crate::modules::artifacts::domain::{
     BuildArtifact, BuildInputPreparationError, BuildRun, BuildSource, BuildSourceLocation,
-    BuildSubject, IBuildInputPreparer, INodeArtifactStore, NodeArtifactDescriptor,
-    NodeArtifactStoreError, PreparedBuildInput,
+    BuildSubject, IBuildInputPreparer, PreparedBuildInput,
 };
 use crate::modules::assets::domain::{
     AssetGitBuildInput, AssetGitRepositoryError, IAssetGitRepository, IAssetRepository,

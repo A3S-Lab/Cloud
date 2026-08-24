@@ -1,7 +1,8 @@
 use super::oci_layout::{validate_oci_layout, OciLayoutLimits, ValidatedOciOutput};
+use crate::modules::artifacts::application::{INodeArtifactStore, NodeArtifactStoreError};
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildOutputValidationError, IBuildOutputValidator, INodeArtifactStore,
-    NodeArtifactStoreError, OciDescriptor, ValidatedOciBuildOutput,
+    BuildArtifact, BuildOutputValidationError, IBuildOutputValidator, OciDescriptor,
+    ValidatedOciBuildOutput,
 };
 use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
 use a3s_cloud_contracts::{

@@ -134,11 +134,7 @@ fn domain_technical_dependency_debt_can_only_shrink() {
         "std::process::",
         "tokio::",
     ];
-    let allowed = lines(
-        r#"
-artifacts/domain/services/node_artifact_store.rs -> tokio::
-"#,
-    );
+    let allowed = BTreeSet::new();
     let mut actual = BTreeSet::new();
 
     visit_production_sources(|relative, source| {
@@ -171,7 +167,6 @@ fn runtime_contracts_enter_domains_only_through_named_published_boundaries() {
     let allowed_files = lines(
         r#"
 artifacts/domain/entities/build_run.rs
-artifacts/domain/services/node_artifact_store.rs
 executions/domain/entities/execution_task_policy.rs
 fleet/domain/repositories/node_control_repository.rs
 workloads/domain/services/deployment_route_updater.rs
@@ -259,7 +254,6 @@ agents -> presentation
 applications -> infrastructure
 applications -> presentation
 artifacts -> infrastructure
-artifacts -> presentation
 assets -> infrastructure
 assets -> presentation
 audit -> infrastructure

@@ -22,9 +22,8 @@ pub use services::{
     BuildArtifactPublicationError, BuildEvidenceGenerationError, BuildEvidenceSigningError,
     BuildInputPreparationError, BuildOutputValidationError, BuildSourceResolutionError,
     IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildSourceResolver, INodeArtifactStore, NodeArtifactDescriptor,
-    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OpenNodeArtifact,
-    PreparedBuildInput, VerifiedBuildEvidenceSignature,
+    IBuildOutputValidator, IBuildSourceResolver, PreparedBuildInput,
+    VerifiedBuildEvidenceSignature,
 };
 
 #[cfg(test)]
