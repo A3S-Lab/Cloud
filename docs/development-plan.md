@@ -415,14 +415,16 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Retained delivery evidence snapshot
 
-Evidence retained through 2026-08-15 is summarized below. The root
+Evidence retained through 2026-08-15 is summarized below. Later component-only
+implementation records may be incorporated without advancing retained-provider
+evidence. The root
 [`ROADMAP.md`](../ROADMAP.md) owns current product gate state; this table keeps
 the detailed implementation and provider evidence needed to reproduce or
 supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Production composition, interfaces, owner handoff, previews, monorepos, and Compose import remain open. |
+| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Component-only `P0.3-C1` verifies typed GitHub pull-request facts and deterministically reduces them to bounded Preview identity, trust, expiry, and cleanup decisions. Production composition, interfaces, owner handoff, Preview persistence/execution, monorepos, and Compose import remain open. |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
@@ -1714,6 +1716,30 @@ Component-only `P0.2-C2` defines the independent acceptance authority:
 
 C2 remains internal and not production-composed or publicly exposed. It adds
 no BuildRun/Workload/Route/Execution/Automation authority and no scheduler.
+
+Component-only `P0.3-C1` defines the first pull-request Preview lifecycle:
+
+- GitHub webhook HMAC authentication still precedes parsing; only `opened`,
+  `synchronize`, `reopened`, and `closed` actions become typed changes bound to
+  exact installation, base/head repository, branches, head commit, provider
+  creation/update times, pull-request identity, and raw-payload digest evidence;
+- one stable logical Preview and deterministic ordinary Environment identity
+  bind exact Sources subscription, owner, base repository/branch, lifetime,
+  active-count and resource quota, and fork policy;
+- duplicate, stale, same-timestamp, and reordered events use a deterministic
+  provider/content order, while close, merge, and an explicit clock input
+  request cleanup and a later reopen reuses the same identities; and
+- known forks are denied or isolated, never protected-Secret eligible. A newer
+  denied-fork fact requests cleanup of an existing Preview. Only an active
+  same-repository Preview may be eligible when the policy explicitly enables
+  protected Secrets.
+
+C1 is deliberately transient and component-only. The controller does not
+dispatch the typed PR fact, and there is no Preview persistence, migration,
+timer, public interface, Environment/SourceRevision/BuildRun/Workload/Route
+write, cleanup Operation, or serialized product-configuration surface. A later
+Preview policy admission must use canonical A3S ACL. Those owner handoffs
+remain later P0.3 slices.
 
 ### Exit gate
 

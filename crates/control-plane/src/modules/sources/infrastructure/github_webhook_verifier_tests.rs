@@ -133,6 +133,133 @@ fn verifies_installation_and_account_lifecycle_events_as_typed_changes() {
 }
 
 #[test]
+fn verifies_exact_pull_request_lifecycle_and_fork_trust_boundary() {
+    let verifier = verifier(1024 * 1024);
+    let body = pull_request_payload(
+        "synchronize",
+        "open",
+        false,
+        Some(json!({
+            "full_name": "contributor/cloud",
+            "html_url": "https://github.com/contributor/cloud"
+        })),
+    );
+    let signature = signature(SECRET, &body);
+    let verified = verifier
+        .verify(request(
+            "pull_request",
+            "delivery-pr-sync",
+            &signature,
+            &body,
+        ))
+        .expect("signed pull-request webhook");
+    let VerifiedSourceWebhook::PullRequest(change) = verified else {
+        panic!("expected typed pull-request change");
+    };
+    change.validate().expect("verified PR change");
+    assert_eq!(change.pull_request_id, 1_000_042);
+    assert_eq!(change.pull_request_number, 42);
+    assert_eq!(change.base_reference.value(), "main");
+    assert_eq!(change.head_reference.value(), "feature/preview");
+    assert_eq!(
+        change.head_commit_sha.as_str(),
+        "fedcba9876543210fedcba9876543210fedcba98"
+    );
+    assert!(change.is_fork());
+    assert_eq!(change.payload_digest.len(), 71);
+    assert_eq!(
+        change.provider_created_at,
+        "2026-08-24T04:30:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .expect("provider creation time")
+    );
+    assert_eq!(
+        change.provider_updated_at.timestamp_subsec_nanos(),
+        123_456_000
+    );
+}
+
+#[test]
+fn closes_deleted_fork_heads_but_rejects_confused_pull_request_identity() {
+    let verifier = verifier(1024 * 1024);
+    let closed = pull_request_payload("closed", "closed", false, None);
+    let closed_signature = signature(SECRET, &closed);
+    let VerifiedSourceWebhook::PullRequest(change) = verifier
+        .verify(request(
+            "pull_request",
+            "delivery-pr-close",
+            &closed_signature,
+            &closed,
+        ))
+        .expect("signed closed pull-request webhook")
+    else {
+        panic!("expected typed pull-request change");
+    };
+    assert!(change.head_repository.is_none());
+    assert!(change.is_fork());
+
+    let mut confused: Value = serde_json::from_slice(&pull_request_payload(
+        "opened",
+        "open",
+        false,
+        Some(json!({
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        })),
+    ))
+    .expect("pull-request JSON");
+    confused["pull_request"]["base"]["repo"]["full_name"] = Value::String("A3S-Lab/Runtime".into());
+    let confused = serde_json::to_vec(&confused).expect("confused PR payload");
+    let confused_signature = signature(SECRET, &confused);
+    assert!(matches!(
+        verifier.verify(request(
+            "pull_request",
+            "delivery-pr-confused",
+            &confused_signature,
+            &confused,
+        )),
+        Err(SourceWebhookVerificationError::Invalid(_))
+    ));
+
+    let mut reversed_time: Value = serde_json::from_slice(&pull_request_payload(
+        "opened",
+        "open",
+        false,
+        Some(json!({
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        })),
+    ))
+    .expect("pull-request JSON");
+    reversed_time["pull_request"]["created_at"] = Value::String("2026-08-24T06:30:00Z".into());
+    let reversed_time = serde_json::to_vec(&reversed_time).expect("reversed-time PR payload");
+    let reversed_time_signature = signature(SECRET, &reversed_time);
+    assert!(matches!(
+        verifier.verify(request(
+            "pull_request",
+            "delivery-pr-reversed-time",
+            &reversed_time_signature,
+            &reversed_time,
+        )),
+        Err(SourceWebhookVerificationError::Invalid(_))
+    ));
+
+    let ignored = pull_request_payload("edited", "open", false, None);
+    let ignored_signature = signature(SECRET, &ignored);
+    assert!(matches!(
+        verifier
+            .verify(request(
+                "pull_request",
+                "delivery-pr-edited",
+                &ignored_signature,
+                &ignored,
+            ))
+            .expect("signed unsupported PR action"),
+        VerifiedSourceWebhook::Ignored
+    ));
+}
+
+#[test]
 fn ignores_non_state_installation_actions_and_rejects_confused_lifecycle_identity() {
     let verifier = verifier(1024 * 1024);
     let created = serde_json::to_vec(&json!({
@@ -238,6 +365,46 @@ fn payload() -> Vec<u8> {
         "ignored": {"providerFields": true}
     }))
     .expect("payload")
+}
+
+fn pull_request_payload(
+    action: &str,
+    state: &str,
+    merged: bool,
+    head_repository: Option<Value>,
+) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "action": action,
+        "number": 42,
+        "repository": {
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        },
+        "installation": {"id": 42},
+        "pull_request": {
+            "id": 1_000_042,
+            "number": 42,
+            "state": state,
+            "merged": merged,
+            "created_at": "2026-08-24T04:30:00Z",
+            "updated_at": "2026-08-24T05:30:00.123456789Z",
+            "head": {
+                "ref": "feature/preview",
+                "sha": "fedcba9876543210fedcba9876543210fedcba98",
+                "repo": head_repository
+            },
+            "base": {
+                "ref": "main",
+                "sha": "0123456789abcdef0123456789abcdef01234567",
+                "repo": {
+                    "full_name": "A3S-Lab/Cloud",
+                    "html_url": "https://github.com/A3S-Lab/Cloud"
+                }
+            }
+        },
+        "ignored": {"providerFields": true}
+    }))
+    .expect("pull-request payload")
 }
 
 fn signature(secret: &str, body: &[u8]) -> String {

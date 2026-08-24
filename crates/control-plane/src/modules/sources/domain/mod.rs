@@ -33,10 +33,11 @@ pub use services::{
     GithubInstallationTokenRequest, GithubInstallationVerificationRequest,
     IGithubAppAuthorizationService, IGithubConnectionAuthorityService,
     IGithubInstallationAuthorityProvider, IGithubInstallationTokenService, ISourceCheckout,
-    ISourceResolver, ISourceWebhookVerifier, ResolvedSource, SourceCheckoutError,
-    SourceCheckoutRequest, SourceProviderCredential, SourceRepositoryPolicy, SourceResolutionError,
-    SourceResolutionRequest, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedGithubConnectionLifecycle, VerifiedGithubInstallation, VerifiedSourcePush,
+    ISourceResolver, ISourceWebhookVerifier, PullRequestChangeKind, ResolvedSource,
+    SourceCheckoutError, SourceCheckoutRequest, SourceProviderCredential, SourceRepositoryPolicy,
+    SourceResolutionError, SourceResolutionRequest, SourceWebhookVerificationError,
+    SourceWebhookVerificationRequest, VerifiedGithubConnectionLifecycle,
+    VerifiedGithubInstallation, VerifiedPullRequestChange, VerifiedSourcePush,
     VerifiedSourceWebhook,
 };
 pub use value_objects::{

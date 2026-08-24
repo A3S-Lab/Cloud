@@ -1,10 +1,12 @@
+use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::sources::domain::{
     GitCommitSha, GitProvider, GitReference, GitRepository, GithubAccountId, GithubAccountKind,
     GithubConnectionLifecycleChange, GithubInstallationAccount, GithubInstallationId, GithubLogin,
-    ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedGithubConnectionLifecycle, VerifiedSourcePush, VerifiedSourceWebhook,
-    WebhookDeliveryId,
+    ISourceWebhookVerifier, PullRequestChangeKind, SourceWebhookVerificationError,
+    SourceWebhookVerificationRequest, VerifiedGithubConnectionLifecycle, VerifiedPullRequestChange,
+    VerifiedSourcePush, VerifiedSourceWebhook, WebhookDeliveryId,
 };
+use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -215,6 +217,84 @@ impl GithubWebhookVerifier {
             },
         ))
     }
+
+    fn parse_pull_request(
+        &self,
+        delivery_id: &str,
+        body: &[u8],
+    ) -> Result<VerifiedSourceWebhook, SourceWebhookVerificationError> {
+        let payload: GithubPullRequestPayload = serde_json::from_slice(body)
+            .map_err(|_| invalid("body is not a valid GitHub pull-request payload"))?;
+        let kind = match payload.action.as_str() {
+            "opened" => PullRequestChangeKind::Opened,
+            "synchronize" => PullRequestChangeKind::Synchronized,
+            "reopened" => PullRequestChangeKind::Reopened,
+            "closed" => PullRequestChangeKind::Closed,
+            _ => return Ok(VerifiedSourceWebhook::Ignored),
+        };
+        if payload.number != payload.pull_request.number {
+            return Err(invalid(
+                "pull-request envelope number does not match its object identity",
+            ));
+        }
+        let expected_state = if kind.is_terminal() { "closed" } else { "open" };
+        if payload.pull_request.state != expected_state
+            || !kind.is_terminal() && payload.pull_request.merged
+        {
+            return Err(invalid(
+                "pull-request action does not match its provider lifecycle state",
+            ));
+        }
+        let base_repository = parse_repository(&payload.repository)?;
+        let payload_base_repository = payload
+            .pull_request
+            .base
+            .repository()
+            .ok_or_else(|| invalid("pull-request base repository is unavailable"))
+            .and_then(parse_repository)?;
+        if payload_base_repository != base_repository {
+            return Err(invalid(
+                "pull-request base repository does not match its webhook repository",
+            ));
+        }
+        let head_repository = payload
+            .pull_request
+            .head
+            .repository()
+            .map(parse_repository)
+            .transpose()?;
+        if !kind.is_terminal() && head_repository.is_none() {
+            return Err(invalid(
+                "active pull-request head repository is unavailable",
+            ));
+        }
+        let value = VerifiedPullRequestChange {
+            provider: GitProvider::Github,
+            delivery_id: WebhookDeliveryId::parse(delivery_id)
+                .map_err(|_| invalid("delivery ID is invalid"))?,
+            installation_id: GithubInstallationId::parse(payload.installation.id)
+                .map_err(|_| invalid("installation ID is invalid"))?,
+            base_repository,
+            base_reference: GitReference::parse("branch", payload.pull_request.base.git_reference)
+                .map_err(|_| invalid("pull-request base branch is invalid"))?,
+            head_repository,
+            head_reference: GitReference::parse("branch", payload.pull_request.head.git_reference)
+                .map_err(|_| invalid("pull-request head branch is invalid"))?,
+            head_commit_sha: GitCommitSha::parse(payload.pull_request.head.sha)
+                .map_err(|_| invalid("pull-request head object ID is invalid"))?,
+            pull_request_id: payload.pull_request.id,
+            pull_request_number: payload.pull_request.number,
+            kind,
+            merged: payload.pull_request.merged,
+            provider_created_at: canonical_timestamp(payload.pull_request.created_at),
+            provider_updated_at: canonical_timestamp(payload.pull_request.updated_at),
+            payload_digest: payload_digest(body),
+        };
+        value
+            .validate()
+            .map_err(|_| invalid("pull-request identity or lifecycle state is invalid"))?;
+        Ok(VerifiedSourceWebhook::PullRequest(value))
+    }
 }
 
 impl fmt::Debug for GithubWebhookVerifier {
@@ -239,6 +319,7 @@ impl ISourceWebhookVerifier for GithubWebhookVerifier {
         self.authenticate(request.signature, request.body)?;
         match request.event {
             "push" => self.parse_push(request.delivery_id, request.body),
+            "pull_request" => self.parse_pull_request(request.delivery_id, request.body),
             "installation" | "installation_target" | "github_app_authorization" => {
                 self.parse_connection_lifecycle(request.event, request.delivery_id, request.body)
             }
@@ -317,6 +398,41 @@ struct GithubPushPayload {
 }
 
 #[derive(Deserialize)]
+struct GithubPullRequestPayload {
+    action: String,
+    number: u64,
+    repository: GithubRepositoryPayload,
+    installation: GithubInstallationPayload,
+    pull_request: GithubPullRequest,
+}
+
+#[derive(Deserialize)]
+struct GithubPullRequest {
+    id: u64,
+    number: u64,
+    state: String,
+    merged: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    head: GithubPullRequestBranch,
+    base: GithubPullRequestBranch,
+}
+
+#[derive(Deserialize)]
+struct GithubPullRequestBranch {
+    #[serde(rename = "ref")]
+    git_reference: String,
+    sha: String,
+    repo: Option<GithubRepositoryPayload>,
+}
+
+impl GithubPullRequestBranch {
+    fn repository(&self) -> Option<&GithubRepositoryPayload> {
+        self.repo.as_ref()
+    }
+}
+
+#[derive(Deserialize)]
 struct GithubRepositoryPayload {
     full_name: String,
     html_url: String,
@@ -338,6 +454,23 @@ fn parse_account(
         kind: GithubAccountKind::parse(&account.kind)
             .map_err(|_| invalid("installation account type is invalid"))?,
     })
+}
+
+fn parse_repository(
+    payload: &GithubRepositoryPayload,
+) -> Result<GitRepository, SourceWebhookVerificationError> {
+    let repository = GitRepository::parse(GitProvider::Github, &payload.html_url)
+        .map_err(|_| invalid("repository URL is invalid"))?;
+    let (owner, name) = repository
+        .owner_and_name()
+        .ok_or_else(|| invalid("repository coordinates are unavailable"))?;
+    if !payload
+        .full_name
+        .eq_ignore_ascii_case(&format!("{owner}/{name}"))
+    {
+        return Err(invalid("repository identity does not match its URL"));
+    }
+    Ok(repository)
 }
 
 fn payload_digest(body: &[u8]) -> String {

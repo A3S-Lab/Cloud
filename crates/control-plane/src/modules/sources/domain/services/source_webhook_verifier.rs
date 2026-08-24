@@ -1,7 +1,112 @@
+use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::sources::domain::{
     GitCommitSha, GitProvider, GitReference, GitRepository, GithubConnectionLifecycleChange,
     GithubInstallationId, WebhookDeliveryId,
 };
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PullRequestChangeKind {
+    Opened,
+    Synchronized,
+    Reopened,
+    Closed,
+}
+
+impl PullRequestChangeKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Opened => "opened",
+            Self::Synchronized => "synchronize",
+            Self::Reopened => "reopened",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Closed)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedPullRequestChange {
+    pub provider: GitProvider,
+    pub delivery_id: WebhookDeliveryId,
+    pub installation_id: GithubInstallationId,
+    pub base_repository: GitRepository,
+    pub base_reference: GitReference,
+    pub head_repository: Option<GitRepository>,
+    pub head_reference: GitReference,
+    pub head_commit_sha: GitCommitSha,
+    pub pull_request_id: u64,
+    pub pull_request_number: u64,
+    pub kind: PullRequestChangeKind,
+    pub merged: bool,
+    pub provider_created_at: DateTime<Utc>,
+    pub provider_updated_at: DateTime<Utc>,
+    pub payload_digest: String,
+}
+
+impl VerifiedPullRequestChange {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.pull_request_id == 0
+            || self.pull_request_id > i64::MAX as u64
+            || self.pull_request_number == 0
+            || self.pull_request_number > i64::MAX as u64
+            || self.provider != self.base_repository.provider()
+            || self
+                .head_repository
+                .as_ref()
+                .is_some_and(|repository| repository.provider() != self.provider)
+            || !matches!(self.base_reference, GitReference::Branch(_))
+            || !matches!(self.head_reference, GitReference::Branch(_))
+            || self
+                .head_commit_sha
+                .as_str()
+                .bytes()
+                .all(|byte| byte == b'0')
+            || !is_sha256_digest(&self.payload_digest)
+            || self.provider_created_at != canonical_timestamp(self.provider_created_at)
+            || self.provider_updated_at != canonical_timestamp(self.provider_updated_at)
+            || self.provider_created_at > self.provider_updated_at
+            || !self.kind.is_terminal() && self.merged
+            || !self.kind.is_terminal() && self.head_repository.is_none()
+        {
+            return Err("verified pull-request change identity or state is invalid".into());
+        }
+        let base = GitRepository::parse(
+            self.base_repository.provider(),
+            self.base_repository.canonical_url(),
+        )?;
+        if base != self.base_repository {
+            return Err("pull-request base repository is not canonical".into());
+        }
+        if let Some(repository) = &self.head_repository {
+            let head = GitRepository::parse(repository.provider(), repository.canonical_url())?;
+            if &head != repository {
+                return Err("pull-request head repository is not canonical".into());
+            }
+        }
+        GitReference::parse(
+            self.base_reference.kind(),
+            self.base_reference.value().to_owned(),
+        )?;
+        GitReference::parse(
+            self.head_reference.kind(),
+            self.head_reference.value().to_owned(),
+        )?;
+        GitCommitSha::parse(self.head_commit_sha.as_str())?;
+        Ok(())
+    }
+
+    pub fn is_fork(&self) -> bool {
+        self.head_repository
+            .as_ref()
+            .is_none_or(|repository| repository != &self.base_repository)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct VerifiedSourcePush {
@@ -26,6 +131,7 @@ pub struct VerifiedGithubConnectionLifecycle {
 pub enum VerifiedSourceWebhook {
     Ignored,
     Push(VerifiedSourcePush),
+    PullRequest(VerifiedPullRequestChange),
     GithubConnectionLifecycle(VerifiedGithubConnectionLifecycle),
 }
 
@@ -54,4 +160,13 @@ pub trait ISourceWebhookVerifier: Send + Sync {
         &self,
         request: SourceWebhookVerificationRequest<'_>,
     ) -> Result<VerifiedSourceWebhook, SourceWebhookVerificationError>;
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    })
 }

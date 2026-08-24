@@ -111,8 +111,10 @@ distributes committed facts after the corresponding database transaction.
 | Security incident projection | Tenant- and grant-scoped `C0.3` investigation timeline derived from shared audit and authorized evidence references; it is not desired state or enforcement authority. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
+| Verified pull-request change | An authenticated provider fact for one bounded open, synchronize, reopen, or close action with exact repository, branch, commit, pull-request, provider creation/update times, and raw-payload-digest evidence; it is not accepted Preview state. |
 | BuildPlan proposal | A transient, canonical, reviewable P0 detection result bound to an exact source-layout identity, detector revision, evidence digest, project root, and Sources-owned build recipe; it is not accepted desired state. |
 | Accepted BuildPlan | An immutable Developer Workflows-owned acceptance contract bound to one exact Sources-owned revision and project root; actor/time are audit facts outside its deterministic ACL digest. |
+| Pull-request Preview | Developer Workflows lifecycle intent with a stable logical identity and deterministic ordinary Environment identity, exact source-subscription/PR binding, owner, bounded lifetime/quota, fork trust, and cleanup decision; Projects, Sources, Workloads, Edge, and Operations retain their resource authorities. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -428,6 +430,22 @@ BuildEvidence to project web/worker intent to a Workloads-owned
 `ExecutionTemplate`. Developer Workflows does not persist those templates,
 create BuildRuns, Workloads, Routes, Executions, or Automations, or evaluate
 timers. Those contexts retain lifecycle and scheduling authority.
+
+Component-only `P0.3-C1` adds authenticated typed GitHub pull-request changes
+and a pure Preview lifecycle reducer. Stable Preview identity includes exact
+Organization, Project, Sources subscription, base repository, provider PR ID,
+and number; a second stable identity denotes the ordinary Environment that a
+later Projects-owned handoff may create. Provider creation/update times,
+closed-action precedence, and exact head content form a total order, so
+duplicate, stale, same-timestamp, and reordered deliveries reach one logical
+state independent of arrival order. Close/merge and an explicit clock input
+produce only a cleanup decision; reopen retains both identities. Forks are
+denied or isolated, a newer
+denied-fork fact requests cleanup of an existing Preview, and forks are never
+protected-Secret eligible in this slice. No Preview state is persisted or
+production-dispatched, and no Environment, SourceRevision, BuildRun, Workload,
+Route, Operation, timer, scheduler, or non-ACL configuration authority is
+added. Any later serialized Preview policy must be canonical A3S ACL.
 
 ### 3.4 Asset hosting
 

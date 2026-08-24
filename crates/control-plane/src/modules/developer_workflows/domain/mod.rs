@@ -4,6 +4,7 @@ mod accepted_workload_profile;
 mod build_plan;
 mod detection;
 mod events;
+mod pull_request_preview;
 mod repository;
 pub(crate) mod source_layout;
 mod workload_profile;
@@ -26,6 +27,12 @@ pub use detection::{
     MAX_BUILD_PLAN_DIAGNOSTICS, MAX_BUILD_PLAN_PROPOSALS,
 };
 pub use events::{BuildPlanAccepted, BUILD_PLAN_ACCEPTED_EVENT_KEY};
+pub use pull_request_preview::{
+    reconcile_pull_request_preview, PreviewCleanupReason, PreviewForkPolicy, PreviewQuota,
+    PreviewReconcileOutcome, PreviewReconciliation, PullRequestPreview, PullRequestPreviewPolicy,
+    PullRequestPreviewStatus, MAX_ACTIVE_PREVIEWS_PER_POLICY, MAX_PREVIEW_LIFETIME_SECONDS,
+    MIN_PREVIEW_LIFETIME_SECONDS,
+};
 pub(crate) use repository::BuildPlanWriteReference;
 pub use repository::{AcceptBuildPlanWrite, IBuildPlanRepository};
 pub use source_layout::{
@@ -53,3 +60,6 @@ mod tests;
 
 #[cfg(test)]
 mod workload_profile_tests;
+
+#[cfg(test)]
+mod pull_request_preview_tests;

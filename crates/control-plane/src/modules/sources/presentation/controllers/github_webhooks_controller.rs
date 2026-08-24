@@ -52,6 +52,9 @@ pub fn github_webhooks_controller(
                             return application_error_response(error, request_id);
                         }
                     }
+                    // P0.3-C1 verifies and types the provider payload, but the component-only
+                    // Preview lifecycle is deliberately not production-composed yet.
+                    VerifiedSourceWebhook::PullRequest(_change) => {}
                     VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) => {
                         if let Err(error) = bus
                             .execute(ReconcileGithubConnectionLifecycle {

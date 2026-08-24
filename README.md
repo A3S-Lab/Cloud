@@ -316,7 +316,8 @@ The code on `main` separates implemented mechanics from released capability:
   authority, build/deployment composition, storage-profile binding, and all
   four management adapters exist. Storage, Box `Outbound`, joint
   behavior/Gateway, and lifecycle gates remain; the service is unavailable.
-- **Implemented components / Developer Workflows plans and profiles** — `P0.1-C1/C2`
+- **Implemented components / Developer Workflows plans, profiles, and Preview lifecycle** —
+  `P0.1-C1/C2`, `P0.2-C1/C2`, and `P0.3-C1`
   introduces a bounded canonical source-layout snapshot and deterministic
   Dockerfile/A3S Asset ACL detectors that emit exact-source-bound canonical A3S
   ACL BuildPlan proposals. Asset semantics reuse the Assets-owned parser;
@@ -328,8 +329,14 @@ The code on `main` separates implemented mechanics from released capability:
   existing owner templates, and authorization-first append-only acceptance
   through migration `147` with idempotency, audit, and Outbox. Sources,
   Artifacts, Workloads, Edge, Executions, and Automations retain their
-  authorities. Production composition, interfaces, owner handoff, previews,
-  monorepos, and Compose import remain open, so P0 is unavailable.
+  authorities. `P0.3-C1` adds authenticated, typed GitHub pull-request changes
+  plus one deterministic bounded Preview reducer: duplicate and reordered
+  open/synchronize/reopen/close facts converge on a stable Preview and ordinary
+  Environment identity, explicit expiry requests cleanup, and forks are denied
+  or isolated without protected Secrets; a newly observed denied fork also
+  requests cleanup of an existing Preview. Preview persistence, production
+  admission, owner handoff, interfaces, monorepos, and Compose import remain
+  open, so P0 is unavailable.
 - **In-progress / future platform families** — `APP0.1` now implements one
   project-authorized Application and immutable release authority over migration
   `124`, exact Workflow revision evidence, atomic idempotency/audit/Outbox,

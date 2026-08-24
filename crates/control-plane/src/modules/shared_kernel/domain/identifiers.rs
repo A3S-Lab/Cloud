@@ -102,6 +102,7 @@ identifier!(SourceRevisionId);
 identifier!(BuildPlanId);
 identifier!(WorkloadProfileId);
 identifier!(WorkloadProfileRevisionId);
+identifier!(PullRequestPreviewId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);
