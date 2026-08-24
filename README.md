@@ -43,12 +43,12 @@ converges through one PostgreSQL authority and one durable execution path.
 The code on `main` separates implemented mechanics from released capability:
 
 > [!TIP]
-> **Workflow proof — Plan v8 / Run v16.** A descriptor-bound Workflow-local
-> Transform error edge now executes once without retry, emits a fixed redacted
-> failure-v5 value, and may complete the parent through the ordinary DAG while
-> the source projection remains failed. Plan v7/Run v15 retains deterministic
-> Application Answer routing, and builds `@1` through `@17` keep their exact
-> replay behavior. [Decision 0047](docs/decisions/app-platform/0047-descriptor-bound-transform-failure-routes.md)
+> **Workflow proof — Plan v9 / Run v17.** A descriptor-bound Workflow-local
+> Output error edge now executes once without retry, emits a fixed redacted
+> failure-v6 value, and may complete the parent through the ordinary DAG while
+> the source projection remains failed. Plan v8/Run v16 retains deterministic
+> Transform routing, and builds `@1` through `@18` keep their exact replay
+> behavior. [Decision 0048](docs/decisions/app-platform/0048-descriptor-bound-output-failure-routes.md)
 > records the new authority and replay boundary; W0.3 remains in progress.
 
 - **Implemented / durable foundation update** — `main` pins A3S Flow `1.0.0`
@@ -60,9 +60,9 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
-  New Operations pin replay generation `a3s-cloud-workflows@18` and the
+  New Operations pin replay generation `a3s-cloud-workflows@19` and the
   `cloud.flow.bounded-step-retries-v1` marker. Their infrastructure steps use
-  eight attempts with a 30-second capped backoff; `@1` through `@17` retain
+  eight attempts with a 30-second capped backoff; `@1` through `@18` retain
   their exact replay policy through the explicit Flow compatibility set, which
   readiness exposes with the remaining unpinned migration switch. Cloud and
   Code resolve one exact Flow revision. The
@@ -582,7 +582,11 @@ creating their own control planes:
     now applies the same descriptor-bound DAG rule to Workflow-local Transform
     evaluation: one non-retryable failure becomes fixed redacted failure v5
     data, and migration `145` admits only its failed Transform selected-handle
-    evidence. The maintained client enumerates Plan v5-v8 and failure v2-v5.
+    evidence. Plan v9/Run v17 now applies the same exact rule to ordinary
+    Workflow-local Output evaluation: template or output-schema failure runs
+    once, becomes fixed redacted failure v6 data, and reuses migration `143`'s
+    failed Output selected-handle shape. The maintained client enumerates Plan
+    v5-v9 and failure v2-v6.
     This is not public HTTP Request availability; business-service and
     remaining Agent/MCP/model/Tool dispatch, compensation, retained provider
     evidence, and later `W0` gates remain open.

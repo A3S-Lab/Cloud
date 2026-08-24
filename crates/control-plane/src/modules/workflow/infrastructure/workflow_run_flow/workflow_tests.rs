@@ -7,7 +7,8 @@ use crate::modules::workflow::domain::{
 use crate::modules::workflow::infrastructure::workflow_run_flow::execution;
 use crate::modules::workflow::test_support::{
     default_output_execution_workflow_run_input, digest, multi_output_workflow_run_input,
-    timestamp, transform_failure_workflow_run_input, workflow_run_input, TEST_EXECUTION_STEP_ID,
+    output_failure_workflow_run_input, timestamp, transform_failure_workflow_run_input,
+    workflow_run_input, TEST_EXECUTION_STEP_ID,
 };
 use a3s_flow::{
     CancellationRequest, FlowEvent, FlowEventEnvelope, StepFailureAction, WorkflowSpec,
@@ -217,6 +218,69 @@ fn transform_failure_routes_redacted_output_without_retrying() {
     let failure = serde_json::from_value::<WorkflowStepFailureOutput>(sink_input.effective_input)
         .expect("typed Transform failure");
     assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5);
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::WorkflowLocalInvalid
+    );
+    assert!(!failure.message.contains("secret"));
+}
+
+#[test]
+fn output_failure_routes_redacted_output_without_retrying() {
+    let input = output_failure_workflow_run_input().expect("routed Output input");
+    let input_result = WorkflowLocalStepResult {
+        step_id: "input".into(),
+        kind: WorkflowStepKind::Input,
+        output: input.goal_input.clone(),
+        output_digest: execution::value_digest(&input.goal_input, "test input").expect("digest"),
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    let input_completed = envelope(
+        &input,
+        1,
+        timestamp(8, 1),
+        FlowEvent::StepCompleted {
+            step_id: flow_step_id("input"),
+            output: serde_json::to_value(input_result).expect("input result"),
+        },
+    );
+    let scheduled =
+        run_workflow(invocation(&input, vec![input_completed.clone()])).expect("Output scheduling");
+    let RuntimeCommand::ScheduleSteps { steps } = scheduled else {
+        panic!("routed Output must be scheduled as a recoverable local step");
+    };
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].step_id, flow_step_id(TEST_EXECUTION_STEP_ID));
+    assert_eq!(steps[0].retry.max_attempts, 1);
+    assert_eq!(
+        steps[0].retry.on_exhausted,
+        StepFailureAction::ContinueWorkflow
+    );
+
+    let failed = envelope(
+        &input,
+        2,
+        timestamp(8, 2),
+        FlowEvent::StepFailed {
+            step_id: flow_step_id(TEST_EXECUTION_STEP_ID),
+            attempt: 1,
+            error: "runtime error: secret output detail".into(),
+        },
+    );
+    let routed = run_workflow(invocation(&input, vec![input_completed, failed]))
+        .expect("Output failure routing");
+    let RuntimeCommand::ScheduleSteps { steps } = routed else {
+        panic!("routed Output failure must schedule its error sink");
+    };
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].step_id, flow_step_id("failure_output"));
+    let sink_input = serde_json::from_value::<WorkflowLocalStepInput>(steps[0].input.clone())
+        .expect("failure sink input");
+    let failure = serde_json::from_value::<WorkflowStepFailureOutput>(sink_input.effective_input)
+        .expect("typed Output failure");
+    assert_eq!(failure.schema, "cloud.workflow.step-failure.v6");
     assert_eq!(
         failure.classification,
         WorkflowStepFailureClassification::WorkflowLocalInvalid

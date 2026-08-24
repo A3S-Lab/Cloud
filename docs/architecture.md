@@ -641,10 +641,10 @@ root binds those steps and every current or replay-supported workflow
 name/version to that owner. Duplicate workflow identities or step names abort
 startup. Unknown workflow identities and unknown steps fail at the router;
 there is no prefix dispatch and no default Deployment or other product runtime.
-Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v15
+Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v17
 identities remain explicit registry entries rather than compatibility guesses.
 
-New Operation histories also pin runtime build `a3s-cloud-workflows@17` and
+New Operation histories also pin runtime build `a3s-cloud-workflows@19` and
 the immutable `cloud.flow.bounded-step-retries-v1` marker. Agent, Build, Data
 recovery, Deployment, and Execution infrastructure steps all obtain retry
 behavior from one Cloud adapter over A3S Flow: eight total attempts, a
@@ -652,7 +652,7 @@ configured initial delay clamped to 30 seconds, capped exponential progression,
 and Flow's deterministic full jitter. Exhaustion replays the owning workflow,
 which already converts the durable failed step into its explicit terminal or
 cleanup path. Unmarked histories retain the fixed policy recorded in their
-existing `step_created` events, and runtime builds `@1`-`@16` remain explicit
+existing `step_created` events, and runtime builds `@1`-`@18` remain explicit
 replay entries. Builds through `@14` retain the exact fixed
 `u32::MAX` policy that their `step_created` events recorded. No product runtime
 owns a retry counter, clock, random source, scheduler, or queue.
@@ -711,6 +711,11 @@ Plan v8; Run v16 executes the deterministic local evaluation once without
 retry, routes fixed redacted `cloud.workflow.step-failure.v5` data, and leaves
 the source Transform failed with the exact selected handle. Plans v1-v7 and
 Run inputs v1-v15 retain their canonical bytes and replay behavior.
+An exact Workflow-local Output error port emits Plan v9; Run v17 executes the
+deterministic local evaluation once without retry, routes fixed redacted
+`cloud.workflow.step-failure.v6` data, and leaves the source Output failed with
+the exact selected handle. Plans v1-v8 and Run inputs v1-v16 retain their
+canonical bytes and replay behavior.
 WorkflowRun v2 reconstructs supported values and defaults, v3 also
 restores reduced composite updates and exports, and v4 composes both with
 descriptor-bound Execution failure routing from immutable input plus existing
@@ -721,7 +726,8 @@ projection, v9 adds only descriptor-bound Connector failure selection, v14
 adds only descriptor-bound Application-variable failure selection over the
 existing snapshot/CAS authority, and v15 adds descriptor-bound root/frame
 Application-Answer failure selection over the existing Answer effect authority;
-v16 adds only descriptor-bound Workflow-local Transform failure selection. A step
+v16 adds only descriptor-bound Workflow-local Transform failure selection, and
+v17 adds only descriptor-bound Workflow-local Output failure selection. A step
 with explicit reads can consume only its typed `current` projection; a step
 without reads retains legacy dependency input. REST/OpenAPI `1.34.0` transports
 digest-bound defaults, while `1.35.0` adds optional `compositeRegionsAcl`
@@ -749,6 +755,12 @@ Transform projections. Aggregate validation still proves Plan v8, the exact
 Workflow-owned descriptor contract, declared edge, fixed failure-v5 shape, and
 selected handle. It introduces no table, column, retry engine, or second Flow
 mechanism.
+
+Run v17 reuses migration `143`'s failed Output selected-handle shape for the
+ordinary Workflow-owned `workflow.output` descriptor. Aggregate validation
+proves Plan v9, the exact descriptor contract, declared edge, fixed failure-v6
+shape, and selected handle before persistence. No table, column, retry engine,
+or second Flow mechanism is added.
 
 The separate built-in discovery projection fail-closed composes the parity
 manifest's exact 23-node owner/gate/dependency/availability inventory with its

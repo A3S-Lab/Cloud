@@ -1,8 +1,8 @@
 use super::workflow::{
     application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
-    local_transform_failure_route_result, ApplicationAnswerResolution,
-    ApplicationVariableWriteResolution, ExecutionResolution,
+    local_output_failure_route_result, local_transform_failure_route_result,
+    ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -911,17 +911,20 @@ pub(super) fn completed_workflow_steps(
                     }
                 }
             }
-            WorkflowStepKind::Transform => {
+            WorkflowStepKind::Transform | WorkflowStepKind::Output => {
                 let durable_step_id = flow_step_id(&resolved.plan.id);
                 if snapshot
                     .steps
                     .get(&durable_step_id)
                     .is_some_and(|step| step.status == StepStatus::Failed)
                 {
-                    if let Some(result) =
+                    let result = if resolved.plan.kind == WorkflowStepKind::Transform {
                         local_transform_failure_route_result(&snapshot.run_id, input, resolved)
-                            .map_err(|error| error.to_string())?
-                    {
+                    } else {
+                        local_output_failure_route_result(&snapshot.run_id, input, resolved)
+                    }
+                    .map_err(|error| error.to_string())?;
+                    if let Some(result) = result {
                         let failure = serde_json::from_value::<
                             crate::modules::workflow::domain::WorkflowStepFailureOutput,
                         >(result.output.clone())

@@ -2166,8 +2166,10 @@ single sink's historical value shape, orders a multiple-sink object by stable
 step ID, and enforces the existing aggregate byte bound. `W0.3` remains open
 for business-service and remaining Agent/MCP/model/Tool failure semantics,
 compensation, and retained real-provider recovery evidence. Workflow-local
-Transform failure routing is now implemented through Plan v8/Run v16 with
-fixed redacted failure-v5 data and migration `145`.
+Transform failure routing is implemented through Plan v8/Run v16 with fixed
+redacted failure-v5 data and migration `145`; Workflow-local Output failure
+routing is implemented through Plan v9/Run v17 with fixed redacted failure-v6
+data and the existing migration `143` Output projection shape.
 
 The shared execution substrate now pins A3S Flow `1.0.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.1`-backed PostgreSQL stores. Workflow
@@ -2176,7 +2178,7 @@ single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
 and `a3s_boot` schemas. One process-level supervisor now observes every
 mandatory worker exit, error, and panic and fails serving before a background
 path can disappear silently. New Cloud Operation
-runs pin runtime build `a3s-cloud-workflows@18`; the former `@1` through `@17`
+runs pin runtime build `a3s-cloud-workflows@19`; the former `@1` through `@18`
 generations are admitted only through the explicit compatibility set, while
 legacy unpinned histories remain replayable as migration debt. Composite-only
 Plan v2 runs pin WorkflowRun input/runtime/Flow v3; descriptor-bound Plan v3
@@ -2194,8 +2196,10 @@ owner rejections to redacted failure v3, and leaves transient errors unresolved.
 An exact Workflow-local Transform error edge pins Plan v8 and Run v16,
 executes once without retry, and projects fixed redacted failure v5 through the
 ordinary DAG. Migration `145` only widens failed Transform selected-handle
-evidence. Historic v1-v15 inputs
-retain their bytes and replay behavior.
+evidence. An exact Workflow-local Output error edge pins Plan v9 and Run v17,
+executes once without retry, and projects fixed redacted failure v6 through the
+ordinary DAG. It reuses migration `143`'s failed Output selected-handle shape.
+Historic v1-v16 inputs retain their bytes and replay behavior.
 PostgreSQL tests cover queue
 draining, bounded retries, terminal-failure readiness, and the existing nine
 Build Flow `SIGKILL` boundaries. The exact root compatibility lock now publishes this
@@ -2461,8 +2465,9 @@ The default portfolio priority is:
     routing, Plan v4 exact default-output folding/evidence, Plan v5
     descriptor-bound Connector failure routing, and Plan v6 descriptor-bound
     Application-variable failure routing, Plan v7 descriptor-bound
-    Application-Answer failure routing, and Plan v8 descriptor-bound
-    Workflow-local Transform failure routing, initial
+    Application-Answer failure routing, Plan v8 descriptor-bound Workflow-local
+    Transform failure routing, and Plan v9 descriptor-bound Workflow-local
+    Output failure routing, initial
     typed-variable Flow projection, Flow-derived
     authorized variable inspection, digest-bound defaults, bounded composite
     policy/child bindings, deterministic frame/export and ordered region
@@ -2471,8 +2476,9 @@ The default portfolio priority is:
     and read-only built-in catalog discovery, then retain descriptor-bound
     graph Answer frames, Applications-owned variables, v13 repeated-frame
     Answer ordinals, v14 deterministic variable-write failure routing, v15
-    deterministic Answer failure routing, and v16 deterministic local
-    Transform failure routing while finishing business-service and remaining
+    deterministic Answer failure routing, v16 deterministic local Transform
+    failure routing, and v17 deterministic local Output failure routing while
+    finishing business-service and remaining
     Agent/MCP/model/Tool error routes and
     retaining the implemented reachable-sink Output aggregation and WorkflowRun
     execution on Operations and A3S Flow; expand real-PostgreSQL/provider cross-surface and process-death

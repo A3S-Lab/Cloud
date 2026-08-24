@@ -77,6 +77,46 @@ descriptor_registry "cloud.builtin" {
       summary = "User Input descriptor"
     }
   }
+  descriptor "workflow.output" "1.0.0" {
+    admission = "admitted"
+    allowed_capability_types = []
+    configuration_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    execution_class = "workflow_local"
+    kind = "output"
+    maximum_compiler_schema_version = 3
+    minimum_compiler_schema_version = 2
+    owner = "workflow"
+    required_bindings = []
+    semantic_profile = "workflow.output"
+    input "current" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    output "value" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    error_output "error" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    failure {
+      failure_branch = true
+      fallback = "failure_branch"
+      retry_classification = "not_retryable"
+    }
+    presentation {
+      icon_key = "workflow.output"
+      label = "Output"
+      summary = "Renders one deterministic Workflow-local output"
+    }
+  }
   descriptor "workflow.transform" "1.0.0" {
     admission = "admitted"
     allowed_capability_types = []

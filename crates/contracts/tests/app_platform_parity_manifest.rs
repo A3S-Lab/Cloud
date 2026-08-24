@@ -261,7 +261,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
         .collect::<Vec<_>>();
     assert_eq!(
         decisions.len(),
-        47,
+        48,
         "decision register changed unexpectedly"
     );
     for decision in decisions {
@@ -294,6 +294,9 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
     ));
     assert!(MANIFEST.contains(
         "doc:docs/decisions/app-platform/0047-descriptor-bound-transform-failure-routes.md"
+    ));
+    assert!(MANIFEST.contains(
+        "doc:docs/decisions/app-platform/0048-descriptor-bound-output-failure-routes.md"
     ));
     assert!(MANIFEST
         .contains("implementation:migrations/145_workflow_transform_failure_step_projections.sql"));

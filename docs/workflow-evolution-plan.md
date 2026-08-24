@@ -179,6 +179,13 @@ failure runs once without retry, becomes fixed redacted
 source Transform projection failed with the exact selected handle. Plans v1-v7
 and Run inputs v1-v15 retain their exact bytes and replay behavior; runtime
 build `a3s-cloud-workflows@18` explicitly retains `@1` through `@17`.
+An exact Workflow-local Output descriptor error edge emits Plan v9 and immutable
+WorkflowRun input/runtime/Flow v17. Template or output-schema evaluation failure
+runs once without retry, becomes fixed redacted
+`cloud.workflow.step-failure.v6` data on the ordinary DAG, and leaves the source
+Output projection failed with the exact selected handle. Plans v1-v8 and Run
+inputs v1-v16 retain their exact bytes and replay behavior; runtime build
+`a3s-cloud-workflows@19` explicitly retains `@1` through `@18`.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -338,6 +345,12 @@ copying evaluator diagnostics. Migration `145` widens only the existing
 projection constraint for failed Transform selected-handle evidence. This
 slice adds no table, column, public OpenAPI schema, or second retry or
 orchestration authority.
+Runtime v17 admits Plan v9 only when the exact Workflow-local Output selects its
+descriptor-bound error edge. Template or output-schema evaluation is scheduled
+once with no retry, and Flow reconstructs fixed redacted failure v6 data instead
+of copying evaluator diagnostics. The existing migration `143` already admits
+failed Output selected-handle evidence. This slice adds no table, column, public
+OpenAPI schema, or second retry or orchestration authority.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -369,7 +382,8 @@ Connector failure branches are implemented through Plan v5/Run v9. Application
 composite Answer frames use Run v13 root/child authority and stable zero-based
 ordinals; their deterministic Answer failures retain that root authority in
 Run v15. Workflow-local Transform failure branches are implemented through
-Plan v8/Run v16. Business-service and remaining Agent/MCP/model/Tool failure
+Plan v8/Run v16, and Workflow-local Output failure branches are implemented
+through Plan v9/Run v17. Business-service and remaining Agent/MCP/model/Tool failure
 semantics, compensation, expanded provider evidence, and public availability
 remain unimplemented parts of `W0.3`.
 

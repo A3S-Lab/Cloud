@@ -9,7 +9,7 @@ use super::{
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
     WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
     WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_PLAN_SCHEMA_V7,
-    WORKFLOW_PLAN_SCHEMA_V8, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_PLAN_SCHEMA_V8, WORKFLOW_PLAN_SCHEMA_V9, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
     WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod v16;
+mod v17;
 
 pub const WORKFLOW_RUN_INPUT_SCHEMA: &str = "cloud.workflow-run.input.v1";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-runtime.v1";
@@ -72,6 +73,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V15: &str = "15";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V16: &str = "cloud.workflow-run.input.v16";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16: &str = "cloud.workflow-run-runtime.v16";
 pub const WORKFLOW_RUN_FLOW_VERSION_V16: &str = "16";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V17: &str = "cloud.workflow-run.input.v17";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17: &str = "cloud.workflow-run-runtime.v17";
+pub const WORKFLOW_RUN_FLOW_VERSION_V17: &str = "17";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -232,6 +236,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V14
                 | WORKFLOW_RUN_INPUT_SCHEMA_V15
                 | WORKFLOW_RUN_INPUT_SCHEMA_V16
+                | WORKFLOW_RUN_INPUT_SCHEMA_V17
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -974,6 +979,16 @@ impl WorkflowRunInput {
                     regions,
                     application_projection,
                 ) => v16::validate(self, resolved, defaults, regions, application_projection)?,
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V17,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17,
+                    WORKFLOW_RUN_FLOW_VERSION_V17,
+                    WORKFLOW_PLAN_SCHEMA_V9,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    application_projection,
+                ) => v17::validate(self, resolved, defaults, regions, application_projection)?,
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"

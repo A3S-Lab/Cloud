@@ -52,7 +52,8 @@ AI application platform parity manifest.
 | [0045](0045-descriptor-bound-application-variable-failure-routes.md) | Route deterministic Application variable write rejections through descriptor-bound ordinary DAG edges |
 | [0046](0046-descriptor-bound-application-answer-failure-routes.md) | Route deterministic Application Answer write rejections through descriptor-bound ordinary DAG edges |
 | [0047](0047-descriptor-bound-transform-failure-routes.md) | Route deterministic Workflow-local Transform failures through descriptor-bound ordinary DAG edges |
+| [0048](0048-descriptor-bound-output-failure-routes.md) | Route deterministic Workflow-local Output failures through descriptor-bound ordinary DAG edges |
 
-All forty-six decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All forty-eight decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

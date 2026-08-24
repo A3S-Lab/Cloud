@@ -1105,6 +1105,14 @@ projection failed while the reachable ordinary branch may complete the parent.
 Migration `145` admits only failed Transform selected-handle evidence; raw
 evaluator errors are excluded, and historic v1-v15 behavior is unchanged.
 
+W0.3 also admits a failure edge for the exact Workflow-owned `workflow.output`
+descriptor. That graph emits Plan v9 and Run v17. Template or output-schema
+evaluation failure executes once without retry, becomes fixed redacted
+`cloud.workflow.step-failure.v6`, selects `error`, and keeps the source Output
+projection failed while the reachable ordinary branch may complete the parent.
+The runtime reuses migration `143`'s failed Output selected-handle shape; raw
+evaluator errors are excluded, and historic v1-v16 behavior is unchanged.
+
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse
 reaches the same identity and conflicts instead of creating a second record.
@@ -3664,7 +3672,11 @@ declared root or frame-local edge. Plans v1-v6 and Run inputs v1-v14 retain
 their exact behavior. An exact Workflow-local Transform descriptor error edge
 emits `cloud.workflow.plan.v8`; immutable Run v16 maps deterministic local
 evaluation failure to fixed redacted failure v5 and the declared edge. Plans
-v1-v7 and Run inputs v1-v15 retain their exact behavior. Migration `122` adds nullable default-output evidence to the
+v1-v7 and Run inputs v1-v15 retain their exact behavior. An exact
+Workflow-local Output descriptor error edge emits `cloud.workflow.plan.v9`;
+immutable Run v17 maps template or output-schema evaluation failure to fixed
+redacted failure v6 and the declared edge. Plans v1-v8 and Run inputs v1-v16
+retain their exact behavior. Migration `122` adds nullable default-output evidence to the
 existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

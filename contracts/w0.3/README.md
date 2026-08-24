@@ -9,8 +9,8 @@ execution class, configuration/default-policy digests, required bindings,
 allowed existing `CapabilityType` values, typed failure behavior, compiler
 compatibility, admission metadata, and a separate presentation digest.
 
-The fixture contains three representative admitted descriptors so both
-Workflow-local Input and Transform steps and the existing finite Executions
+The fixture contains four representative admitted descriptors so Workflow-local
+Input, Transform, and Output steps plus the existing finite Executions
 application port are covered. It is not the production built-in catalog, does not advertise all 23
 application-platform nodes, and does not change public parity availability.
 `step-descriptor-bindings.acl` freezes the separate, presentation-independent
@@ -71,6 +71,24 @@ runtime build `a3s-cloud-workflows@18` retains `@1` through `@17` for exact
 replay. Plans v1-v7 and Run inputs v1-v15 keep their bytes and behavior. This
 slice adds no table, column, retry engine, queue, worker, scheduler, or second
 Flow mechanism.
+
+## Descriptor-bound Workflow-local Output failure route
+
+The `workflow.output` descriptor declares one required static object error
+output named `error`, a non-retryable classification, and failure-branch
+fallback. Selecting that port emits `cloud.workflow.plan.v9` and immutable
+WorkflowRun input/runtime/Flow v17. Template or output-schema evaluation failure
+runs exactly once, resumes normal DAG interpretation, and produces the bounded
+redacted `cloud.workflow.step-failure.v6` value. The failed source Output
+projection records the exact `error` handle while its ordinary failure sink may
+complete the parent run.
+
+Runtime v17 never copies evaluator diagnostics into handled DAG data or the
+public step projection. Migration `143` already admits failed Output
+selected-handle evidence and still rejects completed aliases. Runtime build
+`a3s-cloud-workflows@19` retains `@1` through `@18` for exact replay. Plans
+v1-v8 and Run inputs v1-v16 keep their bytes and behavior. This slice adds no
+table, column, retry engine, queue, worker, scheduler, or second Flow mechanism.
 
 ## Typed variable scopes
 

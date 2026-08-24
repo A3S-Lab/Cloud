@@ -13,6 +13,11 @@ compatibility checker rejects undocumented or incompatible changes.
 
 The current semantic contract version is `1.59.0`.
 
+Workflow Plan v9 and the bounded `cloud.workflow.step-failure.v6` value use the
+existing plan and step-projection response fields. They add no route, field, or
+JSON shape, so this internal execution-semantics revision does not increment the
+OpenAPI contract version.
+
 ## Contract completeness
 
 Every public REST operation must declare all of the following:

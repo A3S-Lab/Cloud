@@ -282,6 +282,87 @@ fn transform_failure_route_fixture() -> FailureRouteFixture {
     fixture
 }
 
+fn output_failure_route_fixture() -> FailureRouteFixture {
+    let mut fixture = failure_route_fixture();
+    let mut output_configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Output);
+    output_configuration.template = Some("{{current.missing}}".into());
+    let output_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(output_configuration))
+            .expect("Output configuration");
+    let output_step = fixture
+        .workflow
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "execute")
+        .expect("Execution step");
+    let execution_configuration_digest = output_step.configuration_digest.clone();
+    output_step.kind = WorkflowStepKind::Output;
+    output_step.configuration_digest = output_configuration.digest().clone();
+    output_step.policy_digest = None;
+    output_step.capability = None;
+    fixture
+        .payloads
+        .retain(|payload| payload.digest() != &execution_configuration_digest);
+    fixture.payloads.push(output_configuration);
+
+    let mut output_descriptor = descriptor(
+        "workflow.output",
+        WorkflowStepKind::Output,
+        "input",
+        "result",
+    );
+    output_descriptor.failure = WorkflowStepFailureContract {
+        error_output: Some(port("error")),
+        retry_classification: WorkflowStepRetryClassification::NotRetryable,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.output-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: vec![
+            descriptor(
+                "workflow.input",
+                WorkflowStepKind::Input,
+                "invocation",
+                "value",
+            ),
+            output_descriptor,
+        ],
+    })
+    .expect("Output failure route registry");
+    let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: "support.output-failure-route".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        bindings: [
+            ("input", "workflow.input"),
+            ("execute", "workflow.output"),
+            ("failure_output", "workflow.output"),
+            ("output", "workflow.output"),
+        ]
+        .into_iter()
+        .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+            step_id: step_id.into(),
+            descriptor_id: descriptor_id.into(),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: registry
+                .resolve(descriptor_id, "1.0.0")
+                .expect("descriptor")
+                .semantic_digest()
+                .clone(),
+        })
+        .collect(),
+    })
+    .expect("Output failure route bindings");
+    let variables = fixture.semantic_contracts.variable_contract().clone();
+    fixture.semantic_contracts =
+        WorkflowRevisionSemanticContracts::create(&fixture.workflow, bindings, registry, variables)
+            .expect("Output failure route semantics");
+    fixture
+}
+
 fn connector_failure_route_fixture() -> FailureRouteFixture {
     let mut fixture = failure_route_fixture();
     let connector_configuration =
@@ -694,6 +775,43 @@ fn compiler_emits_plan_v8_and_run_v16_for_transform_failure_routes() {
         .execution_input
         .validate()
         .expect("valid run v16 input");
+}
+
+#[test]
+fn compiler_emits_plan_v9_and_run_v17_for_output_failure_routes() {
+    let (compiled, revision, principal_id, now) =
+        compile_execution_fallback_fixture(output_failure_route_fixture(), "Routed Output goal");
+    assert_eq!(compiled.plan_revision.plan.schema, WORKFLOW_PLAN_SCHEMA_V9);
+    assert_eq!(
+        compiled.plan_revision.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V9
+    );
+    let run = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &compiled.goal,
+        &compiled.plan_revision,
+        &revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("compiled run v17");
+    assert_eq!(
+        run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V17
+    );
+    assert_eq!(
+        run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17
+    );
+    assert_eq!(
+        run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V17
+    );
+    run.run
+        .execution_input
+        .validate()
+        .expect("valid run v17 input");
 }
 
 fn compile_execution_fallback_fixture(

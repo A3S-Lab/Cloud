@@ -5,10 +5,11 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     has_application_answer_failure_route, has_application_variable_failure_route,
-    has_connector_failure_route, has_transform_failure_route, validate_descriptor_failure_routes,
-    CapabilityReference, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec,
-    WorkflowStepDescriptorBinding, WorkflowStepFailureContract, WorkflowStepFallbackMode,
-    WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepSpec,
+    has_connector_failure_route, has_transform_failure_route, has_workflow_output_failure_route,
+    validate_descriptor_failure_routes, CapabilityReference, WorkflowContractQuotas,
+    WorkflowEdgeSpec, WorkflowSpec, WorkflowStepDescriptorBinding, WorkflowStepFailureContract,
+    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepSpec,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,8 @@ pub const WORKFLOW_PLAN_SCHEMA_V7: &str = "cloud.workflow.plan.v7";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V7: &str = "cloud.workflow.plan-compiler.v7";
 pub const WORKFLOW_PLAN_SCHEMA_V8: &str = "cloud.workflow.plan.v8";
 pub const WORKFLOW_PLAN_COMPILER_REVISION_V8: &str = "cloud.workflow.plan-compiler.v8";
+pub const WORKFLOW_PLAN_SCHEMA_V9: &str = "cloud.workflow.plan.v9";
+pub const WORKFLOW_PLAN_COMPILER_REVISION_V9: &str = "cloud.workflow.plan-compiler.v9";
 pub const WORKFLOW_PLAN_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +126,9 @@ impl WorkflowPlan {
             (WORKFLOW_PLAN_SCHEMA_V8, WORKFLOW_PLAN_COMPILER_REVISION_V8) => {
                 WorkflowPlanVersion::V8
             }
+            (WORKFLOW_PLAN_SCHEMA_V9, WORKFLOW_PLAN_COMPILER_REVISION_V9) => {
+                WorkflowPlanVersion::V9
+            }
             _ => return Err("Workflow plan schema and compiler revision are incompatible".into()),
         };
         let semantic_version = version != WorkflowPlanVersion::V1;
@@ -134,6 +140,7 @@ impl WorkflowPlan {
                 | WorkflowPlanVersion::V6
                 | WorkflowPlanVersion::V7
                 | WorkflowPlanVersion::V8
+                | WorkflowPlanVersion::V9
         );
         let default_output_capable = matches!(
             version,
@@ -142,6 +149,7 @@ impl WorkflowPlan {
                 | WorkflowPlanVersion::V6
                 | WorkflowPlanVersion::V7
                 | WorkflowPlanVersion::V8
+                | WorkflowPlanVersion::V9
         );
         if self.workflow_definition_id.as_uuid().is_nil()
             || self.workflow_revision_id.as_uuid().is_nil()
@@ -242,12 +250,26 @@ impl WorkflowPlan {
                 })
                 .map(|step| step.id.as_str())
                 .collect::<BTreeSet<_>>();
+        let workflow_output_steps = self
+            .steps
+            .iter()
+            .filter(|step| {
+                step.kind == WorkflowStepKind::Output
+                    && step.capability.is_none()
+                    && step
+                        .descriptor
+                        .as_ref()
+                        .is_some_and(|descriptor| descriptor.descriptor_id == "workflow.output")
+            })
+            .map(|step| step.id.as_str())
+            .collect::<BTreeSet<_>>();
         let has_failure_routes = if failure_version {
             validate_descriptor_failure_routes(
                 &workflow,
                 &failures,
                 &application_variable_steps,
                 &application_answer_steps,
+                &workflow_output_steps,
             )?
         } else {
             workflow.has_non_branch_source_handles()
@@ -258,6 +280,8 @@ impl WorkflowPlan {
         let has_application_answer_failure_routes =
             has_application_answer_failure_route(&workflow, &application_answer_steps);
         let has_transform_failure_routes = has_transform_failure_route(&workflow);
+        let has_workflow_output_failure_routes =
+            has_workflow_output_failure_route(&workflow, &workflow_output_steps);
         let has_default_outputs = validate_default_output_contracts(self)?;
         match version {
             WorkflowPlanVersion::V1 | WorkflowPlanVersion::V2
@@ -271,6 +295,7 @@ impl WorkflowPlan {
                     || has_application_variable_failure_routes
                     || has_application_answer_failure_routes
                     || has_transform_failure_routes
+                    || has_workflow_output_failure_routes
                     || has_default_outputs =>
             {
                 return Err(
@@ -285,10 +310,11 @@ impl WorkflowPlan {
                 if has_connector_failure_routes
                     || has_application_variable_failure_routes
                     || has_application_answer_failure_routes
-                    || has_transform_failure_routes =>
+                    || has_transform_failure_routes
+                    || has_workflow_output_failure_routes =>
             {
                 return Err(
-                    "Workflow Plan v4 cannot contain a Connector, Application, or Transform failure route"
+                    "Workflow Plan v4 cannot contain a Connector, Application, Transform, or Output failure route"
                         .into(),
                 )
             }
@@ -296,10 +322,11 @@ impl WorkflowPlan {
                 if !has_connector_failure_routes
                     || has_application_variable_failure_routes
                     || has_application_answer_failure_routes
-                    || has_transform_failure_routes =>
+                    || has_transform_failure_routes
+                    || has_workflow_output_failure_routes =>
             {
                 return Err(
-                    "Workflow Plan v5 requires Connector failure routes without Application or Transform failure routes"
+                    "Workflow Plan v5 requires Connector failure routes without Application, Transform, or Output failure routes"
                         .into(),
                 )
             }
@@ -310,10 +337,12 @@ impl WorkflowPlan {
                 )
             }
             WorkflowPlanVersion::V6
-                if has_application_answer_failure_routes || has_transform_failure_routes =>
+                if has_application_answer_failure_routes
+                    || has_transform_failure_routes
+                    || has_workflow_output_failure_routes =>
             {
                 return Err(
-                    "Workflow Plan v6 cannot contain an Application Answer or Transform failure route"
+                    "Workflow Plan v6 cannot contain an Application Answer, Transform, or Output failure route"
                         .into(),
                 )
             }
@@ -323,12 +352,25 @@ impl WorkflowPlan {
                     .into(),
                 )
             }
-            WorkflowPlanVersion::V7 if has_transform_failure_routes => {
-                return Err("Workflow Plan v7 cannot contain a Transform failure route".into())
+            WorkflowPlanVersion::V7
+                if has_transform_failure_routes || has_workflow_output_failure_routes =>
+            {
+                return Err(
+                    "Workflow Plan v7 cannot contain a Workflow-local failure route".into(),
+                )
             }
             WorkflowPlanVersion::V8 if !has_transform_failure_routes => {
                 return Err(
                     "Workflow Plan v8 requires at least one descriptor-bound Transform failure route"
+                        .into(),
+                )
+            }
+            WorkflowPlanVersion::V8 if has_workflow_output_failure_routes => {
+                return Err("Workflow Plan v8 cannot contain an Output failure route".into())
+            }
+            WorkflowPlanVersion::V9 if !has_workflow_output_failure_routes => {
+                return Err(
+                    "Workflow Plan v9 requires at least one descriptor-bound Output failure route"
                         .into(),
                 )
             }
@@ -395,6 +437,7 @@ enum WorkflowPlanVersion {
     V6,
     V7,
     V8,
+    V9,
 }
 
 fn validate_default_output_contracts(plan: &WorkflowPlan) -> Result<bool, String> {
