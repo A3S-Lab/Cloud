@@ -247,6 +247,82 @@ fn artifacts_domain_enters_sources_only_through_published_language() {
 }
 
 #[test]
+fn assets_domain_enters_sources_only_through_published_language() {
+    const SOURCES_PREFIX: &str = "crate::modules::sources::";
+    const PUBLISHED_PREFIX: &str = "crate::modules::sources::published::";
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("assets") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source.lines().filter(|line| line.contains(SOURCES_PREFIX)) {
+            if !line.contains(PUBLISHED_PREFIX) {
+                violations.insert(format!("{} contains {line:?}", display(relative)));
+            }
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Assets Domain imported Sources internals instead of its published language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn artifacts_build_source_resolver_never_loads_owner_repositories() {
+    let source = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/build_source_resolver.rs"),
+    )
+    .expect("read Artifacts build source resolver");
+    let forbidden = [
+        "crate::modules::assets::domain",
+        "crate::modules::sources::domain",
+        "IAssetRepository",
+        "IAssetGitRepository",
+        "ISourceRevisionRepository",
+        "publish_source_build_input",
+        ".find_asset(",
+        ".find_release(",
+        ".admit_manifest(",
+    ];
+    let violations = forbidden
+        .into_iter()
+        .filter(|needle| source.contains(needle))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts build-source resolution regained a foreign aggregate, repository, or Git authority: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn source_build_input_projection_is_used_only_behind_the_owner_query() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("sources") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("publish_source_build_input"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "a production consumer bypassed ISourceBuildInputQueryPort with an owner aggregate projection:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn artifacts_application_and_presentation_do_not_import_fleet_authority() {
     let mut violations = BTreeSet::new();
 

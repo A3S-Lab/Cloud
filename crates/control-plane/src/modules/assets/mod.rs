@@ -2,6 +2,7 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
+pub mod published;
 
 pub use application::commands::{
     ArchiveAsset, ArchiveAssetHandler, BackupAssetGitRepository, BackupAssetGitRepositoryHandler,
@@ -19,7 +20,9 @@ pub use application::queries::{
 };
 pub use application::{
     load_deployable_agent_release, AssetCatalogApplicationService, AssetGitApplicationService,
-    AssetGitApplicationServiceOptions, DeployableAgentRelease, McpServiceProfileApplicationService,
+    AssetGitApplicationServiceOptions, DeployableAgentRelease, HostedAssetBuildInputQueryError,
+    HostedAssetBuildInputQueryService, IHostedAssetBuildInputQueryPort,
+    McpServiceProfileApplicationService,
 };
 
 pub use domain::{

@@ -535,9 +535,19 @@ For an external source, Artifacts Domain receives only the Sources-owned
 `SourceBuildInputSnapshot` and translates it into the local immutable
 `BuildSource` read model. It imports the versioned recipe vocabulary through
 `sources::published`, never `ExternalSourceRevision` or another Sources
-internal. The current Infrastructure resolver's direct Sources repository read
-is transitional composition debt; it does not enter the Artifacts domain and
-will be replaced by an Artifacts-owned input-reader port.
+internal. `ISourceBuildInputQueryPort` is implemented by a Sources-owned
+service that loads and validates the aggregate and enforces the complete
+organization/project/environment/revision identity. The consumer-owned
+`IBuildSourceResolver` receives only that snapshot and revalidates the exact
+subject, so the resolver has no Sources repository authority.
+
+For a hosted Agent or MCP release, Assets similarly publishes the immutable
+`a3s.cloud.hosted-asset-build-input.v1` snapshot. Its owner-side
+`IHostedAssetBuildInputQueryPort` alone loads the Asset and release, validates
+their binding and kind, admits the pinned hosted-Git manifest, rejects source
+drift, and requires one build recipe. Artifacts receives only the exact tenant,
+Asset/release, commit, manifest digest, and recipe; Skill bundle publication,
+Asset lifecycle, and hosted Git remain Assets authority.
 
 For a successful hosted Asset build, Artifacts publishes one immutable,
 location-free `HostedBuildOutcome` containing only the exact tenant, Asset,

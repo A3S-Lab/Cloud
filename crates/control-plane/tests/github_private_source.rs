@@ -3,18 +3,21 @@ use a3s_cloud_control_plane::modules::artifacts::{
     NodeArtifactObjectStore, SourceBuildInputPreparer,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
+    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    RepositoryError, SourceConnectionId, SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
-    ExternalSourceRevision, GitProvider, GitReference, GitRepository, GithubInstallationId,
-    GithubInstallationTokenRequest, IGithubInstallationTokenService, ISourceCheckout,
-    ISourceResolver, NewExternalSourceRevision, SourceCheckoutRequest, SourceResolutionRequest,
+    AcceptSourceRevision, ExternalSourceRevision, GitProvider, GitReference, GitRepository,
+    GithubInstallationId, GithubInstallationTokenRequest, IGithubInstallationTokenService,
+    ISourceCheckout, ISourceResolver, ISourceRevisionRepository, NewExternalSourceRevision,
+    SourceCheckoutRequest, SourceResolutionRequest,
 };
 use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
 use a3s_cloud_control_plane::modules::sources::{
-    publish_source_build_input, GitSourceCheckout, GithubInstallationTokenIssuer,
-    GithubSourceResolver, InMemoryGithubConnectionRepository,
+    GitSourceCheckout, GithubInstallationTokenIssuer, GithubSourceResolver,
+    ISourceBuildInputQueryPort, InMemoryGithubConnectionRepository, SourceBuildInputQueryService,
 };
+use async_trait::async_trait;
 use chrono::Utc;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -113,7 +116,18 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
         source_revision_id,
         revision.accepted_at,
     );
-    let input = publish_source_build_input(&revision)?;
+    let source_inputs = SourceBuildInputQueryService::new(Arc::new(SingleRevisionRepository {
+        revision: revision.clone(),
+    }));
+    let input = source_inputs
+        .find_source_build_input(
+            organization_id,
+            project_id,
+            environment_id,
+            source_revision_id,
+        )
+        .await?
+        .ok_or_else(|| test_error("private Source build input was not found".into()))?;
     let source = BuildSource::from_source_input(&input)?;
     let directory = tempfile::tempdir()?;
     let checkout = Arc::new(
@@ -213,6 +227,46 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
     encoded.push(b'\n');
     write_evidence(&required(EVIDENCE_DIRECTORY_ENV)?, &encoded).await?;
     Ok(())
+}
+
+struct SingleRevisionRepository {
+    revision: ExternalSourceRevision,
+}
+
+#[async_trait]
+impl ISourceRevisionRepository for SingleRevisionRepository {
+    async fn find(
+        &self,
+        _organization_id: OrganizationId,
+        _source_revision_id: SourceRevisionId,
+    ) -> Result<ExternalSourceRevision, RepositoryError> {
+        Ok(self.revision.clone())
+    }
+
+    async fn replay_acceptance(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalSourceRevision>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn accept(
+        &self,
+        _request: AcceptSourceRevision,
+    ) -> Result<IdempotentWrite<ExternalSourceRevision>, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "private Source fixture is immutable".into(),
+        ))
+    }
+
+    async fn list(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+    ) -> Result<Vec<ExternalSourceRevision>, RepositoryError> {
+        Ok(vec![self.revision.clone()])
+    }
 }
 
 #[derive(Serialize)]

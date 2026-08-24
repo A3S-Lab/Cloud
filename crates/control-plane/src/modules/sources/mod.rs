@@ -4,9 +4,11 @@ pub mod infrastructure;
 pub mod presentation;
 pub mod published;
 
+#[cfg(test)]
+pub(crate) use application::publish_source_build_input;
 pub use application::{
-    publish_source_build_input, GithubConnectionAuthorityReconcileReport,
-    GithubConnectionAuthorityReconciler,
+    GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
+    ISourceBuildInputQueryPort, SourceBuildInputQueryError, SourceBuildInputQueryService,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{

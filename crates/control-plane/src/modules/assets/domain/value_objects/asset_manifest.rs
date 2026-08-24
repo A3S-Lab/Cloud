@@ -1,5 +1,5 @@
 use crate::modules::assets::domain::AssetKind;
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
 

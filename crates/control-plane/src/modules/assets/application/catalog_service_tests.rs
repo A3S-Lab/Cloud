@@ -22,7 +22,7 @@ use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, IdempotentWrite, OrganizationId, ProjectId,
     RepositoryError, Sha256Digest,
 };
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};

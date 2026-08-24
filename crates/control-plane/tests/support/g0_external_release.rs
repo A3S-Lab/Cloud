@@ -21,7 +21,7 @@ use a3s_cloud_control_plane::modules::sources::domain::{
     AcceptSourceRevision, ISourceRevisionRepository, SourceRevisionAccepted,
 };
 use a3s_cloud_control_plane::modules::sources::{
-    publish_source_build_input, PostgresSourceRevisionRepository,
+    ISourceBuildInputQueryPort, PostgresSourceRevisionRepository, SourceBuildInputQueryService,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler, HttpHealthCheck,
@@ -46,6 +46,7 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
     fixture::seed_tenant(&executor, &inputs.source).await?;
     let sources = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     persist_source(sources.as_ref(), &inputs).await?;
+    let source_inputs = SourceBuildInputQueryService::new(sources.clone());
     let builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let mut build = reserve_build(builds.as_ref(), &inputs).await?;
 
@@ -149,7 +150,16 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
         std::time::Duration::from_secs(30),
     )?);
     let evidence_generator = BoxBuildEvidenceGenerator::new(outputs, signer)?;
-    let source_input = publish_source_build_input(&inputs.source.revision)?;
+    let revision = &inputs.source.revision;
+    let source_input = source_inputs
+        .find_source_build_input(
+            revision.organization_id,
+            revision.project_id,
+            revision.environment_id,
+            revision.id,
+        )
+        .await?
+        .ok_or_else(|| test_error("persisted external Source build input was not found"))?;
     let source = BuildSource::from_source_input(&source_input)?;
     let build_evidence = evidence_generator
         .generate(&build, &source, next_time(&mut at))

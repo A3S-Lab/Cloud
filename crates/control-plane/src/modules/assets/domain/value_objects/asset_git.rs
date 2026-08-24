@@ -2,7 +2,7 @@ use crate::modules::assets::domain::AssetKind;
 use crate::modules::shared_kernel::domain::{
     AssetReleaseId, BuildRunId, GitCommitSha, Sha256Digest,
 };
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use std::path::{Component, Path};

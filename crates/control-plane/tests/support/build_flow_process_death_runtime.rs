@@ -12,13 +12,11 @@ use a3s_cloud_control_plane::modules::artifacts::{
     PostgresBuildRunRepository, PreparedBuildInput, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
-use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    BuildRunId, OrganizationId, RepositoryError,
-};
-use a3s_cloud_control_plane::modules::sources::domain::ISourceRevisionRepository;
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{BuildRunId, OrganizationId};
 use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
 use a3s_cloud_control_plane::modules::sources::{
-    publish_source_build_input, PostgresSourceRevisionRepository,
+    ISourceBuildInputQueryPort, PostgresSourceRevisionRepository, SourceBuildInputQueryError,
+    SourceBuildInputQueryService,
 };
 use a3s_flow::{
     FlowError, FlowEvent, FlowEventEnvelope, FlowEventStore, PostgresEventStore, WorkflowSpec,
@@ -49,7 +47,9 @@ pub(super) async fn build_runtime(
     Ok(BuildFlowRuntime::new(
         BuildFlowRuntimeDependencies {
             builds: Arc::new(PostgresBuildRunRepository::new(executor)),
-            sources: Arc::new(PostgresBuildSourceResolver { sources }),
+            sources: Arc::new(PostgresBuildSourceResolver {
+                source_inputs: Arc::new(SourceBuildInputQueryService::new(sources)),
+            }),
             inputs: Arc::new(PersistentInputPreparer {
                 actions: actions.clone(),
                 artifact: input_artifact()?,
@@ -166,7 +166,7 @@ pub(super) fn action_counts(state_dir: &Path) -> std::io::Result<BTreeMap<String
 }
 
 struct PostgresBuildSourceResolver {
-    sources: Arc<PostgresSourceRevisionRepository>,
+    source_inputs: Arc<dyn ISourceBuildInputQueryPort>,
 }
 
 #[async_trait]
@@ -177,24 +177,43 @@ impl IBuildSourceResolver for PostgresBuildSourceResolver {
                 "persistent Build Flow fixture requires an external source revision".into(),
             )
         })?;
-        let revision = self
-            .sources
-            .find(build.organization_id, source_revision_id)
+        let project_id = build.project_id().ok_or_else(|| {
+            BuildSourceResolutionError::Invalid(
+                "persistent Build Flow fixture omitted its project identity".into(),
+            )
+        })?;
+        let environment_id = build.environment_id().ok_or_else(|| {
+            BuildSourceResolutionError::Invalid(
+                "persistent Build Flow fixture omitted its environment identity".into(),
+            )
+        })?;
+        let input = self
+            .source_inputs
+            .find_source_build_input(
+                build.organization_id,
+                project_id,
+                environment_id,
+                source_revision_id,
+            )
             .await
-            .map_err(map_source_repository_error)?;
-        let input =
-            publish_source_build_input(&revision).map_err(BuildSourceResolutionError::Integrity)?;
+            .map_err(map_source_query_error)?
+            .ok_or(BuildSourceResolutionError::NotFound)?;
         BuildSource::from_source_input(&input).map_err(BuildSourceResolutionError::Integrity)
     }
 }
 
-fn map_source_repository_error(error: RepositoryError) -> BuildSourceResolutionError {
+fn map_source_query_error(error: SourceBuildInputQueryError) -> BuildSourceResolutionError {
     match error {
-        RepositoryError::NotFound => BuildSourceResolutionError::NotFound,
-        RepositoryError::Conflict(_)
-        | RepositoryError::Forbidden(_)
-        | RepositoryError::IdempotencyConflict => BuildSourceResolutionError::Conflict,
-        RepositoryError::Storage(message) => BuildSourceResolutionError::Storage(message),
+        SourceBuildInputQueryError::Invalid(message) => {
+            BuildSourceResolutionError::Invalid(message)
+        }
+        SourceBuildInputQueryError::Conflict => BuildSourceResolutionError::Conflict,
+        SourceBuildInputQueryError::Integrity(message) => {
+            BuildSourceResolutionError::Integrity(message)
+        }
+        SourceBuildInputQueryError::Storage(message) => {
+            BuildSourceResolutionError::Storage(message)
+        }
     }
 }
 

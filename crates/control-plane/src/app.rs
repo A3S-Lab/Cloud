@@ -39,8 +39,9 @@ use crate::modules::assets::{
     AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
     AssetsModule, BackupAssetGitRepositoryHandler, BindMcpServiceProfileHandler,
     CreateAssetHandler, CreateAssetReleaseHandler, GetAssetHandler, GetAssetReleaseHandler,
-    GetMcpServiceProfileHandler, HostedBuildOutcomeProjector, IAssetGitRepository,
-    IAssetRepository, ListAssetReleasesHandler, ListAssetsHandler, LocalAssetGitRepository,
+    GetMcpServiceProfileHandler, HostedAssetBuildInputQueryService, HostedBuildOutcomeProjector,
+    IAssetGitRepository, IAssetRepository, IHostedAssetBuildInputQueryPort,
+    ListAssetReleasesHandler, ListAssetsHandler, LocalAssetGitRepository,
     McpServiceProfileApplicationService, ReceiveAssetGitPackHandler,
     RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
     YankAssetReleaseHandler,
@@ -211,10 +212,11 @@ use crate::modules::sources::{
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
     DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
     GithubAppClient, GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
-    GithubSourceResolver, GithubWebhookVerifier, ListGithubRepositorySubscriptionsHandler,
-    ListSourceRevisionsHandler, PrepareGithubConnectionOauthHandler,
-    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
-    RevalidatingGithubInstallationTokens, SourcesModule,
+    GithubSourceResolver, GithubWebhookVerifier, ISourceBuildInputQueryPort,
+    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
+    PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
+    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens,
+    SourceBuildInputQueryService, SourcesModule,
 };
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
@@ -818,10 +820,16 @@ async fn build_api_worker_application(
             )
             .map_err(ControlPlaneStartupError::Build)?,
         );
+        let source_build_inputs: Arc<dyn ISourceBuildInputQueryPort> =
+            Arc::new(SourceBuildInputQueryService::new(Arc::clone(&sources)));
+        let hosted_asset_build_inputs: Arc<dyn IHostedAssetBuildInputQueryPort> =
+            Arc::new(HostedAssetBuildInputQueryService::new(
+                Arc::clone(&assets),
+                Arc::clone(&asset_git_repositories),
+            ));
         let build_sources: Arc<dyn IBuildSourceResolver> = Arc::new(CloudBuildSourceResolver::new(
-            Arc::clone(&sources),
-            Arc::clone(&assets),
-            Arc::clone(&asset_git_repositories),
+            source_build_inputs,
+            hosted_asset_build_inputs,
         ));
         let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
             SourceBuildInputPreparer::new(

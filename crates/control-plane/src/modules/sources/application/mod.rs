@@ -7,4 +7,8 @@ mod source_build_input;
 pub use github_connection_authority_reconciler::{
     GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
 };
-pub use source_build_input::publish_source_build_input;
+#[cfg(test)]
+pub(crate) use source_build_input::publish_source_build_input;
+pub use source_build_input::{
+    ISourceBuildInputQueryPort, SourceBuildInputQueryError, SourceBuildInputQueryService,
+};
