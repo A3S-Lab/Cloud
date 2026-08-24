@@ -404,7 +404,7 @@ Owns bounded, deterministic inspection of an already identified source layout
 and emits versioned reviewable BuildPlan proposals. Component-only `P0.1-C1`
 binds every proposal to the exact source identity, commit, whole-layout content
 digest, detector kind/revision, evidence file/digest, project root, and existing
-Sources-owned Dockerfile `BuildRecipe`. The source-layout snapshot is canonical,
+Sources-published Dockerfile `BuildRecipe`. The source-layout snapshot is canonical,
 bounded, sorted, and independent of a local checkout directory.
 
 The initial closed detector set contains Dockerfile and A3S Asset ACL detection.
@@ -418,8 +418,11 @@ Sources authority. Canonical `a3s.cloud.build-plan.v1` embeds one exact C1
 proposal plus its existing `SourceRevisionId`. Its digest excludes actor, time,
 checkout, and adapter state; a deterministic `BuildPlanId` and natural key admit
 one immutable acceptance per Source revision/project root. An
-authorization-first internal command verifies exact source identity, commit,
-recipe, scope, and time through a typed Sources port. Migration `146` persists
+authorization-first internal command asks the Developer Workflows-owned
+`IDeveloperWorkflowAuthorizationPort` with the closed `accept_build_plan`
+action, then verifies exact source identity, commit, recipe, scope, and time
+through a typed Sources port. Identity grant evaluators and policy types do not
+enter the command. Migration `146` persists
 canonical ACL, redundant closed evidence, idempotency, audit, and Outbox
 atomically, reparses ACL on reads, and rejects mutation. Production composition,
 public interfaces, and all BuildRun/Workload/Route/scheduler handoffs remain
@@ -430,20 +433,40 @@ acceptance history. Canonical `a3s.cloud.workload-profile.v1` binds a closed
 `web`, `worker`, or `scheduled_task` profile to one exact accepted BuildPlan;
 stable profile identity spans source updates while an immutable continuous
 revision identity binds each accepted contract. Authorization precedes ACL
-parsing and replay. Migration `147` stores canonical ACL, redundant exact-plan
+parsing and replay through the same port's closed `accept_workload_profile`
+action. Migration `147` stores canonical ACL, redundant exact-plan
 evidence, idempotency, audit, and Outbox atomically and rejects update, delete,
 scope drift, or sequence gaps. Identical current content converges only for the
 same actor; a distinct actor acceptance remains a new audit-visible revision.
 
-The compilation service consumes a successful exact BuildRun and verified
-BuildEvidence to project web/worker intent to a Workloads-owned
-`ServiceTemplate` or scheduled intent to an Executions-owned
-`ExecutionTemplate`. Developer Workflows does not persist those templates,
-create BuildRuns, Workloads, Routes, Executions, or Automations, or evaluate
-timers. Those contexts retain lifecycle and scheduling authority.
+The Domain owns workload-profile process, Secret-binding, resource, port, and
+health proposal values rather than embedding Workloads or Executions models.
+The compilation service queries the consumer-owned
+`IWorkloadBuildOutcomePort` by exact Organization and `BuildRunId`; it receives
+only the immutable `a3s.cloud.developer-workflow-build-outcome.v1` view needed
+to prove the exact BuildPlan ID/digest, source, recipe, attestation chronology,
+and digest-pinned OCI output.
+BuildRun state, retry, cleanup, publication, and aggregate-version mechanisms
+remain private to Artifacts. Application submits the accepted local proposal
+through `IServiceProfileAdmissionPort` or
+`IScheduledTaskProfileAdmissionPort`; only the owning adapter may translate it
+to a Workloads `ServiceTemplate` or Executions `ExecutionTemplate`, run the
+owner's admission rules, and return an immutable contract-digest receipt.
+That receipt is correlated to the target kind, complete Organization/Project/
+Environment/BuildPlan/BuildRun/Source/Profile context, and exact Artifact
+digest, so a stale or cross-target owner response fails closed. Developer
+Workflows does not retain either owner template. Test adapters prove both owner
+invariants while concrete production adapters and composition remain
+unavailable. Developer Workflows does not create BuildRuns, Workloads, Routes,
+Executions, or Automations, or evaluate timers.
 
 Component-only `P0.3-C1` adds authenticated typed GitHub pull-request changes
-and a pure Preview lifecycle reducer. Stable Preview identity includes exact
+and a pure Preview lifecycle reducer. The reducer owns a minimal local
+pull-request observation (installation reference, canonical branches,
+repositories, commit, provider times, action, and merge state), not the Sources
+webhook-verifier DTO, delivery payload, signature, or credential semantics. A
+future application adapter must translate a committed Sources fact into this
+input before production dispatch. Stable Preview identity includes exact
 Organization, Project, Sources subscription, base repository, provider PR ID,
 and number; a second stable identity denotes the ordinary Environment that a
 later Projects-owned handoff may create. Provider creation/update times,

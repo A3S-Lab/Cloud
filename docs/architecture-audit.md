@@ -140,7 +140,7 @@ snapshot or an application port result.
 | Module | Unique authority | Current assessment | Required optimization |
 | --- | --- | --- | --- |
 | Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. It now owns the versioned `a3s.cloud.source-build-input.v1` published snapshot and the sole Application projection exposed by its root facade; Artifacts Domain enters Sources only through that language. Other Application handlers still directly query Projects/Identity repositories for scope. | Migrate remaining consumers to the published BuildRecipe/input language, replace foreign aggregate readers with owner adapters over consumer ports, and introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
-| Developer Workflows | Reviewable BuildPlan, workload-profile proposal/acceptance, preview intent, and later monorepo/import decisions | Correct product purpose, but the domain directly imports Sources, Executions, Workloads, and Assets domain types. That couples a review model to four owners' internal evolution. | Replace foreign aggregates with local proposal value objects plus exact owner references. Compilation and acceptance use consumer-owned ports to Sources, Artifacts, Executions, Workloads, and Edge. No build, scheduler, deployment, or route lifecycle moves here. |
+| Developer Workflows | Reviewable BuildPlan, workload-profile proposal/acceptance, preview intent, and later monorepo/import decisions | Domain owns its process, Secret-binding, resource, port, health, branch, installation-ref, and pull-request-change proposal values. It enters Sources only through Published Language and imports no foreign owner internals. Application owns action-scoped `IDeveloperWorkflowAuthorizationPort`, `IWorkloadBuildOutcomePort`, `IServiceProfileAdmissionPort`, and `IScheduledTaskProfileAdmissionPort`; Identity policy, Artifacts aggregate state, and Workloads/Executions templates stay private. Build outcomes bind the exact BuildPlan ID/digest, while target admission returns one correlation-bound receipt carrying the target, exact request context, Artifact digest, and opaque owner-contract digest. Architecture tests enforce both layers against every foreign internal model. | Implement the Identity/Artifacts/Workloads/Executions owner adapters and production composition, then add exact Projects/Edge handoffs. No build, scheduler, deployment, route, webhook-verification, or provider lifecycle moves here. |
 | Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain code directly embeds Artifacts BuildRun and Sources BuildRecipe types. Assets and Artifacts persistence form a bidirectional atomic publication dependency. | Publish build outcome/provenance snapshots from Artifacts. Assets owns release publication through an idempotent application port or Outbox-fed process manager. Remove Artifacts-owned writes to Assets tables. |
 | Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain no longer imports a Sources aggregate or `sources::domain`; it translates only the owner-published immutable input and recipe language into local `BuildSource`. Presentation is crate-private. Infrastructure remains public migration debt while concurrent Flow composition imports its runtime registry, and its resolver still loads a Sources repository before requesting the owner projection. Assets table writes and Fleet log DTO reuse remain substantive debt. | Replace the transitional Sources repository dependency with an Artifacts-owned input-reader port implemented by Sources, add BuildLogPage and HostedBuildOutcome contracts, replace the Assets table write with an explicit replayable intent/fact handoff, and privatize Infrastructure after shared Flow composition consumes the root facade. |
 
@@ -298,6 +298,28 @@ The current Artifacts Infrastructure resolver still loads the Sources
 repository at the composition edge; replacing that adapter with a
 consumer-owned input-reader port remains an explicit follow-up and does not
 weaken the Domain boundary.
+
+Item 2's core boundary is implemented. Developer Workflows Domain owns local
+review proposal values and exact opaque owner references, and can import a
+foreign context only through its Published Language. Pull-request Preview
+reconciliation consumes a minimal local semantic observation rather than the
+Sources webhook-verifier DTO. BuildPlan and workload-profile acceptance ask
+the consumer-owned, closed-action `IDeveloperWorkflowAuthorizationPort` before
+parsing ACL, replaying idempotency, or reading owner state; Identity grant
+evaluators and policy vocabulary no longer enter the commands. Application obtains a
+successful attested build only through `IWorkloadBuildOutcomePort` and
+validates the versioned `a3s.cloud.developer-workflow-build-outcome.v1`
+snapshot, including exact BuildPlan ID/digest, against the accepted BuildPlan.
+An Assets ACL detector remains an Infrastructure
+anti-corruption adapter over the single Assets parser, with an executable path
+compatibility test. Application submits the accepted local profile through
+consumer-owned `IServiceProfileAdmissionPort` and
+`IScheduledTaskProfileAdmissionPort` contracts and receives only an immutable
+receipt bound to the target, complete request context, Artifact digest, and
+opaque owner-contract digest. Test-only owner adapters prove that Workloads and
+Executions still perform final template validation. Concrete owner-side
+adapters and production composition remain named follow-up work; their absence
+does not reopen either model boundary.
 
 ### Wave 3: execution and traffic boundaries
 

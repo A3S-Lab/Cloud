@@ -1,15 +1,13 @@
 use super::{
-    reconcile_pull_request_preview, PreviewCleanupReason, PreviewForkPolicy, PreviewQuota,
-    PreviewReconcileOutcome, PullRequestPreview, PullRequestPreviewPolicy,
-    PullRequestPreviewStatus, MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
+    reconcile_pull_request_preview, GitBranch, GithubInstallationRef, PreviewCleanupReason,
+    PreviewForkPolicy, PreviewQuota, PreviewReconcileOutcome, PullRequestChange,
+    PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy, PullRequestPreviewStatus,
+    MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
 };
 use crate::modules::shared_kernel::domain::{
-    OrganizationId, PrincipalId, ProjectId, SourceSubscriptionId,
+    GitCommitSha, OrganizationId, PrincipalId, ProjectId, SourceSubscriptionId,
 };
-use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitReference, GitRepository, GithubInstallationId,
-    PullRequestChangeKind, VerifiedPullRequestChange, WebhookDeliveryId,
-};
+use crate::modules::sources::published::{GitProvider, GitRepository};
 use chrono::{DateTime, TimeDelta, TimeZone, Timelike, Utc};
 
 #[test]
@@ -339,18 +337,18 @@ fn rejects_events_outside_the_exact_subscription_repository_and_branch_binding()
         Some(base_repository()),
         false,
     );
-    wrong_branch.base_reference = GitReference::parse("branch", "release").expect("branch");
+    wrong_branch.base_branch = GitBranch::parse("release").expect("branch");
     assert!(reconcile_pull_request_preview(&policy, None, &wrong_branch).is_err());
 
     let mut wrong_installation = wrong_branch;
-    wrong_installation.base_reference = policy.base_reference.clone();
-    wrong_installation.installation_id = GithubInstallationId::parse(43).expect("installation");
+    wrong_installation.base_branch = policy.base_branch.clone();
+    wrong_installation.installation_id = GithubInstallationRef::parse(43).expect("installation");
     assert!(reconcile_pull_request_preview(&policy, None, &wrong_installation).is_err());
 }
 
 fn apply<const N: usize>(
     policy: &PullRequestPreviewPolicy,
-    changes: [&VerifiedPullRequestChange; N],
+    changes: [&PullRequestChange; N],
 ) -> PullRequestPreview {
     let mut current = None;
     for change in changes {
@@ -367,9 +365,9 @@ fn policy(fork_policy: PreviewForkPolicy) -> PullRequestPreviewPolicy {
         project_id: ProjectId::new(),
         source_subscription_id: SourceSubscriptionId::new(),
         owner_principal_id: PrincipalId::new(),
-        installation_id: GithubInstallationId::parse(42).expect("installation"),
+        installation_id: GithubInstallationRef::parse(42).expect("installation"),
         base_repository: base_repository(),
-        base_reference: GitReference::parse("branch", "main").expect("base branch"),
+        base_branch: GitBranch::parse("main").expect("base branch"),
         lifetime_seconds: 24 * 60 * 60,
         maximum_active_previews: 16,
         fork_policy,
@@ -389,19 +387,13 @@ fn change(
     sha_character: char,
     head_repository: Option<GitRepository>,
     merged: bool,
-) -> VerifiedPullRequestChange {
-    let value = VerifiedPullRequestChange {
-        provider: GitProvider::Github,
-        delivery_id: WebhookDeliveryId::parse(format!(
-            "delivery-{}-{sha_character}",
-            kind.as_str()
-        ))
-        .expect("delivery ID"),
-        installation_id: GithubInstallationId::parse(42).expect("installation"),
+) -> PullRequestChange {
+    let value = PullRequestChange {
+        installation_id: GithubInstallationRef::parse(42).expect("installation"),
         base_repository: base_repository(),
-        base_reference: GitReference::parse("branch", "main").expect("base branch"),
+        base_branch: GitBranch::parse("main").expect("base branch"),
         head_repository,
-        head_reference: GitReference::parse("branch", "feature/preview").expect("head branch"),
+        head_branch: GitBranch::parse("feature/preview").expect("head branch"),
         head_commit_sha: GitCommitSha::parse(sha_character.to_string().repeat(40))
             .expect("head commit"),
         pull_request_id: 1_000_042,
@@ -410,7 +402,6 @@ fn change(
         merged,
         provider_created_at: timestamp(1),
         provider_updated_at,
-        payload_digest: format!("sha256:{}", sha_character.to_string().repeat(64)),
     };
     value.validate().expect("verified PR change");
     value

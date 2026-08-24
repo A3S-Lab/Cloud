@@ -3,7 +3,7 @@ use super::source_layout::{
     SourceLayoutIdentity,
 };
 use crate::modules::shared_kernel::domain::{GitCommitSha, Sha256Digest};
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 use a3s_acl::builder::{list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 pub const BUILD_PLAN_PROPOSAL_SCHEMA: &str = "a3s.cloud.build-plan-proposal.v1";
 pub const BUILD_PLAN_DETECTOR_REVISION: &str = "p0.1-c1";
 pub const BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES: usize = 64 * 1024;
+pub const ASSET_ACL_EVIDENCE_PATH: &str = ".a3s/asset.acl";
 const BUILD_PLAN_BLOCK: &str = "build_plan";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -78,7 +79,7 @@ impl BuildPlanProposal {
         }
         match spec.detector {
             BuildPlanDetectorKind::AssetAcl => {
-                if spec.evidence_path != crate::modules::assets::domain::ASSET_MANIFEST_PATH {
+                if spec.evidence_path != ASSET_ACL_EVIDENCE_PATH {
                     return Err("Asset ACL BuildPlan evidence path is invalid".into());
                 }
             }

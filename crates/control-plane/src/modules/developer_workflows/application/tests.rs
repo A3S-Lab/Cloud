@@ -1,10 +1,10 @@
 use super::{
     AcceptBuildPlan, AcceptBuildPlanHandler, BuildPlanSourceRevisionEvidence,
-    IBuildPlanSourceRevisionPort,
+    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
+    IDeveloperWorkflowAuthorizationPort,
 };
 use crate::modules::developer_workflows::domain::{BuildPlanProposal, IBuildPlanRepository};
 use crate::modules::developer_workflows::infrastructure::InMemoryBuildPlanRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId, RepositoryError,
@@ -24,7 +24,8 @@ async fn acceptance_is_authorized_exact_and_replay_safe() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source.clone());
+    let handler =
+        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), authorization(true));
 
     let first = handler
         .execute(fixture.command("accept-1"), context())
@@ -64,7 +65,7 @@ async fn independent_idempotency_keys_converge_on_one_natural_acceptance() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source);
+    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
 
     let first = handler
         .execute(fixture.command("natural-1"), context())
@@ -102,7 +103,8 @@ async fn another_authorized_actor_can_adopt_and_replay_the_existing_acceptance()
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source.clone());
+    let handler =
+        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), authorization(true));
     let first = handler
         .execute(fixture.command("first-actor"), context())
         .await
@@ -144,7 +146,7 @@ async fn source_evidence_drift_fails_before_persistence() {
     let mut evidence = fixture.evidence();
     evidence.recipe_digest = digest('f');
     let source = Arc::new(FakeSourcePort::new(Some(evidence)));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source);
+    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
 
     let error = handler
         .execute(fixture.command("drift"), context())
@@ -171,9 +173,9 @@ async fn authorization_precedes_source_resolution_and_replay() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository, source.clone());
+    let handler = AcceptBuildPlanHandler::new(repository, source.clone(), authorization(false));
     let mut command = fixture.command("forbidden");
-    command.resource_access = ResourceAccessEvaluator::restricted([]);
+    command.proposal_acl = "not an ACL document".into();
 
     let error = handler
         .execute(command, context())
@@ -215,6 +217,30 @@ impl IBuildPlanSourceRevisionPort for FakeSourcePort {
                 && evidence.source_revision_id == source_revision_id
         }))
     }
+}
+
+struct FakeAuthorizationPort {
+    allowed: bool,
+}
+
+#[async_trait]
+impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
+    async fn can_write_environment(
+        &self,
+        access: DeveloperWorkflowEnvironmentAccess,
+    ) -> Result<bool, RepositoryError> {
+        access.validate().map_err(RepositoryError::Forbidden)?;
+        if access.action != DeveloperWorkflowAction::AcceptBuildPlan {
+            return Err(RepositoryError::Forbidden(
+                "unexpected Developer Workflow action".into(),
+            ));
+        }
+        Ok(self.allowed)
+    }
+}
+
+fn authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
+    Arc::new(FakeAuthorizationPort { allowed })
 }
 
 struct Fixture {
@@ -265,7 +291,6 @@ impl Fixture {
             source_revision_id: self.source_revision_id,
             proposal_acl: BUILD_PLAN_FIXTURE.into(),
             actor_principal_id: self.actor_principal_id,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
             idempotency_key: idempotency_key.into(),
             request_id: Uuid::now_v7(),
         }

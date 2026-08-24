@@ -1,10 +1,12 @@
-use super::IBuildPlanSourceRevisionPort;
+use super::authorization::authorize_environment_write;
+use super::{
+    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
+    IDeveloperWorkflowAuthorizationPort,
+};
 use crate::modules::developer_workflows::domain::{
     AcceptBuildPlanWrite, AcceptedBuildPlan, AcceptedBuildPlanContract, BuildPlanAccepted,
     BuildPlanProposal, IBuildPlanRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError,
@@ -24,7 +26,6 @@ pub struct AcceptBuildPlan {
     pub source_revision_id: SourceRevisionId,
     pub proposal_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -42,14 +43,20 @@ pub struct AcceptBuildPlanResult {
 pub struct AcceptBuildPlanHandler {
     plans: Arc<dyn IBuildPlanRepository>,
     sources: Arc<dyn IBuildPlanSourceRevisionPort>,
+    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
 }
 
 impl AcceptBuildPlanHandler {
     pub fn new(
         plans: Arc<dyn IBuildPlanRepository>,
         sources: Arc<dyn IBuildPlanSourceRevisionPort>,
+        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
     ) -> Self {
-        Self { plans, sources }
+        Self {
+            plans,
+            sources,
+            authorization,
+        }
     }
 }
 
@@ -62,17 +69,21 @@ impl CommandHandler<AcceptBuildPlan> for AcceptBuildPlanHandler {
     {
         let plans = Arc::clone(&self.plans);
         let sources = Arc::clone(&self.sources);
+        let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
+            if let Err(error) = authorize_environment_write(
+                authorization.as_ref(),
+                DeveloperWorkflowEnvironmentAccess {
+                    organization_id: command.organization_id,
                     project_id: command.project_id,
                     environment_id: command.environment_id,
-                })
+                    principal_id: command.actor_principal_id,
+                    action: DeveloperWorkflowAction::AcceptBuildPlan,
+                },
+            )
+            .await
             {
-                return Ok(Err(ApplicationError::NotFound(
-                    "BuildPlan environment not found".into(),
-                )));
+                return Ok(Err(error));
             }
             let proposal = match BuildPlanProposal::parse_acl(&command.proposal_acl) {
                 Ok(value) => value,

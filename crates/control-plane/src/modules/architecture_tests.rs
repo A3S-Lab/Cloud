@@ -248,6 +248,29 @@ fn artifacts_domain_enters_sources_only_through_published_language() {
 }
 
 #[test]
+fn developer_workflows_domain_uses_only_local_models_shared_kernel_or_published_language() {
+    let violations = bounded_context_internal_model_references("developer_workflows", "domain");
+
+    assert!(
+        violations.is_empty(),
+        "Developer Workflows Domain imported a foreign owner model instead of local proposal language, an exact Shared Kernel reference, or Published Language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn developer_workflows_application_uses_only_local_models_ports_or_published_language() {
+    let violations =
+        bounded_context_internal_model_references("developer_workflows", "application");
+
+    assert!(
+        violations.is_empty(),
+        "Developer Workflows Application imported a foreign owner model instead of local ports, Shared Kernel, or Published Language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn published_languages_never_alias_owner_domain_models() {
     let mut violations = BTreeSet::new();
 
@@ -477,6 +500,54 @@ fn module_references(source: &str) -> BTreeSet<String> {
     }
 
     references
+}
+
+fn bounded_context_internal_model_references(
+    bounded_context: &str,
+    expected_layer: &str,
+) -> BTreeSet<String> {
+    let mut violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some(bounded_context) || layer(relative) != Some(expected_layer) {
+            return;
+        }
+        if source.contains("crate::modules::{") || source.contains("crate::{") {
+            violations.insert(format!(
+                "{} uses a grouped module root that bypasses exact boundary inspection",
+                display(relative)
+            ));
+        }
+        if source.lines().any(|line| {
+            let line = line.trim();
+            line == "use crate::modules;" || line.starts_with("use crate::modules as ")
+        }) {
+            violations.insert(format!(
+                "{} aliases the module root and bypasses exact boundary inspection",
+                display(relative)
+            ));
+        }
+        if source.contains("super::super::") {
+            violations.insert(format!(
+                "{} uses a relative path that bypasses exact boundary inspection",
+                display(relative)
+            ));
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::"))
+        {
+            for target in module_references(line) {
+                if target == bounded_context
+                    || target == "shared_kernel"
+                    || line.contains(&format!("crate::modules::{target}::published"))
+                {
+                    continue;
+                }
+                violations.insert(format!("{} contains {line:?}", display(relative)));
+            }
+        }
+    });
+    violations
 }
 
 fn visit_production_sources(mut visit: impl FnMut(&Path, &str)) {

@@ -1,9 +1,12 @@
+use super::authorization::authorize_environment_write;
+use super::{
+    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
+    IDeveloperWorkflowAuthorizationPort,
+};
 use crate::modules::developer_workflows::domain::{
     AcceptWorkloadProfileRevisionWrite, AcceptedWorkloadProfileRevision, IBuildPlanRepository,
     IWorkloadProfileRepository, WorkloadProfileContract, WorkloadProfileRevisionAccepted,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     BuildPlanId, EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId,
@@ -23,7 +26,6 @@ pub struct AcceptWorkloadProfile {
     pub build_plan_id: BuildPlanId,
     pub profile_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -41,14 +43,20 @@ pub struct AcceptWorkloadProfileResult {
 pub struct AcceptWorkloadProfileHandler {
     profiles: Arc<dyn IWorkloadProfileRepository>,
     plans: Arc<dyn IBuildPlanRepository>,
+    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
 }
 
 impl AcceptWorkloadProfileHandler {
     pub fn new(
         profiles: Arc<dyn IWorkloadProfileRepository>,
         plans: Arc<dyn IBuildPlanRepository>,
+        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
     ) -> Self {
-        Self { profiles, plans }
+        Self {
+            profiles,
+            plans,
+            authorization,
+        }
     }
 }
 
@@ -63,17 +71,21 @@ impl CommandHandler<AcceptWorkloadProfile> for AcceptWorkloadProfileHandler {
     > {
         let profiles = Arc::clone(&self.profiles);
         let plans = Arc::clone(&self.plans);
+        let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
-            if !command
-                .resource_access
-                .allows(ResourceGrantScope::Environment {
+            if let Err(error) = authorize_environment_write(
+                authorization.as_ref(),
+                DeveloperWorkflowEnvironmentAccess {
+                    organization_id: command.organization_id,
                     project_id: command.project_id,
                     environment_id: command.environment_id,
-                })
+                    principal_id: command.actor_principal_id,
+                    action: DeveloperWorkflowAction::AcceptWorkloadProfile,
+                },
+            )
+            .await
             {
-                return Ok(Err(ApplicationError::NotFound(
-                    "workload profile environment not found".into(),
-                )));
+                return Ok(Err(error));
             }
             let contract = match WorkloadProfileContract::parse_acl(&command.profile_acl) {
                 Ok(value) => value,

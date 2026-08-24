@@ -1,14 +1,10 @@
 use super::source_layout::validate_repository_root;
-use super::AcceptedBuildPlan;
-use crate::modules::executions::domain::{
-    ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
-    MAX_EXECUTION_TIMEOUT_MS,
+use super::workload_profile_values::{validate_execution_intent, validate_service_intent};
+use super::{
+    AcceptedBuildPlan, WorkloadHttpHealthCheck, WorkloadProcess, WorkloadProfileResources,
+    WorkloadSecretBinding, WorkloadSecretTarget, WorkloadServicePort,
 };
 use crate::modules::shared_kernel::domain::{BuildPlanId, Sha256Digest, SourceRevisionId};
-use crate::modules::workloads::domain::entities::{
-    HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate,
-};
 use a3s_acl::builder::{integer, list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
 use chrono_tz::Tz;
@@ -162,47 +158,14 @@ impl ScheduledTaskSchedule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkloadProfileResources {
-    pub cpu_millis: u64,
-    pub memory_bytes: u64,
-    pub pids: u32,
-    pub ephemeral_storage_bytes: Option<u64>,
-    pub execution_timeout_ms: Option<u64>,
-}
-
-impl WorkloadProfileResources {
-    pub(crate) fn service_resources(&self) -> ServiceResources {
-        ServiceResources {
-            cpu_millis: self.cpu_millis,
-            memory_bytes: self.memory_bytes,
-            pids: self.pids,
-            ephemeral_storage_bytes: self.ephemeral_storage_bytes,
-        }
-    }
-
-    pub(crate) fn execution_resources(&self) -> Result<ExecutionResources, String> {
-        Ok(ExecutionResources {
-            cpu_millis: self.cpu_millis,
-            memory_bytes: self.memory_bytes,
-            pids: self.pids,
-            ephemeral_storage_bytes: self.ephemeral_storage_bytes,
-            timeout_ms: self
-                .execution_timeout_ms
-                .ok_or_else(|| "scheduled Task profile requires an execution timeout".to_owned())?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkloadProfileSpec {
     pub name: String,
     pub kind: WorkloadProfileKind,
-    pub process: ServiceProcess,
-    pub secrets: Vec<SecretBinding>,
+    pub process: WorkloadProcess,
+    pub secrets: Vec<WorkloadSecretBinding>,
     pub resources: WorkloadProfileResources,
-    pub ports: Vec<ServicePort>,
-    pub health: Option<HttpHealthCheck>,
+    pub ports: Vec<WorkloadServicePort>,
+    pub health: Option<WorkloadHttpHealthCheck>,
     pub public_port: Option<String>,
     pub schedule: Option<ScheduledTaskSchedule>,
 }
@@ -225,7 +188,13 @@ impl WorkloadProfileSpec {
                             .into(),
                     );
                 }
-                validate_service_profile(self)?;
+                validate_service_intent(
+                    &self.process,
+                    &self.secrets,
+                    &self.resources,
+                    &self.ports,
+                    self.health.as_ref(),
+                )?;
             }
             WorkloadProfileKind::Worker => {
                 if self.public_port.is_some()
@@ -234,7 +203,13 @@ impl WorkloadProfileSpec {
                 {
                     return Err("worker profile cannot own a Route or Task policy".into());
                 }
-                validate_service_profile(self)?;
+                validate_service_intent(
+                    &self.process,
+                    &self.secrets,
+                    &self.resources,
+                    &self.ports,
+                    self.health.as_ref(),
+                )?;
             }
             WorkloadProfileKind::ScheduledTask => {
                 if self.public_port.is_some()
@@ -251,42 +226,10 @@ impl WorkloadProfileSpec {
                     .as_ref()
                     .ok_or_else(|| "scheduled Task profile requires a schedule".to_owned())?
                     .validate()?;
-                validate_scheduled_task_profile(self)?;
+                validate_execution_intent(&self.process, &self.resources)?;
             }
         }
         Ok(())
-    }
-
-    pub(crate) fn project_service_template(&self, artifact: OciArtifact) -> ServiceTemplate {
-        ServiceTemplate {
-            artifact,
-            process: self.process.clone(),
-            secrets: self.secrets.clone(),
-            resources: self.resources.service_resources(),
-            ports: self.ports.clone(),
-            health: self.health.clone(),
-        }
-    }
-
-    pub(crate) fn project_execution_template(
-        &self,
-        artifact: OciArtifact,
-    ) -> Result<ExecutionTemplate, String> {
-        Ok(ExecutionTemplate {
-            artifact: ExecutionArtifact {
-                uri: artifact.uri,
-                digest: artifact.digest,
-                media_type: artifact.media_type,
-            },
-            process: ExecutionProcess {
-                command: self.process.command.clone(),
-                args: self.process.args.clone(),
-                working_directory: self.process.working_directory.clone(),
-                environment: self.process.environment.clone(),
-            },
-            input: serde_json::Value::Null,
-            resources: self.resources.execution_resources()?,
-        })
     }
 }
 
@@ -439,33 +382,6 @@ fn validate_profile_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validation_artifact() -> OciArtifact {
-    let digest = format!("sha256:{}", "0".repeat(64));
-    OciArtifact {
-        uri: format!("oci://validation.invalid/a3s/workload-profile@{digest}"),
-        digest,
-        media_type: "application/vnd.oci.image.manifest.v1+json".into(),
-    }
-}
-
-fn validate_service_profile(spec: &WorkloadProfileSpec) -> Result<(), String> {
-    spec.project_service_template(validation_artifact())
-        .validate()
-}
-
-fn validate_scheduled_task_profile(spec: &WorkloadProfileSpec) -> Result<(), String> {
-    spec.project_execution_template(validation_artifact())?
-        .validate()?;
-    if spec
-        .resources
-        .execution_timeout_ms
-        .is_some_and(|timeout| timeout > MAX_EXECUTION_TIMEOUT_MS)
-    {
-        return Err("scheduled Task execution timeout exceeds the owner contract".into());
-    }
-    Ok(())
-}
-
 fn profile_document(spec: &WorkloadProfileContractSpec) -> Result<Document, String> {
     let profile = &spec.profile;
     let mut process = BlockBuilder::new("process")
@@ -597,20 +513,20 @@ fn profile_document(spec: &WorkloadProfileContractSpec) -> Result<Document, Stri
     })
 }
 
-fn secret_block(secret: &SecretBinding) -> Result<Block, String> {
+fn secret_block(secret: &WorkloadSecretBinding) -> Result<Block, String> {
     let mut block = BlockBuilder::new("secret")
         .label(&secret.name)
         .attr("secret_id", string(&secret.secret_id.to_string()))
         .attr("version", acl_integer("version", secret.version)?);
     block = match &secret.target {
-        SecretBindingTarget::Environment { variable } => block
+        WorkloadSecretTarget::Environment { variable } => block
             .attr("target", string("environment"))
             .attr("variable", string(variable)),
-        SecretBindingTarget::File { path, mode } => block
+        WorkloadSecretTarget::File { path, mode } => block
             .attr("mode", acl_integer("mode", u64::from(*mode))?)
             .attr("path", string(path))
             .attr("target", string("file")),
-        SecretBindingTarget::RegistryCredential => {
+        WorkloadSecretTarget::RegistryCredential => {
             block.attr("target", string("registry_credential"))
         }
     };
@@ -774,7 +690,7 @@ fn exact_root(root: &Block) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_process(block: &Block) -> Result<ServiceProcess, String> {
+fn parse_process(block: &Block) -> Result<WorkloadProcess, String> {
     let keys = block
         .attributes
         .keys()
@@ -801,7 +717,7 @@ fn parse_process(block: &Block) -> Result<ServiceProcess, String> {
             return Err("workload profile contains duplicate environment variables".into());
         }
     }
-    Ok(ServiceProcess {
+    Ok(WorkloadProcess {
         command: required_strings(block, "command")?,
         args: required_strings(block, "args")?,
         working_directory: optional_string(block, "working_directory")?,
@@ -840,7 +756,7 @@ fn parse_resources(block: &Block) -> Result<WorkloadProfileResources, String> {
     })
 }
 
-fn parse_secret(block: &Block) -> Result<SecretBinding, String> {
+fn parse_secret(block: &Block) -> Result<WorkloadSecretBinding, String> {
     if block.name != "secret" || block.labels.len() != 1 || !block.blocks.is_empty() {
         return Err("workload profile Secret block shape is invalid".into());
     }
@@ -860,17 +776,17 @@ fn parse_secret(block: &Block) -> Result<SecretBinding, String> {
         return Err("workload profile Secret block attributes are invalid".into());
     }
     let target = match target.as_str() {
-        "environment" => SecretBindingTarget::Environment {
+        "environment" => WorkloadSecretTarget::Environment {
             variable: required_string(block, "variable")?,
         },
-        "file" => SecretBindingTarget::File {
+        "file" => WorkloadSecretTarget::File {
             path: required_string(block, "path")?,
             mode: required_u32(block, "mode")?,
         },
-        "registry_credential" => SecretBindingTarget::RegistryCredential,
+        "registry_credential" => WorkloadSecretTarget::RegistryCredential,
         _ => unreachable!("closed target was matched above"),
     };
-    Ok(SecretBinding {
+    Ok(WorkloadSecretBinding {
         name: block.labels[0].clone(),
         secret_id: crate::modules::shared_kernel::domain::SecretId::from_uuid(required_uuid(
             block,
@@ -881,16 +797,16 @@ fn parse_secret(block: &Block) -> Result<SecretBinding, String> {
     })
 }
 
-fn parse_port(block: &Block) -> Result<ServicePort, String> {
+fn parse_port(block: &Block) -> Result<WorkloadServicePort, String> {
     exact_block(block, "port", &["container_port"], 1, &[])?;
-    Ok(ServicePort {
+    Ok(WorkloadServicePort {
         name: block.labels[0].clone(),
         container_port: u16::try_from(required_u64(block, "container_port")?)
             .map_err(|_| "workload profile container port exceeds u16".to_owned())?,
     })
 }
 
-fn parse_health(block: &Block) -> Result<HttpHealthCheck, String> {
+fn parse_health(block: &Block) -> Result<WorkloadHttpHealthCheck, String> {
     exact_block(
         block,
         "health",
@@ -906,7 +822,7 @@ fn parse_health(block: &Block) -> Result<HttpHealthCheck, String> {
         0,
         &[],
     )?;
-    Ok(HttpHealthCheck {
+    Ok(WorkloadHttpHealthCheck {
         port_name: required_string(block, "port")?,
         path: required_string(block, "path")?,
         interval_ms: required_u64(block, "interval_ms")?,

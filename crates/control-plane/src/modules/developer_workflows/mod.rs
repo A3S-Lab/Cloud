@@ -6,7 +6,12 @@ pub use application::{
     AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult, AcceptWorkloadProfile,
     AcceptWorkloadProfileHandler, AcceptWorkloadProfileResult, BuildPlanDetectionService,
     BuildPlanSourceRevisionEvidence, CompiledScheduledTaskProfile, CompiledServiceProfile,
-    CompiledWorkloadProfile, IBuildPlanSourceRevisionPort, WorkloadProfileCompilationService,
+    CompiledWorkloadProfile, DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
+    IBuildPlanSourceRevisionPort, IDeveloperWorkflowAuthorizationPort,
+    IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort,
+    ScheduledTaskProfileAdmissionRequest, ServiceProfileAdmissionRequest, VerifiedOciArtifact,
+    VerifiedWorkloadBuildOutcome, WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget,
+    WorkloadProfileCompilationService, WorkloadProfileTargetContext, WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use domain::*;
 pub use infrastructure::{

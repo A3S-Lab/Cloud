@@ -4,7 +4,7 @@ use crate::modules::developer_workflows::domain::{
     SourceLayoutEntryKind, SourceLayoutSnapshot, BUILD_PLAN_DETECTOR_REVISION,
     MAX_BUILD_PLAN_PROPOSALS,
 };
-use crate::modules::sources::domain::BuildRecipe;
+use crate::modules::sources::published::BuildRecipe;
 
 #[derive(Debug, Default)]
 pub struct DockerfileBuildPlanDetector;

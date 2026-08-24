@@ -4,22 +4,20 @@ use a3s_cloud_control_plane::modules::developer_workflows::{
     AcceptedBuildPlanContract, AcceptedWorkloadProfileRevision, BuildPlanAccepted,
     BuildPlanDetectorKind, BuildPlanProposal, BuildPlanProposalSpec, IBuildPlanRepository,
     IWorkloadProfileRepository, PostgresBuildPlanRepository, PostgresWorkloadProfileRepository,
-    SourceLayoutIdentity, WorkloadProfileContract, WorkloadProfileKind, WorkloadProfileResources,
-    WorkloadProfileRevisionAccepted, WorkloadProfileSpec, BUILD_PLAN_DETECTOR_REVISION,
+    SourceLayoutIdentity, WorkloadHttpHealthCheck, WorkloadProcess, WorkloadProfileContract,
+    WorkloadProfileKind, WorkloadProfileResources, WorkloadProfileRevisionAccepted,
+    WorkloadProfileSpec, WorkloadServicePort, BUILD_PLAN_DETECTOR_REVISION,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     PrincipalId, Sha256Digest, SourceRevisionId, WorkloadProfileRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::{
     domain::{
-        AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-        GitRepository, ISourceRevisionRepository, NewExternalSourceRevision,
-        SourceRevisionAccepted,
+        AcceptSourceRevision, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
+        ISourceRevisionRepository, NewExternalSourceRevision, SourceRevisionAccepted,
     },
+    published::BuildRecipe,
     PostgresSourceRevisionRepository,
-};
-use a3s_cloud_control_plane::modules::workloads::domain::entities::{
-    HttpHealthCheck, ServicePort, ServiceProcess,
 };
 use a3s_orm::DatabaseError;
 use chrono::Duration as ChronoDuration;
@@ -416,7 +414,7 @@ fn web_profile(cpu_millis: u64) -> WorkloadProfileSpec {
     WorkloadProfileSpec {
         name: "api".into(),
         kind: WorkloadProfileKind::Web,
-        process: ServiceProcess {
+        process: WorkloadProcess {
             command: vec!["/app/server".into()],
             args: vec!["--production".into()],
             working_directory: Some("/app".into()),
@@ -430,11 +428,11 @@ fn web_profile(cpu_millis: u64) -> WorkloadProfileSpec {
             ephemeral_storage_bytes: Some(256 * 1024 * 1024),
             execution_timeout_ms: None,
         },
-        ports: vec![ServicePort {
+        ports: vec![WorkloadServicePort {
             name: "http".into(),
             container_port: 8_080,
         }],
-        health: Some(HttpHealthCheck {
+        health: Some(WorkloadHttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 5_000,

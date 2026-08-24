@@ -1,10 +1,9 @@
-use crate::modules::assets::domain::{
-    AssetManifestDefinition, ASSET_MANIFEST_MAX_ACL_BYTES, ASSET_MANIFEST_PATH,
-};
+use crate::modules::assets::domain::{AssetManifestDefinition, ASSET_MANIFEST_MAX_ACL_BYTES};
 use crate::modules::developer_workflows::domain::{
     BuildPlanDetectionDiagnostic, BuildPlanDetectionDiagnosticCode, BuildPlanDetectorKind,
     BuildPlanDetectorOutput, BuildPlanProposal, BuildPlanProposalSpec, IBuildPlanDetector,
-    SourceLayoutEntryKind, SourceLayoutSnapshot, BUILD_PLAN_DETECTOR_REVISION,
+    SourceLayoutEntryKind, SourceLayoutSnapshot, ASSET_ACL_EVIDENCE_PATH,
+    BUILD_PLAN_DETECTOR_REVISION,
 };
 
 #[derive(Debug, Default)]
@@ -16,7 +15,7 @@ impl IBuildPlanDetector for AssetAclBuildPlanDetector {
     }
 
     fn detect(&self, layout: &SourceLayoutSnapshot) -> Result<BuildPlanDetectorOutput, String> {
-        let Some(entry) = layout.entry(ASSET_MANIFEST_PATH) else {
+        let Some(entry) = layout.entry(ASSET_ACL_EVIDENCE_PATH) else {
             return Ok(BuildPlanDetectorOutput::not_applicable());
         };
         if entry.kind() != SourceLayoutEntryKind::Regular
@@ -37,7 +36,7 @@ impl IBuildPlanDetector for AssetAclBuildPlanDetector {
                 Vec::new(),
                 vec![BuildPlanDetectionDiagnostic::new(
                     BuildPlanDetectionDiagnosticCode::AssetBuildRecipeMissing,
-                    Some(ASSET_MANIFEST_PATH.into()),
+                    Some(ASSET_ACL_EVIDENCE_PATH.into()),
                 )?],
             ));
         };
@@ -52,7 +51,7 @@ impl IBuildPlanDetector for AssetAclBuildPlanDetector {
             detector: self.kind(),
             detector_revision: BUILD_PLAN_DETECTOR_REVISION.into(),
             project_root: recipe.context_path().into(),
-            evidence_path: ASSET_MANIFEST_PATH.into(),
+            evidence_path: ASSET_ACL_EVIDENCE_PATH.into(),
             evidence_digest: entry.content_digest().clone(),
             recipe,
         })?;
@@ -60,5 +59,18 @@ impl IBuildPlanDetector for AssetAclBuildPlanDetector {
             vec![proposal],
             Vec::new(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anti_corruption_adapter_tracks_the_assets_manifest_location() {
+        assert_eq!(
+            ASSET_ACL_EVIDENCE_PATH,
+            crate::modules::assets::domain::ASSET_MANIFEST_PATH
+        );
     }
 }

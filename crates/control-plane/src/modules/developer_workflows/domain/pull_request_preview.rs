@@ -1,11 +1,8 @@
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
+    canonical_timestamp, EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId,
     PullRequestPreviewId, SourceSubscriptionId,
 };
-use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitReference, GitRepository, GithubInstallationId,
-    PullRequestChangeKind, VerifiedPullRequestChange,
-};
+use crate::modules::sources::published::{GitProvider, GitRepository};
 use chrono::{DateTime, TimeDelta, Utc};
 use std::cmp::Ordering;
 use uuid::Uuid;
@@ -26,6 +23,143 @@ const PREVIEW_NAMESPACE: Uuid = Uuid::from_bytes([
 const PREVIEW_ENVIRONMENT_NAMESPACE: Uuid = Uuid::from_bytes([
     0x1a, 0xa9, 0xdd, 0xbe, 0xb8, 0xe9, 0x4f, 0x31, 0xa2, 0x89, 0x4a, 0x4d, 0xc8, 0x69, 0x1d, 0x17,
 ]);
+
+/// Exact reference to the Sources-owned GitHub installation authority.
+/// Developer Workflows owns neither installation lifecycle nor credentials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GithubInstallationRef(u64);
+
+impl GithubInstallationRef {
+    pub fn parse(value: u64) -> Result<Self, String> {
+        if value == 0 || value > i64::MAX as u64 {
+            return Err("preview GitHub installation reference is invalid".into());
+        }
+        Ok(Self(value))
+    }
+
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
+/// The preview context needs only a branch, not Sources' complete Git
+/// reference vocabulary (tags, commits, and provider resolution).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GitBranch(String);
+
+impl GitBranch {
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        if value.is_empty()
+            || value.len() > 255
+            || value == "@"
+            || value.starts_with("refs/")
+            || value.starts_with('/')
+            || value.ends_with('/')
+            || value.ends_with('.')
+            || value.contains("..")
+            || value.contains("//")
+            || !value.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/')
+            })
+            || value.split('/').any(|segment| {
+                segment.is_empty()
+                    || segment.starts_with('.')
+                    || segment.ends_with('.')
+                    || segment.ends_with(".lock")
+            })
+        {
+            return Err("preview Git branch is not a bounded canonical name".into());
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PullRequestChangeKind {
+    Opened,
+    Synchronized,
+    Reopened,
+    Closed,
+}
+
+impl PullRequestChangeKind {
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Closed)
+    }
+}
+
+/// Developer Workflows-owned observation used by Preview reconciliation.
+///
+/// It deliberately excludes webhook signatures, delivery payloads, and other
+/// Sources internals. An application adapter maps a committed Sources fact to
+/// this minimal semantic input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestChange {
+    pub installation_id: GithubInstallationRef,
+    pub base_repository: GitRepository,
+    pub base_branch: GitBranch,
+    pub head_repository: Option<GitRepository>,
+    pub head_branch: GitBranch,
+    pub head_commit_sha: GitCommitSha,
+    pub pull_request_id: u64,
+    pub pull_request_number: u64,
+    pub kind: PullRequestChangeKind,
+    pub merged: bool,
+    pub provider_created_at: DateTime<Utc>,
+    pub provider_updated_at: DateTime<Utc>,
+}
+
+impl PullRequestChange {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_pull_request_identity(self.pull_request_id, self.pull_request_number)?;
+        if self.base_repository.provider() != GitProvider::Github
+            || self
+                .head_repository
+                .as_ref()
+                .is_some_and(|repository| repository.provider() != GitProvider::Github)
+            || self
+                .head_commit_sha
+                .as_str()
+                .bytes()
+                .all(|byte| byte == b'0')
+            || self.provider_created_at != canonical_timestamp(self.provider_created_at)
+            || self.provider_updated_at != canonical_timestamp(self.provider_updated_at)
+            || self.provider_created_at > self.provider_updated_at
+            || !self.kind.is_terminal() && self.merged
+            || !self.kind.is_terminal() && self.head_repository.is_none()
+        {
+            return Err("preview pull-request change identity or state is invalid".into());
+        }
+        let base = GitRepository::parse(
+            self.base_repository.provider(),
+            self.base_repository.canonical_url(),
+        )?;
+        if base != self.base_repository {
+            return Err("preview pull-request base repository is not canonical".into());
+        }
+        if let Some(repository) = &self.head_repository {
+            let head = GitRepository::parse(repository.provider(), repository.canonical_url())?;
+            if &head != repository {
+                return Err("preview pull-request head repository is not canonical".into());
+            }
+        }
+        GitBranch::parse(self.base_branch.as_str())?;
+        GitBranch::parse(self.head_branch.as_str())?;
+        GitCommitSha::parse(self.head_commit_sha.as_str())?;
+        Ok(())
+    }
+
+    pub fn is_fork(&self) -> bool {
+        self.head_repository
+            .as_ref()
+            .is_none_or(|repository| repository != &self.base_repository)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewForkPolicy {
@@ -65,9 +199,9 @@ pub struct PullRequestPreviewPolicy {
     pub project_id: ProjectId,
     pub source_subscription_id: SourceSubscriptionId,
     pub owner_principal_id: PrincipalId,
-    pub installation_id: GithubInstallationId,
+    pub installation_id: GithubInstallationRef,
     pub base_repository: GitRepository,
-    pub base_reference: GitReference,
+    pub base_branch: GitBranch,
     pub lifetime_seconds: u32,
     pub maximum_active_previews: u16,
     pub fork_policy: PreviewForkPolicy,
@@ -82,7 +216,6 @@ impl PullRequestPreviewPolicy {
             || self.source_subscription_id.as_uuid().is_nil()
             || self.owner_principal_id.as_uuid().is_nil()
             || self.base_repository.provider() != GitProvider::Github
-            || !matches!(self.base_reference, GitReference::Branch(_))
             || !(MIN_PREVIEW_LIFETIME_SECONDS..=MAX_PREVIEW_LIFETIME_SECONDS)
                 .contains(&self.lifetime_seconds)
             || self.maximum_active_previews == 0
@@ -97,11 +230,7 @@ impl PullRequestPreviewPolicy {
         if repository != self.base_repository {
             return Err("preview policy repository is not canonical".into());
         }
-        let reference = GitReference::parse(
-            self.base_reference.kind(),
-            self.base_reference.value().to_owned(),
-        )?;
-        if reference != self.base_reference {
+        if GitBranch::parse(self.base_branch.as_str())? != self.base_branch {
             return Err("preview policy base branch is not canonical".into());
         }
         self.quota.validate()
@@ -139,7 +268,7 @@ pub struct PullRequestPreview {
     pub pull_request_id: u64,
     pub pull_request_number: u64,
     pub head_repository: Option<GitRepository>,
-    pub head_reference: GitReference,
+    pub head_branch: GitBranch,
     pub head_commit_sha: GitCommitSha,
     pub provider_created_at: DateTime<Utc>,
     pub last_provider_updated_at: DateTime<Utc>,
@@ -211,7 +340,6 @@ impl PullRequestPreview {
             || self.expires_at != canonical_timestamp(self.expires_at)
             || self.provider_created_at > self.last_provider_updated_at
             || self.expires_at != expected_expiry
-            || !matches!(self.head_reference, GitReference::Branch(_))
             || self
                 .head_commit_sha
                 .as_str()
@@ -233,10 +361,7 @@ impl PullRequestPreview {
                 return Err("pull-request preview head repository is not canonical".into());
             }
         }
-        GitReference::parse(
-            self.head_reference.kind(),
-            self.head_reference.value().to_owned(),
-        )?;
+        GitBranch::parse(self.head_branch.as_str())?;
         GitCommitSha::parse(self.head_commit_sha.as_str())?;
         match &self.status {
             PullRequestPreviewStatus::Active => {}
@@ -316,7 +441,7 @@ pub struct PreviewReconciliation {
 pub fn reconcile_pull_request_preview(
     policy: &PullRequestPreviewPolicy,
     current: Option<&PullRequestPreview>,
-    change: &VerifiedPullRequestChange,
+    change: &PullRequestChange,
 ) -> Result<PreviewReconciliation, String> {
     policy.validate()?;
     change.validate()?;
@@ -391,7 +516,7 @@ pub fn reconcile_pull_request_preview(
         pull_request_id: change.pull_request_id,
         pull_request_number: change.pull_request_number,
         head_repository: change.head_repository.clone(),
-        head_reference: change.head_reference.clone(),
+        head_branch: change.head_branch.clone(),
         head_commit_sha: change.head_commit_sha.clone(),
         provider_created_at: change.provider_created_at,
         last_provider_updated_at: change.provider_updated_at,
@@ -418,12 +543,11 @@ pub fn reconcile_pull_request_preview(
 
 fn validate_change_binding(
     policy: &PullRequestPreviewPolicy,
-    change: &VerifiedPullRequestChange,
+    change: &PullRequestChange,
 ) -> Result<(), String> {
-    if change.provider != GitProvider::Github
-        || change.installation_id != policy.installation_id
+    if change.installation_id != policy.installation_id
         || change.base_repository != policy.base_repository
-        || change.base_reference != policy.base_reference
+        || change.base_branch != policy.base_branch
     {
         return Err("pull-request change is outside the Preview policy binding".into());
     }
@@ -447,7 +571,7 @@ fn preview_expiry(
         .map(canonical_timestamp)
 }
 
-fn status_for(change: &VerifiedPullRequestChange) -> PullRequestPreviewStatus {
+fn status_for(change: &PullRequestChange) -> PullRequestPreviewStatus {
     if change.kind.is_terminal() {
         PullRequestPreviewStatus::CleanupRequired {
             reason: if change.merged {
@@ -462,13 +586,13 @@ fn status_for(change: &VerifiedPullRequestChange) -> PullRequestPreviewStatus {
     }
 }
 
-fn compare_change(current: &PullRequestPreview, change: &VerifiedPullRequestChange) -> Ordering {
+fn compare_change(current: &PullRequestPreview, change: &PullRequestChange) -> Ordering {
     change_order_key(
         change.provider_updated_at,
         change.kind,
         change.merged,
         change.head_repository.as_ref(),
-        &change.head_reference,
+        &change.head_branch,
         &change.head_commit_sha,
     )
     .cmp(&change_order_key(
@@ -476,7 +600,7 @@ fn compare_change(current: &PullRequestPreview, change: &VerifiedPullRequestChan
         current.last_change_kind,
         current.last_merged,
         current.head_repository.as_ref(),
-        &current.head_reference,
+        &current.head_branch,
         &current.head_commit_sha,
     ))
 }
@@ -486,7 +610,7 @@ fn change_order_key<'a>(
     kind: PullRequestChangeKind,
     merged: bool,
     head_repository: Option<&'a GitRepository>,
-    head_reference: &'a GitReference,
+    head_branch: &'a GitBranch,
     head_commit_sha: &'a GitCommitSha,
 ) -> (DateTime<Utc>, u8, bool, &'a str, &'a str, &'a str) {
     let rank = match kind {
@@ -500,7 +624,7 @@ fn change_order_key<'a>(
         rank,
         merged,
         head_repository.map_or("", GitRepository::identity),
-        head_reference.value(),
+        head_branch.as_str(),
         head_commit_sha.as_str(),
     )
 }

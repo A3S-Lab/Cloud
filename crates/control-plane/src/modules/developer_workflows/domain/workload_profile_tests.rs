@@ -3,9 +3,6 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, SecretId,
     SourceRevisionId, WorkloadProfileRevisionId,
 };
-use crate::modules::workloads::domain::entities::{
-    HttpHealthCheck, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
-};
 use chrono::{Duration, TimeZone, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -19,24 +16,24 @@ fn workload_profile_acl_is_canonical_closed_and_build_plan_bound() {
     let build_plan = accepted_build_plan();
     let mut profile = web_profile();
     profile.secrets = vec![
-        SecretBinding {
+        WorkloadSecretBinding {
             name: "zeta-token".into(),
             secret_id: SecretId::new(),
             version: 1,
-            target: SecretBindingTarget::Environment {
+            target: WorkloadSecretTarget::Environment {
                 variable: "ZETA_TOKEN".into(),
             },
         },
-        SecretBinding {
+        WorkloadSecretBinding {
             name: "api-token".into(),
             secret_id: SecretId::new(),
             version: 2,
-            target: SecretBindingTarget::Environment {
+            target: WorkloadSecretTarget::Environment {
                 variable: "API_TOKEN".into(),
             },
         },
     ];
-    profile.ports.push(ServicePort {
+    profile.ports.push(WorkloadServicePort {
         name: "metrics".into(),
         container_port: 9_090,
     });
@@ -103,7 +100,7 @@ fn profile_kinds_enforce_service_task_and_route_ownership() {
     assert!(WorkloadProfileContract::bind(&build_plan, worker).is_err());
 
     let mut scheduled = scheduled_profile();
-    scheduled.ports.push(ServicePort {
+    scheduled.ports.push(WorkloadServicePort {
         name: "http".into(),
         container_port: 8_080,
     });
@@ -293,8 +290,8 @@ fn accepted_build_plan() -> AcceptedBuildPlan {
     .expect("accepted plan")
 }
 
-fn process() -> ServiceProcess {
-    ServiceProcess {
+fn process() -> WorkloadProcess {
+    WorkloadProcess {
         command: vec!["/app/server".into()],
         args: vec!["--production".into()],
         working_directory: Some("/app".into()),
@@ -319,11 +316,11 @@ fn web_profile() -> WorkloadProfileSpec {
         process: process(),
         secrets: Vec::new(),
         resources: resources(None),
-        ports: vec![ServicePort {
+        ports: vec![WorkloadServicePort {
             name: "http".into(),
             container_port: 8_080,
         }],
-        health: Some(HttpHealthCheck {
+        health: Some(WorkloadHttpHealthCheck {
             port_name: "http".into(),
             path: "/health".into(),
             interval_ms: 5_000,
