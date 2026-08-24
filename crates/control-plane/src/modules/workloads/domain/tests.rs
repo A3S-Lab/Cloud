@@ -1,6 +1,9 @@
 use super::entities::*;
 use super::services::plan_replica_set_reconfiguration;
+use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::BuildRun;
+use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, McpServiceProfile,
     McpServiceProfileBinding, McpServiceProfileSpec,
@@ -49,6 +52,36 @@ fn template(digest_character: char) -> ServiceTemplate {
             stabilization_window_ms: 5_000,
         }),
     }
+}
+
+fn hosted_outcome(build: &BuildRun) -> HostedBuildOutcome {
+    project_hosted_build_outcome(build)
+        .expect("project hosted build outcome")
+        .expect("successful hosted build outcome")
+}
+
+fn agent_release_admission(
+    asset: &Asset,
+    release: &AssetRelease,
+    build: &BuildRun,
+) -> AgentReleaseAdmission {
+    let artifact = build
+        .published_artifact
+        .as_ref()
+        .expect("published OCI artifact");
+    AgentReleaseAdmission::new(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        build.id,
+        release.published_at.expect("release publication time"),
+        OciArtifact {
+            uri: artifact.uri.clone(),
+            digest: artifact.digest.clone(),
+            media_type: artifact.media_type.clone(),
+        },
+    )
+    .expect("Agent release admission")
 }
 
 fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedServiceTemplate {
@@ -1171,8 +1204,9 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
     .expect("release");
     let build = succeeded_hosted_build(organization_id, asset.id, release.id, created_at);
     release
-        .publish_from_build(&asset, &build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("publish from hosted BuildRun");
+    let admission = agent_release_admission(&asset, &release, &build);
     let workload = Workload::create(
         WorkloadId::new(),
         organization_id,
@@ -1198,10 +1232,10 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
     .expect("revision");
 
     assert!(revision
-        .bind_agent_release(&workload, &asset, &release, &build)
+        .bind_agent_release(&workload, &admission)
         .expect("bind"));
     assert!(!revision
-        .bind_agent_release(&workload, &asset, &release, &build)
+        .bind_agent_release(&workload, &admission)
         .expect("idempotent bind"));
     let binding = revision.agent_binding().expect("Agent binding");
     assert_eq!(binding.organization_id(), organization_id);
@@ -1229,39 +1263,28 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
     )
     .expect("wrong artifact revision");
     assert!(wrong_artifact
-        .bind_agent_release(&workload, &asset, &release, &build)
+        .bind_agent_release(&workload, &admission)
         .is_err());
 
-    let mut archived_asset = asset.clone();
-    archived_asset
-        .archive(created_at + Duration::seconds(3))
-        .expect("archive Asset");
-    let mut archived_revision = WorkloadRevision::create(
+    let wrong_tenant = AgentReleaseAdmission::new(
+        OrganizationId::new(),
+        asset.id,
+        release.id,
+        build.id,
+        release.published_at.expect("publication time"),
+        admission.artifact().clone(),
+    )
+    .expect("well-formed foreign-tenant admission");
+    let mut foreign_revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,
         4,
         revision.resolved_template().expect("template").clone(),
         created_at + Duration::seconds(4),
     )
-    .expect("archived Asset revision");
-    assert!(archived_revision
-        .bind_agent_release(&workload, &archived_asset, &release, &build)
-        .is_err());
-
-    let mut yanked = release;
-    yanked
-        .yank(created_at + Duration::seconds(3))
-        .expect("yank release");
-    let mut yanked_revision = WorkloadRevision::create(
-        WorkloadRevisionId::new(),
-        workload.id,
-        5,
-        revision.resolved_template().expect("template").clone(),
-        created_at + Duration::seconds(4),
-    )
-    .expect("yanked revision");
-    assert!(yanked_revision
-        .bind_agent_release(&workload, &asset, &yanked, &build)
+    .expect("foreign revision");
+    assert!(foreign_revision
+        .bind_agent_release(&workload, &wrong_tenant)
         .is_err());
 }
 
@@ -1288,8 +1311,9 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
     .expect("Agent release");
     let build = succeeded_hosted_build(organization_id, agent.id, agent_release.id, created_at);
     agent_release
-        .publish_from_build(&agent, &build)
+        .publish_from_hosted_build(&agent, &hosted_outcome(&build))
         .expect("publish Agent");
+    let admission = agent_release_admission(&agent, &agent_release, &build);
     let workload = Workload::create(
         WorkloadId::new(),
         organization_id,
@@ -1314,7 +1338,7 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
     )
     .expect("Agent revision");
     revision
-        .bind_agent_release(&workload, &agent, &agent_release, &build)
+        .bind_agent_release(&workload, &admission)
         .expect("bind Agent");
 
     let skill = Asset::create(
@@ -1484,7 +1508,7 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     .expect("release");
     let build = succeeded_hosted_build(organization_id, asset.id, release.id, created_at);
     release
-        .publish_from_build(&asset, &build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("publish from hosted BuildRun");
     let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
         protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],

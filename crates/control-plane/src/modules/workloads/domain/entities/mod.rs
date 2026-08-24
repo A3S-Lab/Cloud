@@ -37,7 +37,7 @@ pub use workload_replica::{
     CANONICAL_REPLICA_ORDINAL,
 };
 pub use workload_revision::{
-    AgentWorkloadRevisionBinding, ExternalBuildReference, HttpHealthCheck,
+    AgentReleaseAdmission, AgentWorkloadRevisionBinding, ExternalBuildReference, HttpHealthCheck,
     McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
     ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
     WorkloadRevision,

@@ -1,6 +1,8 @@
 use super::*;
+use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
-use crate::modules::artifacts::domain::OCI_IMAGE_INDEX_MEDIA_TYPE;
+use crate::modules::artifacts::domain::{BuildRun, OCI_IMAGE_INDEX_MEDIA_TYPE};
+use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, ResourceName,
     Sha256Digest,
@@ -12,6 +14,12 @@ fn now() -> chrono::DateTime<Utc> {
     Utc.timestamp_opt(1_800_000_000, 123_456_000)
         .single()
         .expect("timestamp")
+}
+
+fn hosted_outcome(build: &BuildRun) -> HostedBuildOutcome {
+    project_hosted_build_outcome(build)
+        .expect("project hosted build outcome")
+        .expect("successful hosted build outcome")
 }
 
 fn asset(kind: AssetKind) -> Asset {
@@ -114,7 +122,9 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
     )
     .expect("release artifact");
     let published_at = build.finished_at.expect("build finish time");
-    release.publish_from_build(&asset, &build).expect("publish");
+    release
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
+        .expect("publish");
     assert_eq!(release.state, AssetReleaseState::Published);
     assert_eq!(release.artifact, Some(artifact.clone()));
     assert_eq!(
@@ -126,7 +136,7 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
     );
     assert_eq!(release.aggregate_version, 2);
     release
-        .publish_from_build(&asset, &build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("exact publication replay");
     assert_eq!(release.aggregate_version, 2);
 
@@ -142,7 +152,9 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
         ),
         immutable_identity
     );
-    assert!(release.publish_from_build(&asset, &build).is_err());
+    assert!(release
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
+        .is_err());
 }
 
 #[test]
@@ -251,7 +263,7 @@ fn archived_asset_cannot_create_or_publish_a_release() {
     let published_build =
         succeeded_hosted_build(asset.organization_id, asset.id, published.id, now());
     published
-        .publish_from_build(&asset, &published_build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&published_build))
         .expect("publish before archive");
     asset
         .archive(now() + Duration::seconds(1))
@@ -266,10 +278,10 @@ fn archived_asset_cannot_create_or_publish_a_release() {
     )
     .is_err());
     assert!(existing
-        .publish_from_build(&asset, &existing_build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&existing_build))
         .is_err());
     published
-        .publish_from_build(&asset, &published_build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&published_build))
         .expect("exact publication replay after archive");
 }
 
@@ -312,7 +324,7 @@ fn repository_writes_reject_forged_event_metadata_and_payloads() {
     let mut published = draft.clone();
     let build = succeeded_hosted_build(asset.organization_id, asset.id, draft.id, now());
     published
-        .publish_from_build(&asset, &build)
+        .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("publish");
     let mut published_event =
         AssetReleasePublished::envelope(&published, Uuid::now_v7()).expect("published event");

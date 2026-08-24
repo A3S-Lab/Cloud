@@ -1,5 +1,5 @@
 use super::CreateAgentWorkloadDeployment;
-use crate::modules::artifacts::domain::IBuildRunRepository;
+use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
@@ -11,11 +11,12 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
+    admit_deployable_agent_release,
     commands::{validate_node_pool_selection, validate_secret_bindings},
     CreateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, OciArtifact, Workload, WorkloadControlSpec, WorkloadRevision,
+    Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -27,7 +28,7 @@ use std::sync::Arc;
 pub struct CreateAgentWorkloadDeploymentHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     assets: Arc<dyn IAssetRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    artifacts: Arc<dyn IHostedArtifactQueryPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
     node_pools: Arc<dyn INodePoolRepository>,
@@ -37,7 +38,7 @@ impl CreateAgentWorkloadDeploymentHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         assets: Arc<dyn IAssetRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        artifacts: Arc<dyn IHostedArtifactQueryPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
         node_pools: Arc<dyn INodePoolRepository>,
@@ -45,7 +46,7 @@ impl CreateAgentWorkloadDeploymentHandler {
         Self {
             environments,
             assets,
-            builds,
+            artifacts,
             workloads,
             secrets,
             node_pools,
@@ -64,7 +65,7 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
     > {
         let environments = Arc::clone(&self.environments);
         let assets = Arc::clone(&self.assets);
-        let builds = Arc::clone(&self.builds);
+        let artifacts = Arc::clone(&self.artifacts);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
@@ -150,7 +151,7 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
             }
             let deployable = match load_deployable_agent_release(
                 assets.as_ref(),
-                builds.as_ref(),
+                artifacts.as_ref(),
                 command.organization_id,
                 command.asset_id,
                 command.asset_release_id,
@@ -168,26 +169,21 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 name,
                 command.requested_at,
             );
+            let admission = match admit_deployable_agent_release(&deployable) {
+                Ok(admission) => admission,
+                Err(error) => return Ok(Err(error)),
+            };
             let mut revision = match WorkloadRevision::create(
                 WorkloadRevisionId::new(),
                 workload.id,
                 1,
-                command.template.resolve(OciArtifact {
-                    uri: deployable.artifact_uri.clone(),
-                    digest: deployable.artifact_digest.clone(),
-                    media_type: deployable.artifact_media_type.clone(),
-                }),
+                command.template.resolve(admission.artifact().clone()),
                 command.requested_at,
             ) {
                 Ok(revision) => revision,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            if let Err(error) = revision.bind_agent_release(
-                &workload,
-                &deployable.asset,
-                &deployable.release,
-                &deployable.build,
-            ) {
+            if let Err(error) = revision.bind_agent_release(&workload, &admission) {
                 return Ok(Err(ApplicationError::Conflict(error)));
             }
             if let Err(error) = validate_secret_bindings(

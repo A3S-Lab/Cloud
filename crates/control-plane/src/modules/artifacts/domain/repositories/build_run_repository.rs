@@ -20,12 +20,6 @@ pub struct RequestBuildRetryBundle {
     pub idempotency: IdempotencyRequest,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BuildRunFinalization {
-    Completed(BuildRun),
-    Rejected(BuildRun),
-}
-
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
     async fn reserve_pending(
@@ -95,7 +89,7 @@ pub trait IBuildRunRepository: Send + Sync {
         &self,
         build_run: BuildRun,
         expected_version: u64,
-    ) -> Result<BuildRunFinalization, RepositoryError>;
+    ) -> Result<BuildRun, RepositoryError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,9 +4,7 @@ use super::super::types::{
 };
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::{bounded_reason, load_build, load_source};
-use crate::modules::artifacts::domain::{
-    BuildOutputValidationError, BuildRunFinalization, BuildRunStatus,
-};
+use crate::modules::artifacts::domain::{BuildOutputValidationError, BuildRunStatus};
 use a3s_flow::FlowError;
 use chrono::Utc;
 
@@ -133,7 +131,7 @@ pub(super) async fn complete(
         .remove(&build)
         .await
         .map_err(|error| flow_error("could not remove materialized build input", error))?;
-    let finalization = if build.status.is_terminal() {
+    build = if build.status.is_terminal() {
         runtime
             .builds
             .finalize(build.clone(), build.aggregate_version)
@@ -149,28 +147,6 @@ pub(super) async fn complete(
             .finalize(build, expected)
             .await
             .map_err(|error| flow_error("could not persist build completion", error))?
-    };
-    build = match finalization {
-        BuildRunFinalization::Completed(build) => build,
-        BuildRunFinalization::Rejected(mut rejected) => {
-            let expected = rejected.aggregate_version;
-            rejected
-                .complete(input.cleaned_at.max(rejected.updated_at))
-                .map_err(|error| flow_error("could not complete rejected hosted build", error))?;
-            match runtime
-                .builds
-                .finalize(rejected, expected)
-                .await
-                .map_err(|error| flow_error("could not persist rejected hosted build", error))?
-            {
-                BuildRunFinalization::Completed(build) => build,
-                BuildRunFinalization::Rejected(_) => {
-                    return Err(FlowError::Runtime(
-                        "hosted release rejection repeated after BuildRun failure".into(),
-                    ))
-                }
-            }
-        }
     };
     Ok(CompleteStepOutput {
         build_run_id: build.id,

@@ -2,9 +2,8 @@ use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{artifact_uri, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunFinalization, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
-    ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, IBuildRunRepository, OciDescriptor, OciPublicationTarget,
+    PostgresBuildRunRepository, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
@@ -1886,9 +1885,7 @@ async fn insert_typed_build_run(
     let expected = build.aggregate_version;
     at += Duration::milliseconds(1);
     build.complete(at)?;
-    let BuildRunFinalization::Completed(build) = builds.finalize(build, expected).await? else {
-        return Err("Durable Cell BuildRun finalization was unexpectedly rejected".into());
-    };
+    let build = builds.finalize(build, expected).await?;
     if build.published_output.as_ref() != Some(&bundle) {
         return Err("Durable Cell BuildRun lost its typed bundle output".into());
     }

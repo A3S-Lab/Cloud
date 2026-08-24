@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::assets::domain::{Asset, AssetKind, AssetRelease, AssetReleaseVersion};
 use crate::modules::shared_kernel::domain::{
@@ -636,8 +637,11 @@ fn published_agent_release(
     )
     .expect("Agent release");
     let build = succeeded_hosted_build(organization_id, asset.id, release.id, drafted_at);
+    let outcome = project_hosted_build_outcome(&build)
+        .expect("project hosted outcome")
+        .expect("successful hosted outcome");
     release
-        .publish_from_build(&asset, &build)
+        .publish_from_hosted_build(&asset, &outcome)
         .expect("publish Agent release");
     (asset, release, build)
 }

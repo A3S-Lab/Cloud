@@ -1,3 +1,4 @@
+mod agent_release_admission;
 pub mod commands;
 pub mod queries;
 pub(crate) mod resource_access;
@@ -6,6 +7,7 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use agent_release_admission::admit_deployable_agent_release;
 pub use commands::bind_skill_workload_deployment::{
     BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler,
 };

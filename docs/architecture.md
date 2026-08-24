@@ -480,7 +480,7 @@ externally registered route set:
 | `api` | REST, SSE, Management MCP, and node-control endpoints |
 | `delivery` | Planned `APP0` published application API, embed/MCP facade, and shared cursor/SSE projection; no management or worker authority |
 | `worker` | Flow advancement, reconciliation, scheduling, and cleanup; HTTP exposes process identity and health only |
-| `relay` | Transactional Outbox delivery through A3S Event; initializes only PostgreSQL, NATS, the existing notification projector, and process-status HTTP |
+| `relay` | Transactional Outbox delivery through A3S Event; initializes only PostgreSQL, NATS, the notification and hosted-build-outcome projectors, and process-status HTTP |
 
 `a3s-cloud-migrate` is deliberately outside this role matrix. It is a
 terminating deployment process with exactly one capability: apply Cloud's
@@ -1375,23 +1375,27 @@ Agent and MCP releases are scanned only as missing work; PostgreSQL row locks,
 per-subject attempt uniqueness, and exact foreign keys repair restart gaps
 without introducing an Assets queue, Redis authority, or another Flow.
 
-Migration 064 extends that same repository transaction into the successful
-hosted publication boundary. The BuildRun terminal CAS, draft-to-published OCI
-release transition, immutable BuildRun/provenance binding, and schema-v2 Outbox
-fact commit together through A3S ORM. Exact replay validates or repairs the
-same identity. Ordinary BuildRun saves reject terminal transitions, and the
-generic Assets transition path publishes only Skill bundles, so Agent and MCP
-publication cannot fork into a second worker, queue, or release service.
+The current hosted publication boundary preserves one transaction per owner.
+Artifacts commits the BuildRun terminal CAS and one versioned, location-free
+`a3s.cloud.hosted-build-outcome.v1` fact to the existing transactional Outbox.
+Assets consumes that fact through the generic Relay, validates its exact
+envelope, source, artifact, provenance, and operation identity, then commits
+the draft-to-published release transition plus its schema-v2 Outbox fact in an
+Assets transaction. Exact replay validates the immutable binding and emits no
+duplicate fact. A Draft release under an archived Asset acknowledges the
+outcome as a terminal no-op; it cannot reopen the Asset or rewrite a successful
+BuildRun as failure. No context writes the other context's table.
 
 A failed or cancelled hosted BuildRun finalizes without changing its draft
 release. Recovery calls the existing organization-scoped BuildRun retry
 command, which preserves the closed Asset/AssetRelease subject and creates the
 next deterministic attempt. The existing reconciler enqueues that attempt as
 another `cloud.build@5` Operation. Parent locking, attempt uniqueness, and the
-shared idempotency record converge concurrent requests; the same atomic
-finalizer then converges concurrent successful completion on one release
-binding and one Outbox event. Assets therefore owns no retry queue, recovery
-worker, or second lifecycle.
+shared idempotency record converge concurrent requests; the Artifacts
+finalizer converges concurrent successful completion on one hosted outcome,
+and the Assets projector converges delivery/replay on one release binding and
+one publication event. Assets therefore owns no retry queue, recovery worker,
+or second lifecycle.
 
 Cloud does not create another Git runner, cache, image builder, or deployment
 path. Until Box supplies an authoritative durable build-log contract, BuildRun

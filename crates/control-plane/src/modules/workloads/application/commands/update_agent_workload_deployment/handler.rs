@@ -1,5 +1,5 @@
 use super::UpdateAgentWorkloadDeployment;
-use crate::modules::artifacts::domain::IBuildRunRepository;
+use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
@@ -11,13 +11,14 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
+    admit_deployable_agent_release,
     commands::{
         load_direct_workload_control, require_acl_node_pool_selection, validate_secret_bindings,
     },
     UpdateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, OciArtifact, WorkloadDesiredState, WorkloadRevision,
+    Deployment, WorkloadDesiredState, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -28,7 +29,7 @@ use std::sync::Arc;
 
 pub struct UpdateAgentWorkloadDeploymentHandler {
     assets: Arc<dyn IAssetRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    artifacts: Arc<dyn IHostedArtifactQueryPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
 }
@@ -36,13 +37,13 @@ pub struct UpdateAgentWorkloadDeploymentHandler {
 impl UpdateAgentWorkloadDeploymentHandler {
     pub fn new(
         assets: Arc<dyn IAssetRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        artifacts: Arc<dyn IHostedArtifactQueryPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
     ) -> Self {
         Self {
             assets,
-            builds,
+            artifacts,
             workloads,
             secrets,
         }
@@ -59,7 +60,7 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
         a3s_boot::Result<ApplicationResult<UpdateWorkloadDeploymentResult>>,
     > {
         let assets = Arc::clone(&self.assets);
-        let builds = Arc::clone(&self.builds);
+        let artifacts = Arc::clone(&self.artifacts);
         let workloads = Arc::clone(&self.workloads);
         let resource_access = WorkloadResourceAccess::new(Arc::clone(&workloads));
         let secrets = Arc::clone(&self.secrets);
@@ -180,7 +181,7 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
             }
             let deployable = match load_deployable_agent_release(
                 assets.as_ref(),
-                builds.as_ref(),
+                artifacts.as_ref(),
                 command.organization_id,
                 command.asset_id,
                 command.asset_release_id,
@@ -211,26 +212,21 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                     )))
                 }
             };
+            let admission = match admit_deployable_agent_release(&deployable) {
+                Ok(admission) => admission,
+                Err(error) => return Ok(Err(error)),
+            };
             let mut revision = match WorkloadRevision::create(
                 WorkloadRevisionId::new(),
                 workload.id,
                 generation,
-                command.template.resolve(OciArtifact {
-                    uri: deployable.artifact_uri.clone(),
-                    digest: deployable.artifact_digest.clone(),
-                    media_type: deployable.artifact_media_type.clone(),
-                }),
+                command.template.resolve(admission.artifact().clone()),
                 command.requested_at,
             ) {
                 Ok(revision) => revision,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            if let Err(error) = revision.bind_agent_release(
-                &workload,
-                &deployable.asset,
-                &deployable.release,
-                &deployable.build,
-            ) {
+            if let Err(error) = revision.bind_agent_release(&workload, &admission) {
                 return Ok(Err(ApplicationError::Conflict(error)));
             }
             for binding in active_revision.skill_bindings() {

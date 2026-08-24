@@ -1,4 +1,4 @@
-use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus};
+use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetReleaseArtifact, AssetReleaseProvenance, AssetReleaseVersion, AssetState,
 };
@@ -147,29 +147,40 @@ impl AssetRelease {
         self.publish_with(asset, artifact, None, published_at)
     }
 
-    pub fn publish_from_build(&mut self, asset: &Asset, build: &BuildRun) -> Result<(), String> {
-        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp) {
-            return Err("only Agent and MCP releases use hosted BuildRun publication".into());
-        }
-        let (artifact, provenance, published_at) = self.build_publication(build)?;
+    pub fn publish_from_hosted_build(
+        &mut self,
+        asset: &Asset,
+        outcome: &HostedBuildOutcome,
+    ) -> Result<(), String> {
+        let (artifact, provenance, published_at) =
+            self.admit_hosted_build_outcome(asset, outcome)?;
         self.publish_with(asset, artifact, Some(provenance), published_at)
     }
 
-    pub fn validate_build_publication(
+    /// Validate a hosted outcome against release source identity without
+    /// changing lifecycle state. This is also required for terminal no-op
+    /// handling after the owning Asset has been archived.
+    pub fn validate_hosted_build_outcome(
         &self,
         asset: &Asset,
-        build: &BuildRun,
+        outcome: &HostedBuildOutcome,
     ) -> Result<(), String> {
-        self.validate_for(asset)?;
-        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp)
-            || !matches!(
-                self.state,
-                AssetReleaseState::Published | AssetReleaseState::Yanked
-            )
-        {
+        self.admit_hosted_build_outcome(asset, outcome).map(|_| ())
+    }
+
+    pub fn validate_hosted_build_publication(
+        &self,
+        asset: &Asset,
+        outcome: &HostedBuildOutcome,
+    ) -> Result<(), String> {
+        if !matches!(
+            self.state,
+            AssetReleaseState::Published | AssetReleaseState::Yanked
+        ) {
             return Err("Asset release is not a hosted build publication".into());
         }
-        let (artifact, provenance, published_at) = self.build_publication(build)?;
+        let (artifact, provenance, published_at) =
+            self.admit_hosted_build_outcome(asset, outcome)?;
         if self.artifact.as_ref() != Some(&artifact)
             || self.provenance.as_ref() != Some(&provenance)
             || self.published_at != Some(published_at)
@@ -179,43 +190,45 @@ impl AssetRelease {
         Ok(())
     }
 
-    fn build_publication(
+    fn admit_hosted_build_outcome(
         &self,
-        build: &BuildRun,
+        asset: &Asset,
+        outcome: &HostedBuildOutcome,
     ) -> Result<(AssetReleaseArtifact, AssetReleaseProvenance, DateTime<Utc>), String> {
-        if build.organization_id != self.organization_id
-            || build.asset_id() != Some(self.asset_id)
-            || build.asset_release_id() != Some(self.id)
-            || build.status != BuildRunStatus::Succeeded
+        self.validate_for(asset)?;
+        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp) {
+            return Err("only Agent and MCP releases use hosted BuildRun publication".into());
+        }
+        self.hosted_build_publication(outcome)
+    }
+
+    fn hosted_build_publication(
+        &self,
+        outcome: &HostedBuildOutcome,
+    ) -> Result<(AssetReleaseArtifact, AssetReleaseProvenance, DateTime<Utc>), String> {
+        outcome.validate()?;
+        if outcome.organization_id() != self.organization_id
+            || outcome.asset_id() != self.asset_id
+            || outcome.asset_release_id() != self.id
         {
             return Err("successful BuildRun does not own this Asset release".into());
         }
-        let evidence = build
-            .evidence
-            .as_deref()
-            .ok_or_else(|| "successful hosted BuildRun has no verified evidence".to_owned())?;
-        if evidence.commit_sha != self.commit_sha.as_str()
-            || evidence.manifest_digest.as_deref() != Some(self.manifest_digest.as_str())
+        if outcome.commit_sha() != &self.commit_sha
+            || outcome.manifest_digest() != &self.manifest_digest
         {
             return Err("hosted BuildRun evidence changed the release source identity".into());
         }
-        let published = build
-            .published_artifact
-            .as_ref()
-            .ok_or_else(|| "successful hosted BuildRun has no published artifact".to_owned())?;
+        let published = outcome.artifact();
         let artifact = AssetReleaseArtifact::oci_service(
-            Sha256Digest::parse(&published.digest)?,
-            published.media_type.clone(),
-            published.size_bytes,
+            published.digest().clone(),
+            published.media_type(),
+            published.size_bytes(),
         )?;
         let provenance = AssetReleaseProvenance::new(
-            build.id,
-            Sha256Digest::parse(&evidence.provenance_digest)?,
+            outcome.build_run_id(),
+            outcome.provenance_digest().clone(),
         )?;
-        let published_at = build
-            .finished_at
-            .ok_or_else(|| "successful hosted BuildRun has no finish time".to_owned())?;
-        Ok((artifact, provenance, published_at))
+        Ok((artifact, provenance, outcome.finished_at()))
     }
 
     fn publish_with(

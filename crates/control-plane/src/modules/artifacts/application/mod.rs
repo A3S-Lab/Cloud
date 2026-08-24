@@ -1,6 +1,8 @@
 mod build_log_query;
 mod build_run_reconciler;
 mod commands;
+mod hosted_artifact_query;
+mod hosted_build_outcome;
 mod node_artifact_store;
 mod queries;
 pub(crate) mod resource_access;
@@ -18,6 +20,12 @@ pub use commands::{
     CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, RetryBuildRun,
     RetryBuildRunHandler, RetryBuildRunResult,
 };
+pub use hosted_artifact_query::{
+    HostedArtifactLocation, HostedArtifactQueryService, IHostedArtifactQueryPort,
+};
+pub(crate) use hosted_build_outcome::hosted_build_outcome_event;
+#[cfg(test)]
+pub(crate) use hosted_build_outcome::project_hosted_build_outcome;
 pub use node_artifact_store::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
     NodeArtifactWrite, OpenNodeArtifact,

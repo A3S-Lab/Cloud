@@ -27,9 +27,10 @@ use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
     CancelBuildRunHandler, CloudBuildSourceResolver, GetBuildEvidenceHandler, GetBuildRunHandler,
-    GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner,
-    IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver,
-    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
+    GetBuildRunLogsHandler, HostedArtifactQueryService, IBuildArtifactPublisher,
+    IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
+    IBuildRunRepository, IBuildSourceResolver, IHostedArtifactQueryPort, INodeArtifactStore,
+    ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
     RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
@@ -38,10 +39,11 @@ use crate::modules::assets::{
     AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
     AssetsModule, BackupAssetGitRepositoryHandler, BindMcpServiceProfileHandler,
     CreateAssetHandler, CreateAssetReleaseHandler, GetAssetHandler, GetAssetReleaseHandler,
-    GetMcpServiceProfileHandler, IAssetGitRepository, IAssetRepository, ListAssetReleasesHandler,
-    ListAssetsHandler, LocalAssetGitRepository, McpServiceProfileApplicationService,
-    ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
-    UploadAssetGitPackHandler, YankAssetReleaseHandler,
+    GetMcpServiceProfileHandler, HostedBuildOutcomeProjector, IAssetGitRepository,
+    IAssetRepository, ListAssetReleasesHandler, ListAssetsHandler, LocalAssetGitRepository,
+    McpServiceProfileApplicationService, ReceiveAssetGitPackHandler,
+    RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
+    YankAssetReleaseHandler,
 };
 use crate::modules::audit::{
     AuditExportSigningError, AuditExportSigningKey, AuditModule, AuditRetentionPolicy,
@@ -1252,6 +1254,7 @@ async fn build_api_worker_application(
                 ))
             })?,
             Arc::clone(&notifications),
+            Arc::clone(&assets),
             Arc::clone(&memberships),
             Arc::clone(&alert_policies),
             Arc::clone(&resource_grants),
@@ -1662,6 +1665,7 @@ async fn build_relay_application(
         memberships,
         resource_grants,
         notifications,
+        assets,
         alert_policies,
         outbox,
     } = PostgresAdapterFactory::new(executor.clone()).relay();
@@ -1670,6 +1674,7 @@ async fn build_relay_application(
         outbox,
         event_publisher.clone(),
         notifications,
+        assets,
         memberships,
         alert_policies,
         resource_grants,
@@ -1687,6 +1692,7 @@ fn build_outbox_relay(
     outbox: Arc<dyn IOutboxRepository>,
     events: Arc<dyn IEventPublisher>,
     notifications: Arc<dyn INotificationRepository>,
+    assets: Arc<dyn IAssetRepository>,
     memberships: Arc<dyn IMembershipRepository>,
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
@@ -1707,7 +1713,8 @@ fn build_outbox_relay(
     .with_projector(Arc::new(
         OutboxNotificationProjector::new(notifications, memberships)
             .with_alert_policies(alert_policies, resource_grants),
-    ));
+    ))
+    .with_projector(Arc::new(HostedBuildOutcomeProjector::new(assets)));
     Ok(relay)
 }
 
@@ -2204,9 +2211,11 @@ fn build_management_application_with_health(
     let get_builds = Arc::clone(&builds);
     let get_build_evidence = Arc::clone(&builds);
     let get_build_logs = Arc::clone(&builds);
-    let agent_create_builds = Arc::clone(&builds);
-    let agent_update_builds = Arc::clone(&builds);
-    let agent_execution_builds = Arc::clone(&builds);
+    let hosted_artifacts: Arc<dyn IHostedArtifactQueryPort> =
+        Arc::new(HostedArtifactQueryService::new(Arc::clone(&builds)));
+    let agent_create_artifacts = Arc::clone(&hosted_artifacts);
+    let agent_update_artifacts = Arc::clone(&hosted_artifacts);
+    let agent_execution_artifacts = hosted_artifacts;
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_execution_template_projects = Arc::clone(&projects);
@@ -2725,7 +2734,7 @@ fn build_management_application_with_health(
                     CreateAgentWorkloadDeploymentHandler::new(
                         agent_workload_environments,
                         agent_create_assets,
-                        agent_create_builds,
+                        agent_create_artifacts,
                         agent_create_workloads,
                         agent_create_workload_secrets,
                         agent_workload_node_pools,
@@ -2734,7 +2743,7 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::workloads::UpdateAgentWorkloadDeployment, _>(
                     UpdateAgentWorkloadDeploymentHandler::new(
                         agent_update_assets,
-                        agent_update_builds,
+                        agent_update_artifacts,
                         agent_update_workloads,
                         agent_update_workload_secrets,
                     ),
@@ -2795,7 +2804,7 @@ fn build_management_application_with_health(
                     StartAgentExecutionHandler::new(
                         start_agent_executions,
                         agent_execution_assets,
-                        agent_execution_builds,
+                        agent_execution_artifacts,
                     ),
                 )
                 .command_handler::<crate::modules::agents::CancelAgentExecution, _>(

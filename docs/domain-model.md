@@ -539,6 +539,15 @@ internal. The current Infrastructure resolver's direct Sources repository read
 is transitional composition debt; it does not enter the Artifacts domain and
 will be replaced by an Artifacts-owned input-reader port.
 
+For a successful hosted Asset build, Artifacts publishes one immutable,
+location-free `HostedBuildOutcome` containing only the exact tenant, Asset,
+release, BuildRun/version/attempt, operation, commit, manifest, OCI descriptor,
+provenance digest, and completion time. The BuildRun terminal transition and
+this fact share the Artifacts Outbox transaction. Registry location remains an
+Artifacts concern and is exposed separately through the read-only
+`IHostedArtifactQueryPort`; consumers never load the BuildRun aggregate merely
+to locate its OCI object.
+
 Primary aggregate:
 
 - `Artifact`
@@ -2744,10 +2753,14 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   stores that exact `build_run_id` plus the SHA-256 identity of its locally
   verified provenance. The complete signed evidence remains authoritative on
   the BuildRun.
-- Hosted BuildRun completion, release publication, provenance binding, and the
-  publication Outbox fact are one A3S ORM transaction. Exact finalization
-  replay can repair only the same binding; ordinary BuildRun saves and generic
-  Asset transitions cannot publish an Agent or MCP release.
+- Hosted BuildRun completion and its versioned outcome fact are one Artifacts
+  A3S ORM transaction. The generic Outbox Relay invokes the Assets-owned
+  projector, which validates the fact and commits release publication,
+  provenance binding, idempotency, and the publication Outbox fact in a
+  separate Assets transaction. Exact delivery replay validates the same
+  immutable binding without another transition or event. An archived Asset
+  acknowledges a late outcome without reopening the release or failing the
+  successful BuildRun.
 - Skill releases require the deterministic Git archive of their exact reachable
   commit as a content-addressed bundle artifact, cannot contain a workload
   build recipe, and publish without a BuildRun.

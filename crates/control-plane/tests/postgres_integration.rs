@@ -2196,7 +2196,7 @@ async fn identity_migration_backfills_legacy_credentials_and_ownerless_organizat
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn postgres_hosted_draft_recovery_is_atomic() {
+async fn postgres_hosted_draft_recovery_is_owner_atomic_and_projected() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };

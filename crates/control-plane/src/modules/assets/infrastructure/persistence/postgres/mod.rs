@@ -1,5 +1,4 @@
 mod git_controls;
-mod hosted_publications;
 mod mcp_profiles;
 mod queries;
 mod rows;
@@ -21,10 +20,6 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
-
-pub(crate) use hosted_publications::{
-    apply_hosted_release, plan_hosted_release, verify_hosted_release_unpublished, HostedReleasePlan,
-};
 
 #[derive(Clone)]
 pub struct PostgresAssetRepository {

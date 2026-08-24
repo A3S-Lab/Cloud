@@ -1,9 +1,8 @@
-use crate::modules::artifacts::domain::{
-    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
-};
 use crate::modules::assets::domain::AssetKind;
 use crate::modules::shared_kernel::domain::Sha256Digest;
-pub use a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE;
+pub use a3s_cloud_contracts::{
+    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

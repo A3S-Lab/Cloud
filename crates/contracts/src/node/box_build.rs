@@ -10,12 +10,12 @@ use super::{
 
 pub const BOX_BUILD_OUTPUT_NAME: &str = "oci-layout";
 const BOX_BUILD_CACHE_OUTPUT_PREFIX: &str = "build-cache-";
-const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
-const OCI_IMAGE_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
+pub const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
+pub const OCI_IMAGE_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 const MAX_BUILD_PLANS: usize = 8;
 const MAX_BUILD_PLAN_BYTES: usize = 16 * 1024;
 const MAX_BUILD_CACHE_ENTRIES: u64 = 16 * 1024;
-const MAX_ARTIFACT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+pub const MAX_BOX_ARTIFACT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -217,8 +217,8 @@ impl NodeBoxBuildRequest {
                 )
             }
         }
-        if !(1..=MAX_ARTIFACT_BYTES).contains(&self.output_max_bytes)
-            || !(1..=MAX_ARTIFACT_BYTES).contains(&self.cache_max_bytes)
+        if !(1..=MAX_BOX_ARTIFACT_BYTES).contains(&self.output_max_bytes)
+            || !(1..=MAX_BOX_ARTIFACT_BYTES).contains(&self.cache_max_bytes)
         {
             return Err("Box build Artifact bounds are invalid".into());
         }
@@ -287,7 +287,7 @@ impl NodeBoxBuildCacheOutput {
         validate_single_line("Box build cache output name", &self.artifact.name, 255)?;
         if self.artifact.artifact.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
             || self.artifact.size_bytes == 0
-            || self.artifact.size_bytes > MAX_ARTIFACT_BYTES
+            || self.artifact.size_bytes > MAX_BOX_ARTIFACT_BYTES
         {
             return Err("Box build cache output identity or bounds are invalid".into());
         }
@@ -343,7 +343,7 @@ impl NodeBoxBuildOutput {
         if self.artifact.name != BOX_BUILD_OUTPUT_NAME
             || self.artifact.artifact.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
             || self.artifact.size_bytes == 0
-            || self.artifact.size_bytes > MAX_ARTIFACT_BYTES
+            || self.artifact.size_bytes > MAX_BOX_ARTIFACT_BYTES
             || !(1..=MAX_BUILD_PLANS).contains(&self.platforms.len())
             || self.manifest_count != self.platforms.len() as u64
             || self.content_bytes < self.descriptor.size

@@ -1,5 +1,5 @@
 use super::*;
-use crate::modules::artifacts::{BuildRun, BuildRunFinalization, BuildRunStatus};
+use crate::modules::artifacts::{BuildRun, BuildRunStatus};
 use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
@@ -225,11 +225,6 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
         .finalize(cancelled, cancelling.aggregate_version)
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?;
-    let BuildRunFinalization::Completed(cancelled) = cancelled else {
-        return Err(BootError::Internal(
-            "external BuildRun finalization was unexpectedly rejected".into(),
-        ));
-    };
     assert_eq!(cancelled.status, BuildRunStatus::Cancelled);
 
     let retry_path = format!("{detail_path}/retry");

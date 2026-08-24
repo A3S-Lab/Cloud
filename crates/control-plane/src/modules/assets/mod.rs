@@ -38,5 +38,7 @@ pub use domain::{
     McpServiceProfileWriteReference, TransitionAssetReleaseWrite, TransitionAssetWrite,
     DEFAULT_ASSET_BRANCH, MCP_SERVICE_PROFILE_MAX_ACL_BYTES, SKILL_BUNDLE_MEDIA_TYPE,
 };
-pub use infrastructure::{LocalAssetGitRepository, PostgresAssetRepository};
+pub use infrastructure::{
+    HostedBuildOutcomeProjector, LocalAssetGitRepository, PostgresAssetRepository,
+};
 pub use presentation::AssetsModule;

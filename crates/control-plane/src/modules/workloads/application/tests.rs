@@ -5,8 +5,9 @@ use super::{
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler,
 };
+use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
-use crate::modules::artifacts::{BuildRun, InMemoryBuildRunRepository};
+use crate::modules::artifacts::{BuildRun, HostedArtifactQueryService, InMemoryBuildRunRepository};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, AssetReleaseWrite,
     AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
@@ -72,7 +73,8 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     ));
     let builds = Arc::new(InMemoryBuildRunRepository::new());
     builds.seed_build(build_one.clone()).await;
-    builds.seed_build(build_two.clone()).await;
+    builds.seed_build(build_two).await;
+    let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
     let environments = Arc::new(TestEnvironmentRepository {
         environment: Environment::create(
             organization_id,
@@ -87,7 +89,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let create_handler = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         assets.clone(),
-        builds.clone(),
+        artifacts.clone(),
         workloads.clone(),
         secrets.clone(),
         node_pools,
@@ -176,7 +178,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     .await;
     let update_handler = UpdateAgentWorkloadDeploymentHandler::new(
         assets.clone(),
-        builds,
+        artifacts,
         workloads.clone(),
         secrets.clone(),
     );
@@ -318,6 +320,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     ));
     let builds = Arc::new(InMemoryBuildRunRepository::new());
     builds.seed_build(agent_build).await;
+    let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
     let environments = Arc::new(TestEnvironmentRepository {
         environment: Environment::create(
             organization_id,
@@ -332,7 +335,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let created = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         agent_assets.clone(),
-        builds.clone(),
+        artifacts.clone(),
         workloads.clone(),
         secrets.clone(),
         Arc::new(TestNodePoolRepository { pool: node_pool }),
@@ -470,7 +473,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     .await;
     let updated_agent = UpdateAgentWorkloadDeploymentHandler::new(
         agent_assets,
-        builds,
+        artifacts,
         workloads.clone(),
         secrets.clone(),
     )
@@ -567,8 +570,11 @@ fn published_release(
     )
     .expect("draft release");
     let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, drafted_at);
+    let outcome = project_hosted_build_outcome(&build)
+        .expect("project hosted outcome")
+        .expect("successful hosted outcome");
     release
-        .publish_from_build(asset, &build)
+        .publish_from_hosted_build(asset, &outcome)
         .expect("publish release");
     (release, build)
 }

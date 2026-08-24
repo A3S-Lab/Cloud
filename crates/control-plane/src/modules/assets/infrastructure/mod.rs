@@ -1,8 +1,7 @@
 mod git_repository;
+mod hosted_build_outcome_projector;
 pub mod persistence;
 
 pub use git_repository::LocalAssetGitRepository;
+pub use hosted_build_outcome_projector::HostedBuildOutcomeProjector;
 pub use persistence::PostgresAssetRepository;
-pub(crate) use persistence::{
-    apply_hosted_release, plan_hosted_release, verify_hosted_release_unpublished, HostedReleasePlan,
-};

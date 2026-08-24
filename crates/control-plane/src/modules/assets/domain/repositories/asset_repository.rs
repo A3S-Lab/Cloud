@@ -153,10 +153,12 @@ impl TransitionAssetReleaseWrite {
         match (existing.state, self.release.state) {
             (AssetReleaseState::Draft, AssetReleaseState::Published)
                 if asset.state == AssetState::Active
-                    && asset.kind == AssetKind::Skill
                     && existing.artifact.is_none()
                     && existing.provenance.is_none()
-                    && self.release.provenance.is_none() =>
+                    && matches!(
+                        (asset.kind, self.release.provenance.is_some()),
+                        (AssetKind::Skill, false) | (AssetKind::Agent | AssetKind::Mcp, true)
+                    ) =>
             {
                 Ok(())
             }

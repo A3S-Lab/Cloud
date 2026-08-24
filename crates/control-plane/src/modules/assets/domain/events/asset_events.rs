@@ -1,4 +1,3 @@
-use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::assets::domain::{Asset, AssetRelease, McpServiceProfileBinding};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
@@ -135,25 +134,6 @@ impl AssetReleasePublished {
             correlation_id,
             payload,
         ))
-    }
-
-    pub fn envelope_from_build(
-        release: &AssetRelease,
-        build: &BuildRun,
-    ) -> Result<DomainEventEnvelope, String> {
-        if release
-            .provenance
-            .as_ref()
-            .is_none_or(|provenance| provenance.build_run_id() != build.id)
-            || release.organization_id != build.organization_id
-            || build.asset_id() != Some(release.asset_id)
-            || build.asset_release_id() != Some(release.id)
-        {
-            return Err("published Asset release does not match its BuildRun provenance".into());
-        }
-        let mut event = Self::envelope(release, build.operation_id.as_uuid())?;
-        event.causation_id = Some(build.id.as_uuid());
-        Ok(event)
     }
 }
 

@@ -71,10 +71,10 @@ all boundaries are interface-only:
    trait and aggregate directly. The dependency is abstract in Rust, but it
    still bypasses the owning application boundary.
 3. Production code contains direct cross-context Infrastructure and
-   Presentation dependencies. The most important examples are Artifacts to
-   Assets persistence, Workflow to Forms persistence, Durable Cells to
-   Workloads/Edge implementation types, and shared tenant guards defined under
-   Identity presentation.
+   Presentation dependencies. The Artifacts-to-Assets persistence edge has
+   been removed; the most important remaining examples are Workflow to Forms
+   persistence, Durable Cells to Workloads/Edge implementation types, and
+   shared tenant guards defined under Identity presentation.
 4. Multiple modules independently map the same physical tables. The source
    scan found duplicate mappings for operation_requests, workloads, nodes,
    mcp_service_profiles, and workflow_runs. The workflow_runs duplication is
@@ -141,8 +141,8 @@ snapshot or an application port result.
 | --- | --- | --- | --- |
 | Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. It now owns the versioned `a3s.cloud.source-build-input.v1` published snapshot and the sole Application projection exposed by its root facade; Artifacts Domain enters Sources only through that language. Other Application handlers still directly query Projects/Identity repositories for scope. | Migrate remaining consumers to the published BuildRecipe/input language, replace foreign aggregate readers with owner adapters over consumer ports, and introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
 | Developer Workflows | Reviewable BuildPlan, workload-profile proposal/acceptance, preview intent, and later monorepo/import decisions | Domain owns its process, Secret-binding, resource, port, health, branch, installation-ref, and pull-request-change proposal values. It enters Sources only through Published Language and imports no foreign owner internals. Application owns action-scoped `IDeveloperWorkflowAuthorizationPort`, `IWorkloadBuildOutcomePort`, `IServiceProfileAdmissionPort`, and `IScheduledTaskProfileAdmissionPort`; Identity policy, Artifacts aggregate state, and Workloads/Executions templates stay private. Build outcomes bind the exact BuildPlan ID/digest, while target admission returns one correlation-bound receipt carrying the target, exact request context, Artifact digest, and opaque owner-contract digest. Architecture tests enforce both layers against every foreign internal model. | Implement the Identity/Artifacts/Workloads/Executions owner adapters and production composition, then add exact Projects/Edge handoffs. No build, scheduler, deployment, route, webhook-verification, or provider lifecycle moves here. |
-| Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain code directly embeds Artifacts BuildRun and Sources BuildRecipe types. Assets and Artifacts persistence form a bidirectional atomic publication dependency. | Publish build outcome/provenance snapshots from Artifacts. Assets owns release publication through an idempotent application port or Outbox-fed process manager. Remove Artifacts-owned writes to Assets tables. |
-| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain no longer imports a Sources aggregate or `sources::domain`; it translates only the owner-published immutable input and recipe language into local `BuildSource`. Application now owns `IBuildLogQueryPort` plus closed stream, record, gap, and page values; Presentation maps only those local values, so neither layer imports Fleet log storage or response DTOs. Until Box publishes a durable build-log contract, the production path fails explicitly as unavailable instead of returning a false empty page. Presentation is crate-private. Infrastructure remains public migration debt while concurrent Flow composition imports its runtime registry, and its resolver still loads a Sources repository before requesting the owner projection. Assets table writes remain substantive debt. | Implement a Box-owned durable build-log adapter when that published contract exists, replace the transitional Sources repository dependency with an Artifacts-owned input-reader port implemented by Sources, add HostedBuildOutcome, replace the Assets table write with an explicit replayable intent/fact handoff, and privatize Infrastructure after shared Flow composition consumes the root facade. |
+| Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain consumes only the versioned Artifacts-owned `HostedBuildOutcome` published language for hosted publication. Assets owns the idempotent Outbox projector and release transaction; Artifacts no longer imports Assets infrastructure or mutates `asset_releases`. The deployable Agent query returns a bounded Assets read model and obtains the mutable OCI registry location through `IHostedArtifactQueryPort`, never a BuildRun aggregate. Assets Domain still embeds Sources BuildRecipe types. | Move BuildRecipe usage to Sources Published Language, narrow the root facade, and eventually replace direct consumer repository access with an Assets-owned release-admission port. Keep release lifecycle and projection exclusively in Assets. |
+| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain no longer imports a Sources aggregate or `sources::domain`; it translates only the owner-published immutable input and recipe language into local `BuildSource`. Application owns `IBuildLogQueryPort`, the minimal `IHostedArtifactQueryPort`, and the versioned location-free `a3s.cloud.hosted-build-outcome.v1` fact. Successful hosted finalization commits BuildRun plus one Outbox fact in the owner transaction; Assets projects it independently. Presentation is crate-private. Infrastructure remains public migration debt while shared Flow composition imports its runtime registry, and its resolver still loads Sources and Assets repositories for input preparation. | Implement a Box-owned durable build-log adapter when that published contract exists, replace transitional source/input repository dependencies with Artifacts-owned reader ports implemented by their owners, and privatize Infrastructure after shared Flow composition consumes the root facade. Never restore foreign Asset writes or a second publication queue. |
 
 ### 5.3 Execution and traffic plane
 
@@ -150,7 +150,7 @@ snapshot or an application port result.
 | --- | --- | --- | --- |
 | Operations | User-visible long-running operation identity and progress | Correct single projection authority, but several owner repositories map operation_requests themselves to obtain atomic creation. | Define one transactional Operation request participant or an intent Outbox contract. No context may independently declare the Operations table schema. The operation engine remains Flow-backed. |
 | Executions | Generic finite Task product and immutable ExecutionTemplate | Clear Task semantics and one Workflow port. Application services directly use Operations and Projects repositories; domain policy contains a3s-runtime protocol types. | Keep product requirements in local value objects, translate to Runtime contracts at the adapter edge, and use scope/operation owner ports. Runtime contract use is allowed only in the execution adapter published language. |
-| Workloads | Service desired state, Deployment, rollout, replicas, placement groups, resource claims, and writer fencing | The correct scheduling authority, but also the largest coupling hub. Domain/application code imports Assets, Artifacts, Fleet, Operations, Projects, Secrets, and Sources. Infrastructure maps foreign Fleet, Asset, Secret, and Operation state. | Split inbound admission ports from internal aggregates. Publish WorkloadDeploymentIntent, RuntimeTargetObservation, and writer-fence receipts. Fleet, Secrets, Assets, Artifacts, and Operations must be accessed through owner ports or facts. Remove foreign table mappings. |
+| Workloads | Service desired state, Deployment, rollout, replicas, placement groups, resource claims, and writer fencing | The correct scheduling authority, but also the largest coupling hub. Agent binding now receives a Workloads-owned `AgentReleaseAdmission`; its Domain no longer imports Artifacts or a BuildRun, and one Application anti-corruption adapter translates the Assets deployable read model. Other domain/application paths still import Assets, Fleet, Operations, Projects, Secrets, and Sources internals, while Infrastructure maps foreign Fleet, Asset, Secret, and Operation state. | Continue splitting inbound admission ports from internal aggregates. Publish WorkloadDeploymentIntent, RuntimeTargetObservation, and writer-fence receipts. Fleet, Secrets, Assets, and Operations must be accessed through owner ports or facts. Remove foreign table mappings. |
 | Fleet | Node, pool, enrollment, inventory, Claim, command journal, observation, and fencing | Strong single node-control authority. Its domain legitimately carries the versioned node command published language but should not expose provider implementations. | Make NodeCommand and observation schemas an explicit contract surface. Keep a3s-runtime translation at the Node/Runtime adapter boundary. Publish node-scope queries for Identity/Edge instead of sharing repositories. |
 | Edge | DomainClaim, certificate, Gateway scope, Route, rollout, and complete applied snapshot | Correct live-traffic intent owner, but domain types embed Assets, Workloads, and Secret shapes; infrastructure reads foreign nodes/workloads/MCP profiles through local table mappings. | Introduce RouteTarget, GatewayMember, and MCPProfile owner ports or fact-fed local projections. Edge compiles only owner-published snapshots. Gateway remains the sole applied request path. |
 | Secrets | Secret/version lifecycle, authorization, encryption and exact materialization | Clear authority. Deployment material resolution directly loads Workloads state to authorize a consumer. | Replace Workload repository access with an exact SecretConsumerAuthorization port implemented by Workloads. Material never crosses presentation or domain events. |
@@ -160,7 +160,7 @@ snapshot or an application port result.
 
 | Module | Unique authority | Current assessment | Required optimization |
 | --- | --- | --- | --- |
-| Agents | Conversation, AgentExecution, semantic event sequence, approvals/checkpoints/forks trajectory | Semantic state is separate from Runtime logs and generic Executions. Start currently loads Assets/Artifacts repositories directly. | Introduce an AgentReleaseAdmission port returning one immutable execution binding. Keep provider-neutral Harness execution behind an Agents-owned port and the common Workloads/Fleet/Runtime path. |
+| Agents | Conversation, AgentExecution, semantic event sequence, approvals/checkpoints/forks trajectory | Semantic state is separate from Runtime logs and generic Executions. Start no longer reads a BuildRun aggregate: it consumes the bounded Assets deployable read model and an Artifacts OCI-location query interface. It still orchestrates those two owner interfaces directly. | Introduce an Agents-owned AgentReleaseAdmission port whose adapter composes the two owner interfaces and returns one immutable execution binding. Keep provider-neutral Harness execution behind an Agents-owned port and the common Workloads/Fleet/Runtime path. |
 | Applications | Application/release, session, invocation, message, variable, and delivery semantics | Best current example of consumer-owned application ports to Workflow. A few Workflow constants/types still leak directly into application code. | Complete the anti-corruption layer: all Workflow compilation/run/effect interaction travels through Applications-owned ports and published snapshots. No Workflow repositories or timeout helpers cross directly. |
 | Workflow | Ontology, WorkflowDefinition, Goal, Plan, WorkflowRun, HumanTask, decision, and semantic step projections | Rich invariants and strong Flow authority tests. Domain imports Forms submission types; persistence reads/writes Forms state directly. The module is also large enough that internal packages need explicit ownership. | Define internal subdomains for Definition/Planning, Run, and Human Interaction. Access Executions, Connectors, Applications, and Forms only through application ports. Flow remains the only durable execution history. |
 | Forms | Form draft/release schema and form semantic validation | Domain is isolated and already guarded. FormSubmission is declared Forms-owned while Workflow persists it inside the HumanTask transaction, so authority and storage disagree. | Make the ownership decision explicit. Recommended: Forms owns definitions/releases and validation; Workflow owns an immutable HumanTaskSubmission evidence value. If general standalone submissions are later required, they use a separate Forms command and aggregate. |
@@ -272,10 +272,10 @@ Artifacts now satisfies item 4 for Presentation. Its node-artifact stream,
 descriptor, error, and store contract form one consumer-owned Application
 port; Domain receives admitted artifact values and receipts only. The public
 root names exact presentation DTOs without exposing that namespace.
-Infrastructure remains temporarily public because concurrent shared Flow
-composition still names its runtime registry directly; that exact site stays
-frozen rather than creating a conflicting edit. The remaining foreign Sources,
-Assets, and Fleet relationships belong to Wave 2 and are still frozen debt.
+Infrastructure remains temporarily public because shared Flow composition
+still names its runtime registry directly; that exact site stays frozen. The
+Artifacts-to-Assets publication write is now removed. Remaining Sources/Assets
+input preparation and Fleet runtime relationships stay explicit Wave 2 debt.
 
 ### Wave 2: supply-chain handoffs
 
@@ -320,6 +320,26 @@ opaque owner-contract digest. Test-only owner adapters prove that Workloads and
 Executions still perform final template validation. Concrete owner-side
 adapters and production composition remain named follow-up work; their absence
 does not reopen either model boundary.
+
+Item 3 is implemented as one owner-commit/fact/projection pipeline. Artifacts
+publishes the closed, location-free `a3s.cloud.hosted-build-outcome.v1` fact
+with event key `artifact.hosted-build.succeeded`; BuildRun finalization and the
+Outbox insert share the Artifacts transaction. Assets consumes that fact with
+`HostedBuildOutcomeProjector`, revalidates envelope and payload identity, and
+performs its own idempotent release transition and `asset.release.published`
+Outbox insert. A Draft release under an archived Asset is an acknowledged
+terminal no-op, so archival cannot turn a successful build into a foreign
+failure or introduce another state machine. The obsolete consumer-driven
+`BuildRunFinalization::Rejected` result and its compensating completion branch
+are removed; Artifacts finalization now returns its terminal aggregate
+directly. The generic Outbox Relay is the
+only worker and retry mechanism in both all-in-one and dedicated Relay roles.
+Executable fitness tests reject any future Artifacts Application import of
+Assets, any Artifacts PostgreSQL mutation of Asset storage, an Assets Domain
+import outside Artifacts Published Language, or a Workloads Domain import of
+Artifacts. PostgreSQL replay coverage proves one hosted outcome, Draft before
+projection, Published after projection, and exactly one publication event
+after replay.
 
 Item 4's consumer boundary is implemented. Artifacts Application owns
 `IBuildLogQueryPort`, `BuildLogReadRequest`, `BuildLogPage`, and typed data,

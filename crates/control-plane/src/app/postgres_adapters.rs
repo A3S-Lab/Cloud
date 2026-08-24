@@ -138,11 +138,13 @@ impl PostgresAdapterFactory {
     pub(super) fn relay(&self) -> RelayPostgresAdapters {
         let identity = IdentityPostgresAdapters::new(self.executor.clone());
         let notifications = NotificationPostgresAdapters::new(self.executor.clone());
+        let assets = AssetPostgresAdapters::new(self.executor.clone());
         RelayPostgresAdapters {
             memberships: identity.memberships,
             resource_grants: identity.resource_grants,
             notifications: notifications.notifications,
             alert_policies: notifications.alert_policies,
+            assets: assets.assets,
             outbox: self.outbox(),
         }
     }
@@ -190,6 +192,7 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) resource_grants: Arc<dyn IResourceGrantRepository>,
     pub(super) notifications: Arc<dyn INotificationRepository>,
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
+    pub(super) assets: Arc<dyn IAssetRepository>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,
 }
 

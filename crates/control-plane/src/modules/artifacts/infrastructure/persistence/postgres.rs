@@ -1,18 +1,16 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, idempotency_replay, store_idempotency, transaction_error,
-    PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, store_idempotency, store_outbox,
+    transaction_error, PostgresPersistenceError,
 };
+use crate::modules::artifacts::application::hosted_build_outcome_event;
 use crate::modules::artifacts::domain::repositories::{
     validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
     BuildRunFinalizationMode,
 };
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildEvidence, BuildRun, BuildRunFinalization, BuildRunStatus, BuildSubject,
-    IBuildRunRepository, OciPublicationTarget, PublishedOciArtifact,
-    RequestBuildCancellationBundle, RequestBuildRetryBundle, ValidatedOciBuildOutput,
-};
-use crate::modules::assets::infrastructure::{
-    apply_hosted_release, plan_hosted_release, verify_hosted_release_unpublished, HostedReleasePlan,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository,
+    OciPublicationTarget, PublishedOciArtifact, RequestBuildCancellationBundle,
+    RequestBuildRetryBundle, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
@@ -402,79 +400,23 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
         &self,
         build_run: BuildRun,
         expected_version: u64,
-    ) -> Result<BuildRunFinalization, RepositoryError> {
+    ) -> Result<BuildRun, RepositoryError> {
         let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    let existing = find_build_for_update(
-                        transaction,
-                        build_run.organization_id,
-                        build_run.id,
-                    )
-                    .await?;
-                    let mode = validate_build_run_finalization(
-                        &existing,
-                        &build_run,
-                        expected_version,
-                    )
-                    .map_err(PostgresPersistenceError::Repository)?;
-
-                    if build_run.asset_release_id().is_none() {
-                        let completed = persist_finalized_build(
-                            transaction,
-                            existing,
-                            build_run,
-                            expected_version,
-                            mode,
-                        )
-                        .await?;
-                        return Ok(BuildRunFinalization::Completed(completed));
-                    }
-
-                    if build_run.status == BuildRunStatus::Succeeded {
-                        let plan = plan_hosted_release(transaction, &build_run).await?;
-                        return match plan {
-                            HostedReleasePlan::Reject(reason) => {
-                                if mode == BuildRunFinalizationMode::Replay {
-                                    return Err(PostgresPersistenceError::Invariant(format!(
-                                        "successful hosted BuildRun lost its release publication: {reason}"
-                                    )));
-                                }
-                                let mut rejected = existing.clone();
-                                rejected
-                                    .record_failure(reason, build_run.updated_at)
-                                    .map_err(|error| {
-                                        PostgresPersistenceError::Invariant(format!(
-                                            "hosted release rejection could not fail its BuildRun: {error}"
-                                        ))
-                                    })?;
-                                validate_build_run_transition(
-                                    &existing,
-                                    &rejected,
-                                    expected_version,
-                                )
-                                .map_err(PostgresPersistenceError::Repository)?;
-                                let rejected =
-                                    persist_build(transaction, &rejected, expected_version).await?;
-                                Ok(BuildRunFinalization::Rejected(rejected))
-                            }
-                            plan => {
-                                let completed = persist_finalized_build(
-                                    transaction,
-                                    existing,
-                                    build_run,
-                                    expected_version,
-                                    mode,
-                                )
-                                .await?;
-                                apply_hosted_release(transaction, plan).await?;
-                                Ok(BuildRunFinalization::Completed(completed))
-                            }
-                        };
-                    }
-
-                    verify_hosted_release_unpublished(transaction, &build_run).await?;
+                    let existing =
+                        find_build_for_update(transaction, build_run.organization_id, build_run.id)
+                            .await?;
+                    let mode =
+                        validate_build_run_finalization(&existing, &build_run, expected_version)
+                            .map_err(PostgresPersistenceError::Repository)?;
+                    let outcome = if mode == BuildRunFinalizationMode::Transition {
+                        hosted_build_outcome_event(&build_run)
+                            .map_err(PostgresPersistenceError::Invariant)?
+                    } else {
+                        None
+                    };
                     let completed = persist_finalized_build(
                         transaction,
                         existing,
@@ -483,7 +425,10 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                         mode,
                     )
                     .await?;
-                    Ok(BuildRunFinalization::Completed(completed))
+                    if let Some(outcome) = outcome {
+                        store_outbox(transaction, &outcome).await?;
+                    }
+                    Ok(completed)
                 })
             })
             .await

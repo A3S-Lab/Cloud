@@ -5,10 +5,9 @@ mod fixture;
 
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_control_plane::modules::artifacts::{
-    BoxBuildEvidenceGenerator, BuildEvidence, BuildRunFinalization, BuildRunStatus, BuildSource,
-    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildOutputValidator, IBuildRunRepository,
-    NodeArtifactObjectStore, OciPublicationRequest, PostgresBuildRunRepository,
-    VaultBuildEvidenceSigner,
+    BoxBuildEvidenceGenerator, BuildEvidence, BuildRunStatus, BuildSource, IBuildArtifactPublisher,
+    IBuildEvidenceGenerator, IBuildOutputValidator, IBuildRunRepository, NodeArtifactObjectStore,
+    OciPublicationRequest, PostgresBuildRunRepository, VaultBuildEvidenceSigner,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -174,12 +173,7 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
     .await?;
     let expected_version = build.aggregate_version;
     build.complete(next_time(&mut at))?;
-    let BuildRunFinalization::Completed(build) = builds.finalize(build, expected_version).await?
-    else {
-        return Err(test_error(
-            "G0 external BuildRun finalization was unexpectedly rejected",
-        ));
-    };
+    let build = builds.finalize(build, expected_version).await?;
     if build.status != BuildRunStatus::Succeeded
         || build.published_artifact.as_ref() != Some(&published)
         || build.evidence.as_deref() != Some(&evidence_for_certification)

@@ -16,7 +16,9 @@ use a3s_cloud_control_plane::modules::agents::{
     PostgresAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecution,
     StartAgentExecutionHandler,
 };
-use a3s_cloud_control_plane::modules::artifacts::PostgresBuildRunRepository;
+use a3s_cloud_control_plane::modules::artifacts::{
+    HostedArtifactQueryService, PostgresBuildRunRepository,
+};
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, PostgresAssetRepository,

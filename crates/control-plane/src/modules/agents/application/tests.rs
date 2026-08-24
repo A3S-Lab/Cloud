@@ -9,8 +9,9 @@ use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
 };
 use crate::modules::agents::InMemoryAgentRepository;
+use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
-use crate::modules::artifacts::InMemoryBuildRunRepository;
+use crate::modules::artifacts::{HostedArtifactQueryService, InMemoryBuildRunRepository};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseVersion, AssetReleaseWrite, AssetWrite,
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
@@ -62,6 +63,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
     });
     let builds = Arc::new(InMemoryBuildRunRepository::new());
     builds.seed_build(build).await;
+    let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
     let agents = Arc::new(InMemoryAgentRepository::new());
     let context = || CqrsContext::new(ModuleRef::new());
 
@@ -90,7 +92,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         created.conversation.id
     );
 
-    let start_handler = StartAgentExecutionHandler::new(agents.clone(), assets, builds);
+    let start_handler = StartAgentExecutionHandler::new(agents.clone(), assets, artifacts);
     let start = StartAgentExecution {
         organization_id,
         conversation_id: created.conversation.id,
@@ -271,8 +273,11 @@ fn published_release(
     )
     .expect("draft release");
     let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, drafted_at);
+    let outcome = project_hosted_build_outcome(&build)
+        .expect("project hosted outcome")
+        .expect("successful hosted outcome");
     release
-        .publish_from_build(asset, &build)
+        .publish_from_hosted_build(asset, &outcome)
         .expect("publish release");
     (release, build)
 }

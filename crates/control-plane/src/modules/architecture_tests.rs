@@ -14,7 +14,6 @@ agents/presentation/controllers/agent_commands_controller.rs -> identity/present
 agents/presentation/controllers/agent_queries_controller.rs -> identity/presentation
 applications/presentation/controller.rs -> identity/presentation
 applications/presentation/delivery_controller.rs -> identity/presentation
-artifacts/infrastructure/persistence/postgres.rs -> assets/infrastructure
 artifacts/presentation/controllers/build_run_commands_controller.rs -> identity/presentation
 artifacts/presentation/controllers/build_run_queries_controller.rs -> identity/presentation
 assets/presentation/controllers/asset_commands_controller.rs -> identity/presentation
@@ -283,6 +282,139 @@ fn artifacts_application_and_presentation_do_not_import_fleet_authority() {
     assert!(
         violations.is_empty(),
         "Artifacts imported Fleet logs, placement, or response DTOs instead of its owner log-query port:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn artifacts_application_never_reaches_into_assets() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("artifacts") || layer(relative) != Some("application") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::assets"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts Application attempted to coordinate or mutate Assets instead of publishing an owner fact:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn artifacts_finalization_never_mutates_asset_storage() {
+    let source = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Artifacts PostgreSQL persistence");
+    let forbidden = [
+        "crate::modules::assets",
+        "update asset_releases",
+        "insert into asset_releases",
+        "delete from asset_releases",
+        "persist_release_transition",
+        "plan_hosted_release",
+        "apply_hosted_release",
+    ];
+    let violations = forbidden
+        .into_iter()
+        .filter(|needle| source.contains(needle))
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts finalization regained foreign Asset write authority: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn artifacts_finalization_has_no_consumer_rejection_protocol() {
+    let files = [
+        "artifacts/domain/repositories/build_run_repository.rs",
+        "artifacts/infrastructure/build_flow/steps/validation.rs",
+        "artifacts/infrastructure/persistence/postgres.rs",
+        "artifacts/infrastructure/persistence/in_memory.rs",
+    ];
+    let forbidden = [
+        "enum BuildRunFinalization {",
+        "BuildRunFinalization::Rejected",
+        "rejected hosted build",
+        "hosted release rejection",
+    ];
+    let mut violations = BTreeSet::new();
+
+    for relative in files {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        for needle in forbidden {
+            if source.contains(needle) {
+                violations.insert(format!("{relative} contains {needle:?}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts finalization regained a consumer-owned rejection or compensation protocol:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn assets_domain_enters_artifacts_only_through_published_language() {
+    const ARTIFACTS_PREFIX: &str = "crate::modules::artifacts::";
+    const PUBLISHED_PREFIX: &str = "crate::modules::artifacts::published::";
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("assets") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains(ARTIFACTS_PREFIX))
+        {
+            if !line.contains(PUBLISHED_PREFIX) {
+                violations.insert(format!("{} contains {line:?}", display(relative)));
+            }
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Assets Domain imported an Artifacts aggregate or implementation instead of its Published Language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn workloads_domain_never_imports_artifacts_aggregates() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("workloads") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::artifacts"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Workloads Domain imported Artifacts instead of receiving a Workloads-owned admission value:\n{}",
         violations.into_iter().collect::<Vec<_>>().join("\n")
     );
 }

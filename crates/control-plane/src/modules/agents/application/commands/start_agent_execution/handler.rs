@@ -6,7 +6,7 @@ use crate::modules::agents::domain::{
     AgentExecutionEventKind, AgentExecutionStarted, AgentReleaseBinding, IAgentRepository,
     StartAgentExecutionWrite,
 };
-use crate::modules::artifacts::domain::IBuildRunRepository;
+use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OperationId, Sha256Digest};
@@ -16,19 +16,19 @@ use std::sync::Arc;
 pub struct StartAgentExecutionHandler {
     agents: Arc<dyn IAgentRepository>,
     assets: Arc<dyn IAssetRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    artifacts: Arc<dyn IHostedArtifactQueryPort>,
 }
 
 impl StartAgentExecutionHandler {
     pub fn new(
         agents: Arc<dyn IAgentRepository>,
         assets: Arc<dyn IAssetRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        artifacts: Arc<dyn IHostedArtifactQueryPort>,
     ) -> Self {
         Self {
             agents,
             assets,
-            builds,
+            artifacts,
         }
     }
 }
@@ -42,7 +42,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
     {
         let agents = Arc::clone(&self.agents);
         let assets = Arc::clone(&self.assets);
-        let builds = Arc::clone(&self.builds);
+        let artifacts = Arc::clone(&self.artifacts);
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
@@ -103,7 +103,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
             }
             let deployable = match load_deployable_agent_release(
                 assets.as_ref(),
-                builds.as_ref(),
+                artifacts.as_ref(),
                 command.organization_id,
                 command.agent_asset_id,
                 command.agent_asset_release_id,
@@ -115,16 +115,16 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
             };
             let binding = match AgentReleaseBinding::new(
                 command.organization_id,
-                deployable.asset.id,
-                deployable.release.id,
-                deployable.build.id,
-                deployable.artifact_uri,
-                match Sha256Digest::parse(deployable.artifact_digest) {
+                deployable.asset_id(),
+                deployable.asset_release_id(),
+                deployable.build_run_id(),
+                deployable.artifact_uri(),
+                match Sha256Digest::parse(deployable.artifact_digest()) {
                     Ok(digest) => digest,
                     Err(error) => return Ok(Err(ApplicationError::Internal(error))),
                 },
-                deployable.artifact_media_type,
-                deployable.artifact_size_bytes,
+                deployable.artifact_media_type(),
+                deployable.artifact_size_bytes(),
             ) {
                 Ok(binding) => binding,
                 Err(error) => return Ok(Err(ApplicationError::Internal(error))),

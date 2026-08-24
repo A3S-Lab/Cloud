@@ -1,5 +1,4 @@
 use super::{SecretBinding, Workload};
-use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, AssetState,
     McpServiceProfile, McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
@@ -414,6 +413,60 @@ pub struct AgentWorkloadRevisionBinding {
     build_run_id: BuildRunId,
 }
 
+/// Workloads-owned admission facts for binding one published Agent release.
+///
+/// The Assets application boundary translates its deployable release read
+/// model into this value. Workloads therefore depends on neither an Asset
+/// aggregate nor an Artifacts BuildRun aggregate when enforcing its own
+/// revision invariants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentReleaseAdmission {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    build_run_id: BuildRunId,
+    published_at: DateTime<Utc>,
+    artifact: OciArtifact,
+}
+
+impl AgentReleaseAdmission {
+    pub fn new(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        build_run_id: BuildRunId,
+        published_at: DateTime<Utc>,
+        artifact: OciArtifact,
+    ) -> Result<Self, String> {
+        let admission = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            build_run_id,
+            published_at: canonical_timestamp(published_at),
+            artifact,
+        };
+        admission.validate()?;
+        Ok(admission)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || self.build_run_id.as_uuid().is_nil()
+            || self.published_at != canonical_timestamp(self.published_at)
+        {
+            return Err("Agent release admission identity is invalid".into());
+        }
+        self.artifact.validate()
+    }
+
+    pub const fn artifact(&self) -> &OciArtifact {
+        &self.artifact
+    }
+}
+
 impl AgentWorkloadRevisionBinding {
     pub const fn organization_id(&self) -> OrganizationId {
         self.organization_id
@@ -777,21 +830,12 @@ impl WorkloadRevision {
     pub fn bind_agent_release(
         &mut self,
         workload: &Workload,
-        asset: &Asset,
-        release: &AssetRelease,
-        build: &BuildRun,
+        admission: &AgentReleaseAdmission,
     ) -> Result<bool, String> {
-        asset.validate()?;
-        release.validate_for(asset)?;
-        release.validate_build_publication(asset, build)?;
+        admission.validate()?;
         if self.workload_id != workload.id
-            || workload.organization_id != asset.organization_id
-            || asset.kind != AssetKind::Agent
-            || asset.state != AssetState::Active
-            || release.organization_id != workload.organization_id
-            || release.asset_id != asset.id
-            || release.state != AssetReleaseState::Published
-            || self.created_at < release.updated_at
+            || workload.organization_id != admission.organization_id
+            || self.created_at < admission.published_at
             || self.external_build.is_some()
             || self.mcp_binding.is_some()
         {
@@ -799,29 +843,15 @@ impl WorkloadRevision {
                 "Agent Workload revision does not match its tenant or published release".into(),
             );
         }
-        let release_artifact = release
-            .artifact
-            .as_ref()
-            .ok_or_else(|| "published Agent release omitted its OCI artifact".to_owned())?;
-        if release_artifact.kind() != AssetReleaseArtifactKind::OciService {
-            return Err("Agent Workload requires an OCI Service release".into());
-        }
-        let published = build
-            .published_artifact
-            .as_ref()
-            .ok_or_else(|| "published Agent release omitted its OCI publication".to_owned())?;
         let template = self.resolved_template()?;
-        if template.artifact.uri != published.uri
-            || template.artifact.digest != release_artifact.digest().as_str()
-            || template.artifact.media_type != release_artifact.media_type()
-        {
+        if template.artifact != admission.artifact {
             return Err("Agent Workload artifact does not match its exact AssetRelease".into());
         }
         let binding = AgentWorkloadRevisionBinding::restore(
             workload.organization_id,
-            asset.id,
-            release.id,
-            build.id,
+            admission.asset_id,
+            admission.asset_release_id,
+            admission.build_run_id,
         )?;
         match &self.agent_binding {
             Some(existing) if existing == &binding => Ok(false),

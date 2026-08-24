@@ -5,6 +5,5 @@ pub(crate) use build_run_repository::{
     BuildRunFinalizationMode,
 };
 pub use build_run_repository::{
-    BuildRunFinalization, IBuildRunRepository, RequestBuildCancellationBundle,
-    RequestBuildRetryBundle,
+    IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };

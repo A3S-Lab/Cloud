@@ -15,7 +15,9 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
     .await?;
 
     let assets = Arc::new(PostgresAssetRepository::new(executor.clone()));
-    let builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let artifacts = Arc::new(HostedArtifactQueryService::new(Arc::new(
+        PostgresBuildRunRepository::new(executor.clone()),
+    )));
     let agents = Arc::new(PostgresAgentRepository::new(executor.clone()));
     let nodes = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
@@ -75,7 +77,7 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
     let workload = CreateAgentWorkloadDeploymentHandler::new(
         projects.clone(),
         assets.clone(),
-        builds.clone(),
+        artifacts.clone(),
         workloads.clone(),
         secrets,
         nodes.clone(),
@@ -203,7 +205,7 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         )
         .await?
         .map_err(|error| invalid(format!("could not create Agent conversation: {error}")))?;
-    let execution = StartAgentExecutionHandler::new(agents.clone(), assets, builds)
+    let execution = StartAgentExecutionHandler::new(agents.clone(), assets, artifacts)
         .execute(
             StartAgentExecution {
                 organization_id,

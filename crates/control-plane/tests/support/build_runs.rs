@@ -12,15 +12,19 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
     RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunFinalization, BuildRunStatus, BuildSubject,
-    IBuildRunRepository, OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository, OciDescriptor,
+    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
+    ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
-    CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
+    CreateAssetReleaseWrite, HostedBuildOutcomeProjector, IAssetRepository,
+    PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
+use a3s_cloud_control_plane::modules::integration_events::{
+    IIntegrationEventProjector, OutboxMessage,
+};
 use a3s_cloud_control_plane::modules::operations::{
     IOperationRepository, OperationProjection, OperationRequest, OperationStatus, OperationSubject,
     PostgresOperationRepository, WorkflowIdentity,
@@ -704,9 +708,6 @@ pub async fn exercise_build_run_persistence(
     let cancelled = builds
         .finalize(cancelled, cancelling.aggregate_version)
         .await?;
-    let BuildRunFinalization::Completed(cancelled) = cancelled else {
-        return Err("external BuildRun finalization was unexpectedly rejected".into());
-    };
     let retry = BuildRun::retry(
         &cancelled,
         cancellation_accepted_at + Duration::milliseconds(3),
@@ -981,9 +982,6 @@ pub async fn exercise_hosted_build_run_persistence(
         Err(RepositoryError::Conflict(_))
     ));
     let failed = left_repository.finalize(build, expected).await?;
-    let BuildRunFinalization::Completed(failed) = failed else {
-        return Err("failed hosted Asset build was unexpectedly rejected".into());
-    };
     assert_eq!(failed.status, BuildRunStatus::Failed);
     assert_eq!(
         assets
@@ -1326,21 +1324,49 @@ async fn drive_hosted_release_publication(
         builds.finalize(build, expected),
     );
     let finalized = [left?, right?];
-    let BuildRunFinalization::Completed(succeeded) = &finalized[0] else {
-        return Err("active hosted Asset publication was unexpectedly rejected".into());
-    };
-    let succeeded = succeeded.clone();
-    assert_eq!(
-        finalized[1],
-        BuildRunFinalization::Completed(succeeded.clone())
-    );
+    let succeeded = finalized[0].clone();
+    assert_eq!(finalized[1], succeeded);
     assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
     let replayed = builds
         .finalize(succeeded.clone(), succeeded.aggregate_version)
         .await?;
-    assert_eq!(replayed, BuildRunFinalization::Completed(succeeded.clone()));
+    assert_eq!(replayed, succeeded);
 
-    let assets = PostgresAssetRepository::new(executor.clone());
+    let assets: Arc<dyn IAssetRepository> =
+        Arc::new(PostgresAssetRepository::new(executor.clone()));
+    assert_eq!(
+        assets
+            .find_release(asset.organization_id, asset.id, release.id)
+            .await?,
+        Some(release.clone()),
+        "Artifacts finalization must commit only its own aggregate and owner fact"
+    );
+    let hosted_outcome_count = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where organization_id = ")
+                .bind(asset.organization_id.as_uuid())
+                .append(" and aggregate_id = ")
+                .bind(succeeded.id.as_uuid())
+                .append(" and event_key = 'artifact.hosted-build.succeeded'"),
+        )
+        .await?;
+    assert_eq!(hosted_outcome_count, 1);
+    let outcome_json = database
+        .fetch_one_as(
+            sql_query::<serde_json::Value>(
+                "select jsonb_build_object('event_id', event_id, 'event_key', event_key, 'schema_version', schema_version, 'organization_id', organization_id, 'aggregate_id', aggregate_id, 'aggregate_version', aggregate_version, 'occurred_at', occurred_at, 'correlation_id', correlation_id, 'causation_id', causation_id, 'payload', payload, 'delivery_attempts', delivery_attempts) from outbox_events where organization_id = ",
+            )
+            .bind(asset.organization_id.as_uuid())
+            .append(" and aggregate_id = ")
+            .bind(succeeded.id.as_uuid())
+            .append(" and event_key = 'artifact.hosted-build.succeeded'"),
+        )
+        .await?;
+    let outcome_message: OutboxMessage = serde_json::from_value(outcome_json)?;
+    let projector = HostedBuildOutcomeProjector::new(Arc::clone(&assets));
+    projector.project(&outcome_message).await?;
+    projector.project(&outcome_message).await?;
+
     let published = assets
         .find_release(asset.organization_id, asset.id, release.id)
         .await?
@@ -1352,6 +1378,19 @@ async fn drive_hosted_release_publication(
         .ok_or("published hosted Asset release omitted provenance")?;
     assert_eq!(provenance.build_run_id(), succeeded.id);
     assert_eq!(provenance.provenance_digest().as_str(), provenance_digest);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where organization_id = ",)
+                    .bind(asset.organization_id.as_uuid())
+                    .append(" and aggregate_id = ")
+                    .bind(release.id.as_uuid())
+                    .append(" and event_key = 'asset.release.published'"),
+            )
+            .await?,
+        1,
+        "replaying the owner fact must not duplicate Asset publication"
+    );
     Ok(published)
 }
 
@@ -1414,9 +1453,6 @@ async fn attest_and_complete_published_build(
     let succeeded = builds
         .finalize(succeeded, cleaning.aggregate_version)
         .await?;
-    let BuildRunFinalization::Completed(succeeded) = succeeded else {
-        return Err("external BuildRun finalization was unexpectedly rejected".into());
-    };
     assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
     assert_eq!(succeeded.evidence.as_deref(), Some(&evidence));
     assert_eq!(builds.find(organization_id, build_id).await?, succeeded);

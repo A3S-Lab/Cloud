@@ -1,9 +1,10 @@
+use crate::modules::artifacts::application::hosted_build_outcome_event;
 use crate::modules::artifacts::domain::repositories::{
     validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
+    BuildRunFinalizationMode,
 };
 use crate::modules::artifacts::domain::{
-    BuildRun, BuildRunFinalization, BuildRunStatus, IBuildRunRepository,
-    RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
@@ -27,7 +28,7 @@ struct State {
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
-    hosted_publications: BTreeMap<(OrganizationId, AssetReleaseId), (BuildRunId, String)>,
+    outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
 }
 
 #[derive(Clone)]
@@ -113,17 +114,8 @@ impl InMemoryBuildRunRepository {
             .insert(build_run_id);
     }
 
-    pub async fn hosted_release_publication(
-        &self,
-        organization_id: OrganizationId,
-        asset_release_id: AssetReleaseId,
-    ) -> Option<(BuildRunId, String)> {
-        self.state
-            .read()
-            .await
-            .hosted_publications
-            .get(&(organization_id, asset_release_id))
-            .cloned()
+    pub async fn outbox_events(&self) -> Vec<a3s_cloud_contracts::DomainEventEnvelope> {
+        self.state.read().await.outbox.clone()
     }
 
     #[cfg(test)]
@@ -431,7 +423,7 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         &self,
         build_run: BuildRun,
         expected_version: u64,
-    ) -> Result<BuildRunFinalization, RepositoryError> {
+    ) -> Result<BuildRun, RepositoryError> {
         let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
         let mut state = self.state.write().await;
         let key = (build_run.organization_id, build_run.id);
@@ -440,42 +432,17 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .get(&key)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        validate_build_run_finalization(&existing, &build_run, expected_version)?;
-        if let Some(asset_release_id) = build_run.asset_release_id() {
-            let publication_key = (build_run.organization_id, asset_release_id);
-            if build_run.status == BuildRunStatus::Succeeded {
-                let provenance_digest = build_run
-                    .evidence
-                    .as_deref()
-                    .ok_or_else(|| {
-                        RepositoryError::Conflict(
-                            "successful hosted BuildRun has no verified evidence".into(),
-                        )
-                    })?
-                    .provenance_digest
-                    .clone();
-                match state.hosted_publications.get(&publication_key) {
-                    Some((build_run_id, digest))
-                        if *build_run_id == build_run.id && digest == &provenance_digest => {}
-                    Some(_) => {
-                        return Err(RepositoryError::Conflict(
-                            "hosted release publication changed during replay".into(),
-                        ))
-                    }
-                    None => {
-                        state
-                            .hosted_publications
-                            .insert(publication_key, (build_run.id, provenance_digest));
-                    }
-                }
-            } else if state.hosted_publications.contains_key(&publication_key) {
-                return Err(RepositoryError::Conflict(
-                    "failed or cancelled hosted BuildRun cannot own a published release".into(),
-                ));
-            }
-        }
+        let mode = validate_build_run_finalization(&existing, &build_run, expected_version)?;
+        let outcome = if mode == BuildRunFinalizationMode::Transition {
+            hosted_build_outcome_event(&build_run).map_err(RepositoryError::Storage)?
+        } else {
+            None
+        };
         state.builds.insert(key, build_run.clone());
-        Ok(BuildRunFinalization::Completed(build_run))
+        if let Some(outcome) = outcome {
+            state.outbox.push(outcome);
+        }
+        Ok(build_run)
     }
 }
 
@@ -484,6 +451,9 @@ mod tests {
     use super::*;
     use crate::modules::artifacts::domain::test_support::hosted_build_ready_for_completion;
     use crate::modules::artifacts::domain::BuildSubject;
+    use crate::modules::artifacts::published::{
+        HostedBuildOutcome, HOSTED_BUILD_OUTCOME_EVENT_KEY,
+    };
     use chrono::Duration;
     use std::sync::Arc;
 
@@ -741,9 +711,6 @@ mod tests {
             .finalize(completed, failed.aggregate_version)
             .await
             .expect("finalize terminal failure");
-        let BuildRunFinalization::Completed(completed) = completed else {
-            panic!("external BuildRun finalization was rejected");
-        };
         let retry = BuildRun::retry(&completed, requested_at + Duration::milliseconds(3))
             .expect("retry build");
         let idempotency = IdempotencyRequest::new(
@@ -815,7 +782,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hosted_success_finalizes_once_and_replays_the_same_publication_binding() {
+    async fn hosted_success_finalizes_once_and_replays_one_owner_outcome() {
         let repository = InMemoryBuildRunRepository::new();
         let organization_id = OrganizationId::new();
         let asset_id = AssetId::new();
@@ -857,22 +824,20 @@ mod tests {
             .finalize(succeeded.clone(), expected)
             .await
             .expect("finalize hosted build");
-        assert_eq!(
-            finalized,
-            BuildRunFinalization::Completed(succeeded.clone())
-        );
-        let evidence = succeeded.evidence.as_deref().expect("hosted evidence");
-        assert_eq!(
-            repository
-                .hosted_release_publication(organization_id, asset_release_id)
-                .await,
-            Some((succeeded.id, evidence.provenance_digest.clone()))
-        );
+        assert_eq!(finalized, succeeded);
+        let events = repository.outbox_events().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_key, HOSTED_BUILD_OUTCOME_EVENT_KEY);
+        let outcome: HostedBuildOutcome =
+            serde_json::from_value(events[0].payload.clone()).expect("hosted outcome");
+        assert_eq!(outcome.asset_release_id(), asset_release_id);
+        assert_eq!(outcome.build_run_id(), succeeded.id);
 
         let replayed = repository
             .finalize(succeeded.clone(), succeeded.aggregate_version)
             .await
             .expect("replay hosted finalization");
-        assert_eq!(replayed, BuildRunFinalization::Completed(succeeded));
+        assert_eq!(replayed, succeeded);
+        assert_eq!(repository.outbox_events().await.len(), 1);
     }
 }

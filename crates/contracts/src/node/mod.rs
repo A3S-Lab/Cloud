@@ -25,6 +25,7 @@ pub use box_build::{
     NodeBoxBuildInspection, NodeBoxBuildOperationCancellation, NodeBoxBuildOperationRemoval,
     NodeBoxBuildOutput, NodeBoxBuildPhase, NodeBoxBuildPlan, NodeBoxBuildPlatform,
     NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, BOX_BUILD_OUTPUT_NAME,
+    MAX_BOX_ARTIFACT_BYTES, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 pub use code_agent::{
     NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1,

@@ -716,7 +716,7 @@ impl BuildRun {
         Ok(())
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(in crate::modules::artifacts) fn validate(&self) -> Result<(), String> {
         self.subject.validate()?;
         let expected_id = Self::id_for_subject_attempt(self.subject, self.attempt)?;
         let expected_retry = if self.attempt == 1 {
