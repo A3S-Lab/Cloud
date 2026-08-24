@@ -1383,6 +1383,387 @@
             }
           }
         }
+      },
+      "WorkflowDefinitionListSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": [
+                {
+                  "aggregateVersion": 1,
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionNumber": 1,
+                  "description": "example",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "name": "Example resource",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "updatedAt": "2026-08-22T00:00:00Z"
+                }
+              ],
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowDefinitionListSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowDefinitionMutationSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "replayed": false,
+                "revision": {
+                  "canonicalDefinitionAcl": "version = 1\n",
+                  "compilerSchemaVersion": 1,
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.workflow.definition.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "payloadCount": 1,
+                  "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "payloads": [
+                    {
+                      "canonicalAcl": "version = 1\n",
+                      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                      "kind": "configuration",
+                      "schema": "cloud.workflow.configuration.v1"
+                    }
+                  ],
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "revisionNumber": 1,
+                  "semanticContractCount": 0,
+                  "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "semanticContracts": [
+                    {
+                      "canonicalAcl": "version = 1\n",
+                      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                      "kind": "composite_regions",
+                      "schema": "cloud.workflow.composite-regions.v1"
+                    }
+                  ],
+                  "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+                },
+                "workflowDefinition": {
+                  "aggregateVersion": 1,
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionNumber": 1,
+                  "description": "example",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "name": "Example resource",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "updatedAt": "2026-08-22T00:00:00Z"
+                }
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowDefinitionMutationSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowDefinitionMutationSuccess201": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "replayed": false,
+                "revision": {
+                  "canonicalDefinitionAcl": "version = 1\n",
+                  "compilerSchemaVersion": 1,
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.workflow.definition.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "payloadCount": 1,
+                  "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "payloads": [
+                    {
+                      "canonicalAcl": "version = 1\n",
+                      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                      "kind": "configuration",
+                      "schema": "cloud.workflow.configuration.v1"
+                    }
+                  ],
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "revisionNumber": 1,
+                  "semanticContractCount": 0,
+                  "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "semanticContracts": [
+                    {
+                      "canonicalAcl": "version = 1\n",
+                      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                      "kind": "composite_regions",
+                      "schema": "cloud.workflow.composite-regions.v1"
+                    }
+                  ],
+                  "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+                },
+                "workflowDefinition": {
+                  "aggregateVersion": 1,
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "currentRevisionNumber": 1,
+                  "description": "example",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "name": "Example resource",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "updatedAt": "2026-08-22T00:00:00Z"
+                }
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowDefinitionMutationSuccessResponse"
+            }
+          }
+        },
+        "description": "Created",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowDefinitionSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "aggregateVersion": 1,
+                "createdAt": "2026-08-22T00:00:00Z",
+                "createdBy": "00000000-0000-4000-8000-000000000001",
+                "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+                "currentRevisionNumber": 1,
+                "description": "example",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "name": "Example resource",
+                "organizationId": "00000000-0000-4000-8000-000000000001",
+                "projectId": "00000000-0000-4000-8000-000000000001",
+                "updatedAt": "2026-08-22T00:00:00Z"
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowDefinitionSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowRevisionSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "canonicalDefinitionAcl": "version = 1\n",
+                "compilerSchemaVersion": 1,
+                "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "contractSchema": "cloud.workflow.definition.v1",
+                "createdAt": "2026-08-22T00:00:00Z",
+                "createdBy": "00000000-0000-4000-8000-000000000001",
+                "id": "00000000-0000-4000-8000-000000000001",
+                "organizationId": "00000000-0000-4000-8000-000000000001",
+                "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+                "payloadCount": 1,
+                "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "payloads": [
+                  {
+                    "canonicalAcl": "version = 1\n",
+                    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                    "kind": "configuration",
+                    "schema": "cloud.workflow.configuration.v1"
+                  }
+                ],
+                "projectId": "00000000-0000-4000-8000-000000000001",
+                "revisionNumber": 1,
+                "semanticContractCount": 0,
+                "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "semanticContracts": [
+                  {
+                    "canonicalAcl": "version = 1\n",
+                    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                    "kind": "composite_regions",
+                    "schema": "cloud.workflow.composite-regions.v1"
+                  }
+                ],
+                "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowRevisionSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowRevisionSummaryListSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": [
+                {
+                  "compilerSchemaVersion": 1,
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.workflow.definition.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+                  "payloadCount": 1,
+                  "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "revisionNumber": 1,
+                  "semanticContractCount": 0,
+                  "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+                }
+              ],
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowRevisionSummaryListSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.62.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -3164,6 +3545,1348 @@
           "data",
           "requestId",
           "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowCompositeRegionsSemanticContract": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowCompositeRegionsSemanticContract contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "composite_regions",
+          "schema": "cloud.workflow.composite-regions.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 524288,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "composite_regions"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSemanticContractSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.composite-regions.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowConfigurationPayload": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowConfigurationPayload contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "configuration",
+          "schema": "cloud.workflow.configuration.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 262144,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "configuration"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPayloadSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.configuration.v1",
+                  "cloud.workflow.configuration.list-operator.v1",
+                  "cloud.workflow.configuration.variable-aggregate.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowDataSchemaPayload": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowDataSchemaPayload contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "data_schema",
+          "schema": "cloud.workflow.data-schema.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 262144,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "data_schema"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPayloadSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.data-schema.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinition": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowDefinition contract.",
+        "example": {
+          "aggregateVersion": 1,
+          "createdAt": "2026-08-22T00:00:00Z",
+          "createdBy": "00000000-0000-4000-8000-000000000001",
+          "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+          "currentRevisionNumber": 1,
+          "description": "example",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "Example resource",
+          "organizationId": "00000000-0000-4000-8000-000000000001",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "updatedAt": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "aggregateVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "currentRevisionDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "currentRevisionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "currentRevisionNumber": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationId",
+          "projectId",
+          "id",
+          "name",
+          "description",
+          "currentRevisionId",
+          "currentRevisionNumber",
+          "currentRevisionDigest",
+          "aggregateVersion",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionList": {
+        "description": "Reusable schema for the A3S Cloud WorkflowDefinitionList contract.",
+        "example": [
+          {
+            "aggregateVersion": 1,
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionNumber": 1,
+            "description": "example",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "Example resource",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "updatedAt": "2026-08-22T00:00:00Z"
+          }
+        ],
+        "items": {
+          "$ref": "#/components/schemas/WorkflowDefinition"
+        },
+        "type": "array"
+      },
+      "WorkflowDefinitionListSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/WorkflowDefinitionList"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying WorkflowDefinitionListSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": [
+            {
+              "aggregateVersion": 1,
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+              "currentRevisionNumber": 1,
+              "description": "example",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "Example resource",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "updatedAt": "2026-08-22T00:00:00Z"
+            }
+          ],
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionMutation": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowDefinitionMutation contract.",
+        "example": {
+          "replayed": false,
+          "revision": {
+            "canonicalDefinitionAcl": "version = 1\n",
+            "compilerSchemaVersion": 1,
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.workflow.definition.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "payloadCount": 1,
+            "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "payloads": [
+              {
+                "canonicalAcl": "version = 1\n",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "kind": "configuration",
+                "schema": "cloud.workflow.configuration.v1"
+              }
+            ],
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "revisionNumber": 1,
+            "semanticContractCount": 0,
+            "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "semanticContracts": [
+              {
+                "canonicalAcl": "version = 1\n",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "kind": "composite_regions",
+                "schema": "cloud.workflow.composite-regions.v1"
+              }
+            ],
+            "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+          },
+          "workflowDefinition": {
+            "aggregateVersion": 1,
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionNumber": 1,
+            "description": "example",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "Example resource",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "updatedAt": "2026-08-22T00:00:00Z"
+          }
+        },
+        "properties": {
+          "replayed": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/WorkflowRevision"
+          },
+          "workflowDefinition": {
+            "$ref": "#/components/schemas/WorkflowDefinition"
+          }
+        },
+        "required": [
+          "workflowDefinition",
+          "revision",
+          "replayed"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionMutationSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/WorkflowDefinitionMutation"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying WorkflowDefinitionMutationSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "replayed": false,
+            "revision": {
+              "canonicalDefinitionAcl": "version = 1\n",
+              "compilerSchemaVersion": 1,
+              "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractSchema": "cloud.workflow.definition.v1",
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+              "payloadCount": 1,
+              "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "payloads": [
+                {
+                  "canonicalAcl": "version = 1\n",
+                  "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "kind": "configuration",
+                  "schema": "cloud.workflow.configuration.v1"
+                }
+              ],
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "revisionNumber": 1,
+              "semanticContractCount": 0,
+              "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "semanticContracts": [
+                {
+                  "canonicalAcl": "version = 1\n",
+                  "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "kind": "composite_regions",
+                  "schema": "cloud.workflow.composite-regions.v1"
+                }
+              ],
+              "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+            },
+            "workflowDefinition": {
+              "aggregateVersion": 1,
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+              "currentRevisionNumber": 1,
+              "description": "example",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "name": "Example resource",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "updatedAt": "2026-08-22T00:00:00Z"
+            }
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowDefinitionSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/WorkflowDefinition"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying WorkflowDefinitionSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "aggregateVersion": 1,
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "currentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "currentRevisionNumber": 1,
+            "description": "example",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "Example resource",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "updatedAt": "2026-08-22T00:00:00Z"
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowDescriptorBindingsSemanticContract": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowDescriptorBindingsSemanticContract contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "descriptor_bindings",
+          "schema": "cloud.workflow.step-descriptor-bindings.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 524288,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "descriptor_bindings"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSemanticContractSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.step-descriptor-bindings.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowDescriptorRegistrySemanticContract": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowDescriptorRegistrySemanticContract contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "descriptor_registry",
+          "schema": "cloud.workflow.step-descriptor-registry.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 4194304,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "descriptor_registry"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSemanticContractSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.step-descriptor-registry.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowPayload": {
+        "description": "Reusable schema for the A3S Cloud WorkflowPayload contract.",
+        "discriminator": {
+          "mapping": {
+            "configuration": "#/components/schemas/WorkflowConfigurationPayload",
+            "data_schema": "#/components/schemas/WorkflowDataSchemaPayload",
+            "policy": "#/components/schemas/WorkflowPolicyPayload"
+          },
+          "propertyName": "kind"
+        },
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "configuration",
+          "schema": "cloud.workflow.configuration.v1"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WorkflowConfigurationPayload"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowDataSchemaPayload"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowPolicyPayload"
+          }
+        ]
+      },
+      "WorkflowPayloadSchema": {
+        "description": "Reusable schema for the A3S Cloud WorkflowPayloadSchema contract.",
+        "enum": [
+          "cloud.workflow.configuration.v1",
+          "cloud.workflow.configuration.list-operator.v1",
+          "cloud.workflow.configuration.variable-aggregate.v1",
+          "cloud.workflow.data-schema.v1",
+          "cloud.workflow.policy.v1",
+          "cloud.workflow.policy.v2",
+          "cloud.workflow.policy.v3"
+        ],
+        "example": "cloud.workflow.configuration.v1",
+        "type": "string"
+      },
+      "WorkflowPolicyPayload": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowPolicyPayload contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "policy",
+          "schema": "cloud.workflow.policy.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 262144,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "policy"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPayloadSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.policy.v1",
+                  "cloud.workflow.policy.v2",
+                  "cloud.workflow.policy.v3"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevision": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowRevision contract.",
+        "example": {
+          "canonicalDefinitionAcl": "version = 1\n",
+          "compilerSchemaVersion": 1,
+          "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "contractSchema": "cloud.workflow.definition.v1",
+          "createdAt": "2026-08-22T00:00:00Z",
+          "createdBy": "00000000-0000-4000-8000-000000000001",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "organizationId": "00000000-0000-4000-8000-000000000001",
+          "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+          "payloadCount": 1,
+          "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "payloads": [
+            {
+              "canonicalAcl": "version = 1\n",
+              "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "kind": "configuration",
+              "schema": "cloud.workflow.configuration.v1"
+            }
+          ],
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "revisionNumber": 1,
+          "semanticContractCount": 0,
+          "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "semanticContracts": [
+            {
+              "canonicalAcl": "version = 1\n",
+              "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "kind": "composite_regions",
+              "schema": "cloud.workflow.composite-regions.v1"
+            }
+          ],
+          "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+        },
+        "properties": {
+          "canonicalDefinitionAcl": {
+            "maxLength": 1048576,
+            "minLength": 1,
+            "type": "string"
+          },
+          "compilerSchemaVersion": {
+            "enum": [
+              1,
+              2
+            ],
+            "type": "integer"
+          },
+          "contentDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "contractSchema": {
+            "enum": [
+              "cloud.workflow.definition.v1"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "parentDigest": {
+            "nullable": true,
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "parentRevisionId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "payloadCount": {
+            "maximum": 2048,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "payloadSetDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "payloads": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPayload"
+            },
+            "maxItems": 2048,
+            "minItems": 1,
+            "type": "array"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revisionNumber": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "semanticContractCount": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "semanticContractSetDigest": {
+            "nullable": true,
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "semanticContracts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSemanticContract"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "workflowDefinitionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationId",
+          "projectId",
+          "workflowDefinitionId",
+          "id",
+          "revisionNumber",
+          "parentRevisionId",
+          "parentDigest",
+          "contractSchema",
+          "compilerSchemaVersion",
+          "contentDigest",
+          "payloadSetDigest",
+          "payloadCount",
+          "semanticContractSetDigest",
+          "semanticContractCount",
+          "createdBy",
+          "createdAt",
+          "canonicalDefinitionAcl",
+          "payloads",
+          "semanticContracts"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/WorkflowRevision"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying WorkflowRevisionSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "canonicalDefinitionAcl": "version = 1\n",
+            "compilerSchemaVersion": 1,
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.workflow.definition.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "payloadCount": 1,
+            "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "payloads": [
+              {
+                "canonicalAcl": "version = 1\n",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "kind": "configuration",
+                "schema": "cloud.workflow.configuration.v1"
+              }
+            ],
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "revisionNumber": 1,
+            "semanticContractCount": 0,
+            "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "semanticContracts": [
+              {
+                "canonicalAcl": "version = 1\n",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "kind": "composite_regions",
+                "schema": "cloud.workflow.composite-regions.v1"
+              }
+            ],
+            "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionSummary": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowRevisionSummary contract.",
+        "example": {
+          "compilerSchemaVersion": 1,
+          "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "contractSchema": "cloud.workflow.definition.v1",
+          "createdAt": "2026-08-22T00:00:00Z",
+          "createdBy": "00000000-0000-4000-8000-000000000001",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "organizationId": "00000000-0000-4000-8000-000000000001",
+          "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+          "payloadCount": 1,
+          "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "revisionNumber": 1,
+          "semanticContractCount": 0,
+          "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+        },
+        "properties": {
+          "compilerSchemaVersion": {
+            "enum": [
+              1,
+              2
+            ],
+            "type": "integer"
+          },
+          "contentDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "contractSchema": {
+            "enum": [
+              "cloud.workflow.definition.v1"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "parentDigest": {
+            "nullable": true,
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "parentRevisionId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "payloadCount": {
+            "maximum": 2048,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "payloadSetDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revisionNumber": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "semanticContractCount": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "semanticContractSetDigest": {
+            "nullable": true,
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "workflowDefinitionId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationId",
+          "projectId",
+          "workflowDefinitionId",
+          "id",
+          "revisionNumber",
+          "parentRevisionId",
+          "parentDigest",
+          "contractSchema",
+          "compilerSchemaVersion",
+          "contentDigest",
+          "payloadSetDigest",
+          "payloadCount",
+          "semanticContractSetDigest",
+          "semanticContractCount",
+          "createdBy",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionSummaryList": {
+        "description": "Reusable schema for the A3S Cloud WorkflowRevisionSummaryList contract.",
+        "example": [
+          {
+            "compilerSchemaVersion": 1,
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.workflow.definition.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "id": "00000000-0000-4000-8000-000000000001",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+            "payloadCount": 1,
+            "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "revisionNumber": 1,
+            "semanticContractCount": 0,
+            "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "items": {
+          "$ref": "#/components/schemas/WorkflowRevisionSummary"
+        },
+        "type": "array"
+      },
+      "WorkflowRevisionSummaryListSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/WorkflowRevisionSummaryList"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying WorkflowRevisionSummaryListSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": [
+            {
+              "compilerSchemaVersion": 1,
+              "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractSchema": "cloud.workflow.definition.v1",
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "id": "00000000-0000-4000-8000-000000000001",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "parentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "parentRevisionId": "00000000-0000-4000-8000-000000000001",
+              "payloadCount": 1,
+              "payloadSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "revisionNumber": 1,
+              "semanticContractCount": 0,
+              "semanticContractSetDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "workflowDefinitionId": "00000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "WorkflowSemanticContract": {
+        "description": "Reusable schema for the A3S Cloud WorkflowSemanticContract contract.",
+        "discriminator": {
+          "mapping": {
+            "composite_regions": "#/components/schemas/WorkflowCompositeRegionsSemanticContract",
+            "descriptor_bindings": "#/components/schemas/WorkflowDescriptorBindingsSemanticContract",
+            "descriptor_registry": "#/components/schemas/WorkflowDescriptorRegistrySemanticContract",
+            "variable_contract": "#/components/schemas/WorkflowVariableContractSemanticContract",
+            "variable_defaults": "#/components/schemas/WorkflowVariableDefaultsSemanticContract"
+          },
+          "propertyName": "kind"
+        },
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "composite_regions",
+          "schema": "cloud.workflow.composite-regions.v1"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WorkflowCompositeRegionsSemanticContract"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowDescriptorBindingsSemanticContract"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowDescriptorRegistrySemanticContract"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowVariableContractSemanticContract"
+          },
+          {
+            "$ref": "#/components/schemas/WorkflowVariableDefaultsSemanticContract"
+          }
+        ]
+      },
+      "WorkflowSemanticContractSchema": {
+        "description": "Reusable schema for the A3S Cloud WorkflowSemanticContractSchema contract.",
+        "enum": [
+          "cloud.workflow.composite-regions.v1",
+          "cloud.workflow.step-descriptor-bindings.v1",
+          "cloud.workflow.step-descriptor-registry.v1",
+          "cloud.workflow.variable-contract.v1",
+          "cloud.workflow.variable-defaults.v1"
+        ],
+        "example": "cloud.workflow.composite-regions.v1",
+        "type": "string"
+      },
+      "WorkflowVariableContractSemanticContract": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowVariableContractSemanticContract contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "variable_contract",
+          "schema": "cloud.workflow.variable-contract.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 2097152,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "variable_contract"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSemanticContractSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.variable-contract.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
+        ],
+        "type": "object"
+      },
+      "WorkflowVariableDefaultsSemanticContract": {
+        "additionalProperties": false,
+        "description": "Reusable schema for the A3S Cloud WorkflowVariableDefaultsSemanticContract contract.",
+        "example": {
+          "canonicalAcl": "version = 1\n",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": "variable_defaults",
+          "schema": "cloud.workflow.variable-defaults.v1"
+        },
+        "properties": {
+          "canonicalAcl": {
+            "maxLength": 2097152,
+            "minLength": 1,
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "variable_defaults"
+            ],
+            "type": "string"
+          },
+          "schema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowSemanticContractSchema"
+              },
+              {
+                "enum": [
+                  "cloud.workflow.variable-defaults.v1"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "schema",
+          "digest",
+          "canonicalAcl"
         ],
         "type": "object"
       }
@@ -24998,7 +26721,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowDefinitionListSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -25188,10 +26911,10 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowDefinitionMutationSuccess200"
           },
           "201": {
-            "$ref": "#/components/responses/Success201"
+            "$ref": "#/components/responses/WorkflowDefinitionMutationSuccess201"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -27146,7 +28869,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowDefinitionSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -27222,7 +28945,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowRevisionSummaryListSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -27423,10 +29146,10 @@
         },
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowDefinitionMutationSuccess200"
           },
           "201": {
-            "$ref": "#/components/responses/Success201"
+            "$ref": "#/components/responses/WorkflowDefinitionMutationSuccess201"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -27519,7 +29242,7 @@
         ],
         "responses": {
           "200": {
-            "$ref": "#/components/responses/Success200"
+            "$ref": "#/components/responses/WorkflowRevisionSuccess200"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
