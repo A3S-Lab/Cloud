@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 147;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "147";
+const CLOUD_MIGRATION_COUNT: i64 = 148;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "148";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
