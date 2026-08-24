@@ -7,12 +7,12 @@ use super::workflow::{
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
-    execution_evidence_references, flow_step_id, human_decision_evidence_references,
-    FlowResumePayload, WorkflowCompositeFrameResolution, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
-    WorkflowStepProjectionStatus,
+    composite_child_evidence_references, execution_evidence_references, flow_step_id,
+    human_decision_evidence_references, FlowResumePayload, WorkflowCompositeFrameResolution,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
+    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
+    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
@@ -174,6 +174,21 @@ pub fn project_workflow_run_record(
                     .max_by_key(|observed| observed.metadata.frame.ordinal)
             })
             .flatten();
+        let composite_evidence_references = if resolved.plan.kind == WorkflowStepKind::Subworkflow {
+            composite_child_evidence_references(
+                composite_hooks
+                    .iter()
+                    .filter(|observed| {
+                        observed.metadata.frame.region_step_id == resolved.plan.id
+                            && snapshot
+                                .child_operations
+                                .contains_key(&observed.metadata.flow_hook_id())
+                    })
+                    .map(|observed| observed.metadata.frame.child_workflow_run_id()),
+            )?
+        } else {
+            Vec::new()
+        };
         let (step_status, attempt, result, selected_handle, step_error, sequence, at) =
             if let Some(((snapshot_hook, snapshot_metadata), write_hook)) = variable_hooks {
                 let hook = write_hook
@@ -644,6 +659,8 @@ pub fn project_workflow_run_record(
                 connector_evidence_references
             } else if resolved.plan.kind == WorkflowStepKind::HumanDecision {
                 human_evidence_references
+            } else if resolved.plan.kind == WorkflowStepKind::Subworkflow {
+                composite_evidence_references
             } else {
                 Vec::new()
             },

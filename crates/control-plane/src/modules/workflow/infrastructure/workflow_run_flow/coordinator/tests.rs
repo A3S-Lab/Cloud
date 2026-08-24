@@ -1010,7 +1010,20 @@ async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() 
         .expect("waiting parent projection");
     assert_eq!(waiting.run.status, WorkflowRunStatus::Waiting);
     assert_eq!(port.create_count(), 1);
+    let first_child = port.requests().await[0].workflow_run_id();
     assert!(port.requests().await[0].application_frame.is_none());
+    let waiting_batch = waiting
+        .steps
+        .iter()
+        .find(|step| step.step_id == "batch")
+        .expect("waiting composite step projection");
+    assert_eq!(
+        waiting_batch.evidence_references,
+        [
+            format!("urn:a3s:cloud:operations:operation:{first_child}"),
+            format!("urn:a3s:cloud:workflow:workflow-run:{first_child}"),
+        ]
+    );
     assert_eq!(
         engine
             .snapshot(&record.run.flow_run_id)
@@ -1038,6 +1051,25 @@ async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() 
         .expect("completed parent snapshot");
     assert_eq!(snapshot.child_operations.len(), 2);
     assert!(snapshot.status.is_terminal());
+    let mut expected_evidence = port
+        .requests()
+        .await
+        .into_iter()
+        .flat_map(|request| {
+            let child = request.workflow_run_id();
+            [
+                format!("urn:a3s:cloud:operations:operation:{child}"),
+                format!("urn:a3s:cloud:workflow:workflow-run:{child}"),
+            ]
+        })
+        .collect::<Vec<_>>();
+    expected_evidence.sort();
+    let completed_batch = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "batch")
+        .expect("completed composite step projection");
+    assert_eq!(completed_batch.evidence_references, expected_evidence);
 }
 
 #[tokio::test]

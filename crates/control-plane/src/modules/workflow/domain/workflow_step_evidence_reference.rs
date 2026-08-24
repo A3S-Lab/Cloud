@@ -2,7 +2,9 @@ use super::entities::{
     WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
 };
 use super::WorkflowExecutionStepOutput;
-use crate::modules::shared_kernel::domain::{FormSubmissionId, HumanTaskId, WorkflowDecisionId};
+use crate::modules::shared_kernel::domain::{
+    FormSubmissionId, HumanTaskId, WorkflowDecisionId, WorkflowRunId,
+};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -12,6 +14,8 @@ const CONNECTOR_ATTEMPT_REFERENCE_PREFIX: &str = "urn:a3s:cloud:connectors:attem
 const FORM_SUBMISSION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:forms:submission:";
 const HUMAN_TASK_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:human-task:";
 const WORKFLOW_DECISION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:workflow-decision:";
+const WORKFLOW_RUN_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:workflow-run:";
+const WORKFLOW_COMPOSITE_CHILD_EVIDENCE_LIMIT: usize = WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES / 2;
 
 pub(crate) fn execution_evidence_references(
     output: &WorkflowExecutionStepOutput,
@@ -49,6 +53,26 @@ pub(crate) fn human_decision_evidence_references(
         ]
         .into_iter()
         .flatten(),
+    )
+}
+
+pub(crate) fn composite_child_evidence_references(
+    child_workflow_run_ids: impl IntoIterator<Item = WorkflowRunId>,
+) -> Result<Vec<String>, String> {
+    let child_workflow_run_ids = child_workflow_run_ids.into_iter().collect::<Vec<_>>();
+    let retained_from = child_workflow_run_ids
+        .len()
+        .saturating_sub(WORKFLOW_COMPOSITE_CHILD_EVIDENCE_LIMIT);
+    checked_evidence_references(
+        child_workflow_run_ids
+            .into_iter()
+            .skip(retained_from)
+            .flat_map(|workflow_run_id| {
+                [
+                    format!("{OPERATION_REFERENCE_PREFIX}{workflow_run_id}"),
+                    format!("{WORKFLOW_RUN_REFERENCE_PREFIX}{workflow_run_id}"),
+                ]
+            }),
     )
 }
 
@@ -91,6 +115,7 @@ fn valid_reference(reference: &str) -> bool {
         FORM_SUBMISSION_REFERENCE_PREFIX,
         HUMAN_TASK_REFERENCE_PREFIX,
         WORKFLOW_DECISION_REFERENCE_PREFIX,
+        WORKFLOW_RUN_REFERENCE_PREFIX,
     ]
     .into_iter()
     .find_map(|prefix| reference.strip_prefix(prefix))
@@ -186,6 +211,28 @@ mod tests {
                 format!("{WORKFLOW_DECISION_REFERENCE_PREFIX}{workflow_decision_id}"),
             ]
         );
+    }
+
+    #[test]
+    fn composite_child_references_retain_the_latest_bounded_frame_window() {
+        let children = (1_u128..=18)
+            .map(Uuid::from_u128)
+            .map(WorkflowRunId::from_uuid)
+            .collect::<Vec<_>>();
+
+        let references = composite_child_evidence_references(children.clone())
+            .expect("composite child evidence references");
+
+        assert_eq!(references.len(), WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES);
+        for child in &children[..2] {
+            assert!(!references
+                .iter()
+                .any(|reference| reference.ends_with(&child.to_string())));
+        }
+        for child in &children[2..] {
+            assert!(references.contains(&format!("{OPERATION_REFERENCE_PREFIX}{child}")));
+            assert!(references.contains(&format!("{WORKFLOW_RUN_REFERENCE_PREFIX}{child}")));
+        }
     }
 
     #[test]

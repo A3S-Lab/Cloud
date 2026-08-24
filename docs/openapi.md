@@ -22,12 +22,13 @@ WorkflowRun responses already expose the bounded
 `steps[].evidenceReferences` array. Current projections populate only these
 closed, canonical URN families:
 
-- `urn:a3s:cloud:executions:execution:<uuid>`;
-- `urn:a3s:cloud:operations:operation:<uuid>`;
 - `urn:a3s:cloud:connectors:attempt:<uuid>`;
+- `urn:a3s:cloud:executions:execution:<uuid>`;
+- `urn:a3s:cloud:forms:submission:<uuid>`;
+- `urn:a3s:cloud:operations:operation:<uuid>`;
 - `urn:a3s:cloud:workflow:human-task:<uuid>`;
 - `urn:a3s:cloud:workflow:workflow-decision:<uuid>`; and
-- `urn:a3s:cloud:forms:submission:<uuid>`.
+- `urn:a3s:cloud:workflow:workflow-run:<uuid>`.
 
 The array is sorted, duplicate-free, limited to 32 entries, and reconstructed
 only from verified A3S Flow history. An Execution terminal observation retains
@@ -38,6 +39,12 @@ retains no reference. A received HumanDecision resume retains the exact
 HumanTask and WorkflowDecision identities; interactive submit, approve, and
 reject outcomes also retain the accepted FormSubmission identity, while
 automatic expiry and cancellation have no synthetic submission reference.
+Each linked Subworkflow frame retains its exact child WorkflowRun and Operation
+identities. Iteration and Loop steps select the latest 16 linked frames by
+ordinal before canonical sorting, keeping the public array within its existing
+32-reference bound; complete frame history remains available from the same
+authorized Flow-derived run history.
+
 These URNs are correlations, not embedded evidence or an authorization grant.
 Reading any referenced owner resource still requires its normal authorization
 boundary. Populating this existing field changes no route or JSON shape, so the

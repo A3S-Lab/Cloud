@@ -195,18 +195,21 @@ handles are disjoint from ordinary If / Else handles. Plans v1-v9 and Run inputs
 v1-v17 retain their exact bytes and replay behavior; runtime build
 `a3s-cloud-workflows@20` explicitly retains `@1` through `@19`.
 
-Current finite Execution, Connector, and HumanDecision steps also populate the
-existing bounded `WorkflowStepProjection.evidenceReferences` field from
-verified Flow history. Execution terminal observations retain exact child
-Execution and Operation URNs; received Connector observations retain exact
-attempt URNs. Received HumanDecision resumes retain exact HumanTask and
+Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
+populate the existing bounded `WorkflowStepProjection.evidenceReferences`
+field from verified Flow history. Execution terminal observations retain exact
+child Execution and Operation URNs; received Connector observations retain
+exact attempt URNs. Received HumanDecision resumes retain exact HumanTask and
 WorkflowDecision URNs and, for interactive outcomes, the accepted
 FormSubmission URN. Automatic expiry and cancellation retain no synthetic
-submission. References are closed, canonical, sorted, duplicate-free, and
-bounded to 32. They provide correlation only: provider and interaction bodies
-remain with the owning context, and a dispatch rejection without owning-context
-evidence retains no reference. No historical terminal projection is mutated or
-backfilled.
+submission. Each linked Subworkflow frame retains its exact child WorkflowRun
+and Operation URNs. Iteration and Loop projections select the latest 16 linked
+frames by ordinal before canonical sorting, preserving the existing
+32-reference bound while complete frame history remains with Flow. References
+are closed, canonical, sorted, and duplicate-free. They provide correlation
+only: provider and interaction bodies remain with the owning context, and a
+dispatch rejection without owning-context evidence retains no reference. No
+historical terminal projection is mutated or backfilled.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact
@@ -407,9 +410,9 @@ ordinals; their deterministic Answer failures retain that root authority in
 Run v15. Workflow-local Transform failure branches are implemented through
 Plan v8/Run v16, Workflow-local Output failure branches through Plan v9/Run
 v17, and Workflow-local Branch failure branches through Plan v10/Run v18.
-Current finite Execution, Connector, and HumanDecision projections retain
-closed, bounded child/Operation/attempt/task/decision/submission evidence URNs
-from verified Flow history.
+Current finite Execution, Connector, HumanDecision, and Subworkflow projections
+retain closed, bounded child/Operation/attempt/task/decision/submission evidence
+URNs from verified Flow history.
 Business-service and remaining Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.
@@ -457,7 +460,7 @@ mechanisms or surfaces.
 | HTTP node | Typed `service` step bound to one immutable connector revision | `W0.4` | Connector policy owns method, schema, destination, egress, and Secret references; arbitrary URLs and header environment injection are not durable Workflow state |
 | Approval execute/resume | `WorkflowDecision` guarded by Identity/Resource Grants and coordinated by the same Operation/Flow run | `W0.3`-`W0.5`, `C0.3` | Preserve explicit allow/deny/expiry/cancel and replay; do not launch a Runtime Task only to create or consume a hook |
 | Per-node provider, pool, resources, isolation, network, timeout, and Secret references | Exact capability and policy digests compiled through the owning context, Workloads, Fleet, Runtime, Box, and Secrets | `W0.4`, applicable provider gates | Preserve placement and isolation intent; provider names, pool selectors, plaintext values, and another provider registry do not enter Workflow |
-| Invocation/result schemas, generation fencing, artifact digests, and per-attempt evidence | Exact child identity, request/receipt digest, Operation correlation, and bounded evidence reference on `WorkflowStepProjection`; finite Execution, Connector, and HumanDecision correlations are implemented | `W0.3`-`W0.5` | Preserve evidence and stale-attempt rejection; do not copy Runtime observations or create a Workflow node-execution evidence store |
+| Invocation/result schemas, generation fencing, artifact digests, and per-attempt evidence | Exact child identity, request/receipt digest, Operation correlation, and bounded evidence reference on `WorkflowStepProjection`; finite Execution, Connector, HumanDecision, and Subworkflow correlations are implemented | `W0.3`-`W0.5` | Preserve evidence and stale-attempt rejection; do not copy Runtime observations or create a Workflow node-execution evidence store |
 | Run lifecycle, event history, per-step tracing, statistics, and diagnostics | Authorized WorkflowRun and WorkflowStepProjection reads correlated with the one Operation/Flow history and owning-context evidence | `W0.3`-`W0.5` | Preserve list/get/start/wait/cancel/history/evidence/diagnostic outcomes without a second event log, metrics authority, or mutable run-history store |
 | PostgreSQL durability, Flow recovery, approval hooks, and worker scaling | Cloud PostgreSQL through A3S ORM plus the existing Operations/A3S Flow workers | `W0.2`-`W0.5` | No Workflow database bootstrap, queue table, lease worker, retry daemon, or local audit file is introduced |
 | Machine-readable CLI and coding-agent Skill | Existing Cloud client, CLI, and Management MCP expose the same list/get/author/apply/start/wait/cancel/history/evidence/decide outcomes | `W0.2`-`W0.5` | One Cloud authentication, response envelope, idempotency model, and management catalog; no `a3s-workflow` control-plane URL or token namespace |

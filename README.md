@@ -602,11 +602,13 @@ creating their own control planes:
     sorted `evidenceReferences` field. Received HumanDecision resumes retain
     exact HumanTask and WorkflowDecision URNs, plus the accepted FormSubmission
     URN for interactive outcomes. Automatic expiry and cancellation add no
-    synthetic submission. These are authorization-neutral correlations
-    reconstructed from Flow history, not copied evidence bodies. This is not
-    public HTTP Request availability; business-service and remaining
-    Agent/MCP/model/Tool dispatch, compensation, retained provider evidence,
-    and later `W0` gates remain open.
+    synthetic submission. Linked Subworkflow frames retain exact child
+    WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
+    16 linked frames within the existing 32-reference bound. These are
+    authorization-neutral correlations reconstructed from Flow history, not
+    copied evidence bodies. This is not public HTTP Request availability;
+    business-service and remaining Agent/MCP/model/Tool dispatch, compensation,
+    retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` carries start, run-scoped

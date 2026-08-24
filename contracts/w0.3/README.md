@@ -115,8 +115,8 @@ Flow mechanism.
 
 The existing `WorkflowStepProjection.evidenceReferences` field now retains a
 closed, deterministic correlation to owning-context evidence for current
-finite Execution, Connector, and HumanDecision steps. A verified terminal
-Execution resume projects the exact
+finite Execution, Connector, HumanDecision, and Subworkflow steps. A verified
+terminal Execution resume projects the exact
 `urn:a3s:cloud:executions:execution:<uuid>` and
 `urn:a3s:cloud:operations:operation:<uuid>` identities. Each verified received
 Connector observation projects its exact
@@ -127,8 +127,12 @@ HumanDecision resume projects its exact
 submit, approve, or reject additionally projects the accepted
 `urn:a3s:cloud:forms:submission:<uuid>` identity. Automatic expiry and
 cancellation intentionally project no FormSubmission reference. Repeated
-observations of one attempt are deduplicated, distinct retries remain visible,
-and the final array is sorted and bounded to 32 entries.
+observations of one attempt are deduplicated, and distinct retries remain
+visible. Each linked Subworkflow frame projects its exact
+`urn:a3s:cloud:workflow:workflow-run:<uuid>` and Operation identities. Composite
+steps retain the latest 16 linked frames by ordinal before canonical sorting,
+so the final array remains bounded to 32 entries while full frame history stays
+with A3S Flow.
 
 The projection is reconstructed only from immutable WorkflowRun input and
 verified A3S Flow Hook history. A provider dispatch rejection that has no

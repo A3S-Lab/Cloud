@@ -422,7 +422,8 @@ export type WorkflowStepEvidenceReference =
   | `urn:a3s:cloud:forms:submission:${string}`
   | `urn:a3s:cloud:operations:operation:${string}`
   | `urn:a3s:cloud:workflow:human-task:${string}`
-  | `urn:a3s:cloud:workflow:workflow-decision:${string}`;
+  | `urn:a3s:cloud:workflow:workflow-decision:${string}`
+  | `urn:a3s:cloud:workflow:workflow-run:${string}`;
 
 export interface StartWorkflowRunInput {
   workflowGoalId: string;
