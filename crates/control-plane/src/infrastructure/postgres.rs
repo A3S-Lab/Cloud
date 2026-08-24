@@ -1376,6 +1376,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/146_developer_build_plans.sql"
             )),
         ),
+        Migration::new(
+            "147",
+            "immutable accepted developer workload profile revisions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/147_developer_workload_profile_revisions.sql"
+            )),
+        ),
     ]
 }
 

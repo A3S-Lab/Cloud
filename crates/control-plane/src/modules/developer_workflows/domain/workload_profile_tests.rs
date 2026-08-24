@@ -1,15 +1,18 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, PrincipalId, ProjectId, SecretId, SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, SecretId,
+    SourceRevisionId, WorkloadProfileRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     HttpHealthCheck, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
 };
-use chrono::{TimeZone, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
 const BUILD_PLAN_FIXTURE: &str = include_str!("../../../../../../contracts/p0.1/build-plan.acl");
+const WORKLOAD_PROFILE_FIXTURE: &str =
+    include_str!("../../../../../../contracts/p0.2/workload-profile.acl");
 
 #[test]
 fn workload_profile_acl_is_canonical_closed_and_build_plan_bound() {
@@ -78,6 +81,16 @@ fn workload_profile_acl_is_canonical_closed_and_build_plan_bound() {
 }
 
 #[test]
+fn public_workload_profile_fixture_is_canonical_and_closed() {
+    let contract =
+        WorkloadProfileContract::parse_acl(WORKLOAD_PROFILE_FIXTURE).expect("public P0.2 fixture");
+    assert_eq!(contract.canonical_acl(), WORKLOAD_PROFILE_FIXTURE);
+    assert_eq!(contract.schema(), WORKLOAD_PROFILE_SCHEMA);
+    assert_eq!(contract.spec().profile.kind, WorkloadProfileKind::Web);
+    assert_eq!(contract.spec().profile.name, "api");
+}
+
+#[test]
 fn profile_kinds_enforce_service_task_and_route_ownership() {
     let build_plan = accepted_build_plan();
 
@@ -130,6 +143,134 @@ fn scheduled_task_policy_requires_canonical_cron_timezone_and_closed_bounds() {
     invalid.history.successful_limit = 0;
     invalid.history.failed_limit = 0;
     assert!(invalid.validate().is_err());
+}
+
+#[test]
+fn accepted_revision_identity_restore_and_event_are_exact() {
+    let build_plan = accepted_build_plan();
+    let contract =
+        WorkloadProfileContract::bind(&build_plan, web_profile()).expect("profile contract");
+    let actor = PrincipalId::new();
+    let accepted_at = build_plan.accepted_at + Duration::seconds(1);
+    let revision = AcceptedWorkloadProfileRevision::accept(
+        &build_plan,
+        contract.clone(),
+        1,
+        actor,
+        accepted_at,
+    )
+    .expect("accepted revision");
+    let same_identity = AcceptedWorkloadProfileRevision::accept(
+        &build_plan,
+        contract.clone(),
+        1,
+        actor,
+        accepted_at + Duration::seconds(1),
+    )
+    .expect("same logical revision identity");
+    let next = AcceptedWorkloadProfileRevision::accept(
+        &build_plan,
+        contract.clone(),
+        2,
+        actor,
+        accepted_at + Duration::seconds(1),
+    )
+    .expect("next revision");
+
+    assert_eq!(same_identity.profile_id, revision.profile_id);
+    assert_eq!(same_identity.id, revision.id);
+    assert_eq!(next.profile_id, revision.profile_id);
+    assert_ne!(next.id, revision.id);
+    assert_eq!(
+        AcceptedWorkloadProfileRevision::restore(
+            revision.organization_id,
+            revision.project_id,
+            revision.environment_id,
+            revision.profile_id,
+            revision.id,
+            revision.revision_number,
+            revision.build_plan_id,
+            revision.source_revision_id,
+            revision.contract.canonical_acl(),
+            revision.contract.digest().as_str(),
+            revision.accepted_by,
+            revision.accepted_at,
+        )
+        .expect("restored revision"),
+        revision
+    );
+
+    let request_id = Uuid::now_v7();
+    let event =
+        WorkloadProfileRevisionAccepted::envelope(&revision, request_id).expect("acceptance event");
+    let payload: WorkloadProfileRevisionAccepted =
+        serde_json::from_value(event.payload.clone()).expect("typed event payload");
+    assert_eq!(event.aggregate_id, revision.profile_id.as_uuid());
+    assert_eq!(event.aggregate_version, 1);
+    assert_eq!(payload.workload_profile_revision_id, revision.id);
+    assert_eq!(payload.profile_digest, revision.contract.digest().as_str());
+
+    AcceptWorkloadProfileRevisionWrite {
+        revision,
+        build_plan,
+        expected_previous_revision_id: None,
+        event,
+        actor_principal_id: actor,
+        request_id,
+        idempotency: IdempotencyRequest::new(
+            "workload-profile-domain-test",
+            "accept-1",
+            b"accept revision one",
+        )
+        .expect("idempotency"),
+    }
+    .validate()
+    .expect("exact write");
+}
+
+#[test]
+fn revision_write_rejects_previous_and_event_drift() {
+    let build_plan = accepted_build_plan();
+    let contract =
+        WorkloadProfileContract::bind(&build_plan, web_profile()).expect("profile contract");
+    let actor = PrincipalId::new();
+    let revision = AcceptedWorkloadProfileRevision::accept(
+        &build_plan,
+        contract,
+        1,
+        actor,
+        build_plan.accepted_at + Duration::seconds(1),
+    )
+    .expect("accepted revision");
+    let request_id = Uuid::now_v7();
+    let event =
+        WorkloadProfileRevisionAccepted::envelope(&revision, request_id).expect("acceptance event");
+    let idempotency = IdempotencyRequest::new("workload-profile-domain-test", "drift", b"drift")
+        .expect("idempotency");
+
+    let wrong_previous = AcceptWorkloadProfileRevisionWrite {
+        revision: revision.clone(),
+        build_plan: build_plan.clone(),
+        expected_previous_revision_id: Some(WorkloadProfileRevisionId::new()),
+        event: event.clone(),
+        actor_principal_id: actor,
+        request_id,
+        idempotency: idempotency.clone(),
+    };
+    assert!(wrong_previous.validate().is_err());
+
+    let mut wrong_event = event;
+    wrong_event.aggregate_version = 2;
+    let event_drift = AcceptWorkloadProfileRevisionWrite {
+        revision,
+        build_plan,
+        expected_previous_revision_id: None,
+        event: wrong_event,
+        actor_principal_id: actor,
+        request_id,
+        idempotency,
+    };
+    assert!(event_drift.validate().is_err());
 }
 
 fn accepted_build_plan() -> AcceptedBuildPlan {

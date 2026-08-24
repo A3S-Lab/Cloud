@@ -408,6 +408,10 @@ impl WorkloadProfileContract {
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
     }
+
+    pub const fn schema(&self) -> &'static str {
+        WORKLOAD_PROFILE_SCHEMA
+    }
 }
 
 fn validate_contract_binding(spec: &WorkloadProfileContractSpec) -> Result<(), String> {

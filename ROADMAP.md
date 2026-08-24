@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance and persistence. Production composition, interfaces, build/deployment handoff, profiles, previews, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. Production composition, interfaces, owner handoff, previews, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -960,6 +960,25 @@ Outbox event; database constraints recheck exact tenant/project/environment,
 source identity, commit, recipe, and time ordering. The internal handler and
 adapters are not yet production-composed or publicly exposed, and this slice starts no BuildRun,
 creates no Workload/Route, and owns no scheduler.
+
+Component-only `P0.2-C1` defines canonical
+`a3s.cloud.workload-profile.v1` intent for explicit `web`, `worker`, and
+`scheduled_task` profiles. It closes process, resource, Secret-reference,
+port, health, route-intent, timezone, concurrency, catch-up, retry, and history
+bounds. After exact accepted-BuildPlan and successful BuildRun/BuildEvidence
+validation, web and worker profiles project to the existing Workloads
+`ServiceTemplate`; scheduled profiles project to the existing Executions
+`ExecutionTemplate` plus schedule policy. No owner record is written.
+
+Component-only `P0.2-C2` adds stable logical profile and immutable revision
+identities, authorization-first internal CQRS, bounded current/exact/history
+queries, idempotent same-actor convergence, and distinct-actor audit history.
+Migration `147` and one A3S ORM repository atomically persist continuous
+append-only revisions, idempotency, audit, and Outbox, bind every row to the
+exact accepted BuildPlan, reparse canonical ACL on reads, and reject mutation
+or sequence gaps. Production registration and public surfaces remain open;
+this slice creates no BuildRun, Workload, Route, Execution, Automation, timer,
+or scheduler state.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

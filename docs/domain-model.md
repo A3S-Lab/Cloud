@@ -412,6 +412,23 @@ atomically, reparses ACL on reads, and rejects mutation. Production composition,
 public interfaces, and all BuildRun/Workload/Route/scheduler handoffs remain
 outside this slice.
 
+Component-only `P0.2-C1/C2` owns explicit workload-profile intent and its
+acceptance history. Canonical `a3s.cloud.workload-profile.v1` binds a closed
+`web`, `worker`, or `scheduled_task` profile to one exact accepted BuildPlan;
+stable profile identity spans source updates while an immutable continuous
+revision identity binds each accepted contract. Authorization precedes ACL
+parsing and replay. Migration `147` stores canonical ACL, redundant exact-plan
+evidence, idempotency, audit, and Outbox atomically and rejects update, delete,
+scope drift, or sequence gaps. Identical current content converges only for the
+same actor; a distinct actor acceptance remains a new audit-visible revision.
+
+The compilation service consumes a successful exact BuildRun and verified
+BuildEvidence to project web/worker intent to a Workloads-owned
+`ServiceTemplate` or scheduled intent to an Executions-owned
+`ExecutionTemplate`. Developer Workflows does not persist those templates,
+create BuildRuns, Workloads, Routes, Executions, or Automations, or evaluate
+timers. Those contexts retain lifecycle and scheduling authority.
+
 ### 3.4 Asset hosting
 
 Owns hosted assets, repositories, revisions, releases, and asset-scoped access.

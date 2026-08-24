@@ -422,7 +422,7 @@ supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance. C2 adds `a3s.cloud.build-plan.v1`, deterministic identity, authorization-first exact Sources admission, and migration `146` A3S ORM persistence with canonical read checks, idempotency, audit, and Outbox. Production composition, interfaces, build/deployment handoff, workload profiles, previews, monorepos, and Compose import remain open. |
+| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Production composition, interfaces, owner handoff, previews, monorepos, and Compose import remain open. |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
@@ -1684,6 +1684,32 @@ Component-only `P0.1-C2` now defines the independent acceptance authority:
 C2 still exposes no public API/client/CLI/MCP surface and is not yet registered
 in production composition. It starts no BuildRun, creates no Workload or Route,
 and owns no scheduler. Those handoffs remain later owner-reviewed P0 slices.
+
+Component-only `P0.2-C1` defines explicit workload-profile intent:
+
+- canonical `a3s.cloud.workload-profile.v1` closes `web`, `worker`, and
+  `scheduled_task` process, resource, Secret-reference, port, health, route,
+  and schedule policy fields and rejects unknown or non-canonical ACL;
+- exact accepted-BuildPlan plus successful BuildRun/BuildEvidence validation
+  projects web/worker profiles to existing Workloads `ServiceTemplate` values
+  and scheduled profiles to existing Executions `ExecutionTemplate` values;
+- the compiler writes no Workload, Route, Execution, Automation, or timer and
+  starts no build.
+
+Component-only `P0.2-C2` defines the independent acceptance authority:
+
+- deterministic logical profile identity spans BuildPlans for the same
+  Organization, Project, Environment, project root, and profile name; stable
+  revision identity binds its continuous number and canonical contract digest;
+- authorization precedes ACL parsing, replay, and exact BuildPlan lookup;
+  same-actor identical-current input converges, while another actor or changed
+  desired state creates the next immutable audit-visible revision;
+- migration `147` plus the A3S ORM repository atomically persist canonical ACL,
+  exact-plan redundant evidence, idempotency, audit, and Outbox, reparse every
+  read, and reject scope drift, sequence gaps, update, and deletion.
+
+C2 remains internal and not production-composed or publicly exposed. It adds
+no BuildRun/Workload/Route/Execution/Automation authority and no scheduler.
 
 ### Exit gate
 

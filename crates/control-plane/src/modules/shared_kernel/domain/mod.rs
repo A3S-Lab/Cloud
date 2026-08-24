@@ -35,7 +35,8 @@ pub use identifiers::{
     ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId, SourceRevisionId,
     SourceSubscriptionId, StorageNamespaceId, UserFileId, UserFileUploadId, WorkflowDecisionId,
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    WorkloadPlacementGroupId, WorkloadProfileId, WorkloadProfileRevisionId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

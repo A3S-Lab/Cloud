@@ -1,0 +1,37 @@
+workload_profile "api" {
+  build_plan_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  build_plan_id = "018f0f70-0000-7000-8000-000000000002"
+  kind = "web"
+  project_root = "."
+  schema = "a3s.cloud.workload-profile.v1"
+  source_revision_id = "018f0f70-0000-7000-8000-000000000001"
+  process {
+    args = ["--production"]
+    command = ["/app/server"]
+    working_directory = "/app"
+    environment "LOG_LEVEL" {
+      value = "info"
+    }
+  }
+  resources {
+    cpu_millis = 250
+    ephemeral_storage_bytes = 268435456
+    memory_bytes = 134217728
+    pids = 64
+  }
+  port "http" {
+    container_port = 8080
+  }
+  health {
+    healthy_threshold = 2
+    interval_ms = 5000
+    path = "/health"
+    port = "http"
+    stabilization_window_ms = 10000
+    timeout_ms = 1000
+    unhealthy_threshold = 3
+  }
+  route {
+    port = "http"
+  }
+}
