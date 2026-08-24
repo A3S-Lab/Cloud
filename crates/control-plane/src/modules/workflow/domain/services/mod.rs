@@ -3,6 +3,7 @@ mod ontology_diff;
 mod workflow_plan_compiler;
 mod workflow_run_compiler;
 mod workflow_run_coordinator;
+mod workflow_run_diagnostics;
 mod workflow_run_history;
 mod workflow_run_variables;
 
@@ -18,6 +19,13 @@ pub use ontology_diff::{
 pub use workflow_plan_compiler::{CompiledWorkflowGoal, WorkflowPlanCompiler};
 pub use workflow_run_compiler::{CompiledWorkflowRun, WorkflowRunCompiler};
 pub use workflow_run_coordinator::{IWorkflowRunCoordinator, WorkflowRunCoordinationError};
+pub use workflow_run_diagnostics::{
+    IWorkflowRunDiagnosticsReader, WorkflowRunDiagnostic, WorkflowRunDiagnosticCode,
+    WorkflowRunDiagnosticSeverity, WorkflowRunDiagnosticStatus, WorkflowRunDiagnostics,
+    WorkflowRunEvidenceCorrelation, WorkflowRunFlowStatistics, WorkflowRunObservedFlowStatus,
+    WorkflowRunStepStatistics, WORKFLOW_RUN_DIAGNOSTICS_MAX_EVIDENCE_REFERENCES,
+    WORKFLOW_RUN_DIAGNOSTICS_SCHEMA,
+};
 pub use workflow_run_history::{
     IWorkflowRunHistoryReader, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
 };

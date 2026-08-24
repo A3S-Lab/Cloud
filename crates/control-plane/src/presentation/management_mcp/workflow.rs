@@ -14,10 +14,10 @@ use crate::modules::workflow::presentation::{
 use crate::modules::workflow::{
     CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
     GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
-    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput,
-    GetWorkflowRunVariables, HumanTaskAssignmentAction, HumanTaskStatus, ListHumanTasks,
-    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
-    ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun,
+    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunDiagnostics, GetWorkflowRunHistory,
+    GetWorkflowRunOutput, GetWorkflowRunVariables, HumanTaskAssignmentAction, HumanTaskStatus,
+    ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions,
+    ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun,
     WorkflowPayloadAcl, WorkflowPayloadKind, WorkflowSemanticContractAcls,
     HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
     WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
@@ -885,6 +885,26 @@ pub async fn get_run_history(
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
             after_sequence: arguments.after_sequence.unwrap_or(0),
             limit: arguments.limit.unwrap_or(100),
+            resource_access,
+        })
+        .await?
+    {
+        Ok(value) => tool_result::success(200, value, request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_run_diagnostics(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: WorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetWorkflowRunDiagnostics {
+            organization_id,
+            workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
             resource_access,
         })
         .await?

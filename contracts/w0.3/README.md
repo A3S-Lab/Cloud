@@ -169,6 +169,24 @@ resource. Historical terminal projections are not mutated or backfilled. This
 slice reuses the existing JSON field and persistence path; it adds no table,
 column, evidence store, event log, route, or OpenAPI shape.
 
+## Authorized WorkflowRun diagnostics and statistics
+
+REST/OpenAPI `1.60.0` adds one project-authorized read over the existing
+WorkflowRun projection and correlated A3S Flow authority. The
+`cloud.workflow-run.diagnostics.v1` response verifies one consistent Flow
+snapshot/history pair, compares its last sequence with the persisted projection,
+and derives closed run/Flow diagnostics, step/event statistics, active durable
+hooks and timers, retries, host-shutdown recovery boundaries, linked child
+counts, and owner-evidence correlations.
+
+The response includes at most 256 exact evidence URNs, groups them by canonical
+step ID, and reports truncation explicitly. Messages are fixed and never copy
+provider, evaluator, request, response, credential, or evidence-body data. A
+missing correlated Flow history remains an explicit warning or error according
+to whether any Flow sequence was previously projected. This read creates no
+table, counter, metrics authority, cache, evidence store, worker, scheduler, or
+second history.
+
 ## Typed variable scopes
 
 `variable-contract.acl` is the canonical conformance fixture for

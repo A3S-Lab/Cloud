@@ -245,6 +245,7 @@ import type {
   WorkflowRevision,
   WorkflowRevisionSummary,
   WorkflowRun,
+  WorkflowRunDiagnostics,
   WorkflowRunHistoryOptions,
   WorkflowRunHistoryPage,
   WorkflowRunMutationResult,
@@ -303,7 +304,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.59.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.60.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1201,6 +1202,18 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/workflow-runs/${encodeURIComponent(workflowRunId)}/history${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getWorkflowRunDiagnostics(
+    organizationId: string,
+    workflowRunId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunDiagnostics> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/diagnostics`,
       signal
     );
   }

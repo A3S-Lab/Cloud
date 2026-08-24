@@ -8,6 +8,7 @@ pub mod get_workflow_goal;
 pub mod get_workflow_node_catalog;
 pub mod get_workflow_revision;
 pub mod get_workflow_run;
+pub mod get_workflow_run_diagnostics;
 pub mod get_workflow_run_history;
 pub mod get_workflow_run_output;
 pub mod get_workflow_run_variables;

@@ -121,7 +121,9 @@ ACL, compile plans, or retain revision state.
 `startWorkflowRun`, `cancelWorkflowRun`, `listWorkflowRuns`,
 `getWorkflowRun`, `waitWorkflowRun`, `getWorkflowRunOutput`, and
 `getWorkflowRunHistory` expose the minimal `W0.3` run lifecycle added by REST
-contract `1.15.0`. Start binds one exact Goal and Plan revision, accepts a
+contract `1.15.0`. `getWorkflowRunDiagnostics` adds the authorized bounded
+diagnostics/statistics read in REST contract `1.60.0`. Start binds one exact
+Goal and Plan revision, accepts a
 bounded optional deadline, and requires caller-owned idempotency. Cancel is
 also replay-safe; list, wait, and history enforce the server's finite bounds
 before transport. Cloud remains authoritative for the correlated Operation,
@@ -181,6 +183,15 @@ Flow sequence, materialized/unavailable state, metadata, inline or opaque values
 and value digests. Secret-reference values are always redacted. A run not yet
 created in Flow may expose immutable inputs at sequence zero; Plan v1 returns a
 conflict. The client does not reconstruct, cache, or mutate variable state.
+
+`getWorkflowRunDiagnostics` returns
+`cloud.workflow-run.diagnostics.v1`. Cloud verifies one consistent A3S Flow
+snapshot/history observation against the run authority and derives projected
+versus observed sequence health, closed diagnostics, step/event statistics,
+durable waits, retries, runtime-recovery boundaries, child counts, and at most
+256 exact evidence correlations with explicit truncation. The client transports
+the typed response but does not calculate metrics, dereference evidence, retain
+history, or infer authorization.
 
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract

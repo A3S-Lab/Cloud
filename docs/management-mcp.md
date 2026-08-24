@@ -645,18 +645,19 @@ from 1 through 2,592,000. `a3s_cloud_workflow_runs_cancel` requires one run ID
 and idempotency key and accepts an optional bounded reason. Both require
 `workflow:write`; cancellation is marked destructive.
 
-The six read-only tools list runs, get one run and its semantic step
+The seven read-only tools list runs, get one run and its semantic step
 projections, wait for at most 30 seconds, return a completed run's bounded
 output, page redacted A3S Flow history with a non-negative sequence and a limit
-from 1 through 100, and inspect typed variables. All eight tools derive
+from 1 through 100, inspect typed variables, and inspect bounded run
+diagnostics/statistics. All nine tools derive
 organization and actor from
 the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The executor supports Workflow-local `input`, `transform`,
-`branch`, `human_decision`, finite `execution`, and `output`. HumanTask
-submission is exposed by the protected tool below. Business-service and
-remaining provider capability steps, Iteration/Loop execution, and
-compensation are not exposed.
+`branch`, `human_decision`, finite `execution`, composite `subworkflow`
+Iteration/Loop, and `output`. HumanTask submission is exposed by the protected
+tool below. Business-service and remaining Agent/MCP/model/Tool provider
+capability steps and compensation are not exposed.
 
 `a3s_cloud_workflow_run_variables_get` accepts one `workflowRunId` and returns
 the same `cloud.workflow-run.variable-inspection.v1` response as REST contract
@@ -667,6 +668,16 @@ Results preserve declaration order, observed Flow sequence,
 materialized/unavailable state, metadata, values, and digests. Secret references
 are redacted, pre-Flow immutable inputs may appear at sequence zero, and Plan v1
 conflicts. MCP adds no variable table, cache, history, worker, or mutation path.
+
+`a3s_cloud_workflow_run_diagnostics_get` accepts one `workflowRunId` and
+returns the same project-authorized `cloud.workflow-run.diagnostics.v1`
+projection as REST contract `1.60.0`. Workflow verifies a consistent A3S Flow
+snapshot/history pair against the immutable run, Operation, and Flow binding;
+the response compares persisted and observed sequences, reports closed
+diagnostics plus step/event/wait/retry/recovery/child statistics, and returns at
+most 256 exact evidence correlations with explicit truncation. Messages are
+fixed and redaction-safe. MCP neither reads evidence bodies nor creates a
+diagnostics table, metrics authority, counter, cache, worker, or second history.
 
 `a3s_cloud_human_tasks_list` accepts one explicit `projectId`, the closed
 optional task status, and an optional limit from 1 through 200. It returns
@@ -857,7 +868,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 136-tool administrator and 76-tool
+current focused source runner requires exact 137-tool administrator and 77-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

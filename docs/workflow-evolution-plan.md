@@ -440,6 +440,16 @@ v17, and Workflow-local Branch failure branches through Plan v10/Run v18.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.
+REST/OpenAPI `1.60.0`, the maintained client, CLI, and one read-only Management
+MCP tool expose the project-authorized
+`cloud.workflow-run.diagnostics.v1` projection. One read compares the persisted
+Workflow sequence with a consistent A3S Flow snapshot and history, reports
+closed run/Flow diagnostic states, per-step and per-event statistics, durable
+waits, retries, host-shutdown recovery boundaries, child correlations, and at
+most 256 exact evidence references with explicit truncation. Missing Flow
+history remains an explicit diagnostic outcome, messages are fixed and
+redaction-safe, and the projection introduces no table, event log, metrics
+authority, evidence body, cache, worker, or scheduler.
 Business-service and remaining Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.
@@ -488,9 +498,9 @@ mechanisms or surfaces.
 | Approval execute/resume | `WorkflowDecision` guarded by Identity/Resource Grants and coordinated by the same Operation/Flow run | `W0.3`-`W0.5`, `C0.3` | Preserve explicit allow/deny/expiry/cancel and replay; do not launch a Runtime Task only to create or consume a hook |
 | Per-node provider, pool, resources, isolation, network, timeout, and Secret references | Exact capability and policy digests compiled through the owning context, Workloads, Fleet, Runtime, Box, and Secrets | `W0.4`, applicable provider gates | Preserve placement and isolation intent; provider names, pool selectors, plaintext values, and another provider registry do not enter Workflow |
 | Invocation/result schemas, generation fencing, artifact digests, and per-attempt evidence | Exact child identity, request/receipt digest, Operation correlation, and bounded evidence reference on `WorkflowStepProjection`; finite Execution, Connector, HumanDecision, and Subworkflow correlations are implemented | `W0.3`-`W0.5` | Preserve evidence and stale-attempt rejection; do not copy Runtime observations or create a Workflow node-execution evidence store |
-| Run lifecycle, event history, per-step tracing, statistics, and diagnostics | Authorized WorkflowRun and WorkflowStepProjection reads correlated with the one Operation/Flow history and owning-context evidence | `W0.3`-`W0.5` | Preserve list/get/start/wait/cancel/history/evidence/diagnostic outcomes without a second event log, metrics authority, or mutable run-history store |
+| Run lifecycle, event history, per-step tracing, statistics, and diagnostics | Authorized WorkflowRun and WorkflowStepProjection reads correlated with the one Operation/Flow history and owning-context evidence; the bounded diagnostics/statistics projection is implemented | `W0.3`-`W0.5` | Preserve list/get/start/wait/cancel/history/evidence/diagnostic outcomes without a second event log, metrics authority, or mutable run-history store |
 | PostgreSQL durability, Flow recovery, approval hooks, and worker scaling | Cloud PostgreSQL through A3S ORM plus the existing Operations/A3S Flow workers | `W0.2`-`W0.5` | No Workflow database bootstrap, queue table, lease worker, retry daemon, or local audit file is introduced |
-| Machine-readable CLI and coding-agent Skill | Existing Cloud client, CLI, and Management MCP expose the same list/get/author/apply/start/wait/cancel/history/evidence/decide outcomes | `W0.2`-`W0.5` | One Cloud authentication, response envelope, idempotency model, and management catalog; no `a3s-workflow` control-plane URL or token namespace |
+| Machine-readable CLI and coding-agent Skill | Existing Cloud client, CLI, and Management MCP expose the same list/get/author/apply/start/wait/cancel/history/evidence/diagnostics/decide outcomes | `W0.2`-`W0.5` | One Cloud authentication, response envelope, idempotency model, and management catalog; no `a3s-workflow` control-plane URL or token namespace |
 | Graph authoring, node catalog, diagnostics, patch review, and run projection | Versioned REST/OpenAPI contracts plus the maintained client, CLI, and Management MCP | `W0.2`-`W0.5` | Preserve controlled editing and inspection without copying a standalone React application or making presentation state execution authority |
 
 The ten standalone node names have one explicit migration map:

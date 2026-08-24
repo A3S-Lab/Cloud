@@ -11,7 +11,17 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.59.0`.
+The current semantic contract version is `1.60.0`.
+
+Contract `1.60.0` adds the project-authorized
+`GET /organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics`
+operation. Its bounded `cloud.workflow-run.diagnostics.v1` response compares
+persisted Workflow projection sequence with one verified A3S Flow
+snapshot/history observation, reports closed step and Flow statistics plus
+redaction-safe diagnostics, and returns at most 256 exact evidence references
+with explicit truncation. The endpoint returns the standard wrapped success
+envelope and documents missing/denied resources as `404` and an unavailable or
+concurrently changing Flow observation as `503`.
 
 Workflow Plan v10 and the bounded `cloud.workflow.step-failure.v7` value use the
 existing plan and step-projection response fields. They add no route, field, or
@@ -47,8 +57,9 @@ authorized Flow-derived run history.
 
 These URNs are correlations, not embedded evidence or an authorization grant.
 Reading any referenced owner resource still requires its normal authorization
-boundary. Populating this existing field changes no route or JSON shape, so the
-contract remains `1.59.0`.
+boundary. Populating this existing field did not itself change a route or JSON
+shape; the current contract is `1.60.0` because of the separate diagnostics
+operation.
 
 ## Contract completeness
 

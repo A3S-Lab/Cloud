@@ -241,6 +241,10 @@ optional `--run-timeout-seconds` value from 1 through 2,592,000. Wait accepts
 `--limit`, while history uses `--cursor` as the last observed Flow sequence.
 Start and cancel require a caller-owned idempotency key. The CLI never executes
 steps locally or infers completion from transport, logs, or process state.
+`workflow-runs diagnostics` performs the REST `1.60.0` authorized read and
+prints either the complete versioned JSON projection or a compact summary of
+run/Flow status, sequence lag, event/retry counts, and evidence count. It does
+not fetch evidence bodies or retain diagnostic state.
 
 Form draft create/revise accepts a bounded native Form JSON transport file
 containing only `name`, optional `description`, and the Form `document` object.
@@ -352,6 +356,7 @@ workflow-runs wait <workflow-run-id> [--wait-seconds=<0..30>]
 workflow-runs cancel <workflow-run-id> [--reason=<text>]
 workflow-runs output <workflow-run-id>
 workflow-runs variables <workflow-run-id>
+workflow-runs diagnostics <workflow-run-id>
 workflow-runs history <workflow-run-id> [--cursor=<sequence>] [--limit=<1..100>]
 execution-templates list
 execution-templates get <template-id> <revision-id>
@@ -525,10 +530,14 @@ compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
 persistence. `workflow-runs` starts and cancels the exact Plan idempotently,
 lists and reads current semantic step projections, waits for bounded terminal
 progress, returns completed output, inspects declaration-ordered typed values,
-and pages redacted A3S Flow history. Variable inspection reuses the exact Plan
+reads bounded Flow-derived diagnostics/statistics, and pages redacted A3S Flow
+history. Variable inspection reuses the exact Plan
 v2 contract, immutable run input, and correlated Flow history; Secret references
 are redacted, unavailable declarations stay explicit, and Plan v1 conflicts.
-The CLI does not reconstruct or retain variable state. The
+Diagnostics compare persisted and observed Flow sequences, use fixed
+redaction-safe messages, and cap returned evidence correlations at 256 exact
+URNs with explicit truncation. The CLI does not reconstruct or retain variable
+or diagnostic state. The
 runtime supports Workflow-local `input`, `transform`, `branch`,
 `human_decision`, `execution`, composite `subworkflow` Iteration/Loop, and
 `output`. Composite runtime v3 uses deterministic ordinary child WorkflowRuns

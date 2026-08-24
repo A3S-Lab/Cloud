@@ -14,9 +14,10 @@ use crate::modules::workflow::presentation::dto::{
 };
 use crate::modules::workflow::{
     GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
-    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput,
-    GetWorkflowRunVariables, HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions,
-    ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns, WaitWorkflowRun,
+    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunDiagnostics, GetWorkflowRunHistory,
+    GetWorkflowRunOutput, GetWorkflowRunVariables, HumanTaskStatus, ListHumanTasks,
+    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
+    WaitWorkflowRun,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -43,6 +44,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let wait_run_bus = Arc::clone(&bus);
     let output_run_bus = Arc::clone(&bus);
     let variables_run_bus = Arc::clone(&bus);
+    let diagnostics_run_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .get(
@@ -472,6 +474,33 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             Ok(value) => BootResponse::json(
                                 &WorkflowRunVariableInspectionResponse::from(value),
                             ),
+                            Err(error) => application_error_response(error, request_id),
+                        }
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&diagnostics_run_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowRunDiagnostics {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_run_id: WorkflowRunId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_run_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&value),
                             Err(error) => application_error_response(error, request_id),
                         }
                     }

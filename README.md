@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.59.0" src="https://img.shields.io/badge/REST_contract-1.59.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.60.0" src="https://img.shields.io/badge/REST_contract-1.60.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -235,7 +235,7 @@ capability.
 | Sources, builds, artifacts, developer workflows | In progress; P0 profile/preview/import completion remains unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
-| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v10/Run v18 failure routing plus bounded owner-evidence correlations |
+| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v10/Run v18 failure routing, bounded owner-evidence correlations, and authorized run diagnostics/statistics |
 | AI Applications, Files/Knowledge, Automations | Component foundations in progress; complete products unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |
@@ -395,9 +395,16 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. User-authored publication also checks both legacy
-    graphs and every admitted descriptor against the closed set of Cloud runtime
-    dispatch paths. Semantic-free Agent, MCP, model, Tool, Memory, and
+    copied evidence bodies. REST/OpenAPI `1.60.0`, the maintained client, CLI,
+    and one read-only Management MCP tool now expose an authorized bounded
+    `cloud.workflow-run.diagnostics.v1` projection. It compares the persisted
+    Workflow sequence with one consistent A3S Flow snapshot/history read,
+    reports step and event counts, durable waits, retries, host-shutdown
+    recovery boundaries, child correlations, and at most 256 exact evidence
+    references, and explicitly reports truncation. It stores no diagnostic,
+    metric, evidence body, or second history. User-authored publication also
+    checks both legacy graphs and every admitted descriptor against the closed
+    set of Cloud runtime dispatch paths. Semantic-free Agent, MCP, model, Tool, Memory, and
     Subworkflow steps are rejected; caller-supplied descriptors for the first
     five cannot self-declare availability before their owning ports land. Exact
     Applications-generated presets remain deferred internal composition

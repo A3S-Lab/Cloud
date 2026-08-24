@@ -45,6 +45,7 @@ import {
   workflowPlanRevisionResult,
   workflowRevisionResult,
   workflowRevisionsResult,
+  workflowRunDiagnosticsResult,
   workflowRunHistoryResult,
   workflowRunMutationResult,
   workflowRunOutputResult,
@@ -351,6 +352,15 @@ export async function executeWorkflowCommand(
       rejectWorkflowRunSpecificOptions(arguments_);
       return workflowRunVariablesResult(
         await cloudApi().getWorkflowRunVariables(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID')
+        )
+      );
+    case 'workflow-runs diagnostics':
+      requireReadCommand(arguments_, 'workflow-runs diagnostics <workflow-run-id>');
+      rejectWorkflowRunSpecificOptions(arguments_);
+      return workflowRunDiagnosticsResult(
+        await cloudApi().getWorkflowRunDiagnostics(
           requireOrganization(context),
           positionalUuid(positionals, 2, 'WorkflowRun ID')
         )

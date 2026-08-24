@@ -78,6 +78,7 @@ Commands:
   workflow-runs cancel ID Request WorkflowRun cancellation idempotently
   workflow-runs output ID Read the bounded output of a completed WorkflowRun
   workflow-runs variables ID Inspect typed values from immutable input and A3S Flow history
+  workflow-runs diagnostics ID Inspect bounded run statistics, evidence, and Flow projection health
   workflow-runs history ID Read bounded, redacted A3S Flow history
   execution-templates list List immutable finite-task templates in the selected project
   execution-templates get ID REV Get one exact immutable ExecutionTemplate revision

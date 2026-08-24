@@ -166,6 +166,7 @@ pub const WORKFLOW_RUNS_GET: &str = "a3s_cloud_workflow_runs_get";
 pub const WORKFLOW_RUNS_LIST: &str = "a3s_cloud_workflow_runs_list";
 pub const WORKFLOW_RUNS_WAIT: &str = "a3s_cloud_workflow_runs_wait";
 pub const WORKFLOW_RUN_OUTPUT_GET: &str = "a3s_cloud_workflow_run_output_get";
+pub const WORKFLOW_RUN_DIAGNOSTICS_GET: &str = "a3s_cloud_workflow_run_diagnostics_get";
 pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
 pub const WORKFLOW_RUN_VARIABLES_GET: &str = "a3s_cloud_workflow_run_variables_get";
 pub const HUMAN_TASKS_CLAIM: &str = "a3s_cloud_human_tasks_claim";
@@ -278,6 +279,7 @@ pub enum ManagementTool {
     WorkflowRunsList,
     WorkflowRunsWait,
     WorkflowRunOutputGet,
+    WorkflowRunDiagnosticsGet,
     WorkflowRunHistoryGet,
     WorkflowRunVariablesGet,
     HumanTasksClaim,
@@ -343,7 +345,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 136] = [
+    const ALL: [Self; 137] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -432,6 +434,7 @@ impl ManagementTool {
         Self::WorkflowRunsList,
         Self::WorkflowRunsWait,
         Self::WorkflowRunOutputGet,
+        Self::WorkflowRunDiagnosticsGet,
         Self::WorkflowRunHistoryGet,
         Self::WorkflowRunVariablesGet,
         Self::HumanTasksClaim,
@@ -596,6 +599,7 @@ impl ManagementTool {
             Self::WorkflowRunsList => WORKFLOW_RUNS_LIST,
             Self::WorkflowRunsWait => WORKFLOW_RUNS_WAIT,
             Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
+            Self::WorkflowRunDiagnosticsGet => WORKFLOW_RUN_DIAGNOSTICS_GET,
             Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
             Self::WorkflowRunVariablesGet => WORKFLOW_RUN_VARIABLES_GET,
             Self::HumanTasksClaim => HUMAN_TASKS_CLAIM,
@@ -769,6 +773,7 @@ impl ManagementTool {
             | Self::WorkflowRunsList
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
+            | Self::WorkflowRunDiagnosticsGet
             | Self::WorkflowRunHistoryGet
             | Self::WorkflowRunVariablesGet
             | Self::HumanTasksGet
@@ -894,6 +899,7 @@ impl ManagementTool {
             | Self::WorkflowRunsGet
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
+            | Self::WorkflowRunDiagnosticsGet
             | Self::WorkflowRunHistoryGet
             | Self::WorkflowRunVariablesGet
             | Self::HumanTasksClaim
@@ -1496,6 +1502,12 @@ impl ManagementTool {
             Self::WorkflowRunOutputGet => (
                 "Get Workflow run output",
                 "Get the bounded output and digest of one completed WorkflowRun.",
+                uuid_id_schema("workflowRunId"),
+                true,
+            ),
+            Self::WorkflowRunDiagnosticsGet => (
+                "Inspect Workflow run diagnostics",
+                "Inspect bounded step statistics, evidence correlations, and A3S Flow projection health for one WorkflowRun.",
                 uuid_id_schema("workflowRunId"),
                 true,
             ),
@@ -3535,6 +3547,7 @@ mod tests {
             ManagementTool::WorkflowRunsList,
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
+            ManagementTool::WorkflowRunDiagnosticsGet,
             ManagementTool::WorkflowRunHistoryGet,
             ManagementTool::WorkflowRunVariablesGet,
             ManagementTool::HumanTasksClaim,
@@ -3610,6 +3623,7 @@ mod tests {
             ManagementTool::WorkflowRunsList,
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
+            ManagementTool::WorkflowRunDiagnosticsGet,
             ManagementTool::WorkflowRunHistoryGet,
             ManagementTool::WorkflowRunVariablesGet,
             ManagementTool::HumanTasksClaim,

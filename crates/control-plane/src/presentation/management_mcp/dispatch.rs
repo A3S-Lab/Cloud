@@ -1045,6 +1045,17 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::WorkflowRunDiagnosticsGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run_diagnostics(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::WorkflowRunHistoryGet => {
             let arguments = arguments::parse::<WorkflowRunHistoryArguments>(arguments).ok()?;
             workflow::get_run_history(

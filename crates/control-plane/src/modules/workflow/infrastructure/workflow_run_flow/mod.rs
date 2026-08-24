@@ -2,6 +2,7 @@ mod composite;
 mod connector;
 mod connector_response;
 mod coordinator;
+mod diagnostics;
 mod execution;
 mod projection;
 mod projection_authority;
@@ -14,6 +15,7 @@ mod workflow_application_variables;
 mod connector_response_tests;
 
 pub use coordinator::FlowWorkflowRunCoordinator;
+pub use diagnostics::WorkflowRunDiagnosticsReader;
 pub use projection::project_workflow_run_record;
 pub use readers::{WorkflowRunHistoryReader, WorkflowRunVariableReader};
 

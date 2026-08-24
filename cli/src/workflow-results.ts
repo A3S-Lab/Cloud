@@ -12,6 +12,7 @@ import type {
   WorkflowRevision,
   WorkflowRevisionSummary,
   WorkflowRun,
+  WorkflowRunDiagnostics,
   WorkflowRunHistoryPage,
   WorkflowRunMutationResult,
   WorkflowRunOutput,
@@ -195,6 +196,27 @@ export function workflowRunHistoryResult(page: WorkflowRunHistoryPage): CommandR
       { header: 'ATTEMPT', value: (event) => event.attempt },
       { header: 'OCCURRED AT', value: (event) => event.occurredAt },
     ]),
+  };
+}
+
+export function workflowRunDiagnosticsResult(diagnostics: WorkflowRunDiagnostics): CommandResult {
+  return {
+    json: diagnostics,
+    table: renderTable(
+      [diagnostics],
+      [
+        { header: 'RUN', value: (value) => value.workflowRunId },
+        { header: 'RUN STATUS', value: (value) => value.runStatus },
+        { header: 'FLOW STATUS', value: (value) => value.observedFlowStatus },
+        { header: 'DIAGNOSTICS', value: (value) => value.diagnosticStatus },
+        { header: 'PROJECTED SEQUENCE', value: (value) => value.projectedFlowSequence },
+        { header: 'OBSERVED SEQUENCE', value: (value) => value.observedFlowSequence },
+        { header: 'UNPROJECTED', value: (value) => value.unprojectedEventCount },
+        { header: 'EVENTS', value: (value) => value.flowStatistics.eventCount },
+        { header: 'RETRIES', value: (value) => value.flowStatistics.retryEventCount },
+        { header: 'EVIDENCE', value: (value) => value.stepStatistics.evidenceReferenceCount },
+      ]
+    ),
   };
 }
 

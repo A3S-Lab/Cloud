@@ -592,6 +592,7 @@ fn operation_summary(method: &str, path: &str) -> String {
             ("/wait", "Wait for workflow run completion"),
             ("/output", "Get workflow run output"),
             ("/variables", "Inspect workflow run variables"),
+            ("/diagnostics", "Inspect workflow run diagnostics"),
             ("/history", "List workflow run history"),
             ("/replay", "Replay an application session"),
             ("/changes", "Get agent execution changes"),

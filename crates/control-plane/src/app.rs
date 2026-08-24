@@ -220,18 +220,19 @@ use crate::modules::workflow::{
     FlowWorkflowRunCoordinator, GetHumanTaskHandler, GetOntologyHandler,
     GetOntologyRevisionHandler, GetPlanRevisionHandler, GetWorkflowDefinitionHandler,
     GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
-    GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
-    GetWorkflowRunVariablesHandler, HumanTaskCoordinator, HumanTaskResumeWorker,
-    HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
+    GetWorkflowRunDiagnosticsHandler, GetWorkflowRunHandler, GetWorkflowRunHistoryHandler,
+    GetWorkflowRunOutputHandler, GetWorkflowRunVariablesHandler, HumanTaskCoordinator,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
     IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
     IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
-    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
-    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
-    ListWorkflowRunsHandler, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler,
-    WorkflowCompositeExecutionApplicationService, WorkflowDefinitionPublicationService,
-    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    IWorkflowRunDiagnosticsReader, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    IWorkflowRunVariableReader, ListHumanTasksHandler, ListOntologiesHandler,
+    ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler,
+    ListWorkflowRevisionsHandler, ListWorkflowRunsHandler, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
+    WaitWorkflowRunHandler, WorkflowCompositeExecutionApplicationService,
+    WorkflowDefinitionPublicationService, WorkflowModule, WorkflowRunDiagnosticsReader,
+    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
     WorkflowRunVariableReader,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -1002,6 +1003,10 @@ async fn build_api_worker_application(
     let workflow_run_history: Option<Arc<dyn IWorkflowRunHistoryReader>> = management_flow_engine
         .as_ref()
         .map(|engine| Arc::new(WorkflowRunHistoryReader::new(engine.clone())) as Arc<_>);
+    let workflow_run_diagnostics: Option<Arc<dyn IWorkflowRunDiagnosticsReader>> =
+        management_flow_engine
+            .as_ref()
+            .map(|engine| Arc::new(WorkflowRunDiagnosticsReader::new(engine.clone())) as Arc<_>);
     let workflow_run_variables: Option<Arc<dyn IWorkflowRunVariableReader>> =
         management_flow_engine
             .as_ref()
@@ -1569,6 +1574,11 @@ async fn build_api_worker_application(
                 workflow_goals,
                 workflow_runs,
                 human_tasks,
+                workflow_run_diagnostics: workflow_run_diagnostics.ok_or_else(|| {
+                    ControlPlaneStartupError::Framework(BootError::Internal(
+                        "management process is missing its Flow diagnostics reader".into(),
+                    ))
+                })?,
                 workflow_run_history: workflow_run_history.ok_or_else(|| {
                     ControlPlaneStartupError::Framework(BootError::Internal(
                         "management process is missing its Flow history reader".into(),
@@ -1746,6 +1756,7 @@ struct ManagementApplicationDependencies {
     workflow_goals: Arc<dyn IWorkflowGoalRepository>,
     workflow_runs: Arc<dyn IWorkflowRunRepository>,
     human_tasks: Arc<dyn IHumanTaskRepository>,
+    workflow_run_diagnostics: Arc<dyn IWorkflowRunDiagnosticsReader>,
     workflow_run_history: Arc<dyn IWorkflowRunHistoryReader>,
     workflow_run_variables: Arc<dyn IWorkflowRunVariableReader>,
     forms: Arc<dyn IFormRepository>,
@@ -1823,6 +1834,7 @@ fn build_management_application_with_health(
         workflow_goals,
         workflow_runs,
         human_tasks,
+        workflow_run_diagnostics,
         workflow_run_history,
         workflow_run_variables,
         forms,
@@ -2031,6 +2043,7 @@ fn build_management_application_with_health(
     let wait_workflow_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_outputs = Arc::clone(&workflow_runs);
     let get_workflow_run_variable_runs = Arc::clone(&workflow_runs);
+    let get_workflow_run_diagnostics_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_history_runs = workflow_runs;
     let change_human_task_assignments = Arc::clone(&human_tasks);
     let submit_human_tasks = Arc::clone(&human_tasks);
@@ -2979,6 +2992,12 @@ fn build_management_application_with_health(
                     GetWorkflowRunVariablesHandler::new(
                         get_workflow_run_variable_runs,
                         workflow_run_variables,
+                    ),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunDiagnostics, _>(
+                    GetWorkflowRunDiagnosticsHandler::new(
+                        get_workflow_run_diagnostics_runs,
+                        workflow_run_diagnostics,
                     ),
                 )
                 .query_handler::<crate::modules::workflow::GetWorkflowRunHistory, _>(

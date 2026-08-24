@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.59.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.60.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -862,7 +862,7 @@ describe('CloudApi', () => {
     expect(called).toBe(false);
   });
 
-  it('uses bounded tenant-scoped WorkflowRun mutation, query, wait, output, variables, and history paths', async () => {
+  it('uses bounded tenant-scoped WorkflowRun mutation, query, wait, output, variables, diagnostics, and history paths', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
@@ -887,6 +887,7 @@ describe('CloudApi', () => {
     await api.waitWorkflowRun('organization / one', 'run / one');
     await api.getWorkflowRunOutput('organization / one', 'run / one');
     await api.getWorkflowRunVariables('organization / one', 'run / one');
+    await api.getWorkflowRunDiagnostics('organization / one', 'run / one');
     await api.getWorkflowRunHistory('organization / one', 'run / one', {
       afterSequence: 7,
       limit: 10,
@@ -900,6 +901,7 @@ describe('CloudApi', () => {
       `/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/wait?timeoutSeconds=${DEFAULT_WORKFLOW_RUN_WAIT_SECONDS}`,
       '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/output',
       '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/variables',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/diagnostics',
       '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/history?afterSequence=7&limit=10',
     ]);
     expect(calls[0]?.[1]).toEqual(

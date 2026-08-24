@@ -402,6 +402,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_runs_list",
             "a3s_cloud_workflow_runs_wait",
             "a3s_cloud_workflow_run_output_get",
+            "a3s_cloud_workflow_run_diagnostics_get",
             "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_workflow_run_variables_get",
             "a3s_cloud_human_tasks_get",
@@ -597,6 +598,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_runs_list",
             "a3s_cloud_workflow_runs_wait",
             "a3s_cloud_workflow_run_output_get",
+            "a3s_cloud_workflow_run_diagnostics_get",
             "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_workflow_run_variables_get",
             "a3s_cloud_human_tasks_claim",
@@ -2381,6 +2383,11 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
         (
             38,
             "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": missing_resource_id}),
+        ),
+        (
+            41,
+            "a3s_cloud_workflow_run_diagnostics_get",
             json!({"workflowRunId": missing_resource_id}),
         ),
         (

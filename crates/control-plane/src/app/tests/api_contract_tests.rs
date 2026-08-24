@@ -1577,6 +1577,21 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         workflow_run_variables["x-a3s-api-contract-version"],
         OPENAPI_CONTRACT_VERSION
     );
+    let workflow_run_diagnostics = &document["paths"]
+        ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics"]["get"];
+    assert_eq!(workflow_run_diagnostics["tags"], json!(["Workflow"]));
+    assert_eq!(
+        workflow_run_diagnostics["summary"],
+        "Inspect workflow run diagnostics"
+    );
+    assert!(workflow_run_diagnostics["requestBody"].is_null());
+    assert!(workflow_run_diagnostics["responses"]["200"].is_object());
+    assert!(workflow_run_diagnostics["responses"]["404"].is_object());
+    assert!(workflow_run_diagnostics["responses"]["503"].is_object());
+    assert_eq!(
+        workflow_run_diagnostics["x-a3s-api-contract-version"],
+        OPENAPI_CONTRACT_VERSION
+    );
     let workflow_revision = &document["paths"]
         ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
         ["post"];

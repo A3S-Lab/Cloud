@@ -63,13 +63,15 @@ use crate::modules::workflow::{
     IHumanTaskRepository, IWorkflowRunHistoryReader, IWorkflowRunVariableReader,
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
     InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowDecisionOutcome,
-    WorkflowRunHistoryPage, WorkflowRunRecord, WorkflowRunVariableInspection,
+    WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime, WorkflowRunHistoryPage,
+    WorkflowRunRecord, WorkflowRunVariableInspection,
 };
 use crate::modules::workloads::{
     IOciArtifactResolver, InMemoryWorkloadRepository, OciArtifact, OciArtifactReference,
     OciArtifactResolutionError, OciRegistryCredentialReference,
 };
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use a3s_flow::FlowEngine;
 use a3s_use_core::PluginReleaseChannel;
 use a3s_use_extension::{
     PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage, PluginCatalogSearch,
@@ -1978,6 +1980,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             workflow_runs: Arc::new(InMemoryWorkflowRunRepository::new()),
             human_tasks: human_tasks
                 .unwrap_or_else(|| Arc::new(TestHumanTaskRepository::default())),
+            workflow_run_diagnostics: Arc::new(WorkflowRunDiagnosticsReader::new(
+                FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime::default())),
+            )),
             workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
             workflow_run_variables: Arc::new(InputWorkflowRunVariableReader),
             forms: Arc::new(InMemoryFormRepository::new()),

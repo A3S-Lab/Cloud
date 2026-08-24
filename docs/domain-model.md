@@ -3815,6 +3815,18 @@ references. Before Flow creates the run, immutable inputs may be observed at
 sequence zero; Plan v1 conflicts. No variable row, cache, event log, or worker is
 an authoritative or supporting state source.
 
+`cloud.workflow-run.diagnostics.v1` is another read projection over the same
+authority. After project authorization, it verifies one consistent A3S Flow
+snapshot/history pair against the immutable WorkflowRun and Operation binding,
+compares observed and projected sequences, and derives closed diagnostic
+status, step/event statistics, durable waits, retries, runtime-recovery
+boundaries, child counts, and bounded owner-evidence correlations. The response
+contains at most 256 exact evidence URNs and reports truncation explicitly;
+fixed messages never copy provider, evaluator, request, response, credential,
+or evidence-body data. A missing correlated Flow history is an explicit
+diagnostic outcome. No diagnostic row, metrics store, counter, cache, or second
+history authority is introduced.
+
 ### Evolution experiment and promotion state (planned EV0)
 
 ```text

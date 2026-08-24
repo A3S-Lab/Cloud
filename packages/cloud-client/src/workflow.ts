@@ -519,6 +519,89 @@ export interface WorkflowRunHistoryPage {
   nextSequence: number | null;
 }
 
+export type WorkflowRunDiagnosticSeverity = 'info' | 'warning' | 'error';
+
+export type WorkflowRunDiagnosticStatus = 'ok' | 'attention' | 'error';
+
+export type WorkflowRunDiagnosticCode =
+  | 'flow_history_missing'
+  | 'projection_lag'
+  | 'projection_ahead'
+  | 'active_external_wait'
+  | 'cancellation_pending'
+  | 'retry_observed'
+  | 'runtime_recovery_observed'
+  | 'step_failure_observed'
+  | 'run_failed'
+  | 'run_timed_out'
+  | 'run_cancelled';
+
+export type WorkflowRunObservedFlowStatus =
+  | 'missing'
+  | 'pending'
+  | 'running'
+  | 'suspended'
+  | 'cancelling'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'continued_as_new';
+
+export interface WorkflowRunDiagnostic {
+  code: WorkflowRunDiagnosticCode;
+  severity: WorkflowRunDiagnosticSeverity;
+  message: string;
+}
+
+export interface WorkflowRunStepStatistics {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  skipped: number;
+  totalAttemptGenerations: number;
+  evidenceReferenceCount: number;
+}
+
+export interface WorkflowRunFlowStatistics {
+  eventCount: number;
+  eventCounts: Record<string, number>;
+  durableStepCount: number;
+  activeHookCount: number;
+  pendingTimerCount: number;
+  linkedChildOperationCount: number;
+  childWorkflowCount: number;
+  retryEventCount: number;
+  hostShutdownCount: number;
+}
+
+export interface WorkflowRunEvidenceCorrelation {
+  stepId: string;
+  references: WorkflowStepEvidenceReference[];
+}
+
+export interface WorkflowRunDiagnostics {
+  schema: 'cloud.workflow-run.diagnostics.v1';
+  workflowRunId: string;
+  operationId: string;
+  flowRunId: string;
+  runStatus: WorkflowRunStatus;
+  observedFlowStatus: WorkflowRunObservedFlowStatus;
+  flowRuntimeBuildId: string | null;
+  projectedFlowSequence: number;
+  observedFlowSequence: number | null;
+  unprojectedEventCount: number;
+  observedAt: string;
+  stepStatistics: WorkflowRunStepStatistics;
+  flowStatistics: WorkflowRunFlowStatistics;
+  evidenceCorrelations: WorkflowRunEvidenceCorrelation[];
+  evidenceCorrelationsTruncated: boolean;
+  diagnosticStatus: WorkflowRunDiagnosticStatus;
+  diagnostics: WorkflowRunDiagnostic[];
+}
+
 export type WorkflowDataType = 'any' | 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
 
 export type WorkflowVariableScope =

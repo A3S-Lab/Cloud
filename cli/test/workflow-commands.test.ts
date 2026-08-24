@@ -111,6 +111,11 @@ describe('a3s-cloud Workflow commands', () => {
       workflowRunVariables(),
     ],
     [
+      ['workflow-runs', 'diagnostics', RUN_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/diagnostics`,
+      workflowRunDiagnostics(),
+    ],
+    [
       ['workflow-runs', 'history', RUN_ID, '--cursor=7', '--limit=10'],
       `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/history?afterSequence=7&limit=10`,
       workflowRunHistory(),
@@ -768,6 +773,54 @@ function workflowRunHistory() {
       },
     ],
     nextSequence: null,
+  };
+}
+
+function workflowRunDiagnostics() {
+  return {
+    schema: 'cloud.workflow-run.diagnostics.v1',
+    workflowRunId: RUN_ID,
+    operationId: RUN_ID,
+    flowRunId: RUN_ID,
+    runStatus: 'running',
+    observedFlowStatus: 'running',
+    flowRuntimeBuildId: 'a3s-cloud-workflows@20',
+    projectedFlowSequence: 7,
+    observedFlowSequence: 8,
+    unprojectedEventCount: 1,
+    observedAt: '2026-08-09T00:00:30.000Z',
+    stepStatistics: {
+      total: 1,
+      pending: 0,
+      running: 1,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      skipped: 0,
+      totalAttemptGenerations: 1,
+      evidenceReferenceCount: 0,
+    },
+    flowStatistics: {
+      eventCount: 8,
+      eventCounts: { 'flow.run.created': 1 },
+      durableStepCount: 1,
+      activeHookCount: 0,
+      pendingTimerCount: 0,
+      linkedChildOperationCount: 0,
+      childWorkflowCount: 0,
+      retryEventCount: 0,
+      hostShutdownCount: 0,
+    },
+    evidenceCorrelations: [],
+    evidenceCorrelationsTruncated: false,
+    diagnosticStatus: 'attention',
+    diagnostics: [
+      {
+        code: 'projection_lag',
+        severity: 'warning',
+        message: 'The persisted Workflow projection is behind the observed A3S Flow history.',
+      },
+    ],
   };
 }
 

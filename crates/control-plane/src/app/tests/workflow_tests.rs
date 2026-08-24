@@ -1141,6 +1141,20 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
         response_json(&pending_history)?["data"]["events"],
         json!([])
     );
+    let pending_diagnostics = app
+        .call(get_as(format!("{run_root}/diagnostics"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(pending_diagnostics.status(), 200);
+    let pending_diagnostics = response_json(&pending_diagnostics)?;
+    assert_eq!(
+        pending_diagnostics["data"]["schema"],
+        "cloud.workflow-run.diagnostics.v1"
+    );
+    assert_eq!(pending_diagnostics["data"]["observedFlowStatus"], "missing");
+    assert_eq!(
+        pending_diagnostics["data"]["diagnostics"][0]["code"],
+        "flow_history_missing"
+    );
     let pending_output = app
         .call(get_as(format!("{run_root}/output"), ADMIN_TOKEN))
         .await?;
@@ -1627,6 +1641,7 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
         ),
         granted_run_root.clone(),
         format!("{granted_run_root}/wait?timeoutSeconds=0"),
+        format!("{granted_run_root}/diagnostics"),
         format!("{granted_run_root}/history?limit=10"),
     ] {
         assert_eq!(
@@ -1710,6 +1725,10 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
             format!("{missing_run_root}/output"),
         ),
         (
+            format!("{denied_run_root}/diagnostics"),
+            format!("{missing_run_root}/diagnostics"),
+        ),
+        (
             format!("{denied_run_root}/history?limit=10"),
             format!("{missing_run_root}/history?limit=10"),
         ),
@@ -1786,6 +1805,12 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
             "a3s_cloud_workflow_run_output_get",
             json!({"workflowRunId": granted.run_id}),
             409,
+        ),
+        (
+            30,
+            "a3s_cloud_workflow_run_diagnostics_get",
+            json!({"workflowRunId": granted.run_id}),
+            200,
         ),
         (
             29,
@@ -1867,6 +1892,12 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
         (
             54,
             "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": denied.run_id}),
+            json!({"workflowRunId": Uuid::now_v7()}),
+        ),
+        (
+            60,
+            "a3s_cloud_workflow_run_diagnostics_get",
             json!({"workflowRunId": denied.run_id}),
             json!({"workflowRunId": Uuid::now_v7()}),
         ),
