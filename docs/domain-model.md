@@ -546,7 +546,10 @@ provenance digest, and completion time. The BuildRun terminal transition and
 this fact share the Artifacts Outbox transaction. Registry location remains an
 Artifacts concern and is exposed separately through the read-only
 `IHostedArtifactQueryPort`; consumers never load the BuildRun aggregate merely
-to locate its OCI object.
+to locate its OCI object. Migration 150 labels the retained tenant-qualified
+foreign keys as relational identity guards only; they preserve exact
+references without granting either bounded context the other's lifecycle
+authority.
 
 Primary aggregate:
 

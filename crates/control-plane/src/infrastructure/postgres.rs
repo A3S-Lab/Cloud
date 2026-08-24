@@ -1400,6 +1400,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/149_workflow_payload_schema_versions.sql"
             )),
         ),
+        Migration::new(
+            "150",
+            "hosted build bounded-context identity guards",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/150_hosted_build_context_boundary.sql"
+            )),
+        ),
     ]
 }
 
@@ -1414,6 +1422,10 @@ mod workflow_composite_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/workflow_payload_schema_versions_migration.rs"]
 mod workflow_payload_schema_versions_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/hosted_build_context_boundary_migration.rs"]
+mod hosted_build_context_boundary_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

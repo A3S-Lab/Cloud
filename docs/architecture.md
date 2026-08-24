@@ -1384,7 +1384,10 @@ the draft-to-published release transition plus its schema-v2 Outbox fact in an
 Assets transaction. Exact replay validates the immutable binding and emits no
 duplicate fact. A Draft release under an archived Asset acknowledges the
 outcome as a terminal no-op; it cannot reopen the Asset or rewrite a successful
-BuildRun as failure. No context writes the other context's table.
+BuildRun as failure. No context writes the other context's table. Migration 150
+documents the existing tenant-qualified foreign keys as relational identity
+guards only: they prevent forged references inside the modular monolith but
+grant neither context lifecycle or write authority over the other.
 
 A failed or cancelled hosted BuildRun finalizes without changing its draft
 release. Recovery calls the existing organization-scoped BuildRun retry
