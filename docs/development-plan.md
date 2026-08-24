@@ -4563,8 +4563,11 @@ deliberately keeps the older structural rule so immutable historic revisions,
 Plans, Goals, and persisted Run histories remain readable. New Goal/Plan and
 Run compilation rechecks the same closed dispatch set, preventing an unwired
 historic revision or internal provider preset from launching a new execution.
-The fence adds no table, migration, protocol version, or provider
-implementation.
+Once resource authorization and exact request fingerprinting succeed, the
+repository resolves a matching historic Definition, revision, Goal/Plan, or Run
+idempotency record before availability admission. Same-key drift remains a
+conflict and a new key still reaches compilation. The fence adds no table,
+migration, protocol version, or provider implementation.
 
 The shared Operations adapter now pins the exact A3S Flow `1.0.0` release with
 A3S Boot `0.2.0` PostgreSQL task management, isolated ORM-backed

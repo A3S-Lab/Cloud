@@ -1,4 +1,6 @@
 pub mod commands;
+#[cfg(test)]
+mod historical_idempotency_replay_tests;
 pub(crate) mod human_task_access;
 pub mod queries;
 pub(crate) mod resource_access;

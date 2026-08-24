@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OrganizationId, PlanRevisionId, ProjectId, RepositoryError, WorkflowGoalId,
+    IdempotencyRequest, IdempotentWrite, OrganizationId, PlanRevisionId, ProjectId,
+    RepositoryError, WorkflowGoalId,
 };
 use crate::modules::workflow::domain::repositories::WorkflowGoalWriteReference;
 use crate::modules::workflow::domain::{
@@ -40,31 +41,16 @@ impl IWorkflowGoalRepository for InMemoryWorkflowGoalRepository {
         write: CreateWorkflowGoalWrite,
     ) -> Result<IdempotentWrite<WorkflowGoalRecord>, RepositoryError> {
         let mut state = self.state.write().await;
-        let key = (
-            write.idempotency.storage_key().0.to_owned(),
-            write.idempotency.storage_key().1.to_owned(),
-        );
-        if let Some((digest, reference)) = state.idempotency.get(&key) {
-            if digest != &write.idempotency.request_digest {
-                return Err(RepositoryError::IdempotencyConflict);
-            }
-            let record = state
-                .records
-                .get(&(reference.organization_id, reference.workflow_goal_id))
-                .cloned()
-                .ok_or_else(|| {
-                    RepositoryError::Storage("WorkflowGoal replay target is missing".into())
-                })?;
-            if record.plan_revision.id != reference.plan_revision_id {
-                return Err(RepositoryError::Storage(
-                    "WorkflowGoal replay plan target is invalid".into(),
-                ));
-            }
+        if let Some(record) = replay(&state, &write.idempotency)? {
             return Ok(IdempotentWrite {
                 value: record,
                 replayed: true,
             });
         }
+        let key = (
+            write.idempotency.storage_key().0.to_owned(),
+            write.idempotency.storage_key().1.to_owned(),
+        );
         write
             .record
             .goal
@@ -101,6 +87,14 @@ impl IWorkflowGoalRepository for InMemoryWorkflowGoalRepository {
             value: write.record,
             replayed: false,
         })
+    }
+
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowGoalRecord>, RepositoryError> {
+        let state = self.state.read().await;
+        replay(&state, idempotency)
     }
 
     async fn find(
@@ -157,4 +151,31 @@ impl IWorkflowGoalRepository for InMemoryWorkflowGoalRepository {
             .get(&(organization_id, goal_id, plan_revision_id))
             .cloned())
     }
+}
+
+fn replay(
+    state: &State,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<WorkflowGoalRecord>, RepositoryError> {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    let Some((digest, reference)) = state.idempotency.get(&key) else {
+        return Ok(None);
+    };
+    if digest != &idempotency.request_digest {
+        return Err(RepositoryError::IdempotencyConflict);
+    }
+    let record = state
+        .records
+        .get(&(reference.organization_id, reference.workflow_goal_id))
+        .cloned()
+        .ok_or_else(|| RepositoryError::Storage("WorkflowGoal replay target is missing".into()))?;
+    if record.plan_revision.id != reference.plan_revision_id {
+        return Err(RepositoryError::Storage(
+            "WorkflowGoal replay plan target is invalid".into(),
+        ));
+    }
+    Ok(Some(record))
 }

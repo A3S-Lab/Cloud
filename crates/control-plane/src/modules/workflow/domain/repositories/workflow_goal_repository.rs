@@ -37,6 +37,11 @@ pub trait IWorkflowGoalRepository: Send + Sync {
         write: CreateWorkflowGoalWrite,
     ) -> Result<IdempotentWrite<WorkflowGoalRecord>, RepositoryError>;
 
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowGoalRecord>, RepositoryError>;
+
     async fn find(
         &self,
         organization_id: OrganizationId,

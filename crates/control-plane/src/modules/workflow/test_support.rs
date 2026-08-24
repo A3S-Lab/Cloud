@@ -453,6 +453,10 @@ pub(crate) fn typed_variable_workflow_run_input() -> Result<WorkflowRunInput, St
 mod application;
 mod composite;
 mod connector;
+mod historic_provider;
+pub(crate) use historic_provider::{
+    historic_provider_workflow_fixture, HistoricProviderWorkflowFixture,
+};
 
 pub(crate) use application::{
     application_answer_workflow_run_input, application_answers_workflow_run_input,

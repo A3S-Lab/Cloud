@@ -20,7 +20,10 @@ not a runtime availability claim. Restore remains structural so historic
 revisions, Plans, Goals, and persisted Run histories stay readable. Every new
 Goal/Plan or Run compilation rechecks the same dispatch set, so an unwired
 historic revision or internal provider preset cannot launch a new execution.
-This fence adds no store, migration, or public protocol shape.
+After authorization, exact pre-upgrade Definition, revision, Goal/Plan, and Run
+idempotency replays resolve before this check. Same-key input drift conflicts,
+while a new key still reaches the fence. This adds no store, migration, or
+public protocol shape.
 
 The same publication boundary covers semantic-free Plan v1 input. Only the
 already wired legacy kinds are accepted: Workflow-local steps, HumanDecision,

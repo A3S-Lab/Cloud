@@ -2084,10 +2084,12 @@ presets remain deferred internal composition evidence. Historic revisions,
 Plans, Goals, and persisted Run histories remain structurally readable, while
 new Goal/Plan and Run compilation rechecks the same runtime set. An unwired
 historic revision or internal provider preset therefore cannot launch a new
-execution. The fence adds no migration or public API shape. Tests cover all five
-unwired provider kinds, semantic-free Subworkflow, both public mutation paths,
-the internal preset path, supported runtime publication paths, and the historic
-Plan/Run compilation boundary.
+execution. Authorized exact idempotency replay is resolved first, so an existing
+pre-upgrade Definition revision, Goal/Plan, or Run is returned without starting
+new work; same-key drift conflicts and a new key remains fenced. The fence adds
+no migration or public API shape. Tests cover all five unwired provider kinds,
+semantic-free Subworkflow, both public mutation paths, the internal preset path,
+supported runtime publication paths, historic compilation, and replay ordering.
 
 Built-in discovery is a separate read-only projection. The parity manifest is
 the sole source of the exact 23-node acceptance inventory, owner, gate,

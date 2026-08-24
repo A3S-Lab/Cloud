@@ -696,8 +696,11 @@ semantics without claiming runtime availability. Restore remains structurally
 compatible with immutable historic revisions, Plans, Goals, and persisted Run
 histories, but both new Goal/Plan compilation and new Run compilation reapply
 the same dispatch fence. An unwired historic revision or internal provider
-preset cannot therefore create a new execution. This boundary adds no runtime
-router, store, or public protocol.
+preset cannot therefore create a new execution. Authorized exact idempotency
+replay is queried before availability admission and returns the referenced
+historic record; request drift under that key conflicts, while a new key cannot
+bypass compilation. This boundary adds no runtime router, store, or public
+protocol.
 
 New Operation histories also pin runtime build `a3s-cloud-workflows@20` and
 the immutable `cloud.flow.bounded-step-retries-v1` marker. Agent, Build, Data

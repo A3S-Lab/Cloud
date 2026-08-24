@@ -107,17 +107,6 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            if let Err(error) = revision.validate_runtime_dispatch_support() {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
-            if revision.contract.digest() == parent.contract.digest()
-                && revision.payload_set_digest == parent.payload_set_digest
-                && revision.semantic_contract_set_digest() == parent.semantic_contract_set_digest()
-            {
-                return Ok(Err(ApplicationError::Invalid(
-                    "WorkflowDefinition revision must change semantic content".into(),
-                )));
-            }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "workflowDefinitionId": command.workflow_definition_id,
@@ -138,6 +127,27 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            match workflows.replay(&idempotency).await {
+                Ok(Some(record)) => {
+                    return Ok(Ok(WorkflowDefinitionMutationResult {
+                        record,
+                        replayed: true,
+                    }))
+                }
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
+            if let Err(error) = revision.validate_runtime_dispatch_support() {
+                return Ok(Err(ApplicationError::Invalid(error)));
+            }
+            if revision.contract.digest() == parent.contract.digest()
+                && revision.payload_set_digest == parent.payload_set_digest
+                && revision.semantic_contract_set_digest() == parent.semantic_contract_set_digest()
+            {
+                return Ok(Err(ApplicationError::Invalid(
+                    "WorkflowDefinition revision must change semantic content".into(),
+                )));
+            }
             let base = current.at_revision(&parent).map_err(|error| {
                 BootError::Internal(format!("stored Workflow revision is invalid: {error}"))
             })?;

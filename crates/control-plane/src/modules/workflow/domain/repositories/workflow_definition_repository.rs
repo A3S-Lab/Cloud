@@ -52,6 +52,11 @@ pub trait IWorkflowDefinitionRepository: Send + Sync {
         write: ReviseWorkflowDefinitionWrite,
     ) -> Result<IdempotentWrite<WorkflowDefinitionRecord>, RepositoryError>;
 
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowDefinitionRecord>, RepositoryError>;
+
     async fn find(
         &self,
         organization_id: OrganizationId,

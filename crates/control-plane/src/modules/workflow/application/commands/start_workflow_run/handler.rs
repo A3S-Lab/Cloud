@@ -109,6 +109,16 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            match runs.replay(&idempotency).await {
+                Ok(Some(record)) => {
+                    return Ok(Ok(WorkflowRunMutationResult {
+                        record,
+                        replayed: true,
+                    }))
+                }
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
             let compiled = match WorkflowRunCompiler::compile(
                 WorkflowRunId::new(),
                 &goal_record.goal,

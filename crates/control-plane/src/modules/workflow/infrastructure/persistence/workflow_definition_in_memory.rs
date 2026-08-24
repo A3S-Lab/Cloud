@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, WorkflowDefinitionId,
-    WorkflowRevisionId,
+    IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::repositories::WorkflowDefinitionWriteReference;
 use crate::modules::workflow::domain::{
@@ -148,6 +148,14 @@ impl IWorkflowDefinitionRepository for InMemoryWorkflowDefinitionRepository {
         })
     }
 
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowDefinitionRecord>, RepositoryError> {
+        let state = self.state.read().await;
+        replay(&state, idempotency)
+    }
+
     async fn find(
         &self,
         organization_id: OrganizationId,
@@ -277,7 +285,7 @@ fn validate_successor(
 
 fn replay(
     state: &State,
-    idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    idempotency: &IdempotencyRequest,
 ) -> Result<Option<WorkflowDefinitionRecord>, RepositoryError> {
     let key = (
         idempotency.storage_key().0.to_owned(),
@@ -320,7 +328,7 @@ fn replay(
 
 fn store_replay(
     state: &mut State,
-    idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    idempotency: &IdempotencyRequest,
     record: &WorkflowDefinitionRecord,
 ) {
     state.idempotency.insert(

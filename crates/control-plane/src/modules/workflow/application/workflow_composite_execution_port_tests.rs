@@ -3,9 +3,9 @@ use super::{
     WorkflowCompositeExecutionRequest,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, IdempotentWrite, OntologyId, OntologyRevisionId, OrganizationId,
-    PlanRevisionId, PrincipalId, ProjectId, RepositoryError, Sha256Digest, WorkflowDefinitionId,
-    WorkflowRevisionId, WorkflowRunId,
+    canonical_json_bounded, IdempotencyRequest, IdempotentWrite, OntologyId, OntologyRevisionId,
+    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
+    WorkflowDefinitionId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
     CreateOntologyWrite, CreateWorkflowDefinitionWrite, IOntologyRepository,
@@ -40,6 +40,13 @@ impl IWorkflowDefinitionRepository for StaticWorkflowRepository {
         _write: ReviseWorkflowDefinitionWrite,
     ) -> Result<IdempotentWrite<WorkflowDefinitionRecord>, RepositoryError> {
         Err(RepositoryError::Storage("read-only fixture".into()))
+    }
+
+    async fn replay(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowDefinitionRecord>, RepositoryError> {
+        Ok(None)
     }
 
     async fn find(

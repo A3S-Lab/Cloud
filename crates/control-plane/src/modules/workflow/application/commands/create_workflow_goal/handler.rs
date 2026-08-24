@@ -141,6 +141,16 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            match goals.replay(&idempotency).await {
+                Ok(Some(record)) => {
+                    return Ok(Ok(WorkflowGoalMutationResult {
+                        record,
+                        replayed: true,
+                    }))
+                }
+                Ok(None) => {}
+                Err(error) => return Ok(Err(error.into())),
+            }
             let compiled = match WorkflowPlanCompiler::compile_goal(
                 WorkflowGoalId::new(),
                 PlanRevisionId::new(),

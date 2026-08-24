@@ -138,14 +138,6 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
             ),
         }
         .map_err(ApplicationError::Invalid)?;
-        if request.provenance == WorkflowDefinitionPublicationProvenance::UserAuthored {
-            // Graph shape and descriptor admission are revision-owned input,
-            // not proof that this Cloud runtime has the owning dispatch port.
-            // Historic restore and exact Applications presets remain structural.
-            revision
-                .validate_runtime_dispatch_support()
-                .map_err(ApplicationError::Invalid)?;
-        }
         let canonical = canonical_publication_request(
             request.organization_id,
             request.project_id,
@@ -162,6 +154,20 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
             &canonical,
         )
         .map_err(ApplicationError::Invalid)?;
+        if let Some(record) = self.workflows.replay(&idempotency).await? {
+            return Ok(WorkflowDefinitionMutationResult {
+                record,
+                replayed: true,
+            });
+        }
+        if request.provenance == WorkflowDefinitionPublicationProvenance::UserAuthored {
+            // Graph shape and descriptor admission are revision-owned input,
+            // not proof that this Cloud runtime has the owning dispatch port.
+            // Historic exact idempotency replay and Applications presets remain structural.
+            revision
+                .validate_runtime_dispatch_support()
+                .map_err(ApplicationError::Invalid)?;
+        }
         let definition = WorkflowDefinition::create(
             request.organization_id,
             request.project_id,

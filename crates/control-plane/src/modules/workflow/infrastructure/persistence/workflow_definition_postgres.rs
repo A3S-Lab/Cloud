@@ -4,8 +4,8 @@ use crate::infrastructure::{
     transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
-    WorkflowDefinitionId, WorkflowRevisionId,
+    IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::repositories::WorkflowDefinitionWriteReference;
 use crate::modules::workflow::domain::{
@@ -314,6 +314,29 @@ impl IWorkflowDefinitionRepository for PostgresWorkflowDefinitionRepository {
                         value: write.record,
                         replayed: false,
                     })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<WorkflowDefinitionRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) = idempotency_replay::<WorkflowDefinitionWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_record(transaction, replay.value).await.map(Some)
                 })
             })
             .await
