@@ -7,8 +7,8 @@ use crate::modules::applications::domain::ApplicationExperience;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workflow::application::{
-    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationRequest, WorkflowPayloadAcl,
-    WorkflowSemanticContractAcls,
+    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
+    WorkflowDefinitionPublicationRequest, WorkflowPayloadAcl, WorkflowSemanticContractAcls,
 };
 use crate::modules::workflow::domain::{
     CapabilityOwner, CapabilityReference, CapabilityType, WorkflowContract, WorkflowDataSchema,
@@ -92,6 +92,7 @@ impl IApplicationPresetWorkflowPort for WorkflowApplicationPresetCompiler {
                     variable_defaults_acl: None,
                     composite_regions_acl: None,
                 }),
+                provenance: WorkflowDefinitionPublicationProvenance::ApplicationsPreset,
                 actor_principal_id: request.actor_principal_id,
                 idempotency_scope: format!(
                     "organizations/{}/projects/{}/applications/{}/releases/{}/preset-workflow",

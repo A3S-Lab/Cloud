@@ -15,8 +15,8 @@ pub use workflow_composite_execution_port::{
     WorkflowCompositeExecutionRequest,
 };
 pub use workflow_definition_publication::{
-    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationRequest,
-    WorkflowDefinitionPublicationService,
+    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
+    WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
 };
 pub use workflow_run_reconciler::{
     WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,

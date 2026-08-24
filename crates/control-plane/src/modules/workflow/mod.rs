@@ -75,10 +75,10 @@ pub use application::{
     HumanTaskMutationResult, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
     OntologyMutationResult, WorkflowCompositeExecutionApplicationService,
     WorkflowCompositeExecutionRequest, WorkflowDefinitionMutationResult,
-    WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
-    WorkflowGoalMutationResult, WorkflowPayloadAcl, WorkflowRunMutationResult,
-    WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
-    WorkflowSemanticContractAcls,
+    WorkflowDefinitionPublicationProvenance, WorkflowDefinitionPublicationRequest,
+    WorkflowDefinitionPublicationService, WorkflowGoalMutationResult, WorkflowPayloadAcl,
+    WorkflowRunMutationResult, WorkflowRunReconcileFailure, WorkflowRunReconcileReport,
+    WorkflowRunReconciler, WorkflowSemanticContractAcls,
 };
 
 pub use domain::{

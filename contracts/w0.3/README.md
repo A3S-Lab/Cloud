@@ -9,6 +9,17 @@ execution class, configuration/default-policy digests, required bindings,
 allowed existing `CapabilityType` values, typed failure behavior, compiler
 compatibility, admission metadata, and a separate presentation digest.
 
+For user-authored publication, `admission = "admitted"` is necessary but not
+sufficient. Every bound descriptor must also resolve to a dispatch class
+implemented by the current Cloud runtime: Workflow-local steps, composite
+regions, finite Execution, Connector Service, or the exact Application variable
+and Answer ports. Agent, MCP, model, Tool, Memory, and any other unwired
+owning-context descriptor cannot self-declare availability. Exact
+Applications-generated presets remain deferred internal composition evidence,
+not a runtime availability claim. Restore remains structural so historic
+snapshots stay readable. This fence adds no store, migration, or public protocol
+shape.
+
 The fixture contains five representative admitted descriptors so Workflow-local
 Input, Transform, If / Else, and Output steps plus the existing finite Executions
 application port are covered. It is not the production built-in catalog, does not advertise all 23

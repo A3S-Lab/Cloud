@@ -34,10 +34,21 @@ pub struct WorkflowDefinitionPublicationRequest {
     pub definition_acl: String,
     pub payloads: Vec<WorkflowPayloadAcl>,
     pub semantic_contracts: Option<WorkflowSemanticContractAcls>,
+    /// Trusted in-process provenance; this is never populated from REST, CLI,
+    /// MCP, or another caller-owned transport field.
+    pub provenance: WorkflowDefinitionPublicationProvenance,
     pub actor_principal_id: PrincipalId,
     pub idempotency_scope: String,
     pub idempotency_key: String,
     pub request_id: Uuid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowDefinitionPublicationProvenance {
+    /// A caller-authored graph that must be executable by the current runtime.
+    UserAuthored,
+    /// One exact Applications-owned preset retained ahead of its provider gate.
+    ApplicationsPreset,
 }
 
 #[async_trait]
@@ -102,6 +113,16 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
             .map(|value| parse_semantic_contracts(&contract, value))
             .transpose()
             .map_err(ApplicationError::Invalid)?;
+        if request.provenance == WorkflowDefinitionPublicationProvenance::UserAuthored {
+            if let Some(contracts) = semantic_contracts.as_ref() {
+                // Descriptor admission is revision-owned input, not proof that
+                // this Cloud runtime has the owning dispatch port. Historic
+                // restore and exact Applications presets remain structural.
+                contracts
+                    .validate_user_authored_runtime_support(contract.spec())
+                    .map_err(ApplicationError::Invalid)?;
+            }
+        }
         let now = Utc::now();
         let revision = match semantic_contracts {
             Some(semantic_contracts) => WorkflowRevision::initial_with_semantic_contracts(

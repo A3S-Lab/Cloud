@@ -1,6 +1,6 @@
 use super::{
-    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationRequest,
-    WorkflowDefinitionPublicationService,
+    IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
+    WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
 };
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
@@ -26,6 +26,7 @@ async fn project_admission_precedes_acl_parsing() {
             definition_acl: "not valid A3S ACL".into(),
             payloads: Vec::new(),
             semantic_contracts: None,
+            provenance: WorkflowDefinitionPublicationProvenance::UserAuthored,
             actor_principal_id: PrincipalId::new(),
             idempotency_scope: "workflow-publication-test".into(),
             idempotency_key: "missing-project".into(),
@@ -42,6 +43,7 @@ async fn project_admission_precedes_acl_parsing() {
 #[test]
 fn publication_port_types_are_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<WorkflowDefinitionPublicationProvenance>();
     assert_send_sync::<WorkflowDefinitionPublicationRequest>();
     assert_send_sync::<WorkflowDefinitionPublicationService>();
 }

@@ -178,6 +178,140 @@ fn bindings(registry: &WorkflowStepDescriptorRegistry) -> WorkflowStepDescriptor
     .expect("bindings")
 }
 
+#[test]
+fn new_user_publication_cannot_self_admit_unwired_provider_dispatch() {
+    let cases = [
+        (
+            WorkflowStepKind::Agent,
+            WorkflowStepOwner::Agents,
+            CapabilityType::AgentRelease,
+        ),
+        (
+            WorkflowStepKind::Mcp,
+            WorkflowStepOwner::Assets,
+            CapabilityType::McpServiceProfile,
+        ),
+        (
+            WorkflowStepKind::Model,
+            WorkflowStepOwner::Inference,
+            CapabilityType::ModelRevision,
+        ),
+        (
+            WorkflowStepKind::Tool,
+            WorkflowStepOwner::Use,
+            CapabilityType::UsePackage,
+        ),
+        (
+            WorkflowStepKind::Memory,
+            WorkflowStepOwner::Use,
+            CapabilityType::UsePackage,
+        ),
+    ];
+
+    for (kind, owner, capability_type) in cases {
+        let descriptor_id = format!("provider.{}", kind.as_str());
+        let mut provider_descriptor = descriptor(&descriptor_id, kind, "input", "result");
+        provider_descriptor.owner = owner;
+        provider_descriptor.execution_class = WorkflowStepExecutionClass::OwningApplicationPort;
+        provider_descriptor.required_bindings = vec![WorkflowStepBindingKind::CapabilityReference];
+        provider_descriptor.allowed_capability_types = vec![capability_type];
+
+        let mut descriptor_specs = registry()
+            .descriptors()
+            .iter()
+            .map(|revision| revision.spec().clone())
+            .collect::<Vec<_>>();
+        descriptor_specs.push(provider_descriptor);
+        let provider_registry =
+            WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+                id: "support.bound".into(),
+                revision: "1.0.0".into(),
+                compiler_schema_version: 2,
+                descriptors: descriptor_specs,
+            })
+            .expect("provider registry");
+
+        let mut provider_step = step("provider", kind);
+        provider_step.capability = Some(CapabilityReference {
+            owner: capability_type.owner(),
+            capability_type,
+            resource_id: uuid::Uuid::now_v7(),
+            revision: "release-1".into(),
+            digest: digest('e'),
+            capability: format!("{}.invoke", kind.as_str()),
+        });
+        let mut provider_workflow = workflow();
+        provider_workflow.steps.insert(1, provider_step);
+        provider_workflow.edges = vec![
+            WorkflowEdgeSpec {
+                id: "input-provider".into(),
+                source: "input".into(),
+                target: "provider".into(),
+                source_handle: None,
+            },
+            WorkflowEdgeSpec {
+                id: "provider-output".into(),
+                source: "provider".into(),
+                target: "output".into(),
+                source_handle: None,
+            },
+        ];
+        let provider_bindings =
+            WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+                id: "support.bound".into(),
+                revision: "1.0.0".into(),
+                compiler_schema_version: 2,
+                bindings: [
+                    ("input", "workflow.input"),
+                    ("provider", descriptor_id.as_str()),
+                    ("output", "workflow.output"),
+                ]
+                .into_iter()
+                .map(
+                    |(step_id, bound_descriptor_id)| WorkflowStepDescriptorBinding {
+                        step_id: step_id.into(),
+                        descriptor_id: bound_descriptor_id.into(),
+                        descriptor_revision: "1.0.0".into(),
+                        semantic_digest: provider_registry
+                            .resolve(bound_descriptor_id, "1.0.0")
+                            .expect("bound descriptor")
+                            .semantic_digest()
+                            .clone(),
+                    },
+                )
+                .collect(),
+            })
+            .expect("provider bindings");
+        let variables = variable_contract();
+
+        WorkflowRevisionSemanticContracts::restore(
+            &provider_workflow,
+            provider_bindings.canonical_acl(),
+            provider_bindings.digest().as_str(),
+            provider_registry.canonical_acl(),
+            provider_registry.digest().as_str(),
+            variables.canonical_acl(),
+            variables.digest().as_str(),
+        )
+        .expect("historic provider descriptor snapshot remains readable");
+
+        let contracts = WorkflowRevisionSemanticContracts::create(
+            &provider_workflow,
+            provider_bindings,
+            provider_registry,
+            variables,
+        )
+        .expect("deferred internal composition remains structurally valid");
+        let error = contracts
+            .validate_user_authored_runtime_support(&provider_workflow)
+            .expect_err("unwired user-authored dispatch must remain unavailable");
+        assert!(
+            error.contains("has no admitted Cloud runtime dispatch port"),
+            "unexpected {kind:?} admission error: {error}"
+        );
+    }
+}
+
 pub(super) fn composite_workflow() -> WorkflowSpec {
     let mut iteration = step("iteration", WorkflowStepKind::Subworkflow);
     iteration.capability = Some(CapabilityReference {

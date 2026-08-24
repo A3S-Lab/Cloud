@@ -145,6 +145,15 @@ step/capability types, owner/execution class, semantic/configuration/default-
 policy digests, required bindings, typed failure behavior, compiler ranges,
 fail-closed admission, and presentation isolation. Its representative fixture
 is execution-conformance evidence, not a global catalog or availability claim.
+User-authored publication additionally proves that every bound descriptor has a
+current Cloud runtime dispatch path. Caller-provided admission metadata cannot
+enable unwired Agent, MCP, model, Tool, Memory, or other owning-context ports;
+finite Execution, Connector Service, exact Application variable/Answer ports,
+Workflow-local steps, and composite regions remain admitted. Exact
+Applications-generated presets retain their deferred internal composition
+contract without claiming runtime availability. Historic restored snapshots
+retain structural compatibility, and this check changes no persisted or public
+protocol shape.
 Migration `103` snapshots the exact admitted registry under WorkflowRevision,
 and Plan v2 pins exact descriptor semantic digests while existing Plan v1
 histories remain byte-stable. A graph that opts into the exact finite-Execution
@@ -210,6 +219,12 @@ are closed, canonical, sorted, and duplicate-free. They provide correlation
 only: provider and interaction bodies remain with the owning context, and a
 dispatch rejection without owning-context evidence retains no reference. No
 historical terminal projection is mutated or backfilled.
+
+The same user-authored publication boundary now rejects structurally valid
+descriptors whose owning Cloud runtime port is not implemented. Provider nodes
+therefore fail at revision publication instead of entering a run that can only
+terminate at the local-executor fallback. This is an availability fence, not
+implementation of the remaining provider ports.
 
 The separate catalog projection composes the frozen parity manifest's exact
 23-node owner/gate/dependency/evidence/availability inventory with its exact

@@ -395,7 +395,13 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. This is not public HTTP Request availability;
+    copied evidence bodies. User-authored publication also checks every
+    admitted descriptor against the closed set of Cloud runtime dispatch paths,
+    so caller-supplied Agent, MCP, model, Tool, and Memory descriptors cannot
+    self-declare availability before their owning ports land. Exact
+    Applications-generated presets remain deferred internal composition
+    evidence, historic snapshots remain readable, and the public API shape is
+    unchanged. This is not public HTTP Request availability;
     business-service and remaining Agent/MCP/model/Tool dispatch, compensation,
     retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into

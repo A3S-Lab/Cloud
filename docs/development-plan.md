@@ -4550,6 +4550,16 @@ PostgreSQL/provider gates still govern verification. Business-service
 and remaining provider capability dispatch, compensation, expanded clean
 provider evidence, and public availability remain open; no UI mechanism is required.
 
+User-authored Workflow revision publication also treats descriptor admission
+metadata as necessary but not sufficient: each bound step must map to a dispatch
+path wired into the current Cloud runtime. Structurally valid caller-provided
+Agent, MCP, model, Tool, and Memory descriptors therefore fail before
+persistence instead of reaching the unsupported local-executor fallback. Exact
+Applications-generated presets retain their deferred internal composition
+contract without claiming provider availability. Restore deliberately keeps the
+older structural rule so immutable historic snapshots remain readable. The
+fence adds no table, migration, protocol version, or provider implementation.
+
 The shared Operations adapter now pins the exact A3S Flow `1.0.0` release with
 A3S Boot `0.2.0` PostgreSQL task management, isolated ORM-backed
 stores, runtime-build-pinned new runs, and retained process-death regression

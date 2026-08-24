@@ -3,7 +3,7 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{WorkflowDefinitionId, WorkflowRevisionId};
 use crate::modules::workflow::application::{
     IWorkflowDefinitionPublicationPort, WorkflowDefinitionMutationResult,
-    WorkflowDefinitionPublicationRequest,
+    WorkflowDefinitionPublicationProvenance, WorkflowDefinitionPublicationRequest,
 };
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
@@ -40,6 +40,7 @@ impl CommandHandler<CreateWorkflowDefinition> for CreateWorkflowDefinitionHandle
                     definition_acl: command.definition_acl,
                     payloads: command.payloads,
                     semantic_contracts: command.semantic_contracts,
+                    provenance: WorkflowDefinitionPublicationProvenance::UserAuthored,
                     actor_principal_id: command.actor_principal_id,
                     idempotency_scope: format!(
                         "organizations/{}/projects/{}/workflow-definitions",

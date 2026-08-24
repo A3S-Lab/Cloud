@@ -182,7 +182,7 @@ fn parse_semantic_contracts(
     contract: &WorkflowContract,
     value: crate::modules::workflow::application::WorkflowSemanticContractAcls,
 ) -> Result<WorkflowRevisionSemanticContracts, String> {
-    WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+    let contracts = WorkflowRevisionSemanticContracts::create_with_optional_contracts(
         contract.spec(),
         WorkflowStepDescriptorBindings::parse_acl(&value.descriptor_bindings_acl)?,
         WorkflowStepDescriptorRegistry::parse_acl(&value.descriptor_registry_acl)?,
@@ -197,5 +197,7 @@ fn parse_semantic_contracts(
             .as_deref()
             .map(WorkflowCompositeRegions::parse_acl)
             .transpose()?,
-    )
+    )?;
+    contracts.validate_user_authored_runtime_support(contract.spec())?;
+    Ok(contracts)
 }

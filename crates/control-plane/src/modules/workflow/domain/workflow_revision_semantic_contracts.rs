@@ -4,12 +4,13 @@ use super::{
     has_branch_failure_route, has_workflow_output_failure_route,
     validate_descriptor_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowDataType,
     WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
-    WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
-    WorkflowStepRetryClassification, WorkflowVariableContract, WorkflowVariableDefaults,
-    WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
-    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
-    WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepDescriptorSpec,
+    WorkflowStepExecutionClass, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
+    WorkflowStepPortCardinality, WorkflowStepRetryClassification, WorkflowVariableContract,
+    WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
+    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+    WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use serde::Serialize;
@@ -802,6 +803,45 @@ impl WorkflowRevisionSemanticContracts {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn validate_user_authored_runtime_support(
+        &self,
+        workflow: &WorkflowSpec,
+    ) -> Result<(), String> {
+        for step in &workflow.steps {
+            let descriptor = self.descriptor_for_step(&step.id)?.spec();
+            if descriptor_has_runtime_dispatch(descriptor) {
+                continue;
+            }
+            return Err(format!(
+                "Workflow step {:?} descriptor {:?}@{:?} has no admitted Cloud runtime dispatch port",
+                step.id, descriptor.id, descriptor.revision
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn descriptor_has_runtime_dispatch(descriptor: &WorkflowStepDescriptorSpec) -> bool {
+    match descriptor.execution_class {
+        WorkflowStepExecutionClass::WorkflowLocal | WorkflowStepExecutionClass::CompositeRegion => {
+            true
+        }
+        WorkflowStepExecutionClass::OwningApplicationPort => {
+            match (descriptor.owner, descriptor.kind) {
+                (WorkflowStepOwner::Executions, Some(WorkflowStepKind::Execution))
+                | (WorkflowStepOwner::Connectors, Some(WorkflowStepKind::Service)) => true,
+                (WorkflowStepOwner::Applications, Some(WorkflowStepKind::Service)) => {
+                    is_exact_application_variable_descriptor(descriptor)
+                }
+                (WorkflowStepOwner::Applications, Some(WorkflowStepKind::Output)) => {
+                    is_exact_application_answer_descriptor(descriptor)
+                }
+                _ => false,
+            }
+        }
+        WorkflowStepExecutionClass::InvocationOnly => false,
     }
 }
 
