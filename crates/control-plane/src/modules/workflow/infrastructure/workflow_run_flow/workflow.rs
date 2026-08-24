@@ -19,7 +19,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA,
     WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
     WORKFLOW_RUN_INPUT_SCHEMA_V15, WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17,
-    WORKFLOW_RUN_INPUT_SCHEMA_V18,
+    WORKFLOW_RUN_INPUT_SCHEMA_V18, WORKFLOW_RUN_INPUT_SCHEMA_V19,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -166,6 +166,12 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
         if step.plan.kind == WorkflowStepKind::Subworkflow {
             let durable_step_id = flow_step_id(&step.plan.id);
             if let Some(error) = context.step_failed(&durable_step_id) {
+                if let Some(result) =
+                    local_composite_failure_route_result(&invocation.run_id, &input, step)?
+                {
+                    resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                    continue;
+                }
                 return Ok(context.fail(format!(
                     "Workflow composite step {:?} failed: {error}",
                     step.plan.id
@@ -224,16 +230,51 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         effective_input,
                         dependencies,
                         steps: all_steps,
+                        routed_failure: None,
                         composite_region_result: Some(region),
                     };
-                    ready.push(context.step(
-                        durable_step_id,
-                        WORKFLOW_RUN_STEP_NAME,
-                        serde_json::to_value(step_input)?,
-                    ));
+                    let encoded = serde_json::to_value(step_input)?;
+                    if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V19
+                        && failure_route_handle(&input, step)?.is_some()
+                    {
+                        ready.push(context.step_with_retry(
+                            durable_step_id,
+                            WORKFLOW_RUN_STEP_NAME,
+                            encoded,
+                            RetryPolicy::none().continue_workflow_on_failure(),
+                        ));
+                    } else {
+                        ready.push(context.step(durable_step_id, WORKFLOW_RUN_STEP_NAME, encoded));
+                    }
                     continue;
                 }
                 super::composite::CompositeStepResolution::Failed(error) => {
+                    if let Some(result) =
+                        local_composite_failure_route_result(&invocation.run_id, &input, step)?
+                    {
+                        let failure = serde_json::from_value::<WorkflowStepFailureOutput>(
+                            result.output.clone(),
+                        )
+                        .map_err(|_| failure_payload_drift(&invocation.run_id, &step.plan.id))?;
+                        let step_input = WorkflowLocalStepInput {
+                            runtime_contract_revision: input.runtime_contract_revision.clone(),
+                            typed_projection_authoritative: false,
+                            step: (*step).clone(),
+                            workflow_input: input.goal_input.clone(),
+                            effective_input,
+                            dependencies,
+                            steps: all_steps,
+                            routed_failure: Some(failure),
+                            composite_region_result: None,
+                        };
+                        ready.push(context.step_with_retry(
+                            durable_step_id,
+                            WORKFLOW_RUN_STEP_NAME,
+                            serde_json::to_value(step_input)?,
+                            RetryPolicy::none().continue_workflow_on_failure(),
+                        ));
+                        continue;
+                    }
                     return Ok(context.fail(format!(
                         "Workflow composite step {:?} failed: {error}",
                         step.plan.id
@@ -494,6 +535,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 effective_input,
                 dependencies,
                 steps: all_steps,
+                routed_failure: None,
                 composite_region_result: None,
             };
             let prepared = super::execution::execute_local_step(&step_input)
@@ -549,6 +591,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 WORKFLOW_RUN_INPUT_SCHEMA_V16
                     | WORKFLOW_RUN_INPUT_SCHEMA_V17
                     | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V19
             ) && step.plan.kind == WorkflowStepKind::Transform
             {
                 if let Some(result) =
@@ -560,7 +603,9 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             }
             if matches!(
                 input.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V17 | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                WORKFLOW_RUN_INPUT_SCHEMA_V17
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V19
             ) && step.plan.kind == WorkflowStepKind::Output
             {
                 if let Some(result) =
@@ -570,8 +615,10 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     continue;
                 }
             }
-            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V18
-                && step.plan.kind == WorkflowStepKind::Branch
+            if matches!(
+                input.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V18 | WORKFLOW_RUN_INPUT_SCHEMA_V19
+            ) && step.plan.kind == WorkflowStepKind::Branch
             {
                 if let Some(result) =
                     local_branch_failure_route_result(&invocation.run_id, &input, step)?
@@ -616,6 +663,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             effective_input,
             dependencies,
             steps: all_steps,
+            routed_failure: None,
             composite_region_result: None,
         };
         let encoded_step_input = serde_json::to_value(step_input)?;
@@ -624,13 +672,18 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             WORKFLOW_RUN_INPUT_SCHEMA_V16
                 | WORKFLOW_RUN_INPUT_SCHEMA_V17
                 | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                | WORKFLOW_RUN_INPUT_SCHEMA_V19
         ) && step.plan.kind == WorkflowStepKind::Transform)
             || (matches!(
                 input.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V17 | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                WORKFLOW_RUN_INPUT_SCHEMA_V17
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V19
             ) && step.plan.kind == WorkflowStepKind::Output)
-            || (input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V18
-                && step.plan.kind == WorkflowStepKind::Branch);
+            || (matches!(
+                input.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V18 | WORKFLOW_RUN_INPUT_SCHEMA_V19
+            ) && step.plan.kind == WorkflowStepKind::Branch);
         if routed_local_failure && failure_route_handle(&input, step)?.is_some() {
             ready.push(context.step_with_retry(
                 durable_step_id,
@@ -792,6 +845,7 @@ pub(super) fn local_transform_failure_route_result(
         WORKFLOW_RUN_INPUT_SCHEMA_V16
             | WORKFLOW_RUN_INPUT_SCHEMA_V17
             | WORKFLOW_RUN_INPUT_SCHEMA_V18
+            | WORKFLOW_RUN_INPUT_SCHEMA_V19
     ) || step.plan.kind != WorkflowStepKind::Transform
         || failure_route_handle(input, step)?.is_none()
     {
@@ -809,7 +863,9 @@ pub(super) fn local_output_failure_route_result(
 ) -> Result<Option<Box<WorkflowLocalStepResult>>, FlowError> {
     if !matches!(
         input.schema.as_str(),
-        WORKFLOW_RUN_INPUT_SCHEMA_V17 | WORKFLOW_RUN_INPUT_SCHEMA_V18
+        WORKFLOW_RUN_INPUT_SCHEMA_V17
+            | WORKFLOW_RUN_INPUT_SCHEMA_V18
+            | WORKFLOW_RUN_INPUT_SCHEMA_V19
     ) || step.plan.kind != WorkflowStepKind::Output
         || step
             .plan
@@ -830,8 +886,10 @@ pub(super) fn local_branch_failure_route_result(
     input: &WorkflowRunInput,
     step: &ResolvedWorkflowRunStep,
 ) -> Result<Option<Box<WorkflowLocalStepResult>>, FlowError> {
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V18
-        || step.plan.kind != WorkflowStepKind::Branch
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V18 | WORKFLOW_RUN_INPUT_SCHEMA_V19
+    ) || step.plan.kind != WorkflowStepKind::Branch
         || step.plan.capability.is_some()
         || step.plan.descriptor.is_none()
         || failure_route_handle(input, step)?.is_none()
@@ -839,6 +897,22 @@ pub(super) fn local_branch_failure_route_result(
         return Ok(None);
     }
     let failure = WorkflowStepFailureOutput::local_branch(step)
+        .map_err(|_| failure_payload_drift(run_id, &step.plan.id))?;
+    failure_route_result(run_id, input, step, failure)
+}
+
+pub(super) fn local_composite_failure_route_result(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+) -> Result<Option<Box<WorkflowLocalStepResult>>, FlowError> {
+    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V19
+        || step.plan.kind != WorkflowStepKind::Subworkflow
+        || failure_route_handle(input, step)?.is_none()
+    {
+        return Ok(None);
+    }
+    let failure = WorkflowStepFailureOutput::local_composite(step)
         .map_err(|_| failure_payload_drift(run_id, &step.plan.id))?;
     failure_route_result(run_id, input, step, failure)
 }
@@ -867,6 +941,7 @@ pub(super) fn application_variable_write_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V16
                     | WORKFLOW_RUN_INPUT_SCHEMA_V17
                     | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V19
             ) =>
         {
             let payload = serde_json::from_value::<
@@ -1073,6 +1148,7 @@ pub(super) fn application_answer_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V16
                     | WORKFLOW_RUN_INPUT_SCHEMA_V17
                     | WORKFLOW_RUN_INPUT_SCHEMA_V18
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V19
             ) =>
         {
             let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(

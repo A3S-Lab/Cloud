@@ -235,7 +235,7 @@ capability.
 | Sources, builds, artifacts, developer workflows | In progress; P0 profile/preview/import completion remains unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
-| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v10/Run v18 failure routing, bounded owner-evidence correlations, and authorized run diagnostics/statistics |
+| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v11/Run v19 descriptor-bound composite failure routing, bounded owner-evidence correlations, and authorized run diagnostics/statistics |
 | AI Applications, Files/Knowledge, Automations | Component foundations in progress; complete products unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |

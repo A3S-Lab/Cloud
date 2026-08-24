@@ -210,6 +210,16 @@ Branch projection failed with the exact selected handle. Descriptor error
 handles are disjoint from ordinary If / Else handles. Plans v1-v9 and Run inputs
 v1-v17 retain their exact bytes and replay behavior; runtime build
 `a3s-cloud-workflows@20` explicitly retains `@1` through `@19`.
+An exact Workflow-owned Iteration or Loop descriptor error edge emits Plan v11
+and immutable WorkflowRun input/runtime/Flow v19. A validated child failure,
+immutable item bound, Loop time budget, maximum iteration exhaustion, or local
+composite finalization failure is materialized once as durable fixed redacted
+`cloud.workflow.step-failure.v8` data on the ordinary DAG. The source
+Subworkflow projection remains failed with the exact selected handle, while the
+failure sink may complete the parent. Resume-authority drift remains a
+non-deterministic runtime error and is never converted into handled data. Plans
+v1-v10 and Run inputs v1-v18 retain their exact bytes and replay behavior;
+runtime build `a3s-cloud-workflows@21` explicitly retains `@1` through `@20`.
 
 Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`
@@ -358,8 +368,10 @@ cancellation/timeout before termination. Iteration is initially sequential
 under its declared concurrency ceiling. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
 implemented through Run v11-v15. Workflow-local Transform, Output, and Branch
-failure routes are implemented through Run v16-v18. Current finite Execution
-and Connector projections retain bounded owning-context evidence URNs. The
+failure routes are implemented through Run v16-v18, and descriptor-bound
+Iteration/Loop failure routes are implemented through Run v19. Current finite
+Execution and Connector projections retain bounded owning-context evidence
+URNs. The
 remaining business-service and Agent/MCP/model/Tool capability dispatch,
 compensation, full provider conformance, and public Workflow availability
 remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
@@ -436,7 +448,8 @@ composite Answer frames use Run v13 root/child authority and stable zero-based
 ordinals; their deterministic Answer failures retain that root authority in
 Run v15. Workflow-local Transform failure branches are implemented through
 Plan v8/Run v16, Workflow-local Output failure branches through Plan v9/Run
-v17, and Workflow-local Branch failure branches through Plan v10/Run v18.
+v17, Workflow-local Branch failure branches through Plan v10/Run v18, and
+descriptor-bound Iteration/Loop failure branches through Plan v11/Run v19.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.

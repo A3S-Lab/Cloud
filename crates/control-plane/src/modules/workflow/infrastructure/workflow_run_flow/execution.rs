@@ -1,16 +1,16 @@
 use super::{WorkflowLocalStepInput, WorkflowLocalStepResult};
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
-    WorkflowDataSchema, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    descriptor_failure_output, WorkflowDataSchema, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde_json::Value;
 
@@ -36,8 +36,37 @@ pub(super) fn execute_local_step(
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17
             | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18
+            | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
     );
     let allow_legacy_tokens = !input.typed_projection_authoritative;
+    if let Some(failure) = input.routed_failure.as_ref() {
+        if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+            || input.step.plan.kind != WorkflowStepKind::Subworkflow
+            || input.composite_region_result.is_some()
+        {
+            return Err("Workflow routed failure materializer has invalid authority".into());
+        }
+        failure.validate(&input.step)?;
+        let selected_handle =
+            descriptor_failure_output(input.step.plan.failure.as_ref().ok_or_else(|| {
+                "Workflow routed failure materializer lost its immutable contract".to_owned()
+            })?)?
+            .name
+            .clone();
+        let output = serde_json::to_value(failure)
+            .map_err(|error| format!("Workflow routed failure is not serializable: {error}"))?;
+        let result = WorkflowLocalStepResult {
+            step_id: input.step.plan.id.clone(),
+            kind: input.step.plan.kind,
+            output_digest: value_digest(&output, "Workflow routed failure")?,
+            output,
+            selected_handle: Some(selected_handle),
+            composite_region_result: None,
+            default_output_evidence: None,
+        };
+        result.validate(&input.step)?;
+        return Ok(result);
+    }
     if input.step.plan.kind == WorkflowStepKind::Subworkflow {
         let region = input
             .composite_region_result
@@ -405,6 +434,7 @@ mod tests {
                 effective_input: json!({"result": input.goal_input}),
                 dependencies: std::collections::BTreeMap::new(),
                 steps: std::collections::BTreeMap::new(),
+                routed_failure: None,
                 composite_region_result: None,
             };
 
@@ -454,6 +484,7 @@ mod tests {
                 effective_input,
                 dependencies,
                 steps,
+                routed_failure: None,
                 composite_region_result: None,
             })
         };
@@ -533,6 +564,7 @@ mod tests {
             effective_input: input.goal_input,
             dependencies: std::collections::BTreeMap::new(),
             steps: std::collections::BTreeMap::new(),
+            routed_failure: None,
             composite_region_result: None,
         })
         .expect("legacy step input JSON");

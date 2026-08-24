@@ -16,6 +16,7 @@ pub(crate) fn validate_descriptor_failure_routes(
     application_variable_steps: &BTreeSet<&str>,
     application_answer_steps: &BTreeSet<&str>,
     workflow_output_steps: &BTreeSet<&str>,
+    composite_steps: &BTreeSet<&str>,
 ) -> Result<bool, String> {
     let steps = workflow
         .steps
@@ -51,6 +52,7 @@ pub(crate) fn validate_descriptor_failure_routes(
             application_variable_steps,
             application_answer_steps,
             workflow_output_steps,
+            composite_steps,
         ) {
             return Err(format!(
                 "Workflow failure route {:?} targets unsupported {} step {:?}",
@@ -154,6 +156,16 @@ pub(crate) fn has_workflow_output_failure_route(
     })
 }
 
+pub(crate) fn has_composite_failure_route(
+    workflow: &WorkflowSpec,
+    composite_steps: &BTreeSet<&str>,
+) -> bool {
+    workflow
+        .edges
+        .iter()
+        .any(|edge| edge.source_handle.is_some() && composite_steps.contains(edge.source.as_str()))
+}
+
 pub(crate) fn descriptor_failure_output(
     failure: &WorkflowStepFailureContract,
 ) -> Result<&WorkflowStepPort, String> {
@@ -181,6 +193,7 @@ fn supports_failure_route(
     application_variable_steps: &BTreeSet<&str>,
     application_answer_steps: &BTreeSet<&str>,
     workflow_output_steps: &BTreeSet<&str>,
+    composite_steps: &BTreeSet<&str>,
 ) -> bool {
     step.kind == WorkflowStepKind::Transform
         || step.kind == WorkflowStepKind::Branch
@@ -193,6 +206,8 @@ fn supports_failure_route(
             && step.capability.is_none()
             && (application_answer_steps.contains(step.id.as_str())
                 || workflow_output_steps.contains(step.id.as_str())))
+        || (step.kind == WorkflowStepKind::Subworkflow
+            && composite_steps.contains(step.id.as_str()))
 }
 
 fn is_connector_step(step: &WorkflowStepSpec) -> bool {
@@ -302,6 +317,7 @@ mod tests {
                 &no_application_steps,
                 &no_application_steps,
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -313,6 +329,7 @@ mod tests {
                 &no_application_steps,
                 &no_application_steps,
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -325,6 +342,7 @@ mod tests {
                 &no_application_steps,
                 &no_application_steps,
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -336,6 +354,7 @@ mod tests {
             &no_application_steps,
             &no_application_steps,
             &no_workflow_output_steps,
+            &no_application_steps,
         )
         .expect_err("unbound Service failure routes remain gated");
         assert!(unbound_service.contains("unsupported service step"));
@@ -347,6 +366,7 @@ mod tests {
                 &BTreeSet::from(["run"]),
                 &no_application_steps,
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -361,6 +381,7 @@ mod tests {
                 &no_application_steps,
                 &BTreeSet::from(["run"]),
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -371,6 +392,7 @@ mod tests {
                 &no_application_steps,
                 &no_application_steps,
                 &BTreeSet::from(["run"]),
+                &no_application_steps,
             ),
             Ok(true)
         );
@@ -384,6 +406,7 @@ mod tests {
             &no_application_steps,
             &no_application_steps,
             &no_workflow_output_steps,
+            &no_application_steps,
         )
         .expect_err("ordinary Output failure routes remain gated");
         assert!(unbound_output.contains("unsupported output step"));
@@ -396,9 +419,38 @@ mod tests {
             &no_application_steps,
             &no_application_steps,
             &no_workflow_output_steps,
+            &no_application_steps,
         )
         .expect_err("failure values must be objects");
         assert!(invalid.contains("required static object value"));
+
+        let composite_workflow = routed_workflow(WorkflowStepKind::Subworkflow);
+        let unsupported = validate_descriptor_failure_routes(
+            &composite_workflow,
+            &execution_failures,
+            &no_application_steps,
+            &no_application_steps,
+            &no_workflow_output_steps,
+            &no_application_steps,
+        )
+        .expect_err("unbound composite failure routes remain gated");
+        assert!(unsupported.contains("unsupported subworkflow step"));
+        let composite_steps = BTreeSet::from(["run"]);
+        assert_eq!(
+            validate_descriptor_failure_routes(
+                &composite_workflow,
+                &execution_failures,
+                &no_application_steps,
+                &no_application_steps,
+                &no_workflow_output_steps,
+                &composite_steps,
+            ),
+            Ok(true)
+        );
+        assert!(has_composite_failure_route(
+            &composite_workflow,
+            &composite_steps
+        ));
     }
 
     #[test]
@@ -422,6 +474,7 @@ mod tests {
                 &no_application_steps,
                 &no_application_steps,
                 &no_workflow_output_steps,
+                &no_application_steps,
             ),
             Ok(true)
         );

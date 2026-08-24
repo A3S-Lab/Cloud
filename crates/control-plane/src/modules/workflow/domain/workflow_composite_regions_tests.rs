@@ -181,10 +181,10 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         revision_id,
         workflow_contract.clone(),
         vec![
-            data_schema,
-            input_configuration,
-            iteration_configuration,
-            output_configuration,
+            data_schema.clone(),
+            input_configuration.clone(),
+            iteration_configuration.clone(),
+            output_configuration.clone(),
         ],
         semantics,
         principal_id,
@@ -195,8 +195,8 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         organization_id,
         project_id,
         definition_id,
-        workflow.name,
-        workflow.description,
+        workflow.name.clone(),
+        workflow.description.clone(),
         revision_id,
         workflow_contract.digest().clone(),
         principal_id,
@@ -281,6 +281,195 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         compiled_run.run.execution_input.flow_workflow_version,
         WORKFLOW_RUN_FLOW_VERSION_V3
     );
+
+    let mut routed_workflow = workflow.clone();
+    let mut failure_output = routed_workflow
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .expect("composite Output step");
+    failure_output.id = "failure_output".into();
+    routed_workflow.steps.insert(2, failure_output);
+    routed_workflow.edges = vec![
+        WorkflowEdgeSpec {
+            id: "input-iteration".into(),
+            source: "input".into(),
+            target: "iteration".into(),
+            source_handle: None,
+        },
+        WorkflowEdgeSpec {
+            id: "iteration-failure".into(),
+            source: "iteration".into(),
+            target: "failure_output".into(),
+            source_handle: Some("error".into()),
+        },
+        WorkflowEdgeSpec {
+            id: "iteration-output".into(),
+            source: "iteration".into(),
+            target: "output".into(),
+            source_handle: None,
+        },
+    ];
+    let base_registry = composite_registry();
+    let mut descriptor_specs = base_registry
+        .descriptors()
+        .iter()
+        .map(|descriptor| descriptor.spec().clone())
+        .collect::<Vec<_>>();
+    descriptor_specs
+        .iter_mut()
+        .find(|descriptor| descriptor.id == "workflow.iteration")
+        .expect("iteration descriptor")
+        .failure = WorkflowStepFailureContract {
+        error_output: Some(WorkflowStepPort {
+            name: "error".into(),
+            value_type: WorkflowDataType::Object,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }),
+        retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+        fallback: WorkflowStepFallbackMode::FailureBranch,
+        failure_branch: true,
+    };
+    let routed_registry =
+        WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+            id: base_registry.id().into(),
+            revision: base_registry.revision().into(),
+            compiler_schema_version: base_registry.compiler_schema_version(),
+            descriptors: descriptor_specs,
+        })
+        .expect("routed composite registry");
+    let routed_bindings =
+        WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+            id: "support.bound".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            bindings: [
+                ("input", "workflow.input"),
+                ("iteration", "workflow.iteration"),
+                ("failure_output", "workflow.output"),
+                ("output", "workflow.output"),
+            ]
+            .into_iter()
+            .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+                step_id: step_id.into(),
+                descriptor_id: descriptor_id.into(),
+                descriptor_revision: "1.0.0".into(),
+                semantic_digest: routed_registry
+                    .resolve(descriptor_id, "1.0.0")
+                    .expect("routed descriptor")
+                    .semantic_digest()
+                    .clone(),
+            })
+            .collect(),
+        })
+        .expect("routed composite bindings");
+    let routed_semantics = WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+        &routed_workflow,
+        routed_bindings,
+        routed_registry,
+        revision
+            .semantic_contracts
+            .as_ref()
+            .expect("composite semantics")
+            .variable_contract()
+            .clone(),
+        None,
+        Some(regions.clone()),
+    )
+    .expect("routed composite semantic contracts");
+    let routed_definition_id = WorkflowDefinitionId::new();
+    let routed_revision_id = WorkflowRevisionId::new();
+    let routed_contract =
+        WorkflowContract::from_spec(routed_workflow.clone()).expect("routed Workflow contract");
+    let routed_revision = WorkflowRevision::initial_with_semantic_contracts(
+        organization_id,
+        project_id,
+        routed_definition_id,
+        routed_revision_id,
+        routed_contract.clone(),
+        vec![
+            data_schema,
+            input_configuration,
+            iteration_configuration,
+            output_configuration,
+        ],
+        routed_semantics,
+        principal_id,
+        now,
+    )
+    .expect("routed composite Workflow revision");
+    let routed_definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        routed_definition_id,
+        routed_workflow.name,
+        routed_workflow.description,
+        routed_revision_id,
+        routed_contract.digest().clone(),
+        principal_id,
+        now,
+    )
+    .expect("routed composite Workflow definition");
+    let routed_compiled = WorkflowPlanCompiler::compile_goal(
+        WorkflowGoalId::new(),
+        PlanRevisionId::new(),
+        WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+            name: "Routed composite goal".into(),
+            workflow_definition_id: routed_definition_id,
+            workflow_revision_id: routed_revision_id,
+            workflow_digest: routed_contract.digest().clone(),
+            ontology_id,
+            ontology_revision_id,
+            ontology_digest: ontology_contract.digest().clone(),
+            environment_id: None,
+            input: json!({}),
+        })
+        .expect("routed composite goal contract"),
+        &routed_definition,
+        &routed_revision,
+        &ontology_revision,
+        principal_id,
+        now,
+    )
+    .expect("compiled routed composite plan");
+    assert_eq!(
+        routed_compiled.plan_revision.plan.schema,
+        WORKFLOW_PLAN_SCHEMA_V11
+    );
+    assert_eq!(
+        routed_compiled.plan_revision.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V11
+    );
+    let routed_run = WorkflowRunCompiler::compile(
+        WorkflowRunId::new(),
+        &routed_compiled.goal,
+        &routed_compiled.plan_revision,
+        &routed_revision,
+        None,
+        principal_id,
+        now,
+    )
+    .expect("runtime v19 routed composite input");
+    assert_eq!(
+        routed_run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V19
+    );
+    assert_eq!(
+        routed_run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+    );
+    assert_eq!(
+        routed_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V19
+    );
+    routed_run
+        .run
+        .execution_input
+        .validate()
+        .expect("valid runtime v19 routed composite input");
 
     let application_run = WorkflowRunCompiler::compile_for_application(
         WorkflowRunId::new(),

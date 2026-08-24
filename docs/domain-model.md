@@ -1201,6 +1201,17 @@ complete the parent. Configuration routes and defaults remain ordinary If /
 Else handles and cannot alias `error`; raw evaluator errors are excluded, and
 historic v1-v17 behavior is unchanged.
 
+W0.3 also admits a failure edge for an exact Workflow-owned Iteration or Loop
+descriptor with one bound composite region. That graph emits Plan v11 and Run
+v19. A validated child failure, immutable item bound, Loop time budget, maximum
+iteration exhaustion, or local composite finalization failure is materialized
+once as fixed redacted `cloud.workflow.step-failure.v8` data. The source
+Subworkflow projection remains failed with the exact descriptor `error` handle
+while its ordinary error sink may complete the parent. Resume-authority drift
+remains non-deterministic and cannot enter handled data. Constraint-only
+migration `148` admits the selected handle only on a failed Subworkflow;
+historic v1-v18 behavior is unchanged.
+
 The C8 management admission boundary derives stable session and invocation
 identities from the Principal owner plus idempotency scope/key. Changed reuse
 reaches the same identity and conflicts instead of creating a second record.
@@ -3792,7 +3803,12 @@ retain their exact behavior. An exact Workflow-local Branch descriptor error
 edge emits `cloud.workflow.plan.v10`; immutable Run v18 maps missing or invalid
 selector evaluation to fixed redacted failure v7 and the exact descriptor edge
 without reclassifying ordinary If / Else handles. Plans v1-v9 and Run inputs
-v1-v17 retain their exact behavior. Migration `122` adds nullable default-output evidence to the
+v1-v17 retain their exact behavior. An exact Workflow-owned Iteration or Loop
+descriptor error edge emits `cloud.workflow.plan.v11`; immutable Run v19
+materializes deterministic child, policy, or local-finalization failure as
+fixed redacted failure v8 and routes only the exact descriptor edge. Plans
+v1-v10 and Run inputs v1-v18 retain their exact behavior; resume-authority drift
+remains non-deterministic. Migration `122` adds nullable default-output evidence to the
 existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

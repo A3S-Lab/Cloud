@@ -243,6 +243,7 @@ impl WorkflowStepProjection {
                     | WorkflowStepKind::Execution
                     | WorkflowStepKind::Service
                     | WorkflowStepKind::Output
+                    | WorkflowStepKind::Subworkflow
             ) && self.status == WorkflowStepProjectionStatus::Failed)
         {
             return Err(

@@ -136,6 +136,25 @@ replay. Plans v1-v9 and Run inputs v1-v17 keep their bytes and behavior. This
 slice adds no table, column, retry engine, queue, worker, scheduler, or second
 Flow mechanism.
 
+## Descriptor-bound composite-region failure route
+
+An admitted Workflow-owned `workflow.iteration` or `workflow.loop` descriptor
+may declare one required static object error output named `error`, a
+non-retryable classification, and failure-branch fallback. Selecting that port
+emits `cloud.workflow.plan.v11` and immutable WorkflowRun
+input/runtime/Flow v19. Validated child failures and immutable region-policy
+exhaustion are recorded by one durable local materializer and produce the
+bounded redacted `cloud.workflow.step-failure.v8` value. The failed
+Subworkflow projection records the exact `error` handle while its ordinary
+error sink may complete the parent run.
+
+Runtime v19 keeps resume-authority drift and other non-deterministic errors
+outside handled data. Constraint-only migration `148` admits a selected handle
+only on a failed Subworkflow projection. Runtime build
+`a3s-cloud-workflows@21` retains `@1` through `@20` for exact replay. Plans
+v1-v10 and Run inputs v1-v18 keep their bytes and behavior. This slice adds no
+table, column, retry engine, queue, worker, scheduler, or second Flow mechanism.
+
 ## Bounded runtime evidence references
 
 The existing `WorkflowStepProjection.evidenceReferences` field now retains a

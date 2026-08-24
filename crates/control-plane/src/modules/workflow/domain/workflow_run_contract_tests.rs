@@ -8,11 +8,43 @@ use crate::modules::workflow::test_support::{
     routed_application_answer_and_variable_workflow_run_input,
     routed_application_answer_workflow_run_input,
     routed_application_frame_answer_workflow_run_input,
-    routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
-    routed_execution_workflow_run_input, typed_variable_workflow_run_input, workflow_run_input,
-    TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
-    TEST_HUMAN_STEP_ID,
+    routed_application_variable_workflow_run_input, routed_composite_workflow_run_input,
+    routed_connector_workflow_run_input, routed_execution_workflow_run_input,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
+    TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v19_composite_failure_route_is_exact_and_version_fenced() {
+    let input = routed_composite_workflow_run_input(
+        WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {
+            step_id: "batch".into(),
+            maximum_items: 1,
+            maximum_concurrency: 1,
+            failure_mode: WorkflowIterationFailureMode::Terminate,
+        }),
+        serde_json::json!([{"item": 1}]),
+    )
+    .expect("valid routed composite input");
+    assert_eq!(input.plan.schema, WORKFLOW_PLAN_SCHEMA_V11);
+    assert_eq!(
+        input.plan.compiler_revision,
+        WORKFLOW_PLAN_COMPILER_REVISION_V11
+    );
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V19);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V19);
+    input.validate().expect("valid v19 input");
+
+    let mut downgraded = input;
+    downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V18.into();
+    downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18.into();
+    downgraded.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V18.into();
+    assert!(downgraded.validate().is_err());
+}
 
 #[test]
 fn v15_application_answer_failure_route_is_exact_frame_capable_and_version_fenced() {

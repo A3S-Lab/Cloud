@@ -12,6 +12,7 @@ pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4: &str = "cloud.workflow.step-fa
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5: &str = "cloud.workflow.step-failure.v5";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6: &str = "cloud.workflow.step-failure.v6";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7: &str = "cloud.workflow.step-failure.v7";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8: &str = "cloud.workflow.step-failure.v8";
 pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
     "cloud.workflow.step-default-output.v1";
 
@@ -246,6 +247,18 @@ impl WorkflowStepFailureOutput {
         Ok(value)
     }
 
+    pub(crate) fn local_composite(step: &ResolvedWorkflowRunStep) -> Result<Self, String> {
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8.into(),
+            step_id: step.plan.id.clone(),
+            classification: WorkflowStepFailureClassification::WorkflowLocalInvalid,
+            message: workflow_composite_failure_message().into(),
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
         self.validate_observation(step)?;
         let failure =
@@ -302,6 +315,9 @@ impl WorkflowStepFailureOutput {
                     return Ok(())
                 }
                 WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7 if is_workflow_branch_step(step) => {
+                    return Ok(())
+                }
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8 if is_workflow_composite_step(step) => {
                     return Ok(())
                 }
                 _ => {}
@@ -400,6 +416,11 @@ impl WorkflowStepFailureOutput {
                 WorkflowStepFailureClassification::WorkflowLocalInvalid,
                 None,
             ) if self.message == workflow_branch_failure_message() => Ok(()),
+            (
+                WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8,
+                WorkflowStepFailureClassification::WorkflowLocalInvalid,
+                None,
+            ) if self.message == workflow_composite_failure_message() => Ok(()),
             _ => Err("Workflow step failure details do not match their classification".into()),
         }
     }
@@ -415,6 +436,10 @@ const fn workflow_output_failure_message() -> &'static str {
 
 const fn workflow_branch_failure_message() -> &'static str {
     "Workflow Branch evaluation was invalid"
+}
+
+const fn workflow_composite_failure_message() -> &'static str {
+    "Workflow composite region did not complete"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -539,6 +564,22 @@ fn is_workflow_branch_step(step: &ResolvedWorkflowRunStep) -> bool {
         && step.plan.descriptor.is_some()
 }
 
+fn is_workflow_composite_step(step: &ResolvedWorkflowRunStep) -> bool {
+    step.plan.kind == WorkflowStepKind::Subworkflow
+        && step.plan.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::WorkflowRevision
+                && capability.capability == "workflow.run"
+                && uuid::Uuid::parse_str(&capability.revision)
+                    .is_ok_and(|revision| !revision.is_nil())
+        })
+        && step.plan.descriptor.as_ref().is_some_and(|descriptor| {
+            matches!(
+                descriptor.descriptor_id.as_str(),
+                "workflow.iteration" | "workflow.loop"
+            )
+        })
+}
+
 fn application_failure_message(
     classification: WorkflowStepFailureClassification,
 ) -> Option<&'static str> {
@@ -603,14 +644,55 @@ fn validate_failure_execution_authority(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::workflow::domain::{
+        WorkflowCompositeRegionPolicy, WorkflowIterationFailureMode, WorkflowIterationRegionPolicy,
+    };
     use crate::modules::workflow::test_support::{
         branch_failure_workflow_run_input, output_failure_workflow_run_input,
         routed_application_answer_workflow_run_input,
-        routed_application_variable_workflow_run_input, routed_connector_workflow_run_input,
-        routed_execution_workflow_run_input, transform_failure_workflow_run_input,
-        TEST_ANSWER_STEP_ID, TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID,
-        TEST_EXECUTION_STEP_ID,
+        routed_application_variable_workflow_run_input, routed_composite_workflow_run_input,
+        routed_connector_workflow_run_input, routed_execution_workflow_run_input,
+        transform_failure_workflow_run_input, TEST_ANSWER_STEP_ID,
+        TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_EXECUTION_STEP_ID,
     };
+    use serde_json::json;
+
+    #[test]
+    fn composite_failures_are_redacted_exact_v8_local_observations() {
+        let input = routed_composite_workflow_run_input(
+            WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {
+                step_id: "batch".into(),
+                maximum_items: 1,
+                maximum_concurrency: 1,
+                failure_mode: WorkflowIterationFailureMode::Terminate,
+            }),
+            json!([{"item": 1}]),
+        )
+        .expect("routed composite input");
+        let step = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .find(|step| step.plan.id == "batch")
+            .expect("composite step");
+        let failure = WorkflowStepFailureOutput::local_composite(&step)
+            .expect("descriptor-bound composite failure");
+        assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8);
+        assert_eq!(
+            failure.classification,
+            WorkflowStepFailureClassification::WorkflowLocalInvalid
+        );
+        assert_eq!(
+            failure.message,
+            "Workflow composite region did not complete"
+        );
+        assert!(failure.details.is_none());
+        failure.validate(&step).expect("valid composite failure");
+
+        let mut leaked = failure;
+        leaked.message = "child WorkflowRun failed with secret output".into();
+        assert!(leaked.validate(&step).is_err());
+    }
 
     #[test]
     fn transform_failures_are_redacted_exact_v5_local_observations() {

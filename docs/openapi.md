@@ -23,10 +23,10 @@ with explicit truncation. The endpoint returns the standard wrapped success
 envelope and documents missing/denied resources as `404` and an unavailable or
 concurrently changing Flow observation as `503`.
 
-Workflow Plan v10 and the bounded `cloud.workflow.step-failure.v7` value use the
-existing plan and step-projection response fields. They add no route, field, or
-JSON shape, so this internal execution-semantics revision does not increment the
-OpenAPI contract version.
+Workflow Plan v11 and the bounded `cloud.workflow.step-failure.v8` composite
+failure value use the existing plan and step-projection response fields. They
+add no route, field, or JSON shape, so this internal execution-semantics
+revision does not increment the OpenAPI contract version.
 
 WorkflowRun responses already expose the bounded
 `steps[].evidenceReferences` array. Current projections populate only these

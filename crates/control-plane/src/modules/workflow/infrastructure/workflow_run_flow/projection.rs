@@ -1,9 +1,9 @@
 use super::workflow::{
     application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
-    local_branch_failure_route_result, local_output_failure_route_result,
-    local_transform_failure_route_result, ApplicationAnswerResolution,
-    ApplicationVariableWriteResolution, ExecutionResolution,
+    local_branch_failure_route_result, local_composite_failure_route_result,
+    local_output_failure_route_result, local_transform_failure_route_result,
+    ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
@@ -502,7 +502,10 @@ pub fn project_workflow_run_record(
                     sequence,
                     at,
                 )
-            } else if let Some(flow_step) = flow_step {
+            } else if let Some(flow_step) = flow_step.filter(|_| {
+                resolved.plan.kind != WorkflowStepKind::Subworkflow
+                    || !composite_failures.contains_key(&projection.step_id)
+            }) {
                 let sequence = last_step_sequence(history, &durable_step_id)
                     .ok_or_else(|| format!("Flow step {durable_step_id:?} has no history"))?;
                 let at = history
@@ -510,9 +513,14 @@ pub fn project_workflow_run_record(
                     .find(|event| event.sequence == sequence)
                     .map(|event| event.timestamp)
                     .ok_or_else(|| format!("Flow step {durable_step_id:?} time is missing"))?;
+                let completed_result = completed.get(&projection.step_id);
+                let routed_failure = workflow_local_failures.get(&projection.step_id).cloned();
                 let status = match flow_step.status {
                     StepStatus::Pending => WorkflowStepProjectionStatus::Pending,
                     StepStatus::Running => WorkflowStepProjectionStatus::Running,
+                    StepStatus::Completed if routed_failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
                     StepStatus::Completed => WorkflowStepProjectionStatus::Completed,
                     StepStatus::Failed => WorkflowStepProjectionStatus::Failed,
                     StepStatus::Cancelled => WorkflowStepProjectionStatus::Cancelled,
@@ -542,8 +550,6 @@ pub fn project_workflow_run_record(
                         Ok::<WorkflowLocalStepResult, String>(result)
                     })
                     .transpose()?;
-                let routed_failure = workflow_local_failures.get(&projection.step_id).cloned();
-                let completed_result = completed.get(&projection.step_id);
                 let selected_handle =
                     completed_result.and_then(|result| result.selected_handle.clone());
                 let output = (status == WorkflowStepProjectionStatus::Completed)
@@ -576,7 +582,10 @@ pub fn project_workflow_run_record(
                     .find(|event| event.sequence == sequence)
                     .map(|event| event.timestamp)
                     .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
-                let failure = composite_failures.get(&projection.step_id).cloned();
+                let raw_failure = composite_failures.get(&projection.step_id).cloned();
+                let routed_failure = workflow_local_failures.get(&projection.step_id).cloned();
+                let failure = routed_failure.clone().or(raw_failure);
+                let completed_result = completed.get(&projection.step_id);
                 let step_status = match hook.status {
                     HookStatus::Active => WorkflowStepProjectionStatus::Running,
                     HookStatus::Received if failure.is_some() => {
@@ -612,7 +621,19 @@ pub fn project_workflow_run_record(
                 } else {
                     None
                 };
-                (step_status, attempt, None, None, step_error, sequence, at)
+                let selected_handle = routed_failure
+                    .as_ref()
+                    .and(completed_result)
+                    .and_then(|result| result.selected_handle.clone());
+                (
+                    step_status,
+                    attempt,
+                    None,
+                    selected_handle,
+                    step_error,
+                    sequence,
+                    at,
+                )
             } else if inactive.contains(&projection.step_id) {
                 (
                     WorkflowStepProjectionStatus::Skipped,
@@ -806,6 +827,15 @@ pub(super) fn completed_workflow_steps(
     let mut application_failures = BTreeMap::new();
     let mut composite_failures = BTreeMap::new();
     let mut workflow_local_failures = BTreeMap::new();
+    for result in completed.values().filter(|result| {
+        result.kind == WorkflowStepKind::Subworkflow && result.selected_handle.is_some()
+    }) {
+        let failure = serde_json::from_value::<
+            crate::modules::workflow::domain::WorkflowStepFailureOutput,
+        >(result.output.clone())
+        .map_err(|error| format!("Workflow composite failure output is invalid: {error}"))?;
+        workflow_local_failures.insert(result.step_id.clone(), failure.message);
+    }
     for resolved in resolved_steps {
         if input
             .application_projection
@@ -1020,7 +1050,10 @@ pub(super) fn completed_workflow_steps(
                     }
                 }
             }
-            WorkflowStepKind::Transform | WorkflowStepKind::Branch | WorkflowStepKind::Output => {
+            WorkflowStepKind::Transform
+            | WorkflowStepKind::Branch
+            | WorkflowStepKind::Output
+            | WorkflowStepKind::Subworkflow => {
                 let durable_step_id = flow_step_id(&resolved.plan.id);
                 if snapshot
                     .steps
@@ -1036,6 +1069,9 @@ pub(super) fn completed_workflow_steps(
                         }
                         WorkflowStepKind::Output => {
                             local_output_failure_route_result(&snapshot.run_id, input, resolved)
+                        }
+                        WorkflowStepKind::Subworkflow => {
+                            local_composite_failure_route_result(&snapshot.run_id, input, resolved)
                         }
                         _ => return Err("Workflow local failure projection kind drifted".into()),
                     }
@@ -1094,8 +1130,37 @@ pub(super) fn completed_workflow_steps(
                     }
                 };
                 if terminal {
-                    composite_failures
-                        .insert(observed.metadata.frame.region_step_id.clone(), error);
+                    let step_id = observed.metadata.frame.region_step_id.clone();
+                    composite_failures.insert(step_id.clone(), error);
+                    let resolved = resolved_steps
+                        .iter()
+                        .find(|resolved| resolved.plan.id == step_id)
+                        .ok_or_else(|| {
+                            "Workflow composite failure lost its resolved step".to_owned()
+                        })?;
+                    if let Some(result) =
+                        local_composite_failure_route_result(&snapshot.run_id, input, resolved)
+                            .map_err(|error| error.to_string())?
+                    {
+                        let failure = serde_json::from_value::<
+                            crate::modules::workflow::domain::WorkflowStepFailureOutput,
+                        >(result.output.clone())
+                        .map_err(|error| {
+                            format!("Workflow composite failure output is invalid: {error}")
+                        })?;
+                        workflow_local_failures.insert(step_id, failure.message);
+                        match completed.get(&result.step_id) {
+                            Some(existing) if existing != result.as_ref() => {
+                                return Err(
+                                    "Workflow composite failure materializer replay drifted".into(),
+                                )
+                            }
+                            Some(_) => {}
+                            None => {
+                                completed.insert(result.step_id.clone(), *result);
+                            }
+                        }
+                    }
                 }
             }
         }

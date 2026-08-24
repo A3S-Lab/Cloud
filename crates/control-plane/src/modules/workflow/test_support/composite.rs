@@ -155,3 +155,58 @@ pub(crate) fn composite_workflow_run_input(
     input.validate()?;
     Ok(input)
 }
+
+pub(crate) fn routed_composite_workflow_run_input(
+    policy: WorkflowCompositeRegionPolicy,
+    goal_input: serde_json::Value,
+) -> Result<WorkflowRunInput, String> {
+    let composite_step_id = policy.step_id().to_owned();
+    let composite_descriptor_id = policy.semantic_profile().to_owned();
+    let mut input = composite_workflow_run_input(policy, goal_input)?;
+    let mut failure_output = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "Workflow composite test plan lost its Output step".to_owned())?;
+    failure_output.id = "failure_output".into();
+    failure_output.descriptor = failure_output.descriptor.map(|mut descriptor| {
+        descriptor.step_id = failure_output.id.clone();
+        descriptor
+    });
+    input.plan.steps.insert(2, failure_output);
+    for step in &mut input.plan.steps {
+        if step.id == composite_step_id {
+            let descriptor = step.descriptor.as_mut().ok_or_else(|| {
+                "Workflow composite test step lost its descriptor binding".to_owned()
+            })?;
+            descriptor.descriptor_id = composite_descriptor_id.clone();
+            step.failure = Some(routed_failure_contract());
+        } else {
+            step.failure = Some(unsupported_failure_contract());
+        }
+    }
+    input.plan.edges = vec![
+        edge("input-composite", "input", &composite_step_id, None),
+        edge(
+            "composite-failure",
+            &composite_step_id,
+            "failure_output",
+            Some("error"),
+        ),
+        edge("composite-output", &composite_step_id, "output", None),
+    ];
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V11.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V11.into();
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun routed composite test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V19.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V19.into();
+    input.validate()?;
+    Ok(input)
+}

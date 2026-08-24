@@ -1,7 +1,7 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
     has_application_answer_failure_route, has_application_variable_failure_route,
-    has_branch_failure_route, has_workflow_output_failure_route,
+    has_branch_failure_route, has_composite_failure_route, has_workflow_output_failure_route,
     validate_descriptor_failure_routes, CapabilityType, WorkflowCompositeRegions, WorkflowDataType,
     WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDefaultOutputContract,
     WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepDescriptorSpec,
@@ -274,6 +274,7 @@ impl WorkflowRevisionSemanticContracts {
         let mut application_variable_steps = BTreeSet::new();
         let mut application_answer_steps = BTreeSet::new();
         let mut workflow_output_steps = BTreeSet::new();
+        let mut composite_steps = BTreeSet::new();
         let mut descriptors_by_step = BTreeMap::new();
         let mut failures_by_step = BTreeMap::new();
         for step in &workflow.steps {
@@ -313,6 +314,11 @@ impl WorkflowRevisionSemanticContracts {
             if is_exact_workflow_output_descriptor(descriptor.spec()) {
                 workflow_output_steps.insert(step.id.as_str());
             }
+            if descriptor.spec().owner == WorkflowStepOwner::Workflow
+                && descriptor.spec().execution_class == WorkflowStepExecutionClass::CompositeRegion
+            {
+                composite_steps.insert(step.id.as_str());
+            }
         }
         let stored_descriptors = self
             .descriptor_registry
@@ -332,6 +338,7 @@ impl WorkflowRevisionSemanticContracts {
             &application_variable_steps,
             &application_answer_steps,
             &workflow_output_steps,
+            &composite_steps,
         )?;
         validate_variable_read_ports(self.variable_contract.spec(), &descriptors_by_step)?;
         self.variable_contract
@@ -569,6 +576,23 @@ impl WorkflowRevisionSemanticContracts {
         has_branch_failure_route(workflow, &failures)
     }
 
+    pub(crate) fn has_composite_failure_route(&self, workflow: &WorkflowSpec) -> bool {
+        let steps = workflow
+            .steps
+            .iter()
+            .filter(|step| {
+                step.kind == WorkflowStepKind::Subworkflow
+                    && self.descriptor_for_step(&step.id).is_ok_and(|descriptor| {
+                        descriptor.spec().owner == WorkflowStepOwner::Workflow
+                            && descriptor.spec().execution_class
+                                == WorkflowStepExecutionClass::CompositeRegion
+                    })
+            })
+            .map(|step| step.id.as_str())
+            .collect::<BTreeSet<_>>();
+        has_composite_failure_route(workflow, &steps)
+    }
+
     pub(crate) fn default_output_contract(
         &self,
         step_id: &str,
@@ -619,8 +643,18 @@ impl WorkflowRevisionSemanticContracts {
             return Err("Workflow plan semantic contract authority drifted".into());
         }
         let workflow = plan.workflow_spec()?;
+        if self.has_composite_failure_route(&workflow)
+            && plan.schema != super::WORKFLOW_PLAN_SCHEMA_V11
+        {
+            return Err(
+                "Workflow descriptor-bound composite failure routes require Plan v11".into(),
+            );
+        }
         if self.has_branch_failure_route(&workflow)
-            && plan.schema != super::WORKFLOW_PLAN_SCHEMA_V10
+            && !matches!(
+                plan.schema.as_str(),
+                super::WORKFLOW_PLAN_SCHEMA_V10 | super::WORKFLOW_PLAN_SCHEMA_V11
+            )
         {
             return Err("Workflow descriptor-bound Branch failure routes require Plan v10".into());
         }
@@ -671,6 +705,9 @@ impl WorkflowRevisionSemanticContracts {
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 super::WORKFLOW_PLAN_SCHEMA_V10
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V11
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 _ => {
