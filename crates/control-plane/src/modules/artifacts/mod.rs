@@ -4,11 +4,14 @@ pub mod infrastructure;
 mod presentation;
 
 pub use application::{
-    BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence,
-    GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs,
-    GetBuildRunLogsHandler, INodeArtifactStore, ListBuildRuns, ListBuildRunsHandler,
-    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
-    OpenNodeArtifact, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
+    BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
+    BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,
+    BuildLogSourceGapReason, BuildLogStream, BuildRunLogPage, CancelBuildRun,
+    CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence, GetBuildEvidenceHandler,
+    GetBuildRun, GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler, IBuildLogQueryPort,
+    INodeArtifactStore, ListBuildRuns, ListBuildRunsHandler, NodeArtifactDescriptor,
+    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OpenNodeArtifact, RetryBuildRun,
+    RetryBuildRunHandler, RetryBuildRunResult, MAX_BUILD_LOG_PAGE_SIZE,
 };
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,

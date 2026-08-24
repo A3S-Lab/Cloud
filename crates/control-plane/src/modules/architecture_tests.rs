@@ -248,6 +248,46 @@ fn artifacts_domain_enters_sources_only_through_published_language() {
 }
 
 #[test]
+fn artifacts_application_and_presentation_do_not_import_fleet_authority() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("artifacts")
+            || !matches!(layer(relative), Some("application" | "presentation"))
+        {
+            return;
+        }
+        if source.contains("crate::modules::{") || source.contains("crate::{") {
+            violations.insert(format!(
+                "{} uses a grouped module root that bypasses exact boundary inspection",
+                display(relative)
+            ));
+        }
+        if source.lines().any(|line| {
+            let line = line.trim();
+            line == "use crate::modules;" || line.starts_with("use crate::modules as ")
+        }) {
+            violations.insert(format!(
+                "{} aliases the module root and bypasses exact boundary inspection",
+                display(relative)
+            ));
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::fleet"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Artifacts imported Fleet logs, placement, or response DTOs instead of its owner log-query port:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn developer_workflows_domain_uses_only_local_models_shared_kernel_or_published_language() {
     let violations = bounded_context_internal_model_references("developer_workflows", "domain");
 

@@ -1,11 +1,14 @@
-use super::arguments::{BuildRunArguments, BuildRunListArguments, BuildRunLogArguments};
+use super::arguments::{
+    BuildRunArguments, BuildRunListArguments, BuildRunLogArguments, LogStreamArguments,
+};
 use super::tool_result;
 use crate::modules::artifacts::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse,
     RetryBuildRunResponse,
 };
 use crate::modules::artifacts::{
-    CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns, RetryBuildRun,
+    BuildLogStream, CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns,
+    RetryBuildRun,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
@@ -85,7 +88,10 @@ pub async fn get_build_run_logs(
             resource_access,
             after_sequence: arguments.after_sequence,
             limit: arguments.limit,
-            stream: arguments.stream.map(Into::into),
+            stream: arguments.stream.map(|stream| match stream {
+                LogStreamArguments::Stdout => BuildLogStream::Stdout,
+                LogStreamArguments::Stderr => BuildLogStream::Stderr,
+            }),
         })
         .await?
     {

@@ -1,5 +1,5 @@
 use crate::modules::artifacts::application::{
-    GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns,
+    BuildLogStream, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns,
 };
 use crate::modules::artifacts::presentation::dto::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
@@ -18,7 +18,6 @@ use a3s_boot::{
     BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
     SseStream,
 };
-use a3s_runtime::contract::RuntimeLogStream;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -233,7 +232,7 @@ enum BuildLogStreamQuery {
     Stderr,
 }
 
-impl From<BuildLogStreamQuery> for RuntimeLogStream {
+impl From<BuildLogStreamQuery> for BuildLogStream {
     fn from(stream: BuildLogStreamQuery) -> Self {
         match stream {
             BuildLogStreamQuery::Stdout => Self::Stdout,
