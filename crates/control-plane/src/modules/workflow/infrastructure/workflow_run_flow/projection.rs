@@ -7,13 +7,14 @@ use super::workflow::{
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
-    flow_step_id, WorkflowCompositeFrameResolution, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeResumePayload, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
-    WorkflowStepProjectionStatus,
+    execution_evidence_references, flow_step_id, WorkflowCompositeFrameResolution,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
+    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
+    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
 };
 use a3s_flow::{
-    FlowEvent, FlowEventEnvelope, HookStatus, StepStatus, WorkflowRunSnapshot,
+    FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
     WorkflowRunStatus as FlowRunStatus, WorkflowTerminalOutcome,
 };
 use chrono::{DateTime, Utc};
@@ -134,7 +135,7 @@ pub fn project_workflow_run_record(
         } else {
             None
         };
-        let connector_hook = if resolved.plan.kind == WorkflowStepKind::Service
+        let connector_hooks = if resolved.plan.kind == WorkflowStepKind::Service
             && !record
                 .run
                 .execution_input
@@ -148,11 +149,17 @@ pub fn project_workflow_run_record(
                 resolved,
                 snapshot,
             )?
-            .into_iter()
-            .last()
         } else {
-            None
+            Vec::new()
         };
+        let connector_evidence_references =
+            super::connector::evidence_references(&connector_hooks)?;
+        let connector_hook = connector_hooks.last();
+        let execution_evidence_references = execution_hook
+            .as_ref()
+            .map(|(hook, metadata)| projected_execution_evidence_references(hook, metadata))
+            .transpose()?
+            .unwrap_or_default();
         let composite_hook = (resolved.plan.kind == WorkflowStepKind::Subworkflow)
             .then(|| {
                 composite_hooks
@@ -337,7 +344,7 @@ pub fn project_workflow_run_record(
                     sequence,
                     at,
                 )
-            } else if let Some((hook, metadata)) = execution_hook {
+            } else if let Some((hook, metadata)) = execution_hook.as_ref() {
                 let sequence = if hook.status == HookStatus::Cancelled {
                     snapshot.last_sequence
                 } else {
@@ -622,6 +629,17 @@ pub fn project_workflow_run_record(
             } else {
                 continue;
             };
+        let evidence_references = replay_compatible_evidence_references(
+            projection.status,
+            &projection.evidence_references,
+            if resolved.plan.kind == WorkflowStepKind::Execution {
+                execution_evidence_references
+            } else if resolved.plan.kind == WorkflowStepKind::Service {
+                connector_evidence_references
+            } else {
+                Vec::new()
+            },
+        );
         let desired = WorkflowStepFlowState {
             status: step_status,
             attempt_generation: attempt,
@@ -631,6 +649,7 @@ pub fn project_workflow_run_record(
             default_output_evidence: completed
                 .get(&projection.step_id)
                 .and_then(|result| result.default_output_evidence.clone()),
+            evidence_references,
             last_flow_sequence: sequence,
             observed_at: at,
         };
@@ -641,6 +660,7 @@ pub fn project_workflow_run_record(
             && projection.result == desired.result
             && projection.error == desired.error
             && projection.default_output_evidence == desired.default_output_evidence
+            && projection.evidence_references == desired.evidence_references
         {
             continue;
         }
@@ -651,6 +671,40 @@ pub fn project_workflow_run_record(
     }
     projected.validate()?;
     Ok(Some(projected))
+}
+
+fn projected_execution_evidence_references(
+    hook: &HookSnapshot,
+    metadata: &WorkflowExecutionHookMetadata,
+) -> Result<Vec<String>, String> {
+    if hook.status != HookStatus::Received {
+        return Ok(Vec::new());
+    }
+    let payload = hook
+        .payload
+        .as_ref()
+        .ok_or_else(|| format!("Workflow execution hook {:?} has no payload", hook.hook_id))?;
+    let payload = serde_json::from_value::<WorkflowExecutionResumePayload>(payload.clone())
+        .map_err(|error| format!("Workflow execution resume payload is invalid: {error}"))?;
+    payload.validate(metadata)?;
+    match &payload.resolution {
+        WorkflowExecutionResumeResolution::Completed { output, .. } => {
+            execution_evidence_references(output)
+        }
+        WorkflowExecutionResumeResolution::Rejected { .. } => Ok(Vec::new()),
+    }
+}
+
+fn replay_compatible_evidence_references(
+    persisted_status: WorkflowStepProjectionStatus,
+    persisted: &[String],
+    projected: Vec<String>,
+) -> Vec<String> {
+    if persisted_status.is_terminal() && persisted.is_empty() {
+        Vec::new()
+    } else {
+        projected
+    }
 }
 
 pub(super) struct CompletedWorkflowSteps {
@@ -1089,4 +1143,35 @@ fn last_hook_sequence(history: &[FlowEventEnvelope], expected_hook_id: &str) -> 
         };
         (hook_id == expected_hook_id).then_some(envelope.sequence)
     })
+}
+
+#[cfg(test)]
+mod evidence_reference_compatibility_tests {
+    use super::*;
+
+    fn references() -> Vec<String> {
+        vec!["urn:a3s:cloud:connectors:attempt:019c0000-0000-7000-8000-000000000001".into()]
+    }
+
+    #[test]
+    fn legacy_terminal_projection_is_not_backfilled() {
+        assert!(replay_compatible_evidence_references(
+            WorkflowStepProjectionStatus::Completed,
+            &[],
+            references(),
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn non_terminal_projection_adopts_derived_references() {
+        assert_eq!(
+            replay_compatible_evidence_references(
+                WorkflowStepProjectionStatus::Running,
+                &[],
+                references(),
+            ),
+            references()
+        );
+    }
 }

@@ -1065,6 +1065,7 @@ export type {
   WorkflowRunVariableState,
   WorkflowRunStatus,
   WorkflowStepKind,
+  WorkflowStepEvidenceReference,
   WorkflowStepProjection,
   WorkflowStepProjectionStatus,
   WorkflowVariableMutationMode,

@@ -111,6 +111,28 @@ replay. Plans v1-v9 and Run inputs v1-v17 keep their bytes and behavior. This
 slice adds no table, column, retry engine, queue, worker, scheduler, or second
 Flow mechanism.
 
+## Bounded provider evidence references
+
+The existing `WorkflowStepProjection.evidenceReferences` field now retains a
+closed, deterministic correlation to owning-context evidence for current
+finite Execution and Connector steps. A verified terminal Execution resume
+projects the exact `urn:a3s:cloud:executions:execution:<uuid>` and
+`urn:a3s:cloud:operations:operation:<uuid>` identities. Each verified received
+Connector observation projects its exact
+`urn:a3s:cloud:connectors:attempt:<uuid>` identity. Repeated observations of one
+attempt are deduplicated, distinct retries remain visible, and the final array
+is sorted and bounded to 32 entries.
+
+The projection is reconstructed only from immutable WorkflowRun input and
+verified A3S Flow Hook history. A provider dispatch rejection that has no
+owning-context evidence projects no reference. References never contain a
+request, response, provider message, credential, or evidence body, and do not
+grant access to the referenced resource. Existing WorkflowRun authorization
+still guards the projection, while each owning context independently guards
+its resource. Historical terminal projections are not mutated or backfilled.
+This slice reuses the existing JSON field and persistence path; it adds no
+table, column, evidence store, event log, route, or OpenAPI shape.
+
 ## Typed variable scopes
 
 `variable-contract.acl` is the canonical conformance fixture for

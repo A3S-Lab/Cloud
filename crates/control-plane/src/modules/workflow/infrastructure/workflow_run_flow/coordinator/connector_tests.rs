@@ -171,6 +171,10 @@ async fn coordinator_resumes_exact_connector_evidence_without_a_child_reference(
     assert_eq!(requests[0].workflow_run_id, record.run.id);
     assert_eq!(requests[0].step_id, TEST_CONNECTOR_STEP_ID);
     assert_eq!(requests[0].step_attempt, 1);
+    let attempt_id = requests[0]
+        .connector_attempt_authority()
+        .expect("Connector attempt authority")
+        .attempt_id;
     assert_eq!(
         requests[0].response_mode,
         WorkflowConnectorResponseMode::ImmutableObjectReference
@@ -181,6 +185,10 @@ async fn coordinator_resumes_exact_connector_evidence_without_a_child_reference(
         .find(|step| step.step_id == TEST_CONNECTOR_STEP_ID)
         .expect("Connector projection");
     assert_eq!(step.status, WorkflowStepProjectionStatus::Completed);
+    assert_eq!(
+        step.evidence_references,
+        [format!("urn:a3s:cloud:connectors:attempt:{attempt_id}")]
+    );
     let snapshot = engine
         .snapshot(&record.run.flow_run_id)
         .await
@@ -264,6 +272,14 @@ async fn coordinator_projects_the_descriptor_bound_connector_failure_route() {
         .expect("Connector projection");
     assert_eq!(connector.status, WorkflowStepProjectionStatus::Failed);
     assert_eq!(connector.selected_handle.as_deref(), Some("error"));
+    let attempt_id = port.requests.lock().await[0]
+        .connector_attempt_authority()
+        .expect("Connector attempt authority")
+        .attempt_id;
+    assert_eq!(
+        connector.evidence_references,
+        [format!("urn:a3s:cloud:connectors:attempt:{attempt_id}")]
+    );
     assert!(connector.result.is_none());
     assert!(connector
         .error

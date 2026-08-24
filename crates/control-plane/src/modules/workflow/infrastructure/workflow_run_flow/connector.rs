@@ -5,9 +5,10 @@ use crate::modules::connectors::{
     WorkflowConnectorResponseMode,
 };
 use crate::modules::workflow::domain::{
-    ResolvedWorkflowRunStep, WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
-    WorkflowConnectorResumePayload, WorkflowConnectorResumeResolution, WorkflowConnectorStepOutput,
-    WorkflowRetryPolicy, WorkflowRunInput, WorkflowStepFailureClassification, WorkflowStepKind,
+    connector_attempt_evidence_references, ResolvedWorkflowRunStep,
+    WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorResumePayload,
+    WorkflowConnectorResumeResolution, WorkflowConnectorStepOutput, WorkflowRetryPolicy,
+    WorkflowRunInput, WorkflowStepFailureClassification, WorkflowStepKind,
     WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT,
 };
 use a3s_flow::{FlowError, HookSnapshot, HookStatus, WorkflowContext, WorkflowRunSnapshot};
@@ -379,6 +380,27 @@ pub(super) fn observed_connector_hooks<'a>(
     observed.sort_by_key(|item| (item.metadata.step_attempt, item.metadata.observation));
     validate_hook_sequence(snapshot, &observed)?;
     Ok(observed)
+}
+
+pub(super) fn evidence_references(
+    observed: &[ObservedConnectorHook<'_>],
+) -> Result<Vec<String>, String> {
+    let mut attempt_ids = Vec::new();
+    for item in observed {
+        if item.hook.status != HookStatus::Received {
+            continue;
+        }
+        let authority = attempt_authority(&item.metadata)?;
+        let payload = received_payload(item, &authority)?
+            .ok_or_else(|| "received Workflow Connector hook has no payload".to_owned())?;
+        if !matches!(
+            payload.resolution,
+            WorkflowConnectorResumeResolution::Rejected { .. }
+        ) {
+            attempt_ids.push(authority.attempt_id);
+        }
+    }
+    connector_attempt_evidence_references(attempt_ids)
 }
 
 pub(super) fn verify_hook_history(

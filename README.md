@@ -596,7 +596,11 @@ creating their own control planes:
     Workflow-local Output evaluation: template or output-schema failure runs
     once, becomes fixed redacted failure v6 data, and reuses migration `143`'s
     failed Output selected-handle shape. The maintained client enumerates Plan
-    v5-v9 and failure v2-v6.
+    v5-v10 and failure v2-v7. Verified terminal finite Execution projections
+    now retain exact child Execution and Operation URNs, while received
+    Connector observations retain exact attempt URNs in the existing bounded,
+    sorted `evidenceReferences` field. These are authorization-neutral
+    correlations reconstructed from Flow history, not copied provider bodies.
     This is not public HTTP Request availability; business-service and
     remaining Agent/MCP/model/Tool dispatch, compensation, retained provider
     evidence, and later `W0` gates remain open.

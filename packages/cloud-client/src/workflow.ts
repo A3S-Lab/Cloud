@@ -416,6 +416,11 @@ export type WorkflowStepProjectionStatus =
   | 'cancelled'
   | 'skipped';
 
+export type WorkflowStepEvidenceReference =
+  | `urn:a3s:cloud:connectors:attempt:${string}`
+  | `urn:a3s:cloud:executions:execution:${string}`
+  | `urn:a3s:cloud:operations:operation:${string}`;
+
 export interface StartWorkflowRunInput {
   workflowGoalId: string;
   planRevisionId: string;
@@ -450,7 +455,7 @@ export interface WorkflowStepProjection {
   resultDigest: string | null;
   error: string | null;
   defaultOutputEvidence: WorkflowStepDefaultOutputEvidence | null;
-  evidenceReferences: string[];
+  evidenceReferences: WorkflowStepEvidenceReference[];
   lastFlowSequence: number;
   updatedAt: string;
 }

@@ -436,7 +436,8 @@ exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
 parent cancellation/timeout propagation. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, repeated-frame Answer, deterministic
 variable-write failure routing, and root/frame Answer failure routing are
-implemented. Other non-Execution error
+implemented. Workflow-local Transform, Output, and Branch failure routes are
+also implemented. Business-service and remaining Agent/MCP/model/Tool
 semantics remain open and fail closed.
 Existing `cloud.workflow.plan.v1` histories are
 unchanged.

@@ -18,6 +18,24 @@ existing plan and step-projection response fields. They add no route, field, or
 JSON shape, so this internal execution-semantics revision does not increment the
 OpenAPI contract version.
 
+WorkflowRun responses already expose the bounded
+`steps[].evidenceReferences` array. Current projections populate only these
+closed, canonical URN families:
+
+- `urn:a3s:cloud:executions:execution:<uuid>`;
+- `urn:a3s:cloud:operations:operation:<uuid>`; and
+- `urn:a3s:cloud:connectors:attempt:<uuid>`.
+
+The array is sorted, duplicate-free, limited to 32 entries, and reconstructed
+only from verified A3S Flow history. An Execution terminal observation retains
+its exact child Execution and Operation identities. A received Connector
+observation retains its deterministic attempt identity, including deferred or
+indeterminate outcomes; a dispatch rejection without owning-context evidence
+retains no reference. These URNs are correlations, not embedded evidence or an
+authorization grant. Reading any referenced owner resource still requires its
+normal authorized API. Populating this existing field changes no route or JSON
+shape, so the contract remains `1.59.0`.
+
 ## Contract completeness
 
 Every public REST operation must declare all of the following:

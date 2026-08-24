@@ -1129,6 +1129,7 @@ fn project_drift(
             result: None,
             error: None,
             default_output_evidence: None,
+            evidence_references: step.evidence_references.clone(),
             last_flow_sequence: snapshot.last_sequence.max(1),
             observed_at,
         })

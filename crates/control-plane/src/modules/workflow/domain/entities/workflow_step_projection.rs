@@ -2,7 +2,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, OrganizationId, ProjectId,
     Sha256Digest, WorkflowRunId,
 };
-use crate::modules::workflow::domain::{WorkflowStepDefaultOutputEvidence, WorkflowStepKind};
+use crate::modules::workflow::domain::{
+    validate_evidence_references, WorkflowStepDefaultOutputEvidence, WorkflowStepKind,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -84,6 +86,7 @@ pub struct WorkflowStepFlowState {
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
     pub default_output_evidence: Option<WorkflowStepDefaultOutputEvidence>,
+    pub evidence_references: Vec<String>,
     pub last_flow_sequence: u64,
     pub observed_at: DateTime<Utc>,
 }
@@ -149,7 +152,8 @@ impl WorkflowStepProjection {
                 && self.result == state.result
                 && self.result_digest == result_digest
                 && self.error == state.error
-                && self.default_output_evidence == state.default_output_evidence;
+                && self.default_output_evidence == state.default_output_evidence
+                && self.evidence_references == state.evidence_references;
             return if identical {
                 Ok(false)
             } else {
@@ -169,6 +173,7 @@ impl WorkflowStepProjection {
         self.result_digest = result_digest;
         self.error = state.error;
         self.default_output_evidence = state.default_output_evidence;
+        self.evidence_references = state.evidence_references;
         self.last_flow_sequence = state.last_flow_sequence;
         self.updated_at = observed_at;
         self.validate()?;
@@ -189,15 +194,10 @@ impl WorkflowStepProjection {
                 .error
                 .as_deref()
                 .is_some_and(|value| !valid_error(value))
-            || self.evidence_references.len() > WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES
-            || self.evidence_references.iter().any(|value| {
-                value.is_empty()
-                    || value.len() > WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES
-                    || value.contains(['\0', '\r', '\n'])
-            })
         {
             return Err("Workflow step projection identity or bounded state is invalid".into());
         }
+        validate_evidence_references(&self.evidence_references)?;
         match (&self.result, &self.result_digest) {
             (Some(result), Some(digest)) => {
                 let canonical = canonical_json_bounded(
@@ -295,6 +295,7 @@ mod tests {
             result: Some(json!({"priority": "high"})),
             error: None,
             default_output_evidence: None,
+            evidence_references: Vec::new(),
             last_flow_sequence: 4,
             observed_at: timestamp(8, 2),
         };
@@ -309,6 +310,7 @@ mod tests {
                 result: Some(json!({"priority": "high"})),
                 error: None,
                 default_output_evidence: None,
+                evidence_references: Vec::new(),
                 last_flow_sequence: 5,
                 observed_at: timestamp(8, 3),
             })
@@ -351,6 +353,7 @@ mod tests {
                 result: Some(material.value.clone()),
                 error: None,
                 default_output_evidence: Some(evidence.clone()),
+                evidence_references: Vec::new(),
                 last_flow_sequence: 4,
                 observed_at: timestamp(8, 2),
             })
@@ -378,6 +381,10 @@ mod tests {
                 result: None,
                 error: Some("provider outcome is indeterminate".into()),
                 default_output_evidence: None,
+                evidence_references: vec![format!(
+                    "urn:a3s:cloud:connectors:attempt:{}",
+                    uuid::Uuid::now_v7()
+                )],
                 last_flow_sequence: 4,
                 observed_at: timestamp(8, 2),
             })
@@ -404,6 +411,7 @@ mod tests {
                 result: None,
                 error: Some("Application Answer was forbidden".into()),
                 default_output_evidence: None,
+                evidence_references: Vec::new(),
                 last_flow_sequence: 4,
                 observed_at: timestamp(8, 2),
             })
@@ -430,6 +438,7 @@ mod tests {
                 result: None,
                 error: Some("Workflow Transform evaluation was invalid".into()),
                 default_output_evidence: None,
+                evidence_references: Vec::new(),
                 last_flow_sequence: 4,
                 observed_at: timestamp(8, 2),
             })

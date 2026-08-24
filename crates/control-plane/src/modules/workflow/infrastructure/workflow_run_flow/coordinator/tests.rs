@@ -8,8 +8,8 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, ExecutionId, PrincipalId, Sha256Digest, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    IWorkflowRunCoordinator, WorkflowCompositeRegionPolicy, WorkflowIterationFailureMode,
-    WorkflowIterationRegionPolicy, WorkflowRun, WorkflowRunFlowState,
+    IWorkflowRunCoordinator, WorkflowCompositeRegionPolicy, WorkflowExecutionStepOutput,
+    WorkflowIterationFailureMode, WorkflowIterationRegionPolicy, WorkflowRun, WorkflowRunFlowState,
     WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepProjectionStatus,
     WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
     WORKFLOW_RUN_FLOW_VERSION_V4,
@@ -544,6 +544,23 @@ async fn terminal_child_is_linked_and_resumed_into_the_parent_flow() {
         .find(|step| step.step_id == TEST_EXECUTION_STEP_ID)
         .expect("execution step projection");
     assert_eq!(step.status, WorkflowStepProjectionStatus::Completed);
+    let execution_output = serde_json::from_value::<WorkflowExecutionStepOutput>(
+        step.result.clone().expect("execution result"),
+    )
+    .expect("typed execution result");
+    assert_eq!(
+        step.evidence_references,
+        [
+            format!(
+                "urn:a3s:cloud:executions:execution:{}",
+                execution_output.execution_id
+            ),
+            format!(
+                "urn:a3s:cloud:operations:operation:{}",
+                execution_output.operation_id
+            ),
+        ]
+    );
     let snapshot = engine
         .snapshot(&record.run.flow_run_id)
         .await
@@ -614,6 +631,7 @@ async fn permanent_dispatch_rejection_follows_the_descriptor_bound_failure_edge(
         .expect("execution step projection");
     assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
     assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    assert!(execution.evidence_references.is_empty());
     assert!(execution.result.is_none());
     assert!(execution
         .error
@@ -683,6 +701,9 @@ async fn terminal_execution_failure_follows_the_same_typed_failure_edge() {
         .expect("execution projection");
     assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
     assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    assert_eq!(execution.evidence_references.len(), 2);
+    assert!(execution.evidence_references[0].starts_with("urn:a3s:cloud:executions:execution:"));
+    assert!(execution.evidence_references[1].starts_with("urn:a3s:cloud:operations:operation:"));
     let failure = completed
         .steps
         .iter()
@@ -727,6 +748,7 @@ async fn terminal_execution_cancellation_follows_the_same_typed_failure_edge() {
         .expect("execution projection");
     assert_eq!(execution.status, WorkflowStepProjectionStatus::Failed);
     assert_eq!(execution.selected_handle.as_deref(), Some("error"));
+    assert_eq!(execution.evidence_references.len(), 2);
     let failure = completed
         .steps
         .iter()

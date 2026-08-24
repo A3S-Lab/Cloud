@@ -29,6 +29,7 @@ mod workflow_run_contract;
 mod workflow_run_variable_runtime;
 mod workflow_step_descriptor;
 mod workflow_step_descriptor_bindings;
+mod workflow_step_evidence_reference;
 mod workflow_step_failure;
 mod workflow_variable_contract;
 mod workflow_variable_defaults;
@@ -43,6 +44,10 @@ pub(crate) use workflow_failure_routing::{
 pub(crate) use workflow_run_variable_runtime::{
     validate_application_runtime_variable_contract, validate_runtime_variable_contract,
     validate_typed_projection_configurations,
+};
+pub(crate) use workflow_step_evidence_reference::{
+    connector_attempt_evidence_references, execution_evidence_references,
+    validate_evidence_references,
 };
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
