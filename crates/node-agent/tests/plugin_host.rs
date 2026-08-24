@@ -24,7 +24,8 @@ use a3s_use_core::{
     PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_APPLY_RESULT_SCHEMA,
     PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA,
     PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_OBSERVATION_RESULT_SCHEMA,
-    PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_PLAN_RESULT_SCHEMA, PLUGIN_MANAGED_SCOPE_SCHEMA,
+    PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_PLAN_RESULT_SCHEMA,
+    PLUGIN_MANAGED_SCOPE_SCHEMA_V2,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -296,14 +297,15 @@ impl PluginHostManager for RecordingPluginHostManager {
 }
 
 fn plugin_capabilities() -> PluginHostCapabilities {
-    PluginHostCapabilities::v4("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
+    PluginHostCapabilities::v6("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
         .expect("Plugin Host capabilities")
 }
 
 fn managed_scope() -> PluginManagedScope {
     PluginManagedScope {
-        schema: PLUGIN_MANAGED_SCOPE_SCHEMA.into(),
+        schema: PLUGIN_MANAGED_SCOPE_SCHEMA_V2.into(),
         host_id: "host:node-01".into(),
+        scope_kind: PlanScopeKind::Workspace,
         scope_id: "workspace:research".into(),
         authority_id: "cloud:organization-01".into(),
         fence_generation: 7,
