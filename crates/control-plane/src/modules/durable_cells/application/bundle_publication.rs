@@ -3,6 +3,7 @@ use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWrite
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
+    durable_cell_managed_owner_reference, validate_durable_cell_provider_workload_binding,
     validate_pinned_celld_service_projection, validate_publisher_secret_targets,
 };
 use crate::modules::artifacts::domain::{BuildArtifact, IBuildRunRepository};
@@ -25,12 +26,12 @@ use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ExecutionId, NodeId, RepositoryError, Sha256Digest, StorageNamespaceId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::domain::entities::WorkloadReplica;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
     IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
-use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_secrets;
 use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -132,9 +133,7 @@ impl DurableCellBundlePublicationGate {
             .workloads
             .find_workload_control(request.organization_id, request.workload_id)
             .await?;
-        let expected_owner = correlation
-            .projection
-            .managed_owner_reference()
+        let expected_owner = durable_cell_managed_owner_reference(&correlation.projection)
             .map_err(|error| {
                 RepositoryError::Conflict(format!(
                     "could not restore Durable Cell managed owner: {error}"
@@ -362,10 +361,12 @@ impl DurableCellBundlePublicationGate {
             .map_err(CompositionError::failed)?;
         let service_profile =
             DurableCellServiceProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
-        correlation
-            .provider
-            .validate_workload_revision(&service_profile, &workload_revision)
-            .map_err(CompositionError::failed)?;
+        validate_durable_cell_provider_workload_binding(
+            &correlation.provider,
+            &service_profile,
+            &workload_revision,
+        )
+        .map_err(CompositionError::failed)?;
         validate_pinned_celld_service_projection(
             &provider_profile,
             correlation.storage.storage_namespace_id,

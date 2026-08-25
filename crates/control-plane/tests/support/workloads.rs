@@ -13,7 +13,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId,
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
-use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
+use a3s_cloud_control_plane::modules::workloads::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
     DeploymentStatus, HttpHealthCheck, IWorkloadPlacementGroupRepository,

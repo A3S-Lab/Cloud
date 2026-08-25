@@ -5,8 +5,8 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId,
     WorkloadRevisionId,
 };
+use crate::modules::workloads::application::project_runtime_spec;
 use crate::modules::workloads::domain::entities::{DeploymentStatus, WorkloadDesiredState};
-use crate::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload};
 use a3s_flow::{FlowError, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation};
 use a3s_runtime::contract::{

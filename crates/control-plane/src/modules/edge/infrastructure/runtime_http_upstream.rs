@@ -26,12 +26,12 @@ mod tests {
     #[cfg(target_os = "linux")]
     use crate::modules::shared_kernel::domain::{WorkloadId, WorkloadRevisionId};
     #[cfg(target_os = "linux")]
+    use crate::modules::workloads::application::project_runtime_spec;
+    #[cfg(target_os = "linux")]
     use crate::modules::workloads::domain::entities::{
         HttpHealthCheck, OciArtifact, ServicePort, ServiceProcess, ServiceResources,
         ServiceTemplate, WorkloadRevision,
     };
-    #[cfg(target_os = "linux")]
-    use crate::modules::workloads::infrastructure::project_runtime_spec;
     #[cfg(target_os = "linux")]
     use a3s_cloud_contracts::{
         NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,

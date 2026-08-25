@@ -2,16 +2,8 @@ mod application_in_memory;
 mod application_postgres;
 mod deployment_in_memory;
 mod deployment_postgres;
-mod provider_runtime;
 
 pub use application_in_memory::InMemoryDurableCellApplicationRepository;
 pub use application_postgres::PostgresDurableCellApplicationRepository;
 pub use deployment_in_memory::InMemoryDurableCellDeploymentRepository;
 pub use deployment_postgres::PostgresDurableCellDeploymentRepository;
-pub(crate) use provider_runtime::admit_durable_cell_replica_runtime_remove;
-pub use provider_runtime::{
-    admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
-    admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
-    project_durable_cell_operator_binding, project_durable_cell_runtime_spec,
-    DurableCellRuntimeEndpoints,
-};

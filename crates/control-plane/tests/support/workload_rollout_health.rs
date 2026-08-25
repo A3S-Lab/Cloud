@@ -7,7 +7,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, ResourceName,
     WorkloadId,
 };
-use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
+use a3s_cloud_control_plane::modules::workloads::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     DeploymentStatus, IWorkloadRepository, PostgresWorkloadRepository, Workload,
     WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentFailurePhase,

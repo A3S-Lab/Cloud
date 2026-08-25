@@ -32,6 +32,7 @@ use crate::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, RepositoryError, ResourceClaimId, ResourceName, RouteId, SecretId,
     WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::{project_replica_runtime_spec, project_runtime_spec};
 use crate::modules::workloads::domain::entities::{
     AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
     DeploymentReplicaBinding, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
@@ -52,8 +53,7 @@ use crate::modules::workloads::domain::services::{
     WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 use crate::modules::workloads::infrastructure::{
-    project_replica_runtime_spec, project_runtime_spec, InMemoryResourceClaimRepository,
-    InMemoryWorkloadRepository, ReplicaDeploymentMaterializer,
+    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, ReplicaDeploymentMaterializer,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, NodeCommandAck, NodeCommandFailure,

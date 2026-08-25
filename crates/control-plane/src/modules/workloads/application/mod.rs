@@ -2,6 +2,7 @@ mod agent_release_admission;
 pub mod commands;
 pub mod queries;
 pub(crate) mod resource_access;
+mod runtime_projection;
 mod workflow;
 
 #[cfg(test)]
@@ -43,6 +44,11 @@ pub use queries::{
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
     WorkloadReplicaQueryResult,
 };
+pub(crate) use runtime_projection::{
+    project_bound_runtime_spec, project_placement_group_runtime_spec, project_runtime_secrets,
+    project_runtime_spec_with_digest,
+};
+pub use runtime_projection::{project_replica_runtime_spec, project_runtime_spec};
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,

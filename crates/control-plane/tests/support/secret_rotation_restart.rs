@@ -469,9 +469,7 @@ pub async fn exercise_secret_rotation_restart(
         return Err("Secret rotation retirement command is not Runtime stop".into());
     };
     let source_spec =
-        a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec(
-            &source_revision,
-        )?;
+        a3s_cloud_control_plane::modules::workloads::project_runtime_spec(&source_revision)?;
     assert_eq!(retirement_request.unit_id, source_spec.unit_id);
     assert_eq!(retirement_request.generation, source_spec.generation);
     persist_command_result(

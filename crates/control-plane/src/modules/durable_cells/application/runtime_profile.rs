@@ -1,7 +1,12 @@
+//! Durable Cells policy for compiling and admitting the generic Runtime
+//! Service protocol. Runtime remains the sole lifecycle authority; this module
+//! adds only product correlation and profile-digest checks.
+
+use super::provider_workload::validate_durable_cell_provider_workload_binding;
 use crate::modules::durable_cells::domain::{
     DurableCellProviderBinding, DurableCellServiceProfile,
 };
-use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec_with_digest;
+use crate::modules::workloads::application::project_runtime_spec_with_digest;
 use crate::modules::workloads::{DeploymentReplicaBinding, WorkloadRevision};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandEnvelope, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
@@ -26,7 +31,7 @@ pub fn project_durable_cell_runtime_spec(
     service_profile: &DurableCellServiceProfile,
     workload_revision: &WorkloadRevision,
 ) -> Result<RuntimeUnitSpec, String> {
-    binding.validate_workload_revision(service_profile, workload_revision)?;
+    validate_durable_cell_provider_workload_binding(binding, service_profile, workload_revision)?;
     let spec = project_runtime_spec_with_digest(
         workload_revision,
         Some(binding.service_profile_digest.as_str()),
@@ -253,7 +258,7 @@ pub(crate) fn admit_durable_cell_replica_runtime_remove(
     command: &NodeCommandEnvelope,
     acknowledgement: &NodeCommandAck,
 ) -> Result<(), String> {
-    provider.validate_workload_revision(service_profile, workload_revision)?;
+    validate_durable_cell_provider_workload_binding(provider, service_profile, workload_revision)?;
     let node_id = replica_binding
         .node_id
         .ok_or_else(|| "Durable Cell cleanup omitted its Workloads node binding".to_owned())?;
@@ -335,7 +340,7 @@ fn validate_runtime_spec(
     revision: &WorkloadRevision,
     spec: &RuntimeUnitSpec,
 ) -> Result<(), String> {
-    binding.validate_workload_revision(profile, revision)?;
+    validate_durable_cell_provider_workload_binding(binding, profile, revision)?;
     spec.validate()?;
     if spec.unit_id != revision.runtime_unit_id()
         || spec.generation != binding.workload_generation

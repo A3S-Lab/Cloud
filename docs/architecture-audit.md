@@ -185,28 +185,38 @@ Current strengths:
 
 Current boundary debt:
 
-- Durable Cells domain and application code import Workloads, Executions, Data,
-  Artifacts, Fleet, Operations, and Edge internal types;
-- application code calls Workloads/Edge implementation helpers and handlers;
+- Durable Cells Domain no longer imports Workloads owner models. It admits only
+  a consumer-owned immutable provider projection containing the exact revision
+  identity, digests, ports, and health contract;
+- the sole Workloads-to-Runtime compiler now belongs to Workloads Application,
+  and Durable Cells Runtime receipt policy belongs to Durable Cells
+  Application. Architecture tests reject either policy returning to
+  Infrastructure or an Application-to-Infrastructure dependency;
+- remaining Durable Cells domain and application paths still import
+  Executions, Data, Artifacts, Fleet, Operations, Workloads, and Edge internal
+  owner types or repositories;
+- application code still calls several Workloads/Edge handlers directly;
 - presentation DTOs reuse Workloads and Edge presentation DTOs;
-- the Cell provider profile is frozen in Cloud, while a3s-runtime currently
-  exposes only generic Task/Service capabilities and conformance.
+- the Cell provider profile is correctly frozen in Cloud and bound into
+  Runtime only through its opaque digest.
 
 Target split:
 
 | Layer | Owns |
 | --- | --- |
 | Durable Cells in Cloud | Application identity, immutable revision, Cell-class/state-schema compatibility, retention intent, and exact deployment/route correlation |
-| a3s-runtime | Ordinary Service lifecycle plus a composable, provider-neutral NamedStatefulService capability profile and conformance evidence |
+| a3s-runtime | Ordinary Service lifecycle, generic capabilities/evidence, typed endpoints, and opaque product-semantics digest binding |
 | Box and selected Cell provider | Provider process, activation, per-key serial turns, SQLite lineage, alarm/WebSocket behavior, idle eviction, recovery, and epoch fencing |
 | Data / S0 | Namespace lifecycle, credentials, conditional object semantics, backup, restore, retention, and deletion evidence |
 | Workloads/Fleet/Edge | Placement, claims, node commands, rollout, healthy target selection, Route intent, and Gateway publication |
 
-NamedStatefulService is a Runtime Service capability profile, not a new
-Runtime Unit class. An individual Cell is never a Runtime Unit. Cloud's A3S ACL
-profile compiles to versioned Runtime capability requirements; a provider
-advertises and proves those requirements through a3s-runtime conformance.
-Product policy and tenant state do not move down.
+Named-state behavior is a Cloud/Box/provider consumer-conformance profile
+outside the Runtime wire, not a Runtime capability type or Unit class. Cloud's
+A3S ACL compiles only generic process, network, health, resource, mount,
+Secret, port, and opaque-digest requirements. The joint gate must prove the
+product behavior black-box before availability; Runtime proves only its generic
+lifecycle and evidence contracts. Product policy and tenant state do not move
+down.
 
 The required Cloud refactor is a set of consumer-owned ports:
 
@@ -214,11 +224,14 @@ The required Cloud refactor is a set of consumer-owned ports:
 - DurableCellStoragePort;
 - DurableCellExecutionPort;
 - DurableCellWorkloadPort;
-- DurableCellRoutePublicationPort;
-- DurableCellRuntimeProfilePort.
+- DurableCellRoutePublicationPort.
 
-Concrete owner repositories, handlers, Runtime projection helpers, and
-presentation DTOs must disappear from Durable Cells imports.
+Concrete owner repositories, handlers, and presentation DTOs must disappear
+from Durable Cells imports. Pure owner compilers may be consumed through their
+Application facade; I/O, mutable owner reads, and side effects require a
+consumer-owned port. Do not add a trait around deterministic local policy only
+to rename a function call. The pure Durable Cells Runtime profile service is
+therefore Application policy, not a sixth I/O port.
 
 ## 6. Duplicate-mechanism decisions
 
@@ -405,11 +418,13 @@ reservation query and Published-Language-only projector imports.
 3. Publish Connector attempt outcomes and Identity contact references.
 4. Isolate Agent release admission from Assets/Artifacts repositories.
 
-### Wave 5: Durable Cells and Runtime profile
+### Wave 5: Durable Cells and Runtime boundary
 
-1. Define the provider-neutral NamedStatefulService profile and conformance in
-   a3s-runtime without a new Runtime Unit class.
-2. Compile Cloud's Durable Cell A3S ACL into that Runtime requirement.
+1. Preserve a3s-runtime's generic Task/Service wire and opaque
+   `semantics_profile_digest`; keep named-state behavior in the joint consumer
+   conformance harness.
+2. Compile Cloud's Durable Cell A3S ACL only into the existing generic Runtime
+   Service specification plus its exact opaque digest.
 3. Replace every Durable Cells foreign implementation import with the six
    consumer-owned ports above.
 4. Retain real provider, S0, process-death, Gateway, and fencing evidence before

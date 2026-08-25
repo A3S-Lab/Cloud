@@ -1,3 +1,4 @@
+use super::provider_workload::durable_cell_managed_owner_reference;
 use crate::modules::data::{
     ObjectNamespaceRecoveryOperationRequest, ObjectNamespaceRecoveryPoint,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
@@ -73,9 +74,7 @@ impl DurableCellPriorWriterSeal {
             ))
         })?;
         let receipt_spec = receipt.spec();
-        let expected_owner = correlation
-            .projection
-            .managed_owner_reference()
+        let expected_owner = durable_cell_managed_owner_reference(&correlation.projection)
             .map_err(|error| conflict("restore Durable Cell managed owner", error))?;
         let previous_owner = &receipt_spec.managed_owner;
         if receipt_spec.organization_id != correlation.projection.organization_id

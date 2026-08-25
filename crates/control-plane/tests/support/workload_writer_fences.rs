@@ -10,7 +10,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
     ResourceName, Sha256Digest, WorkloadId,
 };
-use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
+use a3s_cloud_control_plane::modules::workloads::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadWriterFenceRepository,
     ManagedOwnerKind, ManagedOwnerReference, PostgresWorkloadRepository, ReplicaRetirementDispatch,

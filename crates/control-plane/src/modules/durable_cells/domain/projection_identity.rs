@@ -4,7 +4,6 @@ use crate::modules::shared_kernel::domain::{
     OperationId, OrganizationId, ProjectId, Sha256Digest, StorageNamespaceId, WorkloadId,
     WorkloadRevisionId,
 };
-use crate::modules::workloads::{ManagedOwnerKind, ManagedOwnerReference};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -115,16 +114,6 @@ impl DurableCellProjectionIdentity {
         Ok(self)
     }
 
-    pub fn managed_owner_reference(&self) -> Result<ManagedOwnerReference, String> {
-        self.validate()?;
-        ManagedOwnerReference::new(
-            ManagedOwnerKind::parse(DURABLE_CELL_MANAGED_OWNER_KIND)?,
-            self.application_id.as_uuid(),
-            self.application_revision_number,
-            self.application_definition_digest.as_str(),
-        )
-    }
-
     pub fn validate(&self) -> Result<(), String> {
         if self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
@@ -214,22 +203,11 @@ mod tests {
     }
 
     #[test]
-    fn projection_reuses_managed_owner_and_stable_platform_identities() {
+    fn projection_reuses_stable_platform_identities() {
         let (application, initial) = fixture_application();
         let initial_identity =
             DurableCellProjectionIdentity::for_current_revision(&application, &initial)
                 .expect("initial identity");
-        let owner = initial_identity
-            .managed_owner_reference()
-            .expect("managed owner");
-        assert_eq!(owner.kind().as_str(), DURABLE_CELL_MANAGED_OWNER_KIND);
-        assert_eq!(owner.owner_id(), application.id.as_uuid());
-        assert_eq!(owner.owner_generation(), 1);
-        assert_eq!(
-            owner.owner_spec_digest(),
-            initial.definition.digest().as_str()
-        );
-
         let successor = DurableCellApplicationRevision::successor(
             &initial,
             DurableCellApplicationRevisionId::new(),

@@ -1,4 +1,3 @@
-use super::project_replica_runtime_spec;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, RuntimeObservationRecord,
@@ -6,6 +5,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, NodeId, RepositoryError, ResourceClaimId,
 };
+use crate::modules::workloads::application::project_replica_runtime_spec;
 use crate::modules::workloads::domain::entities::{
     DeploymentStatus, ResourceClaim, ResourceClaimState, WorkloadDesiredState,
     WorkloadReplicaLifecycle,

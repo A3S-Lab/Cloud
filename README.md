@@ -188,18 +188,19 @@ Cloud aggregate, Workload replica, or Runtime Unit.
 | Boundary | Owns now / target responsibility |
 | --- | --- |
 | Durable Cells in Cloud | Application identity, immutable revision, state-schema compatibility, retention intent, exact Workload/S0/Operation/Route correlation |
-| a3s-runtime | **Current:** Task and Service lifecycle. **Target:** a composable provider-neutral `NamedStatefulService` profile and conformance on an ordinary Service |
+| a3s-runtime | Generic Task and Service lifecycle, typed endpoints, recovery evidence, and an opaque `semantics_profile_digest`; no Durable Cell fields or product-specific capability type |
 | Box + selected Cell provider | Provider process, activation, per-key serial turns, SQLite lineage, alarm/WebSocket behavior, idle eviction, recovery, epoch fencing |
 | Data / S0 | Namespace lifecycle, credentials, conditional object semantics, backup, restore, retention, deletion evidence |
 | Workloads / Fleet / Edge | Placement, Claims, node commands, rollout, healthy target selection, Route intent, Gateway publication |
 
-The target Runtime profile can describe per-key serial turns, activation and
-idle eviction, alarms, hibernatable connections, durable acknowledgement, and
-fencing evidence without product vocabulary. It is **not** a third Runtime
-Unit kind and does not move Cell identity, SQLite layout, alarm queues, epochs,
-retention, or route policy into Runtime. The pinned a3s-runtime `0.2` does not
-yet implement this profile, so provider-neutral conformance remains an open
-gate.
+Named-state semantics remain outside the Runtime wire. Cloud binds the exact
+immutable Service-profile digest to an ordinary Runtime Service, while the
+joint Cloud/Box/provider consumer gate must black-box test serial turns,
+activation, idle eviction, alarms, hibernatable connections, durable
+acknowledgement, and fencing before product availability. This follows Runtime
+ADR 0005: Runtime certifies only its generic lifecycle, identity, endpoint,
+recovery, resource, cleanup, and opaque-digest contracts. An individual Cell is
+never a Runtime Unit.
 
 ### Architecture audit and current debt
 

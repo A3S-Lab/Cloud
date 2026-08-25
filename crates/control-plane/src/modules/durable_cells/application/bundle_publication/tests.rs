@@ -1,3 +1,4 @@
+use super::super::provider_workload::project_durable_cell_provider_workload;
 use super::*;
 use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
@@ -216,15 +217,16 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         service_template,
         at + Duration::milliseconds(1),
     )?;
+    let provider_workload = project_durable_cell_provider_workload(&workload_revision)?;
     let provider = DurableCellProviderBinding::for_current_revision(
         &application,
         &application_revision,
         &projection,
         &service_profile,
-        &workload_revision,
+        &provider_workload,
     )?;
     let control = WorkloadControlSpec::managed_replica_set_in_pool(
-        projection.managed_owner_reference()?,
+        durable_cell_managed_owner_reference(&projection)?,
         1,
         1,
         None,
@@ -450,7 +452,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let binding = workloads
         .find_deployment_replica_binding(organization_id, projection.deployment_id)
         .await?;
-    let owner = projection.managed_owner_reference()?;
+    let owner = durable_cell_managed_owner_reference(&projection)?;
     let retirement_requested_at = canonical_timestamp(request.now + Duration::milliseconds(10));
     let control = workloads
         .find_workload_control(organization_id, projection.workload_id)

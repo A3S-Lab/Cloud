@@ -23,7 +23,6 @@ assets/presentation/controllers/mcp_service_profile_queries_controller.rs -> ide
 assets/presentation/controllers/smart_http_controller.rs -> identity/presentation
 audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
-durable_cells/infrastructure/provider_runtime.rs -> workloads/infrastructure
 durable_cells/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/deployment_admission.rs -> workloads/presentation
 durable_cells/presentation/dto.rs -> edge/presentation
@@ -193,6 +192,52 @@ workloads/domain/services/deployment_route_updater.rs
     assert!(
         violations.is_empty(),
         "a domain imported runtime execution/provider authority instead of published language:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn durable_cells_domain_never_imports_workloads_owner_models() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("durable_cells") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::workloads"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Durable Cells Domain imported Workloads owner models instead of a consumer-owned projection:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn durable_cells_application_never_imports_infrastructure_implementations() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("durable_cells") || layer(relative) != Some("application") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("::infrastructure"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Durable Cells Application imported an infrastructure implementation instead of an owner Application boundary or published contract:\n{}",
         violations.into_iter().collect::<Vec<_>>().join("\n")
     );
 }
@@ -956,13 +1001,78 @@ fn visit_production_sources(mut visit: impl FnMut(&Path, &str)) {
             continue;
         }
         let source = std::fs::read_to_string(&path).expect("read module source");
-        // Production imports are top-level. Dropping the first cfg(test) item and
-        // everything below it keeps inline fixtures out of the debt inventory.
-        let production = source
-            .split_once("#[cfg(test)]")
-            .map_or(source.as_str(), |(before_tests, _)| before_tests);
-        visit(relative, production);
+        let production = production_source(&source);
+        visit(relative, &production);
     }
+}
+
+/// Keep production declarations that follow a test-only import, while still
+/// excluding the inline test modules conventionally placed at the end of a
+/// source file. The previous first-marker truncation let one early
+/// `#[cfg(test)] use ...` hide the whole production file from architecture
+/// fitness checks.
+fn production_source(source: &str) -> String {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut production = String::with_capacity(source.len());
+    let mut index = 0;
+
+    while index < lines.len() {
+        let line = lines[index];
+        if is_test_only_cfg_attribute(line) {
+            let mut item = index + 1;
+            while item < lines.len() && lines[item].trim().is_empty() {
+                item += 1;
+            }
+            if item < lines.len() && is_use_declaration(lines[item]) {
+                index = item;
+                while index < lines.len() && !lines[index].contains(';') {
+                    index += 1;
+                }
+                index += 1;
+                continue;
+            }
+            break;
+        }
+        production.push_str(line);
+        production.push('\n');
+        index += 1;
+    }
+
+    production
+}
+
+fn is_test_only_cfg_attribute(line: &str) -> bool {
+    let line = line.trim();
+    line == "#[cfg(test)]" || (line.starts_with("#[cfg(all(") && line.contains("test"))
+}
+
+fn is_use_declaration(line: &str) -> bool {
+    let line = line.trim_start();
+    if line.starts_with("use ") {
+        return true;
+    }
+    let Some(visible) = line.strip_prefix("pub") else {
+        return false;
+    };
+    let visible = visible.trim_start();
+    if let Some(restricted) = visible.strip_prefix('(') {
+        let Some((_, declaration)) = restricted.split_once(')') else {
+            return false;
+        };
+        declaration.trim_start().starts_with("use ")
+    } else {
+        visible.starts_with("use ")
+    }
+}
+
+#[test]
+fn production_source_does_not_hide_code_after_a_test_only_import() {
+    let source = "#[cfg(test)]\nuse crate::test_support::Fixture;\n#[cfg(test)]\npub(crate) use crate::test_support::{\n    AnotherFixture,\n};\n#[cfg(all(test, target_os = \"linux\"))]\npub use crate::test_support::LinuxFixture;\nuse crate::modules::foreign::infrastructure::Adapter;\n#[cfg(test)]\nmod tests;\n";
+    let production = production_source(source);
+
+    assert!(!production.contains("Fixture"));
+    assert!(production.contains("foreign::infrastructure::Adapter"));
+    assert!(!production.contains("mod tests"));
 }
 
 fn is_test_only(relative: &Path) -> bool {

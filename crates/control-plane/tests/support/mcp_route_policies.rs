@@ -49,7 +49,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
-use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
+use a3s_cloud_control_plane::modules::workloads::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck, IWorkloadRepository,
     OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,

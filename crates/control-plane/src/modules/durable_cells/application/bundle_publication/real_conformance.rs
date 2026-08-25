@@ -20,7 +20,7 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, RouteId, SecretId, SecretVersionReference, StorageNamespaceId, WorkloadId,
     WorkloadRevisionId,
 };
-use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec_with_digest;
+use crate::modules::workloads::application::project_runtime_spec_with_digest;
 use crate::modules::workloads::{
     HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
     ServiceResources, ServiceTemplate, WorkloadRevision,

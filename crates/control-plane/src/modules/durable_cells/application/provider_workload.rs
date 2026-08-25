@@ -6,11 +6,17 @@ use crate::modules::data::{
     ObjectNamespaceProviderProfile,
 };
 use crate::modules::durable_cells::domain::{
+    DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellProviderHealthProjection,
+    DurableCellProviderPortProjection, DurableCellProviderWorkloadProjection,
     DurableCellPublisherProfile, DurableCellServiceProfile, DurableCellStorageBinding,
+    DURABLE_CELL_MANAGED_OWNER_KIND,
 };
-use crate::modules::shared_kernel::domain::{SecretVersionReference, StorageNamespaceId};
+use crate::modules::shared_kernel::domain::{
+    SecretVersionReference, Sha256Digest, StorageNamespaceId,
+};
 use crate::modules::workloads::{
-    SecretBinding, SecretBindingTarget, ServiceProcess, ServiceTemplate,
+    ManagedOwnerKind, ManagedOwnerReference, SecretBinding, SecretBindingTarget, ServiceProcess,
+    ServiceTemplate, WorkloadRevision,
 };
 
 const ACCESS_KEY_BINDING: &str = "s0-access-key-id";
@@ -18,6 +24,64 @@ const SECRET_ACCESS_KEY_BINDING: &str = "s0-secret-access-key";
 const SESSION_TOKEN_BINDING: &str = "s0-session-token";
 const CELLD_IDLE_EVICT_ENVIRONMENT: &str = "CELLD_IDLE_EVICT_S";
 const CELLD_IDLE_EVICT_SECONDS: &str = "30";
+
+/// Translate the Workloads-owned aggregate into the minimal immutable view
+/// admitted by Durable Cells Domain. This is the sole owner-model crossing;
+/// the Domain never receives a Workload aggregate or Service template.
+pub(crate) fn project_durable_cell_provider_workload(
+    revision: &WorkloadRevision,
+) -> Result<DurableCellProviderWorkloadProjection, String> {
+    let template = revision.resolved_template()?;
+    template.validate()?;
+    let projection = DurableCellProviderWorkloadProjection {
+        workload_id: revision.workload_id,
+        workload_revision_id: revision.id,
+        workload_generation: revision.generation,
+        service_template_digest: Sha256Digest::parse(template.digest()?)?,
+        provider_artifact_digest: Sha256Digest::parse(&template.artifact.digest)?,
+        ports: template
+            .ports
+            .iter()
+            .map(|port| DurableCellProviderPortProjection {
+                name: port.name.clone(),
+                container_port: port.container_port,
+            })
+            .collect(),
+        health: template
+            .health
+            .as_ref()
+            .map(|health| DurableCellProviderHealthProjection {
+                port_name: health.port_name.clone(),
+                path: health.path.clone(),
+            }),
+    };
+    projection.validate()?;
+    Ok(projection)
+}
+
+pub(crate) fn validate_durable_cell_provider_workload_binding(
+    binding: &DurableCellProviderBinding,
+    profile: &DurableCellServiceProfile,
+    revision: &WorkloadRevision,
+) -> Result<(), String> {
+    binding
+        .validate_workload_projection(profile, &project_durable_cell_provider_workload(revision)?)
+}
+
+/// Compile the Durable Cells owner identity into Workloads' generic managed
+/// owner value at the Application boundary. The Domain owns the source facts,
+/// while Workloads owns the target vocabulary.
+pub(crate) fn durable_cell_managed_owner_reference(
+    projection: &DurableCellProjectionIdentity,
+) -> Result<ManagedOwnerReference, String> {
+    projection.validate()?;
+    ManagedOwnerReference::new(
+        ManagedOwnerKind::parse(DURABLE_CELL_MANAGED_OWNER_KIND)?,
+        projection.application_id.as_uuid(),
+        projection.application_revision_number,
+        projection.application_definition_digest.as_str(),
+    )
+}
 
 /// The sole translation from the reviewed celld/S0 profiles into the
 /// long-running Workloads-owned Service process.

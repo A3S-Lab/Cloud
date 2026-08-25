@@ -243,14 +243,14 @@ hold:
 5. it introduces no business aggregate, placement decision, route policy,
    retention policy, or provider-native desired-state authority.
 
-Outbound networking, pause/resume, checkpoint/restore, fenced volume
-attachment, and a provider-neutral named-stateful-service profile can pass
-this test as generic capabilities. Such a profile may specify per-key serial
-turns, activation and idle eviction, alarms, hibernatable connections, durable
-acknowledgement, and fencing evidence without knowing what a Durable Cell is.
-The selected provider still owns concrete Cell identity resolution, SQLite
-lineage, alarm queues, residency, peer forwarding, and epochs. Agent Tool
-events, MCP discovery, model routing, and all product policy remain with their
+Outbound networking, pause/resume, checkpoint/restore, and fenced volume
+attachment can pass this test as generic capabilities. Per-key serial turns,
+activation and idle eviction, alarms, hibernatable connections, durable
+acknowledgement, and Cell fencing do not: they describe a named-state product
+and stay in Cloud's immutable profile plus the joint provider consumer gate.
+The selected provider owns concrete Cell identity resolution, SQLite lineage,
+alarm queues, residency, peer forwarding, and epochs. Agent Tool events, MCP
+discovery, model routing, and all product policy likewise remain with their
 product or provider owner.
 
 The Runtime Unit granularity is one provider process or replica generation,
@@ -260,11 +260,11 @@ Creating one Runtime Unit per Cell, conversation, Workflow step, MCP method,
 or model request is prohibited unless that item independently satisfies the
 existing finite-Task contract rather than gaining a product-specific class.
 
-`NamedStatefulService` is therefore a target composable capability profile on
-an ordinary Runtime `Service`, never a third Runtime Unit kind. The currently
-pinned a3s-runtime `0.2` contract exposes Task and Service but not this profile;
-Cloud must not claim provider-neutral conformance until the profile, receipts,
-and provider tests exist upstream.
+Runtime therefore receives only an ordinary `Service` plus the immutable,
+opaque `semantics_profile_digest`. It never receives a
+`NamedStatefulService` type or product fields. Cloud must not claim complete
+named-state conformance until the exact Cloud/Box/provider black-box gate and
+the generic Runtime lifecycle/evidence gates both pass.
 
 ## 4. Single-authority map
 
@@ -1803,16 +1803,23 @@ Agent's typed operator adapter. Runtime does not gain a Cell unit class, Fleet
 does not gain a Cell scheduler, and Gateway does not gain owner lookup or
 stickiness.
 
-The target a3s-runtime boundary adds a composable
-`NamedStatefulService` capability profile to that ordinary Service. It defines
-provider-neutral requirements and conformance for per-key serial turns,
+The a3s-runtime boundary remains an ordinary Service with an opaque
+`semantics_profile_digest`. Durable Cells keeps per-key serial turns,
 activation and idle eviction, alarms, hibernatable connections, durable
-acknowledgement, and fencing evidence. It does not define a Cloud application,
+acknowledgement, and fencing in its immutable Cloud profile; the joint
+Cloud/Box/provider consumer harness must prove them before product availability.
+Runtime independently certifies generic lifecycle, identity, endpoint,
+recovery, resource, cleanup, and digest binding. It owns no Cloud application,
 Cell aggregate, storage layout, placement policy, route, retention policy, or
-provider control protocol. Until the upstream profile and conformance suite
-exist, Durable Cells continues to pin these requirements in Cloud/provider
-admission and must describe the Runtime abstraction as planned rather than
-implemented.
+provider control protocol.
+
+In code, Workloads Application owns the one deterministic compiler from a
+Workload revision into that generic Runtime specification. Durable Cells
+Application translates a loaded Workload revision into its own narrow
+`DurableCellProviderWorkloadProjection` before Domain validation, then delegates
+the Runtime compilation while attaching only the opaque profile digest. This
+keeps foreign aggregate types and Infrastructure adapters out of the Durable
+Cells Domain and prevents a second product-specific Runtime compiler.
 
 The Runtime Unit is the Cell provider replica, not an individual named Cell.
 The governed Agent Runtime projection is a sibling consumer of the same

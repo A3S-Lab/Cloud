@@ -14,6 +14,8 @@ use super::DeploymentFlowRuntime;
 use super::{flow_error, resource_claim_id};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, RepositoryError};
+use crate::modules::workloads::application::project_bound_runtime_spec;
+use crate::modules::workloads::application::project_replica_runtime_spec;
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus, ReplicaAntiAffinity,
     ResourceClaimBindingEvidence, ResourceClaimReservation, ResourceClaimState,
@@ -27,8 +29,6 @@ use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
 use crate::modules::workloads::domain::services::{
     WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
-use crate::modules::workloads::infrastructure::project_replica_runtime_spec;
-use crate::modules::workloads::infrastructure::runtime_spec::project_bound_runtime_spec;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeResourceClaimBinding};
 use a3s_flow::{FlowError, StepInvocation};
 use a3s_runtime::contract::{

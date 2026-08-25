@@ -29,7 +29,10 @@ pub use deployment_repository::{
 };
 pub use events::DurableCellApplicationChanged;
 pub use projection_identity::{DurableCellProjectionIdentity, DURABLE_CELL_MANAGED_OWNER_KIND};
-pub use provider_binding::DurableCellProviderBinding;
+pub use provider_binding::{
+    DurableCellProviderBinding, DurableCellProviderHealthProjection,
+    DurableCellProviderPortProjection, DurableCellProviderWorkloadProjection,
+};
 pub use publisher_profile::{
     DurableCellPublisherProfile, DURABLE_CELL_PUBLISHER_ADAPTER_PROTOCOL,
     DURABLE_CELL_PUBLISHER_PROFILE_MAX_ACL_BYTES, DURABLE_CELL_PUBLISHER_PROFILE_SCHEMA,

@@ -2213,6 +2213,7 @@ Implemented value objects:
 - `DurableCellClassSpec`
 - `DurableCellStateSchema`
 - `DurableCellProviderBinding`
+- `DurableCellProviderWorkloadProjection`
 - `DurableCellDeploymentBinding`
 
 The implemented `cloud.durable-cell.service.v1` ACL requires the
@@ -2224,15 +2225,14 @@ read-after-write storage, distinct public/internal Runtime ports, and bounded
 Cell names and traffic. Construction and restoration use `a3s-acl` and bind a
 canonical digest.
 
-The target a3s-runtime contract generalizes the provider-neutral subset as a
-composable `NamedStatefulService` capability profile on an ordinary Runtime
-`Service`. It can version per-key serial turns, activation/idle eviction,
-alarms, hibernatable connections, durable acknowledgement, and fencing
-evidence. It is not a third Runtime Unit kind and owns no Cell aggregate,
-SQLite layout, alarm queue, epoch, retention, or route policy. The currently
-pinned a3s-runtime `0.2` does not yet implement this profile, so Cloud's exact
-provider admission remains the current boundary and upstream conformance is an
-open gate.
+The a3s-runtime contract intentionally keeps that product vocabulary outside
+its wire. One provider replica is an ordinary Runtime `Service` bound to the
+exact opaque `semantics_profile_digest`. Cloud/provider admission and the
+joint black-box consumer gate own the required per-key serial-turn,
+activation/idle-eviction, alarm, hibernatable-connection, durable-
+acknowledgement, and fencing assertions that must pass before availability.
+Runtime owns only generic lifecycle and evidence and no Cell aggregate, SQLite
+layout, alarm queue, epoch, retention, or route policy.
 
 The implemented `cloud.durable-cell.application.v1` ACL binds an existing
 `BuildRun`, bounded bundle digest and main ESM module, compatibility date and
@@ -2247,11 +2247,29 @@ copying Workload or provider state.
 The implemented projection identity deterministically reserves one
 application-stable `StorageNamespaceId` and `WorkloadId`, plus revision-stable
 `WorkloadRevisionId`, existing Workloads `DeploymentId`, and `OperationId`.
-It reuses `ManagedOwnerReference` with the exact application ID, revision
-number, and definition digest. It is neither persisted deployment state nor a
-second lifecycle: S0 owns namespace lifecycle, Workloads owns rollout,
-Operations owns progress, and environment orchestration later selects the
-existing Gateway scope.
+Durable Cells Application compiles those local projection facts into
+Workloads' `ManagedOwnerReference` with the exact application ID, revision
+number, and definition digest. The Domain does not import that foreign owner
+model. The projection is neither persisted deployment state nor a second
+lifecycle: S0 owns namespace lifecycle, Workloads owns rollout, Operations
+owns progress, and environment orchestration later selects the existing
+Gateway scope.
+
+`DurableCellProviderWorkloadProjection` is the Durable Cells-owned value used
+to validate that foreign Workload intent. It carries only Workload and revision
+identity, generation, Service-template and provider-artifact digests, typed
+ports, and health intent. It deliberately excludes process arguments, Secrets,
+resources, placement, replicas, commands, receipts, and lifecycle. Durable
+Cells Application is the sole translator from a loaded Workloads revision into
+that local value; the Domain therefore validates provider binding without
+importing a foreign aggregate or rebuilding the Workloads model.
+
+Workloads Application owns the sole deterministic compiler from its immutable
+revision into the generic Runtime Unit specification. Durable Cells Application
+supplies only the exact opaque Service-profile digest and performs its
+product-specific admission around that compiler. Neither context owns a second
+Runtime projector, and no Application policy calls its own Infrastructure
+adapter to perform this pure projection.
 
 Component-only `CELL0.2-C1` adds `DurableCellStorageBinding`. It correlates the
 exact current application revision and deterministic namespace with one

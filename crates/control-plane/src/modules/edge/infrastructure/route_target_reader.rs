@@ -6,12 +6,12 @@ use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::project_replica_runtime_spec;
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, DeploymentStatus, Workload, WorkloadReplicaLifecycle,
     WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
-use crate::modules::workloads::infrastructure::runtime_spec::project_replica_runtime_spec;
 use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::RuntimeUnitSpec;
 use async_trait::async_trait;

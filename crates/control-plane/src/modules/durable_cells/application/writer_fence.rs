@@ -1,7 +1,9 @@
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 use super::provider_workload::{
-    restore_publisher_storage_credentials, validate_pinned_celld_provider_workload,
+    durable_cell_managed_owner_reference, restore_publisher_storage_credentials,
+    validate_pinned_celld_provider_workload,
 };
+use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
 use crate::modules::data::{
     ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
     SealObjectNamespaceOperationInput,
@@ -10,7 +12,6 @@ use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellDeployment, DurableCellPublisherProfile,
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
-use crate::modules::durable_cells::infrastructure::admit_durable_cell_replica_runtime_remove;
 use crate::modules::fleet::domain::entities::NodeCommand;
 use crate::modules::operations::IOperationRepository;
 use crate::modules::shared_kernel::domain::{
@@ -116,8 +117,7 @@ impl DurableCellWriterFenceAdapter {
             .workloads
             .find_workload_control(projection.organization_id, projection.workload_id)
             .await?;
-        let owner = projection
-            .managed_owner_reference()
+        let owner = durable_cell_managed_owner_reference(projection)
             .map_err(|error| conflict("restore Durable Cell managed owner", error))?;
         if control.spec.placement_policy.desired_replicas() != 0
             || control.spec.managed_owner.as_ref() != Some(&owner)
@@ -208,9 +208,7 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
             writer_epoch: target.replica.generation,
             member_id: target.member.id,
             placement_generation: target.member.placement_generation,
-            managed_owner: correlation
-                .projection
-                .managed_owner_reference()
+            managed_owner: durable_cell_managed_owner_reference(&correlation.projection)
                 .map_err(|error| conflict("restore Durable Cell managed owner", error))?,
             node_id: target.member.node_id.ok_or_else(|| {
                 RepositoryError::Conflict(

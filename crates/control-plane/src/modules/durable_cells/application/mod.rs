@@ -9,6 +9,7 @@ mod queries;
 mod resource_access;
 mod result;
 mod route_publication;
+mod runtime_profile;
 mod writer_fence;
 
 pub(crate) use bundle_publication::DurableCellBundlePublicationGate;
@@ -25,6 +26,8 @@ pub use deployment::{
 pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 #[doc(hidden)]
 pub use provider_workload::compose_pinned_celld_service_process;
+#[cfg(test)]
+pub(crate) use provider_workload::project_durable_cell_provider_workload;
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
     GetDurableCellApplicationRevisionHandler, ListDurableCellApplicationRevisions,
@@ -37,6 +40,12 @@ pub use result::DurableCellApplicationMutationResult;
 pub use route_publication::{
     DurableCellRoutePublicationResult, PublishDurableCellApplicationRoute,
     PublishDurableCellApplicationRouteHandler,
+};
+pub use runtime_profile::{
+    admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
+    admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
+    project_durable_cell_operator_binding, project_durable_cell_runtime_spec,
+    DurableCellRuntimeEndpoints,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 

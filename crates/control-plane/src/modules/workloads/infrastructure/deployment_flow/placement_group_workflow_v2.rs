@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeId, OrganizationId, RepositoryError, ResourceClaimId, WorkloadId,
     WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::project_placement_group_runtime_spec;
 use crate::modules::workloads::domain::entities::{
     AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
     DeploymentReplicaBinding, DeploymentStatus, PlacementTopology, ReplicaAntiAffinity,
@@ -15,7 +16,6 @@ use crate::modules::workloads::domain::repositories::{
     PlacementGroupMemberPlacement, PlacementGroupSchedulingWrite,
 };
 use crate::modules::workloads::infrastructure::replica_deployment_materialization::validate_existing_materialization;
-use crate::modules::workloads::infrastructure::runtime_spec::project_placement_group_runtime_spec;
 use a3s_cloud_contracts::NodeResourceInventory;
 use a3s_flow::{FlowError, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use a3s_runtime::contract::{RuntimeCapabilities, RuntimeUnitSpec};

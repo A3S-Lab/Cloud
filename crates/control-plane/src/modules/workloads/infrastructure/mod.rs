@@ -5,7 +5,6 @@ mod persistence;
 mod reconciliation;
 pub(crate) mod replica_deployment_materialization;
 mod replica_retirement_reconciliation;
-pub(crate) mod runtime_spec;
 mod secret_rotation_reconciliation;
 
 pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
@@ -36,7 +35,6 @@ pub use replica_deployment_materialization::{
 pub use replica_retirement_reconciliation::{
     ReplicaRetirementFailure, ReplicaRetirementReconciler, ReplicaRetirementReport,
 };
-pub use runtime_spec::{project_replica_runtime_spec, project_runtime_spec};
 pub use secret_rotation_reconciliation::{
     SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
 };

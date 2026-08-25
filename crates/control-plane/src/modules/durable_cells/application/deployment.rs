@@ -1,7 +1,10 @@
 use super::managed_replica_lifecycle::converge_current_managed_replicas;
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
-use super::provider_workload::validate_pinned_celld_provider_workload;
+use super::provider_workload::{
+    durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
+    validate_durable_cell_provider_workload_binding, validate_pinned_celld_provider_workload,
+};
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
@@ -375,7 +378,7 @@ impl PreparedDeployment {
             return Err("Durable Cell deployment replay changed its exact projection".into());
         }
         let control = WorkloadControlSpec::managed_replica_set_in_pool(
-            projection.managed_owner_reference()?,
+            durable_cell_managed_owner_reference(projection)?,
             correlation.provider.workload_generation,
             1,
             self.node_pool_id,
@@ -500,12 +503,14 @@ async fn prepare_correlation(
         Utc::now(),
     )
     .map_err(ApplicationError::Invalid)?;
+    let provider_workload = project_durable_cell_provider_workload(&workload_revision)
+        .map_err(ApplicationError::Invalid)?;
     let provider = DurableCellProviderBinding::for_current_revision(
         &record.application,
         &record.revision,
         &projection,
         &prepared.service_profile,
-        &workload_revision,
+        &provider_workload,
     )
     .map_err(ApplicationError::Invalid)?;
     let storage = DurableCellStorageBinding::for_current_revision(
@@ -600,10 +605,12 @@ async fn create_managed_workload(
         requested_at,
     )
     .map_err(ApplicationError::Invalid)?;
-    correlation
-        .provider
-        .validate_workload_revision(&prepared.service_profile, &revision)
-        .map_err(ApplicationError::Invalid)?;
+    validate_durable_cell_provider_workload_binding(
+        &correlation.provider,
+        &prepared.service_profile,
+        &revision,
+    )
+    .map_err(ApplicationError::Invalid)?;
     let control = managed_control(
         projection,
         correlation.provider.workload_generation,
@@ -686,9 +693,11 @@ fn validate_workload_bundle(
     {
         return Err("Durable Cell managed Workload replay drifted".into());
     }
-    correlation
-        .provider
-        .validate_workload_revision(service_profile, &bundle.revision)
+    validate_durable_cell_provider_workload_binding(
+        &correlation.provider,
+        service_profile,
+        &bundle.revision,
+    )
 }
 
 fn validate_existing_workload(
@@ -715,9 +724,7 @@ fn managed_control(
     node_pool_id: Option<NodePoolId>,
 ) -> ApplicationResult<WorkloadControlSpec> {
     WorkloadControlSpec::managed_replica_set_in_pool(
-        projection
-            .managed_owner_reference()
-            .map_err(ApplicationError::Internal)?,
+        durable_cell_managed_owner_reference(projection).map_err(ApplicationError::Internal)?,
         generation,
         1,
         node_pool_id,
