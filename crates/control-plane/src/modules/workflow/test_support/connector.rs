@@ -208,6 +208,160 @@ pub(crate) fn routed_connector_workflow_run_input() -> Result<WorkflowRunInput, 
     Ok(input)
 }
 
+pub(crate) fn compensating_connector_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = connector_workflow_run_input()?;
+    let input_step = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "input")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun compensation test plan lost its Input step".to_owned())?;
+    let connector_step = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == TEST_CONNECTOR_STEP_ID)
+        .cloned()
+        .ok_or_else(|| "WorkflowRun compensation test plan lost its Connector step".to_owned())?;
+    let output_step = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "output")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun compensation test plan lost its Output step".to_owned())?;
+
+    let mut branch_configuration = WorkflowStepConfiguration::empty(WorkflowStepKind::Branch);
+    branch_configuration.selector = Some("current.ok".into());
+    branch_configuration.default_handle = Some("compensate".into());
+    branch_configuration.routes = vec![
+        WorkflowBranchRoute {
+            handle: "complete".into(),
+            equals: "true".into(),
+        },
+        WorkflowBranchRoute {
+            handle: "compensate".into(),
+            equals: "false".into(),
+        },
+    ];
+    let branch_configuration = configuration(branch_configuration)?;
+    let mut failure_output_configuration =
+        WorkflowStepConfiguration::empty(WorkflowStepKind::Output);
+    failure_output_configuration.template = Some("{{steps.charge}}".into());
+    let failure_output_configuration = configuration(failure_output_configuration)?;
+    input.payloads.extend([
+        ResolvedWorkflowPayload::from_payload(&branch_configuration),
+        ResolvedWorkflowPayload::from_payload(&failure_output_configuration),
+    ]);
+    input
+        .payloads
+        .sort_by(|left, right| left.digest.cmp(&right.digest));
+    let restored_payloads = input
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    input.plan.workflow_payload_set_digest = digest_payload_set(&restored_payloads)?;
+
+    let reserve = compensation_connector_step(&connector_step, "reserve", 'c')?;
+    let charge = compensation_connector_step(&connector_step, "charge", 'd')?;
+    let release = compensation_connector_step(&connector_step, "release", 'e')?;
+    let mut route = plan_step(
+        "route_charge",
+        WorkflowStepKind::Branch,
+        &branch_configuration,
+        &connector_step.output_schema_digest,
+    );
+    route.descriptor = Some(WorkflowStepDescriptorBinding {
+        step_id: route.id.clone(),
+        descriptor_id: "workflow.branch".into(),
+        descriptor_revision: "1.0.0".into(),
+        semantic_digest: Sha256Digest::parse(digest('8'))?,
+    });
+    let mut failure_output = compensation_output_step(&output_step, "failure_output")?;
+    failure_output.configuration_digest = failure_output_configuration.digest().clone();
+    let compensation_output = compensation_output_step(&output_step, "compensation_output")?;
+    let success_output = compensation_output_step(&output_step, "success_output")?;
+
+    input.plan.steps = vec![
+        input_step,
+        reserve,
+        charge,
+        route,
+        release,
+        compensation_output,
+        failure_output,
+        success_output,
+    ];
+    input.plan.edges = vec![
+        edge("input-reserve", "input", "reserve", None),
+        edge("reserve-charge", "reserve", "charge", None),
+        edge("charge-route", "charge", "route_charge", None),
+        edge(
+            "route-release",
+            "route_charge",
+            "release",
+            Some("compensate"),
+        ),
+        edge(
+            "route-success-output",
+            "route_charge",
+            "success_output",
+            Some("complete"),
+        ),
+        edge(
+            "release-compensation-output",
+            "release",
+            "compensation_output",
+            None,
+        ),
+        edge("release-failure-output", "release", "failure_output", None),
+    ];
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun compensation test plan",
+    )?))?;
+    input.validate()?;
+    Ok(input)
+}
+
+fn compensation_connector_step(
+    base: &WorkflowPlanStep,
+    step_id: &str,
+    digest_character: char,
+) -> Result<WorkflowPlanStep, String> {
+    let mut step = base.clone();
+    step.id = step_id.into();
+    step.descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun compensation Connector lost its descriptor".to_owned())?
+        .step_id = step_id.into();
+    let capability = step
+        .capability
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun compensation Connector lost its capability".to_owned())?;
+    capability.resource_id = ConnectorProfileId::new().as_uuid();
+    capability.revision = ConnectorRevisionId::new().to_string();
+    capability.digest = Sha256Digest::parse(digest(digest_character))?;
+    Ok(step)
+}
+
+fn compensation_output_step(
+    base: &WorkflowPlanStep,
+    step_id: &str,
+) -> Result<WorkflowPlanStep, String> {
+    let mut step = base.clone();
+    step.id = step_id.into();
+    step.descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun compensation Output lost its descriptor".to_owned())?
+        .step_id = step_id.into();
+    Ok(step)
+}
+
 pub(crate) fn connector_workflow_run_input_v6() -> Result<WorkflowRunInput, String> {
     let mut input = connector_workflow_run_input()?;
     input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V6.into();

@@ -472,7 +472,8 @@ pub(crate) use application::{
 };
 pub(crate) use composite::{composite_workflow_run_input, routed_composite_workflow_run_input};
 pub(crate) use connector::{
-    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
+    compensating_connector_workflow_run_input, connector_workflow_run_input,
+    connector_workflow_run_input_v5, connector_workflow_run_input_v6,
     routed_connector_workflow_run_input,
 };
 pub(crate) fn multi_output_workflow_run_input() -> Result<WorkflowRunInput, String> {

@@ -442,8 +442,10 @@ creating their own control planes:
     an exact pre-upgrade idempotency replay is resolved before this availability
     check; changed input under the same key still conflicts, and a new key still
     reaches the fence. The public API shape is unchanged. The exact Connectors-
-    owned HTTP Request foundation is now internally discoverable, but public
-    business-service availability, remaining Agent/MCP/model/Tool dispatch,
+    owned HTTP Request foundation is now internally discoverable, and one exact
+    ordinary-step Connector domain-result compensation path is certified at
+    component scope. Public business-service availability, remaining
+    Agent/MCP/model/Tool dispatch, general and cancellation-triggered
     compensation, retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and

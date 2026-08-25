@@ -2065,6 +2065,13 @@ Operations remains the only durable orchestration mechanism.
 | `W0.4` | In progress; the exact Connector business-service path is internally discoverable, and typed JSON response consumption, descriptor-bound failure routing, and bounded Execution/Connector evidence correlation are implemented as component foundations | Bind typed Agent, MCP, model, Tool, and remaining business-service availability with exact revisions, approvals, compensation, and remaining bounded evidence references. WorkflowRun v6 stores an accepted Connector body through the Connectors-owned typed child of the shared immutable-object client before C6 terminal settlement, then retains only its exact reference, digest, and length in Flow. The internal C11 port resolves bytes only after environment authorization and exact accepted terminal evidence. Version 8 uses that port in one no-retry step, parses exactly one duplicate-key-free JSON value, enforces the immutable output schema and Workflow output bound, and records only the typed node result. Plan v5/Run v9 additionally maps closed Connector failures to `cloud.workflow.step-failure.v2` only through the exact descriptor-bound ordinary error edge. Historic v8 retains fail-closed behavior without that route, v7 retains default-output behavior, v6 remains reference-only, and v5 remains digest-only. Other capability steps, remaining provider/recovery evidence, and public HTTP Request availability stay open. |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
+Decision 0055 certifies one component-only Connector domain-result compensation
+composition as ordinary durable Service, Branch, and Output steps. It retains
+the original domain failure and the compensating result, and exact terminal
+redelivery cannot create another compensating attempt. General reverse-order
+or cancellation-triggered compensation, retained provider/recovery evidence,
+public availability, and the remaining `W0.4`/`W0.5` gates stay open.
+
 The `W0.3` immutable descriptor contract is implemented as
 `cloud.workflow.step-descriptor-registry.v1`. It freezes canonical ACL, exact
 SemVer identity, typed ports, the existing coarse step and capability types,

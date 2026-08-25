@@ -475,10 +475,12 @@ Current runtime build `a3s-cloud-workflows@24` retains `@1` through `@23` for
 replay. Constraint-only migration `149` widens the existing closed payload
 schema registry for this configuration and the already supported policy v2/v3
 schemas; migration `151` adds only the List Operator schema to that registry.
-Neither adds a table or column. The milestone remains in progress:
-business-service and remaining
-Agent/MCP/model/Tool dispatch, compensation, expanded provider conformance,
-`W0.5`, and public availability remain open.
+Neither adds a table or column. One exact Connector domain-result compensation
+composition is implemented with ordinary durable Service, Branch, and Output
+steps at component scope. The milestone remains in progress: business-service
+and remaining Agent/MCP/model/Tool dispatch, general and cancellation-triggered
+compensation, expanded provider conformance, `W0.5`, and public availability
+remain open.
 
 The `C0` summary's remaining SMTP item means a general Notifications
 subscription/dispatch channel. Identity's separate recipient-contact challenge
@@ -2487,6 +2489,18 @@ node.
   scheduler, retry counter, child Operation,
   credential authority, provider configuration, HTTP client, or public
   response-body read is added.
+- Implemented as a component-only `W0.4` Connector compensation composition
+  (`2026-08-25`): an accepted typed domain result selects an ordinary Branch
+  after the exact reserve and charge Service steps. The `ok = false` path runs
+  one exact release Service step before the aggregate can complete, retaining
+  both the original domain failure and release result. Each step keeps its own
+  immutable Connector revision/digest and stable Flow-derived attempt identity;
+  exact terminal release-hook redelivery adds no history, response-object read,
+  or second attempt. This reuses Plan v2 and WorkflowRun input/runtime/Flow v8
+  and adds no compensation runtime, schema, table, queue, scheduler, retry
+  counter, HTTP client, object client, or public surface. General reverse-order
+  and cancellation-triggered compensation, provider recovery evidence, and the
+  remaining `W0.4`/`W0.5` gates stay open.
 - Implemented as component-only `APP0.2-C14`: only the exact
   `application.conversation-variable-assign` descriptor may bind one required
   static object `error` edge. Its graph emits Plan v6 and Application-composed

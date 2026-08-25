@@ -387,4 +387,7 @@ fn decode_input(value: serde_json::Value) -> Result<WorkflowRunInput, FlowError>
 mod tests;
 
 #[cfg(test)]
+mod connector_compensation_tests;
+
+#[cfg(test)]
 mod connector_tests;
