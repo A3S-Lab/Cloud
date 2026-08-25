@@ -564,10 +564,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.iteration" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0053-bounded-parallel-iteration-waves.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite_wave.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/parallel_iteration_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/parallel_iteration_tests.rs"]
     gate = "W0.3"
     label = "Iteration"
     owner = "workflow"
@@ -587,7 +587,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["contract:contracts/w0.3/list-operator.acl", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_list_operator_binding.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/list_operator.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_revision_semantic_contracts_tests/list_operator.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/list_operator.rs"]
+    evidence = ["contract:contracts/w0.3/list-operator.acl", "doc:docs/decisions/app-platform/0052-workflow-local-list-operations.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_list_operator_binding.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/list_operator.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_revision_semantic_contracts_tests/list_operator.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution/list_operator.rs"]
     gate = "W0.3"
     label = "List Operator"
     owner = "workflow"

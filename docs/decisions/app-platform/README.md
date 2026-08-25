@@ -59,6 +59,7 @@ AI application platform parity manifest.
 | [0052](0052-workflow-local-list-operations.md) | Process typed arrays through one exact bounded Workflow-local step |
 | [0053](0053-bounded-parallel-iteration-waves.md) | Execute bounded Iteration children concurrently through authority-bound Flow waves |
 
-All fifty-three decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
-`W0` application-platform work. A later change requires a superseding decision
-and a new parity-manifest revision; it cannot silently reinterpret `v1`.
+Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
+remaining `W0` application-platform work. A later change requires a superseding
+decision and a new parity-manifest revision; it cannot silently reinterpret
+`v1`.

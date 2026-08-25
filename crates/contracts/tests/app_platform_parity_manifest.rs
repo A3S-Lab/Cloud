@@ -88,6 +88,7 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             "enterprise.organizations-workspaces",
             "node.human-input",
             "node.if-else",
+            "node.iteration",
             "node.list-operator",
             "node.output",
             "node.template",
@@ -246,13 +247,14 @@ fn every_advertised_public_capability_requires_verified_gates_and_test_evidence(
 }
 
 #[test]
-fn authority_decision_register_is_complete_and_manifest_references_it() {
+fn authority_decision_register_matches_files_and_latest_decision_is_manifested() {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let decision_directory = repository.join("docs/decisions/app-platform");
     let register =
-        std::fs::read_to_string(repository.join("docs/decisions/app-platform/README.md"))
-            .expect("decision register");
+        std::fs::read_to_string(decision_directory.join("README.md")).expect("decision register");
     let decisions = register
         .lines()
+        .filter(|line| line.starts_with("| ["))
         .filter_map(|line| {
             line.split_once("](")?
                 .1
@@ -260,19 +262,23 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
                 .map(|value| value.0)
         })
         .filter(|target| target.ends_with(".md"))
+        .map(str::to_owned)
         .collect::<Vec<_>>();
+    let mut decision_files = std::fs::read_dir(&decision_directory)
+        .expect("decision directory")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name != "README.md" && name.ends_with(".md"))
+        .collect::<Vec<_>>();
+    decision_files.sort();
     assert_eq!(
-        decisions.len(),
-        53,
-        "decision register changed unexpectedly"
+        decisions, decision_files,
+        "decision register must exactly match the accepted decision files"
     );
-    for decision in decisions {
-        let body = std::fs::read_to_string(
-            repository
-                .join("docs/decisions/app-platform")
-                .join(decision),
-        )
-        .expect("decision body");
+
+    for decision in &decisions {
+        let body =
+            std::fs::read_to_string(decision_directory.join(decision)).expect("decision body");
         assert!(
             body.contains("Status: Accepted"),
             "{decision} is not accepted"
@@ -283,6 +289,13 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
             "{decision} has no consequences"
         );
     }
+
+    let latest_decision = decisions.last().expect("at least one accepted decision");
+    let latest_evidence = format!("doc:docs/decisions/app-platform/{latest_decision}");
+    assert!(
+        MANIFEST.contains(&latest_evidence),
+        "latest accepted decision {latest_decision} must be parity-manifest evidence"
+    );
 
     assert!(MANIFEST.contains("doc:docs/decisions/app-platform/0002-application-delivery.md"));
     assert!(MANIFEST.contains(
@@ -305,4 +318,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
     assert!(MANIFEST
         .contains("doc:docs/decisions/app-platform/0051-workflow-local-variable-aggregation.md"));
     assert!(MANIFEST.contains("contract:contracts/w0.3/variable-aggregate.acl"));
+    assert!(
+        MANIFEST.contains("doc:docs/decisions/app-platform/0052-workflow-local-list-operations.md")
+    );
 }
