@@ -11,7 +11,17 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.62.0`.
+The current semantic contract version is `1.63.0`.
+
+Contract `1.63.0` closes every core Workflow success payload already returned
+by the control plane. Goal, Plan revision, node-catalog, run, cancellation,
+wait, output, variable-inspection, diagnostics, and history operations now
+reference reusable closed schemas through the standard response envelope.
+The schemas preserve the existing JSON fields and routes while documenting
+their UUIDs, digests, finite enums, nullable projections, collection bounds,
+typed failure evidence, diagnostic statistics, and exact nested resources.
+No authorization boundary, request shape, runtime behavior, or response byte
+is changed.
 
 Contract `1.62.0` adds the versioned Workflow payload schema
 `cloud.workflow.configuration.list-operator.v1`. Existing Workflow
@@ -80,8 +90,9 @@ These URNs are correlations, not embedded evidence or an authorization grant.
 Reading any referenced owner resource still requires its normal authorization
 boundary. Populating this existing field did not itself change a route or JSON
 shape; contract `1.60.0` was introduced by the separate diagnostics operation,
-`1.61.0` adds Variable Aggregator payload semantics, and `1.62.0` adds List
-Operator payload semantics as described above.
+`1.61.0` adds Variable Aggregator payload semantics, `1.62.0` adds List
+Operator payload semantics, and `1.63.0` closes the existing core Workflow
+success payload schemas as described above.
 
 ## Contract completeness
 

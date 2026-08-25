@@ -1978,6 +1978,12 @@ fn is_workflow_revision_item_path(path: &str) -> bool {
 fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<String> {
     if method == "post" && is_workflow_definition_mutation_path(path) {
         Some(format!("WorkflowDefinitionMutationSuccess{status}"))
+    } else if method == "post" && is_workflow_goal_mutation_path(path) {
+        Some(format!("WorkflowGoalMutationSuccess{status}"))
+    } else if method == "post"
+        && (is_workflow_run_start_path(path) || is_workflow_run_cancel_path(path))
+    {
+        Some(format!("WorkflowRunMutationSuccess{status}"))
     } else if method == "get" && is_workflow_definition_collection_path(path) {
         Some("WorkflowDefinitionListSuccess200".into())
     } else if method == "get" && is_workflow_definition_item_path(path) {
@@ -1986,6 +1992,28 @@ fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<S
         Some("WorkflowRevisionSummaryListSuccess200".into())
     } else if method == "get" && is_workflow_revision_item_path(path) {
         Some("WorkflowRevisionSuccess200".into())
+    } else if method == "get" && is_workflow_node_catalog_path(path) {
+        Some("WorkflowNodeCatalogSuccess200".into())
+    } else if method == "get" && is_workflow_goal_mutation_path(path) {
+        Some("WorkflowGoalListSuccess200".into())
+    } else if method == "get" && is_workflow_goal_item_path(path) {
+        Some("WorkflowGoalSuccess200".into())
+    } else if method == "get" && is_workflow_plan_revision_item_path(path) {
+        Some("WorkflowPlanRevisionSuccess200".into())
+    } else if method == "get" && is_workflow_run_start_path(path) {
+        Some("WorkflowRunListSuccess200".into())
+    } else if method == "get"
+        && (is_workflow_run_item_path(path) || is_workflow_run_wait_path(path))
+    {
+        Some("WorkflowRunSuccess200".into())
+    } else if method == "get" && is_workflow_run_output_path(path) {
+        Some("WorkflowRunOutputSuccess200".into())
+    } else if method == "get" && is_workflow_run_variables_path(path) {
+        Some("WorkflowRunVariableInspectionSuccess200".into())
+    } else if method == "get" && is_workflow_run_diagnostics_path(path) {
+        Some("WorkflowRunDiagnosticsSuccess200".into())
+    } else if method == "get" && is_workflow_run_history_path(path) {
+        Some("WorkflowRunHistoryPageSuccess200".into())
     } else {
         None
     }
@@ -1993,6 +2021,43 @@ fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<S
 
 fn is_workflow_goal_mutation_path(path: &str) -> bool {
     path.ends_with("/workflow-goals")
+}
+
+fn is_workflow_node_catalog_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/workflow-node-catalog")
+}
+
+fn is_workflow_goal_item_path(path: &str) -> bool {
+    path.ends_with("/workflow-goals/{workflow_goal_id}")
+}
+
+fn is_workflow_plan_revision_item_path(path: &str) -> bool {
+    path.contains("/workflow-goals/{workflow_goal_id}/")
+        && path.ends_with("/plan-revisions/{plan_revision_id}")
+}
+
+fn is_workflow_run_item_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}")
+}
+
+fn is_workflow_run_wait_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}/wait")
+}
+
+fn is_workflow_run_output_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}/output")
+}
+
+fn is_workflow_run_variables_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}/variables")
+}
+
+fn is_workflow_run_diagnostics_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}/diagnostics")
+}
+
+fn is_workflow_run_history_path(path: &str) -> bool {
+    path.ends_with("/workflow-runs/{workflow_run_id}/history")
 }
 
 fn is_form_mutation_path(path: &str) -> bool {

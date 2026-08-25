@@ -502,8 +502,11 @@ REST/OpenAPI `1.61.0` and the maintained client additionally enumerate the
 `cloud.workflow.configuration.variable-aggregate.v1` payload schema;
 REST/OpenAPI `1.62.0` adds
 `cloud.workflow.configuration.list-operator.v1`. Neither version adds a new
-route or JSON property. Business-service and remaining
-Agent/MCP/model/Tool failure semantics,
+route or JSON property. REST/OpenAPI `1.63.0` additionally documents the
+existing core Workflow Goal, Plan, discovery, run, output,
+variable-inspection, diagnostics, and history success payloads through closed
+reusable schemas without changing response bytes. Business-service and
+remaining Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.
 

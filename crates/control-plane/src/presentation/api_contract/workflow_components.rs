@@ -13,7 +13,7 @@ use crate::modules::workflow::{
 use serde_json::{json, Map, Value};
 
 const WORKFLOW_DEFINITION_MAX_ACL_BYTES: usize = 1024 * 1024;
-const MAXIMUM_JSON_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+pub(super) const MAXIMUM_JSON_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 pub(super) fn install_workflow_component_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert(
@@ -365,19 +365,19 @@ fn workflow_revision_summary_properties() -> Map<String, Value> {
     .collect()
 }
 
-fn uuid_schema() -> Value {
+pub(super) fn uuid_schema() -> Value {
     json!({ "type": "string", "format": "uuid" })
 }
 
-fn nullable_uuid_schema() -> Value {
+pub(super) fn nullable_uuid_schema() -> Value {
     json!({ "type": "string", "format": "uuid", "nullable": true })
 }
 
-fn timestamp_schema() -> Value {
+pub(super) fn timestamp_schema() -> Value {
     json!({ "type": "string", "format": "date-time" })
 }
 
-fn revision_number_schema() -> Value {
+pub(super) fn revision_number_schema() -> Value {
     json!({
         "type": "integer",
         "minimum": 1,
@@ -385,11 +385,11 @@ fn revision_number_schema() -> Value {
     })
 }
 
-fn digest_schema() -> Value {
+pub(super) fn digest_schema() -> Value {
     json!({ "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" })
 }
 
-fn nullable_digest_schema() -> Value {
+pub(super) fn nullable_digest_schema() -> Value {
     json!({
         "type": "string",
         "pattern": "^sha256:[0-9a-f]{64}$",

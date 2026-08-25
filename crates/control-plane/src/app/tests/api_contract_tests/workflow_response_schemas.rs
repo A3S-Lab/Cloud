@@ -77,3 +77,171 @@ fn workflow_definition_and_revision_responses_are_closed_and_typed() -> Result<(
     );
     Ok(())
 }
+
+#[test]
+fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let schemas = &document["components"]["schemas"];
+
+    for name in [
+        "WorkflowNodeCatalog",
+        "WorkflowNodeCatalogEntry",
+        "WorkflowGoal",
+        "WorkflowGoalMutation",
+        "WorkflowPlanRevision",
+        "WorkflowPlan",
+        "WorkflowPlanStep",
+        "WorkflowRun",
+        "WorkflowRunMutation",
+        "WorkflowStepProjection",
+        "WorkflowRunOutput",
+        "WorkflowRunVariableInspection",
+        "WorkflowRunVariable",
+        "WorkflowRunDiagnostics",
+        "WorkflowRunHistoryPage",
+        "WorkflowRunHistoryEvent",
+    ] {
+        assert_eq!(
+            schemas[name]["additionalProperties"], false,
+            "{name} must reject undocumented fields"
+        );
+    }
+    assert_eq!(
+        schemas["WorkflowNodeCatalog"]["properties"]["nodes"]["items"]["$ref"],
+        "#/components/schemas/WorkflowNodeCatalogEntry"
+    );
+    assert_eq!(
+        schemas["WorkflowPlan"]["properties"]["steps"]["items"]["$ref"],
+        "#/components/schemas/WorkflowPlanStep"
+    );
+    assert_eq!(
+        schemas["WorkflowRun"]["properties"]["steps"]["items"]["$ref"],
+        "#/components/schemas/WorkflowStepProjection"
+    );
+    assert_eq!(
+        schemas["WorkflowRunDiagnostics"]["properties"]["diagnostics"]["items"]["$ref"],
+        "#/components/schemas/WorkflowRunDiagnostic"
+    );
+    assert_eq!(
+        schemas["WorkflowRunVariableInspection"]["properties"]["variables"]["items"]["$ref"],
+        "#/components/schemas/WorkflowRunVariable"
+    );
+    assert_eq!(
+        schemas["WorkflowRunHistoryPage"]["properties"]["events"]["items"]["$ref"],
+        "#/components/schemas/WorkflowRunHistoryEvent"
+    );
+
+    for (success_schema, data_schema) in [
+        ("WorkflowNodeCatalogSuccessResponse", "WorkflowNodeCatalog"),
+        ("WorkflowGoalSuccessResponse", "WorkflowGoal"),
+        ("WorkflowGoalListSuccessResponse", "WorkflowGoalList"),
+        (
+            "WorkflowGoalMutationSuccessResponse",
+            "WorkflowGoalMutation",
+        ),
+        (
+            "WorkflowPlanRevisionSuccessResponse",
+            "WorkflowPlanRevision",
+        ),
+        ("WorkflowRunSuccessResponse", "WorkflowRun"),
+        ("WorkflowRunListSuccessResponse", "WorkflowRunList"),
+        ("WorkflowRunMutationSuccessResponse", "WorkflowRunMutation"),
+        ("WorkflowRunOutputSuccessResponse", "WorkflowRunOutput"),
+        (
+            "WorkflowRunVariableInspectionSuccessResponse",
+            "WorkflowRunVariableInspection",
+        ),
+        (
+            "WorkflowRunDiagnosticsSuccessResponse",
+            "WorkflowRunDiagnostics",
+        ),
+        (
+            "WorkflowRunHistoryPageSuccessResponse",
+            "WorkflowRunHistoryPage",
+        ),
+    ] {
+        assert_eq!(
+            schemas[success_schema]["allOf"][0]["properties"]["data"]["$ref"],
+            format!("#/components/schemas/{data_schema}")
+        );
+    }
+
+    for (path, response) in [
+        (
+            "/organizations/{organization_id}/projects/{project_id}/workflow-node-catalog",
+            "WorkflowNodeCatalogSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/projects/{project_id}/workflow-goals",
+            "WorkflowGoalListSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-goals/{workflow_goal_id}",
+            "WorkflowGoalSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}",
+            "WorkflowPlanRevisionSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/projects/{project_id}/workflow-runs",
+            "WorkflowRunListSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}",
+            "WorkflowRunSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}/wait",
+            "WorkflowRunSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}/output",
+            "WorkflowRunOutputSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}/variables",
+            "WorkflowRunVariableInspectionSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics",
+            "WorkflowRunDiagnosticsSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/workflow-runs/{workflow_run_id}/history",
+            "WorkflowRunHistoryPageSuccess200",
+        ),
+    ] {
+        assert_eq!(
+            document["paths"][path]["get"]["responses"]["200"]["$ref"],
+            format!("#/components/responses/{response}"),
+            "GET {path} must use its exact success response"
+        );
+    }
+
+    let goal_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-goals"];
+    for status in ["200", "201"] {
+        assert_eq!(
+            goal_collection["post"]["responses"][status]["$ref"],
+            format!("#/components/responses/WorkflowGoalMutationSuccess{status}")
+        );
+    }
+    let run_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-runs"];
+    let run_cancellation = &document["paths"]
+        ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/cancel"];
+    for status in ["200", "202"] {
+        let expected = format!("#/components/responses/WorkflowRunMutationSuccess{status}");
+        assert_eq!(
+            run_collection["post"]["responses"][status]["$ref"],
+            expected
+        );
+        assert_eq!(
+            run_cancellation["post"]["responses"][status]["$ref"],
+            expected
+        );
+    }
+    Ok(())
+}

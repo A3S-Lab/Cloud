@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.62.0" src="https://img.shields.io/badge/REST_contract-1.62.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.63.0" src="https://img.shields.io/badge/REST_contract-1.63.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -413,7 +413,7 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.62.0` is the current contract; the
+    copied evidence bodies. REST/OpenAPI `1.63.0` is the current contract; the
     maintained client, CLI, and one read-only Management MCP tool expose an authorized bounded
     `cloud.workflow-run.diagnostics.v1` projection. It compares the persisted
     Workflow sequence with one consistent A3S Flow snapshot/history read,

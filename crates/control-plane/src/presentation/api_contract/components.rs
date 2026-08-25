@@ -1,4 +1,7 @@
 use super::workflow_components::install_workflow_component_schemas;
+use super::workflow_goal_components::install_workflow_goal_component_schemas;
+use super::workflow_run_components::install_workflow_run_component_schemas;
+use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
@@ -327,6 +330,9 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .cloned()
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
     install_workflow_component_schemas(&mut schema_components);
+    install_workflow_goal_component_schemas(&mut schema_components);
+    install_workflow_run_component_schemas(&mut schema_components);
+    install_workflow_run_observation_component_schemas(&mut schema_components);
     schema_components.insert(
         "WorkflowDefinitionSuccessResponse".into(),
         workflow_definition_success,
@@ -347,6 +353,40 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         "WorkflowDefinitionMutationSuccessResponse".into(),
         workflow_definition_mutation_success,
     );
+    for (name, data_schema) in [
+        ("WorkflowNodeCatalogSuccessResponse", "WorkflowNodeCatalog"),
+        ("WorkflowGoalSuccessResponse", "WorkflowGoal"),
+        ("WorkflowGoalListSuccessResponse", "WorkflowGoalList"),
+        (
+            "WorkflowGoalMutationSuccessResponse",
+            "WorkflowGoalMutation",
+        ),
+        (
+            "WorkflowPlanRevisionSuccessResponse",
+            "WorkflowPlanRevision",
+        ),
+        ("WorkflowRunSuccessResponse", "WorkflowRun"),
+        ("WorkflowRunListSuccessResponse", "WorkflowRunList"),
+        ("WorkflowRunMutationSuccessResponse", "WorkflowRunMutation"),
+        ("WorkflowRunOutputSuccessResponse", "WorkflowRunOutput"),
+        (
+            "WorkflowRunVariableInspectionSuccessResponse",
+            "WorkflowRunVariableInspection",
+        ),
+        (
+            "WorkflowRunDiagnosticsSuccessResponse",
+            "WorkflowRunDiagnostics",
+        ),
+        (
+            "WorkflowRunHistoryPageSuccessResponse",
+            "WorkflowRunHistoryPage",
+        ),
+    ] {
+        schema_components.insert(
+            name.into(),
+            typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
+        );
+    }
     components.insert("schemas".into(), Value::Object(schema_components));
 
     let mut response_components = Map::new();
@@ -466,6 +506,65 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/WorkflowDefinitionMutationSuccessResponse",
+            ),
+        );
+    }
+    for (name, schema) in [
+        (
+            "WorkflowNodeCatalogSuccess200",
+            "WorkflowNodeCatalogSuccessResponse",
+        ),
+        ("WorkflowGoalSuccess200", "WorkflowGoalSuccessResponse"),
+        (
+            "WorkflowGoalListSuccess200",
+            "WorkflowGoalListSuccessResponse",
+        ),
+        (
+            "WorkflowPlanRevisionSuccess200",
+            "WorkflowPlanRevisionSuccessResponse",
+        ),
+        ("WorkflowRunSuccess200", "WorkflowRunSuccessResponse"),
+        (
+            "WorkflowRunListSuccess200",
+            "WorkflowRunListSuccessResponse",
+        ),
+        (
+            "WorkflowRunOutputSuccess200",
+            "WorkflowRunOutputSuccessResponse",
+        ),
+        (
+            "WorkflowRunVariableInspectionSuccess200",
+            "WorkflowRunVariableInspectionSuccessResponse",
+        ),
+        (
+            "WorkflowRunDiagnosticsSuccess200",
+            "WorkflowRunDiagnosticsSuccessResponse",
+        ),
+        (
+            "WorkflowRunHistoryPageSuccess200",
+            "WorkflowRunHistoryPageSuccessResponse",
+        ),
+    ] {
+        response_components.insert(
+            name.into(),
+            response_component(200, &format!("#/components/schemas/{schema}")),
+        );
+    }
+    for status in [200, 201] {
+        response_components.insert(
+            format!("WorkflowGoalMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/WorkflowGoalMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 202] {
+        response_components.insert(
+            format!("WorkflowRunMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/WorkflowRunMutationSuccessResponse",
             ),
         );
     }

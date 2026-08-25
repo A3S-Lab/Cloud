@@ -868,6 +868,10 @@ and the maintained client union without adding a route or JSON property.
 REST/OpenAPI `1.62.0` similarly adds the returned
 `cloud.workflow.configuration.list-operator.v1` semantic and client union
 member without adding a route or JSON property.
+REST/OpenAPI `1.63.0` keeps those response bytes stable while replacing generic
+success data documentation with closed reusable schemas for Workflow Goal,
+Plan, discovery, run lifecycle, output, variable inspection, diagnostics, and
+history payloads.
 
 REST/OpenAPI `1.60.0` adds one project-authorized
 `cloud.workflow-run.diagnostics.v1` read. The adapter samples a consistent A3S

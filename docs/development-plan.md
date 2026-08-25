@@ -482,11 +482,15 @@ transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
 
-The current REST/OpenAPI contract is `1.62.0`. It enumerates the versioned List
-Operator and Variable Aggregator Workflow payload schemas through the existing
-ACL transport and maintained client without adding a route or JSON property. It retains
-`1.60.0`'s authorized bounded WorkflowRun diagnostics/statistics over `1.59.0`'s complete signed audit
-manifest, `1.58.0`'s retention status, `1.57.0`'s signed page,
+The current REST/OpenAPI contract is `1.63.0`. It closes the existing core
+Workflow Goal, Plan, node-catalog, run, output, variable-inspection,
+diagnostics, and history success payloads as reusable OpenAPI schemas without
+changing their bytes. It also retains `1.62.0`'s versioned List Operator and
+Variable Aggregator Workflow payload enums through the existing ACL transport
+and maintained client. It retains
+`1.60.0`'s authorized bounded WorkflowRun diagnostics/statistics over
+`1.59.0`'s complete signed audit manifest, `1.58.0`'s retention status,
+`1.57.0`'s signed page,
 `1.56.0`'s request-time attribution, and `1.55.0`'s Gateway Route policy
 timeline. It retains `1.54.0`'s alert-policy v2, `1.53.0`'s SMTP-only
 outbound-subscription v4 target union, and `1.52.0`'s exact-owner
@@ -1879,7 +1883,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.62.0`. Focused tests
+  and every API response pin the current contract `1.63.0`. Focused tests
   regenerate the candidate from the resolved route table and reject snapshot
   drift. CI compares
   the committed contract with the pull request base and rejects operation
