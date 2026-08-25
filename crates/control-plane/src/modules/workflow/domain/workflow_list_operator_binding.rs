@@ -208,11 +208,11 @@ fn validate_output_contract(
             format!("Workflow List Operator step {step_id:?} descriptor is missing {name:?}")
         })?;
         if field.required != required
-            || &field.value_type != &value_type
+            || field.value_type != value_type
             || port.required != required
             || port.dynamic
             || port.cardinality != WorkflowStepPortCardinality::Single
-            || &port.value_type != &value_type
+            || port.value_type != value_type
         {
             return Err(format!(
                 "Workflow List Operator step {step_id:?} output {name:?} has an invalid type or cardinality"
