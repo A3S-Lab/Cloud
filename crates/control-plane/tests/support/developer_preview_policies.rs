@@ -268,7 +268,7 @@ pub(super) async fn exercise_developer_preview_policy_persistence(
     Ok(())
 }
 
-fn policy_contract(
+pub(super) fn policy_contract(
     organization_id: OrganizationId,
     project_id: ProjectId,
     source_subscription_id: SourceSubscriptionId,
@@ -299,7 +299,7 @@ fn policy_contract(
     })
 }
 
-fn policy_write(
+pub(super) fn policy_write(
     revision: &AcceptedPullRequestPreviewPolicyRevision,
     expected_previous_revision_id: Option<
         a3s_cloud_control_plane::modules::shared_kernel::domain::PullRequestPreviewPolicyRevisionId,
@@ -325,7 +325,7 @@ fn policy_write(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn seed_scope_and_subscription(
+pub(super) async fn seed_scope_and_subscription(
     database: &Database<PostgresDialect, PostgresExecutor>,
     organization_id: OrganizationId,
     project_id: ProjectId,
@@ -452,7 +452,7 @@ fn clone_revision_insert() -> a3s_orm::SqlQuery<()> {
     sql_query::<()>("insert into developer_pull_request_preview_policy_revisions (organization_id, project_id, source_environment_id, source_subscription_id, id, revision_number, installation_id, repository_provider, repository_url, repository_identity, base_branch, policy_schema, canonical_acl, policy_digest, owner_principal_id, lifetime_seconds, maximum_active_previews, fork_policy, allow_protected_secrets_for_trusted_sources, maximum_workloads, cpu_millis, memory_bytes, ephemeral_storage_bytes, accepted_by, accepted_at) select organization_id, project_id, source_environment_id, source_subscription_id, ")
 }
 
-fn database_error_message(error: &DatabaseError<PostgresError>) -> Option<&str> {
+pub(super) fn database_error_message(error: &DatabaseError<PostgresError>) -> Option<&str> {
     let DatabaseError::Execute(PostgresError::Database(error)) = error else {
         return None;
     };

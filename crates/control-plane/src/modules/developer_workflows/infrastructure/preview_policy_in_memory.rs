@@ -9,6 +9,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
@@ -93,6 +94,11 @@ impl IPullRequestPreviewPolicyRepository for InMemoryPullRequestPreviewPolicyRep
                     value: existing.clone(),
                     replayed: true,
                 });
+            }
+            if write.revision.accepted_at < existing.accepted_at {
+                return Err(RepositoryError::Conflict(
+                    "Preview policy revision sequence is not monotonic".into(),
+                ));
             }
         }
         let actual_previous = current.as_ref().map(|revision| revision.id);
@@ -182,6 +188,31 @@ impl IPullRequestPreviewPolicyRepository for InMemoryPullRequestPreviewPolicyRep
                     && revision.source_environment_id == source_environment_id
             }),
         )
+    }
+
+    async fn find_effective_at(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        source_environment_id: EnvironmentId,
+        source_subscription_id: SourceSubscriptionId,
+        fact_occurred_at: DateTime<Utc>,
+    ) -> Result<Option<AcceptedPullRequestPreviewPolicyRevision>, RepositoryError> {
+        let state = self.state.read().await;
+        Ok(state
+            .sequence
+            .range(
+                (organization_id, source_subscription_id, 0)
+                    ..=(organization_id, source_subscription_id, u64::MAX),
+            )
+            .filter_map(|(_, id)| state.revisions.get(&(organization_id, *id)))
+            .filter(|revision| {
+                revision.project_id == project_id
+                    && revision.source_environment_id == source_environment_id
+                    && revision.accepted_at <= fact_occurred_at
+            })
+            .max_by_key(|revision| (revision.accepted_at, revision.revision_number))
+            .cloned())
     }
 
     async fn list_revisions(

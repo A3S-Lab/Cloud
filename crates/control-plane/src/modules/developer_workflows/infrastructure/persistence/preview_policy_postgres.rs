@@ -220,6 +220,36 @@ impl IPullRequestPreviewPolicyRepository for PostgresPullRequestPreviewPolicyRep
             .map_err(storage)
     }
 
+    async fn find_effective_at(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        source_environment_id: EnvironmentId,
+        source_subscription_id: SourceSubscriptionId,
+        fact_occurred_at: DateTime<Utc>,
+    ) -> Result<Option<AcceptedPullRequestPreviewPolicyRevision>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                revision_query()
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and project_id = ")
+                    .bind(project_id.as_uuid())
+                    .append(" and source_environment_id = ")
+                    .bind(source_environment_id.as_uuid())
+                    .append(" and source_subscription_id = ")
+                    .bind(source_subscription_id.as_uuid())
+                    .append(" and accepted_at <= ")
+                    .bind(fact_occurred_at)
+                    .append(" order by accepted_at desc, revision_number desc limit 1"),
+            )
+            .await
+            .map_err(storage)?
+            .map(decode_revision)
+            .transpose()
+            .map_err(storage)
+    }
+
     async fn list_revisions(
         &self,
         organization_id: OrganizationId,
@@ -316,7 +346,7 @@ async fn insert_revision(
     .await
 }
 
-async fn load_reference(
+pub(super) async fn load_reference(
     transaction: &PostgresTransaction,
     reference: PreviewPolicyRevisionWriteReference,
 ) -> Result<AcceptedPullRequestPreviewPolicyRevision, PostgresPersistenceError> {

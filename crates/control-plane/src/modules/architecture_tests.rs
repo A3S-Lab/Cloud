@@ -718,6 +718,62 @@ fn developer_workflows_application_uses_only_local_models_ports_or_published_lan
 }
 
 #[test]
+fn developer_workflows_preview_projection_reuses_the_single_outbox_relay() {
+    let mut projector_sites = BTreeSet::new();
+    let mut duplicate_mechanisms = BTreeSet::new();
+    const FORBIDDEN: &[&str] = &[
+        "A3sEventPublisher",
+        "IEventPublisher",
+        "IOutboxRepository",
+        "NatsProvider",
+        "OutboxRelay",
+        "retry_delay(",
+        "tokio::spawn",
+    ];
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("developer_workflows") {
+            return;
+        }
+        if source.contains("impl IIntegrationEventProjector") {
+            projector_sites.insert(display(relative));
+        }
+        for forbidden in FORBIDDEN {
+            if source.contains(forbidden) {
+                duplicate_mechanisms.insert(format!("{} contains {forbidden}", display(relative)));
+            }
+        }
+    });
+
+    assert_eq!(
+        projector_sites,
+        lines("developer_workflows/infrastructure/pull_request_preview_projector.rs"),
+        "Developer Workflows must enter the existing Outbox Relay through one projector"
+    );
+    assert!(
+        duplicate_mechanisms.is_empty(),
+        "Developer Workflows introduced another publisher, relay, queue, worker, or retry mechanism:\n{}",
+        duplicate_mechanisms
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("src directory")
+            .join("app.rs"),
+    )
+    .expect("read application composition");
+    assert_eq!(
+        app.matches("PullRequestPreviewProjector::new").count(),
+        1,
+        "all process roles must share one Preview projector composition path"
+    );
+}
+
+#[test]
 fn published_languages_never_alias_owner_domain_models() {
     let mut violations = BTreeSet::new();
 

@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId,
-    PullRequestPreviewId, SourceSubscriptionId,
+    PullRequestPreviewId, PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
 };
 use crate::modules::sources::published::{GitProvider, GitRepository};
 use chrono::{DateTime, TimeDelta, Utc};
@@ -88,6 +88,25 @@ pub enum PullRequestChangeKind {
 }
 
 impl PullRequestChangeKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Opened => "opened",
+            Self::Synchronized => "synchronized",
+            Self::Reopened => "reopened",
+            Self::Closed => "closed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "opened" => Ok(Self::Opened),
+            "synchronized" => Ok(Self::Synchronized),
+            "reopened" => Ok(Self::Reopened),
+            "closed" => Ok(Self::Closed),
+            _ => Err("pull-request change kind is unsupported".into()),
+        }
+    }
+
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Closed)
     }
@@ -254,12 +273,62 @@ impl PullRequestPreviewPolicy {
     }
 }
 
+/// Exact immutable Preview Policy revision governing one Preview lifecycle.
+///
+/// A Sources fact may advance pull-request lifecycle evidence, but it must not
+/// silently rebind owner, quota, Secret trust, or lifetime policy. A separate
+/// Developer Workflows policy-reconciliation decision owns any later rebind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestPreviewPolicyAuthority {
+    pub source_environment_id: EnvironmentId,
+    pub revision_id: PullRequestPreviewPolicyRevisionId,
+    pub revision_number: u64,
+    pub accepted_at: DateTime<Utc>,
+    pub policy: PullRequestPreviewPolicy,
+}
+
+impl PullRequestPreviewPolicyAuthority {
+    pub fn validate(&self) -> Result<(), String> {
+        self.policy.validate()?;
+        if self.source_environment_id.as_uuid().is_nil()
+            || self.revision_id.as_uuid().is_nil()
+            || self.revision_number == 0
+            || self.revision_number > i64::MAX as u64
+            || self.accepted_at != canonical_timestamp(self.accepted_at)
+        {
+            return Err("Preview Policy authority identity or time is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewCleanupReason {
     PullRequestClosed,
     PullRequestMerged,
     ForkDenied,
     Expired,
+}
+
+impl PreviewCleanupReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PullRequestClosed => "pull_request_closed",
+            Self::PullRequestMerged => "pull_request_merged",
+            Self::ForkDenied => "fork_denied",
+            Self::Expired => "expired",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "pull_request_closed" => Ok(Self::PullRequestClosed),
+            "pull_request_merged" => Ok(Self::PullRequestMerged),
+            "fork_denied" => Ok(Self::ForkDenied),
+            "expired" => Ok(Self::Expired),
+            _ => Err("Preview cleanup reason is unsupported".into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,7 +348,7 @@ impl PullRequestPreviewStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestPreview {
-    pub policy: PullRequestPreviewPolicy,
+    pub policy_authority: PullRequestPreviewPolicyAuthority,
     pub id: PullRequestPreviewId,
     pub environment_id: EnvironmentId,
     pub pull_request_id: u64,
@@ -297,6 +366,11 @@ pub struct PullRequestPreview {
 }
 
 impl PullRequestPreview {
+    pub fn restore(value: Self) -> Result<Self, String> {
+        value.validate()?;
+        Ok(value)
+    }
+
     pub fn preview_id_for(
         policy: &PullRequestPreviewPolicy,
         pull_request_id: u64,
@@ -333,22 +407,26 @@ impl PullRequestPreview {
     pub fn is_fork(&self) -> bool {
         self.head_repository
             .as_ref()
-            .is_none_or(|repository| repository != &self.policy.base_repository)
+            .is_none_or(|repository| repository != &self.policy_authority.policy.base_repository)
     }
 
     pub fn protected_secrets_eligible(&self) -> bool {
         self.status.is_active()
-            && self.policy.allow_protected_secrets_for_trusted_sources
+            && self
+                .policy_authority
+                .policy
+                .allow_protected_secrets_for_trusted_sources
             && !self.is_fork()
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        self.policy.validate()?;
+        self.policy_authority.validate()?;
+        let policy = &self.policy_authority.policy;
         validate_pull_request_identity(self.pull_request_id, self.pull_request_number)?;
         let expected_id =
-            Self::preview_id_for(&self.policy, self.pull_request_id, self.pull_request_number)?;
+            Self::preview_id_for(policy, self.pull_request_id, self.pull_request_number)?;
         let expected_expiry =
-            preview_expiry(self.last_provider_updated_at, self.policy.lifetime_seconds)?;
+            preview_expiry(self.last_provider_updated_at, policy.lifetime_seconds)?;
         if self.id != expected_id
             || self.environment_id != Self::environment_id_for(expected_id)
             || self.aggregate_version == 0
@@ -366,7 +444,7 @@ impl PullRequestPreview {
             || self.status.is_active() && self.last_change_kind.is_terminal()
             || !self.last_change_kind.is_terminal() && self.head_repository.is_none()
             || self.status.is_active()
-                && matches!(self.policy.fork_policy, PreviewForkPolicy::Deny)
+                && matches!(policy.fork_policy, PreviewForkPolicy::Deny)
                 && self.is_fork()
         {
             return Err("pull-request preview identity or lifecycle state is invalid".into());
@@ -401,7 +479,7 @@ impl PullRequestPreview {
                             && canonical_requested_at == self.last_provider_updated_at => {}
                     PreviewCleanupReason::ForkDenied
                         if !self.last_change_kind.is_terminal()
-                            && matches!(self.policy.fork_policy, PreviewForkPolicy::Deny)
+                            && matches!(policy.fork_policy, PreviewForkPolicy::Deny)
                             && self.is_fork()
                             && canonical_requested_at == self.last_provider_updated_at => {}
                     PreviewCleanupReason::Expired
@@ -456,11 +534,12 @@ pub struct PreviewReconciliation {
 }
 
 pub fn reconcile_pull_request_preview(
-    policy: &PullRequestPreviewPolicy,
+    policy_authority: &PullRequestPreviewPolicyAuthority,
     current: Option<&PullRequestPreview>,
     change: &PullRequestChange,
 ) -> Result<PreviewReconciliation, String> {
-    policy.validate()?;
+    policy_authority.validate()?;
+    let policy = &policy_authority.policy;
     change.validate()?;
     validate_change_binding(policy, change)?;
     let id = PullRequestPreview::preview_id_for(
@@ -470,7 +549,7 @@ pub fn reconcile_pull_request_preview(
     )?;
     if let Some(current) = current {
         current.validate()?;
-        if current.policy != *policy
+        if current.policy_authority != *policy_authority
             || current.id != id
             || current.pull_request_id != change.pull_request_id
             || current.pull_request_number != change.pull_request_number
@@ -527,7 +606,7 @@ pub fn reconcile_pull_request_preview(
         Some(_) => PreviewReconcileOutcome::Updated,
     };
     let value = PullRequestPreview {
-        policy: policy.clone(),
+        policy_authority: policy_authority.clone(),
         id,
         environment_id: PullRequestPreview::environment_id_for(id),
         pull_request_id: change.pull_request_id,

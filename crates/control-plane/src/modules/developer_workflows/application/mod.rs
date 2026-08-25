@@ -5,6 +5,7 @@ mod detection;
 mod preview_policy_acceptance;
 mod preview_source_subscription;
 mod profile_compilation;
+mod pull_request_preview_projection;
 mod source_revision;
 mod target_admission;
 mod workload_profile_acceptance;
@@ -30,6 +31,10 @@ pub use profile_compilation::{
     CompiledScheduledTaskProfile, CompiledServiceProfile, CompiledWorkloadProfile,
     WorkloadProfileCompilationService,
 };
+pub use pull_request_preview_projection::{
+    IPullRequestPreviewProjectionPort, ProjectCommittedPullRequestChange,
+    PullRequestPreviewProjectionService,
+};
 pub use source_revision::{BuildPlanSourceRevisionEvidence, IBuildPlanSourceRevisionPort};
 pub use target_admission::{
     IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort,
@@ -51,3 +56,6 @@ mod workload_profile_acceptance_tests;
 
 #[cfg(test)]
 mod preview_policy_acceptance_tests;
+
+#[cfg(test)]
+mod pull_request_preview_projection_tests;

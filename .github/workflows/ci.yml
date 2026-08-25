@@ -111,7 +111,7 @@ jobs:
           echo "::error title=Accepted BuildPlan PostgreSQL gate failed::$detail"
           exit 1
 
-      - name: Certify immutable workload profiles and Preview policies
+      - name: Certify immutable workload profiles, Preview policies, and PR projections
         run: |
           log="$RUNNER_TEMP/a3s-cloud-developer-workflow-policies.log"
           if {
@@ -122,6 +122,10 @@ jobs:
             cargo test --locked -p a3s-cloud-control-plane \
               --test postgres_integration \
               postgres_developer_preview_policies_are_exact_immutable_and_replay_safe \
+              -- --exact --nocapture --test-threads=1 &&
+            cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_developer_pull_request_previews_project_once_and_survive_restart \
               -- --exact --nocapture --test-threads=1
           } 2>&1 | tee "$log"; then
             exit 0
@@ -130,7 +134,7 @@ jobs:
           detail=${detail//'%'/'%25'}
           detail=${detail//$'\r'/'%0D'}
           detail=${detail//$'\n'/'%0A'}
-          echo "::error title=Developer Workflow policy PostgreSQL gate failed::$detail"
+          echo "::error title=Developer Workflow PostgreSQL gate failed::$detail"
           exit 1
 
       - name: Certify verified recipient-contact authority

@@ -10,16 +10,19 @@ pub use application::{
     CompiledServiceProfile, CompiledWorkloadProfile, DeveloperWorkflowAction,
     DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
     IDeveloperWorkflowAuthorizationPort, IPreviewSourceSubscriptionQueryPort,
-    IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort,
-    PreviewSourceSubscriptionBinding, ScheduledTaskProfileAdmissionRequest,
-    ServiceProfileAdmissionRequest, VerifiedOciArtifact, VerifiedWorkloadBuildOutcome,
-    WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget,
+    IPullRequestPreviewProjectionPort, IScheduledTaskProfileAdmissionPort,
+    IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort, PreviewSourceSubscriptionBinding,
+    ProjectCommittedPullRequestChange, PullRequestPreviewProjectionService,
+    ScheduledTaskProfileAdmissionRequest, ServiceProfileAdmissionRequest, VerifiedOciArtifact,
+    VerifiedWorkloadBuildOutcome, WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget,
     WorkloadProfileCompilationService, WorkloadProfileTargetContext, WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use domain::*;
 pub use infrastructure::{
     AssetAclBuildPlanDetector, DockerfileBuildPlanDetector, InMemoryBuildPlanRepository,
-    InMemoryPullRequestPreviewPolicyRepository, InMemoryWorkloadProfileRepository,
-    PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
-    PostgresWorkloadProfileRepository, RepositoryBuildPlanSourceRevisionPort,
+    InMemoryPullRequestPreviewPolicyRepository, InMemoryPullRequestPreviewProjectionRepository,
+    InMemoryWorkloadProfileRepository, PostgresBuildPlanRepository,
+    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+    PostgresWorkloadProfileRepository, PullRequestPreviewProjector,
+    RepositoryBuildPlanSourceRevisionPort,
 };

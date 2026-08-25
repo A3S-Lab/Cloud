@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 156;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "156";
+const CLOUD_MIGRATION_COUNT: i64 = 157;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "157";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -162,6 +162,8 @@ mod deployment_flow_support;
 mod developer_build_plans_support;
 #[path = "support/developer_preview_policies.rs"]
 mod developer_preview_policies_support;
+#[path = "support/developer_pull_request_previews.rs"]
+mod developer_pull_request_previews_support;
 #[path = "support/developer_workload_profiles.rs"]
 mod developer_workload_profiles_support;
 #[path = "support/durable_cells.rs"]
@@ -692,6 +694,19 @@ async fn postgres_developer_preview_policies_are_exact_immutable_and_replay_safe
     )
     .await
     .expect("PostgreSQL accepted Preview policy persistence gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_developer_pull_request_previews_project_once_and_survive_restart() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        developer_pull_request_previews_support::exercise_developer_pull_request_preview_projection,
+    )
+    .await
+    .expect("PostgreSQL pull-request Preview projection gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

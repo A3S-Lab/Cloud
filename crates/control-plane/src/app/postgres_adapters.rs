@@ -16,6 +16,10 @@ use crate::modules::connectors::{
     IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
 };
+use crate::modules::developer_workflows::{
+    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionRepository,
+    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+};
 use crate::modules::durable_cells::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
@@ -145,6 +149,7 @@ impl PostgresAdapterFactory {
         let notifications = NotificationPostgresAdapters::new(self.executor.clone());
         let assets = AssetPostgresAdapters::new(self.executor.clone());
         let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
+        let developer_workflows = self.developer_workflow_projection();
         RelayPostgresAdapters {
             memberships: identity.memberships,
             resource_grants: identity.resource_grants,
@@ -152,12 +157,18 @@ impl PostgresAdapterFactory {
             alert_policies: notifications.alert_policies,
             assets: assets.assets,
             build_candidates: artifacts.build_candidates,
+            preview_policies: developer_workflows.preview_policies,
+            preview_projections: developer_workflows.preview_projections,
             outbox: self.outbox(),
         }
     }
 
     pub(super) fn connector_execution(&self) -> ConnectorExecutionPostgresAdapters {
         ConnectorExecutionPostgresAdapters::new(self.executor.clone())
+    }
+
+    pub(super) fn developer_workflow_projection(&self) -> DeveloperWorkflowPostgresAdapters {
+        DeveloperWorkflowPostgresAdapters::new(self.executor.clone())
     }
 
     pub(super) fn outbox(&self) -> Arc<dyn IOutboxRepository> {
@@ -217,7 +228,27 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) assets: Arc<dyn IAssetRepository>,
     pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,
+}
+
+pub(super) struct DeveloperWorkflowPostgresAdapters {
+    pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
+}
+
+impl DeveloperWorkflowPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        Self {
+            preview_policies: Arc::new(PostgresPullRequestPreviewPolicyRepository::new(
+                executor.clone(),
+            )),
+            preview_projections: Arc::new(PostgresPullRequestPreviewProjectionRepository::new(
+                executor,
+            )),
+        }
+    }
 }
 
 struct ArtifactPostgresAdapters {

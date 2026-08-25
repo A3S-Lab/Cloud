@@ -1456,6 +1456,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/156_source_pull_request_webhook_facts.sql"
             )),
         ),
+        Migration::new(
+            "157",
+            "Developer Workflows pull-request Preview projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/157_developer_pull_request_preview_projections.sql"
+            )),
+        ),
     ]
 }
 
@@ -1494,6 +1502,10 @@ mod connector_execution_attempt_resolution_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/source_pull_request_webhook_facts_migration.rs"]
 mod source_pull_request_webhook_facts_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/developer_pull_request_preview_projection_migration.rs"]
+mod developer_pull_request_preview_projection_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

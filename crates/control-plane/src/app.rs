@@ -70,6 +70,11 @@ use crate::modules::connectors::{
 use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
+use crate::modules::developer_workflows::{
+    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
+    IPullRequestPreviewProjectionRepository, PullRequestPreviewProjectionService,
+    PullRequestPreviewProjector,
+};
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
     DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
@@ -492,6 +497,8 @@ async fn build_api_worker_application(
             .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
     ));
     let postgres_adapters = PostgresAdapterFactory::new(executor.clone());
+    let developer_workflow_projection =
+        run_relay.then(|| postgres_adapters.developer_workflow_projection());
     let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
     let organizations = adapters.identity.organizations;
     let api_tokens = adapters.identity.api_tokens;
@@ -1262,6 +1269,11 @@ async fn build_api_worker_application(
         None
     };
     let outbox_relay = if run_relay {
+        let developer_workflows = developer_workflow_projection.ok_or_else(|| {
+            ControlPlaneStartupError::Framework(BootError::Internal(
+                "relay process is missing its Developer Workflows projection adapters".into(),
+            ))
+        })?;
         Some(build_outbox_relay(
             &config,
             OutboxRelayDependencies {
@@ -1278,6 +1290,8 @@ async fn build_api_worker_application(
                     Arc::clone(&alert_policies),
                     Arc::clone(&resource_grants),
                     Arc::clone(&build_candidates),
+                    developer_workflows.preview_policies,
+                    developer_workflows.preview_projections,
                 ),
             },
         )?)
@@ -1692,6 +1706,8 @@ async fn build_relay_application(
         notifications,
         assets,
         build_candidates,
+        preview_policies,
+        preview_projections,
         alert_policies,
         outbox,
     } = PostgresAdapterFactory::new(executor.clone()).relay();
@@ -1707,6 +1723,8 @@ async fn build_relay_application(
                 alert_policies,
                 resource_grants,
                 build_candidates,
+                preview_policies,
+                preview_projections,
             ),
         },
     )?;
@@ -1754,7 +1772,12 @@ fn build_outbox_projectors(
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
 ) -> Vec<Arc<dyn IIntegrationEventProjector>> {
+    let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
+        PullRequestPreviewProjectionService::new(preview_policies, preview_projections),
+    );
     vec![
         Arc::new(
             OutboxNotificationProjector::new(notifications, memberships)
@@ -1762,6 +1785,7 @@ fn build_outbox_projectors(
         ),
         Arc::new(HostedBuildOutcomeProjector::new(assets)),
         Arc::new(BuildCandidateProjector::new(build_candidates)),
+        Arc::new(PullRequestPreviewProjector::new(preview_service)),
     ]
 }
 

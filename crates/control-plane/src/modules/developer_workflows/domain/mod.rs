@@ -9,6 +9,7 @@ mod preview_policy_contract;
 mod preview_policy_events;
 mod preview_policy_repository;
 mod pull_request_preview;
+mod pull_request_preview_projection;
 mod repository;
 pub(crate) mod source_layout;
 mod workload_profile;
@@ -50,8 +51,13 @@ pub use pull_request_preview::{
     reconcile_pull_request_preview, GitBranch, GithubInstallationRef, PreviewCleanupReason,
     PreviewForkPolicy, PreviewQuota, PreviewReconcileOutcome, PreviewReconciliation,
     PullRequestChange, PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy,
-    PullRequestPreviewStatus, MAX_ACTIVE_PREVIEWS_PER_POLICY, MAX_PREVIEW_LIFETIME_SECONDS,
-    MIN_PREVIEW_LIFETIME_SECONDS,
+    PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus, MAX_ACTIVE_PREVIEWS_PER_POLICY,
+    MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
+};
+pub use pull_request_preview_projection::{
+    CommitPullRequestPreviewProjection, IPullRequestPreviewProjectionRepository,
+    PullRequestPreviewProjectionOutcome, PullRequestPreviewProjectionReceipt,
+    PullRequestPreviewVersion,
 };
 pub(crate) use repository::BuildPlanWriteReference;
 pub use repository::{AcceptBuildPlanWrite, IBuildPlanRepository};

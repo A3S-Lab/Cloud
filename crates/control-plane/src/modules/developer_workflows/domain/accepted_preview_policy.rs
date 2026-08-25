@@ -1,4 +1,4 @@
-use super::PullRequestPreviewPolicyContract;
+use super::{PullRequestPreviewPolicyAuthority, PullRequestPreviewPolicyContract};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
     PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
@@ -27,6 +27,19 @@ pub struct AcceptedPullRequestPreviewPolicyRevision {
 }
 
 impl AcceptedPullRequestPreviewPolicyRevision {
+    pub fn preview_authority(&self) -> Result<PullRequestPreviewPolicyAuthority, String> {
+        self.validate()?;
+        let authority = PullRequestPreviewPolicyAuthority {
+            source_environment_id: self.source_environment_id,
+            revision_id: self.id,
+            revision_number: self.revision_number,
+            accepted_at: self.accepted_at,
+            policy: self.contract.policy().clone(),
+        };
+        authority.validate()?;
+        Ok(authority)
+    }
+
     pub fn revision_id_for(
         source_subscription_id: SourceSubscriptionId,
         revision_number: u64,

@@ -8,6 +8,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -121,6 +122,17 @@ pub trait IPullRequestPreviewPolicyRepository: Send + Sync {
         project_id: ProjectId,
         source_environment_id: EnvironmentId,
         source_subscription_id: SourceSubscriptionId,
+    ) -> Result<Option<AcceptedPullRequestPreviewPolicyRevision>, RepositoryError>;
+
+    /// Selects the last revision accepted no later than the owner-published
+    /// fact time. Relay delay must not let a later policy rewrite history.
+    async fn find_effective_at(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        source_environment_id: EnvironmentId,
+        source_subscription_id: SourceSubscriptionId,
+        fact_occurred_at: DateTime<Utc>,
     ) -> Result<Option<AcceptedPullRequestPreviewPolicyRevision>, RepositoryError>;
 
     async fn list_revisions(

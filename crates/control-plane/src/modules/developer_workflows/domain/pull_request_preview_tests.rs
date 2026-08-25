@@ -1,11 +1,13 @@
 use super::{
     reconcile_pull_request_preview, GitBranch, GithubInstallationRef, PreviewCleanupReason,
     PreviewForkPolicy, PreviewQuota, PreviewReconcileOutcome, PullRequestChange,
-    PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy, PullRequestPreviewStatus,
-    MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
+    PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy,
+    PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus, MAX_PREVIEW_LIFETIME_SECONDS,
+    MIN_PREVIEW_LIFETIME_SECONDS,
 };
 use crate::modules::shared_kernel::domain::{
-    GitCommitSha, OrganizationId, PrincipalId, ProjectId, SourceSubscriptionId,
+    EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId,
+    PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
 };
 use crate::modules::sources::published::{GitProvider, GitRepository};
 use chrono::{DateTime, TimeDelta, TimeZone, Timelike, Utc};
@@ -14,8 +16,10 @@ use chrono::{DateTime, TimeDelta, TimeZone, Timelike, Utc};
 fn derives_stable_preview_and_ordinary_environment_identities_with_closed_bounds() {
     let policy = policy(PreviewForkPolicy::Isolated);
     policy.validate().expect("preview policy");
-    let first = PullRequestPreview::preview_id_for(&policy, 1_000_042, 42).expect("preview ID");
-    let second = PullRequestPreview::preview_id_for(&policy, 1_000_042, 42).expect("preview ID");
+    let first =
+        PullRequestPreview::preview_id_for(&policy.policy, 1_000_042, 42).expect("preview ID");
+    let second =
+        PullRequestPreview::preview_id_for(&policy.policy, 1_000_042, 42).expect("preview ID");
     assert_eq!(first, second);
     assert_eq!(
         PullRequestPreview::environment_id_for(first),
@@ -42,12 +46,12 @@ fn derives_stable_preview_and_ordinary_environment_identities_with_closed_bounds
     );
 
     let mut invalid = policy.clone();
-    invalid.lifetime_seconds = MIN_PREVIEW_LIFETIME_SECONDS - 1;
+    invalid.policy.lifetime_seconds = MIN_PREVIEW_LIFETIME_SECONDS - 1;
     assert!(invalid.validate().is_err());
-    invalid.lifetime_seconds = MAX_PREVIEW_LIFETIME_SECONDS + 1;
+    invalid.policy.lifetime_seconds = MAX_PREVIEW_LIFETIME_SECONDS + 1;
     assert!(invalid.validate().is_err());
     invalid = policy;
-    invalid.quota.memory_bytes += 1;
+    invalid.policy.quota.memory_bytes += 1;
     assert!(invalid.validate().is_err());
 }
 
@@ -70,7 +74,7 @@ fn creates_one_trusted_preview_and_converges_duplicate_deliveries() {
     assert!(preview.protected_secrets_eligible());
     assert_eq!(
         preview.expires_at,
-        timestamp(10) + TimeDelta::seconds(i64::from(policy.lifetime_seconds))
+        timestamp(10) + TimeDelta::seconds(i64::from(policy.policy.lifetime_seconds))
     );
 
     let replay = reconcile_pull_request_preview(&policy, Some(&preview), &opened)
@@ -341,13 +345,13 @@ fn rejects_events_outside_the_exact_subscription_repository_and_branch_binding()
     assert!(reconcile_pull_request_preview(&policy, None, &wrong_branch).is_err());
 
     let mut wrong_installation = wrong_branch;
-    wrong_installation.base_branch = policy.base_branch.clone();
+    wrong_installation.base_branch = policy.policy.base_branch.clone();
     wrong_installation.installation_id = GithubInstallationRef::parse(43).expect("installation");
     assert!(reconcile_pull_request_preview(&policy, None, &wrong_installation).is_err());
 }
 
 fn apply<const N: usize>(
-    policy: &PullRequestPreviewPolicy,
+    policy: &PullRequestPreviewPolicyAuthority,
     changes: [&PullRequestChange; N],
 ) -> PullRequestPreview {
     let mut current = None;
@@ -359,24 +363,30 @@ fn apply<const N: usize>(
     current.expect("preview state")
 }
 
-fn policy(fork_policy: PreviewForkPolicy) -> PullRequestPreviewPolicy {
-    PullRequestPreviewPolicy {
-        organization_id: OrganizationId::new(),
-        project_id: ProjectId::new(),
-        source_subscription_id: SourceSubscriptionId::new(),
-        owner_principal_id: PrincipalId::new(),
-        installation_id: GithubInstallationRef::parse(42).expect("installation"),
-        base_repository: base_repository(),
-        base_branch: GitBranch::parse("main").expect("base branch"),
-        lifetime_seconds: 24 * 60 * 60,
-        maximum_active_previews: 16,
-        fork_policy,
-        allow_protected_secrets_for_trusted_sources: true,
-        quota: PreviewQuota {
-            maximum_workloads: 4,
-            cpu_millis: 4_000,
-            memory_bytes: 4 * 1024 * 1024 * 1024,
-            ephemeral_storage_bytes: 16 * 1024 * 1024 * 1024,
+fn policy(fork_policy: PreviewForkPolicy) -> PullRequestPreviewPolicyAuthority {
+    PullRequestPreviewPolicyAuthority {
+        source_environment_id: EnvironmentId::new(),
+        revision_id: PullRequestPreviewPolicyRevisionId::new(),
+        revision_number: 1,
+        accepted_at: timestamp(0),
+        policy: PullRequestPreviewPolicy {
+            organization_id: OrganizationId::new(),
+            project_id: ProjectId::new(),
+            source_subscription_id: SourceSubscriptionId::new(),
+            owner_principal_id: PrincipalId::new(),
+            installation_id: GithubInstallationRef::parse(42).expect("installation"),
+            base_repository: base_repository(),
+            base_branch: GitBranch::parse("main").expect("base branch"),
+            lifetime_seconds: 24 * 60 * 60,
+            maximum_active_previews: 16,
+            fork_policy,
+            allow_protected_secrets_for_trusted_sources: true,
+            quota: PreviewQuota {
+                maximum_workloads: 4,
+                cpu_millis: 4_000,
+                memory_bytes: 4 * 1024 * 1024 * 1024,
+                ephemeral_storage_bytes: 16 * 1024 * 1024 * 1024,
+            },
         },
     }
 }

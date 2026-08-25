@@ -352,6 +352,8 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         "PostgresDurableCellApplicationRepository",
         "PostgresDurableCellDeploymentRepository",
         "PostgresConnectorExecutionAttemptRepository",
+        "PostgresPullRequestPreviewPolicyRepository",
+        "PostgresPullRequestPreviewProjectionRepository",
         "PostgresSourceRevisionRepository",
         "PostgresSourceSubscriptionRepository",
         "PostgresGithubConnectionRepository",
@@ -373,6 +375,14 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
     assert_eq!(composition.matches(".api_worker()").count(), 1);
     assert_eq!(composition.matches(".relay()").count(), 1);
     assert_eq!(composition.matches(".connector_execution()").count(), 1);
+    assert_eq!(
+        composition
+            .matches(".developer_workflow_projection()")
+            .count()
+            + adapters.matches(".developer_workflow_projection()").count(),
+        2,
+        "all-in-one and dedicated Relay must select the same Developer Workflows projection family"
+    );
     assert_eq!(composition.matches(".outbox()").count(), 1);
 
     for repository in repositories {
@@ -423,6 +433,7 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         "EdgePostgresAdapters::new",
         "AssetPostgresAdapters::new",
         "SourcePostgresAdapters::new",
+        "DeveloperWorkflowPostgresAdapters::new",
     ] {
         assert!(
             adapters.contains(family),
