@@ -14,8 +14,19 @@ members of the exact Organization. Every read reparses the canonical ACL and
 checks its relational projections. Identical desired state converges without
 another revision, regardless of the authorized caller.
 
-The contract contains no webhook signature, delivery body, provider
-credential, checkout path, source revision, Environment mutation, BuildRun,
-Workload, Route, Operation, cleanup worker, timer, or scheduler authority.
-Committed pull-request fact dispatch, Preview state persistence, and owner
-handoffs remain later P0.3 slices.
+`P0.3-C3` adds the Sources-owned committed-fact boundary used by this policy's
+future consumer. After HMAC verification, the existing provider Inbox admits
+one typed push or pull-request delivery. A new pull-request delivery fans out
+one closed `source.pull-request-change.committed@1` fact per exact active
+repository Subscription through the existing transactional Outbox. The stable
+opaque change identity is bound to the Subscription, provider, and private
+delivery identity. The Published Language contains only semantic repository,
+branch, commit, pull-request, provider-time, and exact tenant binding; delivery
+ID, signature, raw body, and raw-body digest remain Sources-private.
+
+Migration `156` extends the single `source_webhook_inbox`; C3 creates no second
+Inbox, Outbox, relay, retry rail, or worker. The contract contains no provider
+credential, checkout path, source revision, Preview aggregate, Environment
+mutation, BuildRun, Workload, Route, Operation, cleanup worker, timer, or
+scheduler authority. Developer Workflows fact consumption, Preview state
+persistence, and owner handoffs remain later P0.3 slices.

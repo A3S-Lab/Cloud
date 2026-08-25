@@ -8,12 +8,17 @@
 mod build_recipe;
 mod git_provider;
 mod git_repository;
+mod pull_request_change_committed;
 mod source_build_input;
 mod source_revision_accepted;
 
 pub use build_recipe::{BuildPlatform, BuildRecipe};
 pub use git_provider::GitProvider;
 pub use git_repository::GitRepository;
+pub use pull_request_change_committed::{
+    PullRequestChangeCommittedFact, SourcePullRequestChangeKind,
+    PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY, PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
+};
 pub use source_build_input::SourceBuildInputSnapshot;
 pub(in crate::modules::sources) use source_build_input::ValidatedSourceBuildInputProjection;
 pub use source_revision_accepted::{

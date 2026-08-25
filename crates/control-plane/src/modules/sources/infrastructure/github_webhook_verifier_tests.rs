@@ -1,7 +1,7 @@
 use super::{GithubWebhookVerifier, HmacSha256};
 use crate::modules::sources::domain::{
     ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
-    VerifiedSourceWebhook,
+    VerifiedRepositoryWebhook, VerifiedSourceWebhook,
 };
 use hmac::Mac;
 use serde_json::{json, Value};
@@ -16,7 +16,7 @@ fn verifies_exact_raw_push_and_returns_typed_identity() {
     let verified = verifier
         .verify(request("push", "delivery-1", &signature, &body))
         .expect("signed webhook");
-    let VerifiedSourceWebhook::Push(push) = verified else {
+    let VerifiedSourceWebhook::Repository(VerifiedRepositoryWebhook::Push(push)) = verified else {
         panic!("expected push");
     };
     assert_eq!(
@@ -153,7 +153,9 @@ fn verifies_exact_pull_request_lifecycle_and_fork_trust_boundary() {
             &body,
         ))
         .expect("signed pull-request webhook");
-    let VerifiedSourceWebhook::PullRequest(change) = verified else {
+    let VerifiedSourceWebhook::Repository(VerifiedRepositoryWebhook::PullRequest(change)) =
+        verified
+    else {
         panic!("expected typed pull-request change");
     };
     change.validate().expect("verified PR change");
@@ -184,14 +186,15 @@ fn closes_deleted_fork_heads_but_rejects_confused_pull_request_identity() {
     let verifier = verifier(1024 * 1024);
     let closed = pull_request_payload("closed", "closed", false, None);
     let closed_signature = signature(SECRET, &closed);
-    let VerifiedSourceWebhook::PullRequest(change) = verifier
-        .verify(request(
-            "pull_request",
-            "delivery-pr-close",
-            &closed_signature,
-            &closed,
-        ))
-        .expect("signed closed pull-request webhook")
+    let VerifiedSourceWebhook::Repository(VerifiedRepositoryWebhook::PullRequest(change)) =
+        verifier
+            .verify(request(
+                "pull_request",
+                "delivery-pr-close",
+                &closed_signature,
+                &closed,
+            ))
+            .expect("signed closed pull-request webhook")
     else {
         panic!("expected typed pull-request change");
     };

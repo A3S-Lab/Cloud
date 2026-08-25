@@ -40,10 +40,10 @@ pub fn github_webhooks_controller(
                 let received_at = Utc::now();
                 match verified {
                     VerifiedSourceWebhook::Ignored => {}
-                    VerifiedSourceWebhook::Push(push) => {
+                    VerifiedSourceWebhook::Repository(webhook) => {
                         if let Err(error) = bus
                             .execute(AcceptSourceWebhookDelivery {
-                                push,
+                                webhook,
                                 received_at,
                                 request_id,
                             })
@@ -52,9 +52,6 @@ pub fn github_webhooks_controller(
                             return application_error_response(error, request_id);
                         }
                     }
-                    // P0.3-C1 verifies and types the provider payload, but the component-only
-                    // Preview lifecycle is deliberately not production-composed yet.
-                    VerifiedSourceWebhook::PullRequest(_change) => {}
                     VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) => {
                         if let Err(error) = bus
                             .execute(ReconcileGithubConnectionLifecycle {

@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. Fact dispatch, Preview lifecycle-state persistence, production composition, owner handoff, interfaces, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Developer Workflows consumption, Preview lifecycle-state persistence, owner composition/handoff, interfaces, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -1000,7 +1000,8 @@ arrival order; close, merge, and an explicit clock input request cleanup, while
 reopen reuses the same identities. Known forks are denied or isolated; a newer
 denied-fork fact requests cleanup of any existing Preview, and only an active
 same-repository Preview can be eligible for explicitly enabled
-protected Secrets. The typed PR change is not dispatched in production yet.
+protected Secrets. `P0.3-C3` supplies the production committed-fact producer;
+the Developer Workflows consumer remains a later boundary.
 
 Component-only `P0.3-C2` adds canonical
 `a3s.cloud.pull-request-preview-policy.v1` configuration and immutable policy
@@ -1014,6 +1015,23 @@ reads, and reject source drift, sequence gaps, and mutation. Identical desired
 state converges across authorized callers. The slice stores policy revisions,
 not individual Preview state, and has no timer, public surface, Environment
 write, SourceRevision, BuildRun, Workload, Route, or cleanup Operation handoff.
+
+`P0.3-C3` closes the Sources-owned committed pull-request fact producer. The
+production GitHub route now accepts the verifier's closed PR lifecycle through
+the existing polymorphic `SourceWebhookDelivery` Inbox. Migration `156` adds
+the discriminator and exact base/head/PR/provider-time evidence to that single
+table. One new delivery fans out one immutable
+`source.pull-request-change.committed@1` fact per exact active Subscription in
+the same transaction and existing Outbox; replay is silent, payload drift is a
+conflict, and Outbox failure rolls back the whole Inbox/fanout commit. The
+Published Language carries a stable opaque change ID plus exact tenant,
+Subscription, repository, branch, commit, PR, action, merge, and provider-time
+semantics while keeping delivery ID, signature, raw body, and raw-body digest
+private to Sources. Push behavior remains unchanged; PR facts create no
+SourceRevision or push-delivery reservation. C3 adds no second Inbox, Outbox,
+relay, retry rail, worker, Preview state, Environment, BuildRun, Workload,
+Route, Operation, timer, or scheduler. Developer Workflows consumption,
+persisted Preview lifecycle, and owner handoffs remain open.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

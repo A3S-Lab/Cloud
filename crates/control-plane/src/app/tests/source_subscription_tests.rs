@@ -4,7 +4,7 @@ const COMMIT_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const COMMIT_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 #[tokio::test]
-async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_pushes() -> Result<()> {
+async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_events() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let sources = Arc::new(InMemorySourceRevisionRepository::new());
@@ -180,6 +180,75 @@ async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_push
         .await?;
     assert_eq!(changed_replay.status(), 409);
 
+    let pull_request_body = github_pull_request_payload(73, COMMIT_B);
+    let pull_request = app
+        .call(github_webhook_request(
+            "pull_request",
+            "github-subscription-pr-a",
+            &pull_request_body,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    let pull_request_replay = app
+        .call(github_webhook_request(
+            "pull_request",
+            "github-subscription-pr-a",
+            &pull_request_body,
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(pull_request.status(), 202);
+    assert_eq!(pull_request_replay.status(), 202);
+    let pull_request_events = sources
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| event.event_key == "source.pull-request-change.committed")
+        .collect::<Vec<_>>();
+    assert_eq!(pull_request_events.len(), 2);
+    let mut published_subscription_ids = pull_request_events
+        .iter()
+        .filter_map(|event| event.payload["source_subscription_id"].as_str())
+        .collect::<Vec<_>>();
+    published_subscription_ids.sort_unstable();
+    let mut expected_subscription_ids = vec![first_id.as_str(), second_id.as_str()];
+    expected_subscription_ids.sort_unstable();
+    assert_eq!(published_subscription_ids, expected_subscription_ids);
+    for event in &pull_request_events {
+        assert_eq!(event.aggregate_version, 1);
+        assert_eq!(event.payload["kind"], "synchronized");
+        assert_eq!(event.payload["pull_request_number"], 73);
+        assert_eq!(event.payload["base_branch"], "main");
+        assert_eq!(event.payload["head_branch"], "feature/preview");
+    }
+    let pull_request_event_text = serde_json::to_string(&pull_request_events)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    for private_evidence in [
+        "github-subscription-pr-a",
+        "payload_digest",
+        "sha256:",
+        "signature",
+        "raw_payload",
+    ] {
+        assert!(!pull_request_event_text.contains(private_evidence));
+    }
+    assert_eq!(
+        response_json(&app.call(get_as(&revisions_path, ADMIN_TOKEN)).await?)?["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(2),
+        "pull-request observations must not create Source revisions"
+    );
+    let changed_pull_request = app
+        .call(github_webhook_request(
+            "pull_request",
+            "github-subscription-pr-a",
+            &github_pull_request_payload(73, "cccccccccccccccccccccccccccccccccccccccc"),
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(changed_pull_request.status(), 409);
+
     let deactivate_path = format!("{subscriptions_path}/{first_id}/deactivate");
     let deactivated = app
         .call(post_json(
@@ -202,6 +271,30 @@ async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_push
     assert_eq!(
         response_json(&deactivation_replay)?["data"]["replayed"],
         true
+    );
+
+    let active_only_pull_request = app
+        .call(github_webhook_request(
+            "pull_request",
+            "github-subscription-pr-active-only",
+            &github_pull_request_payload(74, "dddddddddddddddddddddddddddddddddddddddd"),
+            GITHUB_WEBHOOK_SECRET,
+        ))
+        .await?;
+    assert_eq!(active_only_pull_request.status(), 202);
+    let active_only_pull_request_events = sources
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| {
+            event.event_key == "source.pull-request-change.committed"
+                && event.payload["pull_request_number"] == 74
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(active_only_pull_request_events.len(), 1);
+    assert_eq!(
+        active_only_pull_request_events[0].payload["source_subscription_id"],
+        second_id
     );
 
     let second_push = app
@@ -244,12 +337,58 @@ async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_push
             .count(),
         1
     );
+    assert_eq!(
+        sources
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "source.pull-request-change.committed")
+            .count(),
+        3
+    );
     let durable_text = serde_json::to_string(&sources.outbox_events().await)
         .map_err(|error| BootError::Internal(error.to_string()))?;
     for forbidden in ["access_token", "client_secret", "private_key", "password"] {
         assert!(!durable_text.to_ascii_lowercase().contains(forbidden));
     }
     Ok(())
+}
+
+fn github_pull_request_payload(pull_request_number: u64, head_commit_sha: &str) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "action": "synchronize",
+        "number": pull_request_number,
+        "repository": {
+            "full_name": "A3S-Lab/Cloud",
+            "html_url": "https://github.com/A3S-Lab/Cloud"
+        },
+        "installation": {"id": 42},
+        "pull_request": {
+            "id": 1_000_000 + pull_request_number,
+            "number": pull_request_number,
+            "state": "open",
+            "merged": false,
+            "created_at": "2026-08-24T04:30:00Z",
+            "updated_at": "2026-08-24T05:30:00.123456789Z",
+            "head": {
+                "ref": "feature/preview",
+                "sha": head_commit_sha,
+                "repo": {
+                    "full_name": "contributor/cloud",
+                    "html_url": "https://github.com/contributor/cloud"
+                }
+            },
+            "base": {
+                "ref": "main",
+                "sha": COMMIT_A,
+                "repo": {
+                    "full_name": "A3S-Lab/Cloud",
+                    "html_url": "https://github.com/A3S-Lab/Cloud"
+                }
+            }
+        }
+    }))
+    .expect("GitHub pull-request payload")
 }
 
 async fn connect_test_github_installation(app: &BootApplication, organization: &str) -> Result<()> {

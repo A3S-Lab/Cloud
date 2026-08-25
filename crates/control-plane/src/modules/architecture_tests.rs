@@ -316,6 +316,21 @@ fn assets_domain_enters_sources_only_through_published_language() {
 }
 
 #[test]
+fn sources_webhook_entity_owns_pull_request_kind_as_a_value_object() {
+    let source = std::fs::read_to_string(
+        module_root().join("sources/domain/entities/source_webhook_delivery.rs"),
+    )
+    .expect("read Sources webhook delivery entity");
+
+    assert!(
+        source.contains("crate::modules::sources::domain::value_objects::{")
+            && source.contains("PullRequestChangeKind")
+            && !source.contains("crate::modules::sources::domain::services"),
+        "Sources webhook delivery entity must depend on its value-object language, not a verifier service"
+    );
+}
+
+#[test]
 fn artifacts_build_source_resolver_never_loads_owner_repositories() {
     let source = std::fs::read_to_string(
         module_root().join("artifacts/infrastructure/build_source_resolver.rs"),

@@ -120,7 +120,7 @@ not imply availability.
 | Governance | Search | Rebuildable tenant-authorized search projection |
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
-| Supply | Sources | External connection, subscription, exact SourceRevision, webhook delivery |
+| Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request Published Language |
 | Supply | Developer Workflows | Reviewable BuildPlan/workload-profile proposals, canonical Preview Policy revisions, preview intent, acceptance decisions |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildRun, admitted output, provenance, evidence, retention, node artifact transport |
@@ -216,8 +216,9 @@ already enforce that current debt can shrink but cannot spread:
 - Runtime/transport/persistence/provider dependencies in domains are rejected;
   Artifacts now keeps byte streaming and input I/O in Application ports;
   external checkout, provider credentials, and deterministic packaging stay
-  behind a Sources-owned adapter, while hosted-Asset staging and public
-  Infrastructure remain frozen debt;
+  behind a Sources-owned adapter; committed pull-request facts cross only the
+  Sources Published Language and shared Outbox, while hosted-Asset staging and
+  public Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
 - Shared Kernel dependencies and public outer-layer facades cannot expand.

@@ -4,7 +4,7 @@ use crate::modules::sources::domain::{
     GithubConnectionLifecycleChange, GithubInstallationAccount, GithubInstallationId, GithubLogin,
     ISourceWebhookVerifier, PullRequestChangeKind, SourceWebhookVerificationError,
     SourceWebhookVerificationRequest, VerifiedGithubConnectionLifecycle, VerifiedPullRequestChange,
-    VerifiedSourcePush, VerifiedSourceWebhook, WebhookDeliveryId,
+    VerifiedRepositoryWebhook, VerifiedSourcePush, VerifiedSourceWebhook, WebhookDeliveryId,
 };
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
@@ -126,15 +126,17 @@ impl GithubWebhookVerifier {
         if commit_sha.as_str().bytes().all(|byte| byte == b'0') {
             return Err(invalid("commit object ID cannot be the deletion sentinel"));
         }
-        Ok(VerifiedSourceWebhook::Push(VerifiedSourcePush {
-            provider: GitProvider::Github,
-            delivery_id,
-            repository,
-            installation_id,
-            reference,
-            commit_sha,
-            payload_digest: payload_digest(body),
-        }))
+        Ok(VerifiedSourceWebhook::Repository(
+            VerifiedRepositoryWebhook::Push(VerifiedSourcePush {
+                provider: GitProvider::Github,
+                delivery_id,
+                repository,
+                installation_id,
+                reference,
+                commit_sha,
+                payload_digest: payload_digest(body),
+            }),
+        ))
     }
 
     fn parse_connection_lifecycle(
@@ -293,7 +295,9 @@ impl GithubWebhookVerifier {
         value
             .validate()
             .map_err(|_| invalid("pull-request identity or lifecycle state is invalid"))?;
-        Ok(VerifiedSourceWebhook::PullRequest(value))
+        Ok(VerifiedSourceWebhook::Repository(
+            VerifiedRepositoryWebhook::PullRequest(value),
+        ))
     }
 }
 

@@ -1,8 +1,9 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, SourceConnectionId,
-    SourceRevisionId, SourceSubscriptionId,
+    canonical_timestamp, EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId,
+    SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
 };
+use crate::modules::sources::published::PullRequestChangeCommittedFact;
 use chrono::Utc;
 
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -321,8 +322,10 @@ fn signed_push_delivery_is_typed_canonical_and_digest_bound() {
         repository: GitRepository::parse(GitProvider::Github, "https://github.com/A3S-Lab/Cloud")
             .expect("repository"),
         installation_id: GithubInstallationId::parse(42).expect("installation ID"),
-        reference: GitReference::parse("branch", "main").expect("branch"),
-        commit_sha: GitCommitSha::parse(COMMIT).expect("commit"),
+        payload: SourceWebhookPayload::Push(SourcePushWebhookDelivery {
+            reference: GitReference::parse("branch", "main").expect("branch"),
+            commit_sha: GitCommitSha::parse(COMMIT).expect("commit"),
+        }),
         payload_digest: format!("sha256:{}", "a".repeat(64)),
         received_at,
     })
@@ -331,31 +334,122 @@ fn signed_push_delivery_is_typed_canonical_and_digest_bound() {
         delivery.repository.identity(),
         "github:github.com/a3s-lab/cloud"
     );
-    assert_eq!(delivery.reference.value(), "main");
+    assert_eq!(delivery.payload.branch().value(), "main");
     assert_eq!(delivery.installation_id.as_u64(), 42);
 
     let mut tampered = delivery.clone();
     tampered.payload_digest = format!("sha256:{}", "A".repeat(64));
     assert!(SourceWebhookDelivery::restore(tampered).is_err());
     let mut deletion_sentinel = delivery.clone();
-    deletion_sentinel.commit_sha =
-        GitCommitSha::parse("0000000000000000000000000000000000000000").expect("sentinel");
+    deletion_sentinel.payload = SourceWebhookPayload::Push(SourcePushWebhookDelivery {
+        reference: GitReference::parse("branch", "main").expect("branch"),
+        commit_sha: GitCommitSha::parse("0000000000000000000000000000000000000000")
+            .expect("sentinel"),
+    });
     assert!(SourceWebhookDelivery::restore(deletion_sentinel).is_err());
     assert!(GithubInstallationId::parse(0).is_err());
     assert!(SourceWebhookDelivery::accept(NewSourceWebhookDelivery {
-        reference: GitReference::parse("tag", "v1").expect("tag"),
-        ..NewSourceWebhookDelivery {
-            provider: delivery.provider,
-            delivery_id: delivery.delivery_id,
-            repository: delivery.repository,
-            installation_id: delivery.installation_id,
-            reference: delivery.reference,
-            commit_sha: delivery.commit_sha,
-            payload_digest: delivery.payload_digest,
-            received_at,
-        }
+        provider: delivery.provider,
+        delivery_id: delivery.delivery_id,
+        repository: delivery.repository,
+        installation_id: delivery.installation_id,
+        payload: SourceWebhookPayload::Push(SourcePushWebhookDelivery {
+            reference: GitReference::parse("tag", "v1").expect("tag"),
+            commit_sha: GitCommitSha::parse(COMMIT).expect("commit"),
+        }),
+        payload_digest: delivery.payload_digest,
+        received_at,
     })
     .is_err());
+}
+
+#[test]
+fn committed_pull_request_change_is_subscription_bound_stable_and_secret_free() {
+    let observed_at = canonical_timestamp(Utc::now());
+    let base_repository =
+        GitRepository::parse(GitProvider::Github, "https://github.com/A3S-Lab/Cloud")
+            .expect("base repository");
+    let subscription = GithubRepositorySubscription::subscribe(NewGithubRepositorySubscription {
+        id: SourceSubscriptionId::new(),
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        environment_id: EnvironmentId::new(),
+        connection_id: SourceConnectionId::new(),
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        repository: base_repository.clone(),
+        branch: GitReference::parse("branch", "main").expect("base branch"),
+        recipe: BuildRecipe::dockerfile(
+            BuildRecipe::SCHEMA,
+            BuildRecipe::DOCKERFILE_KIND,
+            ".",
+            "Dockerfile",
+            None,
+            vec!["linux/amd64".into()],
+        )
+        .expect("recipe"),
+        created_at: observed_at,
+    })
+    .expect("subscription");
+    let delivery = SourceWebhookDelivery::accept(NewSourceWebhookDelivery {
+        provider: GitProvider::Github,
+        delivery_id: WebhookDeliveryId::parse("pull-request-delivery-123").expect("delivery ID"),
+        installation_id: subscription.installation_id,
+        repository: base_repository,
+        payload: SourceWebhookPayload::PullRequest(SourcePullRequestWebhookDelivery {
+            base_reference: GitReference::parse("branch", "main").expect("base branch"),
+            head_repository: Some(
+                GitRepository::parse(GitProvider::Github, "https://github.com/contributor/cloud")
+                    .expect("head repository"),
+            ),
+            head_reference: GitReference::parse("branch", "feature/preview").expect("head branch"),
+            head_commit_sha: GitCommitSha::parse(COMMIT).expect("head commit"),
+            pull_request_id: 9001,
+            pull_request_number: 73,
+            kind: PullRequestChangeKind::Synchronized,
+            merged: false,
+            provider_created_at: observed_at - chrono::Duration::minutes(5),
+            provider_updated_at: observed_at,
+        }),
+        payload_digest: format!("sha256:{}", "b".repeat(64)),
+        received_at: observed_at,
+    })
+    .expect("pull-request delivery");
+
+    let fact = PullRequestChangeCommitted::fact(&subscription, &delivery)
+        .expect("committed pull-request fact");
+    let repeated = PullRequestChangeCommitted::fact(&subscription, &delivery)
+        .expect("stable committed pull-request fact");
+    assert_eq!(
+        fact.source_pull_request_change_id(),
+        repeated.source_pull_request_change_id()
+    );
+    assert_eq!(fact.source_subscription_id(), subscription.id);
+    assert_eq!(fact.head_branch(), "feature/preview");
+    assert_eq!(fact.head_commit_sha(), COMMIT);
+    let event = PullRequestChangeCommitted::envelope(&fact, observed_at, uuid::Uuid::now_v7())
+        .expect("committed pull-request event");
+    assert_eq!(event.event_key, "source.pull-request-change.committed");
+    assert_eq!(event.aggregate_version, 1);
+    assert_eq!(event.payload["kind"], "synchronized");
+    let payload = event.payload.to_string();
+    for private_evidence in [
+        delivery.delivery_id.as_str(),
+        delivery.payload_digest.as_str(),
+        "signature",
+        "raw_payload",
+    ] {
+        assert!(!payload.contains(private_evidence), "{private_evidence}");
+    }
+
+    let mut extended = event.payload;
+    extended["provider_delivery_id"] = serde_json::json!("must-stay-private");
+    assert!(serde_json::from_value::<PullRequestChangeCommittedFact>(extended).is_err());
+
+    let mut inactive = subscription;
+    inactive
+        .deactivate(observed_at + chrono::Duration::seconds(1))
+        .expect("deactivate subscription");
+    assert!(PullRequestChangeCommitted::fact(&inactive, &delivery).is_err());
 }
 
 #[test]

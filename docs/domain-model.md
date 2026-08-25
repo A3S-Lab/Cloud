@@ -110,8 +110,9 @@ distributes committed facts after the corresponding database transaction.
 | Promotion decision | Audited approval, rejection, halt, or rollback decision bound to exact candidate, evidence, policy, and target revision. |
 | Security incident projection | Tenant- and grant-scoped `C0.3` investigation timeline derived from shared audit and authorized evidence references; it is not desired state or enforcement authority. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
-| Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
+| Source webhook delivery | An authenticated Sources-private provider envelope keyed by provider and delivery ID with one closed push or pull-request payload; first acceptance atomically derives exact active-Subscription outputs, while replay is silent and changed content conflicts. |
 | Verified pull-request change | An authenticated provider fact for one bounded open, synchronize, reopen, or close action with exact repository, branch, commit, pull-request, provider creation/update times, and raw-payload-digest evidence; it is not accepted Preview state. |
+| Committed pull-request change | An immutable Sources Published Language fact for one exact active Subscription's view of a verified change. It contains semantic tenant/repository/branch/commit/PR/provider-time evidence and a stable opaque ID, but no provider delivery ID, signature, raw body, or raw-body digest. |
 | BuildPlan proposal | A transient, canonical, reviewable P0 detection result bound to an exact source-layout identity, detector revision, evidence digest, project root, and Sources-owned build recipe; it is not accepted desired state. |
 | Accepted BuildPlan | An immutable Developer Workflows-owned acceptance contract bound to one exact Sources-owned revision and project root; actor/time are audit facts outside its deterministic ACL digest. |
 | Pull-request Preview | Developer Workflows lifecycle intent with a stable logical identity and deterministic ordinary Environment identity, exact source-subscription/PR binding, owner, bounded lifetime/quota, fork trust, and cleanup decision; Projects, Sources, Workloads, Edge, and Operations retain their resource authorities. |
@@ -379,13 +380,28 @@ commit object ID, and an explicit versioned build recipe. The GitHub App
 connection flow verifies one installation through OAuth user authority. An
 environment-owned repository subscription then binds that connection and
 installation to one canonical repository, exact branch, and recipe. The
-provider inbox authenticates and deduplicates typed branch-push facts; only a
-new delivery may create revisions through matching active subscriptions.
+provider inbox authenticates and deduplicates a closed push-or-pull-request
+payload; only a new push delivery may create revisions through matching active
+subscriptions. A new pull-request delivery instead commits one immutable
+`source.pull-request-change.committed@1` fact for each exact matching active
+Subscription through the existing transactional Outbox.
 Connection, subscription, inbox, and revision state contain no durable provider
 credential. A bounded installation-authority reconciler polls GitHub with an
 App JWT and persists only typed lifecycle/account observations plus generic
 check health. The same authority boundary is required immediately before any
 private-repository credential is issued.
+
+Migration `156` extends the single `source_webhook_inbox` with a typed event
+discriminator and exact PR evidence. The `(provider, delivery_id)` natural key
+remains the sole delivery deduplication authority; a repeated identical
+delivery emits no fact, changed content conflicts, and Outbox failure rolls
+back the Inbox and complete Subscription fanout. A stable
+`SourcePullRequestChangeId` is derived from Subscription, provider, and the
+private delivery identity. Only the opaque ID plus exact tenant, Subscription,
+installation, repository, branch, commit, PR, action, merge, and provider-time
+semantics cross Published Language. Signature, delivery ID, raw body, and
+raw-body digest do not. Pull requests create no `ExternalSourceRevision` and do
+not use the push-only revision-delivery reservation.
 
 For synchronous build admission, Sources publishes one immutable
 `SourceBuildInputSnapshot` under schema
@@ -464,9 +480,10 @@ Component-only `P0.3-C1` adds authenticated typed GitHub pull-request changes
 and a pure Preview lifecycle reducer. The reducer owns a minimal local
 pull-request observation (installation reference, canonical branches,
 repositories, commit, provider times, action, and merge state), not the Sources
-webhook-verifier DTO, delivery payload, signature, or credential semantics. A
-future application adapter must translate a committed Sources fact into this
-input before production dispatch. Stable Preview identity includes exact
+webhook-verifier DTO, delivery payload, signature, or credential semantics. C3
+now publishes the committed Sources fact; a future Developer Workflows
+consumer adapter must translate only that Published Language into this input.
+Stable Preview identity includes exact
 Organization, Project, Sources subscription, base repository, provider PR ID,
 and number; a second stable identity denotes the ordinary Environment that a
 later Projects-owned handoff may create. Provider creation/update times,
@@ -495,6 +512,23 @@ source drift, cross-Organization owner/actor identities, sequence gaps, or
 mutation. Equal desired state is a semantic no-op even when another authorized
 actor submits it. This is policy persistence, not individual Preview
 persistence, and it creates none of the owner resources excluded by C1.
+
+`P0.3-C3` production-composes the Sources producer, not the Preview consumer.
+`SourceWebhookPayload` is a closed sum type: Push retains the existing
+SourceRevision fanout, while PullRequest produces
+`PullRequestChangeCommittedFact`. The Inbox insert, exact active-Subscription
+lookup, one-fact-per-Subscription Outbox writes, and all-or-nothing failure are
+one repository transaction. The fact is owner-published and closed to unknown
+fields; Developer Workflows cannot receive or depend on `SourceWebhookDelivery`,
+`VerifiedPullRequestChange`, provider delivery identity, payload digest, or a
+Sources repository. This is an asynchronous Published Language boundary, not a
+shared aggregate or a synchronous read-back of mutable Sources state.
+
+C3 adds no Preview aggregate or reducer persistence. The next boundary must be
+a Developer Workflows-owned idempotent consumer/projection that orders these
+facts using the existing provider-time/content reducer and then requests
+resource changes only through Projects, Artifacts, Workloads, Edge, and
+Operations owner interfaces.
 
 ### 3.4 Asset hosting
 
@@ -2785,24 +2819,30 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - Provider authentication covers the exact bounded raw request body. GitHub
   uses HMAC-SHA256 with a secret read from its configured environment variable
   for every request; an A3S bearer token is never an alternative proof.
-- Only a signed non-deleted branch push becomes a `SourceWebhookDelivery`.
-  Supported signed connection-lifecycle events become a separate typed
-  lifecycle receipt. Other authenticated events are acknowledged without
-  durable state.
-- A delivery records provider, bounded delivery ID, canonical repository,
-  positive installation ID, safe branch, full nonzero commit ID,
-  exact-payload SHA-256 digest, and canonical receipt time. Raw payload and
-  secret material are never stored.
+- Only a signed non-deleted branch push or supported `opened`, `synchronize`,
+  `reopened`, or `closed` pull-request action becomes a
+  `SourceWebhookDelivery`. Supported signed connection-lifecycle events remain
+  a separate typed lifecycle receipt. Other authenticated events are
+  acknowledged without durable state.
+- A delivery records one common provider, bounded delivery ID, canonical base
+  repository, positive installation ID, exact-payload SHA-256 digest, and
+  canonical receipt time. Its closed payload is either a safe branch/full
+  nonzero push commit or exact base/head branches and repositories, head
+  commit, PR identity/action/merge state, and provider creation/update times.
+  Raw payload and secret material are never stored.
 - `(provider, delivery_id)` identifies one provider fact. Replaying the exact
   payload returns the first fact; reusing the key with another payload or typed
   identity conflicts atomically.
 - The inbox identity remains provider-level. Only first acceptance joins exact
   active subscriptions by authoritative connection ID, installation,
-  repository, and branch while requiring the joined connection to remain
-  `active`, then creates each matching environment/recipe revision, tenant
-  delivery reservation, and `source.revision.accepted` outbox fact in the same
-  transaction. Replay never re-runs fanout. It still does not create a build or
-  deployment.
+  repository, and base branch while requiring the joined connection to remain
+  `active`. Push creates each matching environment/recipe revision, tenant
+  delivery reservation, and `source.revision.accepted` Outbox fact. Pull
+  request creates one exact Subscription-bound
+  `source.pull-request-change.committed@1` Outbox fact and no revision or push
+  reservation. Both paths use the same Inbox transaction; replay never
+  re-runs fanout, and a failed Outbox write rolls back the complete commit. No
+  path creates a build or deployment.
 - A lifecycle receipt stores provider, bounded delivery ID, event/action,
   installation-or-user subject, exact-payload digest, and canonical receipt
   time. First acceptance locks matching active/suspended connections and

@@ -28,7 +28,7 @@ pub use source_resolver::{
     ISourceResolver, ResolvedSource, SourceResolutionError, SourceResolutionRequest,
 };
 pub use source_webhook_verifier::{
-    ISourceWebhookVerifier, PullRequestChangeKind, SourceWebhookVerificationError,
-    SourceWebhookVerificationRequest, VerifiedGithubConnectionLifecycle, VerifiedPullRequestChange,
+    ISourceWebhookVerifier, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
+    VerifiedGithubConnectionLifecycle, VerifiedPullRequestChange, VerifiedRepositoryWebhook,
     VerifiedSourcePush, VerifiedSourceWebhook,
 };

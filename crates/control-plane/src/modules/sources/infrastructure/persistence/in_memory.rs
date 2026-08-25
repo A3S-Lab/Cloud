@@ -6,8 +6,8 @@ use crate::modules::sources::domain::{
     AcceptSourceRevision, AcceptSourceWebhook, CreateGithubRepositorySubscription,
     DeactivateGithubRepositorySubscription, ExternalSourceRevision, GithubRepositorySubscription,
     ISourceRevisionRepository, ISourceSubscriptionRepository, ISourceWebhookRepository,
-    NewExternalSourceRevision, SourceRevisionAccepted, SourceWebhookAcceptance,
-    SourceWebhookDelivery,
+    NewExternalSourceRevision, PullRequestChangeCommitted, SourceRevisionAccepted,
+    SourceWebhookAcceptance, SourceWebhookDelivery, SourceWebhookPayload,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -260,6 +260,7 @@ impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
                 delivery: existing.clone(),
                 replayed: true,
                 revisions: Vec::new(),
+                pull_request_changes: Vec::new(),
             });
         }
         let mut next = state.clone();
@@ -272,73 +273,92 @@ impl ISourceWebhookRepository for InMemorySourceRevisionRepository {
                     && Some(subscription.connection_id) == request.authoritative_connection_id
                     && subscription.installation_id == delivery.installation_id
                     && subscription.repository == delivery.repository
-                    && subscription.branch_name() == delivery.reference.value()
+                    && subscription.branch_name() == delivery.payload.branch().value()
             })
             .cloned()
             .collect::<Vec<_>>();
         matching.sort_by_key(|subscription| (subscription.organization_id, subscription.id));
         let mut revisions = Vec::with_capacity(matching.len());
+        let mut pull_request_changes = Vec::with_capacity(matching.len());
         for subscription in matching {
-            let delivery_key = (
-                subscription.organization_id,
-                delivery.provider.as_str().to_owned(),
-                delivery.delivery_id.as_str().to_owned(),
-            );
-            let source_identity_digest = delivery
-                .repository
-                .source_identity_digest(&delivery.commit_sha);
-            if let Some(existing_digest) = next.webhook_deliveries.get(&delivery_key) {
-                if existing_digest != &source_identity_digest {
-                    return Err(RepositoryError::Conflict(
-                        "webhook delivery ID was reused for another source identity".into(),
-                    ));
-                }
-            } else {
-                next.webhook_deliveries
-                    .insert(delivery_key, source_identity_digest);
-            }
-            let revision = ExternalSourceRevision::accept(NewExternalSourceRevision {
-                organization_id: subscription.organization_id,
-                project_id: subscription.project_id,
-                environment_id: subscription.environment_id,
-                id: SourceRevisionId::new(),
-                repository: delivery.repository.clone(),
-                commit_sha: delivery.commit_sha.clone(),
-                recipe: subscription.recipe.clone(),
-                accepted_at: delivery.received_at,
-            })
-            .map_err(|error| {
-                RepositoryError::Storage(format!(
-                    "could not create source revision from subscription: {error}"
-                ))
-            })?;
-            let revision_natural_key = natural_key(&revision);
-            if let Some(existing_id) = next.natural_ids.get(&revision_natural_key).copied() {
-                let existing = next
-                    .revisions
-                    .get(&(revision.organization_id, existing_id))
-                    .cloned()
-                    .ok_or_else(|| {
-                        RepositoryError::Storage(
-                            "source revision natural identity points to a missing revision".into(),
-                        )
+            match &delivery.payload {
+                SourceWebhookPayload::Push(push) => {
+                    let delivery_key = (
+                        subscription.organization_id,
+                        delivery.provider.as_str().to_owned(),
+                        delivery.delivery_id.as_str().to_owned(),
+                    );
+                    let source_identity_digest =
+                        delivery.repository.source_identity_digest(&push.commit_sha);
+                    if let Some(existing_digest) = next.webhook_deliveries.get(&delivery_key) {
+                        if existing_digest != &source_identity_digest {
+                            return Err(RepositoryError::Conflict(
+                                "webhook delivery ID was reused for another source identity".into(),
+                            ));
+                        }
+                    } else {
+                        next.webhook_deliveries
+                            .insert(delivery_key, source_identity_digest);
+                    }
+                    let revision = ExternalSourceRevision::accept(NewExternalSourceRevision {
+                        organization_id: subscription.organization_id,
+                        project_id: subscription.project_id,
+                        environment_id: subscription.environment_id,
+                        id: SourceRevisionId::new(),
+                        repository: delivery.repository.clone(),
+                        commit_sha: push.commit_sha.clone(),
+                        recipe: subscription.recipe.clone(),
+                        accepted_at: delivery.received_at,
+                    })
+                    .map_err(|error| {
+                        RepositoryError::Storage(format!(
+                            "could not create source revision from subscription: {error}"
+                        ))
                     })?;
-                revisions.push(existing);
-                continue;
+                    let revision_natural_key = natural_key(&revision);
+                    if let Some(existing_id) = next.natural_ids.get(&revision_natural_key).copied()
+                    {
+                        let existing = next
+                            .revisions
+                            .get(&(revision.organization_id, existing_id))
+                            .cloned()
+                            .ok_or_else(|| {
+                                RepositoryError::Storage(
+                                    "source revision natural identity points to a missing revision"
+                                        .into(),
+                                )
+                            })?;
+                        revisions.push(existing);
+                        continue;
+                    }
+                    let event = SourceRevisionAccepted::envelope(&revision, request.correlation_id)
+                        .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+                    next.natural_ids.insert(revision_natural_key, revision.id);
+                    next.revisions
+                        .insert((revision.organization_id, revision.id), revision.clone());
+                    next.outbox.push(event);
+                    revisions.push(revision);
+                }
+                SourceWebhookPayload::PullRequest(_) => {
+                    let fact = PullRequestChangeCommitted::fact(&subscription, &delivery)
+                        .map_err(RepositoryError::Storage)?;
+                    let event = PullRequestChangeCommitted::envelope(
+                        &fact,
+                        delivery.received_at,
+                        request.correlation_id,
+                    )
+                    .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+                    next.outbox.push(event);
+                    pull_request_changes.push(fact);
+                }
             }
-            let event = SourceRevisionAccepted::envelope(&revision, request.correlation_id)
-                .map_err(|error| RepositoryError::Storage(error.to_string()))?;
-            next.natural_ids.insert(revision_natural_key, revision.id);
-            next.revisions
-                .insert((revision.organization_id, revision.id), revision.clone());
-            next.outbox.push(event);
-            revisions.push(revision);
         }
         *state = next;
         Ok(SourceWebhookAcceptance {
             delivery,
             replayed: false,
             revisions,
+            pull_request_changes,
         })
     }
 }

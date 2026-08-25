@@ -104,6 +104,7 @@ identifier!(WorkloadProfileId);
 identifier!(WorkloadProfileRevisionId);
 identifier!(PullRequestPreviewId);
 identifier!(PullRequestPreviewPolicyRevisionId);
+identifier!(SourcePullRequestChangeId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);

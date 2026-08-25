@@ -1,6 +1,7 @@
 mod git_reference;
 mod github_account;
 mod github_installation_id;
+mod pull_request_change_kind;
 mod webhook_delivery_id;
 
 pub use crate::modules::shared_kernel::domain::GitCommitSha;
@@ -12,4 +13,5 @@ pub use crate::modules::sources::published::{
 pub use git_reference::GitReference;
 pub use github_account::{GithubAccountId, GithubAccountKind, GithubLogin};
 pub use github_installation_id::GithubInstallationId;
+pub use pull_request_change_kind::PullRequestChangeKind;
 pub use webhook_delivery_id::WebhookDeliveryId;

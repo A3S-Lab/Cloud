@@ -17,4 +17,7 @@ pub use github_repository_subscription::{
     GithubRepositorySubscription, GithubRepositorySubscriptionStatus,
     NewGithubRepositorySubscription,
 };
-pub use source_webhook_delivery::{NewSourceWebhookDelivery, SourceWebhookDelivery};
+pub use source_webhook_delivery::{
+    NewSourceWebhookDelivery, SourcePullRequestWebhookDelivery, SourcePushWebhookDelivery,
+    SourceWebhookDelivery, SourceWebhookPayload,
+};

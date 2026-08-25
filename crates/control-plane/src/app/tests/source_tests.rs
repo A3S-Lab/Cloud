@@ -389,8 +389,11 @@ async fn signed_github_push_is_public_bounded_and_durably_deduplicated() -> Resu
     assert_eq!(replay.status(), 202);
     let inbox = sources.webhook_inbox().await;
     assert_eq!(inbox.len(), 1);
-    assert_eq!(inbox[0].commit_sha.as_str(), COMMIT_A);
-    assert_eq!(inbox[0].reference.value(), "main");
+    let SourceWebhookPayload::Push(push) = &inbox[0].payload else {
+        panic!("expected a typed push delivery");
+    };
+    assert_eq!(push.commit_sha.as_str(), COMMIT_A);
+    assert_eq!(push.reference.value(), "main");
 
     let mut reformatted = body.clone();
     reformatted.push(b'\n');

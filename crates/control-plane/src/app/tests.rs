@@ -54,7 +54,7 @@ use crate::modules::sources::domain::{
     GithubInstallationTokenError, GithubInstallationTokenRequest,
     GithubInstallationVerificationRequest, GithubLogin, IGithubAppAuthorizationService,
     ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
-    SourceResolutionRequest, VerifiedGithubInstallation,
+    SourceResolutionRequest, SourceWebhookPayload, VerifiedGithubInstallation,
 };
 use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,

@@ -63,6 +63,7 @@ AI application platform parity manifest.
 | [0056](0056-terminal-connector-wait-projection.md) | Fence deferred Connector waits and projection across cancellation, deadline, and coordinator replacement |
 | [0057](0057-exact-connector-revision-revocation.md) | Serialize exact Connector revision revocation with provider dispatch admission |
 | [0058](0058-terminal-connector-attempt-resolution.md) | Close expired Connector dispatches with an exact indeterminate resolution |
+| [0059](0059-single-sources-pull-request-fact-boundary.md) | Publish exact Subscription-bound pull-request changes through the single Sources Inbox and shared Outbox |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

@@ -1,34 +1,9 @@
 use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::sources::domain::{
     GitCommitSha, GitProvider, GitReference, GitRepository, GithubConnectionLifecycleChange,
-    GithubInstallationId, WebhookDeliveryId,
+    GithubInstallationId, PullRequestChangeKind, WebhookDeliveryId,
 };
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PullRequestChangeKind {
-    Opened,
-    Synchronized,
-    Reopened,
-    Closed,
-}
-
-impl PullRequestChangeKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Opened => "opened",
-            Self::Synchronized => "synchronize",
-            Self::Reopened => "reopened",
-            Self::Closed => "closed",
-        }
-    }
-
-    pub const fn is_terminal(self) -> bool {
-        matches!(self, Self::Closed)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedPullRequestChange {
@@ -128,10 +103,24 @@ pub struct VerifiedGithubConnectionLifecycle {
 }
 
 #[derive(Debug, Clone)]
-pub enum VerifiedSourceWebhook {
-    Ignored,
+pub enum VerifiedRepositoryWebhook {
     Push(VerifiedSourcePush),
     PullRequest(VerifiedPullRequestChange),
+}
+
+impl VerifiedRepositoryWebhook {
+    pub const fn installation_id(&self) -> GithubInstallationId {
+        match self {
+            Self::Push(push) => push.installation_id,
+            Self::PullRequest(change) => change.installation_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum VerifiedSourceWebhook {
+    Ignored,
+    Repository(VerifiedRepositoryWebhook),
     GithubConnectionLifecycle(VerifiedGithubConnectionLifecycle),
 }
 

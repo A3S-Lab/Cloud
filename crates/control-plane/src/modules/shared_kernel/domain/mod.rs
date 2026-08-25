@@ -33,11 +33,11 @@ pub use identifiers::{
     OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId, PluginRegistryId, PrincipalId,
     ProjectAttributionProfileId, ProjectId, PullRequestPreviewId,
     PullRequestPreviewPolicyRevisionId, RecipientContactId, RecipientContactVerificationId,
-    ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId, SourceRevisionId,
-    SourceSubscriptionId, StorageNamespaceId, UserFileId, UserFileUploadId, WorkflowDecisionId,
-    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadPlacementGroupId, WorkloadProfileId, WorkloadProfileRevisionId, WorkloadReplicaId,
-    WorkloadReplicaMemberId, WorkloadRevisionId,
+    ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId,
+    SourcePullRequestChangeId, SourceRevisionId, SourceSubscriptionId, StorageNamespaceId,
+    UserFileId, UserFileUploadId, WorkflowDecisionId, WorkflowDefinitionId, WorkflowGoalId,
+    WorkflowRevisionId, WorkflowRunId, WorkloadId, WorkloadPlacementGroupId, WorkloadProfileId,
+    WorkloadProfileRevisionId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;
