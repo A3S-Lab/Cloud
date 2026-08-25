@@ -416,9 +416,9 @@ execution is implemented through Run v21, and bounded-parallel Iteration is
 implemented through Run v22. Current finite
 Execution and Connector projections retain bounded owning-context evidence
 URNs. The
-remaining business-service and Agent/MCP/model/Tool capability dispatch,
-compensation, full provider conformance, and public Workflow availability
-remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
+remaining business-service public integration and Agent/MCP/model/Tool
+capability dispatch, compensation, full provider conformance, and public
+Workflow availability remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
 exact descriptor handle, and lets the ordinary DAG and Flow history activate
 the error path. The Execution projection remains failed even if its reachable
@@ -526,7 +526,7 @@ variable-inspection, diagnostics, and history success payloads through closed
 reusable schemas without changing response bytes. REST/OpenAPI `1.64.0`
 extends that exact contract to Ontology aggregate/revision/diff and HumanTask
 lifecycle/Form-interaction responses, eliminating generic success schemas from
-all Workflow-tagged operations. Business-service and
+all Workflow-tagged operations. Business-service public integration and
 remaining Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.

@@ -35,13 +35,17 @@ actually verified.
 
 ## Consequences
 
-The catalog can expose the full accepted inventory while five Workflow-local
-nodes are internal and the other eighteen remain unavailable. Code remains
-Executions-owned, HTTP Request remains Connectors-owned, and invocation-only
-triggers have no Flow step kind. A future inventory, owner, or availability
-change must update the parity manifest and its digest-bound profile set
-together. A future public claim also requires the owning gate and evidence;
-neither presentation metadata nor catalog discovery can widen execution.
+At acceptance, the catalog exposed five Workflow-local nodes as internal and
+the other eighteen as unavailable. Later accepted decisions may advance an
+individual capability without changing this projection boundary. Decisions
+0051 through 0054 now bind Variable Aggregator, List Operator, bounded-parallel
+Iteration, and the exact Connectors-owned HTTP Request foundation to
+implementation evidence while preserving each capability's applicable gate.
+Code remains Executions-owned, and invocation-only triggers have no Flow step
+kind. Any inventory, owner, or availability change must update the parity
+manifest and its digest-bound profile set together. A public claim also requires
+the owning gate and evidence; neither presentation metadata nor catalog
+discovery can widen execution.
 
 A3S Flow remains unchanged and continues as the sole durable orchestration
 authority. Cloud adds no node scheduler, executor, command, variable store, or

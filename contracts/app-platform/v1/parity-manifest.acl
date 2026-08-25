@@ -524,10 +524,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.http-request" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = ["AUT0.5"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/decisions/app-platform/0020-flow-owned-connector-attempt-waits.md", "doc:docs/decisions/app-platform/0021-connector-immutable-response-objects.md", "doc:docs/decisions/app-platform/0022-terminal-evidence-authorized-connector-response-reads.md", "doc:docs/decisions/app-platform/0024-schema-bound-connector-json-response-projection.md", "doc:docs/decisions/app-platform/0025-descriptor-bound-connector-failure-routes.md", "doc:docs/decisions/app-platform/0054-internal-connector-workflow-capability.md", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector_response.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/connector.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector_response_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/connector_tests.rs"]
     gate = "W0.4"
     label = "HTTP Request"
     owner = "connectors"

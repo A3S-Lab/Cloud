@@ -58,6 +58,7 @@ AI application platform parity manifest.
 | [0051](0051-workflow-local-variable-aggregation.md) | Aggregate mutually exclusive branch values through one exact typed Workflow-local step |
 | [0052](0052-workflow-local-list-operations.md) | Process typed arrays through one exact bounded Workflow-local step |
 | [0053](0053-bounded-parallel-iteration-waves.md) | Execute bounded Iteration children concurrently through authority-bound Flow waves |
+| [0054](0054-internal-connector-workflow-capability.md) | Advertise the exact Connector Workflow step as an internal catalog capability |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

@@ -172,6 +172,7 @@ mod tests {
                 .map(|node| node.capability_id.as_str())
                 .collect::<Vec<_>>(),
             [
+                "node.http-request",
                 "node.human-input",
                 "node.if-else",
                 "node.list-operator",

@@ -441,9 +441,10 @@ creating their own control planes:
     launch a new execution before their owning ports land. After authorization,
     an exact pre-upgrade idempotency replay is resolved before this availability
     check; changed input under the same key still conflicts, and a new key still
-    reaches the fence. The public API shape is unchanged. This is not public HTTP Request availability;
-    business-service and remaining Agent/MCP/model/Tool dispatch, compensation,
-    retained provider evidence, and later `W0` gates remain open.
+    reaches the fence. The public API shape is unchanged. The exact Connectors-
+    owned HTTP Request foundation is now internally discoverable, but public
+    business-service availability, remaining Agent/MCP/model/Tool dispatch,
+    compensation, retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` carries start, run-scoped

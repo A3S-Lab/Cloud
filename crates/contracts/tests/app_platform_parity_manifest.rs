@@ -86,6 +86,7 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             .collect::<Vec<_>>(),
         [
             "enterprise.organizations-workspaces",
+            "node.http-request",
             "node.human-input",
             "node.if-else",
             "node.list-operator",

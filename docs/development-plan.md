@@ -2425,7 +2425,9 @@ node.
   exact non-nil revision UUIDs, and name `connector.http`. Focused identity,
   replay, digest-drift, and owner tests pass. The adapter exposes no transient
   response body or fence and owns no retry, wait, queue, scheduler, credential,
-  repository, or HTTP client; the HTTP Request node remains unavailable.
+  repository, or HTTP client. Decision 0054 exposes this exact foundation as an
+  internal catalog capability while public HTTP Request availability remains
+  closed.
 - Implemented as component-only `AUT0.5-C9`: `cloud.workflow.policy.v2`
   freezes one explicit provider-attempt budget and fallback delay through the
   existing per-step policy payload and digest. WorkflowRevision admission and
