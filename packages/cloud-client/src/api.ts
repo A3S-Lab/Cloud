@@ -49,13 +49,17 @@ import {
   type ConnectorProfileMutationResult,
   type ConnectorProfileRecord,
   type ConnectorRevision,
+  type ConnectorRevisionRevocation,
+  type ConnectorRevisionRevocationMutationResult,
   type CreateConnectorProfileInput,
   DEFAULT_CONNECTOR_LIST_LIMIT,
   type ReviseConnectorProfileInput,
+  type RevokeConnectorRevisionInput,
   validateConnectorDefinitionAcl,
   validateConnectorExpectedVersion,
   validateConnectorListLimit,
   validateConnectorProfileName,
+  validateConnectorRevisionRevocationReason,
 } from './connectors';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import {
@@ -304,7 +308,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.64.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.65.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -2375,6 +2379,26 @@ export class CloudApi {
     );
   }
 
+  getConnectorRevisionRevocation(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorRevisionRevocation> {
+    return this.get(
+      `${this.connectorRevisionPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId
+      )}/revocation`,
+      signal
+    );
+  }
+
   createConnectorProfile(
     organizationId: string,
     projectId: string,
@@ -2410,6 +2434,31 @@ export class CloudApi {
       `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}/revisions`,
       idempotencyKey,
       input,
+      signal
+    );
+  }
+
+  revokeConnectorRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    input: RevokeConnectorRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorRevisionRevocationMutationResult> {
+    validateConnectorRevisionRevocationReason(input.reason);
+    return this.postJson(
+      `${this.connectorRevisionPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId
+      )}/revocation`,
+      idempotencyKey,
+      { reason: input.reason.trim() },
       signal
     );
   }
@@ -3575,6 +3624,19 @@ export class CloudApi {
       `/projects/${encodeURIComponent(projectId)}` +
       `/environments/${encodeURIComponent(environmentId)}` +
       `/connector-profiles/${encodeURIComponent(profileId)}`
+    );
+  }
+
+  private connectorRevisionPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string
+  ): string {
+    return (
+      `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}` +
+      `/revisions/${encodeURIComponent(revisionId)}`
     );
   }
 

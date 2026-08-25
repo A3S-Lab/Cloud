@@ -7,17 +7,18 @@ use a3s_cloud_control_plane::modules::connectors::{
     ConnectorExecutionReservation, ConnectorHttpAuthentication, ConnectorHttpDefinition,
     ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
     ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy, ConnectorProfile,
-    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretReference,
-    CreateConnectorProfile, CreateConnectorProfileHandler, CreateConnectorProfileWrite,
-    GetConnectorExecutionAttempt, GetConnectorExecutionAttemptHandler, GetConnectorProfile,
-    GetConnectorProfileHandler, IConnectorExecutionAttemptRepository,
-    IConnectorExecutionEvidenceRepository, IConnectorProfileRepository,
+    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorRevisionRevocation,
+    ConnectorRevisionRevoked, ConnectorSecretReference, CreateConnectorProfile,
+    CreateConnectorProfileHandler, CreateConnectorProfileWrite, GetConnectorExecutionAttempt,
+    GetConnectorExecutionAttemptHandler, GetConnectorProfile, GetConnectorProfileHandler,
+    IConnectorExecutionAttemptRepository, IConnectorExecutionEvidenceRepository,
+    IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
     ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorRevisions,
     ListConnectorRevisionsHandler, ListUnresolvedConnectorExecutionAttempts,
     ListUnresolvedConnectorExecutionAttemptsHandler, PostgresConnectorExecutionAttemptRepository,
     PostgresConnectorExecutionEvidenceRepository, PostgresConnectorProfileRepository,
     ReserveConnectorExecutionAttempt, ReviseConnectorProfile, ReviseConnectorProfileHandler,
-    ReviseConnectorProfileWrite, SettleConnectorExecutionAttempt,
+    ReviseConnectorProfileWrite, RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -776,6 +777,18 @@ pub(super) async fn exercise_connector_execution_evidence(
         migration_state,
         (1, "fenced Connector execution attempts".into())
     );
+    let revocation_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("153"),
+        )
+        .await?;
+    assert_eq!(
+        revocation_migration_state,
+        (1, "exact Connector revision revocation authority".into())
+    );
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -1322,6 +1335,149 @@ pub(super) async fn exercise_connector_execution_evidence(
         .ok_or("recovered terminal Connector attempt is missing")?;
     assert_eq!(recovered_attempt.evidence, Some(accepted.clone()));
 
+    let revoked_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"request blocked by exact revision revocation".to_vec(),
+    )?;
+    let revoked_reserved_at = created_at + Duration::seconds(13);
+    let revoked_fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(&revision, &revoked_request)?,
+            Uuid::now_v7(),
+            revoked_reserved_at,
+            revoked_reserved_at + Duration::seconds(30),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => return Err(format!("unexpected revoked reservation: {other:?}").into()),
+    };
+    let revocation_request_id = Uuid::now_v7();
+    let revocation = ConnectorRevisionRevocation::new(
+        &revision,
+        "destination credential was compromised",
+        actor,
+        revoked_reserved_at + Duration::milliseconds(1),
+    )?;
+    let revocation_idempotency = IdempotencyRequest::new(
+        format!(
+            "connector-revision-revocation/{organization_id}/{}",
+            revision.id,
+        ),
+        "connector-revision-revoke",
+        revocation.reason.as_bytes(),
+    )?;
+    let revocation_write = RevokeConnectorRevisionWrite {
+        event: ConnectorRevisionRevoked::envelope(&revocation, revocation_request_id)?,
+        actor_principal_id: actor,
+        request_id: revocation_request_id,
+        idempotency: revocation_idempotency,
+        revocation: revocation.clone(),
+    };
+    assert!(
+        !attempts
+            .revoke_revision(revocation_write.clone())
+            .await?
+            .replayed
+    );
+    assert!(attempts.revoke_revision(revocation_write).await?.replayed);
+    assert_eq!(
+        PostgresConnectorExecutionAttemptRepository::new(executor.clone())
+            .find_revision_revocation(
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id,
+                revision.id,
+            )
+            .await?,
+        Some(revocation.clone())
+    );
+    assert!(matches!(
+        attempts
+            .begin_dispatch(BeginConnectorExecutionDispatch::new(
+                revoked_fence.clone(),
+                revoked_reserved_at + Duration::milliseconds(2),
+                revoked_reserved_at + Duration::seconds(5),
+            )?)
+            .await,
+        Err(RepositoryError::Forbidden(_))
+    ));
+    let revoked_evidence = ConnectorExecutionEvidence::rejected(
+        &revision,
+        &revoked_request,
+        None,
+        revoked_fence.reserved_at(),
+        revoked_reserved_at + Duration::milliseconds(3),
+    )?;
+    attempts
+        .settle(SettleConnectorExecutionAttempt::new(
+            revoked_fence,
+            revoked_evidence.clone(),
+        )?)
+        .await?;
+    assert!(matches!(
+        attempts
+            .reserve(ReserveConnectorExecutionAttempt::new(
+                ConnectorExecutionAttemptBinding::from_exact(&revision, &revoked_request)?,
+                Uuid::now_v7(),
+                revoked_reserved_at + Duration::seconds(1),
+                revoked_reserved_at + Duration::seconds(30),
+            )?)
+            .await?,
+        ConnectorExecutionReservation::Completed(record)
+            if record.evidence == Some(revoked_evidence)
+    ));
+    assert!(matches!(
+        attempts
+            .reserve(ReserveConnectorExecutionAttempt::new(
+                ConnectorExecutionAttemptBinding::from_exact(&revision, &uncertain_request)?,
+                Uuid::now_v7(),
+                revoked_reserved_at + Duration::seconds(1),
+                revoked_reserved_at + Duration::seconds(30),
+            )?)
+            .await?,
+        ConnectorExecutionReservation::Indeterminate(_)
+    ));
+    let revocation_evidence = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>("select (select count(*) from connector_revision_revocations where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key = 'connector.revision.revoked'), (select count(*) from audit_records where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and action = 'connector.revision.revoked'), (select count(*) from idempotency_records where scope_key like 'connector-revision-revocation/%')"),
+        )
+        .await?;
+    assert_eq!(revocation_evidence, (1, 1, 1, 1));
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update connector_revision_revocations set reason = 'mutated' where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and revision_id = ")
+                    .bind(revision.id.as_uuid()),
+            )
+            .await,
+        "mutating immutable Connector revision revocation",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "delete from connector_revision_revocations where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and revision_id = ")
+                .bind(revision.id.as_uuid()),
+            )
+            .await,
+        "deleting immutable Connector revision revocation",
+    );
+
     assert_rejected(
         database
             .execute(
@@ -1430,7 +1586,7 @@ pub(super) async fn exercise_connector_execution_evidence(
                 .bind(organization_id.as_uuid()),
         )
         .await?;
-    assert_eq!(stored, (3, 3, 7, 3));
+    assert_eq!(stored, (4, 4, 8, 4));
     Ok(())
 }
 

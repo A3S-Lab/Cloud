@@ -9,8 +9,10 @@ mod http_policy;
 mod profile;
 mod repository;
 mod response_object;
+mod revision_revocation;
+mod revision_revocation_repository;
 
-pub use events::ConnectorRevisionPublished;
+pub use events::{ConnectorRevisionPublished, ConnectorRevisionRevoked};
 pub use evidence::{
     ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor, ConnectorExecutionEvidencePage,
     ConnectorExecutionOutcome, MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
@@ -62,4 +64,12 @@ pub use repository::{
 pub use response_object::{
     ConnectorResponseObjectError, ConnectorResponseObjectReference, ConnectorResponseObjectWrite,
     IConnectorResponseObjectStore, CONNECTOR_RESPONSE_OBJECT_SCHEMA,
+};
+pub(crate) use revision_revocation::normalize_connector_revision_revocation_reason;
+pub use revision_revocation::{
+    ConnectorRevisionRevocation, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+};
+pub(crate) use revision_revocation_repository::ConnectorRevisionRevocationReference;
+pub use revision_revocation_repository::{
+    IConnectorRevisionRevocationRepository, RevokeConnectorRevisionWrite,
 };

@@ -45,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.64.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.65.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1541,6 +1541,13 @@ describe('CloudApi', () => {
       'profile / one',
       'revision / one'
     );
+    await api.getConnectorRevisionRevocation(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one'
+    );
     await api.createConnectorProfile(
       'organization / one',
       'project',
@@ -1555,6 +1562,15 @@ describe('CloudApi', () => {
       'profile / one',
       { expectedVersion: 2, definitionAcl: acl },
       'connector:revise'
+    );
+    await api.revokeConnectorRevision(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one',
+      { reason: '  destination credential was compromised  ' },
+      'connector:revoke'
     );
 
     expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
@@ -1575,6 +1591,10 @@ describe('CloudApi', () => {
         'GET',
       ],
       [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/revocation',
+        'GET',
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles',
         'POST',
       ],
@@ -1582,17 +1602,27 @@ describe('CloudApi', () => {
         '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions',
         'POST',
       ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/revocation',
+        'POST',
+      ],
     ]);
-    expect(calls[4]?.[1]).toEqual(
+    expect(calls[5]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'connector:create' }),
         body: JSON.stringify({ name: 'Incident webhook', definitionAcl: acl }),
       })
     );
-    expect(calls[5]?.[1]).toEqual(
+    expect(calls[6]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'connector:revise' }),
         body: JSON.stringify({ expectedVersion: 2, definitionAcl: acl }),
+      })
+    );
+    expect(calls[7]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'connector:revoke' }),
+        body: JSON.stringify({ reason: 'destination credential was compromised' }),
       })
     );
 
@@ -1640,7 +1670,29 @@ describe('CloudApi', () => {
     expect(() => api.listConnectorProfiles('organization', 'project', 'environment', 201)).toThrow(
       'Connector list limit must be between 1 and 200'
     );
-    expect(calls).toHaveLength(6);
+    expect(() =>
+      api.revokeConnectorRevision(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        'revision',
+        { reason: 'line\nbreak' },
+        'connector:invalid-revocation'
+      )
+    ).toThrow('Connector revision revocation reason must contain between');
+    expect(() =>
+      api.revokeConnectorRevision(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        'revision',
+        { reason: '界'.repeat(342) },
+        'connector:oversized-revocation'
+      )
+    ).toThrow('Connector revision revocation reason must contain between');
+    expect(calls).toHaveLength(8);
   });
 
   it('reuses the Durable Cells REST authority with bounded ACL-native inputs', async () => {

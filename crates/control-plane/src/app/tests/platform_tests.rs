@@ -372,7 +372,7 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
     );
     assert_eq!(composition.matches(".api_worker()").count(), 1);
     assert_eq!(composition.matches(".relay()").count(), 1);
-    assert_eq!(composition.matches(".connector_attempts()").count(), 1);
+    assert_eq!(composition.matches(".connector_execution()").count(), 1);
     assert_eq!(composition.matches(".outbox()").count(), 1);
 
     for repository in repositories {

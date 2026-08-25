@@ -5,6 +5,10 @@ use super::workflow_ontology_components::install_workflow_ontology_component_sch
 use super::workflow_run_components::install_workflow_run_component_schemas;
 use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::connectors::{
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+};
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
     MINIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES,
@@ -331,6 +335,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .as_object()
         .cloned()
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
+    install_connector_component_schemas(&mut schema_components)?;
     install_workflow_component_schemas(&mut schema_components);
     install_workflow_goal_component_schemas(&mut schema_components);
     install_workflow_human_task_component_schemas(&mut schema_components);
@@ -436,6 +441,54 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "#/components/schemas/RecipientContactListSuccessResponse",
         ),
     );
+    response_components.insert(
+        "ConnectorProfileListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorProfileListSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "ConnectorProfileRecordSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorProfileRecordSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "ConnectorRevisionListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorRevisionListSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "ConnectorRevisionSuccess200".into(),
+        response_component(200, "#/components/schemas/ConnectorRevisionSuccessResponse"),
+    );
+    response_components.insert(
+        "ConnectorRevisionRevocationSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorRevisionRevocationSuccessResponse",
+        ),
+    );
+    for status in [200, 201] {
+        response_components.insert(
+            format!("ConnectorProfileMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/ConnectorProfileMutationSuccessResponse",
+            ),
+        );
+        response_components.insert(
+            format!("ConnectorRevisionRevocationMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/ConnectorRevisionRevocationMutationSuccessResponse",
+            ),
+        );
+    }
     for status in [200, 202] {
         response_components.insert(
             format!("RecipientContactMutationSuccess{status}"),
@@ -642,6 +695,165 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     components.insert("responses".into(), Value::Object(response_components));
+    Ok(())
+}
+
+fn install_connector_component_schemas(schemas: &mut Map<String, Value>) -> Result<()> {
+    let profile_list_success =
+        typed_success_response_schema("#/components/schemas/ConnectorProfileList");
+    let profile_record_success =
+        typed_success_response_schema("#/components/schemas/ConnectorProfileRecord");
+    let revision_list_success =
+        typed_success_response_schema("#/components/schemas/ConnectorRevisionList");
+    let revision_success = typed_success_response_schema("#/components/schemas/ConnectorRevision");
+    let profile_mutation_success =
+        typed_success_response_schema("#/components/schemas/ConnectorProfileMutation");
+    let revocation_success =
+        typed_success_response_schema("#/components/schemas/ConnectorRevisionRevocation");
+    let revocation_mutation_success =
+        typed_success_response_schema("#/components/schemas/ConnectorRevisionRevocationMutation");
+    let connector_schemas = json!({
+        "ConnectorProfile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "organizationId", "projectId", "environmentId", "profileId", "name",
+                "currentRevisionId", "currentRevisionNumber", "currentRevisionDigest",
+                "aggregateVersion", "createdBy", "createdAt", "updatedAt"
+            ],
+            "properties": {
+                "organizationId": { "type": "string", "format": "uuid" },
+                "projectId": { "type": "string", "format": "uuid" },
+                "environmentId": { "type": "string", "format": "uuid" },
+                "profileId": { "type": "string", "format": "uuid" },
+                "name": { "type": "string", "minLength": 1, "maxLength": 63 },
+                "currentRevisionId": { "type": "string", "format": "uuid" },
+                "currentRevisionNumber": { "type": "integer", "minimum": 1 },
+                "currentRevisionDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "aggregateVersion": { "type": "integer", "minimum": 1 },
+                "createdBy": { "type": "string", "format": "uuid" },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "updatedAt": { "type": "string", "format": "date-time" }
+            }
+        },
+        "ConnectorRevision": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "organizationId", "projectId", "environmentId", "profileId", "revisionId",
+                "revisionNumber", "parentRevisionId", "parentDigest", "definitionKind",
+                "definitionSchema", "definitionAcl", "definitionDigest", "createdBy",
+                "createdAt"
+            ],
+            "properties": {
+                "organizationId": { "type": "string", "format": "uuid" },
+                "projectId": { "type": "string", "format": "uuid" },
+                "environmentId": { "type": "string", "format": "uuid" },
+                "profileId": { "type": "string", "format": "uuid" },
+                "revisionId": { "type": "string", "format": "uuid" },
+                "revisionNumber": { "type": "integer", "minimum": 1 },
+                "parentRevisionId": {
+                    "type": "string", "format": "uuid", "nullable": true
+                },
+                "parentDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "nullable": true
+                },
+                "definitionKind": { "type": "string", "enum": ["http"] },
+                "definitionSchema": {
+                    "type": "string", "enum": ["cloud.connector.http.v1"]
+                },
+                "definitionAcl": {
+                    "type": "string", "minLength": 1,
+                    "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES,
+                    "x-a3s-max-canonical-bytes": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+                },
+                "definitionDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "createdBy": { "type": "string", "format": "uuid" },
+                "createdAt": { "type": "string", "format": "date-time" }
+            }
+        },
+        "ConnectorProfileList": {
+            "type": "array",
+            "maxItems": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+            "items": { "$ref": "#/components/schemas/ConnectorProfile" }
+        },
+        "ConnectorRevisionList": {
+            "type": "array",
+            "maxItems": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+            "items": { "$ref": "#/components/schemas/ConnectorRevision" }
+        },
+        "ConnectorProfileRecord": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["profile", "revision"],
+            "properties": {
+                "profile": { "$ref": "#/components/schemas/ConnectorProfile" },
+                "revision": { "$ref": "#/components/schemas/ConnectorRevision" }
+            }
+        },
+        "ConnectorProfileMutation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["record", "replayed"],
+            "properties": {
+                "record": { "$ref": "#/components/schemas/ConnectorProfileRecord" },
+                "replayed": { "type": "boolean" }
+            }
+        },
+        "ConnectorRevisionRevocation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "organizationId", "projectId", "environmentId", "profileId", "revisionId",
+                "revisionNumber", "definitionDigest", "reason", "revokedBy", "revokedAt"
+            ],
+            "properties": {
+                "organizationId": { "type": "string", "format": "uuid" },
+                "projectId": { "type": "string", "format": "uuid" },
+                "environmentId": { "type": "string", "format": "uuid" },
+                "profileId": { "type": "string", "format": "uuid" },
+                "revisionId": { "type": "string", "format": "uuid" },
+                "revisionNumber": { "type": "integer", "minimum": 1 },
+                "definitionDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "reason": {
+                    "type": "string", "minLength": 1,
+                    "maxLength": CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+                    "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+                    "x-a3s-max-utf8-bytes": CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+                },
+                "revokedBy": { "type": "string", "format": "uuid" },
+                "revokedAt": { "type": "string", "format": "date-time" }
+            }
+        },
+        "ConnectorRevisionRevocationMutation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["revocation", "replayed"],
+            "properties": {
+                "revocation": {
+                    "$ref": "#/components/schemas/ConnectorRevisionRevocation"
+                },
+                "replayed": { "type": "boolean" }
+            }
+        },
+        "ConnectorProfileListSuccessResponse": profile_list_success,
+        "ConnectorProfileRecordSuccessResponse": profile_record_success,
+        "ConnectorRevisionListSuccessResponse": revision_list_success,
+        "ConnectorRevisionSuccessResponse": revision_success,
+        "ConnectorProfileMutationSuccessResponse": profile_mutation_success,
+        "ConnectorRevisionRevocationSuccessResponse": revocation_success,
+        "ConnectorRevisionRevocationMutationSuccessResponse": revocation_mutation_success
+    })
+    .as_object()
+    .cloned()
+    .ok_or_else(|| BootError::Internal("generated Connector OpenAPI schemas are invalid".into()))?;
+    schemas.extend(connector_schemas);
     Ok(())
 }
 

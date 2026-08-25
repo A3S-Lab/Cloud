@@ -545,6 +545,13 @@ fn operation_summary(method: &str, path: &str) -> String {
     if path.ends_with("/operations/stream") {
         return "Stream operation updates".into();
     }
+    if path.ends_with("/connector-profiles/{profile_id}/revisions/{revision_id}/revocation") {
+        return if method == "get" {
+            "Get a Connector revision revocation".into()
+        } else {
+            "Revoke a Connector revision".into()
+        };
+    }
     if method == "get" {
         if path.contains("/assets/") && path.contains("/releases/") && path.ends_with('}') {
             return "Get an asset release".into();

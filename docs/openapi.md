@@ -11,7 +11,14 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.64.0`.
+The current semantic contract version is `1.65.0`.
+
+Contract `1.65.0` adds the exact Connector revision-revocation operations and
+fully typed success responses for all existing Connector profile, revision,
+history, and revocation operations. The idempotent write accepts one closed
+bounded `reason`; both responses expose the exact revision number and digest,
+actor, and timestamp without Secret material or provider state. Existing
+Connector routes retain their response bytes.
 
 Contract `1.64.0` completes operation-specific success documentation for every
 Workflow-tagged route. Ontology collection, aggregate, revision, diff, and
@@ -95,8 +102,9 @@ boundary. Populating this existing field did not itself change a route or JSON
 shape; contract `1.60.0` was introduced by the separate diagnostics operation,
 `1.61.0` adds Variable Aggregator payload semantics, `1.62.0` adds List
 Operator payload semantics, `1.63.0` closes the existing core Workflow success
-payload schemas, and `1.64.0` closes the remaining Ontology and HumanTask
-success payload schemas as described above.
+payload schemas, `1.64.0` closes the remaining Ontology and HumanTask success
+payload schemas, and `1.65.0` adds exact Connector revision revocation plus
+closed Connector success payloads as described above.
 
 ## Contract completeness
 

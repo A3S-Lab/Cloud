@@ -1,11 +1,14 @@
 use super::dto::{
     ConnectorProfileMutationResponse, ConnectorProfileRecordResponse, ConnectorProfileResponse,
-    ConnectorRevisionResponse, CreateConnectorProfileRequest, ReviseConnectorProfileRequest,
+    ConnectorRevisionResponse, ConnectorRevisionRevocationMutationResponse,
+    ConnectorRevisionRevocationResponse, CreateConnectorProfileRequest,
+    ReviseConnectorProfileRequest, RevokeConnectorRevisionRequest,
 };
 use super::request::{actor_principal_id, request_id, request_identity};
 use crate::modules::connectors::application::{
-    CreateConnectorProfile, GetConnectorProfile, GetConnectorRevision, ListConnectorProfiles,
-    ListConnectorRevisions, ReviseConnectorProfile, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    CreateConnectorProfile, GetConnectorProfile, GetConnectorRevision,
+    GetConnectorRevisionRevocation, ListConnectorProfiles, ListConnectorRevisions,
+    ReviseConnectorProfile, RevokeConnectorRevision, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -23,6 +26,8 @@ use uuid::Uuid;
 
 pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let create_bus = Arc::clone(&bus);
+    let revise_bus = Arc::clone(&bus);
+    let revoke_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CONNECTOR_WRITE])?
@@ -70,7 +75,7 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
         .post(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&revise_bus);
                 async move {
                     let body: ReviseConnectorProfileRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
@@ -110,6 +115,52 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                     }
                 }
             },
+        )?
+        .post(
+            "/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions/{revision_id}/revocation",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&revoke_bus);
+                async move {
+                    let body: RevokeConnectorRevisionRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(RevokeConnectorRevision {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            environment_id: EnvironmentId::from_uuid(
+                                request.param_as::<Uuid>("environment_id")?,
+                            ),
+                            profile_id: ConnectorProfileId::from_uuid(
+                                request.param_as::<Uuid>("profile_id")?,
+                            ),
+                            revision_id: ConnectorRevisionId::from_uuid(
+                                request.param_as::<Uuid>("revision_id")?,
+                            ),
+                            reason: body.reason,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 201 };
+                            BootResponse::json_with_status(
+                                status,
+                                &ConnectorRevisionRevocationMutationResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
         )
 }
 
@@ -117,6 +168,8 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let list_profiles_bus = Arc::clone(&bus);
     let get_profile_bus = Arc::clone(&bus);
     let list_revisions_bus = Arc::clone(&bus);
+    let get_revision_bus = Arc::clone(&bus);
+    let get_revocation_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
@@ -232,7 +285,7 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
         .get(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions/{revision_id}",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&get_revision_bus);
                 async move {
                     let request_id = request_id(&request)?;
                     match bus
@@ -261,6 +314,43 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                         Ok(revision) => {
                             BootResponse::json(&ConnectorRevisionResponse::from(revision))
                         }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions/{revision_id}/revocation",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_revocation_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetConnectorRevisionRevocation {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            environment_id: EnvironmentId::from_uuid(
+                                request.param_as::<Uuid>("environment_id")?,
+                            ),
+                            profile_id: ConnectorProfileId::from_uuid(
+                                request.param_as::<Uuid>("profile_id")?,
+                            ),
+                            revision_id: ConnectorRevisionId::from_uuid(
+                                request.param_as::<Uuid>("revision_id")?,
+                            ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
+                        })
+                        .await?
+                    {
+                        Ok(revocation) => BootResponse::json(
+                            &ConnectorRevisionRevocationResponse::from(revocation),
+                        ),
                         Err(error) => application_error_response(error, request_id),
                     }
                 }

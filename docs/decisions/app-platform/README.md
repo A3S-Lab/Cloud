@@ -61,6 +61,7 @@ AI application platform parity manifest.
 | [0054](0054-internal-connector-workflow-capability.md) | Advertise the exact Connector Workflow step as an internal catalog capability |
 | [0055](0055-ordinary-durable-connector-compensation.md) | Compose one Connector domain-result compensation path from ordinary durable Flow steps |
 | [0056](0056-terminal-connector-wait-projection.md) | Fence deferred Connector waits and projection across cancellation, deadline, and coordinator replacement |
+| [0057](0057-exact-connector-revision-revocation.md) | Serialize exact Connector revision revocation with provider dispatch admission |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

@@ -57,9 +57,11 @@ use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
     ConnectorResponseObjectStore, ConnectorsModule, CreateConnectorProfileHandler,
-    GetConnectorProfileHandler, GetConnectorRevisionHandler, IConnectorProfileRepository,
-    IConnectorResponseObjectPort, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
-    PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
+    GetConnectorProfileHandler, GetConnectorRevisionHandler, GetConnectorRevisionRevocationHandler,
+    IConnectorProfileRepository, IConnectorResponseObjectPort,
+    IConnectorRevisionRevocationRepository, ListConnectorProfilesHandler,
+    ListConnectorRevisionsHandler, PublicInternetConnectorEgressAuthorizer,
+    ReviseConnectorProfileHandler, RevokeConnectorRevisionHandler,
     WorkflowConnectorApplicationService,
 };
 use crate::modules::data::{
@@ -560,6 +562,8 @@ async fn build_api_worker_application(
     let mcp_profiles = adapters.assets.mcp_profiles;
     let secrets = adapters.secrets;
     let connector_profiles = adapters.connector_profiles;
+    let connector_execution_adapters = postgres_adapters.connector_execution();
+    let connector_revocations = connector_execution_adapters.revocations;
     let applications = adapters.applications;
     let application_sessions = adapters.application_sessions;
     let durable_cell_applications = adapters.durable_cell_applications;
@@ -570,7 +574,7 @@ async fn build_api_worker_application(
                 .subnamespace("connector-responses")
                 .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
         ));
-        let connector_attempts = postgres_adapters.connector_attempts();
+        let connector_attempts = connector_execution_adapters.attempts;
         let connector_materializer = ConnectorHttpRevisionMaterializer::new(
             Arc::clone(&secrets),
             Arc::clone(&key_encryption),
@@ -1620,6 +1624,7 @@ async fn build_api_worker_application(
                 alert_policies,
                 outbound_notifications,
                 connector_profiles,
+                connector_revocations,
                 applications,
                 application_sessions,
                 durable_cell_applications,
@@ -1812,6 +1817,7 @@ struct ManagementApplicationDependencies {
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
+    connector_revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
     applications: Arc<dyn IApplicationRepository>,
     application_sessions: Arc<dyn IApplicationSessionRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
@@ -1890,6 +1896,7 @@ fn build_management_application_with_health(
         alert_policies,
         outbound_notifications,
         connector_profiles,
+        connector_revocations,
         applications,
         application_sessions,
         durable_cell_applications,
@@ -1967,7 +1974,10 @@ fn build_management_application_with_health(
     let list_connector_profiles = Arc::clone(&connector_profiles);
     let get_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_revisions = Arc::clone(&connector_profiles);
-    let get_connector_revisions = connector_profiles;
+    let get_connector_revisions = Arc::clone(&connector_profiles);
+    let revoke_connector_revision_profiles = connector_profiles;
+    let revoke_connector_revisions = Arc::clone(&connector_revocations);
+    let get_connector_revision_revocations = connector_revocations;
     let workflow_definition_publications: Arc<dyn IWorkflowDefinitionPublicationPort> =
         Arc::new(WorkflowDefinitionPublicationService::new(
             Arc::clone(&projects),
@@ -2491,6 +2501,12 @@ fn build_management_application_with_health(
                     ReviseConnectorProfileHandler::new(
                         revise_connector_profiles,
                         revise_connector_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::connectors::RevokeConnectorRevision, _>(
+                    RevokeConnectorRevisionHandler::new(
+                        revoke_connector_revision_profiles,
+                        revoke_connector_revisions,
                     ),
                 )
                 .command_handler::<crate::modules::applications::CreateApplication, _>(
@@ -3137,6 +3153,12 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::connectors::GetConnectorRevision, _>(
                     GetConnectorRevisionHandler::new(get_connector_revisions),
                 )
+                .query_handler::<
+                    crate::modules::connectors::GetConnectorRevisionRevocation,
+                    _,
+                >(GetConnectorRevisionRevocationHandler::new(
+                    get_connector_revision_revocations,
+                ))
                 .query_handler::<crate::modules::applications::ListApplications, _>(
                     ListApplicationsHandler::new(list_applications),
                 )

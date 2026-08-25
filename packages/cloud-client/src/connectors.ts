@@ -1,4 +1,5 @@
 export const MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES = 64 * 1024;
+export const MAX_CONNECTOR_REVISION_REVOCATION_REASON_BYTES = 1024;
 export const DEFAULT_CONNECTOR_LIST_LIMIT = 50;
 export const MAX_CONNECTOR_LIST_LIMIT = 200;
 
@@ -44,6 +45,24 @@ export interface ConnectorProfileMutationResult {
   replayed: boolean;
 }
 
+export interface ConnectorRevisionRevocation {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  profileId: string;
+  revisionId: string;
+  revisionNumber: number;
+  definitionDigest: string;
+  reason: string;
+  revokedBy: string;
+  revokedAt: string;
+}
+
+export interface ConnectorRevisionRevocationMutationResult {
+  revocation: ConnectorRevisionRevocation;
+  replayed: boolean;
+}
+
 export interface CreateConnectorProfileInput {
   name: string;
   definitionAcl: string;
@@ -52,6 +71,10 @@ export interface CreateConnectorProfileInput {
 export interface ReviseConnectorProfileInput {
   expectedVersion: number;
   definitionAcl: string;
+}
+
+export interface RevokeConnectorRevisionInput {
+  reason: string;
 }
 
 export function validateConnectorProfileName(name: string): void {
@@ -79,6 +102,20 @@ export function validateConnectorDefinitionAcl(acl: string): void {
 export function validateConnectorExpectedVersion(expectedVersion: number): void {
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     throw new RangeError('expected Connector profile version must be a positive safe integer');
+  }
+}
+
+export function validateConnectorRevisionRevocationReason(reason: string): void {
+  const normalized = reason.trim();
+  const byteLength = new TextEncoder().encode(normalized).byteLength;
+  if (
+    byteLength < 1 ||
+    byteLength > MAX_CONNECTOR_REVISION_REVOCATION_REASON_BYTES ||
+    /\p{Cc}/u.test(normalized)
+  ) {
+    throw new RangeError(
+      `Connector revision revocation reason must contain between 1 and ${MAX_CONNECTOR_REVISION_REVOCATION_REASON_BYTES} control-free UTF-8 bytes`
+    );
   }
 }
 

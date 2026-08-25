@@ -137,6 +137,45 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
         1
     );
     assert!(revisions["post"]["responses"]["201"].is_object());
+    assert_eq!(
+        revisions["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/ConnectorRevisionListSuccess200"
+    );
+
+    let revocation = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions/{revision_id}/revocation"];
+    assert_eq!(revocation["get"]["tags"], json!(["Connectors"]));
+    assert_eq!(revocation["post"]["tags"], json!(["Connectors"]));
+    let revoke_schema = &revocation["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(revoke_schema["additionalProperties"], false);
+    assert_eq!(revoke_schema["required"], json!(["reason"]));
+    assert_eq!(
+        revoke_schema["properties"]["reason"]["maxLength"],
+        crate::modules::connectors::CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+    );
+    assert_eq!(
+        revoke_schema["properties"]["reason"]["x-a3s-max-utf8-bytes"],
+        crate::modules::connectors::CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+    );
+    assert_eq!(
+        revoke_schema["properties"]["reason"]["pattern"],
+        "^[^\\u0000-\\u001F\\u007F-\\u009F]+$"
+    );
+    assert_eq!(
+        revocation["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/ConnectorRevisionRevocationSuccess200"
+    );
+    assert_eq!(
+        revocation["post"]["responses"]["201"]["$ref"],
+        "#/components/responses/ConnectorRevisionRevocationMutationSuccess201"
+    );
+    assert!(revocation["post"]["responses"]["413"].is_object());
+    assert!(revocation["post"]["responses"]["415"].is_object());
+    let revocation_schema = &document["components"]["schemas"]["ConnectorRevisionRevocation"];
+    assert_eq!(revocation_schema["additionalProperties"], false);
+    assert_eq!(
+        revocation_schema["properties"]["definitionDigest"]["pattern"],
+        "^sha256:[0-9a-f]{64}$"
+    );
     Ok(())
 }
 

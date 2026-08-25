@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 153;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "153";
+const CLOUD_MIGRATION_COUNT: i64 = 154;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "154";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -587,7 +587,7 @@ async fn postgres_connector_application_is_authorized_and_materializes_exact_sec
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn postgres_connector_attempts_are_fenced_and_settle_evidence_atomically() {
+async fn postgres_connector_attempts_are_fenced_revocation_safe_and_settle_evidence_atomically() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
@@ -596,7 +596,7 @@ async fn postgres_connector_attempts_are_fenced_and_settle_evidence_atomically()
         connectors_support::exercise_connector_execution_evidence,
     )
     .await
-    .expect("PostgreSQL Connector attempt fencing and evidence settlement gate");
+    .expect("PostgreSQL Connector revocation, attempt fencing, and evidence settlement gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

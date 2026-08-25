@@ -1432,6 +1432,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/153_developer_pull_request_preview_policy_revisions.sql"
             )),
         ),
+        Migration::new(
+            "154",
+            "exact Connector revision revocation authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/154_connector_revision_revocations.sql"
+            )),
+        ),
     ]
 }
 
@@ -1458,6 +1466,10 @@ mod workflow_list_operator_payload_schema_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/artifact_build_candidate_projection_migration.rs"]
 mod artifact_build_candidate_projection_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/connector_revision_revocation_migration.rs"]
+mod connector_revision_revocation_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

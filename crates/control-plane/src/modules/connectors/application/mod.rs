@@ -6,6 +6,7 @@ mod queries;
 mod resource_access;
 mod response_object_reader;
 mod result;
+mod revision_revocation;
 mod secret_references;
 mod workflow_port;
 
@@ -31,6 +32,10 @@ pub use response_object_reader::{
     ConnectorResponseObjectContent, IConnectorResponseObjectPort, ReadConnectorResponseObject,
 };
 pub use result::ConnectorProfileMutationResult;
+pub use revision_revocation::{
+    ConnectorRevisionRevocationMutationResult, GetConnectorRevisionRevocation,
+    GetConnectorRevisionRevocationHandler, RevokeConnectorRevision, RevokeConnectorRevisionHandler,
+};
 pub use workflow_port::{
     IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptAuthority,
     WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,

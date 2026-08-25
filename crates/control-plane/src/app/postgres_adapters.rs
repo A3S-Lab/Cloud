@@ -13,7 +13,8 @@ use crate::modules::assets::{
 use crate::modules::audit::{IAuditRecordRepository, PostgresAuditRecordRepository};
 use crate::modules::connectors::{
     IConnectorExecutionAttemptRepository, IConnectorProfileRepository,
-    PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
+    IConnectorRevisionRevocationRepository, PostgresConnectorExecutionAttemptRepository,
+    PostgresConnectorProfileRepository,
 };
 use crate::modules::durable_cells::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
@@ -155,14 +156,27 @@ impl PostgresAdapterFactory {
         }
     }
 
-    pub(super) fn connector_attempts(&self) -> Arc<dyn IConnectorExecutionAttemptRepository> {
-        Arc::new(PostgresConnectorExecutionAttemptRepository::new(
-            self.executor.clone(),
-        ))
+    pub(super) fn connector_execution(&self) -> ConnectorExecutionPostgresAdapters {
+        ConnectorExecutionPostgresAdapters::new(self.executor.clone())
     }
 
     pub(super) fn outbox(&self) -> Arc<dyn IOutboxRepository> {
         Arc::new(PostgresOutboxRepository::new(self.executor.clone()))
+    }
+}
+
+pub(super) struct ConnectorExecutionPostgresAdapters {
+    pub(super) attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
+    pub(super) revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
+}
+
+impl ConnectorExecutionPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        let repository = Arc::new(PostgresConnectorExecutionAttemptRepository::new(executor));
+        Self {
+            attempts: repository.clone(),
+            revocations: repository,
+        }
     }
 }
 

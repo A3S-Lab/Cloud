@@ -1,5 +1,9 @@
-use crate::modules::connectors::application::ConnectorProfileMutationResult;
-use crate::modules::connectors::domain::{ConnectorProfile, ConnectorRecord, ConnectorRevision};
+use crate::modules::connectors::application::{
+    ConnectorProfileMutationResult, ConnectorRevisionRevocationMutationResult,
+};
+use crate::modules::connectors::domain::{
+    ConnectorProfile, ConnectorRecord, ConnectorRevision, ConnectorRevisionRevocation,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,6 +20,12 @@ pub struct CreateConnectorProfileRequest {
 pub struct ReviseConnectorProfileRequest {
     pub expected_version: u64,
     pub definition_acl: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeConnectorRevisionRequest {
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -92,6 +102,56 @@ impl From<ConnectorRevision> for ConnectorRevisionResponse {
             definition_digest: revision.definition.digest().as_str().to_owned(),
             created_by: revision.created_by.as_uuid(),
             created_at: revision.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRevisionRevocationResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub profile_id: Uuid,
+    pub revision_id: Uuid,
+    pub revision_number: u64,
+    pub definition_digest: String,
+    pub reason: String,
+    pub revoked_by: Uuid,
+    pub revoked_at: DateTime<Utc>,
+}
+
+impl From<ConnectorRevisionRevocation> for ConnectorRevisionRevocationResponse {
+    fn from(revocation: ConnectorRevisionRevocation) -> Self {
+        Self {
+            organization_id: revocation.organization_id.as_uuid(),
+            project_id: revocation.project_id.as_uuid(),
+            environment_id: revocation.environment_id.as_uuid(),
+            profile_id: revocation.profile_id.as_uuid(),
+            revision_id: revocation.revision_id.as_uuid(),
+            revision_number: revocation.revision_number,
+            definition_digest: revocation.definition_digest.to_string(),
+            reason: revocation.reason,
+            revoked_by: revocation.revoked_by.as_uuid(),
+            revoked_at: revocation.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRevisionRevocationMutationResponse {
+    pub revocation: ConnectorRevisionRevocationResponse,
+    pub replayed: bool,
+}
+
+impl From<ConnectorRevisionRevocationMutationResult>
+    for ConnectorRevisionRevocationMutationResponse
+{
+    fn from(result: ConnectorRevisionRevocationMutationResult) -> Self {
+        Self {
+            revocation: result.revocation.into(),
+            replayed: result.replayed,
         }
     }
 }

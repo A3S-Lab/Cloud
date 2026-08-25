@@ -2,14 +2,17 @@ use crate::modules::connectors::domain::{
     reservation_record, BeginConnectorExecutionDispatch, ConnectorExecutionAttemptCursor,
     ConnectorExecutionAttemptRecord, ConnectorExecutionAttemptState, ConnectorExecutionEvidence,
     ConnectorExecutionEvidenceCursor, ConnectorExecutionOutcome, ConnectorExecutionReservation,
+    ConnectorRevisionRevocation, ConnectorRevisionRevocationReference,
     IConnectorExecutionAttemptRepository, IConnectorExecutionEvidenceRepository,
-    ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
+    IConnectorRevisionRevocationRepository, ReserveConnectorExecutionAttempt,
+    RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
     MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
 };
 use crate::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotentWrite, OrganizationId,
-    ProjectId, RepositoryError,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    OrganizationId, ProjectId, RepositoryError,
 };
+use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -29,11 +32,31 @@ type AttemptKey = (
 #[derive(Default)]
 pub struct InMemoryConnectorExecutionRepository {
     attempts: RwLock<BTreeMap<AttemptKey, ConnectorExecutionAttemptRecord>>,
+    revision_authority: RwLock<RevisionAuthorityState>,
+}
+
+type RevisionKey = (
+    OrganizationId,
+    ProjectId,
+    EnvironmentId,
+    ConnectorProfileId,
+    ConnectorRevisionId,
+);
+
+#[derive(Default)]
+struct RevisionAuthorityState {
+    revocations: BTreeMap<RevisionKey, ConnectorRevisionRevocation>,
+    idempotency: BTreeMap<(String, String), (String, ConnectorRevisionRevocationReference)>,
+    outbox: Vec<DomainEventEnvelope>,
 }
 
 impl InMemoryConnectorExecutionRepository {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub async fn revocation_outbox_events(&self) -> Vec<DomainEventEnvelope> {
+        self.revision_authority.read().await.outbox.clone()
     }
 }
 
@@ -120,6 +143,19 @@ impl IConnectorExecutionAttemptRepository for InMemoryConnectorExecutionReposito
     ) -> Result<ConnectorExecutionAttemptRecord, RepositoryError> {
         request.validate().map_err(RepositoryError::Conflict)?;
         let key = binding_key(request.fence.binding());
+        // Hold the revocation read guard through the attempt transition. A concurrent
+        // revocation therefore linearizes either before this dispatch and rejects it,
+        // or after the durable dispatch intent has been committed.
+        let revision_authority = self.revision_authority.read().await;
+        if revision_authority.revocations.contains_key(&revision_key(
+            request.fence.binding().organization_id(),
+            request.fence.binding().project_id(),
+            request.fence.binding().environment_id(),
+            request.fence.binding().profile_id(),
+            request.fence.binding().revision_id(),
+        )) {
+            return Err(revision_revoked());
+        }
         let mut stored = self.attempts.write().await;
         let current = stored.get(&key).cloned().ok_or(RepositoryError::NotFound)?;
         if current.attempt.state() != ConnectorExecutionAttemptState::Reserved
@@ -143,6 +179,9 @@ impl IConnectorExecutionAttemptRepository for InMemoryConnectorExecutionReposito
         let record = ConnectorExecutionAttemptRecord::new(attempt, None)
             .map_err(RepositoryError::Storage)?;
         stored.insert(key, record.clone());
+        // Keep the read guard alive until after the dispatch intent is durable in
+        // this store. This mirrors the exact revision row lock used by PostgreSQL.
+        drop(revision_authority);
         Ok(record)
     }
 
@@ -299,6 +338,80 @@ impl IConnectorExecutionAttemptRepository for InMemoryConnectorExecutionReposito
 }
 
 #[async_trait]
+impl IConnectorRevisionRevocationRepository for InMemoryConnectorExecutionRepository {
+    async fn replay_revocation_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ConnectorRevisionRevocation>, RepositoryError> {
+        let state = self.revision_authority.read().await;
+        replay_revocation(&state, idempotency)
+    }
+
+    async fn revoke_revision(
+        &self,
+        write: RevokeConnectorRevisionWrite,
+    ) -> Result<IdempotentWrite<ConnectorRevisionRevocation>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Storage)?;
+        let mut state = self.revision_authority.write().await;
+        if let Some(revocation) = replay_revocation(&state, &write.idempotency)? {
+            return Ok(IdempotentWrite {
+                value: revocation,
+                replayed: true,
+            });
+        }
+        let key = revision_key(
+            write.revocation.organization_id,
+            write.revocation.project_id,
+            write.revocation.environment_id,
+            write.revocation.profile_id,
+            write.revocation.revision_id,
+        );
+        if state.revocations.contains_key(&key) {
+            return Err(RepositoryError::Conflict(
+                "Connector revision is already revoked".into(),
+            ));
+        }
+        let reference = ConnectorRevisionRevocationReference::from(&write.revocation);
+        state.revocations.insert(key, write.revocation.clone());
+        state.idempotency.insert(
+            (
+                write.idempotency.storage_key().0.to_owned(),
+                write.idempotency.storage_key().1.to_owned(),
+            ),
+            (write.idempotency.request_digest.clone(), reference),
+        );
+        state.outbox.push(write.event);
+        Ok(IdempotentWrite {
+            value: write.revocation,
+            replayed: false,
+        })
+    }
+
+    async fn find_revision_revocation(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        profile_id: ConnectorProfileId,
+        revision_id: ConnectorRevisionId,
+    ) -> Result<Option<ConnectorRevisionRevocation>, RepositoryError> {
+        Ok(self
+            .revision_authority
+            .read()
+            .await
+            .revocations
+            .get(&revision_key(
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id,
+                revision_id,
+            ))
+            .cloned())
+    }
+}
+
+#[async_trait]
 impl IConnectorExecutionEvidenceRepository for InMemoryConnectorExecutionRepository {
     async fn find(
         &self,
@@ -382,6 +495,56 @@ fn binding_key(
     )
 }
 
+fn revision_key(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    profile_id: ConnectorProfileId,
+    revision_id: ConnectorRevisionId,
+) -> RevisionKey {
+    (
+        organization_id,
+        project_id,
+        environment_id,
+        profile_id,
+        revision_id,
+    )
+}
+
+fn replay_revocation(
+    state: &RevisionAuthorityState,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<ConnectorRevisionRevocation>, RepositoryError> {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    let Some((digest, reference)) = state.idempotency.get(&key) else {
+        return Ok(None);
+    };
+    if digest != &idempotency.request_digest {
+        return Err(RepositoryError::IdempotencyConflict);
+    }
+    state
+        .revocations
+        .get(&revision_key(
+            reference.organization_id,
+            reference.project_id,
+            reference.environment_id,
+            reference.profile_id,
+            reference.revision_id,
+        ))
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| {
+            RepositoryError::Storage("Connector revocation replay fact is missing".into())
+        })
+}
+
+fn revision_revoked() -> RepositoryError {
+    RepositoryError::Forbidden("Connector revision was revoked before dispatch".into())
+}
+
 fn request_conflict() -> RepositoryError {
     RepositoryError::Conflict(
         "Connector execution attempt identity is already bound to another request".into(),
@@ -406,7 +569,8 @@ mod tests {
         ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpAuthentication,
         ConnectorHttpDefinition, ConnectorHttpDefinitionSpec, ConnectorHttpDestination,
         ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorRevision,
-        ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
+        ConnectorRevisionRevocation, ConnectorRevisionRevoked, ReserveConnectorExecutionAttempt,
+        RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
     };
     use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId};
     use chrono::{DateTime, Duration, Utc};
@@ -461,6 +625,34 @@ mod tests {
             now + Duration::seconds(30),
         )
         .expect("reservation")
+    }
+
+    fn revocation_write(
+        revision: &ConnectorRevision,
+        reason: &str,
+        now: DateTime<Utc>,
+    ) -> RevokeConnectorRevisionWrite {
+        let actor_principal_id = PrincipalId::new();
+        let request_id = Uuid::now_v7();
+        let revocation = ConnectorRevisionRevocation::new(
+            revision,
+            reason,
+            actor_principal_id,
+            now.max(revision.created_at),
+        )
+        .expect("revocation");
+        RevokeConnectorRevisionWrite {
+            event: ConnectorRevisionRevoked::envelope(&revocation, request_id).expect("event"),
+            actor_principal_id,
+            request_id,
+            idempotency: IdempotencyRequest::new(
+                "connector-revision-revocation-test",
+                reason,
+                reason.as_bytes(),
+            )
+            .expect("idempotency"),
+            revocation,
+        }
     }
 
     #[tokio::test]
@@ -610,5 +802,82 @@ mod tests {
             .expect("find evidence"),
             Some(evidence)
         );
+    }
+
+    #[tokio::test]
+    async fn revocation_fences_new_dispatch_and_terminal_replay_remains_exact() {
+        let repository = InMemoryConnectorExecutionRepository::new();
+        let now = canonical_timestamp(Utc::now());
+        let (revision, request) = exact(now);
+        let fence = match repository
+            .reserve(reservation(&revision, &request, Uuid::now_v7(), now))
+            .await
+            .expect("reserve")
+        {
+            ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+            other => panic!("unexpected reservation: {other:?}"),
+        };
+        let write = revocation_write(
+            &revision,
+            "destination credential was compromised",
+            now + Duration::milliseconds(1),
+        );
+        assert!(
+            !repository
+                .revoke_revision(write.clone())
+                .await
+                .expect("revoke")
+                .replayed
+        );
+        assert!(
+            repository
+                .revoke_revision(write)
+                .await
+                .expect("revoke replay")
+                .replayed
+        );
+        assert!(matches!(
+            repository
+                .begin_dispatch(
+                    BeginConnectorExecutionDispatch::new(
+                        fence.clone(),
+                        now + Duration::milliseconds(2),
+                        now + Duration::seconds(5),
+                    )
+                    .expect("dispatch"),
+                )
+                .await,
+            Err(RepositoryError::Forbidden(_))
+        ));
+
+        let completed_at = now + Duration::milliseconds(3);
+        let evidence = ConnectorExecutionEvidence::rejected(
+            &revision,
+            &request,
+            None,
+            fence.reserved_at(),
+            completed_at,
+        )
+        .expect("rejected evidence");
+        repository
+            .settle(
+                SettleConnectorExecutionAttempt::new(fence, evidence.clone()).expect("settlement"),
+            )
+            .await
+            .expect("settle rejected attempt");
+        assert!(matches!(
+            repository
+                .reserve(reservation(
+                    &revision,
+                    &request,
+                    Uuid::now_v7(),
+                    now + Duration::seconds(1),
+                ))
+                .await
+                .expect("terminal replay"),
+            ConnectorExecutionReservation::Completed(record)
+                if record.evidence == Some(evidence)
+        ));
+        assert_eq!(repository.revocation_outbox_events().await.len(), 1);
     }
 }

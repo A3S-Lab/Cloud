@@ -15,7 +15,9 @@ use crate::modules::audit::{
     AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecord,
     IAuditExportSigner, InMemoryAuditRecordRepository, VerifiedAuditExportSignature,
 };
-use crate::modules::connectors::InMemoryConnectorProfileRepository;
+use crate::modules::connectors::{
+    InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
+};
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
@@ -1928,6 +1930,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let alert_policies: Arc<dyn INotificationAlertPolicyRepository> =
         notification_repository.clone();
     let outbound_notifications: Arc<dyn IOutboundNotificationRepository> = notification_repository;
+    let connector_revocations = Arc::new(InMemoryConnectorExecutionRepository::new());
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -1997,6 +2000,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             alert_policies,
             outbound_notifications,
             connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
+            connector_revocations,
             applications: Arc::new(
                 crate::modules::applications::InMemoryApplicationRepository::new(),
             ),

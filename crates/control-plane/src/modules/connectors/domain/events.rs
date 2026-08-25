@@ -1,4 +1,7 @@
-use super::{ConnectorProfile, ConnectorRevision};
+use super::{ConnectorProfile, ConnectorRevision, ConnectorRevisionRevocation};
+use crate::modules::shared_kernel::domain::{
+    ConnectorRevisionId, EnvironmentId, PrincipalId, ProjectId,
+};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,6 +19,66 @@ pub struct ConnectorRevisionPublished {
     pub definition_schema: String,
     pub definition_digest: String,
     pub secret_binding_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectorRevisionRevoked {
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub profile_id: crate::modules::shared_kernel::domain::ConnectorProfileId,
+    pub revision_id: ConnectorRevisionId,
+    pub revision_number: u64,
+    pub definition_digest: String,
+    pub reason: String,
+    pub revoked_by: PrincipalId,
+}
+
+impl ConnectorRevisionRevoked {
+    pub fn envelope(
+        revocation: &ConnectorRevisionRevocation,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        let payload = Self::from(revocation);
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: "connector.revision.revoked".into(),
+            schema_version: 1,
+            organization_id: revocation.organization_id.as_uuid(),
+            aggregate_id: revocation.revision_id.as_uuid(),
+            aggregate_version: 1,
+            occurred_at: revocation.revoked_at,
+            correlation_id,
+            causation_id: None,
+            payload: serde_json::to_value(payload)?,
+        })
+    }
+
+    pub fn matches(&self, revocation: &ConnectorRevisionRevocation) -> bool {
+        self.project_id == revocation.project_id
+            && self.environment_id == revocation.environment_id
+            && self.profile_id == revocation.profile_id
+            && self.revision_id == revocation.revision_id
+            && self.revision_number == revocation.revision_number
+            && self.definition_digest == revocation.definition_digest.as_str()
+            && self.reason == revocation.reason
+            && self.revoked_by == revocation.revoked_by
+    }
+}
+
+impl From<&ConnectorRevisionRevocation> for ConnectorRevisionRevoked {
+    fn from(revocation: &ConnectorRevisionRevocation) -> Self {
+        Self {
+            project_id: revocation.project_id,
+            environment_id: revocation.environment_id,
+            profile_id: revocation.profile_id,
+            revision_id: revocation.revision_id,
+            revision_number: revocation.revision_number,
+            definition_digest: revocation.definition_digest.to_string(),
+            reason: revocation.reason.clone(),
+            revoked_by: revocation.revoked_by,
+        }
+    }
 }
 
 impl ConnectorRevisionPublished {

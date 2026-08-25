@@ -130,11 +130,13 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.64.0`. The contract now documents every
-existing Workflow result type as a closed operation-specific OpenAPI schema,
-including Ontology aggregates/revisions/diffs, HumanTask lifecycle and Form
-interaction payloads, Goal, Plan, node catalog, run, output,
-variable-inspection, diagnostics, and history. It enumerates
+The client targets REST contract `1.65.0`. It adds exact Connector revision
+revocation reads and idempotent writes, and the contract documents every
+Connector profile/revision result through closed operation-specific schemas.
+Contract `1.64.0` already closed every Workflow result type, including Ontology
+aggregates/revisions/diffs, HumanTask lifecycle and Form interaction payloads,
+Goal, Plan, node catalog, run, output, variable-inspection, diagnostics, and
+history. The client also enumerates
 `cloud.workflow.configuration.variable-aggregate.v1` and
 `cloud.workflow.configuration.list-operator.v1` in returned Workflow payloads.
 Publication still transports those configurations as bounded ACL text; Cloud
@@ -317,7 +319,11 @@ answer.
 `listConnectorProfiles`, `getConnectorProfile`, `createConnectorProfile`,
 `reviseConnectorProfile`, `listConnectorRevisions`, and
 `getConnectorRevision` expose the environment-scoped immutable Connector
-profile lifecycle added by REST contract `1.36.0`. Writes transport one
+profile lifecycle added by REST contract `1.36.0`.
+`revokeConnectorRevision` and `getConnectorRevisionRevocation` add the exact
+revision fence in contract `1.65.0`; the client validates and canonicalizes its
+bounded reason, while Cloud serializes the immutable fact with dispatch
+admission. Profile writes transport one
 bounded canonical A3S ACL in a strict JSON envelope; revise also carries one
 positive expected aggregate version. Lists default to 50 and accept at most
 200 records. Cloud remains authoritative for ACL parsing, exact Secret-version

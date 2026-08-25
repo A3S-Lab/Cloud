@@ -297,18 +297,33 @@ impl ConnectorExecutionApplicationService {
             ));
         }
         let outcome_deadline_at = add_std(dispatch_started_at, outcome_window)?;
-        let dispatch = self
-            .attempts
-            .begin_dispatch(
-                BeginConnectorExecutionDispatch::new(
-                    fence.clone(),
-                    dispatch_started_at,
-                    outcome_deadline_at,
+        let dispatch_request = BeginConnectorExecutionDispatch::new(
+            fence.clone(),
+            dispatch_started_at,
+            outcome_deadline_at,
+        )
+        .map_err(ApplicationError::Internal)?;
+        let dispatch = match self.attempts.begin_dispatch(dispatch_request).await {
+            Ok(dispatch) => dispatch,
+            Err(RepositoryError::Forbidden(_)) => {
+                let completed_at = canonical_timestamp(Utc::now()).max(fence.reserved_at());
+                if completed_at > fence.lease_expires_at() {
+                    return Ok(ConnectorExecutionAttemptResult::ReservationExpired {
+                        lease_expires_at: fence.lease_expires_at(),
+                    });
+                }
+                let evidence = ConnectorExecutionEvidence::rejected(
+                    &revision,
+                    &command.request,
+                    None,
+                    fence.reserved_at(),
+                    completed_at,
                 )
-                .map_err(ApplicationError::Internal)?,
-            )
-            .await
-            .map_err(map_attempt_repository_error)?;
+                .map_err(ApplicationError::Internal)?;
+                return self.settle_preflight(fence, evidence).await;
+            }
+            Err(error) => return Err(map_attempt_repository_error(error)),
+        };
 
         let (evidence, receipt, response_object) = match prepared.dispatch(&command.request).await {
             Ok(receipt) => {
@@ -586,7 +601,9 @@ mod tests {
         ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
         ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile,
         ConnectorRecord, ConnectorResponseObjectError, ConnectorRevision,
-        ConnectorRevisionPublished, CreateConnectorProfileWrite, IPreparedConnectorExecution,
+        ConnectorRevisionPublished, ConnectorRevisionRevocation, ConnectorRevisionRevoked,
+        CreateConnectorProfileWrite, IConnectorRevisionRevocationRepository,
+        IPreparedConnectorExecution, RevokeConnectorRevisionWrite,
     };
     use crate::modules::connectors::infrastructure::{
         ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
@@ -1028,6 +1045,64 @@ mod tests {
                 receipt: None,
                 ..
             } if evidence.outcome() == ConnectorExecutionOutcome::Retryable
+        ));
+        assert_eq!(fixture.prepares.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn revoked_revision_settles_rejected_without_calling_provider() {
+        let fixture = fixture().await;
+        let actor_principal_id = PrincipalId::new();
+        let request_id = Uuid::now_v7();
+        let revocation = ConnectorRevisionRevocation::new(
+            &fixture.revision,
+            "destination credential was compromised",
+            actor_principal_id,
+            canonical_timestamp(Utc::now()).max(fixture.revision.created_at),
+        )
+        .expect("revocation");
+        fixture
+            .attempts
+            .revoke_revision(RevokeConnectorRevisionWrite {
+                event: ConnectorRevisionRevoked::envelope(&revocation, request_id).expect("event"),
+                actor_principal_id,
+                request_id,
+                idempotency: IdempotencyRequest::new(
+                    "connector-execution-service-revocation-test",
+                    "revoke",
+                    revocation.definition_digest.as_str().as_bytes(),
+                )
+                .expect("idempotency"),
+                revocation,
+            })
+            .await
+            .expect("revoke revision");
+        let service = ConnectorExecutionApplicationService::new(
+            fixture.profiles.clone(),
+            fixture.attempts.clone(),
+            preparation(&fixture, PreparedOutcome::Accepted),
+            ConnectorExecutionServiceOptions::default(),
+        )
+        .expect("service");
+        let command = command(&fixture.revision, canonical_timestamp(Utc::now()));
+        assert!(matches!(
+            service.execute(command.clone()).await.expect("execute"),
+            ConnectorExecutionAttemptResult::Completed {
+                evidence,
+                receipt: None,
+                replayed: false,
+                ..
+            } if evidence.outcome() == ConnectorExecutionOutcome::Rejected
+        ));
+        assert!(matches!(
+            service.execute(command).await.expect("replay"),
+            ConnectorExecutionAttemptResult::Completed {
+                evidence,
+                receipt: None,
+                replayed: true,
+                ..
+            } if evidence.outcome() == ConnectorExecutionOutcome::Rejected
         ));
         assert_eq!(fixture.prepares.load(Ordering::SeqCst), 1);
         assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 0);

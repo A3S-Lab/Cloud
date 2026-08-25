@@ -189,6 +189,89 @@ async fn connector_profile_api_is_acl_native_scoped_revisioned_and_replay_safe()
     assert_eq!(initial.status(), 200);
     assert_eq!(response_json(&initial)?["data"]["revisionNumber"], 1);
 
+    let revocation_path = format!("{initial_revision_path}/revocation");
+    assert_eq!(
+        app.call(get_as(&revocation_path, CONNECTOR_READ_TOKEN))
+            .await?
+            .status(),
+        404
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &revocation_path,
+            "connector-revoke-denied",
+            json!({"reason": "Destination was compromised"}),
+            CONNECTOR_READ_TOKEN,
+        ))
+        .await?
+        .status(),
+        403
+    );
+    let revoked = app
+        .call(post_json_as(
+            &revocation_path,
+            "connector-revoke",
+            json!({"reason": "Destination was compromised"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?;
+    let revoked_status = revoked.status();
+    let revoked = response_json(&revoked)?;
+    assert_eq!(
+        revoked_status, 201,
+        "unexpected revocation response: {revoked}"
+    );
+    assert_eq!(revoked["data"]["replayed"], false);
+    assert_eq!(
+        revoked["data"]["revocation"]["revisionId"],
+        initial_revision_id
+    );
+    assert_eq!(
+        revoked["data"]["revocation"]["reason"],
+        "Destination was compromised"
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &revocation_path,
+            "connector-revoke",
+            json!({"reason": "Destination was compromised"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?
+        .status(),
+        200
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &revocation_path,
+            "connector-revoke",
+            json!({"reason": "Changed reason"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &revocation_path,
+            "connector-revoke-again",
+            json!({"reason": "Destination was compromised"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+    let loaded_revocation = app
+        .call(get_as(&revocation_path, CONNECTOR_READ_TOKEN))
+        .await?;
+    assert_eq!(loaded_revocation.status(), 200);
+    assert_eq!(
+        response_json(&loaded_revocation)?["data"]["revisionId"],
+        initial_revision_id
+    );
+
     let foreign_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{other_environment}/connector-profiles/{profile_id}"
     );

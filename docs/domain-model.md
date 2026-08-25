@@ -1366,6 +1366,7 @@ Primary aggregates and immutable records:
 - `AutomationDefinition` and `AutomationRevision`
 - `AutomationInvocationReceipt`
 - `ConnectorProfile` and `ConnectorRevision`
+- `ConnectorRevisionRevocation`
 - `ConnectorExecutionEvidence`
 
 The implemented `AUT0.5-C2` foundation makes `ConnectorProfile` an
@@ -1470,6 +1471,18 @@ provider outcome is known but settlement is uncertain, it returns only a
 settlement command; full execution replay observes the durable dispatch and
 cannot call the provider again. Flow or the owning durable A3S Event consumer
 still owns retry, backoff, cancellation, and acknowledgement.
+
+Component-only `AUT0.5-C12` adds a separate immutable revocation fact for one
+exact Connector revision; it never mutates the revision or copies Secret
+lifecycle state. Migration `154` binds the fact to the exact tenant,
+environment, profile, revision number, revision ID, and definition digest and
+commits its idempotency, audit, and Outbox evidence atomically. The revocation
+transaction and C6 dispatch admission serialize on the same exact revision row.
+If dispatch wins, that attempt remains `dispatching` and retains the existing
+in-flight/indeterminate recovery semantics. If revocation wins, the reserved
+attempt cannot cross the provider boundary and is settled as immutable
+body-free `Rejected` evidence. Existing terminal evidence remains replayable.
+The fact does not revoke a Secret or cancel an already-started provider effect.
 
 The component-only `AUT0.5-C8` Workflow adapter is a Connectors-owned
 application port over that same C6 service. Its request binds one exact

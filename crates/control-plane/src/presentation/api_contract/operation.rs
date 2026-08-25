@@ -12,8 +12,8 @@ use crate::modules::audit::{
     DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
 };
 use crate::modules::connectors::{
-    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
-    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::durable_cells::domain::{
@@ -841,7 +841,23 @@ fn describe_request_body(
             json!({"schema": durable_cell_request_schema(path)}),
         );
     } else if is_connector_profile_mutation_path(path) {
-        let schema = if is_connector_revision_collection_path(path) {
+        let schema = if is_connector_revision_revocation_path(path) {
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["reason"],
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+                        "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+                        "x-a3s-max-utf8-bytes":
+                            CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+                    }
+                }
+            })
+        } else if is_connector_revision_collection_path(path) {
             json!({
                 "type": "object",
                 "additionalProperties": false,
@@ -851,7 +867,9 @@ fn describe_request_body(
                     "definitionAcl": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES,
+                        "x-a3s-max-canonical-bytes":
+                            CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
                     }
                 }
             })
@@ -865,7 +883,9 @@ fn describe_request_body(
                     "definitionAcl": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES,
+                        "x-a3s-max-canonical-bytes":
+                            CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
                     }
                 }
             })
@@ -1141,6 +1161,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             component
         } else if let Some(component) = workflow_success_component(method, path, status) {
             component
+        } else if let Some(component) = connector_success_component(method, path, status) {
+            component
         } else if let Some(component) = asset_git_success_component(path) {
             component.to_owned()
         } else if path.ends_with("/stream") {
@@ -1163,6 +1185,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_mcp_route_policy_mutation_path(path)
                 || is_application_request_body_path(path)
                 || is_durable_cell_mutation_path(path)
+                || is_connector_profile_mutation_path(path)
                 || is_recipient_contact_mutation_path(path)
                 || is_notification_alert_policy_collection_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
@@ -1594,7 +1617,9 @@ fn notification_outbound_subscription_success_component(
 }
 
 fn is_connector_profile_mutation_path(path: &str) -> bool {
-    is_connector_profile_collection_path(path) || is_connector_revision_collection_path(path)
+    is_connector_profile_collection_path(path)
+        || is_connector_revision_collection_path(path)
+        || is_connector_revision_revocation_path(path)
 }
 
 fn is_connector_profile_collection_path(path: &str) -> bool {
@@ -1603,6 +1628,43 @@ fn is_connector_profile_collection_path(path: &str) -> bool {
 
 fn is_connector_revision_collection_path(path: &str) -> bool {
     path.contains("/connector-profiles/{profile_id}/") && path.ends_with("/revisions")
+}
+
+fn is_connector_revision_item_path(path: &str) -> bool {
+    path.contains("/connector-profiles/{profile_id}/revisions/{revision_id}")
+        && path.ends_with("/{revision_id}")
+}
+
+fn is_connector_revision_revocation_path(path: &str) -> bool {
+    path.ends_with("/connector-profiles/{profile_id}/revisions/{revision_id}/revocation")
+}
+
+fn is_connector_profile_item_path(path: &str) -> bool {
+    path.ends_with("/connector-profiles/{profile_id}")
+}
+
+fn connector_success_component(method: &str, path: &str, status: u16) -> Option<String> {
+    if method == "get" && is_connector_profile_collection_path(path) {
+        Some("ConnectorProfileListSuccess200".into())
+    } else if method == "post" && is_connector_profile_collection_path(path) {
+        Some(format!("ConnectorProfileMutationSuccess{status}"))
+    } else if method == "get" && is_connector_profile_item_path(path) {
+        Some("ConnectorProfileRecordSuccess200".into())
+    } else if method == "get" && is_connector_revision_collection_path(path) {
+        Some("ConnectorRevisionListSuccess200".into())
+    } else if method == "post" && is_connector_revision_collection_path(path) {
+        Some(format!("ConnectorProfileMutationSuccess{status}"))
+    } else if method == "get" && is_connector_revision_item_path(path) {
+        Some("ConnectorRevisionSuccess200".into())
+    } else if method == "get" && is_connector_revision_revocation_path(path) {
+        Some("ConnectorRevisionRevocationSuccess200".into())
+    } else if method == "post" && is_connector_revision_revocation_path(path) {
+        Some(format!(
+            "ConnectorRevisionRevocationMutationSuccess{status}"
+        ))
+    } else {
+        None
+    }
 }
 
 fn is_application_mutation_path(path: &str) -> bool {
