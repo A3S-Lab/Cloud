@@ -726,7 +726,9 @@ HumanDecision, finite Execution, and Connector steps; Subworkflow requires its
 immutable descriptor/composite-region authority. Descriptor-owned `admission`
 metadata cannot assert that an owning application port exists: only the
 currently composed Workflow-local, composite, finite Execution, Connector, and
-exact Application variable/Answer paths are accepted. Unwired Agent, MCP,
+exact Application variable/Answer paths are accepted. Descriptor-bearing
+finite Execution requires the exact `executions.finite` identity and semantic
+profile; `execution.code` cannot alias that port. Unwired Agent, MCP,
 model, Tool, and Memory steps fail before persistence with or without caller
 descriptors. Exact Applications-generated presets retain deferred composition
 semantics without claiming runtime availability. Restore remains structurally

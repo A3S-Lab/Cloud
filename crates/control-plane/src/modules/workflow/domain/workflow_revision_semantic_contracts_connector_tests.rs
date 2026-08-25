@@ -1,8 +1,8 @@
 use super::*;
 use crate::modules::workflow::domain::{
-    CapabilityOwner, CapabilityReference, WorkflowStepDescriptorAdmission,
+    CapabilityOwner, CapabilityReference, CapabilityType, WorkflowStepDescriptorAdmission,
     WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind,
-    WorkflowStepPresentationSpec,
+    WorkflowStepPresentationSpec, WorkflowStepRetryClassification,
 };
 use uuid::Uuid;
 

@@ -14,7 +14,10 @@ sufficient. Every bound descriptor must also resolve to a dispatch class
 implemented by the current Cloud runtime: Workflow-local steps, composite
 regions, finite Execution, Connector Service, or the exact Application variable
 and Answer ports. Agent, MCP, model, Tool, Memory, and any other unwired
-owning-context descriptor cannot self-declare availability. Exact
+owning-context descriptor cannot self-declare availability. The Executions
+port admits only the exact `executions.finite` descriptor identity and semantic
+profile; `execution.code` remains a separate unavailable capability rather than
+an alias for a generic finite OCI task. Exact
 Applications-generated presets remain deferred internal composition evidence,
 not a runtime availability claim. Restore remains structural so historic
 revisions, Plans, Goals, and persisted Run histories stay readable. Every new

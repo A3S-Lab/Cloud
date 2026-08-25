@@ -439,7 +439,10 @@ creating their own control planes:
     references, and explicitly reports truncation. It stores no diagnostic,
     metric, evidence body, or second history. User-authored publication also
     checks both legacy graphs and every admitted descriptor against the closed
-    set of Cloud runtime dispatch paths. Semantic-free Agent, MCP, model, Tool, Memory, and
+    set of Cloud runtime dispatch paths. Descriptor-bearing Execution steps
+    must use the exact `executions.finite` identity and semantic profile;
+    `execution.code` and caller-named aliases remain fenced until their owning
+    contracts land. Semantic-free Agent, MCP, model, Tool, Memory, and
     Subworkflow steps are rejected; caller-supplied descriptors for the first
     five cannot self-declare availability before their owning ports land. Exact
     Applications-generated presets remain deferred internal composition

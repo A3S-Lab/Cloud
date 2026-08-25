@@ -517,6 +517,11 @@ Webhook Trigger) and does not count the category header as a separate node.
 | Answer | `output` / `application.answer` | `APP0.2` plus `W0.3` ordered stream semantics |
 | Output | `output` / `workflow.output` | `W0.3` reachable-sink aggregation correction |
 
+The existing generic finite-task adapter admits only the exact
+`executions.finite` identity and semantic profile. It is not an implementation
+alias for `execution.code`; Code remains gated by its own immutable contract,
+provider lifecycle, and retained recovery evidence.
+
 The internal Variable Aggregator uses the versioned
 `cloud.workflow.configuration.variable-aggregate.v1` ACL payload. Publication
 requires the exact Workflow-owned descriptor, bounded concrete groups,

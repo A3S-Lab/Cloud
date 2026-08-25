@@ -4781,9 +4781,11 @@ map to a dispatch path wired into the current Cloud runtime. Semantic-free
 revisions admit Workflow-local, HumanDecision, finite Execution, and Connector
 steps only; Subworkflow requires immutable descriptor/composite-region
 authority. Descriptor admission metadata remains necessary but not sufficient,
-so structurally valid caller-provided Agent, MCP, model, Tool, and Memory steps
-fail before persistence instead of reaching the unsupported local-executor
-fallback. Exact Applications-generated presets retain their deferred internal
+so descriptor-bearing Execution steps require the exact `executions.finite`
+identity and semantic profile, while `execution.code` and caller-named aliases
+remain fenced. Structurally valid caller-provided Agent, MCP, model, Tool, and
+Memory steps fail before persistence instead of reaching the unsupported
+local-executor fallback. Exact Applications-generated presets retain their deferred internal
 composition contract without claiming provider availability. Restore
 deliberately keeps the older structural rule so immutable historic revisions,
 Plans, Goals, and persisted Run histories remain readable. New Goal/Plan and

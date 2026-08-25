@@ -149,9 +149,12 @@ User-authored publication additionally proves that every graph step has a
 current Cloud runtime dispatch path. Descriptor-bearing revisions validate each
 bound descriptor; semantic-free revisions admit only Workflow-local,
 HumanDecision, finite Execution, and Connector Service steps. Caller-provided
-admission metadata cannot enable unwired Agent, MCP, model, Tool, Memory, or
-other owning-context ports, and Subworkflow requires descriptor/composite-region
-authority. Exact Application variable/Answer ports and semantic composite
+admission metadata cannot alias the finite task port to `execution.code` or
+another Executions profile: descriptor-bearing finite tasks require the exact
+`executions.finite` identity and semantic profile. It also cannot enable
+unwired Agent, MCP, model, Tool, Memory, or other owning-context ports, and
+Subworkflow requires descriptor/composite-region authority. Exact Application
+variable/Answer ports and semantic composite
 regions remain admitted. Exact Applications-generated presets retain their
 deferred internal composition contract without claiming runtime availability.
 Historic restored revisions, Plans, Goals, and persisted Run histories retain
