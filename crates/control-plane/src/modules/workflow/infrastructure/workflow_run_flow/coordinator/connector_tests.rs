@@ -59,9 +59,9 @@ impl IConnectorResponseObjectPort for FakeConnectorResponses {
     }
 }
 
-struct FakeConnectorPort {
-    requests: Mutex<Vec<WorkflowConnectorAttemptRequest>>,
-    calls: AtomicUsize,
+pub(super) struct FakeConnectorPort {
+    pub(super) requests: Mutex<Vec<WorkflowConnectorAttemptRequest>>,
+    pub(super) calls: AtomicUsize,
     mode: FakeConnectorMode,
     retry_not_before: DateTime<Utc>,
 }
@@ -83,7 +83,7 @@ impl FakeConnectorPort {
         }
     }
 
-    fn deferred_once(retry_not_before: DateTime<Utc>) -> Self {
+    pub(super) fn deferred_once(retry_not_before: DateTime<Utc>) -> Self {
         Self {
             mode: FakeConnectorMode::DeferredOnce,
             ..Self::accepted(retry_not_before)
@@ -382,7 +382,7 @@ async fn connector_projection_rejects_payload_and_creation_history_drift() {
     assert!(super::super::project_workflow_run_record(&record, &snapshot, &history_drift).is_err());
 }
 
-async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+pub(super) async fn fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     fixture_with(
         connector_workflow_run_input().expect("Connector WorkflowRun input"),
         WORKFLOW_RUN_FLOW_VERSION_V8,

@@ -428,6 +428,8 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some(observed) = connector_hook {
                 let hook = observed.hook;
+                let failure = connector_failures.get(&projection.step_id).cloned();
+                let completed_result = completed.get(&projection.step_id);
                 let typed_response_sequence =
                     if observed.metadata.requires_typed_response() && flow_step.is_some() {
                         Some(
@@ -438,21 +440,23 @@ pub fn project_workflow_run_record(
                     } else {
                         None
                     };
-                let sequence = if let Some(sequence) = typed_response_sequence {
-                    sequence
-                } else if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
-                } else {
-                    last_hook_sequence(history, &hook.hook_id)
-                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
-                };
+                let terminal_without_connector_result = snapshot.status.is_terminal()
+                    && failure.is_none()
+                    && completed_result.is_none();
+                let sequence =
+                    if hook.status == HookStatus::Cancelled || terminal_without_connector_result {
+                        snapshot.last_sequence
+                    } else if let Some(sequence) = typed_response_sequence {
+                        sequence
+                    } else {
+                        last_hook_sequence(history, &hook.hook_id)
+                            .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                    };
                 let at = history
                     .iter()
                     .find(|event| event.sequence == sequence)
                     .map(|event| event.timestamp)
                     .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
-                let failure = connector_failures.get(&projection.step_id).cloned();
-                let completed_result = completed.get(&projection.step_id);
                 let step_status = match hook.status {
                     HookStatus::Active => WorkflowStepProjectionStatus::Running,
                     HookStatus::Received if failure.is_some() => {

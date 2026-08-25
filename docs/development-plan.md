@@ -477,10 +477,12 @@ schema registry for this configuration and the already supported policy v2/v3
 schemas; migration `151` adds only the List Operator schema to that registry.
 Neither adds a table or column. One exact Connector domain-result compensation
 composition is implemented with ordinary durable Service, Branch, and Output
-steps at component scope. The milestone remains in progress: business-service
-and remaining Agent/MCP/model/Tool dispatch, general and cancellation-triggered
-compensation, expanded provider conformance, `W0.5`, and public availability
-remain open.
+steps at component scope. Deferred Connector cancellation and immutable-deadline
+projection are also fenced against redispatch across coordinator replacement.
+The milestone remains in progress: business-service and remaining
+Agent/MCP/model/Tool dispatch, provider-side cancellation/revocation, general
+and cancellation-triggered compensation, expanded provider conformance,
+`W0.5`, and public availability remain open.
 
 The `C0` summary's remaining SMTP item means a general Notifications
 subscription/dispatch channel. Identity's separate recipient-contact challenge
@@ -2501,6 +2503,16 @@ node.
   counter, HTTP client, object client, or public surface. General reverse-order
   and cancellation-triggered compensation, provider recovery evidence, and the
   remaining `W0.4`/`W0.5` gates stay open.
+- Implemented as component-only deferred Connector termination fencing
+  (`2026-08-25`): parent cancellation and immutable deadline expiry project the
+  terminal Flow event rather than changing the Service status at an older
+  response-step sequence. Cancellation closes the Flow wait; a timed-out run
+  exposes no scheduled wakeup. Both paths retain the exact attempt URN, and a
+  replacement coordinator cannot redispatch the provider or append another
+  terminal event. This adds no schema, table, queue, scheduler, retry counter,
+  provider cancellation API, or second history. Provider-side revocation,
+  cancellation-triggered compensation, retained PostgreSQL/provider recovery,
+  and complete `W0.5` certification remain open.
 - Implemented as component-only `APP0.2-C14`: only the exact
   `application.conversation-variable-assign` descriptor may bind one required
   static object `error` edge. Its graph emits Plan v6 and Application-composed

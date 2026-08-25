@@ -1163,6 +1163,8 @@ fn unavailable_at(operation: &str, error: FlowError) -> WorkflowRunCoordinationE
 #[cfg(test)]
 mod application_tests;
 #[cfg(test)]
+mod connector_termination_tests;
+#[cfg(test)]
 mod connector_tests;
 #[cfg(test)]
 mod tests;

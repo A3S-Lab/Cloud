@@ -444,7 +444,9 @@ creating their own control planes:
     reaches the fence. The public API shape is unchanged. The exact Connectors-
     owned HTTP Request foundation is now internally discoverable, and one exact
     ordinary-step Connector domain-result compensation path is certified at
-    component scope. Public business-service availability, remaining
+    component scope. Deferred Connector cancellation and immutable-deadline
+    projection are also fenced against provider redispatch across coordinator
+    replacement. Public business-service availability, remaining
     Agent/MCP/model/Tool dispatch, general and cancellation-triggered
     compensation, retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into

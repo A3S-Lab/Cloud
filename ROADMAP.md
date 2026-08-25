@@ -2072,6 +2072,13 @@ redelivery cannot create another compensating attempt. General reverse-order
 or cancellation-triggered compensation, retained provider/recovery evidence,
 public availability, and the remaining `W0.4`/`W0.5` gates stay open.
 
+Decision 0056 additionally fences a deferred Connector attempt across parent
+cancellation, immutable deadline expiry, and coordinator replacement. Cloud
+projects the terminal Flow event sequence, retains the one attempt URN, removes
+the cancelled or terminal wait from scheduling, and never redispatches the
+provider. Provider-side cancellation/revocation, cancellation-triggered
+compensation, retained recovery evidence, and the remaining gates stay open.
+
 The `W0.3` immutable descriptor contract is implemented as
 `cloud.workflow.step-descriptor-registry.v1`. It freezes canonical ACL, exact
 SemVer identity, typed ports, the existing coarse step and capability types,
