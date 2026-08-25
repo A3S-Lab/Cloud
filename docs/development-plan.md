@@ -424,7 +424,7 @@ supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Component-only `P0.3-C1` verifies typed GitHub pull-request facts and deterministically reduces them to bounded Preview identity, trust, expiry, and cleanup decisions. `P0.3-C2` adds canonical Preview Policy ACL, exact active-Subscription admission through a consumer-owned port, and immutable policy revisions through migration `153`; identical desired state converges without another revision. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound `source.pull-request-change.committed@1` facts through migration `156`, the existing provider Inbox, and the shared transactional Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Preview lifecycle projection and immutable local receipts through migration `157` and that existing Relay. Public interfaces, resource-owner handoff, cleanup/expiry execution, monorepos, and Compose import remain open. |
+| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Component-only `P0.3-C1` verifies typed GitHub pull-request facts and deterministically reduces them to bounded Preview identity, trust, expiry, and cleanup decisions. `P0.3-C2` adds canonical Preview Policy ACL, exact active-Subscription admission through a consumer-owned port, and immutable policy revisions through migration `153`; identical desired state converges without another revision. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound `source.pull-request-change.committed@1` facts through migration `156`, the existing provider Inbox, and the shared transactional Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Preview lifecycle projection and immutable local receipts through migration `157` and that existing Relay. `P0.3-C5a` atomically publishes committed lifecycle versions and idempotently creates their ordinary Projects Environment through one consumer-owned port and the same Relay/projector. Public interfaces, later resource-owner handoffs, cleanup/expiry execution, monorepos, and Compose import remain open. |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
@@ -1771,10 +1771,11 @@ Component-only `P0.3-C1` defines the first pull-request Preview lifecycle:
   protected Secrets.
 
 C1's reducer remains component-only. C3 supplies its Sources-owned production
-fact producer and C4 supplies the durable Developer Workflows projection, but
-there is still no timer, public interface, Environment/SourceRevision/BuildRun/
-Workload/Route write, or cleanup Operation. Those owner handoffs remain later
-P0.3 slices.
+fact producer, C4 supplies the durable Developer Workflows projection, and C5a
+supplies only the ordinary Projects Environment handoff. There is still no
+timer, public interface, SourceRevision/BuildRun/Workload/Route write, cleanup
+Operation, or Environment cleanup. Those owner handoffs remain later P0.3
+slices.
 
 Component-only `P0.3-C2` adds the independent Preview Policy authority:
 
@@ -1846,11 +1847,34 @@ Component-only `P0.3-C4` defines the single durable consumer authority:
   decisions. All-in-one and dedicated Relay processes use the same typed
   PostgreSQL adapter family and projector composition.
 
-C4 introduces no second Inbox, Outbox, event publisher, relay, queue, retry
-loop, worker, Environment, BuildRun, Workload, Deployment, Route, Operation,
-timer, scheduler, or interface. Projects, Artifacts, Workloads, Edge,
-Operations, expiry/cleanup, and management remain later explicit owner
-handoffs; Preview availability remains false.
+C4 itself introduces no second Inbox, Outbox, event publisher, relay, queue,
+retry loop, worker, Environment, BuildRun, Workload, Deployment, Route,
+Operation, timer, scheduler, or interface. C5a closes only its first explicit
+owner follow-up.
+
+Component-only `P0.3-C5a` defines the Projects Environment handoff:
+
+- an actual Preview mutation and its immutable Sources-fact receipt now commit
+  one bounded `developer.pull-request-preview.lifecycle-committed@1` Outbox
+  fact in the same transaction. No mutation means no lifecycle publication;
+- the existing single `PullRequestPreviewProjector` consumes that fact through
+  the shared Relay and invokes the Developer Workflows-owned
+  `IPreviewEnvironmentPort`. The port is required at construction and exposes
+  only one exact `PreviewEnvironmentBinding`, never a Projects aggregate or
+  repository;
+- one Infrastructure adapter translates an active lifecycle into Projects'
+  existing ordinary `Environment`, repository idempotency, transactional
+  Outbox, and `project.environment.created` event. Full deterministic Preview
+  UUID naming, exact-state validation, and conflict reread close replay,
+  restart, preclaim, and concurrent-create behavior; and
+- cleanup-required lifecycle facts are a bounded no-op because Projects does
+  not yet expose the required archive/delete owner lifecycle.
+
+C5a adds no Inbox, Outbox implementation, publisher, relay, queue, retry loop,
+saga, worker, or scheduler. It creates no SourceRevision, BuildRun, Workload,
+Deployment, Route, Operation, Secret material, cleanup/expiry execution, or
+interface. Artifacts, Workloads, Edge, Operations, cleanup, and management
+remain explicit later owner handoffs; Preview availability remains false.
 
 ### Exit gate
 

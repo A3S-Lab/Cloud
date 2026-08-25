@@ -67,6 +67,7 @@ AI application platform parity manifest.
 | [0060](0060-exact-composite-profile-and-evidence-authority.md) | Bind composite semantic profiles and evidence changes to exact immutable runtime authority |
 | [0061](0061-single-developer-preview-projection-authority.md) | Project pull-request Preview lifecycle through one Developer Workflows consumer authority |
 | [0062](0062-exact-finite-execution-dispatch-authority.md) | Admit only the exact finite Execution profile through the existing Workflow execution port |
+| [0063](0063-single-preview-environment-owner-handoff.md) | Hand active Preview lifecycle to the sole Projects Environment authority through the existing Outbox Relay |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

@@ -1047,7 +1047,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "unavailable"
     category = "authoring_toolkit"
     dependencies = ["W0.3"]
-    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0059-single-sources-pull-request-fact-boundary.md", "doc:docs/decisions/app-platform/0061-single-developer-preview-projection-authority.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0059-single-sources-pull-request-fact-boundary.md", "doc:docs/decisions/app-platform/0061-single-developer-preview-projection-authority.md", "doc:docs/decisions/app-platform/0063-single-preview-environment-owner-handoff.md"]
     gate = "APP0.4"
     label = "Workflow Version Control"
     owner = "workflow"

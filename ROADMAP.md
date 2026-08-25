@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. Resource-owner composition/handoff, cleanup/expiry execution, interfaces, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. `P0.3-C5a` atomically publishes each committed Preview mutation and idempotently hands active lifecycle to the existing Projects Environment authority through that same Relay/projector. Build/artifact/workload/route/operation handoffs, cleanup/expiry execution, interfaces, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -1001,7 +1001,8 @@ reopen reuses the same identities. Known forks are denied or isolated; a newer
 denied-fork fact requests cleanup of any existing Preview, and only an active
 same-repository Preview can be eligible for explicitly enabled
 protected Secrets. `P0.3-C3` supplies the production committed-fact producer,
-and `P0.3-C4` supplies the durable Developer Workflows consumer projection.
+`P0.3-C4` supplies the durable Developer Workflows consumer projection, and
+`P0.3-C5a` supplies the first Projects-owned Environment handoff.
 
 Component-only `P0.3-C2` adds canonical
 `a3s.cloud.pull-request-preview-policy.v1` configuration and immutable policy
@@ -1052,11 +1053,35 @@ Component-only `P0.3-C4` closes the Developer Workflows consumer projection:
   decisions without inventing transport state. The same projector family is
   composed by all-in-one and dedicated Relay processes.
 
-C4 adds no Inbox, publisher, queue, retry rail, worker, Environment,
+C4 itself adds no Inbox, publisher, queue, retry rail, worker, Environment,
 SourceRevision, BuildRun, Workload, Deployment, Route, Operation, cleanup
-timer, scheduler, or public interface. Projects, Artifacts, Workloads, Edge,
-Operations, expiry/cleanup, and management remain explicit later owner
-handoffs, so Preview availability is still false.
+timer, scheduler, or public interface. At that boundary Projects, Artifacts,
+Workloads, Edge, Operations, expiry/cleanup, and management were explicit later
+owner handoffs; C5a closes only the first of them.
+
+Component-only `P0.3-C5a` closes only the Projects Environment handoff:
+
+- every actual Preview aggregate mutation commits one exact
+  `developer.pull-request-preview.lifecycle-committed@1` fact in the same
+  PostgreSQL transaction as the Preview and its immutable Sources-fact
+  receipt; unchanged decisions publish nothing;
+- the existing `PullRequestPreviewProjector` remains Developer Workflows' sole
+  Relay projector and requires the consumer-owned `IPreviewEnvironmentPort` at
+  construction. One Infrastructure anti-corruption adapter alone imports
+  Projects models and translates an active fact to the existing ordinary
+  `Environment` aggregate, repository, idempotency, transactional Outbox, and
+  `project.environment.created` event;
+- deterministic full-UUID identity/name binding, exact existing-state checks,
+  and conflict reread make replay, process restart, and concurrent create races
+  converge on one Projects Environment without a second event; and
+- cleanup-required facts create nothing because Projects has no matching
+  archive/delete lifecycle in this slice. C5a does not invent that authority.
+
+C5a adds no second Inbox, Outbox, publisher, relay, queue, retry loop, saga,
+worker, or scheduler. It creates no SourceRevision, BuildRun, Workload,
+Deployment, Route, Operation, cleanup/expiry execution, Secret material, or
+public interface. Those explicit owner slices remain open, so Preview
+availability is still false.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

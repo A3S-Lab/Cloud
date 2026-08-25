@@ -39,7 +39,20 @@ provider-time/content ordering, aggregate CAS, process restart, and atomic
 state-plus-receipt persistence are closed without another Inbox, queue, retry
 rail, or worker.
 
-C4 still creates no Environment, BuildRun, Workload, Deployment, Route,
-Operation, cleanup timer, scheduler, or public interface. Explicit
-Projects/Artifacts/Workloads/Edge/Operations owner composition and handoff
-remain later P0.3 slices, so pull-request Previews remain unavailable.
+C4 itself creates no Environment or later-owner state. Component-only
+`P0.3-C5a` adds the first owner handoff without changing the policy ACL: every
+committed Preview mutation atomically publishes one bounded
+`developer.pull-request-preview.lifecycle-committed@1` fact through the same
+transactional Outbox. The existing Relay and sole Preview projector call the
+Developer Workflows-owned `IPreviewEnvironmentPort`; one Infrastructure
+adapter translates only the exact binding into Projects' existing ordinary
+`Environment` aggregate, idempotency, repository, and Outbox event. Replay and
+concurrent create races converge on one exact Environment; conflicting
+preclaims fail closed.
+
+C5a creates no SourceRevision, BuildRun, Workload, Deployment, Route,
+Operation, cleanup timer, scheduler, Secret material, or public interface.
+Cleanup-required facts do not delete or archive Projects state. Remaining
+Artifacts/Workloads/Edge/Operations handoffs, expiry/cleanup execution, and
+management remain later P0.3 slices, so pull-request Previews remain
+unavailable.

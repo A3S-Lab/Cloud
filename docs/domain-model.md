@@ -117,6 +117,8 @@ distributes committed facts after the corresponding database transaction.
 | Accepted BuildPlan | An immutable Developer Workflows-owned acceptance contract bound to one exact Sources-owned revision and project root; actor/time are audit facts outside its deterministic ACL digest. |
 | Pull-request Preview | Developer Workflows lifecycle projection with a stable logical identity and deterministic ordinary Environment identity, exact source-subscription/PR and immutable policy-revision authority, provider-time/content ordering, owner, bounded lifetime/quota, fork trust, and cleanup decision; Projects, Sources, Workloads, Edge, and Operations retain their resource authorities. |
 | Pull-request Preview projection receipt | Immutable Developer Workflows evidence that one opaque Sources fact reached one terminal local projection outcome and optional Preview version. It detects content/binding drift but is not an Inbox, queue, retry, or provider-delivery record. |
+| Committed Preview lifecycle | Owner-neutral Developer Workflows fact for one exact committed Preview aggregate version. It freezes policy, source/PR, Environment identity, trust, quota, status, correlation, and causation evidence without exposing another context's aggregate or private provider delivery. |
+| Preview Environment handoff | Consumer-owned Application request that asks Projects to ensure the one deterministic ordinary Environment for an active Preview. Projects alone validates and persists the aggregate, idempotency, uniqueness, and event. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -487,16 +489,17 @@ only that Published Language into this input through the existing Outbox Relay.
 Stable Preview identity includes exact
 Organization, Project, Sources subscription, base repository, provider PR ID,
 and number; a second stable identity denotes the ordinary Environment that a
-later Projects-owned handoff may create. Provider creation/update times,
+`P0.3-C5a` Projects-owned handoff may create. Provider creation/update times,
 closed-action precedence, and exact head content form a total order, so
 duplicate, stale, same-timestamp, and reordered deliveries reach one logical
 state independent of arrival order. Close/merge and an explicit clock input
 produce only a cleanup decision; reopen retains both identities. Forks are
 denied or isolated, a newer
 denied-fork fact requests cleanup of an existing Preview, and forks are never
-protected-Secret eligible in this slice. C1 itself adds no persistence; C4 now
-persists the reducer's local lifecycle projection without creating an
-Environment, SourceRevision, BuildRun, Workload, Route, Operation, timer,
+protected-Secret eligible in this slice. C1 itself adds no persistence; C4
+persists the reducer's local lifecycle projection but creates no owner
+resource. C5a adds only the ordinary Projects Environment handoff and still
+creates no SourceRevision, BuildRun, Workload, Route, Operation, timer,
 scheduler, or non-ACL configuration authority.
 
 Component-only `P0.3-C2` adds the canonical
@@ -552,9 +555,81 @@ Preview deletion, and receipt mutation. A restarted repository reconstructs
 the policy-bound aggregate and resumes the same reducer. The in-memory adapter
 implements the same contract.
 
-C4 remains component-only and exposes no API. Projects, Artifacts, Workloads,
-Edge, and Operations handoffs, expiry/cleanup execution, and management remain
-open; their aggregates and mechanisms cannot move into Developer Workflows.
+Component-only `P0.3-C5a` adds one owner-neutral
+`PullRequestPreviewLifecycleCommitted` fact for each actual aggregate advance.
+Its aggregate-free wire type physically belongs to `published`; Domain owns
+aggregate reconstruction, canonical derived-field validation, and envelope
+generation. The lifecycle event, Preview mutation, and immutable projection
+receipt share that C4 transaction; an unchanged, duplicate, stale, no-policy, or initially
+denied decision emits no lifecycle event. Envelope and payload validation bind
+nonzero event/correlation/causation IDs, canonical time, exact tenant and
+aggregate identity/version, and a bounded canonical payload. Reconstructing
+the Preview from that payload must reproduce every derived trust, status,
+quota, repository, and deterministic Environment field.
+
+The existing projector consumes the lifecycle fact through the same Outbox
+Relay. For active state it builds only `PreviewEnvironmentBinding` and invokes
+the required `IPreviewEnvironmentPort`; cleanup-required state performs no
+Projects mutation. One Infrastructure adapter may import Projects internals
+and translate that binding into the existing ordinary `Environment` aggregate,
+`IEnvironmentRepository`, idempotency, and `EnvironmentCreated` event. The
+adapter first verifies an existing deterministic identity, then handles a
+concurrent unique-key race by rereading and accepting only an exact match.
+Developer Workflows never persists a duplicate Environment or writes the
+Projects table directly. This creation-only effect is monotonic and therefore
+order-independent; later build, deployment, route, and cleanup consumers must
+persist an aggregate-version fence before acting on lifecycle transitions.
+
+```mermaid
+flowchart LR
+  subgraph S[Sources authority]
+    SI[Authenticated provider Inbox]
+    SF[source.pull-request-change.committed@1]
+    SI --> SF
+  end
+
+  O[(Shared transactional Outbox)]
+  R[Single shared Outbox Relay]
+
+  subgraph D[Developer Workflows authority]
+    PJ[PullRequestPreviewProjector]
+    PS[Preview projection service]
+    PT[(Preview + immutable fact receipt)]
+    LF[developer.pull-request-preview.lifecycle-committed@1]
+    EP[IPreviewEnvironmentPort]
+    PJ --> PS --> PT
+    PT -->|same transaction on mutation| LF
+    PJ --> EP
+  end
+
+  subgraph P[Projects authority]
+    PA[Projects anti-corruption adapter]
+    PE[(Ordinary Environment + idempotency)]
+    EF[project.environment.created]
+    PA --> PE -->|same Projects transaction| EF
+  end
+
+  SF --> O --> R --> PJ
+  LF --> O
+  EP --> PA
+  EF --> O
+```
+
+The cardinality and authority invariants are:
+
+- one accepted Preview Policy revision may govern many Previews, but each
+  Preview retains exactly one immutable revision authority;
+- one Sources fact has exactly one terminal local projection receipt and
+  advances at most one Preview version;
+- one committed Preview mutation has exactly one lifecycle fact; and
+- one logical active Preview maps to one deterministic ordinary Projects
+  Environment. Different binding under that identity is a conflict, not an
+  update or second aggregate.
+
+C5a remains component-only and exposes no API. Artifacts, Workloads, Edge, and
+Operations handoffs, expiry/cleanup execution, Environment archive/delete, and
+management remain open; their aggregates and mechanisms cannot move into
+Developer Workflows.
 
 ### 3.4 Asset hosting
 

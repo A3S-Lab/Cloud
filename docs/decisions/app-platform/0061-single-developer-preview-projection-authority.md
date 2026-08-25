@@ -66,3 +66,11 @@ material. It does not expose a public API.
 - Pull-request Previews remain unavailable until explicit owner interfaces
   compose Projects, Artifacts, Workloads, Edge, Operations, cleanup/expiry, and
   public management without moving those authorities into Developer Workflows.
+
+## Follow-up
+
+[ADR 0063](0063-single-preview-environment-owner-handoff.md) implements the
+first bounded owner handoff. It does not reinterpret C4: the Preview projection
+transaction now publishes an exact lifecycle fact, and Projects alone creates
+the ordinary Environment through the existing Outbox Relay. Later resource
+owners, cleanup/expiry, and interfaces remain open.
