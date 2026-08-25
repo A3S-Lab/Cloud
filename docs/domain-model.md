@@ -989,7 +989,7 @@ host evidence, and AnySentry/OpenTelemetry references only after those owners
 provide durable typed facts. Investigation and notification cannot enforce
 policy or mutate an owning aggregate.
 
-### 3.13 Agent execution (`A1.1` foundation; native `A1.2` recovery verified, sub-gate in progress)
+### 3.13 Agent execution (`A1.1` foundation; native `A1.2` verified)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
@@ -1038,11 +1038,12 @@ checkpoint. The Node Agent adopts that successor only from its existing
 command journal and receipt-settles any predecessor batch that was already
 durable without projecting it into the semantic sequence. Provider event time
 and Cloud aggregate time remain separate clocks. The
-[retained PostgreSQL 17 and real Box Runtime recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32535528277/job/96935585380)
+[retained PostgreSQL 17 and real Box Runtime recovery job](https://github.com/A3S-Lab/Cloud/actions/runs/32875814179/job/97893488672)
 verifies durable retention and control-plane restart recovery, stable Runtime
 generation and provider identity across process death, a strictly newer
 process-incarnation timestamp, recover-before-cancel ordering, and cleanup.
-Dependency publication remains, so `A1.2` stays in progress.
+The same certified revision consumes exact crates.io releases
+`a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`.
 
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
@@ -3261,7 +3262,7 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
-### Agent conversation and execution (`A1.1` foundation; native `A1.2` recovery verified, sub-gate in progress)
+### Agent conversation and execution (`A1.1` foundation; native `A1.2` verified)
 
 - A conversation belongs to one organization, project, and environment and
   owns the sole positive monotonic `last_event_sequence` head.

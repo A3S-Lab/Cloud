@@ -464,13 +464,14 @@ creating their own control planes:
     compensation, retained provider evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
-   `A1.1` is implemented. Native Code `A1.2` carries start, run-scoped
-   cancellation, deterministic recovery, event pages, retention gaps, and
-   same-generation provider-process restart recovery through the existing
-   Flow/Fleet/Runtime/node-journal path. The
-   [retained clean Linux PostgreSQL 17 and real Box Runtime recovery gate](https://github.com/A3S-Lab/Cloud/actions/runs/32535528277/job/96935585380)
+   `A1.1` is implemented. Native Code `A1.2` is verified and carries start,
+   run-scoped cancellation, deterministic recovery, event pages, retention
+   gaps, and same-generation provider-process restart recovery through the
+   existing Flow/Fleet/Runtime/node-journal path. The
+   [retained clean Linux PostgreSQL 17 and real Box Runtime recovery gate](https://github.com/A3S-Lab/Cloud/actions/runs/32875814179/job/97893488672)
    proves durable command, receipt, event, process-incarnation, and cleanup
-   behavior; dependency publication remains and `A1.2` stays in progress.
+   behavior while Cloud consumes the exact crates.io releases
+   `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six
