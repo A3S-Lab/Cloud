@@ -56,6 +56,12 @@ impl super::FlowWorkflowRunCoordinator {
                     ConnectorExecutionOutcome::Rejected => {
                         WorkflowConnectorAttemptOutcome::Rejected
                     }
+                    ConnectorExecutionOutcome::Indeterminate => {
+                        return Err(WorkflowRunCoordinationError::Unavailable(
+                            "terminal indeterminate Connector evidence bypassed its attempt projection"
+                                .into(),
+                        ))
+                    }
                 };
                 let response_object = response_object
                     .map(|reference| {

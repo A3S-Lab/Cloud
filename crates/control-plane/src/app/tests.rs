@@ -642,6 +642,8 @@ struct TestRuntimeRepositories {
     security_investigations: Option<Arc<InMemoryGatewayRoutePolicyTimelineRepository>>,
     notifications: Option<Arc<crate::modules::notifications::InMemoryNotificationRepository>>,
     oidc_provider: Option<Arc<dyn IOidcProviderService>>,
+    connector_profiles: Option<Arc<InMemoryConnectorProfileRepository>>,
+    connector_execution: Option<Arc<InMemoryConnectorExecutionRepository>>,
 }
 
 #[async_trait::async_trait]
@@ -1323,6 +1325,35 @@ fn build_test_application(
     )
 }
 
+fn build_test_application_with_connector_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    connector_profiles: Arc<InMemoryConnectorProfileRepository>,
+    connector_execution: Arc<InMemoryConnectorExecutionRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            connector_profiles: Some(connector_profiles),
+            connector_execution: Some(connector_execution),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
 fn build_test_application_with_oidc_provider(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -1445,11 +1476,7 @@ fn build_test_application_with_execution_and_operation_repositories(
         TestRuntimeRepositories {
             executions: Some(executions),
             operations: Some(operations),
-            human_tasks: None,
-            audit_records: None,
-            security_investigations: None,
-            notifications: None,
-            oidc_provider: None,
+            ..TestRuntimeRepositories::default()
         },
     )
 }
@@ -1873,6 +1900,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         security_investigations,
         notifications,
         oidc_provider,
+        connector_profiles,
+        connector_execution,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -1930,7 +1959,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let alert_policies: Arc<dyn INotificationAlertPolicyRepository> =
         notification_repository.clone();
     let outbound_notifications: Arc<dyn IOutboundNotificationRepository> = notification_repository;
-    let connector_revocations = Arc::new(InMemoryConnectorExecutionRepository::new());
+    let connector_profiles =
+        connector_profiles.unwrap_or_else(|| Arc::new(InMemoryConnectorProfileRepository::new()));
+    let connector_execution = connector_execution
+        .unwrap_or_else(|| Arc::new(InMemoryConnectorExecutionRepository::new()));
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -1999,8 +2031,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             notifications,
             alert_policies,
             outbound_notifications,
-            connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
-            connector_revocations,
+            connector_profiles,
+            connector_attempts: connector_execution.clone(),
+            connector_attempt_resolutions: connector_execution.clone(),
+            connector_revocations: connector_execution,
             applications: Arc::new(
                 crate::modules::applications::InMemoryApplicationRepository::new(),
             ),

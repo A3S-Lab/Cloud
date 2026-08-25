@@ -1440,6 +1440,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/154_connector_revision_revocations.sql"
             )),
         ),
+        Migration::new(
+            "155",
+            "indeterminate Connector execution attempt resolution authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/155_connector_execution_attempt_resolutions.sql"
+            )),
+        ),
     ]
 }
 
@@ -1470,6 +1478,10 @@ mod artifact_build_candidate_projection_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/connector_revision_revocation_migration.rs"]
 mod connector_revision_revocation_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/connector_execution_attempt_resolution_migration.rs"]
+mod connector_execution_attempt_resolution_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

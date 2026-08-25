@@ -5,8 +5,11 @@ mod request;
 
 pub use connectors_module::ConnectorsModule;
 pub use dto::{
+    ConnectorExecutionAttemptPageResponse, ConnectorExecutionAttemptResolutionMutationResponse,
+    ConnectorExecutionAttemptResolutionResponse, ConnectorExecutionAttemptResponse,
     ConnectorProfileMutationResponse, ConnectorProfileRecordResponse, ConnectorProfileResponse,
     ConnectorRevisionResponse, ConnectorRevisionRevocationMutationResponse,
     ConnectorRevisionRevocationResponse, CreateConnectorProfileRequest,
-    ReviseConnectorProfileRequest, RevokeConnectorRevisionRequest,
+    ResolveConnectorExecutionAttemptRequest, ReviseConnectorProfileRequest,
+    RevokeConnectorRevisionRequest,
 };

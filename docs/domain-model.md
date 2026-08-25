@@ -1484,6 +1484,21 @@ attempt cannot cross the provider boundary and is settled as immutable
 body-free `Rejected` evidence. Existing terminal evidence remains replayable.
 The fact does not revoke a Secret or cancel an already-started provider effect.
 
+Component-only `AUT0.5-C13` closes the remaining expired-dispatch recovery
+item without weakening C6. One immutable
+`ConnectorExecutionAttemptResolution` binds the exact tenant, profile,
+revision, attempt, request digest/size, dispatch start, and outcome deadline.
+Its only v1 conclusion is `indeterminate`, with a bounded operator reason,
+actor, and canonical time at or after that deadline. Migration `155` commits
+the resolution, body-free `Indeterminate` evidence, exact terminal attempt
+transition, idempotency, audit, and Outbox fact atomically; deferred constraints
+reject either resolution or indeterminate evidence without its exact pair. The
+generic settlement path cannot create this outcome. Authorization-first
+REST/OpenAPI `1.66.0` reads expose only bounded safe metadata and an opaque
+unresolved keyset cursor. A terminal replay still projects `Indeterminate` to
+Flow and other consumers, so it cannot rematerialize credentials, call, retry,
+or cancel the provider, or infer acceptance/rejection.
+
 The component-only `AUT0.5-C8` Workflow adapter is a Connectors-owned
 application port over that same C6 service. Its request binds one exact
 WorkflowRun, Plan revision/digest, step attempt, environment, Connector profile,

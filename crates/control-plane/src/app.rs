@@ -57,10 +57,13 @@ use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
     ConnectorResponseObjectStore, ConnectorsModule, CreateConnectorProfileHandler,
+    GetConnectorExecutionAttemptHandler, GetConnectorExecutionAttemptResolutionHandler,
     GetConnectorProfileHandler, GetConnectorRevisionHandler, GetConnectorRevisionRevocationHandler,
+    IConnectorExecutionAttemptRepository, IConnectorExecutionAttemptResolutionRepository,
     IConnectorProfileRepository, IConnectorResponseObjectPort,
     IConnectorRevisionRevocationRepository, ListConnectorProfilesHandler,
-    ListConnectorRevisionsHandler, PublicInternetConnectorEgressAuthorizer,
+    ListConnectorRevisionsHandler, ListUnresolvedConnectorExecutionAttemptsHandler,
+    PublicInternetConnectorEgressAuthorizer, ResolveConnectorExecutionAttemptHandler,
     ReviseConnectorProfileHandler, RevokeConnectorRevisionHandler,
     WorkflowConnectorApplicationService,
 };
@@ -563,6 +566,8 @@ async fn build_api_worker_application(
     let secrets = adapters.secrets;
     let connector_profiles = adapters.connector_profiles;
     let connector_execution_adapters = postgres_adapters.connector_execution();
+    let connector_attempts = connector_execution_adapters.attempts;
+    let connector_attempt_resolutions = connector_execution_adapters.resolutions;
     let connector_revocations = connector_execution_adapters.revocations;
     let applications = adapters.applications;
     let application_sessions = adapters.application_sessions;
@@ -574,7 +579,6 @@ async fn build_api_worker_application(
                 .subnamespace("connector-responses")
                 .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
         ));
-        let connector_attempts = connector_execution_adapters.attempts;
         let connector_materializer = ConnectorHttpRevisionMaterializer::new(
             Arc::clone(&secrets),
             Arc::clone(&key_encryption),
@@ -590,7 +594,7 @@ async fn build_api_worker_application(
         Some(Arc::new(
             ConnectorExecutionApplicationService::new(
                 Arc::clone(&connector_profiles),
-                connector_attempts,
+                Arc::clone(&connector_attempts),
                 connector_preparation,
                 ConnectorExecutionServiceOptions::default(),
             )
@@ -1624,6 +1628,8 @@ async fn build_api_worker_application(
                 alert_policies,
                 outbound_notifications,
                 connector_profiles,
+                connector_attempts,
+                connector_attempt_resolutions,
                 connector_revocations,
                 applications,
                 application_sessions,
@@ -1817,6 +1823,8 @@ struct ManagementApplicationDependencies {
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
+    connector_attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
+    connector_attempt_resolutions: Arc<dyn IConnectorExecutionAttemptResolutionRepository>,
     connector_revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
     applications: Arc<dyn IApplicationRepository>,
     application_sessions: Arc<dyn IApplicationSessionRepository>,
@@ -1896,6 +1904,8 @@ fn build_management_application_with_health(
         alert_policies,
         outbound_notifications,
         connector_profiles,
+        connector_attempts,
+        connector_attempt_resolutions,
         connector_revocations,
         applications,
         application_sessions,
@@ -1975,7 +1985,14 @@ fn build_management_application_with_health(
     let get_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_revisions = Arc::clone(&connector_profiles);
     let get_connector_revisions = Arc::clone(&connector_profiles);
+    let list_connector_execution_attempt_profiles = Arc::clone(&connector_profiles);
     let revoke_connector_revision_profiles = connector_profiles;
+    let list_connector_execution_attempts = Arc::clone(&connector_attempts);
+    let get_connector_execution_attempts = Arc::clone(&connector_attempts);
+    let resolve_connector_execution_attempts = connector_attempts;
+    let resolve_connector_execution_attempt_resolutions =
+        Arc::clone(&connector_attempt_resolutions);
+    let get_connector_execution_attempt_resolutions = connector_attempt_resolutions;
     let revoke_connector_revisions = Arc::clone(&connector_revocations);
     let get_connector_revision_revocations = connector_revocations;
     let workflow_definition_publications: Arc<dyn IWorkflowDefinitionPublicationPort> =
@@ -2509,6 +2526,13 @@ fn build_management_application_with_health(
                         revoke_connector_revisions,
                     ),
                 )
+                .command_handler::<
+                    crate::modules::connectors::ResolveConnectorExecutionAttempt,
+                    _,
+                >(ResolveConnectorExecutionAttemptHandler::new(
+                    resolve_connector_execution_attempts,
+                    resolve_connector_execution_attempt_resolutions,
+                ))
                 .command_handler::<crate::modules::applications::CreateApplication, _>(
                     CreateApplicationHandler::new(
                         create_applications,
@@ -3158,6 +3182,22 @@ fn build_management_application_with_health(
                     _,
                 >(GetConnectorRevisionRevocationHandler::new(
                     get_connector_revision_revocations,
+                ))
+                .query_handler::<
+                    crate::modules::connectors::ListUnresolvedConnectorExecutionAttempts,
+                    _,
+                >(ListUnresolvedConnectorExecutionAttemptsHandler::new(
+                    list_connector_execution_attempt_profiles,
+                    list_connector_execution_attempts,
+                ))
+                .query_handler::<crate::modules::connectors::GetConnectorExecutionAttempt, _>(
+                    GetConnectorExecutionAttemptHandler::new(get_connector_execution_attempts),
+                )
+                .query_handler::<
+                    crate::modules::connectors::GetConnectorExecutionAttemptResolution,
+                    _,
+                >(GetConnectorExecutionAttemptResolutionHandler::new(
+                    get_connector_execution_attempt_resolutions,
                 ))
                 .query_handler::<crate::modules::applications::ListApplications, _>(
                     ListApplicationsHandler::new(list_applications),

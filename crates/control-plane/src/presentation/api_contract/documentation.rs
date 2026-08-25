@@ -552,6 +552,24 @@ fn operation_summary(method: &str, path: &str) -> String {
             "Revoke a Connector revision".into()
         };
     }
+    if path.ends_with(
+        "/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts/{attempt_id}/resolution",
+    ) {
+        return if method == "get" {
+            "Get a Connector execution attempt resolution".into()
+        } else {
+            "Resolve an indeterminate Connector execution attempt".into()
+        };
+    }
+    if path.ends_with("/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts")
+    {
+        return "List unresolved Connector execution attempts".into();
+    }
+    if path.ends_with(
+        "/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts/{attempt_id}",
+    ) {
+        return "Get a Connector execution attempt".into();
+    }
     if method == "get" {
         if path.contains("/assets/") && path.contains("/releases/") && path.ends_with('}') {
             return "Get an asset release".into();

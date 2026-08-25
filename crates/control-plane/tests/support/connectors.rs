@@ -2,23 +2,26 @@ use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_control_plane::modules::connectors::{
     BeginConnectorExecutionDispatch, ConnectorDefinition, ConnectorExecutionAttemptBinding,
-    ConnectorExecutionAttemptCursor, ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor,
-    ConnectorExecutionReceipt, ConnectorExecutionRecoveryState, ConnectorExecutionRequest,
-    ConnectorExecutionReservation, ConnectorHttpAuthentication, ConnectorHttpDefinition,
-    ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
-    ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy, ConnectorProfile,
-    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorRevisionRevocation,
-    ConnectorRevisionRevoked, ConnectorSecretReference, CreateConnectorProfile,
-    CreateConnectorProfileHandler, CreateConnectorProfileWrite, GetConnectorExecutionAttempt,
-    GetConnectorExecutionAttemptHandler, GetConnectorProfile, GetConnectorProfileHandler,
-    IConnectorExecutionAttemptRepository, IConnectorExecutionEvidenceRepository,
+    ConnectorExecutionAttemptCursor, ConnectorExecutionAttemptResolution,
+    ConnectorExecutionAttemptResolved, ConnectorExecutionEvidence,
+    ConnectorExecutionEvidenceCursor, ConnectorExecutionOutcome, ConnectorExecutionReceipt,
+    ConnectorExecutionRecoveryState, ConnectorExecutionRequest, ConnectorExecutionReservation,
+    ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
+    ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpRevisionMaterializer,
+    ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord, ConnectorRevision,
+    ConnectorRevisionPublished, ConnectorRevisionRevocation, ConnectorRevisionRevoked,
+    ConnectorSecretReference, CreateConnectorProfile, CreateConnectorProfileHandler,
+    CreateConnectorProfileWrite, GetConnectorExecutionAttempt, GetConnectorExecutionAttemptHandler,
+    GetConnectorProfile, GetConnectorProfileHandler, IConnectorExecutionAttemptRepository,
+    IConnectorExecutionAttemptResolutionRepository, IConnectorExecutionEvidenceRepository,
     IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
     ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorRevisions,
     ListConnectorRevisionsHandler, ListUnresolvedConnectorExecutionAttempts,
     ListUnresolvedConnectorExecutionAttemptsHandler, PostgresConnectorExecutionAttemptRepository,
     PostgresConnectorExecutionEvidenceRepository, PostgresConnectorProfileRepository,
-    ReserveConnectorExecutionAttempt, ReviseConnectorProfile, ReviseConnectorProfileHandler,
-    ReviseConnectorProfileWrite, RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
+    ReserveConnectorExecutionAttempt, ResolveConnectorExecutionAttemptWrite,
+    ReviseConnectorProfile, ReviseConnectorProfileHandler, ReviseConnectorProfileWrite,
+    RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -782,12 +785,27 @@ pub(super) async fn exercise_connector_execution_evidence(
             sql_query::<(i64, String)>(
                 "select count(*), max(name) from a3s_orm_migrations where version = ",
             )
-            .bind("153"),
+            .bind("154"),
         )
         .await?;
     assert_eq!(
         revocation_migration_state,
         (1, "exact Connector revision revocation authority".into())
+    );
+    let resolution_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("155"),
+        )
+        .await?;
+    assert_eq!(
+        resolution_migration_state,
+        (
+            1,
+            "indeterminate Connector execution attempt resolution authority".into()
+        )
     );
 
     let organization_id = OrganizationId::new();
@@ -1312,7 +1330,7 @@ pub(super) async fn exercise_connector_execution_evidence(
                         environment_id: EnvironmentId::new(),
                     },
                 ]),
-                ..unresolved
+                ..unresolved.clone()
             },
             connector_context(),
         )
@@ -1321,6 +1339,118 @@ pub(super) async fn exercise_connector_execution_evidence(
         denied_attempts,
         Err(ApplicationError::NotFound(_))
     ));
+
+    let uncertain_attempt = attempts
+        .find(
+            organization_id,
+            project_id,
+            environment_id,
+            profile_id,
+            revision.id,
+            uncertain_request.attempt_id(),
+        )
+        .await?
+        .ok_or("indeterminate Connector attempt is missing")?;
+    let (resolution, indeterminate_evidence) = ConnectorExecutionAttemptResolution::new(
+        &uncertain_attempt.attempt,
+        "provider outcome unavailable",
+        actor,
+        created_at + Duration::seconds(12),
+    )?;
+    let resolution_request_id = Uuid::now_v7();
+    let resolution_write = ResolveConnectorExecutionAttemptWrite {
+        event: ConnectorExecutionAttemptResolved::envelope(&resolution, resolution_request_id)?,
+        actor_principal_id: actor,
+        request_id: resolution_request_id,
+        idempotency: IdempotencyRequest::new(
+            format!(
+                "connector-execution-attempt-resolution/{organization_id}/{}",
+                uncertain_request.attempt_id()
+            ),
+            "resolve-indeterminate-attempt",
+            b"provider outcome unavailable",
+        )?,
+        evidence: indeterminate_evidence.clone(),
+        resolution: resolution.clone(),
+    };
+    let (left_resolution, right_resolution) = tokio::join!(
+        attempts.resolve_indeterminate(resolution_write.clone()),
+        attempts.resolve_indeterminate(resolution_write.clone()),
+    );
+    let concurrent_resolutions = [left_resolution?, right_resolution?];
+    assert_eq!(
+        concurrent_resolutions
+            .iter()
+            .filter(|result| !result.replayed)
+            .count(),
+        1
+    );
+    assert!(concurrent_resolutions
+        .iter()
+        .all(|result| result.value == resolution));
+    let resolution_replay = attempts.resolve_indeterminate(resolution_write).await?;
+    assert!(resolution_replay.replayed);
+    assert_eq!(resolution_replay.value, resolution);
+    assert_eq!(
+        PostgresConnectorExecutionAttemptRepository::new(executor.clone())
+            .find_resolution(
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id,
+                revision.id,
+                uncertain_request.attempt_id(),
+            )
+            .await?,
+        Some(resolution.clone())
+    );
+    let resolved_attempt = attempts
+        .find(
+            organization_id,
+            project_id,
+            environment_id,
+            profile_id,
+            revision.id,
+            uncertain_request.attempt_id(),
+        )
+        .await?
+        .ok_or("resolved Connector attempt is missing")?;
+    assert_eq!(resolved_attempt.evidence, Some(indeterminate_evidence));
+    assert_eq!(
+        resolved_attempt
+            .evidence
+            .as_ref()
+            .map(ConnectorExecutionEvidence::outcome),
+        Some(ConnectorExecutionOutcome::Indeterminate)
+    );
+    let after_resolution = attempt_list_handler
+        .execute(
+            ListUnresolvedConnectorExecutionAttempts {
+                after: None,
+                limit: 100,
+                ..unresolved.clone()
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(after_resolution.attempts.len(), 1);
+    assert_eq!(
+        after_resolution.attempts[0].attempt.binding().attempt_id(),
+        reserved_request.attempt_id()
+    );
+
+    let resolution_facts = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>("select (select count(*) from connector_execution_attempt_resolutions where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key = 'connector.execution-attempt.resolved'), (select count(*) from audit_records where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and action = 'connector.execution-attempt.resolved'), (select count(*) from idempotency_records where scope_key like 'connector-execution-attempt-resolution/%')"),
+        )
+        .await?;
+    assert_eq!(resolution_facts, (1, 1, 1, 1));
 
     let recovered_attempt = PostgresConnectorExecutionAttemptRepository::new(executor.clone())
         .find(
@@ -1439,7 +1569,9 @@ pub(super) async fn exercise_connector_execution_evidence(
                 revoked_reserved_at + Duration::seconds(30),
             )?)
             .await?,
-        ConnectorExecutionReservation::Indeterminate(_)
+        ConnectorExecutionReservation::Completed(record)
+            if record.evidence.as_ref().map(ConnectorExecutionEvidence::outcome)
+                == Some(ConnectorExecutionOutcome::Indeterminate)
     ));
     let revocation_evidence = database
         .fetch_one_as(
@@ -1476,6 +1608,30 @@ pub(super) async fn exercise_connector_execution_evidence(
             )
             .await,
         "deleting immutable Connector revision revocation",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update connector_execution_attempt_resolutions set reason = 'mutated' where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(uncertain_request.attempt_id()),
+            )
+            .await,
+        "mutating immutable Connector attempt resolution",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "delete from connector_execution_attempt_resolutions where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and attempt_id = ")
+                .bind(uncertain_request.attempt_id()),
+            )
+            .await,
+        "deleting immutable Connector attempt resolution",
     );
 
     assert_rejected(
@@ -1586,7 +1742,7 @@ pub(super) async fn exercise_connector_execution_evidence(
                 .bind(organization_id.as_uuid()),
         )
         .await?;
-    assert_eq!(stored, (4, 4, 8, 4));
+    assert_eq!(stored, (5, 5, 8, 5));
     Ok(())
 }
 

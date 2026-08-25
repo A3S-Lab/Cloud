@@ -176,6 +176,93 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
         revocation_schema["properties"]["definitionDigest"]["pattern"],
         "^sha256:[0-9a-f]{64}$"
     );
+
+    let attempts_path = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts";
+    let attempts = &document["paths"][attempts_path]["get"];
+    assert_eq!(attempts["tags"], json!(["Connectors"]));
+    assert_eq!(
+        attempts["responses"]["200"]["$ref"],
+        "#/components/responses/ConnectorExecutionAttemptPageSuccess200"
+    );
+    let attempt_parameters = attempts["parameters"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("Connector attempt parameters are missing".into()))?;
+    let attempt_limit = attempt_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "limit")
+        .ok_or_else(|| BootError::Internal("Connector attempt limit is missing".into()))?;
+    assert_eq!(attempt_limit["schema"]["default"], 50);
+    assert_eq!(
+        attempt_limit["schema"]["maximum"],
+        crate::modules::connectors::MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE
+    );
+    let cursor = attempt_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "cursor")
+        .ok_or_else(|| BootError::Internal("Connector attempt cursor is missing".into()))?;
+    assert_eq!(cursor["schema"]["maxLength"], 128);
+
+    let attempt_path = format!("{attempts_path}/{{attempt_id}}");
+    assert_eq!(
+        document["paths"][&attempt_path]["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/ConnectorExecutionAttemptSuccess200"
+    );
+    let attempt_schema = &document["components"]["schemas"]["ConnectorExecutionAttempt"];
+    assert_eq!(attempt_schema["additionalProperties"], false);
+    assert_eq!(
+        attempt_schema["properties"]["recoveryState"]["enum"],
+        json!([
+            "reserved",
+            "reservation_expired",
+            "in_flight",
+            "indeterminate",
+            "completed"
+        ])
+    );
+    assert_eq!(
+        attempt_schema["properties"]["evidenceOutcome"]["enum"],
+        json!(["accepted", "retryable", "rejected", "indeterminate"])
+    );
+    for forbidden in [
+        "fenceToken",
+        "requestBody",
+        "responseBody",
+        "endpoint",
+        "credentials",
+    ] {
+        assert!(attempt_schema["properties"].get(forbidden).is_none());
+    }
+
+    let resolution_path = format!("{attempt_path}/resolution");
+    let resolution = &document["paths"][&resolution_path];
+    assert_eq!(resolution["get"]["tags"], json!(["Connectors"]));
+    assert_eq!(resolution["post"]["tags"], json!(["Connectors"]));
+    assert_eq!(
+        resolution["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/ConnectorExecutionAttemptResolutionSuccess200"
+    );
+    assert_eq!(
+        resolution["post"]["responses"]["201"]["$ref"],
+        "#/components/responses/ConnectorExecutionAttemptResolutionMutationSuccess201"
+    );
+    let resolution_request =
+        &resolution["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(resolution_request["additionalProperties"], false);
+    assert_eq!(resolution_request["required"], json!(["reason"]));
+    assert_eq!(
+        resolution_request["properties"]["reason"]["x-a3s-max-utf8-bytes"],
+        crate::modules::connectors::CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES
+    );
+    let resolution_schema =
+        &document["components"]["schemas"]["ConnectorExecutionAttemptResolution"];
+    assert_eq!(resolution_schema["additionalProperties"], false);
+    assert_eq!(
+        resolution_schema["properties"]["resolution"]["enum"],
+        json!(["indeterminate"])
+    );
+    for forbidden in ["providerResponse", "responseBody", "fenceToken", "retry"] {
+        assert!(resolution_schema["properties"].get(forbidden).is_none());
+    }
     Ok(())
 }
 

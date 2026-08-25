@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-type AttemptKey = (
+pub(super) type AttemptKey = (
     OrganizationId,
     ProjectId,
     EnvironmentId,
@@ -31,8 +31,10 @@ type AttemptKey = (
 /// Evidence can only enter this store through the atomic `settle` transition.
 #[derive(Default)]
 pub struct InMemoryConnectorExecutionRepository {
-    attempts: RwLock<BTreeMap<AttemptKey, ConnectorExecutionAttemptRecord>>,
+    pub(super) attempts: RwLock<BTreeMap<AttemptKey, ConnectorExecutionAttemptRecord>>,
     revision_authority: RwLock<RevisionAuthorityState>,
+    pub(super) resolution_authority:
+        RwLock<super::attempt_resolution_in_memory::AttemptResolutionState>,
 }
 
 type RevisionKey = (
@@ -190,6 +192,11 @@ impl IConnectorExecutionAttemptRepository for InMemoryConnectorExecutionReposito
         request: SettleConnectorExecutionAttempt,
     ) -> Result<IdempotentWrite<ConnectorExecutionAttemptRecord>, RepositoryError> {
         request.validate().map_err(RepositoryError::Conflict)?;
+        if request.evidence.outcome() == ConnectorExecutionOutcome::Indeterminate {
+            return Err(RepositoryError::Forbidden(
+                "Indeterminate Connector evidence requires the exact recovery authority".into(),
+            ));
+        }
         let key = binding_key(request.fence.binding());
         let mut stored = self.attempts.write().await;
         let current = stored.get(&key).cloned().ok_or(RepositoryError::NotFound)?;
@@ -482,7 +489,7 @@ impl IConnectorExecutionEvidenceRepository for InMemoryConnectorExecutionReposit
     }
 }
 
-fn binding_key(
+pub(super) fn binding_key(
     binding: &crate::modules::connectors::domain::ConnectorExecutionAttemptBinding,
 ) -> AttemptKey {
     (

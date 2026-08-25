@@ -1,5 +1,7 @@
 mod attempt_in_memory;
 mod attempt_postgres;
+mod attempt_resolution_in_memory;
+mod attempt_resolution_postgres;
 mod evidence_postgres;
 mod execution_preparer;
 mod http_executor;

@@ -45,6 +45,11 @@ import {
   type SecurityTimelineQuery,
 } from './security';
 import {
+  type ConnectorExecutionAttempt,
+  type ConnectorExecutionAttemptPage,
+  type ConnectorExecutionAttemptQuery,
+  type ConnectorExecutionAttemptResolution,
+  type ConnectorExecutionAttemptResolutionMutationResult,
   type ConnectorProfile,
   type ConnectorProfileMutationResult,
   type ConnectorProfileRecord,
@@ -55,8 +60,11 @@ import {
   DEFAULT_CONNECTOR_LIST_LIMIT,
   type ReviseConnectorProfileInput,
   type RevokeConnectorRevisionInput,
+  type ResolveConnectorExecutionAttemptInput,
+  encodeConnectorExecutionAttemptQuery,
   validateConnectorDefinitionAcl,
   validateConnectorExpectedVersion,
+  validateConnectorExecutionAttemptResolutionReason,
   validateConnectorListLimit,
   validateConnectorProfileName,
   validateConnectorRevisionRevocationReason,
@@ -308,7 +316,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.65.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.66.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -2399,6 +2407,71 @@ export class CloudApi {
     );
   }
 
+  listUnresolvedConnectorExecutionAttempts(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    query: ConnectorExecutionAttemptQuery = {},
+    signal?: AbortSignal
+  ): Promise<ConnectorExecutionAttemptPage> {
+    return this.get(
+      `${this.connectorRevisionPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId
+      )}/execution-attempts?${encodeConnectorExecutionAttemptQuery(query)}`,
+      signal
+    );
+  }
+
+  getConnectorExecutionAttempt(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    attemptId: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorExecutionAttempt> {
+    return this.get(
+      this.connectorExecutionAttemptPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId,
+        attemptId
+      ),
+      signal
+    );
+  }
+
+  getConnectorExecutionAttemptResolution(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    attemptId: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorExecutionAttemptResolution> {
+    return this.get(
+      `${this.connectorExecutionAttemptPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId,
+        attemptId
+      )}/resolution`,
+      signal
+    );
+  }
+
   createConnectorProfile(
     organizationId: string,
     projectId: string,
@@ -2457,6 +2530,33 @@ export class CloudApi {
         profileId,
         revisionId
       )}/revocation`,
+      idempotencyKey,
+      { reason: input.reason.trim() },
+      signal
+    );
+  }
+
+  resolveConnectorExecutionAttempt(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    attemptId: string,
+    input: ResolveConnectorExecutionAttemptInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorExecutionAttemptResolutionMutationResult> {
+    validateConnectorExecutionAttemptResolutionReason(input.reason);
+    return this.postJson(
+      `${this.connectorExecutionAttemptPath(
+        organizationId,
+        projectId,
+        environmentId,
+        profileId,
+        revisionId,
+        attemptId
+      )}/resolution`,
       idempotencyKey,
       { reason: input.reason.trim() },
       signal
@@ -3638,6 +3738,23 @@ export class CloudApi {
       `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}` +
       `/revisions/${encodeURIComponent(revisionId)}`
     );
+  }
+
+  private connectorExecutionAttemptPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    attemptId: string
+  ): string {
+    return `${this.connectorRevisionPath(
+      organizationId,
+      projectId,
+      environmentId,
+      profileId,
+      revisionId
+    )}/execution-attempts/${encodeURIComponent(attemptId)}`;
   }
 
   private applicationsPath(organizationId: string, projectId: string): string {

@@ -1,4 +1,5 @@
 mod attempt_queries;
+mod attempt_resolution;
 mod commands;
 mod evidence_queries;
 mod execution_service;
@@ -49,4 +50,9 @@ mod tests;
 pub use attempt_queries::{
     GetConnectorExecutionAttempt, GetConnectorExecutionAttemptHandler,
     ListUnresolvedConnectorExecutionAttempts, ListUnresolvedConnectorExecutionAttemptsHandler,
+};
+pub use attempt_resolution::{
+    ConnectorExecutionAttemptResolutionMutationResult, GetConnectorExecutionAttemptResolution,
+    GetConnectorExecutionAttemptResolutionHandler, ResolveConnectorExecutionAttempt,
+    ResolveConnectorExecutionAttemptHandler,
 };

@@ -11,7 +11,18 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.65.0`.
+The current semantic contract version is `1.66.0`.
+
+Contract `1.66.0` adds the bounded unresolved Connector execution-attempt
+collection, an exact safe attempt read, an exact resolution read, and one
+idempotent resolution write. The mutation accepts only a bounded control-free
+operator `reason`; the resulting closed `indeterminate` conclusion can commit
+only after the exact dispatch outcome deadline and is atomically paired with
+body-free terminal evidence. Attempt responses expose request/evidence digests,
+byte counts, closed state, recovery state, and canonical times, but never the
+fence token, request or response bodies, endpoint, credentials, or provider
+text. Resolution does not authorize provider retry or cancellation and does not
+claim acceptance or rejection.
 
 Contract `1.65.0` adds the exact Connector revision-revocation operations and
 fully typed success responses for all existing Connector profile, revision,
@@ -103,8 +114,9 @@ shape; contract `1.60.0` was introduced by the separate diagnostics operation,
 `1.61.0` adds Variable Aggregator payload semantics, `1.62.0` adds List
 Operator payload semantics, `1.63.0` closes the existing core Workflow success
 payload schemas, `1.64.0` closes the remaining Ontology and HumanTask success
-payload schemas, and `1.65.0` adds exact Connector revision revocation plus
-closed Connector success payloads as described above.
+payload schemas, `1.65.0` adds exact Connector revision revocation plus closed
+Connector success payloads, and `1.66.0` adds the safe terminal-indeterminate
+attempt recovery surface described above.
 
 ## Contract completeness
 

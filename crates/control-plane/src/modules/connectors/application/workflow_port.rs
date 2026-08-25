@@ -207,7 +207,9 @@ impl WorkflowConnectorApplicationService {
                 .map_err(ApplicationError::Internal),
             (
                 WorkflowConnectorResponseMode::ImmutableObjectReference,
-                ConnectorExecutionOutcome::Retryable | ConnectorExecutionOutcome::Rejected,
+                ConnectorExecutionOutcome::Retryable
+                | ConnectorExecutionOutcome::Rejected
+                | ConnectorExecutionOutcome::Indeterminate,
                 None,
             ) => Ok(()),
             _ => Err(ApplicationError::Internal(

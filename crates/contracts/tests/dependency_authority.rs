@@ -4,7 +4,7 @@ use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
 const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
-const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=9107165933892c63fac18d447933d03b9299ea4e#9107165933892c63fac18d447933d03b9299ea4e";
+const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=2948ad51a1395177764766c3ddf7e44338f9e374#2948ad51a1395177764766c3ddf7e44338f9e374";
 const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,7 +93,7 @@ fn flow_uses_the_qualified_v1_revision() {
         1,
         "Cloud must resolve exactly one Flow package"
     );
-    assert_eq!(packages[0].version, "1.0.0");
+    assert_eq!(packages[0].version, "1.1.0");
     assert_eq!(packages[0].source, FLOW_V1_SOURCE);
 }
 

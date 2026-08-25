@@ -12,9 +12,9 @@ use crate::modules::assets::{
 };
 use crate::modules::audit::{IAuditRecordRepository, PostgresAuditRecordRepository};
 use crate::modules::connectors::{
-    IConnectorExecutionAttemptRepository, IConnectorProfileRepository,
-    IConnectorRevisionRevocationRepository, PostgresConnectorExecutionAttemptRepository,
-    PostgresConnectorProfileRepository,
+    IConnectorExecutionAttemptRepository, IConnectorExecutionAttemptResolutionRepository,
+    IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
+    PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
 };
 use crate::modules::durable_cells::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
@@ -167,6 +167,7 @@ impl PostgresAdapterFactory {
 
 pub(super) struct ConnectorExecutionPostgresAdapters {
     pub(super) attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
+    pub(super) resolutions: Arc<dyn IConnectorExecutionAttemptResolutionRepository>,
     pub(super) revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
 }
 
@@ -175,6 +176,7 @@ impl ConnectorExecutionPostgresAdapters {
         let repository = Arc::new(PostgresConnectorExecutionAttemptRepository::new(executor));
         Self {
             attempts: repository.clone(),
+            resolutions: repository.clone(),
             revocations: repository,
         }
     }

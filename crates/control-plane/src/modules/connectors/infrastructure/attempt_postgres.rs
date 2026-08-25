@@ -32,7 +32,7 @@ const SELECT_ATTEMPTS: &str = "select organization_id, project_id, environment_i
 
 #[derive(Clone)]
 pub struct PostgresConnectorExecutionAttemptRepository {
-    executor: PostgresExecutor,
+    pub(super) executor: PostgresExecutor,
 }
 
 impl PostgresConnectorExecutionAttemptRepository {
@@ -196,6 +196,13 @@ impl IConnectorExecutionAttemptRepository for PostgresConnectorExecutionAttemptR
                     request
                         .validate()
                         .map_err(PostgresPersistenceError::Invariant)?;
+                    if request.evidence.outcome() == ConnectorExecutionOutcome::Indeterminate {
+                        return Err(RepositoryError::Forbidden(
+                            "Indeterminate Connector evidence requires the exact recovery authority"
+                                .into(),
+                        )
+                        .into());
+                    }
                     let current = load_attempt_for_update(transaction, request.fence.binding())
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
@@ -888,7 +895,7 @@ fn insert_reservation_query(request: &ReserveConnectorExecutionAttempt) -> a3s_o
         .append(")")
 }
 
-fn exact_attempt_where(
+pub(super) fn exact_attempt_where(
     query: a3s_orm::SqlQuery<()>,
     binding: &ConnectorExecutionAttemptBinding,
 ) -> a3s_orm::SqlQuery<()> {
@@ -907,7 +914,7 @@ fn exact_attempt_where(
         .bind(binding.attempt_id())
 }
 
-async fn load_attempt_for_update(
+pub(super) async fn load_attempt_for_update(
     transaction: &PostgresTransaction,
     binding: &ConnectorExecutionAttemptBinding,
 ) -> Result<Option<ConnectorExecutionAttempt>, PostgresPersistenceError> {

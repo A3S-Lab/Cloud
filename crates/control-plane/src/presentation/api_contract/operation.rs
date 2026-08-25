@@ -12,8 +12,10 @@ use crate::modules::audit::{
     DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
 };
 use crate::modules::connectors::{
+    CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
-    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    DEFAULT_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::durable_cells::domain::{
@@ -535,6 +537,25 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             upsert_parameter(parameters, parameter);
         }
     }
+    if method == "get" && is_connector_execution_attempt_collection_path(path) {
+        for parameter in [
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
+                    "default": DEFAULT_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE
+                }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
+        }
+    }
     if method == "get" && path.ends_with("/human-tasks") {
         upsert_parameter(
             parameters,
@@ -841,7 +862,19 @@ fn describe_request_body(
             json!({"schema": durable_cell_request_schema(path)}),
         );
     } else if is_connector_profile_mutation_path(path) {
-        let schema = if is_connector_revision_revocation_path(path) {
+        let schema = if is_connector_revision_revocation_path(path)
+            || is_connector_execution_attempt_resolution_path(path)
+        {
+            let maximum = if is_connector_execution_attempt_resolution_path(path) {
+                CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES
+            } else {
+                CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+            };
+            let example = if is_connector_execution_attempt_resolution_path(path) {
+                "Provider outcome could not be established"
+            } else {
+                "Operator requested cancellation"
+            };
             json!({
                 "type": "object",
                 "additionalProperties": false,
@@ -850,10 +883,11 @@ fn describe_request_body(
                     "reason": {
                         "type": "string",
                         "minLength": 1,
-                        "maxLength": CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
+                        "maxLength": maximum,
                         "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+                        "example": example,
                         "x-a3s-max-utf8-bytes":
-                            CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES
+                            maximum
                     }
                 }
             })
@@ -1620,6 +1654,7 @@ fn is_connector_profile_mutation_path(path: &str) -> bool {
     is_connector_profile_collection_path(path)
         || is_connector_revision_collection_path(path)
         || is_connector_revision_revocation_path(path)
+        || is_connector_execution_attempt_resolution_path(path)
 }
 
 fn is_connector_profile_collection_path(path: &str) -> bool {
@@ -1637,6 +1672,22 @@ fn is_connector_revision_item_path(path: &str) -> bool {
 
 fn is_connector_revision_revocation_path(path: &str) -> bool {
     path.ends_with("/connector-profiles/{profile_id}/revisions/{revision_id}/revocation")
+}
+
+fn is_connector_execution_attempt_collection_path(path: &str) -> bool {
+    path.ends_with("/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts")
+}
+
+fn is_connector_execution_attempt_item_path(path: &str) -> bool {
+    path.ends_with(
+        "/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts/{attempt_id}",
+    )
+}
+
+fn is_connector_execution_attempt_resolution_path(path: &str) -> bool {
+    path.ends_with(
+        "/connector-profiles/{profile_id}/revisions/{revision_id}/execution-attempts/{attempt_id}/resolution",
+    )
 }
 
 fn is_connector_profile_item_path(path: &str) -> bool {
@@ -1661,6 +1712,16 @@ fn connector_success_component(method: &str, path: &str, status: u16) -> Option<
     } else if method == "post" && is_connector_revision_revocation_path(path) {
         Some(format!(
             "ConnectorRevisionRevocationMutationSuccess{status}"
+        ))
+    } else if method == "get" && is_connector_execution_attempt_collection_path(path) {
+        Some("ConnectorExecutionAttemptPageSuccess200".into())
+    } else if method == "get" && is_connector_execution_attempt_item_path(path) {
+        Some("ConnectorExecutionAttemptSuccess200".into())
+    } else if method == "get" && is_connector_execution_attempt_resolution_path(path) {
+        Some("ConnectorExecutionAttemptResolutionSuccess200".into())
+    } else if method == "post" && is_connector_execution_attempt_resolution_path(path) {
+        Some(format!(
+            "ConnectorExecutionAttemptResolutionMutationSuccess{status}"
         ))
     } else {
         None

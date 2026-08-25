@@ -6,8 +6,9 @@ use super::workflow_run_components::install_workflow_run_component_schemas;
 use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::connectors::{
+    CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
-    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::notifications::{
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
@@ -473,6 +474,27 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "#/components/schemas/ConnectorRevisionRevocationSuccessResponse",
         ),
     );
+    response_components.insert(
+        "ConnectorExecutionAttemptPageSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorExecutionAttemptPageSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "ConnectorExecutionAttemptSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorExecutionAttemptSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "ConnectorExecutionAttemptResolutionSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/ConnectorExecutionAttemptResolutionSuccessResponse",
+        ),
+    );
     for status in [200, 201] {
         response_components.insert(
             format!("ConnectorProfileMutationSuccess{status}"),
@@ -486,6 +508,13 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/ConnectorRevisionRevocationMutationSuccessResponse",
+            ),
+        );
+        response_components.insert(
+            format!("ConnectorExecutionAttemptResolutionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/ConnectorExecutionAttemptResolutionMutationSuccessResponse",
             ),
         );
     }
@@ -712,7 +741,16 @@ fn install_connector_component_schemas(schemas: &mut Map<String, Value>) -> Resu
         typed_success_response_schema("#/components/schemas/ConnectorRevisionRevocation");
     let revocation_mutation_success =
         typed_success_response_schema("#/components/schemas/ConnectorRevisionRevocationMutation");
-    let connector_schemas = json!({
+    let attempt_page_success =
+        typed_success_response_schema("#/components/schemas/ConnectorExecutionAttemptPage");
+    let attempt_success =
+        typed_success_response_schema("#/components/schemas/ConnectorExecutionAttempt");
+    let attempt_resolution_success =
+        typed_success_response_schema("#/components/schemas/ConnectorExecutionAttemptResolution");
+    let attempt_resolution_mutation_success = typed_success_response_schema(
+        "#/components/schemas/ConnectorExecutionAttemptResolutionMutation",
+    );
+    let mut connector_schemas = json!({
         "ConnectorProfile": {
             "type": "object",
             "additionalProperties": false,
@@ -842,19 +880,191 @@ fn install_connector_component_schemas(schemas: &mut Map<String, Value>) -> Resu
                 "replayed": { "type": "boolean" }
             }
         },
+        "ConnectorExecutionAttempt": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "organizationId", "projectId", "environmentId", "profileId", "revisionId",
+                "attemptId", "requestDigest", "requestBodyBytes", "state", "recoveryState",
+                "reservedAt", "leaseExpiresAt", "dispatchStartedAt", "outcomeDeadlineAt",
+                "terminalAt", "createdAt", "observedAt", "evidenceOutcome", "responseStatus",
+                "responseDigest", "responseBodyBytes", "retryAfterSeconds", "evidenceStartedAt",
+                "evidenceCompletedAt"
+            ],
+            "properties": {
+                "organizationId": { "type": "string", "format": "uuid" },
+                "projectId": { "type": "string", "format": "uuid" },
+                "environmentId": { "type": "string", "format": "uuid" },
+                "profileId": { "type": "string", "format": "uuid" },
+                "revisionId": { "type": "string", "format": "uuid" },
+                "attemptId": { "type": "string", "format": "uuid" },
+                "requestDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "requestBodyBytes": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+                "state": { "type": "string", "enum": ["reserved", "dispatching", "terminal"] },
+                "recoveryState": {
+                    "type": "string",
+                    "enum": ["reserved", "reservation_expired", "in_flight", "indeterminate", "completed"]
+                },
+                "reservedAt": { "type": "string", "format": "date-time" },
+                "leaseExpiresAt": { "type": "string", "format": "date-time" },
+                "dispatchStartedAt": { "type": "string", "format": "date-time", "nullable": true },
+                "outcomeDeadlineAt": { "type": "string", "format": "date-time", "nullable": true },
+                "terminalAt": { "type": "string", "format": "date-time", "nullable": true },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "observedAt": { "type": "string", "format": "date-time" },
+                "evidenceOutcome": {
+                    "type": "string",
+                    "enum": ["accepted", "retryable", "rejected", "indeterminate"],
+                    "nullable": true
+                },
+                "responseStatus": { "type": "integer", "minimum": 100, "maximum": 599, "nullable": true },
+                "responseDigest": {
+                    "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "nullable": true
+                },
+                "responseBodyBytes": { "type": "integer", "minimum": 0, "maximum": 1048576, "nullable": true },
+                "retryAfterSeconds": { "type": "integer", "minimum": 0, "maximum": 86400, "nullable": true },
+                "evidenceStartedAt": { "type": "string", "format": "date-time", "nullable": true },
+                "evidenceCompletedAt": { "type": "string", "format": "date-time", "nullable": true }
+            }
+        },
+        "ConnectorExecutionAttemptPage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attempts", "nextCursor"],
+            "properties": {
+                "attempts": {
+                    "type": "array",
+                    "maxItems": MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
+                    "items": { "$ref": "#/components/schemas/ConnectorExecutionAttempt" }
+                },
+                "nextCursor": { "type": "string", "minLength": 1, "maxLength": 128, "nullable": true }
+            }
+        },
+        "ConnectorExecutionAttemptResolution": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "organizationId", "projectId", "environmentId", "profileId", "revisionId",
+                "attemptId", "requestDigest", "requestBodyBytes", "dispatchStartedAt",
+                "outcomeDeadlineAt", "resolution", "reason", "resolvedBy", "resolvedAt"
+            ],
+            "properties": {
+                "organizationId": { "type": "string", "format": "uuid" },
+                "projectId": { "type": "string", "format": "uuid" },
+                "environmentId": { "type": "string", "format": "uuid" },
+                "profileId": { "type": "string", "format": "uuid" },
+                "revisionId": { "type": "string", "format": "uuid" },
+                "attemptId": { "type": "string", "format": "uuid" },
+                "requestDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "requestBodyBytes": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+                "dispatchStartedAt": { "type": "string", "format": "date-time" },
+                "outcomeDeadlineAt": { "type": "string", "format": "date-time" },
+                "resolution": { "type": "string", "enum": ["indeterminate"] },
+                "reason": {
+                    "type": "string", "minLength": 1,
+                    "maxLength": CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
+                    "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+                    "x-a3s-max-utf8-bytes": CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES
+                },
+                "resolvedBy": { "type": "string", "format": "uuid" },
+                "resolvedAt": { "type": "string", "format": "date-time" }
+            }
+        },
+        "ConnectorExecutionAttemptResolutionMutation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["resolution", "replayed"],
+            "properties": {
+                "resolution": { "$ref": "#/components/schemas/ConnectorExecutionAttemptResolution" },
+                "replayed": { "type": "boolean" }
+            }
+        },
         "ConnectorProfileListSuccessResponse": profile_list_success,
         "ConnectorProfileRecordSuccessResponse": profile_record_success,
         "ConnectorRevisionListSuccessResponse": revision_list_success,
         "ConnectorRevisionSuccessResponse": revision_success,
         "ConnectorProfileMutationSuccessResponse": profile_mutation_success,
         "ConnectorRevisionRevocationSuccessResponse": revocation_success,
-        "ConnectorRevisionRevocationMutationSuccessResponse": revocation_mutation_success
+        "ConnectorRevisionRevocationMutationSuccessResponse": revocation_mutation_success,
+        "ConnectorExecutionAttemptPageSuccessResponse": attempt_page_success,
+        "ConnectorExecutionAttemptSuccessResponse": attempt_success,
+        "ConnectorExecutionAttemptResolutionSuccessResponse": attempt_resolution_success,
+        "ConnectorExecutionAttemptResolutionMutationSuccessResponse": attempt_resolution_mutation_success
     })
     .as_object()
     .cloned()
     .ok_or_else(|| BootError::Internal("generated Connector OpenAPI schemas are invalid".into()))?;
+    connector_schemas
+        .get_mut("ConnectorExecutionAttempt")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            BootError::Internal("generated Connector execution-attempt schema is invalid".into())
+        })?
+        .insert("example".into(), connector_execution_attempt_example());
+    connector_schemas
+        .get_mut("ConnectorExecutionAttemptResolution")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            BootError::Internal(
+                "generated Connector execution-attempt resolution schema is invalid".into(),
+            )
+        })?
+        .insert(
+            "example".into(),
+            connector_execution_attempt_resolution_example(),
+        );
     schemas.extend(connector_schemas);
     Ok(())
+}
+
+fn connector_execution_attempt_example() -> Value {
+    json!({
+        "organizationId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002",
+        "environmentId": "00000000-0000-4000-8000-000000000003",
+        "profileId": "00000000-0000-4000-8000-000000000004",
+        "revisionId": "00000000-0000-4000-8000-000000000005",
+        "attemptId": "00000000-0000-4000-8000-000000000006",
+        "requestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "requestBodyBytes": 128,
+        "state": "dispatching",
+        "recoveryState": "indeterminate",
+        "reservedAt": "2026-08-22T00:00:00Z",
+        "leaseExpiresAt": "2026-08-22T00:00:30Z",
+        "dispatchStartedAt": "2026-08-22T00:00:01Z",
+        "outcomeDeadlineAt": "2026-08-22T00:00:11Z",
+        "terminalAt": null,
+        "createdAt": "2026-08-22T00:00:00Z",
+        "observedAt": "2026-08-22T00:00:12Z",
+        "evidenceOutcome": null,
+        "responseStatus": null,
+        "responseDigest": null,
+        "responseBodyBytes": null,
+        "retryAfterSeconds": null,
+        "evidenceStartedAt": null,
+        "evidenceCompletedAt": null
+    })
+}
+
+fn connector_execution_attempt_resolution_example() -> Value {
+    json!({
+        "organizationId": "00000000-0000-4000-8000-000000000001",
+        "projectId": "00000000-0000-4000-8000-000000000002",
+        "environmentId": "00000000-0000-4000-8000-000000000003",
+        "profileId": "00000000-0000-4000-8000-000000000004",
+        "revisionId": "00000000-0000-4000-8000-000000000005",
+        "attemptId": "00000000-0000-4000-8000-000000000006",
+        "requestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "requestBodyBytes": 128,
+        "dispatchStartedAt": "2026-08-22T00:00:01Z",
+        "outcomeDeadlineAt": "2026-08-22T00:00:11Z",
+        "resolution": "indeterminate",
+        "reason": "Provider outcome could not be established",
+        "resolvedBy": "00000000-0000-4000-8000-000000000007",
+        "resolvedAt": "2026-08-22T00:00:12Z"
+    })
 }
 
 fn outbound_notification_subscription_schema() -> Value {

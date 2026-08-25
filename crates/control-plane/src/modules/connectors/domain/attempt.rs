@@ -10,6 +10,7 @@ use chrono::{DateTime, Duration, Utc};
 use std::fmt;
 use uuid::Uuid;
 
+pub const DEFAULT_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE: usize = 50;
 pub const MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE: usize = 100;
 pub const MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS: i64 = 30;
 pub const MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS: i64 = 120;
@@ -52,6 +53,18 @@ pub enum ConnectorExecutionRecoveryState {
     InFlight,
     Indeterminate,
     Completed,
+}
+
+impl ConnectorExecutionRecoveryState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Reserved => "reserved",
+            Self::ReservationExpired => "reservation_expired",
+            Self::InFlight => "in_flight",
+            Self::Indeterminate => "indeterminate",
+            Self::Completed => "completed",
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -495,6 +508,43 @@ impl ConnectorExecutionAttemptCursor {
         }
         Ok(self)
     }
+
+    pub fn encode(self) -> String {
+        format!(
+            "v1:{}:{}",
+            self.created_at.timestamp_micros(),
+            self.attempt_id
+        )
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let invalid = || "Connector execution attempt cursor is invalid".to_owned();
+        if value.is_empty() || value.len() > 128 || value.contains(['\0', '\r', '\n']) {
+            return Err(invalid());
+        }
+        let mut parts = value.split(':');
+        if parts.next() != Some("v1") {
+            return Err(invalid());
+        }
+        let created_at = parts
+            .next()
+            .and_then(|part| part.parse::<i64>().ok())
+            .and_then(DateTime::<Utc>::from_timestamp_micros)
+            .ok_or_else(&invalid)?;
+        let attempt_id = parts
+            .next()
+            .and_then(|part| Uuid::parse_str(part).ok())
+            .filter(|value| !value.is_nil())
+            .ok_or_else(&invalid)?;
+        if parts.next().is_some() {
+            return Err(invalid());
+        }
+        Self {
+            created_at,
+            attempt_id,
+        }
+        .validate()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -644,5 +694,24 @@ mod tests {
             now,
         )
         .is_err());
+    }
+
+    #[test]
+    fn attempt_cursor_round_trips_and_rejects_untrusted_input() {
+        let cursor = ConnectorExecutionAttemptCursor {
+            created_at: canonical_timestamp(Utc::now()),
+            attempt_id: Uuid::now_v7(),
+        };
+        assert_eq!(
+            ConnectorExecutionAttemptCursor::parse(&cursor.encode()),
+            Ok(cursor)
+        );
+        for invalid in [
+            "",
+            "v2:1:00000000-0000-0000-0000-000000000001",
+            "v1:nope:nope",
+        ] {
+            assert!(ConnectorExecutionAttemptCursor::parse(invalid).is_err());
+        }
     }
 }

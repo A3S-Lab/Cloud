@@ -1,4 +1,7 @@
-use super::{ConnectorProfile, ConnectorRevision, ConnectorRevisionRevocation};
+use super::{
+    ConnectorExecutionAttemptResolution, ConnectorProfile, ConnectorRevision,
+    ConnectorRevisionRevocation,
+};
 use crate::modules::shared_kernel::domain::{
     ConnectorRevisionId, EnvironmentId, PrincipalId, ProjectId,
 };
@@ -32,6 +35,74 @@ pub struct ConnectorRevisionRevoked {
     pub definition_digest: String,
     pub reason: String,
     pub revoked_by: PrincipalId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectorExecutionAttemptResolved {
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub profile_id: crate::modules::shared_kernel::domain::ConnectorProfileId,
+    pub revision_id: ConnectorRevisionId,
+    pub attempt_id: Uuid,
+    pub request_digest: String,
+    pub request_body_bytes: u64,
+    pub resolution: String,
+    pub reason: String,
+    pub resolved_by: PrincipalId,
+}
+
+impl ConnectorExecutionAttemptResolved {
+    pub fn envelope(
+        resolution: &ConnectorExecutionAttemptResolution,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        let binding = resolution.binding();
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: "connector.execution-attempt.resolved".into(),
+            schema_version: 1,
+            organization_id: binding.organization_id().as_uuid(),
+            aggregate_id: binding.attempt_id(),
+            aggregate_version: 1,
+            occurred_at: resolution.resolved_at(),
+            correlation_id,
+            causation_id: None,
+            payload: serde_json::to_value(Self::from(resolution))?,
+        })
+    }
+
+    pub fn matches(&self, resolution: &ConnectorExecutionAttemptResolution) -> bool {
+        let binding = resolution.binding();
+        self.project_id == binding.project_id()
+            && self.environment_id == binding.environment_id()
+            && self.profile_id == binding.profile_id()
+            && self.revision_id == binding.revision_id()
+            && self.attempt_id == binding.attempt_id()
+            && self.request_digest == binding.request_digest().as_str()
+            && self.request_body_bytes == binding.request_body_bytes()
+            && self.resolution == "indeterminate"
+            && self.reason == resolution.reason()
+            && self.resolved_by == resolution.resolved_by()
+    }
+}
+
+impl From<&ConnectorExecutionAttemptResolution> for ConnectorExecutionAttemptResolved {
+    fn from(resolution: &ConnectorExecutionAttemptResolution) -> Self {
+        let binding = resolution.binding();
+        Self {
+            project_id: binding.project_id(),
+            environment_id: binding.environment_id(),
+            profile_id: binding.profile_id(),
+            revision_id: binding.revision_id(),
+            attempt_id: binding.attempt_id(),
+            request_digest: binding.request_digest().to_string(),
+            request_body_bytes: binding.request_body_bytes(),
+            resolution: "indeterminate".into(),
+            reason: resolution.reason().to_owned(),
+            resolved_by: resolution.resolved_by(),
+        }
+    }
 }
 
 impl ConnectorRevisionRevoked {

@@ -460,6 +460,12 @@ impl ConnectorExecutionApplicationService {
         replayed: bool,
         retain_response_object: bool,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
+        if record.evidence.as_ref().is_some_and(|evidence| {
+            evidence.outcome()
+                == crate::modules::connectors::domain::ConnectorExecutionOutcome::Indeterminate
+        }) {
+            return indeterminate_result(&record);
+        }
         let evidence = record.evidence.ok_or_else(|| {
             ApplicationError::Internal("terminal Connector execution evidence is missing".into())
         })?;
@@ -597,13 +603,15 @@ mod tests {
     use super::*;
     use crate::infrastructure::ImmutableObjectClient;
     use crate::modules::connectors::domain::{
-        ConnectorDefinition, ConnectorExecutionAttemptCursor, ConnectorExecutionOutcome,
-        ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
-        ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile,
-        ConnectorRecord, ConnectorResponseObjectError, ConnectorRevision,
-        ConnectorRevisionPublished, ConnectorRevisionRevocation, ConnectorRevisionRevoked,
-        CreateConnectorProfileWrite, IConnectorRevisionRevocationRepository,
-        IPreparedConnectorExecution, RevokeConnectorRevisionWrite,
+        ConnectorDefinition, ConnectorExecutionAttemptCursor, ConnectorExecutionAttemptResolution,
+        ConnectorExecutionAttemptResolved, ConnectorExecutionOutcome, ConnectorHttpAuthentication,
+        ConnectorHttpDefinition, ConnectorHttpDefinitionSpec, ConnectorHttpDestination,
+        ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord,
+        ConnectorResponseObjectError, ConnectorRevision, ConnectorRevisionPublished,
+        ConnectorRevisionRevocation, ConnectorRevisionRevoked, CreateConnectorProfileWrite,
+        IConnectorExecutionAttemptResolutionRepository, IConnectorRevisionRevocationRepository,
+        IPreparedConnectorExecution, ResolveConnectorExecutionAttemptWrite,
+        RevokeConnectorRevisionWrite,
     };
     use crate::modules::connectors::infrastructure::{
         ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
@@ -1182,6 +1190,90 @@ mod tests {
             )
             .await
             .expect("begin dispatch");
+        command.requested_at = observed_at;
+        command.fence_token = Uuid::now_v7();
+        let service = ConnectorExecutionApplicationService::new(
+            fixture.profiles.clone(),
+            fixture.attempts.clone(),
+            preparation(&fixture, PreparedOutcome::Accepted),
+            ConnectorExecutionServiceOptions::default(),
+        )
+        .expect("service");
+        assert!(matches!(
+            service.execute(command).await.expect("recover"),
+            ConnectorExecutionAttemptResult::Indeterminate { .. }
+        ));
+        assert_eq!(fixture.prepares.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn resolved_indeterminate_terminal_never_prepares_or_redispatches_provider() {
+        let fixture = fixture().await;
+        let observed_at = canonical_timestamp(Utc::now());
+        let mut command = command(&fixture.revision, observed_at - ChronoDuration::seconds(20));
+        let fence = match fixture
+            .attempts
+            .reserve(
+                ReserveConnectorExecutionAttempt::new(
+                    ConnectorExecutionAttemptBinding::from_exact(
+                        &fixture.revision,
+                        &command.request,
+                    )
+                    .expect("binding"),
+                    command.fence_token,
+                    command.requested_at,
+                    command.requested_at + ChronoDuration::seconds(30),
+                )
+                .expect("reservation"),
+            )
+            .await
+            .expect("reserve")
+        {
+            ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+            other => panic!("unexpected reservation: {other:?}"),
+        };
+        let started_at = command.requested_at + ChronoDuration::seconds(1);
+        let dispatch = fixture
+            .attempts
+            .begin_dispatch(
+                BeginConnectorExecutionDispatch::new(
+                    fence,
+                    started_at,
+                    started_at + ChronoDuration::seconds(5),
+                )
+                .expect("dispatch"),
+            )
+            .await
+            .expect("begin dispatch");
+        let actor_principal_id = PrincipalId::new();
+        let (resolution, evidence) = ConnectorExecutionAttemptResolution::new(
+            &dispatch.attempt,
+            "provider outcome unavailable",
+            actor_principal_id,
+            observed_at,
+        )
+        .expect("resolution");
+        let request_id = Uuid::now_v7();
+        fixture
+            .attempts
+            .resolve_indeterminate(ResolveConnectorExecutionAttemptWrite {
+                event: ConnectorExecutionAttemptResolved::envelope(&resolution, request_id)
+                    .expect("event"),
+                actor_principal_id,
+                request_id,
+                idempotency: IdempotencyRequest::new(
+                    "connector-execution-service-resolution-test",
+                    "resolve",
+                    b"exact indeterminate conclusion",
+                )
+                .expect("idempotency"),
+                evidence,
+                resolution,
+            })
+            .await
+            .expect("resolve");
+
         command.requested_at = observed_at;
         command.fence_token = Uuid::now_v7();
         let service = ConnectorExecutionApplicationService::new(

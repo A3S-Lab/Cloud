@@ -18,6 +18,7 @@ pub enum ConnectorExecutionOutcome {
     Accepted,
     Retryable,
     Rejected,
+    Indeterminate,
 }
 
 impl ConnectorExecutionOutcome {
@@ -26,6 +27,7 @@ impl ConnectorExecutionOutcome {
             Self::Accepted => "accepted",
             Self::Retryable => "retryable",
             Self::Rejected => "rejected",
+            Self::Indeterminate => "indeterminate",
         }
     }
 
@@ -34,6 +36,7 @@ impl ConnectorExecutionOutcome {
             "accepted" => Ok(Self::Accepted),
             "retryable" => Ok(Self::Retryable),
             "rejected" => Ok(Self::Rejected),
+            "indeterminate" => Ok(Self::Indeterminate),
             _ => Err("Connector execution evidence outcome is unsupported".into()),
         }
     }
@@ -130,6 +133,44 @@ impl ConnectorExecutionEvidence {
             started_at,
             completed_at,
         )
+    }
+
+    pub(crate) fn indeterminate(
+        attempt: &super::ConnectorExecutionAttempt,
+        completed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        attempt.validate()?;
+        let completed_at = canonical_timestamp(completed_at);
+        if attempt.state() != super::ConnectorExecutionAttemptState::Dispatching
+            || attempt.recovery_state(completed_at)
+                != super::ConnectorExecutionRecoveryState::Indeterminate
+        {
+            return Err(
+                "Connector execution attempt is not eligible for indeterminate resolution".into(),
+            );
+        }
+        let binding = attempt.binding();
+        let evidence = Self {
+            organization_id: binding.organization_id(),
+            project_id: binding.project_id(),
+            environment_id: binding.environment_id(),
+            profile_id: binding.profile_id(),
+            revision_id: binding.revision_id(),
+            attempt_id: binding.attempt_id(),
+            request_digest: binding.request_digest().clone(),
+            request_body_bytes: binding.request_body_bytes(),
+            outcome: ConnectorExecutionOutcome::Indeterminate,
+            response_status: None,
+            response_digest: None,
+            response_body_bytes: None,
+            retry_after: None,
+            started_at: attempt
+                .dispatch_started_at()
+                .ok_or_else(|| "Connector execution dispatch start is missing".to_owned())?,
+            completed_at,
+        };
+        evidence.validate()?;
+        Ok(evidence)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -266,6 +307,14 @@ impl ConnectorExecutionEvidence {
                 if self
                     .response_status
                     .is_none_or(|status| !(200..=299).contains(&status))
+                    && self.response_digest.is_none()
+                    && self.response_body_bytes.is_none()
+                    && self.retry_after.is_none() =>
+            {
+                Ok(())
+            }
+            ConnectorExecutionOutcome::Indeterminate
+                if self.response_status.is_none()
                     && self.response_digest.is_none()
                     && self.response_body_bytes.is_none()
                     && self.retry_after.is_none() =>

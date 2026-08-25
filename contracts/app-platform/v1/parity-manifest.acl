@@ -84,8 +84,8 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "planned"
   }
   gate "AUT0.5" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["contract:openapi/v1.json", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0058-terminal-connector-attempt-resolution.md", "implementation:crates/control-plane/src/modules/connectors/domain/attempt_resolution.rs", "implementation:crates/control-plane/src/modules/connectors/infrastructure/attempt_resolution_postgres.rs", "implementation:migrations/155_connector_execution_attempt_resolutions.sql", "test:crates/control-plane/src/infrastructure/postgres_tests/connector_execution_attempt_resolution_migration.rs", "test:crates/control-plane/src/modules/connectors/application/execution_service.rs", "test:crates/control-plane/tests/support/connectors.rs"]
+    state = "in_progress"
   }
   gate "C0.3" {
     evidence = ["implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]

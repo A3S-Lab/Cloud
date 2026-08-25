@@ -1,5 +1,7 @@
 mod attempt;
 mod attempt_repository;
+mod attempt_resolution;
+mod attempt_resolution_repository;
 mod events;
 mod evidence;
 mod evidence_repository;
@@ -12,7 +14,9 @@ mod response_object;
 mod revision_revocation;
 mod revision_revocation_repository;
 
-pub use events::{ConnectorRevisionPublished, ConnectorRevisionRevoked};
+pub use events::{
+    ConnectorExecutionAttemptResolved, ConnectorRevisionPublished, ConnectorRevisionRevoked,
+};
 pub use evidence::{
     ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor, ConnectorExecutionEvidencePage,
     ConnectorExecutionOutcome, MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
@@ -23,14 +27,22 @@ pub use attempt::{
     ConnectorExecutionAttempt, ConnectorExecutionAttemptBinding, ConnectorExecutionAttemptCursor,
     ConnectorExecutionAttemptPage, ConnectorExecutionAttemptRecord, ConnectorExecutionAttemptState,
     ConnectorExecutionFence, ConnectorExecutionRecoveryState,
-    MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS,
-    MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
+    DEFAULT_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
+    MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS, MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
 };
 pub(crate) use attempt_repository::reservation_record;
 pub use attempt_repository::{
     BeginConnectorExecutionDispatch, ConnectorExecutionReservation,
     IConnectorExecutionAttemptRepository, ReserveConnectorExecutionAttempt,
     SettleConnectorExecutionAttempt,
+};
+pub(crate) use attempt_resolution::normalize_connector_execution_attempt_resolution_reason;
+pub use attempt_resolution::{
+    ConnectorExecutionAttemptResolution, CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
+};
+pub(crate) use attempt_resolution_repository::ConnectorExecutionAttemptResolutionReference;
+pub use attempt_resolution_repository::{
+    IConnectorExecutionAttemptResolutionRepository, ResolveConnectorExecutionAttemptWrite,
 };
 pub(crate) use execution::{
     validate_connector_content_type, validate_connector_signature_metadata,

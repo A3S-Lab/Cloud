@@ -1,7 +1,13 @@
 use super::*;
 use crate::modules::connectors::{
-    ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
-    ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy,
+    BeginConnectorExecutionDispatch, ConnectorExecutionAttemptBinding, ConnectorExecutionRequest,
+    ConnectorExecutionReservation, ConnectorHttpAuthentication, ConnectorHttpDefinition,
+    ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
+    ConnectorHttpStatusPolicy, IConnectorExecutionAttemptRepository, IConnectorProfileRepository,
+    ReserveConnectorExecutionAttempt,
+};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId,
 };
 
 const CONNECTOR_TOKEN: &str =
@@ -13,7 +19,14 @@ const CONNECTOR_READ_TOKEN: &str =
 async fn connector_profile_api_is_acl_native_scoped_revisioned_and_replay_safe() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let connector_profiles = Arc::new(InMemoryConnectorProfileRepository::new());
+    let connector_execution = Arc::new(InMemoryConnectorExecutionRepository::new());
+    let app = build_test_application_with_connector_repositories(
+        identity,
+        projects,
+        connector_profiles.clone(),
+        connector_execution.clone(),
+    )?;
     let organization = bootstrap_organization(&app, "connector-bootstrap", "Connectors").await?;
     let project = create_project(
         &app,
@@ -281,6 +294,170 @@ async fn connector_profile_api_is_acl_native_scoped_revisioned_and_replay_safe()
             .status(),
         404
     );
+
+    let organization_id = OrganizationId::from_uuid(connector_uuid(&organization)?);
+    let project_id = ProjectId::from_uuid(connector_uuid(&project)?);
+    let environment_id = EnvironmentId::from_uuid(connector_uuid(&environment)?);
+    let profile_id = ConnectorProfileId::from_uuid(connector_uuid(&profile_id)?);
+    let revision_id = ConnectorRevisionId::from_uuid(connector_uuid(&revised_revision_id)?);
+    let revision = connector_profiles
+        .find_revision(
+            organization_id,
+            project_id,
+            environment_id,
+            profile_id,
+            revision_id,
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .ok_or_else(|| BootError::Internal("Connector test revision is missing".into()))?;
+    let attempt_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"bounded operator recovery".to_vec(),
+    )
+    .map_err(BootError::Internal)?;
+    let reserved_at = canonical_timestamp(Utc::now()) - chrono::Duration::seconds(30);
+    let fence = match connector_execution
+        .reserve(
+            ReserveConnectorExecutionAttempt::new(
+                ConnectorExecutionAttemptBinding::from_exact(&revision, &attempt_request)
+                    .map_err(BootError::Internal)?,
+                Uuid::now_v7(),
+                reserved_at,
+                reserved_at + chrono::Duration::seconds(30),
+            )
+            .map_err(BootError::Internal)?,
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => {
+            return Err(BootError::Internal(format!(
+                "unexpected Connector reservation: {other:?}"
+            )))
+        }
+    };
+    let dispatch_started_at = reserved_at + chrono::Duration::seconds(1);
+    connector_execution
+        .begin_dispatch(
+            BeginConnectorExecutionDispatch::new(
+                fence,
+                dispatch_started_at,
+                dispatch_started_at + chrono::Duration::seconds(5),
+            )
+            .map_err(BootError::Internal)?,
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let attempts_path = format!("{revisions_path}/{revised_revision_id}/execution-attempts");
+    let attempt_path = format!("{attempts_path}/{}", attempt_request.attempt_id());
+    let resolution_path = format!("{attempt_path}/resolution");
+    let unresolved = app
+        .call(get_as(&attempts_path, CONNECTOR_READ_TOKEN))
+        .await?;
+    assert_eq!(unresolved.status(), 200);
+    let unresolved = response_json(&unresolved)?;
+    assert_eq!(
+        unresolved["data"]["attempts"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(unresolved["data"]["attempts"][0]["state"], "dispatching");
+    assert_eq!(
+        unresolved["data"]["attempts"][0]["recoveryState"],
+        "indeterminate"
+    );
+    assert!(unresolved["data"]["attempts"][0]
+        .get("fenceToken")
+        .is_none());
+    assert_eq!(
+        app.call(get_as(&attempt_path, CONNECTOR_READ_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &resolution_path,
+            "connector-attempt-resolution-denied",
+            json!({"reason": "Provider outcome could not be established"}),
+            CONNECTOR_READ_TOKEN,
+        ))
+        .await?
+        .status(),
+        403
+    );
+    let resolved = app
+        .call(post_json_as(
+            &resolution_path,
+            "connector-attempt-resolution",
+            json!({"reason": "  Provider outcome could not be established  "}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?;
+    assert_eq!(resolved.status(), 201);
+    let resolved = response_json(&resolved)?;
+    assert_eq!(resolved["data"]["replayed"], false);
+    assert_eq!(
+        resolved["data"]["resolution"]["resolution"],
+        "indeterminate"
+    );
+    assert_eq!(
+        resolved["data"]["resolution"]["reason"],
+        "Provider outcome could not be established"
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &resolution_path,
+            "connector-attempt-resolution",
+            json!({"reason": "Provider outcome could not be established"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?
+        .status(),
+        200
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            &resolution_path,
+            "connector-attempt-resolution",
+            json!({"reason": "Changed conclusion"}),
+            CONNECTOR_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+    let loaded_resolution = app
+        .call(get_as(&resolution_path, CONNECTOR_READ_TOKEN))
+        .await?;
+    assert_eq!(loaded_resolution.status(), 200);
+    assert_eq!(
+        response_json(&loaded_resolution)?["data"]["attemptId"],
+        attempt_request.attempt_id().to_string()
+    );
+    let remaining = app
+        .call(get_as(&attempts_path, CONNECTOR_READ_TOKEN))
+        .await?;
+    assert_eq!(remaining.status(), 200);
+    assert_eq!(
+        response_json(&remaining)?["data"]["attempts"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    let terminal = app
+        .call(get_as(&attempt_path, CONNECTOR_READ_TOKEN))
+        .await?;
+    assert_eq!(terminal.status(), 200);
+    let terminal = response_json(&terminal)?;
+    assert_eq!(terminal["data"]["state"], "terminal");
+    assert_eq!(terminal["data"]["recoveryState"], "completed");
+    assert_eq!(terminal["data"]["evidenceOutcome"], "indeterminate");
+    assert_eq!(terminal["data"]["responseStatus"], Value::Null);
     Ok(())
 }
 
@@ -328,4 +505,8 @@ pub(super) fn required_connector_string(value: &Value, label: &str) -> Result<St
         .as_str()
         .map(str::to_owned)
         .ok_or_else(|| BootError::Internal(format!("Connector response has no {label}")))
+}
+
+fn connector_uuid(value: &str) -> Result<Uuid> {
+    Uuid::parse_str(value).map_err(|error| BootError::Internal(error.to_string()))
 }

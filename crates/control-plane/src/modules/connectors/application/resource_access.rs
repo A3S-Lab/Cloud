@@ -40,3 +40,7 @@ pub(super) fn evidence_not_found() -> ApplicationError {
 pub(super) fn attempt_not_found() -> ApplicationError {
     ApplicationError::NotFound("Connector execution attempt not found".into())
 }
+
+pub(super) fn attempt_resolution_not_found() -> ApplicationError {
+    ApplicationError::NotFound("Connector execution attempt resolution not found".into())
+}

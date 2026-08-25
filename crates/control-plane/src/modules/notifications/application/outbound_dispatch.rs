@@ -199,6 +199,12 @@ impl OutboundNotificationDispatcher {
                             evidence,
                         })
                     }
+                    ConnectorExecutionOutcome::Indeterminate => {
+                        return Err(ApplicationError::Internal(
+                            "terminal indeterminate Connector evidence bypassed its attempt projection"
+                                .into(),
+                        ))
+                    }
                 },
                 ConnectorExecutionAttemptResult::SettlementPending { settlement, .. } => {
                     let settled = self
@@ -247,6 +253,12 @@ impl OutboundNotificationDispatcher {
                                     generation,
                                     evidence,
                                 })
+                            }
+                            ConnectorExecutionOutcome::Indeterminate => {
+                                return Err(ApplicationError::Internal(
+                                    "terminal indeterminate Connector evidence bypassed its attempt projection"
+                                        .into(),
+                                ))
                             }
                         },
                         _ => {

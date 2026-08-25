@@ -130,10 +130,11 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.65.0`. It adds exact Connector revision
-revocation reads and idempotent writes, and the contract documents every
-Connector profile/revision result through closed operation-specific schemas.
-Contract `1.64.0` already closed every Workflow result type, including Ontology
+The client targets REST contract `1.66.0`. It adds bounded unresolved Connector
+attempt reads and an exact idempotent `indeterminate` conclusion for dispatches
+past their outcome deadline. Contract `1.65.0` added exact Connector revision
+revocation reads and writes plus closed operation-specific Connector schemas;
+`1.64.0` already closed every Workflow result type, including Ontology
 aggregates/revisions/diffs, HumanTask lifecycle and Form interaction payloads,
 Goal, Plan, node catalog, run, output, variable-inspection, diagnostics, and
 history. The client also enumerates
@@ -323,14 +324,22 @@ profile lifecycle added by REST contract `1.36.0`.
 `revokeConnectorRevision` and `getConnectorRevisionRevocation` add the exact
 revision fence in contract `1.65.0`; the client validates and canonicalizes its
 bounded reason, while Cloud serializes the immutable fact with dispatch
-admission. Profile writes transport one
+admission. Contract `1.66.0` adds
+`listUnresolvedConnectorExecutionAttempts`, `getConnectorExecutionAttempt`,
+`getConnectorExecutionAttemptResolution`, and
+`resolveConnectorExecutionAttempt`. The unresolved feed uses an opaque cursor,
+defaults to 50 records, and accepts at most 100. Resolution accepts one bounded
+control-free reason and can only record the closed `indeterminate` conclusion;
+Cloud enforces the exact dispatch deadline and atomic terminal evidence.
+Profile writes transport one
 bounded canonical A3S ACL in a strict JSON envelope; revise also carries one
 positive expected aggregate version. Lists default to 50 and accept at most
 200 records. Cloud remains authoritative for ACL parsing, exact Secret-version
 admission, Resource Grants, optimistic concurrency, idempotency, immutable
-digest lineage, Outbox, audit, and persistence. The client never resolves a
-Secret or projects endpoint, credential, provider body, attempt/evidence, or
-retry state.
+digest lineage, attempt fencing, terminal evidence, Outbox, audit, and
+persistence. The client never resolves a Secret or exposes a fence token,
+endpoint, credential, provider body/text, request/response body, retry
+permission, or provider cancellation claim.
 
 `listDurableCellApplications`, `getDurableCellApplication`,
 `createDurableCellApplication`, `reviseDurableCellApplication`,

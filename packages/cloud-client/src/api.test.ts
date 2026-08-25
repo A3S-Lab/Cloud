@@ -23,7 +23,10 @@ import {
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
-import { MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES } from './connectors';
+import {
+  MAX_CONNECTOR_EXECUTION_ATTEMPT_LIST_LIMIT,
+  MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES,
+} from './connectors';
 import {
   MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES,
   validateDeployDurableCellApplicationInput,
@@ -45,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.65.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.66.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1548,6 +1551,30 @@ describe('CloudApi', () => {
       'profile / one',
       'revision / one'
     );
+    await api.listUnresolvedConnectorExecutionAttempts(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one',
+      { cursor: 'v1:123:attempt / cursor', limit: 25 }
+    );
+    await api.getConnectorExecutionAttempt(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one',
+      'attempt / one'
+    );
+    await api.getConnectorExecutionAttemptResolution(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one',
+      'attempt / one'
+    );
     await api.createConnectorProfile(
       'organization / one',
       'project',
@@ -1572,6 +1599,16 @@ describe('CloudApi', () => {
       { reason: '  destination credential was compromised  ' },
       'connector:revoke'
     );
+    await api.resolveConnectorExecutionAttempt(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one',
+      'attempt / one',
+      { reason: '  provider outcome could not be established  ' },
+      'connector:resolve-attempt'
+    );
 
     expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
       [
@@ -1595,6 +1632,18 @@ describe('CloudApi', () => {
         'GET',
       ],
       [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/execution-attempts?limit=25&cursor=v1%3A123%3Aattempt+%2F+cursor',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/execution-attempts/attempt%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/execution-attempts/attempt%20%2F%20one/resolution',
+        'GET',
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles',
         'POST',
       ],
@@ -1606,23 +1655,33 @@ describe('CloudApi', () => {
         '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/revocation',
         'POST',
       ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one/execution-attempts/attempt%20%2F%20one/resolution',
+        'POST',
+      ],
     ]);
-    expect(calls[5]?.[1]).toEqual(
+    expect(calls[8]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'connector:create' }),
         body: JSON.stringify({ name: 'Incident webhook', definitionAcl: acl }),
       })
     );
-    expect(calls[6]?.[1]).toEqual(
+    expect(calls[9]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'connector:revise' }),
         body: JSON.stringify({ expectedVersion: 2, definitionAcl: acl }),
       })
     );
-    expect(calls[7]?.[1]).toEqual(
+    expect(calls[10]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'connector:revoke' }),
         body: JSON.stringify({ reason: 'destination credential was compromised' }),
+      })
+    );
+    expect(calls[11]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'connector:resolve-attempt' }),
+        body: JSON.stringify({ reason: 'provider outcome could not be established' }),
       })
     );
 
@@ -1671,6 +1730,28 @@ describe('CloudApi', () => {
       'Connector list limit must be between 1 and 200'
     );
     expect(() =>
+      api.listUnresolvedConnectorExecutionAttempts(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        'revision',
+        { limit: MAX_CONNECTOR_EXECUTION_ATTEMPT_LIST_LIMIT + 1 }
+      )
+    ).toThrow('Connector execution attempt list limit must be between 1 and 100');
+    expect(() =>
+      api.resolveConnectorExecutionAttempt(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        'revision',
+        'attempt',
+        { reason: 'line\nbreak' },
+        'connector:invalid-attempt-resolution'
+      )
+    ).toThrow('Connector execution attempt resolution reason must contain between');
+    expect(() =>
       api.revokeConnectorRevision(
         'organization',
         'project',
@@ -1692,7 +1773,7 @@ describe('CloudApi', () => {
         'connector:oversized-revocation'
       )
     ).toThrow('Connector revision revocation reason must contain between');
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(12);
   });
 
   it('reuses the Durable Cells REST authority with bounded ACL-native inputs', async () => {
