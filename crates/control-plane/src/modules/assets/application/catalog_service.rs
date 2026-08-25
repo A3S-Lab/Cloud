@@ -6,8 +6,8 @@ use crate::modules::assets::domain::{
     Asset, AssetArchived, AssetCreated, AssetGitRepositoryError, AssetKind, AssetRelease,
     AssetReleaseArtifact, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
     AssetReleaseVersion, AssetReleaseWrite, AssetState, AssetWrite, CreateAssetReleaseWrite,
-    CreateAssetWrite, IAssetGitRepository, IAssetRepository, TransitionAssetReleaseWrite,
-    TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
+    CreateAssetWrite, HostedAssetBuildRequested, IAssetGitRepository, IAssetRepository,
+    TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -206,11 +206,19 @@ impl AssetCatalogApplicationService {
         .map_err(ApplicationError::Conflict)?;
         let event = AssetReleaseDrafted::envelope(&release, request_id)
             .map_err(|error| ApplicationError::Internal(error.to_string()))?;
+        let hosted_build_requested_event = match asset.kind {
+            AssetKind::Agent | AssetKind::Mcp => Some(
+                HostedAssetBuildRequested::envelope(&asset, &release, request_id)
+                    .map_err(ApplicationError::Internal)?,
+            ),
+            AssetKind::Skill => None,
+        };
         let drafted = self
             .assets
             .create_release(CreateAssetReleaseWrite {
                 release,
                 event,
+                hosted_build_requested_event,
                 idempotency: release_idempotency,
             })
             .await

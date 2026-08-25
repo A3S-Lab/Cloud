@@ -1365,7 +1365,9 @@ External source is resolved to an immutable commit before a build starts. The
 sole build workflow is `cloud.build@5`:
 
 ```text
-Source revision
+Source revision or hosted Asset release
+  -> owner Outbox fact
+  -> Artifacts candidate projection and BuildRun
   -> Flow build operation
   -> Workloads/Fleet placement and command lease
   -> Node Agent journal
@@ -1388,11 +1390,19 @@ Ownership is intentionally split:
 | Deployment and rollout | Workloads |
 
 Migration 063 persists the BuildRun subject as one closed relational union.
-External revisions and hosted Asset releases enter the same bounded A3S
-ORM-backed reservation transaction and the same BuildRun reconciler. Draft
-Agent and MCP releases are scanned only as missing work; PostgreSQL row locks,
-per-subject attempt uniqueness, and exact foreign keys repair restart gaps
-without introducing an Assets queue, Redis authority, or another Flow.
+Migration 152 feeds both variants into one immutable Artifacts-owned candidate
+projection: Sources commits `source.revision.accepted@1`, while Assets commits
+`asset.hosted-build.requested@1` atomically with each admitted Agent/MCP draft
+and forbids that fact for Skill releases. The existing generic Outbox Relay
+projects exact replays idempotently through `IBuildCandidateProjectionPort`.
+The projection preserves the owner-published commit and recipe/manifest
+identity as immutable conflict evidence. The bounded A3S ORM reservation
+transaction locks only this local projection
+with `FOR UPDATE SKIP LOCKED`; it never scans Sources or Assets tables. The
+projection has no processed flag, lease, retry counter, or lifecycle, so the
+BuildRun reconciler, per-subject attempt uniqueness, and exact identity guards
+repair restart gaps without introducing an Assets queue, Redis authority,
+worker, or another Flow.
 
 The current hosted publication boundary preserves one transaction per owner.
 Artifacts commits the BuildRun terminal CAS and one versioned, location-free

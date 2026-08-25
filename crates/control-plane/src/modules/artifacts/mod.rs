@@ -5,16 +5,16 @@ mod presentation;
 pub mod published;
 
 pub use application::{
-    BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
-    BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,
-    BuildLogSourceGapReason, BuildLogStream, BuildRunLogPage, CancelBuildRun,
-    CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence, GetBuildEvidenceHandler,
-    GetBuildRun, GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler,
-    HostedArtifactLocation, HostedArtifactQueryService, IBuildLogQueryPort,
-    IHostedArtifactQueryPort, INodeArtifactStore, ListBuildRuns, ListBuildRunsHandler,
-    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
-    OpenNodeArtifact, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
-    MAX_BUILD_LOG_PAGE_SIZE,
+    BuildCandidate, BuildCandidateEvidence, BuildLogChunkGap, BuildLogChunkGapReason,
+    BuildLogCompactedRange, BuildLogData, BuildLogPage, BuildLogQueryError, BuildLogReadRequest,
+    BuildLogRecord, BuildLogSourceGap, BuildLogSourceGapReason, BuildLogStream, BuildRunLogPage,
+    CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, GetBuildEvidence,
+    GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs,
+    GetBuildRunLogsHandler, HostedArtifactLocation, HostedArtifactQueryService,
+    IBuildCandidateProjectionPort, IBuildLogQueryPort, IHostedArtifactQueryPort,
+    INodeArtifactStore, ListBuildRuns, ListBuildRunsHandler, NodeArtifactDescriptor,
+    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OpenNodeArtifact, RetryBuildRun,
+    RetryBuildRunHandler, RetryBuildRunResult, MAX_BUILD_LOG_PAGE_SIZE,
 };
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,
@@ -34,11 +34,11 @@ pub use domain::{
     SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 pub use infrastructure::{
-    BoxBuildEvidenceGenerator, BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime,
-    BuildFlowRuntimeDependencies, CloudBuildSourceResolver, InMemoryBuildRunRepository,
-    LocalBuildEvidenceSigner, NodeArtifactObjectStore, OciBuildOutputValidator,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
-    SourceBuildInputPreparer, VaultBuildEvidenceSigner,
+    BoxBuildEvidenceGenerator, BuildCandidateProjector, BuildFlowConfig, BuildFlowConfigOptions,
+    BuildFlowRuntime, BuildFlowRuntimeDependencies, CloudBuildSourceResolver,
+    InMemoryBuildRunRepository, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
+    OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    PostgresBuildRunRepository, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 pub(crate) use presentation::{
     ArtifactsModule, BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,

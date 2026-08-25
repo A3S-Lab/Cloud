@@ -1,4 +1,10 @@
-use crate::modules::assets::domain::{Asset, AssetRelease, McpServiceProfileBinding};
+use crate::modules::assets::domain::{
+    Asset, AssetKind, AssetRelease, AssetReleaseState, AssetState, McpServiceProfileBinding,
+};
+use crate::modules::assets::published::{
+    HostedAssetBuildRequestedFact, HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY,
+    HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
+};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -84,6 +90,44 @@ impl AssetReleaseDrafted {
                 manifest_digest: release.manifest_digest.as_str().into(),
             })?,
         ))
+    }
+}
+
+pub struct HostedAssetBuildRequested;
+
+impl HostedAssetBuildRequested {
+    pub fn envelope(
+        asset: &Asset,
+        release: &AssetRelease,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        asset.validate()?;
+        release.validate_for(asset)?;
+        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp) {
+            return Err("only Agent and MCP releases can request a hosted build".into());
+        }
+        if asset.state != AssetState::Active || release.state != AssetReleaseState::Draft {
+            return Err("hosted Asset build request requires an active draft release".into());
+        }
+        let fact = HostedAssetBuildRequestedFact::new(
+            release.organization_id,
+            release.asset_id,
+            release.id,
+            release.commit_sha.as_str().into(),
+            release.manifest_digest.as_str().into(),
+        )?;
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY.into(),
+            schema_version: HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
+            organization_id: release.organization_id.as_uuid(),
+            aggregate_id: release.id.as_uuid(),
+            aggregate_version: release.aggregate_version,
+            occurred_at: release.updated_at,
+            correlation_id,
+            causation_id: None,
+            payload: serde_json::to_value(fact).map_err(|error| error.to_string())?,
+        })
     }
 }
 

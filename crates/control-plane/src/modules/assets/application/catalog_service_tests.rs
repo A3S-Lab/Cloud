@@ -154,7 +154,6 @@ impl IAssetRepository for CatalogStore {
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
         bundle
-            .release
             .validate_for(&asset)
             .map_err(RepositoryError::Conflict)?;
         state.releases.insert(

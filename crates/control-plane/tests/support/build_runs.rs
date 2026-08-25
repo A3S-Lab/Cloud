@@ -12,14 +12,15 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
     RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
+    BuildArtifact, BuildCandidate, BuildCandidateEvidence, BuildCandidateProjector, BuildRun,
+    BuildRunStatus, BuildSubject, IBuildCandidateProjectionPort, IBuildRunRepository,
+    OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
     ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
-    CreateAssetReleaseWrite, HostedBuildOutcomeProjector, IAssetRepository,
-    PostgresAssetRepository,
+    CreateAssetReleaseWrite, HostedAssetBuildRequested, HostedBuildOutcomeProjector,
+    IAssetRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -61,11 +62,30 @@ pub async fn exercise_build_run_persistence(
     let source_revision_id = SourceRevisionId::from_uuid(Uuid::parse_str(source_revision_id)?);
     let builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let database = Database::new(PostgresDialect, executor.clone());
+    let (repository_identity, commit_sha, recipe_digest, accepted_at) = database
+        .fetch_one_as(
+            sql_query::<(String, String, String, chrono::DateTime<chrono::Utc>)>(
+                "select repository_identity, commit_sha, recipe_digest, accepted_at from external_source_revisions where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(source_revision_id.as_uuid()),
+        )
+        .await?;
+    builds
+        .project_candidate(BuildCandidate::new(
+            organization_id,
+            BuildSubject::external_source_revision(project_id, environment_id, source_revision_id),
+            BuildCandidateEvidence::external_source_revision(
+                repository_identity.clone(),
+                GitCommitSha::parse(commit_sha)?,
+                Sha256Digest::parse(recipe_digest.clone())?,
+            )?,
+            accepted_at,
+        )?)
+        .await?;
 
-    let (left, right) = tokio::join!(
-        builds.reserve_pending(1, chrono::Utc::now()),
-        builds.reserve_pending(1, chrono::Utc::now())
-    );
+    let (left, right) = tokio::join!(builds.reserve_pending(1), builds.reserve_pending(1));
     let mut reserved = left?;
     reserved.extend(right?);
     assert_eq!(reserved.len(), 1);
@@ -645,8 +665,24 @@ pub async fn exercise_build_run_persistence(
         )
         .await?;
     assert_eq!(inserted.rows_affected, 1);
+    builds
+        .project_candidate(BuildCandidate::new(
+            organization_id,
+            BuildSubject::external_source_revision(
+                project_id,
+                environment_id,
+                cancellation_source_revision_id,
+            ),
+            BuildCandidateEvidence::external_source_revision(
+                repository_identity,
+                GitCommitSha::parse("1".repeat(40))?,
+                Sha256Digest::parse(recipe_digest)?,
+            )?,
+            cancellation_accepted_at,
+        )?)
+        .await?;
     let queued_for_cancellation = builds
-        .reserve_pending(1, cancellation_accepted_at)
+        .reserve_pending(1)
         .await?
         .pop()
         .ok_or("cancellation build was not reserved")?;
@@ -860,22 +896,48 @@ pub async fn exercise_hosted_build_run_persistence(
         "postgres-hosted-build-draft",
         release.id.as_uuid().as_bytes(),
     )?;
+    let hosted_build_requested =
+        HostedAssetBuildRequested::envelope(asset, &release, release.id.as_uuid())?;
     assets
         .create_release(CreateAssetReleaseWrite {
             event: AssetReleaseDrafted::envelope(&release, release.id.as_uuid())?,
+            hosted_build_requested_event: Some(hosted_build_requested.clone()),
             release: release.clone(),
             idempotency: idempotency.clone(),
         })
         .await?;
 
-    // A draft can be committed before a reconciler process observes it. Two
-    // restarted workers must repair that gap by reserving exactly one BuildRun.
+    // The relay can commit its immutable candidate projection before either
+    // restarted worker observes it. They must reserve exactly one BuildRun.
     let left_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let right_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let message = OutboxMessage {
+        event_id: hosted_build_requested.event_id,
+        event_key: hosted_build_requested.event_key,
+        schema_version: hosted_build_requested.schema_version,
+        organization_id: hosted_build_requested.organization_id,
+        aggregate_id: hosted_build_requested.aggregate_id,
+        aggregate_version: hosted_build_requested.aggregate_version,
+        occurred_at: hosted_build_requested.occurred_at,
+        correlation_id: hosted_build_requested.correlation_id,
+        causation_id: hosted_build_requested.causation_id,
+        payload: hosted_build_requested.payload,
+        delivery_attempts: 1,
+    };
+    let left_candidates: Arc<dyn IBuildCandidateProjectionPort> = left_repository.clone();
+    let right_candidates: Arc<dyn IBuildCandidateProjectionPort> = right_repository.clone();
+    let left_projector = BuildCandidateProjector::new(left_candidates);
+    let right_projector = BuildCandidateProjector::new(right_candidates);
+    let (left_projection, right_projection) = tokio::join!(
+        left_projector.project(&message),
+        right_projector.project(&message)
+    );
+    left_projection?;
+    right_projection?;
     let reserved_at = chrono::Utc::now().max(release.created_at);
     let (left, right) = tokio::join!(
-        left_repository.reserve_pending(1, reserved_at),
-        right_repository.reserve_pending(1, reserved_at),
+        left_repository.reserve_pending(1),
+        right_repository.reserve_pending(1),
     );
     let mut reserved = left?;
     reserved.extend(right?);
@@ -919,6 +981,18 @@ pub async fn exercise_hosted_build_run_persistence(
             asset.id.as_uuid(),
             release.id.as_uuid(),
         )
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where organization_id = ")
+                    .bind(asset.organization_id.as_uuid())
+                    .append(" and aggregate_id = ")
+                    .bind(release.id.as_uuid())
+                    .append(" and event_key = 'asset.hosted-build.requested'"),
+            )
+            .await?,
+        1
     );
 
     let queued_version = build.aggregate_version;

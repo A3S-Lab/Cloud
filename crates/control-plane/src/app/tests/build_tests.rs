@@ -65,7 +65,7 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
         )
         .await;
     let queued = builds
-        .reserve_pending(1, accepted_at)
+        .reserve_pending(1)
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?
         .pop()
@@ -101,7 +101,7 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
         )
         .await;
     let newer = builds
-        .reserve_pending(1, newer_requested_at)
+        .reserve_pending(1)
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?
         .pop()
@@ -585,7 +585,7 @@ async fn build_run_detail_hides_cross_tenant_and_unknown_identities() -> Result<
         )
         .await;
     let cross_tenant = builds
-        .reserve_pending(1, accepted_at)
+        .reserve_pending(1)
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?
         .pop()

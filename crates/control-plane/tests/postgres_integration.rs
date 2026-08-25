@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 151;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "151";
+const CLOUD_MIGRATION_COUNT: i64 = 152;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "152";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -2205,6 +2205,16 @@ async fn postgres_hosted_draft_recovery_is_owner_atomic_and_projected() {
         .expect("hosted draft recovery PostgreSQL gate");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn artifact_build_candidate_migration_backfills_only_eligible_owner_facts() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_artifact_candidate_migration_backfill)
+        .await
+        .expect("Artifacts build candidate migration backfill");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_boot_flow_task_manager_drains_and_surfaces_terminal_failures() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -2968,6 +2978,283 @@ async fn exercise_identity_migration_backfill(
         ))
         .await?;
     assert_eq!(organizations_without_owner, 0);
+    Ok(())
+}
+
+async fn exercise_artifact_candidate_migration_backfill(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = PostgresExecutor::connect_no_tls(&url, 2)?;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(concat!(
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/001_foundation.sql"
+            )),
+            "\n",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/021_external_source_revisions.sql"
+            )),
+            "\n",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/051_hosted_assets.sql"
+            ))
+        ))
+        .await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::now_v7();
+    let project_id = Uuid::now_v7();
+    let environment_id = Uuid::now_v7();
+    let source_revision_id = Uuid::now_v7();
+    let hosted_asset_id = Uuid::now_v7();
+    let hosted_release_id = Uuid::now_v7();
+    let skill_asset_id = Uuid::now_v7();
+    let skill_release_id = Uuid::now_v7();
+    let archived_asset_id = Uuid::now_v7();
+    let archived_release_id = Uuid::now_v7();
+    let published_asset_id = Uuid::now_v7();
+    let published_release_id = Uuid::now_v7();
+    let created_at =
+        chrono::DateTime::parse_from_rfc3339("2026-08-25T00:00:00Z")?.with_timezone(&Utc);
+
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", 'Candidate migration tenant', 'candidate-migration-tenant', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", 'Candidate project', 'candidate-project', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", 'Production', 'production', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into external_source_revisions (organization_id, project_id, environment_id, id, repository_provider, repository_url, repository_identity, commit_sha, recipe, recipe_digest, aggregate_version, accepted_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", ")
+            .bind(source_revision_id)
+            .append(", 'github', 'https://github.com/a3s-lab/cloud', 'github:github.com/a3s-lab/cloud', ")
+            .bind("a".repeat(40))
+            .append(", ")
+            .bind(json!({
+                "schema": "a3s.cloud.build-recipe.v1",
+                "kind": "dockerfile",
+                "contextPath": ".",
+                "dockerfilePath": "Dockerfile",
+                "target": null,
+                "platforms": ["linux/amd64"]
+            }))
+            .append(", ")
+            .bind(format!("sha256:{}", "b".repeat(64)))
+            .append(", 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+
+    for (asset_id, name, name_key, kind, state, updated_at, archived_at) in [
+        (
+            hosted_asset_id,
+            "Hosted Agent",
+            "hosted-agent",
+            "agent",
+            "active",
+            created_at,
+            None,
+        ),
+        (
+            skill_asset_id,
+            "Hosted Skill",
+            "hosted-skill",
+            "skill",
+            "active",
+            created_at,
+            None,
+        ),
+        (
+            archived_asset_id,
+            "Archived MCP",
+            "archived-mcp",
+            "mcp",
+            "archived",
+            created_at + chrono::Duration::seconds(1),
+            Some(created_at + chrono::Duration::seconds(1)),
+        ),
+        (
+            published_asset_id,
+            "Published Agent",
+            "published-agent",
+            "agent",
+            "active",
+            created_at,
+            None,
+        ),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into assets (organization_id, id, name, name_key, kind, state, aggregate_version, created_at, updated_at, archived_at) values (",
+                )
+                .bind(organization_id)
+                .append(", ")
+                .bind(asset_id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", ")
+                .bind(kind)
+                .append(", ")
+                .bind(state)
+                .append(", 1, ")
+                .bind(created_at)
+                .append(", ")
+                .bind(updated_at)
+                .append(", ")
+                .bind(archived_at)
+                .append(")"),
+            )
+            .await?;
+    }
+
+    for (asset_id, release_id, updated_at) in [
+        (hosted_asset_id, hosted_release_id, created_at),
+        (skill_asset_id, skill_release_id, created_at),
+        (archived_asset_id, archived_release_id, created_at),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, aggregate_version, created_at, updated_at) values (",
+                )
+                .bind(organization_id)
+                .append(", ")
+                .bind(asset_id)
+                .append(", ")
+                .bind(release_id)
+                .append(", '1.0.0', 'draft', ")
+                .bind("c".repeat(40))
+                .append(", ")
+                .bind(format!("sha256:{}", "d".repeat(64)))
+                .append(", 1, ")
+                .bind(created_at)
+                .append(", ")
+                .bind(updated_at)
+                .append(")"),
+            )
+            .await?;
+    }
+    let published_at = created_at + chrono::Duration::seconds(2);
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes, aggregate_version, created_at, updated_at, published_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(published_asset_id)
+            .append(", ")
+            .bind(published_release_id)
+            .append(", '1.0.0', 'published', ")
+            .bind("e".repeat(40))
+            .append(", ")
+            .bind(format!("sha256:{}", "f".repeat(64)))
+            .append(", 'oci_service', ")
+            .bind(format!("sha256:{}", "1".repeat(64)))
+            .append(", 'application/vnd.oci.image.index.v1+json', 1024, 2, ")
+            .bind(created_at)
+            .append(", ")
+            .bind(published_at)
+            .append(", ")
+            .bind(published_at)
+            .append(")"),
+        )
+        .await?;
+
+    Migrator::new(executor.clone())
+        .run([Migration::new(
+            "152",
+            "Artifacts-owned build candidate projection",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/152_artifact_build_candidate_projection.sql"
+            )),
+        )])
+        .await?;
+
+    let candidates = database
+        .fetch_all_as(sql_query::<(
+            String,
+            Uuid,
+            Option<String>,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(
+            "select subject_kind, subject_id, repository_identity, commit_sha, owner_input_digest, requested_at from artifact_build_candidates order by subject_kind, subject_id",
+        ))
+        .await?
+        .rows;
+    assert_eq!(candidates.len(), 2);
+    assert!(candidates.contains(&(
+        "external_source_revision".into(),
+        source_revision_id,
+        Some("github:github.com/a3s-lab/cloud".into()),
+        "a".repeat(40),
+        format!("sha256:{}", "b".repeat(64)),
+        created_at,
+    )));
+    assert!(candidates.contains(&(
+        "asset_release".into(),
+        hosted_release_id,
+        None,
+        "c".repeat(40),
+        format!("sha256:{}", "d".repeat(64)),
+        created_at,
+    )));
+    assert!(!candidates.iter().any(|(_, subject_id, ..)| {
+        [skill_release_id, archived_release_id, published_release_id].contains(subject_id)
+    }));
     Ok(())
 }
 

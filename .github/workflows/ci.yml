@@ -73,6 +73,28 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Certify fact-fed Artifacts build admission
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-artifact-build-candidates.log"
+          if {
+            cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              artifact_build_candidate_migration_backfills_only_eligible_owner_facts \
+              -- --exact --nocapture --test-threads=1 &&
+            cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_hosted_draft_recovery_is_owner_atomic_and_projected \
+              -- --exact --nocapture --test-threads=1
+          } 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Artifacts build admission gate failed::$detail"
+          exit 1
+
       - name: Certify immutable accepted BuildPlans
         run: |
           log="$RUNNER_TEMP/a3s-cloud-developer-build-plans.log"

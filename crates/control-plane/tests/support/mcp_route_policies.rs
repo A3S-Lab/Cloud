@@ -4,9 +4,10 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
-    BindMcpServiceProfileWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
-    IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
-    McpServiceProfileBound, McpServiceProfileSpec, PostgresAssetRepository,
+    BindMcpServiceProfileWrite, CreateAssetReleaseWrite, CreateAssetWrite,
+    HostedAssetBuildRequested, IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile,
+    McpServiceProfileBinding, McpServiceProfileBound, McpServiceProfileSpec,
+    PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
     DomainClaimChanged, McpCredentialChanged, McpRoutePolicyMutationKind, RoutePublicationStaged,
@@ -247,7 +248,12 @@ pub async fn exercise(
     assets
         .create_release(CreateAssetReleaseWrite {
             release: release.clone(),
-            event: AssetReleaseDrafted::envelope(&release, Uuid::now_v7())?,
+            event: AssetReleaseDrafted::envelope(&release, release.id.as_uuid())?,
+            hosted_build_requested_event: Some(HostedAssetBuildRequested::envelope(
+                &asset,
+                &release,
+                release.id.as_uuid(),
+            )?),
             idempotency: idempotency(
                 organization_id,
                 format!("assets/{}/releases", asset.id),

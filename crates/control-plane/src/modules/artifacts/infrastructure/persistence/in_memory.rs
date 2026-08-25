@@ -1,14 +1,18 @@
-use crate::modules::artifacts::application::hosted_build_outcome_event;
+use crate::modules::artifacts::application::{
+    hosted_build_outcome_event, BuildCandidate, BuildCandidateEvidence,
+    IBuildCandidateProjectionPort,
+};
 use crate::modules::artifacts::domain::repositories::{
     validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
     BuildRunFinalizationMode,
 };
 use crate::modules::artifacts::domain::{
-    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    BuildRun, BuildSubject, IBuildRunRepository, RequestBuildCancellationBundle,
+    RequestBuildRetryBundle,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
-    OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest,
+    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, Sha256Digest, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -23,46 +27,11 @@ pub struct InMemoryBuildRunRepository {
 #[derive(Default)]
 struct State {
     builds: BTreeMap<(OrganizationId, BuildRunId), BuildRun>,
-    revisions: BTreeMap<SourceRevisionId, PendingRevision>,
-    asset_releases: BTreeMap<(OrganizationId, AssetReleaseId), PendingAssetRelease>,
+    candidates: BTreeMap<(OrganizationId, u8, uuid::Uuid), BuildCandidate>,
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
-}
-
-#[derive(Clone)]
-struct PendingRevision {
-    organization_id: OrganizationId,
-    project_id: ProjectId,
-    environment_id: EnvironmentId,
-    accepted_at: DateTime<Utc>,
-}
-
-#[derive(Clone)]
-struct PendingAssetRelease {
-    organization_id: OrganizationId,
-    asset_id: AssetId,
-    drafted_at: DateTime<Utc>,
-}
-
-#[derive(Clone)]
-enum PendingBuild {
-    External(SourceRevisionId, PendingRevision),
-    AssetRelease(AssetReleaseId, PendingAssetRelease),
-}
-
-impl PendingBuild {
-    fn sort_key(&self) -> (DateTime<Utc>, u8, uuid::Uuid) {
-        match self {
-            Self::External(source_revision_id, revision) => {
-                (revision.accepted_at, 0, source_revision_id.as_uuid())
-            }
-            Self::AssetRelease(asset_release_id, release) => {
-                (release.drafted_at, 1, asset_release_id.as_uuid())
-            }
-        }
-    }
 }
 
 impl InMemoryBuildRunRepository {
@@ -78,15 +47,27 @@ impl InMemoryBuildRunRepository {
         source_revision_id: SourceRevisionId,
         accepted_at: DateTime<Utc>,
     ) {
-        self.state.write().await.revisions.insert(
-            source_revision_id,
-            PendingRevision {
+        self.project_candidate(
+            BuildCandidate::new(
                 organization_id,
-                project_id,
-                environment_id,
+                BuildSubject::external_source_revision(
+                    project_id,
+                    environment_id,
+                    source_revision_id,
+                ),
+                BuildCandidateEvidence::external_source_revision(
+                    "github:github.com/a3s-lab/test-build-candidate".into(),
+                    GitCommitSha::parse("a".repeat(40)).expect("test Source commit"),
+                    Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))
+                        .expect("test Source recipe digest"),
+                )
+                .expect("test Source evidence"),
                 accepted_at,
-            },
-        );
+            )
+            .expect("test Source build candidate"),
+        )
+        .await
+        .expect("project test Source build candidate");
     }
 
     pub async fn add_asset_release(
@@ -96,14 +77,21 @@ impl InMemoryBuildRunRepository {
         asset_release_id: AssetReleaseId,
         drafted_at: DateTime<Utc>,
     ) {
-        self.state.write().await.asset_releases.insert(
-            (organization_id, asset_release_id),
-            PendingAssetRelease {
+        self.project_candidate(
+            BuildCandidate::new(
                 organization_id,
-                asset_id,
+                BuildSubject::asset_release(asset_id, asset_release_id),
+                BuildCandidateEvidence::hosted_asset_release(
+                    GitCommitSha::parse("c".repeat(40)).expect("test hosted Asset commit"),
+                    Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))
+                        .expect("test hosted Asset manifest digest"),
+                ),
                 drafted_at,
-            },
-        );
+            )
+            .expect("test hosted Asset build candidate"),
+        )
+        .await
+        .expect("project test hosted Asset build candidate");
     }
 
     pub async fn mark_operation_started(&self, build_run_id: BuildRunId) {
@@ -128,13 +116,49 @@ impl InMemoryBuildRunRepository {
     }
 }
 
+fn candidate_key(candidate: &BuildCandidate) -> (OrganizationId, u8, uuid::Uuid) {
+    match candidate.subject() {
+        BuildSubject::ExternalSourceRevision {
+            source_revision_id, ..
+        } => (candidate.organization_id(), 0, source_revision_id.as_uuid()),
+        BuildSubject::AssetRelease {
+            asset_release_id, ..
+        } => (candidate.organization_id(), 1, asset_release_id.as_uuid()),
+    }
+}
+
+fn candidate_sort_key(candidate: &BuildCandidate) -> (DateTime<Utc>, u8, uuid::Uuid, uuid::Uuid) {
+    let (organization_id, kind, subject_id) = candidate_key(candidate);
+    (
+        candidate.requested_at(),
+        kind,
+        organization_id.as_uuid(),
+        subject_id,
+    )
+}
+
+#[async_trait]
+impl IBuildCandidateProjectionPort for InMemoryBuildRunRepository {
+    async fn project_candidate(&self, candidate: BuildCandidate) -> Result<(), RepositoryError> {
+        candidate.validate().map_err(RepositoryError::Storage)?;
+        let key = candidate_key(&candidate);
+        let mut state = self.state.write().await;
+        match state.candidates.get(&key) {
+            Some(existing) if existing == &candidate => Ok(()),
+            Some(_) => Err(RepositoryError::Conflict(
+                "build candidate fact conflicts with its existing projection".into(),
+            )),
+            None => {
+                state.candidates.insert(key, candidate);
+                Ok(())
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl IBuildRunRepository for InMemoryBuildRunRepository {
-    async fn reserve_pending(
-        &self,
-        limit: usize,
-        reserved_at: DateTime<Utc>,
-    ) -> Result<Vec<BuildRun>, RepositoryError> {
+    async fn reserve_pending(&self, limit: usize) -> Result<Vec<BuildRun>, RepositoryError> {
         let mut state = self.state.write().await;
         let existing_sources = state
             .builds
@@ -151,37 +175,42 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             })
             .collect::<BTreeSet<_>>();
         let mut pending = state
-            .revisions
-            .iter()
-            .filter(|(id, _)| !existing_sources.contains(id))
-            .map(|(id, revision)| PendingBuild::External(*id, revision.clone()))
-            .chain(
-                state
-                    .asset_releases
-                    .iter()
-                    .filter(|(id, _)| !existing_releases.contains(id))
-                    .map(|((_, id), release)| PendingBuild::AssetRelease(*id, release.clone())),
-            )
+            .candidates
+            .values()
+            .filter(|candidate| match candidate.subject() {
+                BuildSubject::ExternalSourceRevision {
+                    source_revision_id, ..
+                } => !existing_sources.contains(&source_revision_id),
+                BuildSubject::AssetRelease {
+                    asset_release_id, ..
+                } => !existing_releases.contains(&(candidate.organization_id(), asset_release_id)),
+            })
+            .cloned()
             .collect::<Vec<_>>();
-        pending.sort_by_key(PendingBuild::sort_key);
+        pending.sort_by_key(candidate_sort_key);
         let mut reserved = Vec::new();
         for candidate in pending.into_iter().take(limit.max(1)) {
-            let build = match candidate {
-                PendingBuild::External(source_revision_id, revision) => BuildRun::reserve(
-                    revision.organization_id,
-                    revision.project_id,
-                    revision.environment_id,
+            let build = match candidate.subject() {
+                BuildSubject::ExternalSourceRevision {
+                    project_id,
+                    environment_id,
                     source_revision_id,
-                    reserved_at.max(revision.accepted_at),
+                } => BuildRun::reserve(
+                    candidate.organization_id(),
+                    project_id,
+                    environment_id,
+                    source_revision_id,
+                    candidate.requested_at(),
                 ),
-                PendingBuild::AssetRelease(asset_release_id, release) => {
-                    BuildRun::reserve_asset_release(
-                        release.organization_id,
-                        release.asset_id,
-                        asset_release_id,
-                        reserved_at.max(release.drafted_at),
-                    )
-                }
+                BuildSubject::AssetRelease {
+                    asset_id,
+                    asset_release_id,
+                } => BuildRun::reserve_asset_release(
+                    candidate.organization_id(),
+                    asset_id,
+                    asset_release_id,
+                    candidate.requested_at(),
+                ),
             };
             state
                 .builds
@@ -473,10 +502,8 @@ mod tests {
             )
             .await;
 
-        let (left, right) = tokio::join!(
-            repository.reserve_pending(1, accepted_at),
-            repository.reserve_pending(1, accepted_at)
-        );
+        let (left, right) =
+            tokio::join!(repository.reserve_pending(1), repository.reserve_pending(1));
         let reserved =
             left.expect("left reservation").len() + right.expect("right reservation").len();
         assert_eq!(reserved, 1);
@@ -498,10 +525,8 @@ mod tests {
             .add_asset_release(organization_id, asset_id, asset_release_id, drafted_at)
             .await;
 
-        let (left, right) = tokio::join!(
-            repository.reserve_pending(1, drafted_at),
-            repository.reserve_pending(1, drafted_at)
-        );
+        let (left, right) =
+            tokio::join!(repository.reserve_pending(1), repository.reserve_pending(1));
         let reserved =
             left.expect("left reservation").len() + right.expect("right reservation").len();
         assert_eq!(reserved, 1);
@@ -532,7 +557,7 @@ mod tests {
             )
             .await;
         let reserved = repository
-            .reserve_pending(1, accepted_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()
@@ -608,7 +633,7 @@ mod tests {
             )
             .await;
         let queued = repository
-            .reserve_pending(1, requested_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()
@@ -681,7 +706,7 @@ mod tests {
             )
             .await;
         let queued = repository
-            .reserve_pending(1, requested_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()
@@ -792,7 +817,7 @@ mod tests {
             .add_asset_release(organization_id, asset_id, asset_release_id, requested_at)
             .await;
         let queued = repository
-            .reserve_pending(1, requested_at)
+            .reserve_pending(1)
             .await
             .expect("reserve hosted build")
             .pop()

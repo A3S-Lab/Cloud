@@ -25,7 +25,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository,
-    ISourceRevisionRepository, NewExternalSourceRevision,
+    ISourceRevisionRepository, NewExternalSourceRevision, SourceRevisionAccepted,
 };
 use crate::modules::sources::infrastructure::persistence::InMemorySourceRevisionRepository;
 use crate::modules::sources::publish_source_build_input;
@@ -98,7 +98,7 @@ impl BuildFixture {
             )
             .await;
         let build = builds
-            .reserve_pending(1, base)
+            .reserve_pending(1)
             .await?
             .pop()
             .ok_or("build reservation did not produce a build")?;
@@ -337,7 +337,7 @@ async fn accept_revision(
     sources: &InMemorySourceRevisionRepository,
     revision: ExternalSourceRevision,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let organization_id = revision.organization_id;
+    let acceptance_event = SourceRevisionAccepted::envelope(&revision, Uuid::now_v7())?;
     sources
         .accept(AcceptSourceRevision {
             revision,
@@ -347,7 +347,7 @@ async fn accept_revision(
                 Uuid::now_v7().to_string(),
                 b"build-source",
             )?,
-            event: event(organization_id),
+            event: acceptance_event,
         })
         .await?;
     Ok(())

@@ -9,9 +9,14 @@ mod build_recipe;
 mod git_provider;
 mod git_repository;
 mod source_build_input;
+mod source_revision_accepted;
 
 pub use build_recipe::{BuildPlatform, BuildRecipe};
 pub use git_provider::GitProvider;
 pub use git_repository::GitRepository;
 pub use source_build_input::SourceBuildInputSnapshot;
 pub(in crate::modules::sources) use source_build_input::ValidatedSourceBuildInputProjection;
+pub use source_revision_accepted::{
+    SourceRevisionAcceptedFact, SOURCE_REVISION_ACCEPTED_EVENT_KEY,
+    SOURCE_REVISION_ACCEPTED_SCHEMA_VERSION,
+};

@@ -339,3 +339,66 @@ fn repository_writes_reject_forged_event_metadata_and_payloads() {
     };
     assert!(transition.validate().is_err());
 }
+
+#[test]
+fn release_write_requires_one_exact_hosted_build_request_for_service_assets() {
+    let agent = asset(AssetKind::Agent);
+    let release = draft(&agent);
+    let correlation_id = Uuid::now_v7();
+    let drafted_event =
+        AssetReleaseDrafted::envelope(&release, correlation_id).expect("drafted event");
+    let hosted_event = HostedAssetBuildRequested::envelope(&agent, &release, correlation_id)
+        .expect("hosted build request");
+    let idempotency = IdempotencyRequest::new("asset-releases", "draft-hosted", b"draft-hosted")
+        .expect("idempotency");
+
+    let valid = CreateAssetReleaseWrite {
+        release: release.clone(),
+        event: drafted_event.clone(),
+        hosted_build_requested_event: Some(hosted_event.clone()),
+        idempotency: idempotency.clone(),
+    };
+    valid.validate_for(&agent).expect("valid hosted write");
+
+    let missing = CreateAssetReleaseWrite {
+        release: release.clone(),
+        event: drafted_event.clone(),
+        hosted_build_requested_event: None,
+        idempotency: idempotency.clone(),
+    };
+    assert!(missing.validate_for(&agent).is_err());
+
+    let mut reused_identity = hosted_event.clone();
+    reused_identity.event_id = drafted_event.event_id;
+    let reused_identity = CreateAssetReleaseWrite {
+        release: release.clone(),
+        event: drafted_event.clone(),
+        hosted_build_requested_event: Some(reused_identity),
+        idempotency: idempotency.clone(),
+    };
+    assert!(reused_identity.validate_for(&agent).is_err());
+
+    let mut forged_payload = hosted_event;
+    forged_payload.payload["asset_id"] = serde_json::json!(AssetId::new());
+    let forged_payload = CreateAssetReleaseWrite {
+        release,
+        event: drafted_event,
+        hosted_build_requested_event: Some(forged_payload),
+        idempotency: idempotency.clone(),
+    };
+    assert!(forged_payload.validate_for(&agent).is_err());
+
+    let skill = asset(AssetKind::Skill);
+    let skill_release = draft(&skill);
+    let skill_write = CreateAssetReleaseWrite {
+        event: AssetReleaseDrafted::envelope(&skill_release, Uuid::now_v7())
+            .expect("Skill draft event"),
+        release: skill_release,
+        hosted_build_requested_event: Some(
+            HostedAssetBuildRequested::envelope(&agent, &valid.release, Uuid::now_v7())
+                .expect("unrelated hosted request"),
+        ),
+        idempotency,
+    };
+    assert!(skill_write.validate_for(&skill).is_err());
+}

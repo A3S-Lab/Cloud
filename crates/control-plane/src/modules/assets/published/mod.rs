@@ -5,6 +5,11 @@
 //! hosted Git repositories, or persistence contracts.
 
 mod hosted_build_input;
+mod hosted_build_requested;
 
 pub use hosted_build_input::HostedAssetBuildInputSnapshot;
 pub(in crate::modules::assets) use hosted_build_input::ValidatedHostedAssetBuildInputProjection;
+pub use hosted_build_requested::{
+    HostedAssetBuildRequestedFact, HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY,
+    HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
+};

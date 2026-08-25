@@ -25,9 +25,10 @@ use crate::modules::applications::{
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
-    ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
-    CancelBuildRunHandler, CloudBuildSourceResolver, GetBuildEvidenceHandler, GetBuildRunHandler,
-    GetBuildRunLogsHandler, HostedArtifactQueryService, IBuildArtifactPublisher,
+    ArtifactsModule, BoxBuildEvidenceGenerator, BuildCandidateProjector, BuildFlowRuntime,
+    BuildFlowRuntimeDependencies, CancelBuildRunHandler, CloudBuildSourceResolver,
+    GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler,
+    HostedArtifactQueryService, IBuildArtifactPublisher, IBuildCandidateProjectionPort,
     IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
     IBuildRunRepository, IBuildSourceResolver, IHostedArtifactQueryPort, INodeArtifactStore,
     ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
@@ -533,6 +534,7 @@ async fn build_api_worker_application(
         .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
     let builds = adapters.builds;
+    let build_candidates = adapters.build_candidates;
     let executions = adapters.executions;
     let execution_templates = adapters.execution_templates;
     let agents = adapters.agents;
@@ -1268,6 +1270,7 @@ async fn build_api_worker_application(
                     Arc::clone(&memberships),
                     Arc::clone(&alert_policies),
                     Arc::clone(&resource_grants),
+                    Arc::clone(&build_candidates),
                 ),
             },
         )?)
@@ -1678,6 +1681,7 @@ async fn build_relay_application(
         resource_grants,
         notifications,
         assets,
+        build_candidates,
         alert_policies,
         outbox,
     } = PostgresAdapterFactory::new(executor.clone()).relay();
@@ -1692,6 +1696,7 @@ async fn build_relay_application(
                 memberships,
                 alert_policies,
                 resource_grants,
+                build_candidates,
             ),
         },
     )?;
@@ -1738,6 +1743,7 @@ fn build_outbox_projectors(
     memberships: Arc<dyn IMembershipRepository>,
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
+    build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
 ) -> Vec<Arc<dyn IIntegrationEventProjector>> {
     vec![
         Arc::new(
@@ -1745,6 +1751,7 @@ fn build_outbox_projectors(
                 .with_alert_policies(alert_policies, resource_grants),
         ),
         Arc::new(HostedBuildOutcomeProjector::new(assets)),
+        Arc::new(BuildCandidateProjector::new(build_candidates)),
     ]
 }
 

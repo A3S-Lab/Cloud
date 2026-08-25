@@ -381,6 +381,9 @@ impl ISourceRevisionRepository for InMemorySourceRevisionRepository {
         &self,
         request: AcceptSourceRevision,
     ) -> Result<IdempotentWrite<ExternalSourceRevision>, RepositoryError> {
+        request.validate().map_err(|error| {
+            RepositoryError::Storage(format!("invalid Source revision acceptance: {error}"))
+        })?;
         let mut state = self.state.write().await;
         let idempotency_key = (
             request.idempotency.storage_key().0.to_owned(),

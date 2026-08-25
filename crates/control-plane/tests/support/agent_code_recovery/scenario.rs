@@ -53,7 +53,12 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
     assets
         .create_release(CreateAssetReleaseWrite {
             release: release.clone(),
-            event: AssetReleaseDrafted::envelope(&release, Uuid::now_v7())?,
+            event: AssetReleaseDrafted::envelope(&release, release.id.as_uuid())?,
+            hosted_build_requested_event: Some(HostedAssetBuildRequested::envelope(
+                &asset,
+                &release,
+                release.id.as_uuid(),
+            )?),
             idempotency: idempotency(
                 "test.agent-code-recovery.releases",
                 "draft-agent-1.0.0",

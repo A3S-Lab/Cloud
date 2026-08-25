@@ -61,10 +61,7 @@ impl BuildRunReconciler {
 
     pub async fn run_once(&self, limit: usize) -> Result<BuildRunReconcileReport, RepositoryError> {
         let limit = limit.max(1);
-        let reserved = self
-            .builds
-            .reserve_pending(limit, chrono::Utc::now())
-            .await?;
+        let reserved = self.builds.reserve_pending(limit).await?;
         let pending = self.builds.pending_operation_starts(limit).await?;
         let mut report = BuildRunReconcileReport {
             reserved: reserved.len(),

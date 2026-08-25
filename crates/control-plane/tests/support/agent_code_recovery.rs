@@ -21,7 +21,8 @@ use a3s_cloud_control_plane::modules::artifacts::{
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, PostgresAssetRepository,
+    CreateAssetReleaseWrite, CreateAssetWrite, HostedAssetBuildRequested, IAssetRepository,
+    PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::{
     EnrollmentToken, NodeCommandDraft,

@@ -69,6 +69,14 @@ A production installation or upgrade must preserve this sequence:
 6. drain old replicas before any later contract migration removes their
    admitted schema.
 
+Migration 152 is an explicit step-2 compatibility phase even though its table
+addition is structurally additive. Binaries predating that migration do not
+emit `asset.hosted-build.requested@1`; therefore every old Assets writer must
+be drained before the migration performs its one-time historical seed. Start
+only the target writer and Relay afterward. This preserves a single fact-fed
+candidate mechanism instead of retaining a trigger, owner-table scan, or
+second catch-up worker solely for mixed-version writes.
+
 Re-running the exact migrator is safe. Concurrent jobs converge through the
 A3S ORM advisory lock in each component schema. One process may apply Cloud
 versions while another later wins the Flow or Boot component lock; the union

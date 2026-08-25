@@ -4,7 +4,6 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 
 #[derive(Clone)]
 pub struct RequestBuildCancellationBundle {
@@ -22,11 +21,7 @@ pub struct RequestBuildRetryBundle {
 
 #[async_trait]
 pub trait IBuildRunRepository: Send + Sync {
-    async fn reserve_pending(
-        &self,
-        limit: usize,
-        reserved_at: DateTime<Utc>,
-    ) -> Result<Vec<BuildRun>, RepositoryError>;
+    async fn reserve_pending(&self, limit: usize) -> Result<Vec<BuildRun>, RepositoryError>;
 
     async fn pending_operation_starts(
         &self,

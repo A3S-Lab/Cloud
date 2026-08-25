@@ -300,6 +300,80 @@ fn artifacts_build_source_resolver_never_loads_owner_repositories() {
 }
 
 #[test]
+fn artifacts_candidate_reservation_reads_only_its_fact_projection() {
+    let source = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Artifacts PostgreSQL repository");
+    let reservation = source
+        .split("async fn reserve_pending(")
+        .nth(1)
+        .and_then(|tail| tail.split("async fn pending_operation_starts(").next())
+        .expect("isolate build candidate reservation");
+
+    assert!(
+        reservation.contains("SELECT_BUILD_CANDIDATES")
+            && source.contains(
+                "const SELECT_BUILD_CANDIDATES: &str = \"select c.organization_id, c.subject_kind, c.subject_id, c.project_id, c.environment_id, c.source_revision_id, c.asset_id, c.asset_release_id, c.repository_identity, c.commit_sha, c.owner_input_digest, c.requested_at from artifact_build_candidates c\"",
+            ),
+        "BuildRun reservation lost its Artifacts-owned fact projection"
+    );
+    let violations = [
+        "external_source_revisions",
+        "asset_releases",
+        " join assets ",
+        "for update of r",
+    ]
+    .into_iter()
+    .filter(|needle| reservation.contains(needle))
+    .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "BuildRun reservation regained cross-context candidate discovery: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn artifacts_candidate_projector_consumes_only_published_owner_facts() {
+    let source = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/build_candidate_projector.rs"),
+    )
+    .expect("read Artifacts build candidate projector");
+    for required in [
+        "crate::modules::assets::published",
+        "crate::modules::sources::published",
+        "IBuildCandidateProjectionPort",
+    ] {
+        assert!(
+            source.contains(required),
+            "candidate projector lost required boundary {required}"
+        );
+    }
+    let violations = [
+        "crate::modules::assets::domain",
+        "crate::modules::sources::domain",
+        "IAssetRepository",
+        "ISourceRevisionRepository",
+        "IHostedAssetBuildInputQueryPort",
+        "IBuildRunRepository",
+    ]
+    .into_iter()
+    .filter(|needle| {
+        source
+            .split("#[cfg(test)]")
+            .next()
+            .is_some_and(|production| production.contains(needle))
+    })
+    .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "candidate projector imported owner internals or BuildRun lifecycle authority: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
 fn source_build_input_projection_is_used_only_behind_the_owner_query() {
     let mut violations = BTreeSet::new();
 

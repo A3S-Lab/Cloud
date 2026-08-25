@@ -330,7 +330,7 @@ async fn reserve_build(
         )
         .await;
     builds
-        .reserve_pending(1, accepted_at)
+        .reserve_pending(1)
         .await
         .map_err(repository_error)?
         .pop()

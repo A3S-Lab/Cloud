@@ -4,10 +4,10 @@ use a3s_cloud_control_plane::modules::assets::{
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, AssetRelease, AssetReleaseArtifact,
     AssetReleaseDrafted, AssetReleasePublished, AssetReleaseVersion, AssetReleaseYanked,
     BindMcpServiceProfileWrite, ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository,
-    IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
-    McpServiceProfileBound, McpServiceProfileSpec, PostgresAssetRepository,
-    TransitionAssetReleaseWrite, TransitionAssetWrite,
+    CreateAssetReleaseWrite, CreateAssetWrite, HostedAssetBuildRequested,
+    IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile,
+    McpServiceProfileBinding, McpServiceProfileBound, McpServiceProfileSpec,
+    PostgresAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, RepositoryError,
@@ -116,8 +116,12 @@ pub async fn exercise_assets(
         'b',
         asset.created_at + Duration::seconds(1),
     )?;
-    let create_release =
-        create_release_write(&release, "draft-hosted-agent-1-0-0", b"hosted-agent-1.0.0")?;
+    let create_release = create_release_write(
+        &asset,
+        &release,
+        "draft-hosted-agent-1-0-0",
+        b"hosted-agent-1.0.0",
+    )?;
     let (left, right) = tokio::join!(
         repository.create_release(create_release.clone()),
         repository.create_release(create_release.clone()),
@@ -139,6 +143,7 @@ pub async fn exercise_assets(
     assert!(matches!(
         repository
             .create_release(create_release_write(
+                &asset,
                 &duplicate_version,
                 "duplicate-hosted-agent-version",
                 b"duplicate-hosted-agent-version",
@@ -165,6 +170,7 @@ pub async fn exercise_assets(
     assert_eq!(
         repository
             .create_release(create_release_write(
+                &foreign_asset_reference,
                 &foreign_release,
                 "cross-tenant-release-reference",
                 b"cross-tenant-release-reference",
@@ -208,6 +214,7 @@ pub async fn exercise_assets(
     )?;
     repository
         .create_release(create_release_write(
+            &asset,
             &later_release,
             "draft-hosted-agent-2-0-0",
             b"hosted-agent-2.0.0",
@@ -267,6 +274,7 @@ pub async fn exercise_assets(
     assert!(matches!(
         repository
             .create_release(create_release_write(
+                &asset,
                 &blocked_new_release,
                 "draft-after-archive",
                 b"draft-after-archive",
@@ -349,13 +357,13 @@ pub async fn exercise_assets(
     );
     assert_eq!(
         outbox_count(&database, release.id.as_uuid()).await?,
-        3,
-        "release draft, publication, and yank must each commit one outbox event",
+        4,
+        "hosted release draft must atomically add its build request before publication and yank",
     );
     assert_eq!(
         outbox_count(&database, later_release.id.as_uuid()).await?,
-        1,
-        "failed publication after archive must not leak an outbox event",
+        2,
+        "draft and hosted build request commit atomically; failed publication adds no event",
     );
     exercise_mcp_service_profiles(
         executor,
@@ -800,6 +808,7 @@ async fn exercise_mcp_service_profiles(
     )?;
     repository
         .create_release(create_release_write(
+            &asset,
             &release,
             "draft-weather-mcp-1-0-0",
             b"weather-mcp-1.0.0",
@@ -1012,12 +1021,22 @@ fn create_asset_write(
 }
 
 fn create_release_write(
+    asset: &Asset,
     release: &AssetRelease,
     key: &str,
     canonical_request: &[u8],
 ) -> TestResult<CreateAssetReleaseWrite> {
+    let correlation_id = Uuid::now_v7();
     Ok(CreateAssetReleaseWrite {
-        event: AssetReleaseDrafted::envelope(release, Uuid::now_v7())?,
+        event: AssetReleaseDrafted::envelope(release, correlation_id)?,
+        hosted_build_requested_event: match asset.kind {
+            AssetKind::Agent | AssetKind::Mcp => Some(HostedAssetBuildRequested::envelope(
+                asset,
+                release,
+                correlation_id,
+            )?),
+            AssetKind::Skill => None,
+        },
         idempotency: idempotency(
             release.organization_id,
             format!("assets/{}/releases", release.asset_id),

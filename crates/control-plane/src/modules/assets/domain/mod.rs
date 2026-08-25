@@ -7,7 +7,7 @@ pub mod value_objects;
 pub use entities::{Asset, AssetKind, AssetRelease, AssetReleaseState, AssetState};
 pub use events::{
     AssetArchived, AssetCreated, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseYanked,
-    McpServiceProfileBound,
+    HostedAssetBuildRequested, McpServiceProfileBound,
 };
 pub use repositories::{
     AcquireAssetGitWriteLease, AssetGitRepositoryControlError, AssetGitWriteJournal,

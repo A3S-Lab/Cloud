@@ -153,7 +153,7 @@ mod tests {
             )
             .await;
         let build = builds
-            .reserve_pending(1, accepted_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()
@@ -198,7 +198,7 @@ mod tests {
             )
             .await;
         let build = builds
-            .reserve_pending(1, accepted_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()
@@ -276,7 +276,7 @@ mod tests {
             )
             .await;
         let build = builds
-            .reserve_pending(1, accepted_at)
+            .reserve_pending(1)
             .await
             .expect("reserve build")
             .pop()

@@ -163,10 +163,7 @@ pub(super) async fn create_release(
                     bundle.release.asset_id,
                 )
                 .await?;
-                bundle
-                    .release
-                    .validate_for(&asset)
-                    .map_err(invalid_transition)?;
+                bundle.validate_for(&asset).map_err(invalid_transition)?;
                 if asset.state != AssetState::Active {
                     return Err(RepositoryError::Conflict(
                         "archived Asset cannot create a release".into(),
@@ -214,6 +211,9 @@ pub(super) async fn create_release(
                     Err(error) => return Err(error),
                 }
                 store_outbox(transaction, &bundle.event).await?;
+                if let Some(event) = &bundle.hosted_build_requested_event {
+                    store_outbox(transaction, event).await?;
+                }
                 let reference = AssetReleaseWriteReference {
                     asset_id: bundle.release.asset_id,
                     asset_release_id: bundle.release.id,

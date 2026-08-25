@@ -1416,6 +1416,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/151_workflow_list_operator_payload_schema.sql"
             )),
         ),
+        Migration::new(
+            "152",
+            "Artifacts-owned build candidate fact projection",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/152_artifact_build_candidate_projection.sql"
+            )),
+        ),
     ]
 }
 
@@ -1438,6 +1446,10 @@ mod hosted_build_context_boundary_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/workflow_list_operator_payload_schema_migration_151.rs"]
 mod workflow_list_operator_payload_schema_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/artifact_build_candidate_projection_migration.rs"]
+mod artifact_build_candidate_projection_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

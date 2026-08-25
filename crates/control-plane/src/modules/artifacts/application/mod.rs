@@ -1,3 +1,4 @@
+mod build_candidate;
 mod build_log_query;
 mod build_run_reconciler;
 mod commands;
@@ -7,6 +8,7 @@ mod node_artifact_store;
 mod queries;
 pub(crate) mod resource_access;
 
+pub use build_candidate::{BuildCandidate, BuildCandidateEvidence, IBuildCandidateProjectionPort};
 pub use build_log_query::{
     BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
     BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,

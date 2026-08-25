@@ -549,6 +549,26 @@ drift, and requires one build recipe. Artifacts receives only the exact tenant,
 Asset/release, commit, manifest digest, and recipe; Skill bundle publication,
 Asset lifecycle, and hosted Git remain Assets authority.
 
+Initial build admission is a fact projection, not a cross-context query or a
+second queue. An accepted external revision already commits
+`source.revision.accepted@1` in the Sources transaction. Creating an active
+Agent/MCP release commits `asset.hosted-build.requested@1` beside the ordinary
+draft event in the same Assets transaction; a Skill release is rejected if it
+carries that fact. The generic Outbox Relay translates either published fact
+through the Artifacts-owned `IBuildCandidateProjectionPort` into the immutable
+`artifact_build_candidates` read model introduced by migration 152. Exact
+replay is idempotent and different material under the same natural identity
+fails closed. It retains the owner-published repository/commit/recipe identity
+or commit/manifest identity solely as immutable replay evidence; reservation
+still creates a BuildRun from the typed subject, not another input authority.
+The projection deliberately has no processed state, lease,
+retry counter, or foreign key to an owner table. `reserve_pending` locks only
+these local rows with `FOR UPDATE SKIP LOCKED` and creates at most one
+deterministic attempt-1 `BuildRun`; the BuildRun remains the only executable
+build state machine. Migration 152 seeds facts committed before the projector
+existed and requires pre-152 Assets writers to be drained during upgrade so no
+post-seed draft can omit the new owner fact.
+
 For a successful hosted Asset build, Artifacts publishes one immutable,
 location-free `HostedBuildOutcome` containing only the exact tenant, Asset,
 release, BuildRun/version/attempt, operation, commit, manifest, OCI descriptor,
@@ -3499,9 +3519,10 @@ deterministic initial `BuildRun` per typed build subject plus a linear sequence
 of deterministic retry attempts. A subject is exactly one external source
 revision with Project and Environment identity or one hosted AssetRelease with
 Asset identity. Migration 063 preserves that closed union, its foreign keys,
-and per-subject attempt uniqueness through A3S ORM; the bounded reconciler
-locks pending candidates from both owning contexts and repairs a
-draft-to-operation crash gap. Every retry has a fresh BuildRun and Operation
+and per-subject attempt uniqueness through A3S ORM. Migration 152 adds the
+immutable Artifacts-owned candidate read model fed by owner Outbox facts; the
+bounded reconciler locks only this local projection and repairs the
+fact-to-BuildRun-to-operation crash gaps. Every retry has a fresh BuildRun and Operation
 ID, records its attempt and immediate parent BuildRun, and retains the exact
 subject. Each aggregate binds tenant and subject ownership, the exact
 `cloud.build@5` operation, immutable input and Box request/output

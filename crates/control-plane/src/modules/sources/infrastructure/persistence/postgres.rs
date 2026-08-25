@@ -313,6 +313,9 @@ impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
         &self,
         request: AcceptSourceRevision,
     ) -> Result<IdempotentWrite<ExternalSourceRevision>, RepositoryError> {
+        request.validate().map_err(|error| {
+            RepositoryError::Storage(format!("invalid Source revision acceptance: {error}"))
+        })?;
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {

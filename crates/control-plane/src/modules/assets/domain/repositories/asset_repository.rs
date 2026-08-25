@@ -2,6 +2,10 @@ use crate::modules::assets::domain::{
     Asset, AssetArchived, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted,
     AssetReleasePublished, AssetReleaseState, AssetReleaseYanked, AssetState,
 };
+use crate::modules::assets::published::{
+    HostedAssetBuildRequestedFact, HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY,
+    HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
+};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, IdempotencyRequest, OrganizationId, RepositoryError,
 };
@@ -54,6 +58,7 @@ pub struct TransitionAssetWrite {
 pub struct CreateAssetReleaseWrite {
     pub release: AssetRelease,
     pub event: DomainEventEnvelope,
+    pub hosted_build_requested_event: Option<DomainEventEnvelope>,
     pub idempotency: IdempotencyRequest,
 }
 
@@ -117,6 +122,30 @@ impl CreateAssetReleaseWrite {
             return Err("new Asset release is not at its initial draft state".into());
         }
         validate_release_event(&self.event, &self.release, "asset.release.drafted")
+    }
+
+    pub fn validate_for(&self, asset: &Asset) -> Result<(), String> {
+        self.validate()?;
+        self.release.validate_for(asset)?;
+        match (asset.kind, &self.hosted_build_requested_event) {
+            (AssetKind::Skill, None) => Ok(()),
+            (AssetKind::Agent | AssetKind::Mcp, Some(event)) => {
+                if event.correlation_id != self.event.correlation_id
+                    || event.event_id == self.event.event_id
+                {
+                    return Err(
+                        "Asset release draft and hosted build request identity differ".into(),
+                    );
+                }
+                validate_hosted_build_requested_event(event, asset, &self.release)
+            }
+            (AssetKind::Skill, Some(_)) => {
+                Err("Skill release cannot request an OCI hosted build".into())
+            }
+            (AssetKind::Agent | AssetKind::Mcp, None) => {
+                Err("Agent and MCP release must request its hosted build atomically".into())
+            }
+        }
     }
 }
 
@@ -337,6 +366,39 @@ fn validate_release_event(
             }
         }
         _ => Err("unsupported Asset release event key".into()),
+    }
+}
+
+fn validate_hosted_build_requested_event(
+    event: &DomainEventEnvelope,
+    asset: &Asset,
+    release: &AssetRelease,
+) -> Result<(), String> {
+    if asset.state != AssetState::Active
+        || release.state != AssetReleaseState::Draft
+        || !event_metadata_matches(
+            event,
+            HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY,
+            HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
+            release.organization_id.as_uuid(),
+            release.id.as_uuid(),
+            release.aggregate_version,
+            release.updated_at,
+        )
+    {
+        return Err("hosted Asset build request and release are inconsistent".into());
+    }
+    let fact: HostedAssetBuildRequestedFact = event_payload(event, "Hosted Asset build requested")?;
+    fact.validate()?;
+    if fact.organization_id() == release.organization_id
+        && fact.asset_id() == release.asset_id
+        && fact.asset_release_id() == release.id
+        && fact.commit_sha() == release.commit_sha.as_str()
+        && fact.manifest_digest() == release.manifest_digest.as_str()
+    {
+        Ok(())
+    } else {
+        Err("hosted Asset build request payload is inconsistent".into())
     }
 }
 

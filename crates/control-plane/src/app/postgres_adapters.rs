@@ -3,7 +3,9 @@ use crate::modules::applications::{
     IApplicationRepository, IApplicationSessionRepository, PostgresApplicationRepository,
     PostgresApplicationSessionRepository,
 };
-use crate::modules::artifacts::{IBuildRunRepository, PostgresBuildRunRepository};
+use crate::modules::artifacts::{
+    IBuildCandidateProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
+};
 use crate::modules::assets::{
     IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
     PostgresAssetRepository,
@@ -95,6 +97,7 @@ impl PostgresAdapterFactory {
     }
 
     pub(super) fn api_worker(&self) -> ApiWorkerPostgresAdapters {
+        let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
         ApiWorkerPostgresAdapters {
             identity: IdentityPostgresAdapters::new(self.executor.clone()),
             projects: ProjectPostgresAdapters::new(self.executor.clone()),
@@ -111,7 +114,8 @@ impl PostgresAdapterFactory {
             security_investigations: Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(
                 self.executor.clone(),
             )),
-            builds: Arc::new(PostgresBuildRunRepository::new(self.executor.clone())),
+            builds: artifacts.builds,
+            build_candidates: artifacts.build_candidates,
             executions: Arc::new(PostgresExecutionRepository::new(self.executor.clone())),
             execution_templates: Arc::new(PostgresExecutionTemplateRepository::new(
                 self.executor.clone(),
@@ -139,12 +143,14 @@ impl PostgresAdapterFactory {
         let identity = IdentityPostgresAdapters::new(self.executor.clone());
         let notifications = NotificationPostgresAdapters::new(self.executor.clone());
         let assets = AssetPostgresAdapters::new(self.executor.clone());
+        let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
         RelayPostgresAdapters {
             memberships: identity.memberships,
             resource_grants: identity.resource_grants,
             notifications: notifications.notifications,
             alert_policies: notifications.alert_policies,
             assets: assets.assets,
+            build_candidates: artifacts.build_candidates,
             outbox: self.outbox(),
         }
     }
@@ -175,6 +181,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) audit_records: Arc<dyn IAuditRecordRepository>,
     pub(super) security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     pub(super) builds: Arc<dyn IBuildRunRepository>,
+    pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
     pub(super) executions: Arc<dyn IExecutionRepository>,
     pub(super) execution_templates: Arc<dyn IExecutionTemplateRepository>,
     pub(super) agents: Arc<dyn IAgentRepository>,
@@ -193,7 +200,23 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) notifications: Arc<dyn INotificationRepository>,
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) assets: Arc<dyn IAssetRepository>,
+    pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,
+}
+
+struct ArtifactPostgresAdapters {
+    builds: Arc<dyn IBuildRunRepository>,
+    build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+}
+
+impl ArtifactPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        let repository = Arc::new(PostgresBuildRunRepository::new(executor));
+        Self {
+            builds: repository.clone(),
+            build_candidates: repository,
+        }
+    }
 }
 
 pub(super) struct IdentityPostgresAdapters {

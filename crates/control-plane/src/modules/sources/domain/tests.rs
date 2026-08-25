@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
-    SourceSubscriptionId,
+    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, SourceConnectionId,
+    SourceRevisionId, SourceSubscriptionId,
 };
 use chrono::Utc;
 
@@ -231,6 +231,23 @@ fn source_revision_event_contains_immutable_metadata_only() {
     assert!(payload.contains(&revision.recipe_digest));
     assert!(!payload.contains("credential"));
     assert!(!payload.contains("token"));
+
+    let acceptance = AcceptSourceRevision {
+        revision: revision.clone(),
+        webhook_delivery: None,
+        idempotency: IdempotencyRequest::new("source-revisions", "accepted-fact", b"revision")
+            .expect("idempotency"),
+        event: event.clone(),
+    };
+    acceptance.validate().expect("exact acceptance fact");
+
+    let mut forged = acceptance.clone();
+    forged.event.payload["commit_sha"] = serde_json::json!("f".repeat(40));
+    assert!(forged.validate().is_err());
+
+    let mut invalid_envelope = acceptance;
+    invalid_envelope.event.correlation_id = uuid::Uuid::nil();
+    assert!(invalid_envelope.validate().is_err());
 }
 
 #[test]

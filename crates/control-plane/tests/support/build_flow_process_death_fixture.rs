@@ -6,7 +6,8 @@ use a3s_cloud_contracts::{
     NodeCommandResult, BOX_BUILD_OUTPUT_NAME,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, IBuildRunRepository, PostgresBuildRunRepository,
+    BuildArtifact, BuildCandidate, BuildCandidateEvidence, BuildRun, BuildSubject,
+    IBuildCandidateProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::{EnrollmentToken, NodeCommand};
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
@@ -18,11 +19,11 @@ use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     EnrollmentTokenId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, SourceRevisionId,
+    ProjectId, Sha256Digest, SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     AcceptSourceRevision, BuildRecipe, ExternalSourceRevision, GitCommitSha, GitProvider,
-    GitRepository, ISourceRevisionRepository, NewExternalSourceRevision,
+    GitRepository, ISourceRevisionRepository, NewExternalSourceRevision, SourceRevisionAccepted,
 };
 use a3s_cloud_control_plane::modules::sources::PostgresSourceRevisionRepository;
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
@@ -116,6 +117,10 @@ pub(super) async fn setup_fixture(
         )?,
         accepted_at: base,
     })?;
+    let repository_identity = revision.repository.identity().to_owned();
+    let commit_sha = revision.commit_sha.clone();
+    let recipe_digest = Sha256Digest::parse(revision.recipe_digest.clone())?;
+    let source_accepted_event = SourceRevisionAccepted::envelope(&revision, Uuid::now_v7())?;
     PostgresSourceRevisionRepository::new(executor.clone())
         .accept(AcceptSourceRevision {
             revision,
@@ -125,12 +130,24 @@ pub(super) async fn setup_fixture(
                 source_revision_id.to_string(),
                 source_revision_id.as_uuid().as_bytes(),
             )?,
-            event: event(organization_id, "test.build.source.accepted"),
+            event: source_accepted_event,
         })
         .await?;
     let builds = PostgresBuildRunRepository::new(executor.clone());
+    builds
+        .project_candidate(BuildCandidate::new(
+            organization_id,
+            BuildSubject::external_source_revision(project_id, environment_id, source_revision_id),
+            BuildCandidateEvidence::external_source_revision(
+                repository_identity,
+                commit_sha,
+                recipe_digest,
+            )?,
+            base,
+        )?)
+        .await?;
     let build = builds
-        .reserve_pending(1, base)
+        .reserve_pending(1)
         .await?
         .pop()
         .ok_or("PostgreSQL did not reserve the BuildRun fixture")?;

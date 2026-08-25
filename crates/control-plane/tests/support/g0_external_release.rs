@@ -5,9 +5,11 @@ mod fixture;
 
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_control_plane::modules::artifacts::{
-    BoxBuildEvidenceGenerator, BuildEvidence, BuildRunStatus, BuildSource, IBuildArtifactPublisher,
-    IBuildEvidenceGenerator, IBuildOutputValidator, IBuildRunRepository, NodeArtifactObjectStore,
-    OciPublicationRequest, PostgresBuildRunRepository, VaultBuildEvidenceSigner,
+    BoxBuildEvidenceGenerator, BuildCandidate, BuildCandidateEvidence, BuildEvidence,
+    BuildRunStatus, BuildSource, BuildSubject, IBuildArtifactPublisher,
+    IBuildCandidateProjectionPort, IBuildEvidenceGenerator, IBuildOutputValidator,
+    IBuildRunRepository, NodeArtifactObjectStore, OciPublicationRequest,
+    PostgresBuildRunRepository, VaultBuildEvidenceSigner,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -15,7 +17,7 @@ use a3s_cloud_control_plane::modules::projects::domain::repositories::IEnvironme
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{ISecretRepository, PostgresSecretRepository};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    IdempotencyRequest, NodeCommandId, NodeId,
+    IdempotencyRequest, NodeCommandId, NodeId, Sha256Digest,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     AcceptSourceRevision, ISourceRevisionRepository, SourceRevisionAccepted,
@@ -303,9 +305,24 @@ async fn reserve_build(
     builds: &PostgresBuildRunRepository,
     inputs: &GateInputs,
 ) -> TestResult<a3s_cloud_control_plane::modules::artifacts::BuildRun> {
-    let reserved = builds
-        .reserve_pending(1, canonical_time(Utc::now()))
+    let revision = &inputs.source.revision;
+    builds
+        .project_candidate(BuildCandidate::new(
+            revision.organization_id,
+            BuildSubject::external_source_revision(
+                revision.project_id,
+                revision.environment_id,
+                revision.id,
+            ),
+            BuildCandidateEvidence::external_source_revision(
+                revision.repository.identity().to_owned(),
+                revision.commit_sha.clone(),
+                Sha256Digest::parse(revision.recipe_digest.clone())?,
+            )?,
+            revision.accepted_at,
+        )?)
         .await?;
+    let reserved = builds.reserve_pending(1).await?;
     if reserved.len() != 1 || reserved[0].id != inputs.source.build_run_id {
         return Err(test_error(
             "PostgreSQL did not reserve the exact private-source BuildRun",

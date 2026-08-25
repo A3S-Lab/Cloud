@@ -139,10 +139,10 @@ snapshot or an application port result.
 
 | Module | Unique authority | Current assessment | Required optimization |
 | --- | --- | --- | --- |
-| Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. It owns the versioned `a3s.cloud.source-build-input.v1` published snapshot and `ISourceBuildInputQueryPort`; the owner-side service loads and validates the aggregate, enforces the complete organization/project/environment/revision binding, and returns only that snapshot. Artifacts Domain enters Sources only through the published language, while its resolver no longer imports the Sources repository. Other Application handlers still directly query Projects/Identity repositories for scope. | Migrate remaining consumers to the published BuildRecipe/input language, replace foreign aggregate readers with owner adapters over consumer ports, and introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
+| Sources | External connection, subscription, exact source revision, and webhook delivery | Strong provider ports and immutable revision model. It owns the versioned `a3s.cloud.source-build-input.v1` published snapshot and `ISourceBuildInputQueryPort`; the owner-side service loads and validates the aggregate, enforces the complete organization/project/environment/revision binding, and returns only that snapshot. Its existing `source.revision.accepted@1` Outbox contract is now an explicit Published Language fact consumed by the Artifacts candidate projector. Artifacts Domain enters Sources only through published language, while its resolver and projector import neither the Sources aggregate nor repository. Other Application handlers still directly query Projects/Identity repositories for scope. | Migrate remaining consumers to the published BuildRecipe/input language, replace foreign aggregate readers with owner adapters over consumer ports, and introduce organization/environment scope ports. External Git/GitHub clients remain infrastructure. |
 | Developer Workflows | Reviewable BuildPlan, workload-profile proposal/acceptance, preview intent, and later monorepo/import decisions | Domain owns its process, Secret-binding, resource, port, health, branch, installation-ref, and pull-request-change proposal values. It enters Sources only through Published Language and imports no foreign owner internals. Application owns action-scoped `IDeveloperWorkflowAuthorizationPort`, `IWorkloadBuildOutcomePort`, `IServiceProfileAdmissionPort`, and `IScheduledTaskProfileAdmissionPort`; Identity policy, Artifacts aggregate state, and Workloads/Executions templates stay private. Build outcomes bind the exact BuildPlan ID/digest, while target admission returns one correlation-bound receipt carrying the target, exact request context, Artifact digest, and opaque owner-contract digest. Architecture tests enforce both layers against every foreign internal model. | Implement the Identity/Artifacts/Workloads/Executions owner adapters and production composition, then add exact Projects/Edge handoffs. No build, scheduler, deployment, route, webhook-verification, or provider lifecycle moves here. |
-| Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain consumes the canonical BuildRecipe only through Sources Published Language and the versioned Artifacts-owned `HostedBuildOutcome` language for hosted publication. Assets owns the idempotent Outbox projector and release transaction; Artifacts no longer imports Assets infrastructure or mutates `asset_releases`. For build-source admission, Assets now publishes `a3s.cloud.hosted-asset-build-input.v1`; `IHostedAssetBuildInputQueryPort` keeps aggregate, release, kind, pinned-manifest, and hosted-Git validation inside Assets. The deployable Agent query returns a bounded Assets read model and obtains the mutable OCI registry location through `IHostedArtifactQueryPort`, never a BuildRun aggregate. | Narrow the root facade and replace remaining direct consumer repository access with Assets-owned admission/query ports. Keep release lifecycle and projection exclusively in Assets. |
-| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain translates only owner-published immutable input and recipe language into local `BuildSource`. `CloudBuildSourceResolver` now composes the Sources and Assets owner query ports and revalidates the exact subject; it imports no foreign aggregate, repository, or hosted-Git authority. Application owns `IBuildLogQueryPort`, the minimal `IHostedArtifactQueryPort`, and the versioned location-free `a3s.cloud.hosted-build-outcome.v1` fact. Successful hosted finalization commits BuildRun plus one Outbox fact in the owner transaction; Assets projects it independently. Migration 150 classifies retained cross-context foreign keys as physical identity guards, not behavioral authority. Presentation is crate-private. Infrastructure remains public migration debt while shared Flow composition imports its runtime registry; hosted reservation still scans foreign candidate rows, and input staging still reaches provider/owner internals. | Replace the transitional hosted-candidate scan with an Artifacts-owned fact-fed candidate projection, then move input staging behind narrow owner/provider ports and privatize Infrastructure after shared Flow composition consumes the root facade. Implement a Box-owned durable build-log adapter when that published contract exists. Never restore foreign Asset writes or add a second publication queue. |
+| Assets | Hosted product identity, immutable Agent/MCP/Skill releases, hosted Git, and release bindings | Domain consumes the canonical BuildRecipe only through Sources Published Language and the versioned Artifacts-owned `HostedBuildOutcome` language for hosted publication. Assets owns the idempotent outcome projector and release transaction; Artifacts no longer imports Assets infrastructure or mutates `asset_releases`. Creating an active Agent/MCP draft now atomically commits both the ordinary release event and the explicit `asset.hosted-build.requested@1` Published Language fact; Skill releases cannot emit it. For build-source admission, Assets publishes `a3s.cloud.hosted-asset-build-input.v1`; `IHostedAssetBuildInputQueryPort` keeps aggregate, release, kind, pinned-manifest, and hosted-Git validation inside Assets. The deployable Agent query returns a bounded Assets read model and obtains the mutable OCI registry location through `IHostedArtifactQueryPort`, never a BuildRun aggregate. | Narrow the root facade and replace remaining direct consumer repository access with Assets-owned admission/query ports. Keep release lifecycle and projection exclusively in Assets. |
+| Artifacts | BuildRun, admitted immutable outputs, evidence, provenance, retention, and node artifact transport | The async node-artifact byte port belongs to Application, so Domain imports no Tokio or object-store transport error. Domain translates only owner-published immutable input and recipe language into local `BuildSource`. `CloudBuildSourceResolver` composes the Sources and Assets owner query ports and revalidates the exact subject; it imports no foreign aggregate, repository, or hosted-Git authority. Application owns `IBuildLogQueryPort`, the minimal `IHostedArtifactQueryPort`, the versioned location-free `a3s.cloud.hosted-build-outcome.v1` fact, and `IBuildCandidateProjectionPort`. The existing generic Outbox Relay maps only Sources/Assets Published Language facts into migration 152's immutable Artifacts-owned candidate projection. `reserve_pending` locks only that local projection with `SKIP LOCKED`; it never discovers work from owner tables. Candidate rows have no processed, lease, retry, or lifecycle state, so `BuildRun` remains the sole executable build state machine. Successful hosted finalization commits BuildRun plus one Outbox fact in the owner transaction; Assets projects it independently. Migration 150 classifies retained cross-context foreign keys as physical identity guards, not behavioral authority. Presentation is crate-private. Infrastructure remains public migration debt while shared Flow composition imports its runtime registry, and input staging still reaches provider/owner internals. | Move input staging behind narrow owner/provider ports and privatize Infrastructure after shared Flow composition consumes the root facade. Implement a Box-owned durable build-log adapter when that published contract exists. Never restore foreign Asset writes or add another publication queue, candidate lifecycle, or worker. |
 
 ### 5.3 Execution and traffic plane
 
@@ -274,8 +274,9 @@ port; Domain receives admitted artifact values and receipts only. The public
 root names exact presentation DTOs without exposing that namespace.
 Infrastructure remains temporarily public because shared Flow composition
 still names its runtime registry directly; that exact site stays frozen. The
-Artifacts-to-Assets publication write is now removed. Remaining Sources/Assets
-input preparation and Fleet runtime relationships stay explicit Wave 2 debt.
+Artifacts-to-Assets publication write and cross-context candidate scans are
+now removed. Remaining Sources/Assets input preparation and Fleet runtime
+relationships stay explicit Wave 2 debt.
 
 ### Wave 2: supply-chain handoffs
 
@@ -284,6 +285,8 @@ input preparation and Fleet runtime relationships stay explicit Wave 2 debt.
 3. Replace the Artifacts-to-Assets table write with an idempotent durable
    publication handoff.
 4. Replace Fleet log DTO reuse with an owner log-query port.
+5. Replace cross-context build-candidate scans with a fact-fed Artifacts
+   projection without adding another queue or lifecycle.
 
 Item 1's owner contract is implemented as the immutable
 `a3s.cloud.source-build-input.v1` published language. Sources alone validates
@@ -356,6 +359,24 @@ function rejects any future Fleet import from Artifacts Application or
 Presentation. The default port remains deliberately unavailable until Box
 publishes a stable durable build-log contract; inventing a Fleet unit mapping
 would create a false capability and the wrong ownership boundary.
+
+Item 5 is implemented through two owner facts and one existing delivery
+mechanism. Sources exposes its existing `source.revision.accepted@1` payload as
+Published Language. Assets atomically emits `asset.hosted-build.requested@1`
+with every admitted active Agent/MCP draft and rejects that fact for Skill
+releases. `BuildCandidateProjector` consumes only those published values through
+the generic Outbox Relay and writes migration 152's immutable
+`artifact_build_candidates` projection through `IBuildCandidateProjectionPort`.
+Exact replay is a no-op and conflicting replay fails closed. The projection
+retains the complete owner-published commit plus recipe/manifest identity so
+same-subject semantic drift cannot masquerade as a replay. The bounded
+reconciler locks only candidate rows with `FOR UPDATE SKIP LOCKED`, then creates
+the deterministic initial `BuildRun`; it contains no query for Sources or
+Assets tables. The projection stores no processing flag, claim, lease, retry,
+or terminal state. Historical rows are seeded once by the migration, while the
+Outbox and BuildRun remain the only delivery-retry and executable lifecycle
+authorities. Executable architecture tests freeze both the local-only
+reservation query and Published-Language-only projector imports.
 
 ### Wave 3: execution and traffic boundaries
 
