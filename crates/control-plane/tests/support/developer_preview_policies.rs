@@ -180,7 +180,7 @@ pub(super) async fn exercise_developer_preview_policy_persistence(
                 .bind(organization_id.as_uuid())
                 .append("), (select count(*) from routes where organization_id = ")
                 .bind(organization_id.as_uuid())
-                .append("), (select count(*) from operations where organization_id = ")
+                .append("), (select count(*) from operation_requests where organization_id = ")
                 .bind(organization_id.as_uuid())
                 .append(")"),
             )
