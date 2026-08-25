@@ -8,6 +8,7 @@ use async_trait::async_trait;
 pub enum DeveloperWorkflowAction {
     AcceptBuildPlan,
     AcceptWorkloadProfile,
+    AcceptPullRequestPreviewPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

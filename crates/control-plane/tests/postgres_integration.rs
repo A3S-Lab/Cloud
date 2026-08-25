@@ -68,8 +68,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-const CLOUD_MIGRATION_COUNT: i64 = 152;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "152";
+const CLOUD_MIGRATION_COUNT: i64 = 153;
+const LATEST_CLOUD_MIGRATION_VERSION: &str = "153";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
@@ -160,6 +160,8 @@ mod connectors_support;
 mod deployment_flow_support;
 #[path = "support/developer_build_plans.rs"]
 mod developer_build_plans_support;
+#[path = "support/developer_preview_policies.rs"]
+mod developer_preview_policies_support;
 #[path = "support/developer_workload_profiles.rs"]
 mod developer_workload_profiles_support;
 #[path = "support/durable_cells.rs"]
@@ -677,6 +679,19 @@ async fn postgres_developer_workload_profiles_are_revisioned_immutable_and_repla
     )
     .await
     .expect("PostgreSQL accepted workload profile persistence gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_developer_preview_policies_are_exact_immutable_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        developer_preview_policies_support::exercise_developer_preview_policy_persistence,
+    )
+    .await
+    .expect("PostgreSQL accepted Preview policy persistence gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

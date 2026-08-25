@@ -1424,6 +1424,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/152_artifact_build_candidate_projection.sql"
             )),
         ),
+        Migration::new(
+            "153",
+            "immutable pull-request Preview policy revisions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/153_developer_pull_request_preview_policy_revisions.sql"
+            )),
+        ),
     ]
 }
 

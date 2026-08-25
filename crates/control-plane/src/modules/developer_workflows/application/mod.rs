@@ -2,6 +2,8 @@ mod acceptance;
 mod authorization;
 mod build_outcome;
 mod detection;
+mod preview_policy_acceptance;
+mod preview_source_subscription;
 mod profile_compilation;
 mod source_revision;
 mod target_admission;
@@ -17,6 +19,13 @@ pub use build_outcome::{
     WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use detection::BuildPlanDetectionService;
+pub use preview_policy_acceptance::{
+    AcceptPullRequestPreviewPolicy, AcceptPullRequestPreviewPolicyHandler,
+    AcceptPullRequestPreviewPolicyResult,
+};
+pub use preview_source_subscription::{
+    IPreviewSourceSubscriptionQueryPort, PreviewSourceSubscriptionBinding,
+};
 pub use profile_compilation::{
     CompiledScheduledTaskProfile, CompiledServiceProfile, CompiledWorkloadProfile,
     WorkloadProfileCompilationService,
@@ -39,3 +48,6 @@ mod profile_compilation_tests;
 
 #[cfg(test)]
 mod workload_profile_acceptance_tests;
+
+#[cfg(test)]
+mod preview_policy_acceptance_tests;

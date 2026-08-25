@@ -479,7 +479,22 @@ denied-fork fact requests cleanup of an existing Preview, and forks are never
 protected-Secret eligible in this slice. No Preview state is persisted or
 production-dispatched, and no Environment, SourceRevision, BuildRun, Workload,
 Route, Operation, timer, scheduler, or non-ACL configuration authority is
-added. Any later serialized Preview policy must be canonical A3S ACL.
+added.
+
+Component-only `P0.3-C2` adds the canonical
+`a3s.cloud.pull-request-preview-policy.v1` policy aggregate and append-only
+revision history. The ACL binds exact Organization, Project, Sources
+subscription, GitHub installation/repository/base branch, owner, bounded
+lifetime and quotas, fork isolation, and trusted-source protected-Secret
+eligibility. `IDeveloperWorkflowAuthorizationPort` runs before parsing or
+replay; the consumer-owned `IPreviewSourceSubscriptionQueryPort` returns only
+the exact active source-Environment/subscription binding and imports no Sources
+aggregate or repository. Migration `153` atomically stores each immutable
+revision with idempotency, audit, and Outbox, reparses ACL on reads, and rejects
+source drift, cross-Organization owner/actor identities, sequence gaps, or
+mutation. Equal desired state is a semantic no-op even when another authorized
+actor submits it. This is policy persistence, not individual Preview
+persistence, and it creates none of the owner resources excluded by C1.
 
 ### 3.4 Asset hosting
 

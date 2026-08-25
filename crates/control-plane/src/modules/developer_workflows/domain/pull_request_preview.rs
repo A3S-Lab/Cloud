@@ -167,6 +167,23 @@ pub enum PreviewForkPolicy {
     Isolated,
 }
 
+impl PreviewForkPolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Deny => "deny",
+            Self::Isolated => "isolated",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "deny" => Ok(Self::Deny),
+            "isolated" => Ok(Self::Isolated),
+            _ => Err("preview fork policy is unsupported".into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewQuota {
     pub maximum_workloads: u16,

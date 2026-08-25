@@ -1,0 +1,20 @@
+pull_request_preview_policy "github" {
+  allow_protected_secrets_for_trusted_sources = true
+  base_branch = "main"
+  base_repository = "https://github.com/a3s-lab/cloud"
+  fork_policy = "isolated"
+  installation_id = 42
+  lifetime_seconds = 86400
+  maximum_active_previews = 8
+  organization_id = "018f0f70-0000-7000-8000-000000000101"
+  owner_principal_id = "018f0f70-0000-7000-8000-000000000105"
+  project_id = "018f0f70-0000-7000-8000-000000000102"
+  schema = "a3s.cloud.pull-request-preview-policy.v1"
+  source_subscription_id = "018f0f70-0000-7000-8000-000000000104"
+  quota {
+    cpu_millis = 2000
+    ephemeral_storage_bytes = 1073741824
+    maximum_workloads = 4
+    memory_bytes = 1073741824
+  }
+}

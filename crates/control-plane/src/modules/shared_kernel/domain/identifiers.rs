@@ -103,6 +103,7 @@ identifier!(BuildPlanId);
 identifier!(WorkloadProfileId);
 identifier!(WorkloadProfileRevisionId);
 identifier!(PullRequestPreviewId);
+identifier!(PullRequestPreviewPolicyRevisionId);
 identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);
