@@ -6169,7 +6169,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(hosted_build_outcomes, 2);
-    assert_eq!((outbox_events, idempotency_records), (59, 45));
+    assert_eq!(
+        (outbox_events, idempotency_records),
+        (62, 45),
+        "three admitted Agent/MCP drafts add owner-atomic hosted build request facts"
+    );
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(

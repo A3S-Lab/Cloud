@@ -104,10 +104,7 @@ fn resolve_operand<'a>(
             value_type,
         }) => {
             let value = inputs.get(input_port).ok_or_else(|| {
-                format!(
-                    "Workflow List Operator operand input {:?} is missing",
-                    input_port
-                )
+                format!("Workflow List Operator operand input {input_port:?} is missing")
             })?;
             if !value_type.matches_json_value(value) {
                 return Err(format!(
@@ -318,15 +315,11 @@ fn resolve_extract_index(
         WorkflowListOperatorExtract::Literal { index } => u64::from(*index),
         WorkflowListOperatorExtract::InputPort { input_port } => {
             let value = inputs.get(input_port).ok_or_else(|| {
-                format!(
-                    "Workflow List Operator extract input {:?} is missing",
-                    input_port
-                )
+                format!("Workflow List Operator extract input {input_port:?} is missing")
             })?;
             positive_json_integer(value).ok_or_else(|| {
                 format!(
-                    "Workflow List Operator extract input {:?} must be a positive integer",
-                    input_port
+                    "Workflow List Operator extract input {input_port:?} must be a positive integer"
                 )
             })?
         }
