@@ -310,6 +310,12 @@ and the Loop termination-value path. Policies are sorted by stable step ID and
 must exactly cover descriptors whose execution class is `composite_region`
 and whose semantic profile is `workflow.iteration` or `workflow.loop`.
 
+Runtime admission repeats that exact semantic check against the immutable Plan:
+an Iteration region accepts only a `workflow.iteration` descriptor and a Loop
+region accepts only `workflow.loop`. The shared coarse `subworkflow` kind and
+exact child `workflow.run` capability cannot substitute for this profile
+identity or reinterpret one policy as the other.
+
 Each covered graph step remains the existing `subworkflow` kind and must bind
 `workflow.run` to one exact, non-nil child WorkflowRevision. The canonical
 contract is limited to 512 regions and 512 KiB. Iteration admits at most 10,000
@@ -344,7 +350,11 @@ frame, uses the existing Outbox/Flow start path, records an exact
 frame resolution. Runtime v3-v21 Iteration dispatch remains sequential in
 ordinal order for exact historic replay. Loop also remains sequential,
 enforces its iteration/time bounds, and passes terminal output into the next
-frame.
+frame. A replacement coordinator adopts the same deterministic child before
+advancing. Each linked frame's evidence is versioned by its exact A3S Flow
+`ChildOperationLinked` sequence as well as the current Hook sequence, so a
+later frame can extend bounded evidence without producing same-sequence replay
+drift.
 
 New policies with `maximum_concurrency > 1` compile to WorkflowRun
 input/runtime/Flow v22. Runtime v22 creates one digest-bound

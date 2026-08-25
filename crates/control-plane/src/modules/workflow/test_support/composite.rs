@@ -5,6 +5,7 @@ pub(crate) fn composite_workflow_run_input(
     goal_input: serde_json::Value,
 ) -> Result<WorkflowRunInput, String> {
     let step_id = policy.step_id().to_owned();
+    let semantic_profile = policy.semantic_profile().to_owned();
     let has_parallel_iteration = matches!(
         &policy,
         WorkflowCompositeRegionPolicy::Iteration(iteration)
@@ -84,7 +85,12 @@ pub(crate) fn composite_workflow_run_input(
         &composite_configuration,
         &schema_digest,
     );
-    composite_step.descriptor = Some(descriptor(&step_id, WorkflowStepKind::Subworkflow));
+    composite_step.descriptor = Some(WorkflowStepDescriptorBinding {
+        step_id: step_id.clone(),
+        descriptor_id: semantic_profile,
+        descriptor_revision: "1.0.0".into(),
+        semantic_digest: semantic_digest.clone(),
+    });
     composite_step.capability = Some(CapabilityReference {
         owner: CapabilityOwner::Workflow,
         capability_type: CapabilityType::WorkflowRevision,
@@ -181,7 +187,6 @@ pub(crate) fn routed_composite_workflow_run_input(
     goal_input: serde_json::Value,
 ) -> Result<WorkflowRunInput, String> {
     let composite_step_id = policy.step_id().to_owned();
-    let composite_descriptor_id = policy.semantic_profile().to_owned();
     let mut input = composite_workflow_run_input(policy, goal_input)?;
     let mut failure_output = input
         .plan
@@ -198,10 +203,6 @@ pub(crate) fn routed_composite_workflow_run_input(
     input.plan.steps.insert(2, failure_output);
     for step in &mut input.plan.steps {
         if step.id == composite_step_id {
-            let descriptor = step.descriptor.as_mut().ok_or_else(|| {
-                "Workflow composite test step lost its descriptor binding".to_owned()
-            })?;
-            descriptor.descriptor_id = composite_descriptor_id.clone();
             step.failure = Some(routed_failure_contract());
         } else {
             step.failure = Some(unsupported_failure_contract());

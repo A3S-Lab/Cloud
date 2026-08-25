@@ -2199,6 +2199,12 @@ concurrency, and failure mode; Loop freezes maximum iterations, time budget,
 and the termination-value path. The contract admits at most 512 regions and
 512 KiB.
 
+Runtime admission independently rechecks that every covered Plan step binds
+the exact profile selected by its immutable region policy: Iteration requires
+`workflow.iteration` and Loop requires `workflow.loop`. The shared
+`subworkflow` kind and exact child `workflow.run` capability cannot reinterpret
+one policy as the other.
+
 The composite digest participates in the semantic-contract-set identity.
 Plan v2 optionally pins `compositeRegionsDigest`, and immutable Run v3 input
 copies the exact ACL and digest. Existing Plan v1 and non-composite Run v2
@@ -2219,9 +2225,13 @@ path, validates and records exact child references, resumes digest-bound frame
 results, and propagates parent cancellation/timeout before parent termination.
 Runtime v3-v21 Iteration dispatch remains sequential in ordinal order for
 historic replay. Loop enforces its iteration and time budgets and carries the
-prior output into the next frame. New bounded-parallel Iteration behavior uses
-runtime v22 as described below. No region table, scheduler, queue, worker,
-event history, or second Flow mechanism was introduced.
+prior output into the next frame. Replacement coordinators adopt the same
+deterministic child before advancing. Subworkflow evidence changes use the
+greater of the current Hook sequence and the exact region child-link sequence,
+so later Loop frames extend bounded evidence without same-sequence replay
+drift. New bounded-parallel Iteration behavior uses runtime v22 as described
+below. No region table, scheduler, queue, worker, event history, or second Flow
+mechanism was introduced.
 
 Connector-enabled Plan v2, Plan v3, or Plan v4 runs pin WorkflowRun
 input/runtime/Flow v8. Plan v5 runs pin Flow v9, including runs
@@ -2334,7 +2344,7 @@ steps retain the latest 16 linked frames inside the existing 32-reference
 bound. The correlations remain authorization-neutral and add no provider or
 interaction body copy, evidence store, migration, route, or OpenAPI shape.
 
-The shared execution substrate now pins A3S Flow `1.0.0`, A3S Boot `0.2.0`
+The shared execution substrate now pins A3S Flow `1.1.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.1`-backed PostgreSQL stores. Workflow
 ACL graphs construct Flow `WorkflowDag` inputs programmatically and reuse its
 single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
@@ -2442,7 +2452,7 @@ Knowledge outcomes, six publication channels, seven monitoring outcomes, and
 eight enterprise outcomes. `a3s-cloud-contracts` rejects missing, duplicate,
 noncanonical, or falsely advertised entries and CI runs that gate explicitly.
 The manifest currently declares no public parity capability and keeps the
-composite claim false. The forty-five accepted authority decisions live under
+composite claim false. The sixty accepted authority decisions live under
 [`docs/decisions/app-platform`](docs/decisions/app-platform/README.md).
 
 | Sub-gate | State | Outcome |
@@ -2644,7 +2654,7 @@ The default portfolio priority is:
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
     and `W0.3` definition/goal/deterministic-plan plus interaction-contract
     slices, Form draft/release lifecycle, HumanTask loop, and finite Execution
-    step; retain the exact Form `0.1.0`/Flow `1.0.0`/Boot `0.2.0`/ORM `0.3.1`
+    step; retain the exact Form `0.1.0`/Flow `1.1.0`/Boot `0.2.0`/ORM `0.3.1`
     composition and its mandatory PostgreSQL plus local/NATS foundation gate;
     retain the completed Flow convergence with the transitive Code dependency
     and finish ACL convergence with the transitive Use/Search dependencies;

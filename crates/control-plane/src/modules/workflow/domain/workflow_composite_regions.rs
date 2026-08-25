@@ -237,10 +237,24 @@ impl WorkflowCompositeRegions {
             return Err("Workflow composite regions do not cover the PlanRevision".into());
         }
         for step in composite_steps {
-            if self.resolve(&step.id).is_none() {
-                return Err(format!(
+            let region = self.resolve(&step.id).ok_or_else(|| {
+                format!(
                     "Workflow composite step {:?} has no immutable region policy",
                     step.id
+                )
+            })?;
+            let descriptor = step.descriptor.as_ref().ok_or_else(|| {
+                format!(
+                    "Workflow composite step {:?} has no semantic descriptor",
+                    step.id
+                )
+            })?;
+            if descriptor.descriptor_id != region.semantic_profile() {
+                return Err(format!(
+                    "Workflow composite step {:?} descriptor {:?} does not match its immutable {} region policy",
+                    step.id,
+                    descriptor.descriptor_id,
+                    region.semantic_profile()
                 ));
             }
             let capability = step.capability.as_ref().ok_or_else(|| {

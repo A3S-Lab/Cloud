@@ -866,7 +866,7 @@ commit and query tenant-scoped desired state.
 
 ### Current compatibility evidence
 
-- Cloud pins the exact A3S Flow `1.0.0` release at revision `91071659`, A3S
+- Cloud pins the exact A3S Flow `1.1.0` release at revision `2948ad51`, A3S
   Boot `0.2.0` with
   `queue-postgres`, and
   A3S ORM `0.3.1`-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot
@@ -875,7 +875,7 @@ commit and query tenant-scoped desired state.
   plus local/NATS provider gate. The
   [2026-08-19 `main` job](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
   certifies the earlier locked composition; the updated revisions require a new
-  `main` certification run. Code `8.0.0` at revision `44b41131` resolves the
+  `main` certification run. Code `8.0.1` at revision `85b2dc63` resolves the
   same exact Flow source, so the transitive graph contains one Flow authority.
 - The root source override pins every ACL `0.3.0` consumer, including Cloud,
   Code, and Box, to exact ACL revision `5317e166`; a contract test rejects a
@@ -4766,7 +4766,7 @@ idempotency record before availability admission. Same-key drift remains a
 conflict and a new key still reaches compilation. The fence adds no table,
 migration, protocol version, or provider implementation.
 
-The shared Operations adapter now pins the exact A3S Flow `1.0.0` release with
+The shared Operations adapter now pins the exact A3S Flow `1.1.0` release with
 A3S Boot `0.2.0` PostgreSQL task management, isolated ORM-backed
 stores, runtime-build-pinned new runs, and retained process-death regression
 evidence from the previously certified Flow `0.12.0` composition. Its
@@ -4823,7 +4823,7 @@ Follow the detailed gates in
 [`ai-application-platform-plan.md`](ai-application-platform-plan.md):
 
 1. retain the frozen versioned ACL parity manifest, its exact digest-bound
-   23-node profile contract, fifty-two accepted authority decisions, the
+   23-node profile contract, sixty accepted authority decisions, the
    immutable step-descriptor domain contract, the read-only discovery projection, Plan
    v2 exact semantic pins, Plan v3 descriptor-bound finite-Execution failure
    routing, Run v5 Connector attempt/wait replay, Run v6 immutable

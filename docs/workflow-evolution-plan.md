@@ -161,6 +161,11 @@ cannot launch a new execution. After authorization, exact idempotency replay of
 a pre-upgrade Definition, revision, Goal/Plan, or Run resolves before this
 availability check; same-key drift conflicts and a new key remains fenced. This
 changes no persisted or public protocol shape.
+
+Composite Run admission also checks the exact profile selected by each
+immutable region policy. Iteration accepts only `workflow.iteration`, Loop
+accepts only `workflow.loop`, and the shared `subworkflow` kind plus exact child
+`workflow.run` binding cannot weaken that distinction.
 Migration `103` snapshots the exact admitted registry under WorkflowRevision,
 and Plan v2 pins exact descriptor semantic digests while existing Plan v1
 histories remain byte-stable. A graph that opts into the exact finite-Execution
@@ -259,6 +264,13 @@ ordinal-stable for `Terminate`, `ContinueNull`, and `RemoveFailed`; parent
 cancellation or timeout cancels and awaits every in-flight sibling. Runtime
 v3-v21 Iteration replay remains serial, and Loop remains sequential. Runtime
 build `a3s-cloud-workflows@24` explicitly retains `@1` through `@23`.
+
+Sequential Loop coordination feeds each terminal child output into the next
+frame, adopts the same deterministic child after coordinator replacement, and
+enforces the exact maximum-iteration and region time bounds. Every linked
+frame advances the Subworkflow projection with its exact A3S Flow child-link
+sequence when that sequence is newer than the current Hook event, preserving
+the same-sequence replay-drift fence as bounded evidence grows.
 
 Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`

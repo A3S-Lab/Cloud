@@ -607,7 +607,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "unavailable"
     category = "node"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0060-exact-composite-profile-and-evidence-authority.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/projection.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/loop_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/runtime_tests.rs"]
     gate = "W0.3"
     label = "Loop"
     owner = "workflow"

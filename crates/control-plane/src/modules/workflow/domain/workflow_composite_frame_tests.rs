@@ -488,6 +488,14 @@ fn loop_frames_use_the_same_zero_based_bounded_authority() {
         )],
     })
     .expect("loop regions");
+    fixture
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "iteration")
+        .and_then(|step| step.descriptor.as_mut())
+        .expect("loop descriptor")
+        .descriptor_id = "workflow.loop".into();
     fixture.plan.composite_regions_digest = Some(fixture.regions.digest().clone());
     fixture.request.plan_digest = plan_digest(&fixture.plan);
     fixture.request.ordinal = 2;

@@ -355,7 +355,10 @@ creating their own control planes:
    Flow-backed bounded-parallel Iteration waves, and sequential Loop child
    WorkflowRun dispatch, linkage, cancellation, process-death adoption, and
    recovery. New parallel policies use WorkflowRun/Flow v22 while v3-v21
-   histories retain serial replay. It also pins finite Execution error
+   histories retain serial replay. Composite Run admission binds each
+   `workflow.iteration` or `workflow.loop` descriptor to the matching immutable
+   region policy, and linked child evidence advances on its exact Flow
+   child-operation event. It also pins finite Execution error
    ports in Plan v3 and routes typed dispatch/terminal failures through the
    same DAG and Flow history. Component-only WorkflowRun v5 interprets exact
    Connector attempts, observations, durable waits, and bounded retries through

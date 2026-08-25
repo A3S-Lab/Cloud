@@ -98,6 +98,14 @@ fn loop_fixture() -> Fixture {
         )],
     })
     .expect("loop regions");
+    fixture
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "iteration")
+        .and_then(|step| step.descriptor.as_mut())
+        .expect("loop descriptor")
+        .descriptor_id = "workflow.loop".into();
 
     let mut variable_spec = fixture.variables.spec().clone();
     for declaration in &mut variable_spec.declarations {

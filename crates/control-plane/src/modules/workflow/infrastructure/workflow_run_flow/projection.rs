@@ -20,7 +20,7 @@ use a3s_flow::{
     WorkflowRunStatus as FlowRunStatus, WorkflowTerminalOutcome,
 };
 use chrono::{DateTime, Utc};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub fn project_workflow_run_record(
     record: &WorkflowRunRecord,
@@ -175,20 +175,36 @@ pub fn project_workflow_run_record(
                     .max_by_key(|observed| observed.frame.ordinal)
             })
             .flatten();
+        let composite_child_reference_ids = if resolved.plan.kind == WorkflowStepKind::Subworkflow {
+            composite_frames
+                .iter()
+                .filter(|observed| {
+                    observed.frame.region_step_id == resolved.plan.id
+                        && snapshot
+                            .child_operations
+                            .contains_key(&observed.child_reference_id)
+                })
+                .map(|observed| observed.child_reference_id.as_str())
+                .collect::<BTreeSet<_>>()
+        } else {
+            BTreeSet::new()
+        };
         let composite_evidence_references = if resolved.plan.kind == WorkflowStepKind::Subworkflow {
             composite_child_evidence_references(
                 composite_frames
                     .iter()
                     .filter(|observed| {
-                        observed.frame.region_step_id == resolved.plan.id
-                            && snapshot
-                                .child_operations
-                                .contains_key(&observed.child_reference_id)
+                        composite_child_reference_ids.contains(observed.child_reference_id.as_str())
                     })
                     .map(|observed| observed.frame.child_workflow_run_id()),
             )?
         } else {
             Vec::new()
+        };
+        let composite_child_sequence = if resolved.plan.kind == WorkflowStepKind::Subworkflow {
+            last_child_operation_sequence(history, &composite_child_reference_ids)
+        } else {
+            None
         };
         let (step_status, attempt, result, selected_handle, step_error, sequence, at) =
             if let Some(((snapshot_hook, snapshot_metadata), write_hook)) = variable_hooks {
@@ -576,12 +592,15 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some(observed) = composite_hook {
                 let hook = observed.hook;
-                let sequence = if hook.status == HookStatus::Cancelled {
+                let hook_sequence = if hook.status == HookStatus::Cancelled {
                     snapshot.last_sequence
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
                 };
+                let sequence = composite_child_sequence
+                    .map(|child_sequence| hook_sequence.max(child_sequence))
+                    .unwrap_or(hook_sequence);
                 let at = history
                     .iter()
                     .find(|event| event.sequence == sequence)
@@ -1340,6 +1359,23 @@ fn last_hook_sequence(history: &[FlowEventEnvelope], expected_hook_id: &str) -> 
         };
         (hook_id == expected_hook_id).then_some(envelope.sequence)
     })
+}
+
+fn last_child_operation_sequence(
+    history: &[FlowEventEnvelope],
+    expected_reference_ids: &BTreeSet<&str>,
+) -> Option<u64> {
+    history
+        .iter()
+        .rev()
+        .find_map(|envelope| match &envelope.event {
+            FlowEvent::ChildOperationLinked { child }
+                if expected_reference_ids.contains(child.reference_id.as_str()) =>
+            {
+                Some(envelope.sequence)
+            }
+            _ => None,
+        })
 }
 
 #[cfg(test)]

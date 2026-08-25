@@ -116,6 +116,44 @@ fn composite_regions_reject_duplicates_bounds_and_noncanonical_acl() {
 }
 
 #[test]
+fn runtime_plan_requires_the_exact_composite_semantic_profile() {
+    let policy = loop_region("refine");
+    let mut input = crate::modules::workflow::test_support::composite_workflow_run_input(
+        policy,
+        json!({"done": false, "iteration": 0}),
+    )
+    .expect("loop WorkflowRun input");
+    let regions = input
+        .composite_regions
+        .as_ref()
+        .expect("resolved composite regions")
+        .restore()
+        .expect("restored composite regions");
+
+    regions
+        .validate_plan(&input.plan)
+        .expect("exact loop descriptor profile");
+
+    input
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "refine")
+        .expect("loop step")
+        .descriptor
+        .as_mut()
+        .expect("loop descriptor")
+        .descriptor_id = "workflow.iteration".into();
+    let error = regions
+        .validate_plan(&input.plan)
+        .expect_err("mismatched composite profile must fail closed");
+    assert!(
+        error.contains("does not match its immutable workflow.loop region policy"),
+        "unexpected profile error: {error}"
+    );
+}
+
+#[test]
 fn compiler_pins_parallel_composite_regions_to_runtime_v22_and_v2_remains_fail_closed() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();

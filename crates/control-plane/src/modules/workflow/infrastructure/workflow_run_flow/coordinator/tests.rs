@@ -9,10 +9,10 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowCompositeRegionPolicy, WorkflowExecutionStepOutput,
-    WorkflowIterationFailureMode, WorkflowIterationRegionPolicy, WorkflowRun, WorkflowRunFlowState,
-    WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepProjectionStatus,
-    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V4,
+    WorkflowIterationFailureMode, WorkflowIterationRegionPolicy, WorkflowLoopRegionPolicy,
+    WorkflowRun, WorkflowRunFlowState, WorkflowStepFailureClassification,
+    WorkflowStepFailureOutput, WorkflowStepProjectionStatus, WORKFLOW_PLAN_MAX_BYTES,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V4,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
@@ -57,6 +57,27 @@ impl FlowRuntime for TestFlowRuntime {
                 == Some("FAIL")
         {
             return Ok(invocation.context().fail("test composite child failed"));
+        }
+        if invocation.spec.name == WORKFLOW_RUN_FLOW_NAME
+            && invocation.input.get("composite_regions").is_none()
+        {
+            let goal_input = invocation.input.get("goal_input");
+            let iteration = goal_input
+                .and_then(|input| input.get("iteration"))
+                .and_then(serde_json::Value::as_u64);
+            let terminate_at = goal_input
+                .and_then(|input| input.get("terminateAt"))
+                .and_then(serde_json::Value::as_u64);
+            if let (Some(iteration), Some(terminate_at)) = (iteration, terminate_at) {
+                let next_iteration = iteration
+                    .checked_add(1)
+                    .ok_or_else(|| FlowError::Runtime("test loop iteration overflowed".into()))?;
+                return Ok(invocation.context().complete(serde_json::json!({
+                    "done": next_iteration >= terminate_at,
+                    "iteration": next_iteration,
+                    "terminateAt": terminate_at,
+                })));
+            }
         }
         WorkflowRunFlowRuntime::default()
             .run_workflow(invocation)
@@ -374,6 +395,9 @@ impl FakeWorkflowCompositePort {
                 .get(&child_id)
                 .cloned()
                 .expect("composite child");
+            if record.run.status.is_terminal() {
+                continue;
+            }
             let snapshot = self
                 .engine
                 .snapshot(&record.run.flow_run_id)
@@ -1068,6 +1092,53 @@ async fn composite_workflow_fixture_with_concurrency(
     (engine, record, now)
 }
 
+async fn loop_workflow_fixture(
+    maximum_iterations: u32,
+    time_budget_seconds: u64,
+    terminate_at: u64,
+) -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+    let mut input = composite_workflow_run_input(
+        WorkflowCompositeRegionPolicy::Loop(WorkflowLoopRegionPolicy {
+            step_id: "refine".into(),
+            maximum_iterations,
+            time_budget_seconds,
+            termination_path: vec!["done".into()],
+        }),
+        serde_json::json!({
+            "done": false,
+            "iteration": 0,
+            "terminateAt": terminate_at,
+        }),
+    )
+    .expect("loop WorkflowRun input");
+    let now = canonical_timestamp(Utc::now());
+    input.requested_at = now;
+    input.deadline_at = now + chrono::Duration::hours(1);
+    input.validate().expect("valid loop WorkflowRun input");
+    let (run, steps) = WorkflowRun::create(input.clone(), PrincipalId::new()).expect("WorkflowRun");
+    let record = WorkflowRunRecord { run, steps };
+    let runtime_build_id =
+        RuntimeBuildId::new("a3s-cloud-workflow-execution-test@1").expect("runtime build");
+    let engine = FlowEngine::builder(Arc::new(TestFlowRuntime))
+        .with_runtime_build_compatibility(RuntimeBuildCompatibility::new(runtime_build_id.clone()))
+        .build();
+    engine
+        .start_with_id(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
+                &input.flow_workflow_name,
+                &input.flow_workflow_version,
+                "a3s-cloud",
+                "main",
+            )
+            .with_runtime_build(runtime_build_id),
+            serde_json::to_value(input).expect("encoded loop WorkflowRun input"),
+        )
+        .await
+        .expect("start loop WorkflowRun Flow");
+    (engine, record, now)
+}
+
 async fn application_composite_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>)
 {
     let (mut input, _) = application_frame_answer_workflow_run_inputs()
@@ -1104,6 +1175,9 @@ async fn application_composite_workflow_fixture() -> (FlowEngine, WorkflowRunRec
 
 #[path = "parallel_iteration_tests.rs"]
 mod parallel_iteration_tests;
+
+#[path = "loop_tests.rs"]
+mod loop_tests;
 
 #[tokio::test]
 async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() {
