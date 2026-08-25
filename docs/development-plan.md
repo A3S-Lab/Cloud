@@ -855,17 +855,17 @@ commit and query tenant-scoped desired state.
 
 ### Current compatibility evidence
 
-- Cloud pins the exact A3S Flow `1.0.0` release at revision `7c76eda9`, A3S
+- Cloud pins the exact A3S Flow `1.0.0` release at revision `e9c77e55`, A3S
   Boot `0.2.0` with
   `queue-postgres`, and
   A3S ORM `0.3.1`-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot
   task state lives in `a3s_boot`; Cloud business tables remain separately
-  owned. The complete foundation suite is a mandatory real PostgreSQL 17 plus
-  local/NATS provider gate, and the
+  owned. The complete foundation suite remains a mandatory real PostgreSQL 17
+  plus local/NATS provider gate. The
   [2026-08-19 `main` job](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
-  passes that exact composition. Code `7.0.2` at revision `6906a09f` resolves
-  the same exact Flow source, so the transitive graph contains one Flow
-  authority.
+  certifies the earlier locked composition; the updated revisions require a new
+  `main` certification run. Code `7.0.2` at revision `bbdd636b` resolves the
+  same exact Flow source, so the transitive graph contains one Flow authority.
 - The root source override pins every ACL `0.3.0` consumer, including Cloud,
   Code, and Box, to exact ACL revision `5317e166`; a contract test rejects a
   second source for the same A3S package version. Use/Search still pull ACL
