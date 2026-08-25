@@ -488,5 +488,5 @@ fn compiler_pins_variable_aggregation_to_run_v20_without_a_new_plan_schema() {
     assert!(downgraded
         .validate()
         .expect_err("Variable Aggregator cannot downgrade to v2")
-        .contains("exact v20 runtime generation"));
+        .contains("runtime generation v20 or a composing v21 generation"));
 }

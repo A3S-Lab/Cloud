@@ -373,17 +373,20 @@ fn fixture(descriptor_id: &str, operation_input_required: bool) -> Fixture {
     let semantic_contracts =
         WorkflowRevisionSemanticContracts::create(&workflow, bindings, registry, variable_contract)
             .expect("semantic contracts");
+    let mut payloads = vec![
+        input_schema,
+        operator_input_schema,
+        operator_output_schema,
+        final_output_schema,
+        input_configuration,
+        list_configuration,
+        output_configuration,
+    ];
+    payloads.sort_by(|left, right| left.digest().cmp(right.digest()));
+    payloads.dedup_by(|left, right| left.digest() == right.digest());
     Fixture {
         workflow,
-        payloads: vec![
-            input_schema,
-            operator_input_schema,
-            operator_output_schema,
-            final_output_schema,
-            input_configuration,
-            list_configuration,
-            output_configuration,
-        ],
+        payloads,
         semantic_contracts,
     }
 }
@@ -414,12 +417,11 @@ fn publication_requires_the_exact_descriptor_and_deferred_direct_inputs() {
         .contains("operation inputs optional"));
 
     let mut missing = fixture("workflow.list-operator", false);
-    let generic_configuration = WorkflowPayload::from_content(
-        WorkflowPayloadContent::Configuration(WorkflowStepConfiguration::empty(
-            WorkflowStepKind::Transform,
-        )),
-    )
-    .expect("generic transform configuration");
+    let mut generic_transform = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    generic_transform.template = Some("value".into());
+    let generic_configuration =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(generic_transform))
+            .expect("generic transform configuration");
     missing
         .workflow
         .steps
