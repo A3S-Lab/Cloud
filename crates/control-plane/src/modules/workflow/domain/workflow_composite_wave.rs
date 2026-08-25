@@ -159,7 +159,9 @@ impl WorkflowCompositeWaveHookMetadata {
         if policy.maximum_concurrency <= 1
             || frame_count == 0
             || frame_count > policy.maximum_concurrency
-            || self.first_ordinal % policy.maximum_concurrency != 0
+            || !self
+                .first_ordinal
+                .is_multiple_of(policy.maximum_concurrency)
         {
             return Err("Workflow composite wave violates its immutable concurrency bound".into());
         }
