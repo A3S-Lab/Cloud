@@ -251,7 +251,8 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "8.0.1"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=85b2dc63bb4636ca8f3502a612f5e88c355ad765#85b2dc63bb4636ca8f3502a612f5e88c355ad765"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ef6b2d4beb75dc3ccc19397a6902f6cba6f4fa667d914b6b6a7ab5c4dd09874"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -346,7 +347,8 @@ dependencies = [
 [[package]]
 name = "a3s-flow"
 version = "1.1.0"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=2948ad51a1395177764766c3ddf7e44338f9e374#2948ad51a1395177764766c3ddf7e44338f9e374"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a15142002539afe73b8bbbc8ecd88b7c960ebe8695ad5cf967a1b6b71ab2e0fa"
 dependencies = [
  "a3s-boot",
  "a3s-orm",
@@ -403,7 +405,8 @@ dependencies = [
 [[package]]
 name = "a3s-memory"
 version = "0.1.3"
-source = "git+https://github.com/A3S-Lab/Memory.git?rev=216505634d81089cda89531d1b2d828c26170d62#216505634d81089cda89531d1b2d828c26170d62"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f58a945c2dda10a9f34331d5b930295e081dcb80b3991dcc018637a58baf05"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -482,7 +485,8 @@ dependencies = [
 [[package]]
 name = "a3s-search"
 version = "3.0.9"
-source = "git+https://github.com/A3S-Lab/Search.git?rev=2b7ec07d9a1b99758a3e8c950c6d4b6ca5b51fa9#2b7ec07d9a1b99758a3e8c950c6d4b6ca5b51fa9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aab9b74dbb4da6ecbff7cc51866d28872e8196397fe9f844d132252054bd311"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-updater",

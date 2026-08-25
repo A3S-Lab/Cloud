@@ -4,7 +4,7 @@ use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
 const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
-const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=2948ad51a1395177764766c3ddf7e44338f9e374#2948ad51a1395177764766c3ddf7e44338f9e374";
+const CRATES_IO_SOURCE: &str = "registry+https://github.com/rust-lang/crates.io-index";
 const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +83,22 @@ fn boot_uses_the_schema_admission_revision() {
 }
 
 #[test]
-fn flow_uses_the_qualified_v1_revision() {
+fn code_core_uses_the_published_a1_2_release() {
+    let packages = locked_a3s_packages()
+        .into_iter()
+        .filter(|package| package.name == "a3s-code-core")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        packages.len(),
+        1,
+        "Cloud must resolve exactly one Code Core package"
+    );
+    assert_eq!(packages[0].version, "8.0.1");
+    assert_eq!(packages[0].source, CRATES_IO_SOURCE);
+}
+
+#[test]
+fn flow_uses_the_published_v1_release() {
     let packages = locked_a3s_packages()
         .into_iter()
         .filter(|package| package.name == "a3s-flow")
@@ -94,7 +109,7 @@ fn flow_uses_the_qualified_v1_revision() {
         "Cloud must resolve exactly one Flow package"
     );
     assert_eq!(packages[0].version, "1.1.0");
-    assert_eq!(packages[0].source, FLOW_V1_SOURCE);
+    assert_eq!(packages[0].source, CRATES_IO_SOURCE);
 }
 
 #[test]
