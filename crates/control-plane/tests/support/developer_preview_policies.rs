@@ -400,13 +400,21 @@ async fn seed_scope_and_subscription(
     let connection_id = Uuid::now_v7();
     database
         .execute(
-            sql_query::<()>("insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, aggregate_version, connected_at) values (")
+            sql_query::<()>("insert into github_source_connections (organization_id, id, installation_id, account_id, account_login, account_kind, verified_by_user_id, verified_by_user_login, aggregate_version, connected_at, status, updated_at, provider_checked_at, provider_check_attempted_at, provider_next_check_at, provider_check_failures, provider_check_error) values (")
                 .bind(organization_id.as_uuid())
                 .append(", ")
                 .bind(connection_id)
                 .append(", 42, 1001, 'a3s-lab', 'organization', 1002, 'preview-operator', 1, ")
                 .bind(created_at)
-                .append(")"),
+                .append(", 'active', ")
+                .bind(created_at)
+                .append(", ")
+                .bind(created_at)
+                .append(", ")
+                .bind(created_at)
+                .append(", ")
+                .bind(created_at)
+                .append(", 0, null)"),
         )
         .await?;
     database
