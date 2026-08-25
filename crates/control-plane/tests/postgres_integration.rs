@@ -6183,11 +6183,20 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "select count(*) from outbox_events where event_key = 'artifact.hosted-build.succeeded'",
         ))
         .await?;
+    let committed_pull_request_changes = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from outbox_events where event_key = 'source.pull-request-change.committed'",
+        ))
+        .await?;
     assert_eq!(hosted_build_outcomes, 2);
     assert_eq!(
+        committed_pull_request_changes, 3,
+        "two exact subscription facts plus one active-only fact must remain committed"
+    );
+    assert_eq!(
         (outbox_events, idempotency_records),
-        (62, 45),
-        "three admitted Agent/MCP drafts add owner-atomic hosted build request facts"
+        (65, 45),
+        "hosted build requests and committed pull-request fanout must update only their owned Outbox evidence"
     );
 
     let operation_id = OperationId::new();
