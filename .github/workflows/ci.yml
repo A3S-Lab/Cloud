@@ -111,7 +111,7 @@ jobs:
           echo "::error title=Accepted BuildPlan PostgreSQL gate failed::$detail"
           exit 1
 
-      - name: Certify immutable workload profiles, Preview policies, and PR projections
+      - name: Certify workload profiles, Preview policy/projection, and Projects handoff
         run: |
           log="$RUNNER_TEMP/a3s-cloud-developer-workflow-policies.log"
           if {

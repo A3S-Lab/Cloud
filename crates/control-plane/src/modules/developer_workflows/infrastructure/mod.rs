@@ -1,6 +1,7 @@
 mod asset_acl_detector;
 mod dockerfile_detector;
 mod in_memory;
+mod preview_environment;
 mod preview_policy_in_memory;
 mod pull_request_preview_in_memory;
 mod pull_request_preview_projector;
@@ -16,6 +17,7 @@ pub use persistence::{
     PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
     PostgresPullRequestPreviewProjectionRepository, PostgresWorkloadProfileRepository,
 };
+pub use preview_environment::ProjectsPreviewEnvironmentAdapter;
 pub use preview_policy_in_memory::InMemoryPullRequestPreviewPolicyRepository;
 pub use pull_request_preview_in_memory::InMemoryPullRequestPreviewProjectionRepository;
 pub use pull_request_preview_projector::PullRequestPreviewProjector;

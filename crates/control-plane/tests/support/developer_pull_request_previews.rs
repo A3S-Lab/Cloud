@@ -1,12 +1,17 @@
 use super::*;
 use a3s_cloud_control_plane::modules::developer_workflows::{
-    AcceptedPullRequestPreviewPolicyRevision, IPullRequestPreviewPolicyRepository,
-    IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
-    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+    AcceptedPullRequestPreviewPolicyRevision, IPreviewEnvironmentPort,
+    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
+    IPullRequestPreviewProjectionRepository, PostgresPullRequestPreviewPolicyRepository,
+    PostgresPullRequestPreviewProjectionRepository, ProjectsPreviewEnvironmentAdapter,
     PullRequestPreviewProjectionService, PullRequestPreviewProjector,
+    PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     IIntegrationEventProjector, OutboxMessage,
+};
+use a3s_cloud_control_plane::modules::projects::{
+    domain::repositories::IEnvironmentRepository, PostgresProjectsRepository,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     PrincipalId, RepositoryError, SourcePullRequestChangeId, SourceSubscriptionId,
@@ -15,6 +20,7 @@ use a3s_cloud_control_plane::modules::sources::published::{
     GitProvider, GitRepository, PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY,
     PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
 };
+use a3s_orm::{DecodeError, FromRow, FromValue, Row};
 use chrono::Duration as ChronoDuration;
 
 pub(super) async fn exercise_developer_pull_request_preview_projection(
@@ -109,7 +115,11 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     let service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
         PullRequestPreviewProjectionService::new(policy_port, preview_port),
     );
-    let projector = PullRequestPreviewProjector::new(service);
+    let environments: Arc<dyn IPreviewEnvironmentPort> =
+        Arc::new(ProjectsPreviewEnvironmentAdapter::new(Arc::new(
+            PostgresProjectsRepository::new(executor.clone()),
+        )));
+    let projector = PullRequestPreviewProjector::new(service, environments);
 
     let pull_request_id = 1_000_042;
     let opened = message(
@@ -150,6 +160,43 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     );
     projector.project(&synchronized).await?;
 
+    let lifecycle_messages = load_lifecycle_messages(&database, organization_id).await?;
+    assert_eq!(lifecycle_messages.len(), 2);
+    assert_eq!(lifecycle_messages[0].causation_id, Some(opened.event_id));
+    assert_eq!(lifecycle_messages[0].correlation_id, opened.correlation_id);
+    assert_eq!(lifecycle_messages[0].occurred_at, opened.occurred_at);
+    assert_eq!(
+        lifecycle_messages[1].causation_id,
+        Some(synchronized.event_id)
+    );
+    assert_eq!(
+        lifecycle_messages[1].correlation_id,
+        synchronized.correlation_id
+    );
+    assert_eq!(lifecycle_messages[1].occurred_at, synchronized.occurred_at);
+    for message in &lifecycle_messages {
+        projector.project(message).await?;
+    }
+
+    let restarted_policies: Arc<dyn IPullRequestPreviewPolicyRepository> = Arc::new(
+        PostgresPullRequestPreviewPolicyRepository::new(executor.clone()),
+    );
+    let restarted_previews: Arc<dyn IPullRequestPreviewProjectionRepository> = Arc::new(
+        PostgresPullRequestPreviewProjectionRepository::new(executor.clone()),
+    );
+    let restarted_service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
+        PullRequestPreviewProjectionService::new(restarted_policies, restarted_previews),
+    );
+    let restarted_environments: Arc<dyn IPreviewEnvironmentPort> =
+        Arc::new(ProjectsPreviewEnvironmentAdapter::new(Arc::new(
+            PostgresProjectsRepository::new(executor.clone()),
+        )));
+    let restarted_projector =
+        PullRequestPreviewProjector::new(restarted_service, restarted_environments);
+    for message in &lifecycle_messages {
+        restarted_projector.project(message).await?;
+    }
+
     let restarted = PostgresPullRequestPreviewProjectionRepository::new(executor.clone());
     let preview = restarted
         .find_preview(
@@ -165,6 +212,38 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     assert_eq!(preview.policy_authority.revision_id, revision.id);
     assert_ne!(preview.policy_authority.revision_id, later_revision.id);
     assert_eq!(preview.head_commit_sha.as_str(), "b".repeat(40));
+    let environment = PostgresProjectsRepository::new(executor.clone())
+        .find(organization_id, project_id, preview.environment_id)
+        .await?
+        .expect("Projects Environment");
+    assert_eq!(environment.aggregate_version, 1);
+    assert_eq!(environment.created_at, preview.provider_created_at);
+    assert_eq!(environment.name.as_str(), preview.environment_name());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from environments where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and project_id = ")
+                    .bind(project_id.as_uuid())
+                    .append(" and id = ")
+                    .bind(preview.environment_id.as_uuid()),
+            )
+            .await?,
+        1
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and event_key = 'project.environment.created' and aggregate_id = ")
+                    .bind(preview.environment_id.as_uuid()),
+            )
+            .await?,
+        1,
+        "Environment handoff replay must not publish another Projects event"
+    );
     assert_eq!(
         restarted
             .find_receipt(
@@ -210,7 +289,7 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
             )
             .await?,
         (0, 0, 0, 0, 0),
-        "Preview projection must not create resource-owner state"
+        "Projects Environment handoff must not create later owner state"
     );
 
     let preview_mutation = database
@@ -242,6 +321,76 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
         Some("pull-request change projection receipts are immutable")
     );
     Ok(())
+}
+
+async fn load_lifecycle_messages(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: OrganizationId,
+) -> Result<Vec<OutboxMessage>, Box<dyn std::error::Error>> {
+    let rows = database
+        .fetch_all_as(
+            sql_query::<LifecycleOutboxRow>("select event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key = ")
+                .bind(PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY)
+                .append(" order by aggregate_version"),
+        )
+        .await?;
+    Ok(rows
+        .rows
+        .into_iter()
+        .map(|row| OutboxMessage {
+            event_id: row.event_id,
+            event_key: row.event_key,
+            schema_version: row.schema_version,
+            organization_id: row.organization_id,
+            aggregate_id: row.aggregate_id,
+            aggregate_version: row.aggregate_version,
+            occurred_at: row.occurred_at,
+            correlation_id: row.correlation_id,
+            causation_id: row.causation_id,
+            payload: row.payload,
+            delivery_attempts: 1,
+        })
+        .collect())
+}
+
+struct LifecycleOutboxRow {
+    event_id: Uuid,
+    event_key: String,
+    schema_version: u32,
+    organization_id: Uuid,
+    aggregate_id: Uuid,
+    aggregate_version: u64,
+    occurred_at: chrono::DateTime<Utc>,
+    correlation_id: Uuid,
+    causation_id: Option<Uuid>,
+    payload: Value,
+}
+
+impl FromRow for LifecycleOutboxRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            event_id: decode(row, 0)?,
+            event_key: decode(row, 1)?,
+            schema_version: decode(row, 2)?,
+            organization_id: decode(row, 3)?,
+            aggregate_id: decode(row, 4)?,
+            aggregate_version: decode(row, 5)?,
+            occurred_at: decode(row, 6)?,
+            correlation_id: decode(row, 7)?,
+            causation_id: decode(row, 8)?,
+            payload: decode(row, 9)?,
+        })
+    }
+}
+
+fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
+    T::from_value(
+        row.value(index)
+            .ok_or(DecodeError::MissingColumn { index })?,
+        index,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

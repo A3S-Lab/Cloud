@@ -2,9 +2,9 @@ use crate::modules::developer_workflows::domain::{
     reconcile_pull_request_preview, CommitPullRequestPreviewProjection,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionRepository,
     PreviewReconcileOutcome, PullRequestChange, PullRequestPreview,
-    PullRequestPreviewFactFingerprint, PullRequestPreviewPolicyAuthority,
-    PullRequestPreviewProjectionOutcome, PullRequestPreviewProjectionReceipt,
-    PullRequestPreviewVersion,
+    PullRequestPreviewFactFingerprint, PullRequestPreviewLifecycleEvent,
+    PullRequestPreviewPolicyAuthority, PullRequestPreviewProjectionOutcome,
+    PullRequestPreviewProjectionReceipt, PullRequestPreviewVersion,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
@@ -13,9 +13,12 @@ use crate::modules::shared_kernel::domain::{
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct ProjectCommittedPullRequestChange {
+    pub source_event_id: Uuid,
+    pub correlation_id: Uuid,
     pub source_pull_request_change_id: SourcePullRequestChangeId,
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
@@ -29,6 +32,9 @@ pub struct ProjectCommittedPullRequestChange {
 impl ProjectCommittedPullRequestChange {
     pub fn validate(&self) -> Result<(), String> {
         self.change.validate()?;
+        if self.source_event_id.is_nil() || self.correlation_id.is_nil() {
+            return Err("committed pull-request fact causality is invalid".into());
+        }
         self.fingerprint().validate()
     }
 
@@ -140,6 +146,7 @@ impl PullRequestPreviewProjectionService {
                     receipt,
                     expected_preview,
                     preview: None,
+                    event: None,
                 })
                 .await;
         };
@@ -159,6 +166,19 @@ impl PullRequestPreviewProjectionService {
             .as_ref()
             .filter(|preview| current.as_ref() != Some(*preview))
             .cloned();
+        let event = mutation
+            .as_ref()
+            .map(|preview| {
+                PullRequestPreviewLifecycleEvent::envelope(
+                    preview,
+                    input.source_pull_request_change_id,
+                    input.fact_occurred_at,
+                    input.correlation_id,
+                    input.source_event_id,
+                )
+                .map_err(invalid_input)
+            })
+            .transpose()?;
         let receipt = receipt(
             &input,
             outcome,
@@ -170,6 +190,7 @@ impl PullRequestPreviewProjectionService {
                 receipt,
                 expected_preview,
                 preview: mutation,
+                event,
             })
             .await
     }

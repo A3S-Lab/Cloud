@@ -1,6 +1,7 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+pub mod published;
 
 pub use application::{
     AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult, AcceptPullRequestPreviewPolicy,
@@ -8,10 +9,11 @@ pub use application::{
     AcceptWorkloadProfile, AcceptWorkloadProfileHandler, AcceptWorkloadProfileResult,
     BuildPlanDetectionService, BuildPlanSourceRevisionEvidence, CompiledScheduledTaskProfile,
     CompiledServiceProfile, CompiledWorkloadProfile, DeveloperWorkflowAction,
-    DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
-    IDeveloperWorkflowAuthorizationPort, IPreviewSourceSubscriptionQueryPort,
-    IPullRequestPreviewProjectionPort, IScheduledTaskProfileAdmissionPort,
-    IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort, PreviewSourceSubscriptionBinding,
+    DeveloperWorkflowEnvironmentAccess, EnsurePreviewEnvironment, IBuildPlanSourceRevisionPort,
+    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    IPreviewSourceSubscriptionQueryPort, IPullRequestPreviewProjectionPort,
+    IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort,
+    PreviewEnvironmentBinding, PreviewEnvironmentReceipt, PreviewSourceSubscriptionBinding,
     ProjectCommittedPullRequestChange, PullRequestPreviewProjectionService,
     ScheduledTaskProfileAdmissionRequest, ServiceProfileAdmissionRequest, VerifiedOciArtifact,
     VerifiedWorkloadBuildOutcome, WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget,
@@ -23,6 +25,7 @@ pub use infrastructure::{
     InMemoryPullRequestPreviewPolicyRepository, InMemoryPullRequestPreviewProjectionRepository,
     InMemoryWorkloadProfileRepository, PostgresBuildPlanRepository,
     PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
-    PostgresWorkloadProfileRepository, PullRequestPreviewProjector,
-    RepositoryBuildPlanSourceRevisionPort,
+    PostgresWorkloadProfileRepository, ProjectsPreviewEnvironmentAdapter,
+    PullRequestPreviewProjector, RepositoryBuildPlanSourceRevisionPort,
 };
+pub use published::*;

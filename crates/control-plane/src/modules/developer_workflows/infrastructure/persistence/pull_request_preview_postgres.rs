@@ -1,5 +1,7 @@
 use super::preview_policy_postgres::load_reference;
-use crate::infrastructure::{execute, fetch_optional, transaction_error, PostgresPersistenceError};
+use crate::infrastructure::{
+    execute, fetch_optional, store_outbox, transaction_error, PostgresPersistenceError,
+};
 use crate::modules::developer_workflows::domain::{
     CommitPullRequestPreviewProjection, IPullRequestPreviewProjectionRepository,
     PreviewCleanupReason, PreviewPolicyRevisionWriteReference, PullRequestChangeKind,
@@ -125,6 +127,9 @@ impl IPullRequestPreviewProjectionRepository for PostgresPullRequestPreviewProje
                     }
                     if let Some(preview) = &write.preview {
                         store_preview(transaction, preview, write.expected_preview).await?;
+                    }
+                    if let Some(event) = &write.event {
+                        store_outbox(transaction, event).await?;
                     }
                     let inserted = insert_receipt(transaction, &write.receipt).await?;
                     if inserted != 1 {

@@ -6,6 +6,7 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
     SourcePullRequestChangeId, SourceSubscriptionId,
 };
+use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -17,6 +18,7 @@ type PreviewKey = (OrganizationId, SourceSubscriptionId, u64);
 struct State {
     receipts: BTreeMap<ReceiptKey, PullRequestPreviewProjectionReceipt>,
     previews: BTreeMap<PreviewKey, PullRequestPreview>,
+    outbox: Vec<DomainEventEnvelope>,
 }
 
 #[derive(Default)]
@@ -27,6 +29,10 @@ pub struct InMemoryPullRequestPreviewProjectionRepository {
 impl InMemoryPullRequestPreviewProjectionRepository {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub async fn outbox_events(&self) -> Vec<DomainEventEnvelope> {
+        self.state.read().await.outbox.clone()
     }
 }
 
@@ -108,6 +114,9 @@ impl IPullRequestPreviewProjectionRepository for InMemoryPullRequestPreviewProje
         }
         if let Some(preview) = write.preview {
             state.previews.insert(preview_key, preview);
+        }
+        if let Some(event) = write.event {
+            state.outbox.push(event);
         }
         state.receipts.insert(receipt_key, write.receipt.clone());
         Ok(IdempotentWrite {

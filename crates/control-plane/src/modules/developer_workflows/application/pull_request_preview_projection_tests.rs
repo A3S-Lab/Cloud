@@ -6,8 +6,9 @@ use crate::modules::developer_workflows::domain::{
     AcceptPullRequestPreviewPolicyRevisionWrite, AcceptedPullRequestPreviewPolicyRevision,
     GitBranch, GithubInstallationRef, IPullRequestPreviewPolicyRepository,
     IPullRequestPreviewProjectionRepository, PreviewForkPolicy, PreviewQuota, PullRequestChange,
-    PullRequestChangeKind, PullRequestPreviewPolicy, PullRequestPreviewPolicyContract,
-    PullRequestPreviewPolicyRevisionAccepted, PullRequestPreviewProjectionOutcome,
+    PullRequestChangeKind, PullRequestPreviewLifecycleEvent, PullRequestPreviewPolicy,
+    PullRequestPreviewPolicyContract, PullRequestPreviewPolicyRevisionAccepted,
+    PullRequestPreviewProjectionOutcome,
 };
 use crate::modules::developer_workflows::infrastructure::{
     InMemoryPullRequestPreviewPolicyRepository, InMemoryPullRequestPreviewProjectionRepository,
@@ -77,6 +78,23 @@ async fn selects_policy_at_fact_time_and_terminally_replays_each_fact_id() {
     );
     assert_eq!(created.value.policy_revision_id, Some(first.id));
     assert!(!created.replayed);
+    assert_eq!(previews.outbox_events().await.len(), 1);
+    let lifecycle =
+        PullRequestPreviewLifecycleEvent::from_envelope(&previews.outbox_events().await[0])
+            .expect("canonical Preview lifecycle event");
+    assert!(lifecycle.is_active());
+    assert_eq!(lifecycle.preview_aggregate_version, 1);
+    assert_eq!(
+        lifecycle.source_pull_request_change_id,
+        created.value.source_pull_request_change_id
+    );
+    assert_eq!(
+        lifecycle.environment_name,
+        format!("pr-42-{}", lifecycle.preview_id.as_uuid().simple())
+    );
+    let mut drifted_lifecycle = previews.outbox_events().await[0].clone();
+    drifted_lifecycle.aggregate_version = 2;
+    assert!(PullRequestPreviewLifecycleEvent::from_envelope(&drifted_lifecycle).is_err());
     assert!(
         service
             .project_committed_change(opened)
@@ -84,6 +102,7 @@ async fn selects_policy_at_fact_time_and_terminally_replays_each_fact_id() {
             .expect("exact projection replay")
             .replayed
     );
+    assert_eq!(previews.outbox_events().await.len(), 1);
 }
 
 #[tokio::test]
@@ -112,6 +131,7 @@ async fn source_facts_advance_lifecycle_without_rebinding_a_later_policy_revisio
         PullRequestPreviewProjectionOutcome::Updated
     );
     assert_eq!(updated.value.policy_revision_id, Some(first.id));
+    assert_eq!(previews.outbox_events().await.len(), 2);
 
     let preview = previews
         .find_preview(
@@ -140,6 +160,7 @@ async fn source_facts_advance_lifecycle_without_rebinding_a_later_policy_revisio
         PullRequestPreviewProjectionOutcome::IgnoredStale
     );
     assert_eq!(stale.value.preview_aggregate_version, Some(2));
+    assert_eq!(previews.outbox_events().await.len(), 2);
 }
 
 #[tokio::test]
@@ -289,6 +310,8 @@ impl Fixture {
         source_pull_request_change_id: SourcePullRequestChangeId,
     ) -> ProjectCommittedPullRequestChange {
         ProjectCommittedPullRequestChange {
+            source_event_id: Uuid::now_v7(),
+            correlation_id: Uuid::now_v7(),
             source_pull_request_change_id,
             organization_id: self.organization_id,
             project_id: self.project_id,

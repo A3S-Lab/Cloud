@@ -1,9 +1,10 @@
-use super::PullRequestPreview;
+use super::{PullRequestPreview, PullRequestPreviewLifecycleEvent};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotentWrite, OrganizationId, ProjectId,
     PullRequestPreviewId, PullRequestPreviewPolicyRevisionId, RepositoryError, Sha256Digest,
     SourcePullRequestChangeId, SourceSubscriptionId,
 };
+use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -187,6 +188,9 @@ pub struct CommitPullRequestPreviewProjection {
     pub expected_preview: Option<PullRequestPreviewVersion>,
     /// Present only when this fact advances the Preview aggregate.
     pub preview: Option<PullRequestPreview>,
+    /// The same transaction publishes one owner-neutral lifecycle fact only
+    /// when the Preview aggregate advances.
+    pub event: Option<DomainEventEnvelope>,
 }
 
 impl CommitPullRequestPreviewProjection {
@@ -206,6 +210,15 @@ impl CommitPullRequestPreviewProjection {
 
         if let Some(preview) = &self.preview {
             preview.validate()?;
+            let event = self.event.as_ref().ok_or_else(|| {
+                "Preview mutation omitted its transactional lifecycle event".to_owned()
+            })?;
+            PullRequestPreviewLifecycleEvent::validate_for(
+                event,
+                preview,
+                self.receipt.source_pull_request_change_id,
+                self.receipt.fact_occurred_at,
+            )?;
             let authority = &preview.policy_authority;
             let expected_before = preview
                 .aggregate_version
@@ -238,6 +251,9 @@ impl CommitPullRequestPreviewProjection {
                 return Err("Preview mutation and projection receipt are inconsistent".into());
             }
         } else {
+            if self.event.is_some() {
+                return Err("unchanged Preview emitted a lifecycle event".into());
+            }
             let observation_is_valid = match self.receipt.outcome {
                 PullRequestPreviewProjectionOutcome::NoApplicablePolicy
                 | PullRequestPreviewProjectionOutcome::ForkDenied => {
@@ -297,6 +313,7 @@ mod tests {
             receipt: forged,
             expected_preview: None,
             preview: None,
+            event: None,
         }
         .validate()
         .is_err());
@@ -305,6 +322,7 @@ mod tests {
             receipt: receipt(PullRequestPreviewProjectionOutcome::ForkDenied),
             expected_preview: None,
             preview: None,
+            event: None,
         }
         .validate()
         .is_ok());

@@ -42,8 +42,9 @@ fn derives_stable_preview_and_ordinary_environment_identities_with_closed_bounds
     .expect("preview");
     assert_eq!(
         created.environment_name(),
-        format!("pr-42-{}", &first.as_uuid().simple().to_string()[..8])
+        format!("pr-42-{}", first.as_uuid().simple())
     );
+    assert!(created.environment_name().len() <= 63);
 
     let mut invalid = policy.clone();
     invalid.policy.lifetime_seconds = MIN_PREVIEW_LIFETIME_SECONDS - 1;

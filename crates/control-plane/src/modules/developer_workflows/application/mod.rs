@@ -2,6 +2,7 @@ mod acceptance;
 mod authorization;
 mod build_outcome;
 mod detection;
+mod preview_environment;
 mod preview_policy_acceptance;
 mod preview_source_subscription;
 mod profile_compilation;
@@ -20,6 +21,10 @@ pub use build_outcome::{
     WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use detection::BuildPlanDetectionService;
+pub use preview_environment::{
+    EnsurePreviewEnvironment, IPreviewEnvironmentPort, PreviewEnvironmentBinding,
+    PreviewEnvironmentReceipt,
+};
 pub use preview_policy_acceptance::{
     AcceptPullRequestPreviewPolicy, AcceptPullRequestPreviewPolicyHandler,
     AcceptPullRequestPreviewPolicyResult,

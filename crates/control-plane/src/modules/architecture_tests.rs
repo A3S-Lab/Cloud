@@ -771,6 +771,42 @@ fn developer_workflows_preview_projection_reuses_the_single_outbox_relay() {
         1,
         "all process roles must share one Preview projector composition path"
     );
+    assert_eq!(
+        app.matches("ProjectsPreviewEnvironmentAdapter::new")
+            .count(),
+        1,
+        "all process roles must share one Projects Environment handoff adapter"
+    );
+}
+
+#[test]
+fn developer_workflows_projects_handoff_is_confined_to_one_infrastructure_adapter() {
+    let mut projects_imports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("developer_workflows") {
+            return;
+        }
+        if source.contains("crate::modules::projects") {
+            projects_imports.insert(display(relative));
+        }
+    });
+
+    assert_eq!(
+        projects_imports,
+        lines("developer_workflows/infrastructure/preview_environment.rs"),
+        "Developer Workflows must reach Projects only through its consumer-owned Application port and one Infrastructure adapter"
+    );
+
+    let projector = std::fs::read_to_string(
+        module_root().join("developer_workflows/infrastructure/pull_request_preview_projector.rs"),
+    )
+    .expect("read Preview projector");
+    assert!(
+        projector.contains("Arc<dyn IPreviewEnvironmentPort>")
+            && !projector.contains("Option<Arc<dyn IPreviewEnvironmentPort>>")
+            && projector.contains("crate::modules::developer_workflows::published"),
+        "the production Preview projector must require the owner handoff boundary and consume the owner Published Language"
+    );
 }
 
 #[test]

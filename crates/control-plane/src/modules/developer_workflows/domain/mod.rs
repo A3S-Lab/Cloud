@@ -9,6 +9,7 @@ mod preview_policy_contract;
 mod preview_policy_events;
 mod preview_policy_repository;
 mod pull_request_preview;
+mod pull_request_preview_events;
 mod pull_request_preview_projection;
 mod repository;
 pub(crate) mod source_layout;
@@ -54,6 +55,7 @@ pub use pull_request_preview::{
     PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus, MAX_ACTIVE_PREVIEWS_PER_POLICY,
     MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
 };
+pub use pull_request_preview_events::PullRequestPreviewLifecycleEvent;
 pub use pull_request_preview_projection::{
     CommitPullRequestPreviewProjection, IPullRequestPreviewProjectionRepository,
     PullRequestPreviewFactFingerprint, PullRequestPreviewProjectionOutcome,

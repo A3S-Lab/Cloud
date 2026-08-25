@@ -146,6 +146,7 @@ impl PostgresAdapterFactory {
 
     pub(super) fn relay(&self) -> RelayPostgresAdapters {
         let identity = IdentityPostgresAdapters::new(self.executor.clone());
+        let projects = ProjectPostgresAdapters::new(self.executor.clone());
         let notifications = NotificationPostgresAdapters::new(self.executor.clone());
         let assets = AssetPostgresAdapters::new(self.executor.clone());
         let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
@@ -157,6 +158,7 @@ impl PostgresAdapterFactory {
             alert_policies: notifications.alert_policies,
             assets: assets.assets,
             build_candidates: artifacts.build_candidates,
+            environments: projects.environments,
             preview_policies: developer_workflows.preview_policies,
             preview_projections: developer_workflows.preview_projections,
             outbox: self.outbox(),
@@ -228,6 +230,7 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) assets: Arc<dyn IAssetRepository>,
     pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    pub(super) environments: Arc<dyn IEnvironmentRepository>,
     pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,

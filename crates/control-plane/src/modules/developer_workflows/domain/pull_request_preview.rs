@@ -399,9 +399,25 @@ impl PullRequestPreview {
         ))
     }
 
+    pub fn environment_name_for(
+        preview_id: PullRequestPreviewId,
+        pull_request_number: u64,
+    ) -> Result<String, String> {
+        if preview_id.as_uuid().is_nil()
+            || pull_request_number == 0
+            || pull_request_number > i64::MAX as u64
+        {
+            return Err("Preview Environment identity is invalid".into());
+        }
+        Ok(format!(
+            "pr-{pull_request_number}-{}",
+            preview_id.as_uuid().simple()
+        ))
+    }
+
     pub fn environment_name(&self) -> String {
-        let suffix = &self.id.as_uuid().simple().to_string()[..8];
-        format!("pr-{}-{suffix}", self.pull_request_number)
+        Self::environment_name_for(self.id, self.pull_request_number)
+            .expect("validated Preview identity always has a valid Environment name")
     }
 
     pub fn is_fork(&self) -> bool {

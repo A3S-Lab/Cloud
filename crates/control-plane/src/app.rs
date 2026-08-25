@@ -71,8 +71,9 @@ use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
 use crate::modules::developer_workflows::{
-    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
-    IPullRequestPreviewProjectionRepository, PullRequestPreviewProjectionService,
+    IPreviewEnvironmentPort, IPullRequestPreviewPolicyRepository,
+    IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
+    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
     PullRequestPreviewProjector,
 };
 use crate::modules::durable_cells::{
@@ -1293,6 +1294,7 @@ async fn build_api_worker_application(
                     DeveloperWorkflowProjectionDependencies {
                         policies: developer_workflows.preview_policies,
                         previews: developer_workflows.preview_projections,
+                        environments: Arc::clone(&environments),
                     },
                 ),
             },
@@ -1708,6 +1710,7 @@ async fn build_relay_application(
         notifications,
         assets,
         build_candidates,
+        environments,
         preview_policies,
         preview_projections,
         alert_policies,
@@ -1728,6 +1731,7 @@ async fn build_relay_application(
                 DeveloperWorkflowProjectionDependencies {
                     policies: preview_policies,
                     previews: preview_projections,
+                    environments,
                 },
             ),
         },
@@ -1772,6 +1776,7 @@ fn build_outbox_relay(
 struct DeveloperWorkflowProjectionDependencies {
     policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     previews: Arc<dyn IPullRequestPreviewProjectionRepository>,
+    environments: Arc<dyn IEnvironmentRepository>,
 }
 
 fn build_outbox_projectors(
@@ -1788,6 +1793,9 @@ fn build_outbox_projectors(
             developer_workflows.policies,
             developer_workflows.previews,
         ));
+    let preview_environments: Arc<dyn IPreviewEnvironmentPort> = Arc::new(
+        ProjectsPreviewEnvironmentAdapter::new(developer_workflows.environments),
+    );
     vec![
         Arc::new(
             OutboxNotificationProjector::new(notifications, memberships)
@@ -1795,7 +1803,10 @@ fn build_outbox_projectors(
         ),
         Arc::new(HostedBuildOutcomeProjector::new(assets)),
         Arc::new(BuildCandidateProjector::new(build_candidates)),
-        Arc::new(PullRequestPreviewProjector::new(preview_service)),
+        Arc::new(PullRequestPreviewProjector::new(
+            preview_service,
+            preview_environments,
+        )),
     ]
 }
 
