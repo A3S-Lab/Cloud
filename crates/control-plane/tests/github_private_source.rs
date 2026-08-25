@@ -14,8 +14,9 @@ use a3s_cloud_control_plane::modules::sources::domain::{
 };
 use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
 use a3s_cloud_control_plane::modules::sources::{
-    GitSourceCheckout, GithubInstallationTokenIssuer, GithubSourceResolver,
-    ISourceBuildInputQueryPort, InMemoryGithubConnectionRepository, SourceBuildInputQueryService,
+    ExternalSourceBuildArchiveAdapter, GitSourceCheckout, GithubInstallationTokenIssuer,
+    GithubSourceResolver, ISourceBuildInputQueryPort, InMemoryGithubConnectionRepository,
+    SourceBuildInputQueryService,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -153,15 +154,15 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
         handoff_directory.join("artifact-store"),
         512 * 1024 * 1024,
     )?);
-    let preparer = SourceBuildInputPreparer::new(
+    let external_source_archives = Arc::new(ExternalSourceBuildArchiveAdapter::new(
         checkout.clone(),
         Arc::new(InMemoryGithubConnectionRepository::new()),
         Arc::new(GithubInstallationTokenIssuer::disabled()),
-        artifact_store.clone(),
         handoff_directory.join("input-staging"),
         100_000,
         512 * 1024 * 1024,
-    )?;
+    )?);
+    let preparer = SourceBuildInputPreparer::new(external_source_archives, artifact_store.clone());
     let prepared = preparer.prepare(&build, &source).await?;
     if prepared.source_content_digest != accepted.content_digest {
         return Err(test_error(

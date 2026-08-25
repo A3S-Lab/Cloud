@@ -1,9 +1,8 @@
 use super::super::types::{BuildFlowInput, PrepareStepOutput, PreparedBuild};
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::bounded_reason;
-use crate::modules::artifacts::domain::{
-    BuildInputPreparationError, BuildRunStatus, BuildSourceResolutionError,
-};
+use crate::modules::artifacts::application::BuildInputPreparationError;
+use crate::modules::artifacts::domain::{BuildRunStatus, BuildSourceResolutionError};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use chrono::Utc;
 

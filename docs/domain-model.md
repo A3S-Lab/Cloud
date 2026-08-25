@@ -541,6 +541,17 @@ organization/project/environment/revision identity. The consumer-owned
 `IBuildSourceResolver` receives only that snapshot and revalidates the exact
 subject, so the resolver has no Sources repository authority.
 
+Materializing that external source is an Application interaction, not a
+Domain decision. Artifacts owns `IExternalSourceArchivePort`; Sources
+Infrastructure implements it using the one existing checkout authority. The
+adapter keeps GitHub installation credentials, checkout receipts, local paths,
+bounded deterministic tar policy, package-time drift validation, and temporary
+cleanup private. Its response contains only a source-content digest for
+provenance, a distinct digest and size for the exact tar bytes, and a stream.
+Artifacts alone admits that stream to the node Artifact store and then gives
+Domain the resulting immutable `BuildArtifact`. No second checkout, source
+aggregate, object store, queue, or build state machine is introduced.
+
 For a hosted Agent or MCP release, Assets similarly publishes the immutable
 `a3s.cloud.hosted-asset-build-input.v1` snapshot. Its owner-side
 `IHostedAssetBuildInputQueryPort` alone loads the Asset and release, validates

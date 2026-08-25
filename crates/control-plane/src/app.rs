@@ -211,13 +211,13 @@ use crate::modules::sources::domain::{
 use crate::modules::sources::{
     AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
     CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
-    DeactivateGithubRepositorySubscriptionHandler, GetGithubConnectionHandler, GitSourceCheckout,
-    GithubAppClient, GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
-    GithubSourceResolver, GithubWebhookVerifier, ISourceBuildInputQueryPort,
-    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
-    PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
-    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens,
-    SourceBuildInputQueryService, SourcesModule,
+    DeactivateGithubRepositorySubscriptionHandler, ExternalSourceBuildArchiveAdapter,
+    GetGithubConnectionHandler, GitSourceCheckout, GithubAppClient,
+    GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer, GithubSourceResolver,
+    GithubWebhookVerifier, ISourceBuildInputQueryPort, ListGithubRepositorySubscriptionsHandler,
+    ListSourceRevisionsHandler, PrepareGithubConnectionOauthHandler,
+    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
+    RevalidatingGithubInstallationTokens, SourceBuildInputQueryService, SourcesModule,
 };
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
@@ -833,21 +833,20 @@ async fn build_api_worker_application(
             source_build_inputs,
             hosted_asset_build_inputs,
         ));
-        let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
-            SourceBuildInputPreparer::new(
+        let external_source_archives = Arc::new(
+            ExternalSourceBuildArchiveAdapter::new(
                 source_checkout,
                 Arc::clone(&github_connections),
                 Arc::clone(&github_installation_tokens),
-                Arc::clone(&node_artifacts),
                 &config.builds.input_staging_dir,
                 config.builds.input_max_entries,
                 config.builds.input_max_bytes,
             )
-            .map(|preparer| {
-                preparer
-                    .with_hosted_assets(Arc::clone(&assets), Arc::clone(&asset_git_repositories))
-            })
             .map_err(ControlPlaneStartupError::Build)?,
+        );
+        let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
+            SourceBuildInputPreparer::new(external_source_archives, Arc::clone(&node_artifacts))
+                .with_hosted_assets(Arc::clone(&assets), Arc::clone(&asset_git_repositories)),
         );
         let build_flow_config = config
             .build_flow_config()

@@ -300,6 +300,71 @@ fn artifacts_build_source_resolver_never_loads_owner_repositories() {
 }
 
 #[test]
+fn artifacts_external_input_staging_uses_only_the_sources_archive_port() {
+    let source = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/source_build_input_preparer.rs"),
+    )
+    .expect("read Artifacts build input preparer");
+    assert!(
+        source.contains("IExternalSourceArchivePort")
+            && source.contains("ExternalSourceArchiveRequest"),
+        "Artifacts external input staging lost its consumer-owned Sources port"
+    );
+    let violations = [
+        "crate::modules::sources::domain",
+        "ISourceCheckout",
+        "IGithubConnectionRepository",
+        "IGithubInstallationTokenService",
+        "GithubInstallationTokenRequest",
+        "SourceCheckoutRequest",
+        "CheckedOutSource",
+        "SourceProviderCredential",
+    ]
+    .into_iter()
+    .filter(|needle| {
+        source
+            .split("#[cfg(test)]")
+            .next()
+            .is_some_and(|production| production.contains(needle))
+    })
+    .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "Artifacts external input staging regained Source provider or repository internals: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn artifacts_input_io_ports_stay_out_of_the_domain_layer() {
+    let domain = std::fs::read_to_string(module_root().join("artifacts/domain/mod.rs"))
+        .expect("read Artifacts Domain module");
+    let services = std::fs::read_to_string(module_root().join("artifacts/domain/services/mod.rs"))
+        .expect("read Artifacts Domain services module");
+    for forbidden in [
+        "build_input_preparer",
+        "IBuildInputPreparer",
+        "BuildInputPreparationError",
+        "PreparedBuildInput",
+    ] {
+        assert!(
+            !domain.contains(forbidden) && !services.contains(forbidden),
+            "Artifacts Domain regained application I/O contract {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        module_root().join("sources/infrastructure/external_build_archive.rs"),
+    )
+    .expect("read Sources external build archive adapter");
+    assert!(
+        adapter.contains("crate::modules::artifacts::application")
+            && !adapter.contains("crate::modules::artifacts::domain"),
+        "Sources archive adapter must implement the consumer Application port without importing Artifacts Domain"
+    );
+}
+
+#[test]
 fn artifacts_candidate_reservation_reads_only_its_fact_projection() {
     let source = std::fs::read_to_string(
         module_root().join("artifacts/infrastructure/persistence/postgres.rs"),

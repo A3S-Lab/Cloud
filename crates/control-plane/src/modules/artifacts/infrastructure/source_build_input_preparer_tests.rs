@@ -1,90 +1,55 @@
 use super::*;
+use crate::modules::artifacts::application::{
+    IExternalSourceArchivePort, OpenExternalSourceArchive,
+};
 use crate::modules::artifacts::infrastructure::NodeArtifactObjectStore;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+    BuildRunId, EnvironmentId, OrganizationId, ProjectId, Sha256Digest, SourceRevisionId,
 };
 use crate::modules::sources::domain::{
     ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
-    SourceProviderCredential,
 };
 use crate::modules::sources::publish_source_build_input;
 use crate::modules::sources::published::BuildRecipe;
-use crate::modules::sources::{GithubInstallationTokenIssuer, InMemoryGithubConnectionRepository};
+use sha2::{Digest, Sha256};
+use std::io::Cursor;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex;
 
 #[tokio::test]
-async fn prepared_source_is_deterministic_and_replayed_without_credentials(
+async fn external_archive_port_is_the_only_source_provider_boundary(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
-    let source_directory = root.path().join("source");
-    tokio::fs::create_dir(&source_directory).await?;
-    tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
-    tokio::fs::write(source_directory.join("message.txt"), "deterministic\n").await?;
     let (build, revision) = build_and_revision()?;
     let input = publish_source_build_input(&revision)?;
     let source = BuildSource::from_source_input(&input)?;
-    let checkout = Arc::new(ReplayCheckout::new(
-        checked_out_source(&revision, build.id.as_uuid(), source_directory),
-        false,
-    ));
+    let archive_bytes = b"deterministic external Source tar bytes".to_vec();
+    let external = Arc::new(RecordingExternalArchivePort::new(archive_bytes.clone()));
     let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("artifacts"),
         16 * 1024 * 1024,
     )?);
-    let preparer = preparer(root.path(), checkout.clone(), store)?;
+    let preparer = SourceBuildInputPreparer::new(external.clone(), store);
 
     let first = preparer.prepare(&build, &source).await?;
     let replay = preparer.prepare(&build, &source).await?;
     assert_eq!(first, replay);
-    assert_eq!(checkout.calls(), 4);
-    assert_eq!(checkout.credential_calls(), 0);
+    assert_eq!(
+        first.artifact.digest,
+        format!("sha256:{:x}", Sha256::digest(&archive_bytes))
+    );
+    let requests = external.requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| {
+        request.organization_id() == build.organization_id
+            && request.build_run_id() == build.id
+            && request.repository() == &revision.repository
+            && request.commit_sha() == &revision.commit_sha
+    }));
+    drop(requests);
     preparer.remove(&build).await?;
-    assert_eq!(checkout.removals(), 1);
+    assert_eq!(external.removals.load(Ordering::SeqCst), 1);
     Ok(())
-}
-
-#[tokio::test]
-async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let root = tempfile::tempdir()?;
-    let source_directory = root.path().join("source");
-    tokio::fs::create_dir(&source_directory).await?;
-    tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
-    let (build, revision) = build_and_revision()?;
-    let input = publish_source_build_input(&revision)?;
-    let source = BuildSource::from_source_input(&input)?;
-    let checkout = Arc::new(ReplayCheckout::new(
-        checked_out_source(&revision, build.id.as_uuid(), source_directory),
-        true,
-    ));
-    let store = Arc::new(NodeArtifactObjectStore::local(
-        root.path().join("artifacts"),
-        16 * 1024 * 1024,
-    )?);
-    let preparer = preparer(root.path(), checkout.clone(), store)?;
-
-    assert!(matches!(
-        preparer.prepare(&build, &source).await,
-        Err(BuildInputPreparationError::Integrity(_))
-    ));
-    assert_eq!(checkout.calls(), 2);
-    assert_eq!(checkout.credential_calls(), 0);
-    Ok(())
-}
-
-fn preparer(
-    root: &Path,
-    checkout: Arc<ReplayCheckout>,
-    artifacts: Arc<NodeArtifactObjectStore>,
-) -> Result<SourceBuildInputPreparer, String> {
-    SourceBuildInputPreparer::new(
-        checkout,
-        Arc::new(InMemoryGithubConnectionRepository::new()),
-        Arc::new(GithubInstallationTokenIssuer::disabled()),
-        artifacts,
-        root.join("staging"),
-        1_024,
-        16 * 1024 * 1024,
-    )
 }
 
 fn build_and_revision() -> Result<(BuildRun, ExternalSourceRevision), String> {
@@ -122,82 +87,48 @@ fn build_and_revision() -> Result<(BuildRun, ExternalSourceRevision), String> {
     ))
 }
 
-fn checked_out_source(
-    revision: &ExternalSourceRevision,
-    checkout_id: Uuid,
-    directory: PathBuf,
-) -> CheckedOutSource {
-    CheckedOutSource {
-        checkout_id,
-        repository: revision.repository.clone(),
-        commit_sha: revision.commit_sha.clone(),
-        directory,
-        git_tree_id: "1".repeat(40),
-        content_digest: format!("sha256:{}", "2".repeat(64)),
-        file_count: 2,
-        content_bytes: 27,
-    }
-}
-
-struct ReplayCheckout {
-    source: CheckedOutSource,
-    change_on_replay: bool,
-    calls: AtomicUsize,
-    credential_calls: AtomicUsize,
+struct RecordingExternalArchivePort {
+    archive_bytes: Vec<u8>,
+    requests: Mutex<Vec<ExternalSourceArchiveRequest>>,
     removals: AtomicUsize,
 }
 
-impl ReplayCheckout {
-    fn new(source: CheckedOutSource, change_on_replay: bool) -> Self {
+impl RecordingExternalArchivePort {
+    fn new(archive_bytes: Vec<u8>) -> Self {
         Self {
-            source,
-            change_on_replay,
-            calls: AtomicUsize::new(0),
-            credential_calls: AtomicUsize::new(0),
+            archive_bytes,
+            requests: Mutex::new(Vec::new()),
             removals: AtomicUsize::new(0),
         }
-    }
-
-    fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-
-    fn credential_calls(&self) -> usize {
-        self.credential_calls.load(Ordering::SeqCst)
-    }
-
-    fn removals(&self) -> usize {
-        self.removals.load(Ordering::SeqCst)
     }
 }
 
 #[async_trait]
-impl ISourceCheckout for ReplayCheckout {
-    async fn checkout(
+impl IExternalSourceArchivePort for RecordingExternalArchivePort {
+    async fn prepare(
         &self,
-        request: &SourceCheckoutRequest,
-        credential: Option<&SourceProviderCredential>,
-    ) -> Result<CheckedOutSource, SourceCheckoutError> {
-        let call = self.calls.fetch_add(1, Ordering::SeqCst);
-        if credential.is_some() {
-            self.credential_calls.fetch_add(1, Ordering::SeqCst);
-        }
-        if request.checkout_id != self.source.checkout_id
-            || request.repository != self.source.repository
-            || request.commit_sha != self.source.commit_sha
-        {
-            return Err(SourceCheckoutError::Conflict);
-        }
-        let mut source = self.source.clone();
-        if self.change_on_replay && call == 1 {
-            source.content_digest = format!("sha256:{}", "3".repeat(64));
-        }
-        Ok(source)
+        request: ExternalSourceArchiveRequest,
+    ) -> Result<OpenExternalSourceArchive, BuildInputPreparationError> {
+        request
+            .validate()
+            .map_err(BuildInputPreparationError::Invalid)?;
+        self.requests.lock().await.push(request);
+        OpenExternalSourceArchive::new(
+            Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))
+                .map_err(BuildInputPreparationError::Invalid)?,
+            Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(&self.archive_bytes)))
+                .map_err(BuildInputPreparationError::Invalid)?,
+            self.archive_bytes.len() as u64,
+            Box::pin(Cursor::new(self.archive_bytes.clone())),
+        )
+        .map_err(BuildInputPreparationError::Invalid)
     }
 
-    async fn remove(&self, checkout_id: Uuid) -> Result<(), SourceCheckoutError> {
-        if checkout_id != self.source.checkout_id {
-            return Err(SourceCheckoutError::Conflict);
+    async fn remove(&self, build_run_id: BuildRunId) -> Result<(), BuildInputPreparationError> {
+        if build_run_id.as_uuid().is_nil() {
+            return Err(BuildInputPreparationError::Invalid(
+                "BuildRun ID is invalid".into(),
+            ));
         }
         self.removals.fetch_add(1, Ordering::SeqCst);
         Ok(())

@@ -213,8 +213,10 @@ already enforce that current debt can shrink but cannot spread:
 - duplicate ORM mappings of `mcp_service_profiles`, `nodes`,
   `operation_requests`, `workloads`, and `workflow_runs` are frozen;
 - Runtime/transport/persistence/provider dependencies in domains are rejected;
-  Artifacts now keeps byte streaming in Application ports, while its remaining
-  input-staging/provider and public-Infrastructure edges stay frozen as debt;
+  Artifacts now keeps byte streaming and input I/O in Application ports;
+  external checkout, provider credentials, and deterministic packaging stay
+  behind a Sources-owned adapter, while hosted-Asset staging and public
+  Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
 - Shared Kernel dependencies and public outer-layer facades cannot expand.

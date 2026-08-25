@@ -1,7 +1,9 @@
 mod build_candidate;
+mod build_input_preparer;
 mod build_log_query;
 mod build_run_reconciler;
 mod commands;
+mod external_source_archive;
 mod hosted_artifact_query;
 mod hosted_build_outcome;
 mod node_artifact_store;
@@ -9,6 +11,9 @@ mod queries;
 pub(crate) mod resource_access;
 
 pub use build_candidate::{BuildCandidate, BuildCandidateEvidence, IBuildCandidateProjectionPort};
+pub use build_input_preparer::{
+    BuildInputPreparationError, IBuildInputPreparer, PreparedBuildInput,
+};
 pub use build_log_query::{
     BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
     BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,
@@ -21,6 +26,9 @@ pub use build_run_reconciler::{
 pub use commands::{
     CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, RetryBuildRun,
     RetryBuildRunHandler, RetryBuildRunResult,
+};
+pub use external_source_archive::{
+    ExternalSourceArchiveRequest, IExternalSourceArchivePort, OpenExternalSourceArchive,
 };
 pub use hosted_artifact_query::{
     HostedArtifactLocation, HostedArtifactQueryService, IHostedArtifactQueryPort,

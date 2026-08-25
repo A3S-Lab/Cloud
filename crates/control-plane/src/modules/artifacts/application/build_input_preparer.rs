@@ -21,6 +21,10 @@ pub enum BuildInputPreparationError {
     Storage(String),
 }
 
+/// Application boundary for materializing immutable bytes for one BuildRun.
+///
+/// Input preparation performs provider and storage I/O; it is not a domain
+/// service. Domain owns the BuildRun and admitted artifact values only.
 #[async_trait]
 pub trait IBuildInputPreparer: Send + Sync {
     async fn prepare(

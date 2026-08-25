@@ -1510,10 +1510,13 @@ The current independently testable G0 slices are implemented:
   deterministic `cloud.build@5` operation before generic Flow coordination.
   Deployment v1/v2 retain only their required historical replay support; new
   deployment work uses `cloud.deployment@3`.
-- `SourceBuildInputPreparer` performs exact tenant/revision checks, ephemeral
-  private checkout when needed, deterministic directory packaging, Artifact
-  admission, and credential-free offline receipt replay to reject package-time
-  mutation. Failure cleanup removes the checkout.
+- `IBuildInputPreparer` is an Artifacts Application port, not a Domain service.
+  Its external branch delegates through `IExternalSourceArchivePort` to the
+  Sources-owned adapter, which performs exact tenant/revision checks,
+  ephemeral private checkout when needed, deterministic bounded directory
+  packaging, credential-free receipt replay to reject package-time mutation,
+  and temporary-file cleanup. Artifacts alone admits the returned stream to
+  the node Artifact store; Flow cleanup removes the checkout.
 - The Build Flow selects only ready nodes advertising the pinned `a3s-box`
   provider. It projects sorted canonical ACL plans with `network = "none"`, one
   platform per operation, bounded source/output/cache sizes, no credential or
