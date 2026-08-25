@@ -377,9 +377,14 @@ Operation as the A3S Flow child, resumes the hook only from a digest-bound
 terminal result, and waits for cleanup-first child cancellation before parent
 cancellation or timeout. REST/OpenAPI `1.24.0`, the maintained client,
 `execution-templates` CLI commands, and three Management MCP tools reuse the
-same CQRS and persistence path. Focused tests and a local real PostgreSQL
-seven-boundary run pass. The clean Linux H0 gate now passes finite persistence
-and the same seven process-death boundaries, while the clean C0.2 Management
+same CQRS and persistence path. Focused tests and a retained local real
+PostgreSQL seven-boundary run pass. The checked-in PostgreSQL gate now contains
+eleven OS-process death boundaries: the retained parent and finite Execution
+matrix plus child-commit and terminal-parent-resume boundaries for sequential
+Loop and bounded-parallel Iteration. The four new composite boundaries require
+a retained PostgreSQL run before they become release evidence. The clean Linux
+H0 gate currently retains finite persistence and the original seven
+process-death boundaries, while the clean C0.2 Management
 MCP/A3S Box/PostgreSQL gate passes the exact `77/47` catalog and an `8/8`
 ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of

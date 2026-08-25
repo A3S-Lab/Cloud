@@ -4759,16 +4759,20 @@ Flow run, resumes only after cleanup reaches an authority-bound terminal
 result, and waits for child cleanup on cancellation or timeout. REST/OpenAPI
 `1.24.0`, the maintained client, `execution-templates` CLI commands, and three
 Management MCP tools reuse the same CQRS, Resource Grant, idempotency, A3S ORM,
-Outbox, and audit paths. The retained `SIGKILL` fixture now adds child-commit-
-before-enqueue, exact-link-before-parent-projection, and terminal-resume-before-
-parent-projection boundaries to the four parent/HumanTask boundaries above.
+Outbox, and audit paths. The `SIGKILL` fixture adds child-commit-before-enqueue,
+exact-link-before-parent-projection, and terminal-resume-before-parent-projection
+boundaries to the four parent/HumanTask boundaries above. It now also contains
+exact child-commit and terminal-parent-resume boundaries for sequential Loop
+and bounded-parallel Iteration, for eleven process-death boundaries in total.
 The Management MCP scenario publishes the same
 `contracts/w0.3/execution-template.acl` through REST, replays and reads it
 through MCP, and checks accepted/rejected idempotency, Outbox, audit, migration
 `098`, immutability, and tenant non-disclosure against PostgreSQL. Focused
-domain/application/coordinator/REST/MCP/client/CLI tests, a local real PostgreSQL
-seven-boundary run, and provider-gate source checks pass; retained clean Linux
-PostgreSQL/provider gates still govern verification. Business-service
+domain/application/coordinator/REST/MCP/client/CLI tests, a retained local real
+PostgreSQL seven-boundary run, and provider-gate source checks pass. The four
+new composite boundaries compile in the same production-repository gate but
+still require a retained PostgreSQL execution; retained clean Linux
+PostgreSQL/provider gates govern verification. Business-service
 and remaining provider capability dispatch, compensation, expanded clean
 provider evidence, and public availability remain open; no UI mechanism is required.
 

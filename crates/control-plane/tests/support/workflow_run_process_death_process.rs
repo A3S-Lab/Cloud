@@ -21,6 +21,10 @@ pub(super) enum ProbeMode {
     ExecutionChildCommitted,
     ExecutionChildLinked,
     ExecutionTerminalResumed,
+    LoopChildCommitted,
+    LoopTerminalResumed,
+    IterationChildrenCommitted,
+    IterationTerminalResumed,
 }
 
 impl ProbeMode {
@@ -33,6 +37,10 @@ impl ProbeMode {
             Self::ExecutionChildCommitted => "execution-child-committed",
             Self::ExecutionChildLinked => "execution-child-linked",
             Self::ExecutionTerminalResumed => "execution-terminal-resumed",
+            Self::LoopChildCommitted => "loop-child-committed",
+            Self::LoopTerminalResumed => "loop-terminal-resumed",
+            Self::IterationChildrenCommitted => "iteration-children-committed",
+            Self::IterationTerminalResumed => "iteration-terminal-resumed",
         }
     }
 
@@ -45,6 +53,10 @@ impl ProbeMode {
             "execution-child-committed" => Ok(Self::ExecutionChildCommitted),
             "execution-child-linked" => Ok(Self::ExecutionChildLinked),
             "execution-terminal-resumed" => Ok(Self::ExecutionTerminalResumed),
+            "loop-child-committed" => Ok(Self::LoopChildCommitted),
+            "loop-terminal-resumed" => Ok(Self::LoopTerminalResumed),
+            "iteration-children-committed" => Ok(Self::IterationChildrenCommitted),
+            "iteration-terminal-resumed" => Ok(Self::IterationTerminalResumed),
             _ => Err(format!("unknown WorkflowRun crash probe mode {value:?}")),
         }
     }
@@ -83,6 +95,23 @@ pub(super) struct CrashMarker {
     pub(super) execution_template_digest: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) invocation_template_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) composite_children: Option<Vec<CompositeChildMarker>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CompositeChildMarker {
+    pub(super) ordinal: u32,
+    pub(super) reference_id: String,
+    pub(super) frame_digest: String,
+    pub(super) workflow_run_id: String,
+    pub(super) operation_id: String,
+    pub(super) status: String,
+    pub(super) aggregate_version: u64,
+    pub(super) workflow_goal_id: String,
+    pub(super) plan_revision_id: String,
+    pub(super) plan_digest: String,
 }
 
 pub(super) fn probe_environment() -> TestResult<ProbeEnvironment> {

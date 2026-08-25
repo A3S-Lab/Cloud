@@ -1,5 +1,11 @@
+#[path = "workflow_run_process_death_composite.rs"]
+mod composite;
+#[path = "workflow_run_process_death_composite_fixture.rs"]
+mod composite_fixture;
 #[path = "workflow_run_process_death_evidence.rs"]
 mod evidence;
+#[path = "workflow_run_process_death_execution.rs"]
+mod execution;
 #[path = "workflow_run_process_death_fixture.rs"]
 mod fixture;
 #[path = "workflow_run_process_death_process.rs"]
@@ -7,7 +13,7 @@ mod process;
 
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::executions::{
-    Execution, ExecutionOutcome, ExecutionReconciler, ExecutionStatus, IExecutionRepository,
+    Execution, ExecutionReconciler, ExecutionStatus, IExecutionRepository,
     IExecutionTemplateRepository, IWorkflowExecutionPort, PostgresExecutionRepository,
     PostgresExecutionTemplateRepository, WorkflowExecutionApplicationService,
     EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
@@ -20,8 +26,8 @@ use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{IdempotencyRequest, OperationId};
 use a3s_cloud_control_plane::modules::workflow::{
     CancelWorkflowRunWrite, CreateWorkflowRunWrite, FlowWorkflowRunCoordinator,
-    IWorkflowRunCoordinator, IWorkflowRunRepository, PostgresWorkflowRunRepository,
-    WorkflowExecutionStepOutput, WorkflowRun, WorkflowRunCancellationRequested,
+    IWorkflowCompositeExecutionPort, IWorkflowRunCoordinator, IWorkflowRunRepository,
+    PostgresWorkflowRunRepository, WorkflowRun, WorkflowRunCancellationRequested,
     WorkflowRunFlowRuntime, WorkflowRunInput, WorkflowRunReconciler, WorkflowRunRecord,
     WorkflowRunRequested, WorkflowRunStatus,
 };
@@ -392,8 +398,31 @@ pub async fn exercise_process_death_matrix(postgres_url: String) -> TestResult {
     {
         return Err("cancellation recovery appended duplicate Flow history".into());
     }
-    let stable_execution_version = exercise_execution_child_matrix(&fixture, &runtime).await?;
-    verify_database_evidence(&fixture).await?;
+    let stable_execution_version =
+        execution::exercise_execution_child_matrix(&fixture, &runtime).await?;
+    let loop_evidence = composite::exercise_composite_process_death_matrix(
+        &fixture,
+        &runtime,
+        composite::CompositeScenario::Loop,
+        8,
+        9,
+    )
+    .await?;
+    let iteration_evidence = composite::exercise_composite_process_death_matrix(
+        &fixture,
+        &runtime,
+        composite::CompositeScenario::Iteration,
+        10,
+        11,
+    )
+    .await?;
+    let composite_child_run_ids = loop_evidence
+        .child_run_ids
+        .iter()
+        .chain(&iteration_evidence.child_run_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    verify_database_evidence(&fixture, &composite_child_run_ids).await?;
     let run_ids = runtime.engine.list_run_ids().await?;
     let execution = &fixture.document.execution_input;
     let child = runtime
@@ -406,360 +435,29 @@ pub async fn exercise_process_death_matrix(postgres_url: String) -> TestResult {
         )
         .await?
         .ok_or("finite child Execution disappeared from final evidence")?;
-    if run_ids.len() != 4
+    if run_ids.len() != 9
         || !run_ids.contains(&terminal.workflow_run_id.to_string())
         || !run_ids.contains(&cancellation.workflow_run_id.to_string())
         || !run_ids.contains(&execution.workflow_run_id.to_string())
         || !run_ids.contains(&child.operation_id.to_string())
+        || !run_ids.contains(&fixture.document.loop_input.workflow_run_id.to_string())
+        || !run_ids.contains(&fixture.document.iteration_input.workflow_run_id.to_string())
+        || composite_child_run_ids
+            .iter()
+            .any(|child_run_id| !run_ids.contains(child_run_id))
     {
         return Err(format!(
-            "process-death recovery did not preserve the three parent and one child Flow runs: {run_ids:?}"
+            "process-death recovery did not preserve the five parent and four child Flow runs: {run_ids:?}"
         )
         .into());
     }
 
     println!(
-        "A3S_CLOUD_WORKFLOW_RUN_PROCESS_DEATH_CERTIFIED boundaries=7 sigkills=7 workflow_runs=3 executions=1 operations=4 flow_runs=4 terminal_version={stable_terminal_version} cancellation_version={stable_cancelled_version} execution_version={stable_execution_version}",
+        "A3S_CLOUD_WORKFLOW_RUN_PROCESS_DEATH_CERTIFIED boundaries=11 sigkills=11 workflow_runs=8 executions=1 operations=9 flow_runs=9 terminal_version={stable_terminal_version} cancellation_version={stable_cancelled_version} execution_version={stable_execution_version} loop_version={} iteration_version={}",
+        loop_evidence.parent_version,
+        iteration_evidence.parent_version,
     );
     Ok(())
-}
-
-#[allow(clippy::too_many_lines)]
-async fn exercise_execution_child_matrix(
-    fixture: &Fixture,
-    runtime: &RecoveryRuntime,
-) -> TestResult<u64> {
-    let input = &fixture.document.execution_input;
-    let created = create_workflow_run(
-        &fixture.executor,
-        fixture.document.actor,
-        input,
-        start_idempotency(input)?,
-    )
-    .await?;
-    if created.replayed
-        || created.value.run.status != WorkflowRunStatus::Pending
-        || created.value.run.aggregate_version != 1
-    {
-        return Err("finite Execution WorkflowRun was not created once as Pending".into());
-    }
-    let start = runtime.operation_reconciler().run_once().await?;
-    if start.inspected != 1 || start.projected != 1 || !start.failures.is_empty() {
-        return Err(format!(
-            "finite Execution parent Operation did not start its existing Flow: {start:#?}"
-        )
-        .into());
-    }
-    let initial_snapshot = runtime
-        .engine
-        .snapshot(&input.workflow_run_id.to_string())
-        .await?;
-    if initial_snapshot.status != FlowRunStatus::Suspended
-        || !initial_snapshot.child_operations.is_empty()
-    {
-        return Err("finite Execution parent did not suspend at its typed hook".into());
-    }
-
-    let committed_marker = crash_at(fixture, 5, ProbeMode::ExecutionChildCommitted).await?;
-    let child = runtime
-        .executions
-        .find_for_workflow(
-            input.organization_id,
-            input.workflow_run_id,
-            EXECUTION_STEP_ID,
-            1,
-        )
-        .await?
-        .ok_or("child-committed recovery did not find the finite Execution")?;
-    require_execution_marker_identity(
-        &committed_marker,
-        ProbeMode::ExecutionChildCommitted,
-        input,
-        &child,
-    )?;
-    require_execution_authority(input, &child)?;
-    if child.status != ExecutionStatus::Queued
-        || child.aggregate_version != 1
-        || runtime
-            .operations
-            .find_request(child.operation_id)
-            .await?
-            .is_some()
-    {
-        return Err("child-committed boundary crossed into Operation dispatch".into());
-    }
-    require_run_version(&runtime.runs, input, 1, "finite child commit process death").await?;
-
-    let stored = runtime
-        .runs
-        .find(input.organization_id, input.workflow_run_id)
-        .await?
-        .ok_or("finite Execution WorkflowRun disappeared during adoption")?;
-    let adopted_projection = FlowWorkflowRunCoordinator::with_executions(
-        runtime.engine.clone(),
-        Arc::clone(&runtime.execution_port),
-    )
-    .reconcile(&stored, Utc::now())
-    .await?
-    .ok_or("finite child adoption did not produce a waiting projection")?;
-    let adopted = runtime
-        .executions
-        .find_for_workflow(
-            input.organization_id,
-            input.workflow_run_id,
-            EXECUTION_STEP_ID,
-            1,
-        )
-        .await?
-        .ok_or("finite child disappeared during adoption replay")?;
-    if adopted_projection.run.status != WorkflowRunStatus::Waiting || adopted != child {
-        return Err("finite child adoption replay changed the exact Execution".into());
-    }
-    require_run_version(&runtime.runs, input, 1, "finite child adoption replay").await?;
-
-    let enqueue = runtime.execution_reconciler().run_once(100).await?;
-    if enqueue.started != 1 || enqueue.replayed != 0 || !enqueue.failures.is_empty() {
-        return Err(format!(
-            "finite child did not enqueue exactly one existing Operation: {enqueue:#?}"
-        )
-        .into());
-    }
-    let stable_enqueue = runtime.execution_reconciler().run_once(100).await?;
-    if stable_enqueue.started != 0
-        || stable_enqueue.replayed != 0
-        || !stable_enqueue.failures.is_empty()
-    {
-        return Err(format!(
-            "finite child remained eligible for duplicate Operation enqueue: {stable_enqueue:#?}"
-        )
-        .into());
-    }
-    let child_request = runtime
-        .operations
-        .find_request(child.operation_id)
-        .await?
-        .ok_or("finite child Operation request was not persisted")?;
-    if child_request.id != child.operation_id
-        || child_request.subject.kind() != "execution"
-        || child_request.subject.id() != child.id.as_uuid()
-        || child_request.workflow.name() != EXECUTION_WORKFLOW_NAME
-        || child_request.workflow.version() != EXECUTION_WORKFLOW_VERSION
-    {
-        return Err("finite child Operation authority drifted during enqueue".into());
-    }
-    let suspended_parent_projection = runtime
-        .operations
-        .find_projection(created.value.run.operation_id)
-        .await?
-        .ok_or("finite parent Operation projection disappeared before starting its child")?;
-    let child_start = runtime.operation_reconciler().run_once().await?;
-    if child_start.inspected != 2 || child_start.projected != 1 || !child_start.failures.is_empty()
-    {
-        return Err(format!(
-            "finite child Operation was not projected beside one stable parent replay: {child_start:#?}"
-        )
-        .into());
-    }
-    let parent_projection = runtime
-        .operations
-        .find_projection(created.value.run.operation_id)
-        .await?
-        .ok_or("finite parent Operation projection disappeared while starting its child")?;
-    if parent_projection != suspended_parent_projection {
-        return Err(format!(
-            "finite parent Operation projection changed during a stable replay: before={suspended_parent_projection:#?} after={parent_projection:#?}",
-        )
-        .into());
-    }
-    let child_projection = runtime
-        .operations
-        .find_projection(child.operation_id)
-        .await?
-        .ok_or("finite child Operation projection was not persisted")?;
-    if child_projection.status != OperationStatus::Succeeded {
-        return Err(format!(
-            "finite child Operation projected {:?} instead of succeeded",
-            child_projection.status
-        )
-        .into());
-    }
-    let child_history = runtime
-        .engine
-        .history(&child.operation_id.to_string())
-        .await?;
-    require_completed_history(&child_history)?;
-
-    let linked_marker = crash_at(fixture, 6, ProbeMode::ExecutionChildLinked).await?;
-    require_execution_marker_identity(
-        &linked_marker,
-        ProbeMode::ExecutionChildLinked,
-        input,
-        &child,
-    )?;
-    let linked_snapshot = runtime
-        .engine
-        .snapshot(&input.workflow_run_id.to_string())
-        .await?;
-    require_execution_child_reference(input, &child, &linked_snapshot)?;
-    require_run_version(&runtime.runs, input, 1, "finite child link process death").await?;
-    let linked_history = runtime
-        .engine
-        .history(&input.workflow_run_id.to_string())
-        .await?;
-    let linked_replay = FlowWorkflowRunCoordinator::with_executions(
-        runtime.engine.clone(),
-        Arc::clone(&runtime.execution_port),
-    )
-    .reconcile(&stored, Utc::now())
-    .await?
-    .ok_or("finite child link replay did not produce a waiting projection")?;
-    if linked_replay.run.status != WorkflowRunStatus::Waiting {
-        return Err("finite child link replay changed the suspended parent state".into());
-    }
-    require_history_unchanged(
-        &runtime.engine,
-        input,
-        &linked_history,
-        "finite child link replay",
-    )
-    .await?;
-
-    let mut cleaning = runtime
-        .executions
-        .find(input.organization_id, child.id)
-        .await?
-        .ok_or("finite child disappeared before cleanup")?;
-    let expected_version = cleaning.aggregate_version;
-    cleaning.begin_cleanup(
-        ExecutionOutcome::Succeeded { exit_code: 0 },
-        cleaning.updated_at + chrono::Duration::milliseconds(1),
-    )?;
-    cleaning = runtime.executions.save(cleaning, expected_version).await?;
-    if cleaning.status != ExecutionStatus::CleanupPending {
-        return Err("finite child skipped cleanup-pending authority".into());
-    }
-    let expected_version = cleaning.aggregate_version;
-    cleaning.complete_cleanup(cleaning.updated_at + chrono::Duration::milliseconds(1))?;
-    let succeeded = runtime.executions.save(cleaning, expected_version).await?;
-    if succeeded.status != ExecutionStatus::Succeeded
-        || succeeded.outcome != Some(ExecutionOutcome::Succeeded { exit_code: 0 })
-        || succeeded.finished_at.is_none()
-    {
-        return Err("finite child did not complete cleanup-first success".into());
-    }
-
-    let resumed_marker = crash_at(fixture, 7, ProbeMode::ExecutionTerminalResumed).await?;
-    require_execution_marker_identity(
-        &resumed_marker,
-        ProbeMode::ExecutionTerminalResumed,
-        input,
-        &succeeded,
-    )?;
-    require_run_version(
-        &runtime.runs,
-        input,
-        1,
-        "finite terminal resume process death",
-    )
-    .await?;
-    let terminal_snapshot = runtime
-        .engine
-        .snapshot(&input.workflow_run_id.to_string())
-        .await?;
-    if terminal_snapshot.status != FlowRunStatus::Completed {
-        return Err("finite terminal child did not complete the parent Flow".into());
-    }
-    require_execution_child_reference(input, &succeeded, &terminal_snapshot)?;
-    let terminal_history = runtime
-        .engine
-        .history(&input.workflow_run_id.to_string())
-        .await?;
-    require_completed_history(&terminal_history)?;
-
-    let recovery = runtime.workflow_reconciler()?.run_once(100).await?;
-    if recovery.inspected != 1
-        || recovery.projected != 1
-        || recovery.deferred != 0
-        || !recovery.failures.is_empty()
-    {
-        return Err(format!(
-            "finite terminal child projection was not recovered exactly once: {recovery:#?}"
-        )
-        .into());
-    }
-    let completed = runtime
-        .runs
-        .find(input.organization_id, input.workflow_run_id)
-        .await?
-        .ok_or("finite terminal WorkflowRun projection disappeared")?;
-    if completed.run.status != WorkflowRunStatus::Completed
-        || completed.run.aggregate_version != 2
-        || completed.run.last_flow_sequence != terminal_snapshot.last_sequence
-    {
-        return Err(format!(
-            "finite terminal WorkflowRun projection drifted: {:?}",
-            completed.run
-        )
-        .into());
-    }
-    let output: WorkflowExecutionStepOutput = serde_json::from_value(
-        completed
-            .run
-            .output
-            .clone()
-            .ok_or("finite terminal WorkflowRun lost its child output")?,
-    )?;
-    require_execution_output(input, &succeeded, &output)?;
-
-    let parent_operation = runtime.operation_reconciler().run_once().await?;
-    if parent_operation.inspected != 1
-        || parent_operation.projected != 1
-        || !parent_operation.failures.is_empty()
-    {
-        return Err(format!(
-            "finite parent Operation did not project terminal recovery: {parent_operation:#?}"
-        )
-        .into());
-    }
-    let projection = runtime
-        .operations
-        .find_projection(completed.run.operation_id)
-        .await?
-        .ok_or("finite parent Operation projection disappeared")?;
-    if projection.status != OperationStatus::Succeeded {
-        return Err("finite parent Operation did not finish succeeded".into());
-    }
-    let stable_version = completed.run.aggregate_version;
-    let stable_workflow = runtime.workflow_reconciler()?.run_once(100).await?;
-    let stable_operation = runtime.operation_reconciler().run_once().await?;
-    if stable_workflow.inspected != 0 || stable_operation.inspected != 0 {
-        return Err(format!(
-            "finite terminal recovery remained eligible: workflow={stable_workflow:#?}, operation={stable_operation:#?}"
-        )
-        .into());
-    }
-    require_run_version(
-        &runtime.runs,
-        input,
-        stable_version,
-        "finite terminal projection replay",
-    )
-    .await?;
-    require_history_unchanged(
-        &runtime.engine,
-        input,
-        &terminal_history,
-        "finite terminal projection replay",
-    )
-    .await?;
-    require_child_history_unchanged(
-        &runtime.engine,
-        &succeeded,
-        &child_history,
-        "finite child terminal replay",
-    )
-    .await?;
-    Ok(stable_version)
 }
 
 pub async fn run_probe() -> TestResult {
@@ -824,6 +522,7 @@ pub async fn run_probe() -> TestResult {
                     execution_template_revision_id: None,
                     execution_template_digest: None,
                     invocation_template_digest: None,
+                    composite_children: None,
                 },
             )?;
         }
@@ -906,6 +605,15 @@ pub async fn run_probe() -> TestResult {
             }
             publish_marker(&marker, execution_marker(mode, &projected, &execution)?)?;
         }
+        ProbeMode::LoopChildCommitted
+        | ProbeMode::LoopTerminalResumed
+        | ProbeMode::IterationChildrenCommitted
+        | ProbeMode::IterationTerminalResumed => {
+            let input = composite::input_for_mode(&document, mode)
+                .ok_or("composite probe mode lost its WorkflowRun input")?;
+            let value = composite::coordinate_probe(&executor, &postgres_url, input, mode).await?;
+            publish_marker(&marker, value)?;
+        }
     }
     std::future::pending::<()>().await;
     Err("WorkflowRun crash probe resumed after publishing its marker".into())
@@ -928,6 +636,7 @@ fn workflow_marker(mode: ProbeMode, record: &WorkflowRunRecord) -> CrashMarker {
         execution_template_revision_id: None,
         execution_template_digest: None,
         invocation_template_digest: None,
+        composite_children: None,
     }
 }
 
@@ -998,6 +707,7 @@ struct RecoveryRuntime {
     runs: Arc<dyn IWorkflowRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
     execution_port: Arc<dyn IWorkflowExecutionPort>,
+    composite_port: Arc<dyn IWorkflowCompositeExecutionPort>,
 }
 
 impl RecoveryRuntime {
@@ -1017,12 +727,16 @@ impl RecoveryRuntime {
                 templates,
                 Arc::clone(&executions),
             ));
+        let runs: Arc<dyn IWorkflowRunRepository> =
+            Arc::new(PostgresWorkflowRunRepository::new(fixture.executor.clone()));
+        let composite_port = composite::composite_port(&fixture.executor, Arc::clone(&runs));
         Ok(Self {
             engine,
             operations: Arc::new(PostgresOperationRepository::new(fixture.executor.clone())),
-            runs: Arc::new(PostgresWorkflowRunRepository::new(fixture.executor.clone())),
+            runs,
             executions,
             execution_port,
+            composite_port,
         })
     }
 
@@ -1039,9 +753,10 @@ impl RecoveryRuntime {
     fn workflow_reconciler(&self) -> Result<WorkflowRunReconciler, String> {
         WorkflowRunReconciler::new(
             Arc::clone(&self.runs),
-            Arc::new(FlowWorkflowRunCoordinator::with_executions(
+            Arc::new(FlowWorkflowRunCoordinator::with_ports(
                 self.engine.clone(),
                 Arc::clone(&self.execution_port),
+                Arc::clone(&self.composite_port),
             )),
             Duration::from_millis(5),
             100,
@@ -1050,6 +765,14 @@ impl RecoveryRuntime {
 
     fn execution_reconciler(&self) -> ExecutionReconciler {
         ExecutionReconciler::new(Arc::clone(&self.executions), Arc::clone(&self.operations))
+    }
+
+    fn coordinator(&self) -> FlowWorkflowRunCoordinator {
+        FlowWorkflowRunCoordinator::with_ports(
+            self.engine.clone(),
+            Arc::clone(&self.execution_port),
+            Arc::clone(&self.composite_port),
+        )
     }
 }
 

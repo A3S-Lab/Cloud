@@ -282,14 +282,11 @@ pub(super) async fn require_run_version(
     Ok(())
 }
 
-pub(super) async fn verify_database_evidence(fixture: &Fixture) -> TestResult {
+pub(super) async fn verify_database_evidence(
+    fixture: &Fixture,
+    composite_child_run_ids: &[String],
+) -> TestResult {
     let connection = fixture.executor.pool().get().await?;
-    let terminal_id = fixture.document.terminal_input.workflow_run_id.as_uuid();
-    let cancellation_id = fixture
-        .document
-        .cancellation_input
-        .workflow_run_id
-        .as_uuid();
     let execution_run_id = fixture.document.execution_input.workflow_run_id.as_uuid();
     let binding = connection
         .query_one(
@@ -348,32 +345,53 @@ pub(super) async fn verify_database_evidence(fixture: &Fixture) -> TestResult {
             format!("finite child relational authority was not exact: {stored_binding:?}").into(),
         );
     }
+    let [loop_child, iteration_child_a, iteration_child_b] = composite_child_run_ids else {
+        return Err(format!(
+            "WorkflowRun process-death evidence expected three composite children, got {composite_child_run_ids:?}"
+        )
+        .into());
+    };
+    let loop_child = uuid::Uuid::parse_str(loop_child)?;
+    let iteration_child_a = uuid::Uuid::parse_str(iteration_child_a)?;
+    let iteration_child_b = uuid::Uuid::parse_str(iteration_child_b)?;
+    let organization_id = fixture.document.terminal_input.organization_id.as_uuid();
     let row = connection
         .query_one(
             "select \
-                (select count(*) from workflow_runs where id in ($1, $2, $3)), \
-                (select count(*) from operation_requests where operation_id in ($1, $2, $3, $4)), \
-                (select count(*) from operation_projections where operation_id in ($1, $2, $3, $4)), \
-                (select count(*) from outbox_events where aggregate_id in ($1, $2, $3) and event_key = 'workflow.run.requested'), \
-                (select count(*) from outbox_events where aggregate_id = $2 and event_key = 'workflow.run.cancellation.requested'), \
-                (select count(*) from executions where id = $4 and workflow_run_id = $3), \
-                (select count(*) from outbox_events where aggregate_id = $4 and event_key = 'execution.run.requested'), \
-                (select count(*) from execution_template_revisions where template_id = $5 and revision_id = $6 and definition_digest = $7), \
-                (select count(*) from outbox_events where aggregate_id = $5 and event_key = 'execution.template.published'), \
-                (select count(*) from audit_records where aggregate_id = $5 and action = 'execution.template.published'), \
+                (select count(*) from workflow_runs where organization_id = $1), \
+                (select count(*) from operation_requests where organization_id = $1), \
+                (select count(*) from operation_projections projection join operation_requests request using (operation_id) where request.organization_id = $1), \
+                (select count(*) from workflow_goals where organization_id = $1), \
+                (select count(*) from workflow_plan_revisions where organization_id = $1), \
+                (select count(*) from workflow_definitions where organization_id = $1), \
+                (select count(*) from workflow_revisions where organization_id = $1), \
+                (select count(*) from ontologies where organization_id = $1), \
+                (select count(*) from ontology_revisions where organization_id = $1), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'workflow.run.requested'), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'workflow.run.cancellation.requested'), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'workflow.goal.compiled'), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'workflow.definition.created'), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'workflow.ontology.created'), \
+                (select count(*) from executions where organization_id = $1), \
+                (select count(*) from outbox_events where organization_id = $1 and event_key = 'execution.run.requested'), \
+                (select count(*) from execution_template_revisions where template_id = $2 and revision_id = $3 and definition_digest = $4), \
+                (select count(*) from outbox_events where aggregate_id = $2 and event_key = 'execution.template.published'), \
+                (select count(*) from audit_records where aggregate_id = $2 and action = 'execution.template.published'), \
+                (select count(*) from workflow_runs where id in ($5, $6, $7)), \
+                (select count(*) from operation_requests where operation_id in ($5, $6, $7)), \
                 (select count(*) from idempotency_records)",
             &[
-                &terminal_id,
-                &cancellation_id,
-                &execution_run_id,
-                &child_id,
+                &organization_id,
                 &template_id,
                 &template_revision_id,
                 &template_digest,
+                &loop_child,
+                &iteration_child_a,
+                &iteration_child_b,
             ],
         )
         .await?;
-    let evidence = (
+    let evidence = [
         row.get::<_, i64>(0),
         row.get::<_, i64>(1),
         row.get::<_, i64>(2),
@@ -385,8 +403,23 @@ pub(super) async fn verify_database_evidence(fixture: &Fixture) -> TestResult {
         row.get::<_, i64>(8),
         row.get::<_, i64>(9),
         row.get::<_, i64>(10),
-    );
-    if evidence != (3, 4, 4, 3, 1, 1, 1, 1, 1, 1, 6) {
+        row.get::<_, i64>(11),
+        row.get::<_, i64>(12),
+        row.get::<_, i64>(13),
+        row.get::<_, i64>(14),
+        row.get::<_, i64>(15),
+        row.get::<_, i64>(16),
+        row.get::<_, i64>(17),
+        row.get::<_, i64>(18),
+        row.get::<_, i64>(19),
+        row.get::<_, i64>(20),
+        row.get::<_, i64>(21),
+    ];
+    if evidence
+        != [
+            8, 9, 9, 8, 8, 6, 6, 4, 4, 8, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3, 3, 16,
+        ]
+    {
         return Err(format!(
             "WorkflowRun process-death relational evidence was not exact once: {evidence:?}"
         )

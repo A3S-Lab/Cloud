@@ -33,6 +33,8 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const DOCUMENT_FILE: &str = "workflow-run-process-death.json";
 pub(super) const EXECUTION_STEP_ID: &str = "execute_task";
+pub(super) const LOOP_STEP_ID: &str = "refine";
+pub(super) const ITERATION_STEP_ID: &str = "batch";
 
 pub(super) struct Fixture {
     pub(super) executor: PostgresExecutor,
@@ -72,6 +74,8 @@ pub(super) struct ProbeDocument {
     pub(super) terminal_input: WorkflowRunInput,
     pub(super) cancellation_input: WorkflowRunInput,
     pub(super) execution_input: WorkflowRunInput,
+    pub(super) loop_input: WorkflowRunInput,
+    pub(super) iteration_input: WorkflowRunInput,
 }
 
 pub(super) async fn setup_fixture(postgres_url: String, state_dir: &Path) -> TestResult<Fixture> {
@@ -115,14 +119,48 @@ pub(super) async fn setup_fixture(postgres_url: String, state_dir: &Path) -> Tes
         requested_at + Duration::milliseconds(2),
         &execution_template,
     )?;
-    seed_workflow_authority(&executor, &terminal_input, actor, "terminal").await?;
-    seed_workflow_authority(&executor, &cancellation_input, actor, "cancellation").await?;
-    seed_workflow_authority(&executor, &execution_input, actor, "execution").await?;
+    let composite_authority = super::composite_fixture::publish_composite_authority(
+        &executor,
+        organization_id,
+        project_id,
+        actor,
+        requested_at,
+    )
+    .await?;
+    let loop_input = super::composite_fixture::loop_workflow_run_input(
+        organization_id,
+        project_id,
+        WorkflowRunId::new(),
+        requested_at + Duration::milliseconds(3),
+        &composite_authority,
+        serde_json::json!({
+            "ticketId": "T-LOOP-PROCESS-DEATH",
+            "done": true
+        }),
+    )?;
+    let iteration_input = super::composite_fixture::iteration_workflow_run_input(
+        organization_id,
+        project_id,
+        WorkflowRunId::new(),
+        requested_at + Duration::milliseconds(4),
+        &composite_authority,
+        serde_json::json!([
+            {"ticketId": "T-ITERATION-A", "priority": "high"},
+            {"ticketId": "T-ITERATION-B", "priority": "normal"}
+        ]),
+    )?;
+    seed_workflow_authority(&executor, &terminal_input, actor, "terminal", true).await?;
+    seed_workflow_authority(&executor, &cancellation_input, actor, "cancellation", true).await?;
+    seed_workflow_authority(&executor, &execution_input, actor, "execution", true).await?;
+    seed_workflow_authority(&executor, &loop_input, actor, "loop", false).await?;
+    seed_workflow_authority(&executor, &iteration_input, actor, "iteration", false).await?;
     let document = ProbeDocument {
         actor,
         terminal_input,
         cancellation_input,
         execution_input,
+        loop_input,
+        iteration_input,
     };
     let document_path = state_dir.join(DOCUMENT_FILE);
     let file = std::fs::OpenOptions::new()
@@ -385,11 +423,11 @@ fn execution_workflow_run_input(
     Ok(input)
 }
 
-fn payload(configuration: WorkflowStepConfiguration) -> Result<WorkflowPayload, String> {
+pub(super) fn payload(configuration: WorkflowStepConfiguration) -> Result<WorkflowPayload, String> {
     WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(configuration))
 }
 
-fn plan_step(
+pub(super) fn plan_step(
     id: &str,
     kind: WorkflowStepKind,
     configuration: &WorkflowPayload,
@@ -409,7 +447,7 @@ fn plan_step(
     }
 }
 
-fn edge(id: &str, source: &str, target: &str) -> WorkflowEdgeSpec {
+pub(super) fn edge(id: &str, source: &str, target: &str) -> WorkflowEdgeSpec {
     WorkflowEdgeSpec {
         id: id.into(),
         source: source.into(),
@@ -426,7 +464,7 @@ struct PayloadDigestEntry<'a> {
     digest: &'a str,
 }
 
-fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256Digest, String> {
+pub(super) fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256Digest, String> {
     let entries = payloads
         .iter()
         .map(|payload| PayloadDigestEntry {
@@ -556,6 +594,7 @@ async fn seed_workflow_authority(
     input: &WorkflowRunInput,
     actor: PrincipalId,
     label: &str,
+    seed_ontology: bool,
 ) -> TestResult {
     let input = input.clone();
     let label = label.to_owned();
@@ -570,33 +609,35 @@ async fn seed_workflow_authority(
         .transaction(move |transaction| {
             Box::pin(async move {
                 let database = SeedTransaction::new(transaction);
-                database
-                    .execute(
-                        sql_query::<()>("insert into ontologies (organization_id, project_id, id, name, name_key, description, current_revision_id, current_revision_number, current_revision_digest, aggregate_version, created_by, created_at, updated_at) values (")
-                            .bind(input.organization_id.as_uuid()).append(", ")
-                            .bind(input.project_id.as_uuid()).append(", ")
-                            .bind(input.plan.ontology_id.as_uuid()).append(", ")
-                            .bind(format!("WorkflowRun {label} ontology")).append(", ")
-                            .bind(ontology_name_key).append(", '', ")
-                            .bind(input.plan.ontology_revision_id.as_uuid()).append(", 1, ")
-                            .bind(input.plan.ontology_digest.as_str()).append(", 1, ")
-                            .bind(actor.as_uuid()).append(", ")
-                            .bind(input.requested_at).append(", ")
-                            .bind(input.requested_at).append(")"),
-                    )
-                    .await?;
-                database
-                    .execute(
-                        sql_query::<()>("insert into ontology_revisions (organization_id, project_id, ontology_id, id, revision_number, parent_revision_id, parent_digest, contract_schema, compiler_schema_version, canonical_acl, content_digest, migration_policy, migration_rule_id, migration_digest, created_by, created_at) values (")
-                            .bind(input.organization_id.as_uuid()).append(", ")
-                            .bind(input.project_id.as_uuid()).append(", ")
-                            .bind(input.plan.ontology_id.as_uuid()).append(", ")
-                            .bind(input.plan.ontology_revision_id.as_uuid()).append(", 1, null, null, 'cloud.workflow.ontology.v1', 1, 'ontology \"workflow_run_recovery\" {}', ")
-                            .bind(input.plan.ontology_digest.as_str()).append(", 'initial', null, null, ")
-                            .bind(actor.as_uuid()).append(", ")
-                            .bind(input.requested_at).append(")"),
-                    )
-                    .await?;
+                if seed_ontology {
+                    database
+                        .execute(
+                            sql_query::<()>("insert into ontologies (organization_id, project_id, id, name, name_key, description, current_revision_id, current_revision_number, current_revision_digest, aggregate_version, created_by, created_at, updated_at) values (")
+                                .bind(input.organization_id.as_uuid()).append(", ")
+                                .bind(input.project_id.as_uuid()).append(", ")
+                                .bind(input.plan.ontology_id.as_uuid()).append(", ")
+                                .bind(format!("WorkflowRun {label} ontology")).append(", ")
+                                .bind(ontology_name_key).append(", '', ")
+                                .bind(input.plan.ontology_revision_id.as_uuid()).append(", 1, ")
+                                .bind(input.plan.ontology_digest.as_str()).append(", 1, ")
+                                .bind(actor.as_uuid()).append(", ")
+                                .bind(input.requested_at).append(", ")
+                                .bind(input.requested_at).append(")"),
+                        )
+                        .await?;
+                    database
+                        .execute(
+                            sql_query::<()>("insert into ontology_revisions (organization_id, project_id, ontology_id, id, revision_number, parent_revision_id, parent_digest, contract_schema, compiler_schema_version, canonical_acl, content_digest, migration_policy, migration_rule_id, migration_digest, created_by, created_at) values (")
+                                .bind(input.organization_id.as_uuid()).append(", ")
+                                .bind(input.project_id.as_uuid()).append(", ")
+                                .bind(input.plan.ontology_id.as_uuid()).append(", ")
+                                .bind(input.plan.ontology_revision_id.as_uuid()).append(", 1, null, null, 'cloud.workflow.ontology.v1', 1, 'ontology \"workflow_run_recovery\" {}', ")
+                                .bind(input.plan.ontology_digest.as_str()).append(", 'initial', null, null, ")
+                                .bind(actor.as_uuid()).append(", ")
+                                .bind(input.requested_at).append(")"),
+                        )
+                        .await?;
+                }
                 database
                     .execute(
                         sql_query::<()>("insert into workflow_definitions (organization_id, project_id, id, name, name_key, description, current_revision_id, current_revision_number, current_revision_digest, aggregate_version, created_by, created_at, updated_at) values (")
