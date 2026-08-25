@@ -263,7 +263,7 @@ fn authority_decision_register_is_complete_and_manifest_references_it() {
         .collect::<Vec<_>>();
     assert_eq!(
         decisions.len(),
-        52,
+        53,
         "decision register changed unexpectedly"
     );
     for decision in decisions {
