@@ -20,7 +20,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14,
     WORKFLOW_RUN_INPUT_SCHEMA_V15, WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17,
     WORKFLOW_RUN_INPUT_SCHEMA_V18, WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20,
-    WORKFLOW_RUN_INPUT_SCHEMA_V21,
+    WORKFLOW_RUN_INPUT_SCHEMA_V21, WORKFLOW_RUN_INPUT_SCHEMA_V22,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -215,7 +215,14 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 }
             };
             match resolution {
-                super::composite::CompositeStepResolution::Await(metadata) => {
+                super::composite::CompositeStepResolution::AwaitFrame(metadata) => {
+                    return Ok(context.create_hook(
+                        metadata.flow_hook_id(),
+                        metadata.flow_hook_token(),
+                        serde_json::to_value(metadata)?,
+                    ));
+                }
+                super::composite::CompositeStepResolution::AwaitWave(metadata) => {
                     return Ok(context.create_hook(
                         metadata.flow_hook_id(),
                         metadata.flow_hook_token(),
@@ -240,6 +247,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         WORKFLOW_RUN_INPUT_SCHEMA_V19
                             | WORKFLOW_RUN_INPUT_SCHEMA_V20
                             | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                            | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     ) && failure_route_handle(&input, step)?.is_some()
                     {
                         ready.push(context.step_with_retry(
@@ -599,6 +607,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) && step.plan.kind == WorkflowStepKind::Transform
             {
                 if let Some(result) =
@@ -615,6 +624,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) && step.plan.kind == WorkflowStepKind::Output
             {
                 if let Some(result) =
@@ -630,6 +640,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) && step.plan.kind == WorkflowStepKind::Branch
             {
                 if let Some(result) =
@@ -687,6 +698,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 | WORKFLOW_RUN_INPUT_SCHEMA_V19
                 | WORKFLOW_RUN_INPUT_SCHEMA_V20
                 | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                | WORKFLOW_RUN_INPUT_SCHEMA_V22
         ) && step.plan.kind == WorkflowStepKind::Transform)
             || (matches!(
                 input.schema.as_str(),
@@ -695,6 +707,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) && step.plan.kind == WorkflowStepKind::Output)
             || (matches!(
                 input.schema.as_str(),
@@ -702,6 +715,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) && step.plan.kind == WorkflowStepKind::Branch);
         if routed_local_failure && failure_route_handle(&input, step)?.is_some() {
             ready.push(context.step_with_retry(
@@ -867,6 +881,7 @@ pub(super) fn local_transform_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
+            | WORKFLOW_RUN_INPUT_SCHEMA_V22
     ) || step.plan.kind != WorkflowStepKind::Transform
         || failure_route_handle(input, step)?.is_none()
     {
@@ -889,6 +904,7 @@ pub(super) fn local_output_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
+            | WORKFLOW_RUN_INPUT_SCHEMA_V22
     ) || step.plan.kind != WorkflowStepKind::Output
         || step
             .plan
@@ -915,6 +931,7 @@ pub(super) fn local_branch_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
+            | WORKFLOW_RUN_INPUT_SCHEMA_V22
     ) || step.plan.kind != WorkflowStepKind::Branch
         || step.plan.capability.is_some()
         || step.plan.descriptor.is_none()
@@ -937,6 +954,7 @@ pub(super) fn local_composite_failure_route_result(
         WORKFLOW_RUN_INPUT_SCHEMA_V19
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
+            | WORKFLOW_RUN_INPUT_SCHEMA_V22
     ) || step.plan.kind != WorkflowStepKind::Subworkflow
         || failure_route_handle(input, step)?.is_none()
     {
@@ -974,6 +992,7 @@ pub(super) fn application_variable_write_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) =>
         {
             let payload = serde_json::from_value::<
@@ -1183,6 +1202,7 @@ pub(super) fn application_answer_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V19
                     | WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ) =>
         {
             let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(

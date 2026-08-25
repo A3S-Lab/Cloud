@@ -350,9 +350,11 @@ creating their own control planes:
    Foundations exist; current Box/Gateway recertification remains.
 2. **Workflow Orchestration** compiles ontology-defined goals and typed graphs
    into recoverable execution. `W0.1` is implemented, `W0.2` is verified, and
-   `W0.3` includes deterministic composite frame/export and ordinal reducers
-   plus Flow-backed sequential Iteration/Loop child WorkflowRun dispatch,
-   linkage, cancellation, and recovery. It also pins finite Execution error
+   `W0.3` includes deterministic composite frame/export and ordinal reducers,
+   Flow-backed bounded-parallel Iteration waves, and sequential Loop child
+   WorkflowRun dispatch, linkage, cancellation, process-death adoption, and
+   recovery. New parallel policies use WorkflowRun/Flow v22 while v3-v21
+   histories retain serial replay. It also pins finite Execution error
    ports in Plan v3 and routes typed dispatch/terminal failures through the
    same DAG and Flow history. Component-only WorkflowRun v5 interprets exact
    Connector attempts, observations, durable waits, and bounded retries through

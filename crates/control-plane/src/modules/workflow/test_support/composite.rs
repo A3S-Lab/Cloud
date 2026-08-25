@@ -5,6 +5,11 @@ pub(crate) fn composite_workflow_run_input(
     goal_input: serde_json::Value,
 ) -> Result<WorkflowRunInput, String> {
     let step_id = policy.step_id().to_owned();
+    let has_parallel_iteration = matches!(
+        &policy,
+        WorkflowCompositeRegionPolicy::Iteration(iteration)
+            if iteration.maximum_concurrency > 1
+    );
     let input_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
         &goal_input,
         1024 * 1024,
@@ -125,10 +130,25 @@ pub(crate) fn composite_workflow_run_input(
         "WorkflowRun composite test plan",
     )?))?;
     let input = WorkflowRunInput {
-        schema: WORKFLOW_RUN_INPUT_SCHEMA_V3.into(),
-        runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3.into(),
+        schema: if has_parallel_iteration {
+            WORKFLOW_RUN_INPUT_SCHEMA_V22
+        } else {
+            WORKFLOW_RUN_INPUT_SCHEMA_V3
+        }
+        .into(),
+        runtime_contract_revision: if has_parallel_iteration {
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
+        } else {
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+        }
+        .into(),
         flow_workflow_name: WORKFLOW_RUN_FLOW_NAME.into(),
-        flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION_V3.into(),
+        flow_workflow_version: if has_parallel_iteration {
+            WORKFLOW_RUN_FLOW_VERSION_V22
+        } else {
+            WORKFLOW_RUN_FLOW_VERSION_V3
+        }
+        .into(),
         organization_id: OrganizationId::new(),
         project_id: ProjectId::new(),
         workflow_run_id: WorkflowRunId::new(),
@@ -204,9 +224,25 @@ pub(crate) fn routed_composite_workflow_run_input(
         WORKFLOW_PLAN_MAX_BYTES,
         "WorkflowRun routed composite test plan",
     )?))?;
-    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V19.into();
-    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19.into();
-    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V19.into();
+    let has_parallel_iteration = input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22;
+    input.schema = if has_parallel_iteration {
+        WORKFLOW_RUN_INPUT_SCHEMA_V22
+    } else {
+        WORKFLOW_RUN_INPUT_SCHEMA_V19
+    }
+    .into();
+    input.runtime_contract_revision = if has_parallel_iteration {
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
+    } else {
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+    }
+    .into();
+    input.flow_workflow_version = if has_parallel_iteration {
+        WORKFLOW_RUN_FLOW_VERSION_V22
+    } else {
+        WORKFLOW_RUN_FLOW_VERSION_V19
+    }
+    .into();
     input.validate()?;
     Ok(input)
 }

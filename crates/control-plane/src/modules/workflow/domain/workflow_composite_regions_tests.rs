@@ -116,7 +116,7 @@ fn composite_regions_reject_duplicates_bounds_and_noncanonical_acl() {
 }
 
 #[test]
-fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
+fn compiler_pins_parallel_composite_regions_to_runtime_v22_and_v2_remains_fail_closed() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition_id = WorkflowDefinitionId::new();
@@ -268,18 +268,18 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         principal_id,
         now,
     )
-    .expect("runtime v3 composite execution input");
+    .expect("runtime v22 composite execution input");
     assert_eq!(
         compiled_run.run.execution_input.schema,
-        WORKFLOW_RUN_INPUT_SCHEMA_V3
+        WORKFLOW_RUN_INPUT_SCHEMA_V22
     );
     assert_eq!(
         compiled_run.run.execution_input.runtime_contract_revision,
-        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
     );
     assert_eq!(
         compiled_run.run.execution_input.flow_workflow_version,
-        WORKFLOW_RUN_FLOW_VERSION_V3
+        WORKFLOW_RUN_FLOW_VERSION_V22
     );
 
     let mut routed_workflow = workflow.clone();
@@ -452,24 +452,24 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         principal_id,
         now,
     )
-    .expect("runtime v19 routed composite input");
+    .expect("runtime v22 routed composite input");
     assert_eq!(
         routed_run.run.execution_input.schema,
-        WORKFLOW_RUN_INPUT_SCHEMA_V19
+        WORKFLOW_RUN_INPUT_SCHEMA_V22
     );
     assert_eq!(
         routed_run.run.execution_input.runtime_contract_revision,
-        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
     );
     assert_eq!(
         routed_run.run.execution_input.flow_workflow_version,
-        WORKFLOW_RUN_FLOW_VERSION_V19
+        WORKFLOW_RUN_FLOW_VERSION_V22
     );
     routed_run
         .run
         .execution_input
         .validate()
-        .expect("valid runtime v19 routed composite input");
+        .expect("valid runtime v22 routed composite input");
 
     let application_run = WorkflowRunCompiler::compile_for_application(
         WorkflowRunId::new(),
@@ -480,16 +480,16 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
         principal_id,
         now,
     )
-    .expect("runtime v13 Application composite input");
+    .expect("runtime v22 Application composite input");
     let application_input = &application_run.run.execution_input;
-    assert_eq!(application_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V13);
+    assert_eq!(application_input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V22);
     assert_eq!(
         application_input.runtime_contract_revision,
-        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
     );
     assert_eq!(
         application_input.flow_workflow_version,
-        WORKFLOW_RUN_FLOW_VERSION_V13
+        WORKFLOW_RUN_FLOW_VERSION_V22
     );
     let application_projection = application_input
         .application_projection
@@ -503,7 +503,7 @@ fn compiler_pins_composite_regions_to_runtime_v3_and_v2_remains_fail_closed() {
     assert!(application_projection.supports_application_frames());
     application_input
         .validate()
-        .expect("valid runtime v13 Application composite input");
+        .expect("valid runtime v22 Application composite input");
 
     let mut downgraded = compiled_run.run.execution_input;
     downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V2.into();

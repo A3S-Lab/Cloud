@@ -43,9 +43,10 @@ resumes the parent hook only with a digest-bound
 non-deterministic replay failures. Valid child failure follows the immutable
 Iteration failure mode or fails a Loop normally.
 
-Iteration frames are initially dispatched one at a time in ordinal order;
-the declared maximum concurrency remains a hard upper bound, not a promise of
-parallelism. Loop passes the previous child output and ordered Run updates to
+Iteration frames in runtime v3 are dispatched one at a time in ordinal order;
+runtime v22's bounded parallel behavior is defined separately by decision
+[0053](0053-bounded-parallel-iteration-waves.md) without reinterpreting this
+history. Loop passes the previous child output and ordered Run updates to
 the next frame, enforces its maximum-iteration and time budgets, and stops only
 when the declared boolean termination path is true. Parent cancellation or
 timeout adopts every linked child, requests ordinary WorkflowRun cancellation,
@@ -60,8 +61,7 @@ than creating a duplicate. Exact child references and resume payloads make
 identity or history drift fail closed.
 
 This change adds no region table, mutable variable store, scheduler, queue,
-worker, event history, or second orchestration mechanism. Parallel Iteration
-waves may be introduced only if existing Flow primitives can retain the same
-ordinal, authority, cancellation, and replay guarantees under a later runtime
-build. Applications-owned variables, Answer/error branches, compensation, and
-remaining provider steps are separate gates.
+worker, event history, or second orchestration mechanism. Decision 0053 later
+retains these same ordinal, authority, cancellation, and replay guarantees for
+bounded parallel Iteration waves. Applications-owned variables, Answer/error
+branches, compensation, and remaining provider steps are separate gates.

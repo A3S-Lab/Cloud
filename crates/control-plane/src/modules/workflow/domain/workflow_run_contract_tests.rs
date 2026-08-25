@@ -15,6 +15,56 @@ use crate::modules::workflow::test_support::{
 };
 
 #[test]
+fn v22_parallel_iteration_is_exact_and_preserves_legacy_serial_replay() {
+    let input = routed_composite_workflow_run_input(
+        WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {
+            step_id: "batch".into(),
+            maximum_items: 2,
+            maximum_concurrency: 2,
+            failure_mode: WorkflowIterationFailureMode::Terminate,
+        }),
+        serde_json::json!([{"item": 1}, {"item": 2}]),
+    )
+    .expect("valid parallel composite input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V22);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V22);
+    input.validate().expect("valid v22 input");
+
+    let mut historic = input.clone();
+    historic.schema = WORKFLOW_RUN_INPUT_SCHEMA_V19.into();
+    historic.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19.into();
+    historic.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V19.into();
+    historic
+        .validate()
+        .expect("pre-v22 serial history remains replayable");
+
+    let mut unjustified = input;
+    let regions = unjustified
+        .composite_regions
+        .as_ref()
+        .expect("regions")
+        .restore()
+        .expect("restore regions");
+    let mut spec = regions.spec().clone();
+    let WorkflowCompositeRegionPolicy::Iteration(policy) = &mut spec.regions[0] else {
+        panic!("iteration fixture")
+    };
+    policy.maximum_concurrency = 1;
+    let serial = WorkflowCompositeRegions::from_spec(spec).expect("serial regions");
+    unjustified.plan.composite_regions_digest = Some(serial.digest().clone());
+    unjustified.composite_regions = Some(ResolvedWorkflowCompositeRegions::from_regions(&serial));
+    unjustified.plan_digest = Sha256Digest::from_bytes(
+        &canonical_json_bounded(&unjustified.plan, WORKFLOW_PLAN_MAX_BYTES, "test plan")
+            .expect("plan bytes"),
+    );
+    assert!(unjustified.validate().is_err());
+}
+
+#[test]
 fn v19_composite_failure_route_is_exact_and_version_fenced() {
     let input = routed_composite_workflow_run_input(
         WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {

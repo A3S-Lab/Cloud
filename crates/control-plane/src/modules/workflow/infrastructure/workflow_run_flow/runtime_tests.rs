@@ -12,14 +12,16 @@ use crate::modules::workflow::domain::{
     WorkflowApplicationVariableWriteFailureResumePayload,
     WorkflowApplicationVariableWriteHookMetadata, WorkflowApplicationVariableWriteResumePayload,
     WorkflowCompositeFrameResolution, WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeResumePayload, WorkflowDecision, WorkflowIterationFailureMode,
-    WorkflowIterationRegionPolicy, WorkflowLoopRegionPolicy, WorkflowRun, WorkflowRunRecord,
-    WorkflowRunVariableState, WorkflowStepFailureClassification, WorkflowStepProjectionStatus,
-    WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2, WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V11,
-    WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V14,
-    WORKFLOW_RUN_FLOW_VERSION_V16, WORKFLOW_RUN_FLOW_VERSION_V17, WORKFLOW_RUN_FLOW_VERSION_V18,
-    WORKFLOW_RUN_FLOW_VERSION_V19, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V3,
+    WorkflowCompositeResumePayload, WorkflowCompositeWaveFrameResolution,
+    WorkflowCompositeWaveHookMetadata, WorkflowCompositeWaveResumePayload, WorkflowDecision,
+    WorkflowIterationFailureMode, WorkflowIterationRegionPolicy, WorkflowLoopRegionPolicy,
+    WorkflowRun, WorkflowRunRecord, WorkflowRunVariableState, WorkflowStepFailureClassification,
+    WorkflowStepProjectionStatus, WORKFLOW_APPLICATION_ANSWER_HOOK_SCHEMA_V2,
+    WORKFLOW_APPLICATION_ANSWER_RESUME_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12,
+    WORKFLOW_RUN_FLOW_VERSION_V13, WORKFLOW_RUN_FLOW_VERSION_V14, WORKFLOW_RUN_FLOW_VERSION_V16,
+    WORKFLOW_RUN_FLOW_VERSION_V17, WORKFLOW_RUN_FLOW_VERSION_V18, WORKFLOW_RUN_FLOW_VERSION_V19,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_FLOW_VERSION_V22, WORKFLOW_RUN_FLOW_VERSION_V3,
     WORKFLOW_RUN_OUTPUT_MAX_BYTES, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8,
@@ -1191,6 +1193,9 @@ async fn expiry_resume_winning_the_race_commits_hook_evidence_before_typed_timeo
     Ok(())
 }
 
+#[path = "parallel_iteration_tests.rs"]
+mod parallel_iteration_tests;
+
 #[tokio::test]
 async fn runtime_v3_dispatches_and_reduces_iteration_frames_in_ordinal_order(
 ) -> Result<(), FlowError> {
@@ -1441,6 +1446,7 @@ async fn composite_hook(
     assert_eq!(hook.status, HookStatus::Active, "{snapshot:#?}");
     serde_json::from_value(hook.metadata.clone()).map_err(FlowError::Serialization)
 }
+
 
 async fn resume_completed_composite(
     engine: &FlowEngine,

@@ -2,10 +2,11 @@ use crate::modules::workflow::domain::{
     WorkflowApplicationAnswerHookMetadata, WorkflowApplicationVariableSnapshotHookMetadata,
     WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
     WorkflowCompositeChildReferenceMetadata, WorkflowCompositeFrameResolution,
-    WorkflowCompositeResumePayload, WorkflowExecutionChildReferenceMetadata,
-    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
-    WorkflowRunRecord, WorkflowStepKind, WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    WorkflowCompositeResumePayload, WorkflowCompositeWaveResumePayload,
+    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowRunRecord, WorkflowStepKind,
+    WORKFLOW_EXECUTION_STEP_ATTEMPT,
 };
 use a3s_flow::{FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind, WorkflowRunSnapshot};
 use std::collections::BTreeMap;
@@ -136,6 +137,11 @@ pub(super) fn verify_flow_authority(
     {
         expected_hooks.insert(observed.metadata.flow_hook_id());
     }
+    for observed in
+        super::composite_wave::observed_composite_wave_hooks(&record.run.execution_input, snapshot)?
+    {
+        expected_hooks.insert(observed.metadata.flow_hook_id());
+    }
     if snapshot
         .hooks
         .keys()
@@ -260,15 +266,16 @@ fn verify_composite_child_references(
         .as_ref()
         .map(|contract| contract.restore())
         .transpose()?;
-    let observed = super::composite::observed_composite_hooks(input, snapshot)?
-        .into_iter()
-        .map(|observed| (observed.metadata.flow_hook_id(), observed))
+    let observed_frames = super::composite_wave::observed_composite_frames(input, snapshot)?;
+    let by_reference = observed_frames
+        .iter()
+        .map(|observed| (observed.child_reference_id.clone(), observed))
         .collect::<BTreeMap<_, _>>();
     for (reference_id, child) in &snapshot.child_operations {
         if child.kind != "workflow_run" {
             continue;
         }
-        let Some(observed) = observed.get(reference_id) else {
+        let Some(observed) = by_reference.get(reference_id) else {
             return Err(
                 "WorkflowRun correlated Flow contains an unexpected composite child".into(),
             );
@@ -279,8 +286,9 @@ fn verify_composite_child_references(
             child.metadata.clone(),
         )
         .map_err(|error| format!("Workflow composite child metadata is invalid: {error}"))?;
-        child_metadata.validate(&observed.metadata)?;
+        child_metadata.validate_frame(&observed.frame)?;
         if child.reference_id != *reference_id
+            || child.reference_id != observed.frame.child_reference_id()
             || operation_id != child_metadata.child_operation_id.as_uuid()
             || child.flow_run_id.as_deref() != Some(child.operation_id.as_str())
         {
@@ -288,12 +296,12 @@ fn verify_composite_child_references(
         }
     }
     let (Some(variables), Some(regions)) = (variables.as_ref(), regions.as_ref()) else {
-        if observed.is_empty() {
+        if observed_frames.is_empty() {
             return Ok(());
         }
         return Err("Workflow composite child lost its immutable contracts".into());
     };
-    for (reference_id, observed) in observed {
+    for observed in super::composite::observed_composite_hooks(input, snapshot)? {
         if observed.hook.status != HookStatus::Received {
             continue;
         }
@@ -308,9 +316,50 @@ fn verify_composite_child_references(
         if matches!(
             payload.resolution,
             WorkflowCompositeFrameResolution::Completed { .. }
-        ) && !snapshot.child_operations.contains_key(&reference_id)
+        ) && !snapshot
+            .child_operations
+            .contains_key(&observed.metadata.frame.child_reference_id())
         {
             return Err("completed Workflow composite frame has no durable child reference".into());
+        }
+    }
+    let defaults = input
+        .variable_defaults
+        .as_ref()
+        .map(|resolved| resolved.restore())
+        .transpose()?;
+    for observed in super::composite_wave::observed_composite_wave_hooks(input, snapshot)? {
+        if observed.hook.status != HookStatus::Received {
+            continue;
+        }
+        let payload = observed
+            .hook
+            .payload
+            .as_ref()
+            .ok_or_else(|| "received Workflow composite wave has no payload".to_owned())?;
+        let payload = serde_json::from_value::<WorkflowCompositeWaveResumePayload>(payload.clone())
+            .map_err(|error| {
+                format!("Workflow composite wave resume payload is invalid: {error}")
+            })?;
+        let resolutions = payload.frame_resolutions(
+            &observed.metadata,
+            &input.plan,
+            regions,
+            variables,
+            defaults.as_ref(),
+        )?;
+        for resolution in resolutions {
+            if matches!(
+                resolution,
+                WorkflowCompositeFrameResolution::Completed { .. }
+            ) && !snapshot
+                .child_operations
+                .contains_key(&resolution.frame().child_reference_id())
+            {
+                return Err(
+                    "completed Workflow composite wave frame has no durable child reference".into(),
+                );
+            }
         }
     }
     Ok(())

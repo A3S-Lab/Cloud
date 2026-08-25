@@ -3259,12 +3259,16 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   Operation, Flow child reference, Runtime Task, and cleanup lifecycle.
 - Business-service, Agent, MCP, model, Tool, and memory dispatch remain future
   gates. Composite `subworkflow` publication binds bounded Iteration/Loop
-  policy and one exact child WorkflowRevision. Runtime v3 creates one
+  policy and one exact child WorkflowRevision. Runtime v3-v21 creates one
   authority-bound hook per ordinal, derives one deterministic ordinary child
   Goal/Plan/WorkflowRun/Operation, links the exact child Flow, and resumes a
-  digest-bound frame result. Parent cancellation/timeout adopts, cancels, and
-  awaits every child. Iteration is initially sequential under its declared
-  concurrency ceiling; no owner lifecycle is copied into Workflow.
+  digest-bound frame result. Runtime v22 batches an Iteration with
+  `maximumConcurrency > 1` into authority-bound waves, concurrently starts or
+  adopts each ordinary child, and resumes only after every in-flight child is
+  terminal and linked. Parent cancellation/timeout cancels and awaits every
+  child. Reduction remains ordinal-stable, historical Iteration replay remains
+  serial, Loop remains sequential, and no owner lifecycle is copied into
+  Workflow.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.
@@ -3912,7 +3916,13 @@ operands are resolved; invalid types and extraction bounds fail closed. Run
 inputs v1-v20 retain their exact behavior, runtime build
 `a3s-cloud-workflows@23` retains `@1` through `@22`, and constraint-only
 migration `151` widens only the closed
-payload-schema registry. Migration `122` adds nullable default-output evidence to
+payload-schema registry. An Iteration policy with `maximumConcurrency > 1`
+emits immutable Run v22 and one digest-bound Hook for each bounded wave. Every
+child in a wave is started or adopted concurrently, linked, and observed
+terminal before the wave resumes; `Terminate`, `ContinueNull`, and
+`RemoveFailed` reduce in ordinal order. Runtime v3-v21 Iteration replay remains
+serial, Loop remains sequential, and `a3s-cloud-workflows@24` retains `@1`
+through `@23`. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

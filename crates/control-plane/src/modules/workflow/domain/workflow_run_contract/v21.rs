@@ -15,6 +15,24 @@ pub(super) fn validate(
     regions: Option<&ResolvedWorkflowCompositeRegions>,
     application_projection: Option<&WorkflowRunApplicationProjection>,
 ) -> Result<ValidatedRuntimeMaterial, String> {
+    validate_for_generation(
+        input,
+        resolved,
+        defaults,
+        regions,
+        application_projection,
+        "v21",
+    )
+}
+
+pub(super) fn validate_for_generation(
+    input: &WorkflowRunInput,
+    resolved: &ResolvedWorkflowVariableContract,
+    defaults: Option<&ResolvedWorkflowVariableDefaults>,
+    regions: Option<&ResolvedWorkflowCompositeRegions>,
+    application_projection: Option<&WorkflowRunApplicationProjection>,
+    generation: &str,
+) -> Result<ValidatedRuntimeMaterial, String> {
     if let Some(projection) = application_projection {
         if !matches!(
             projection.schema.as_str(),
@@ -24,7 +42,9 @@ pub(super) fn validate(
                 | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4
                 | WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V5
         ) {
-            return Err("WorkflowRun v21 Application projection version is unsupported".into());
+            return Err(format!(
+                "WorkflowRun {generation} Application projection version is unsupported"
+            ));
         }
         projection.validate(&input.plan)?;
         if projection.schema == WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V4 {

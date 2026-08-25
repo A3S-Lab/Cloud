@@ -17,6 +17,13 @@ pub const WORKFLOW_COMPOSITE_CHILD_REFERENCE_SCHEMA: &str =
 const WORKFLOW_COMPOSITE_CHILD_ID_VERSION: &str = "cloud.workflow.composite-child.v1";
 
 impl WorkflowCompositeFrame {
+    pub fn child_reference_id(&self) -> String {
+        format!(
+            "workflow-composite:{}:{}",
+            self.region_step_id, self.ordinal
+        )
+    }
+
     pub fn child_workflow_run_id(&self) -> WorkflowRunId {
         let identity = format!(
             "{WORKFLOW_COMPOSITE_CHILD_ID_VERSION}:{}",
@@ -84,10 +91,7 @@ impl WorkflowCompositeHookMetadata {
     }
 
     pub fn flow_hook_id(&self) -> String {
-        format!(
-            "workflow-composite:{}:{}",
-            self.frame.region_step_id, self.frame.ordinal
-        )
+        self.frame.child_reference_id()
     }
 
     pub fn flow_hook_token(&self) -> String {
@@ -221,8 +225,14 @@ impl WorkflowCompositeChildReferenceMetadata {
         hook: &WorkflowCompositeHookMetadata,
         child: &WorkflowRunRecord,
     ) -> Result<Self, String> {
+        Self::new_for_frame(&hook.frame, child)
+    }
+
+    pub fn new_for_frame(
+        frame: &WorkflowCompositeFrame,
+        child: &WorkflowRunRecord,
+    ) -> Result<Self, String> {
         child.validate()?;
-        let frame = &hook.frame;
         if child.run.organization_id != frame.organization_id
             || child.run.project_id != frame.project_id
             || child.run.execution_input.plan.workflow_definition_id
@@ -255,12 +265,15 @@ impl WorkflowCompositeChildReferenceMetadata {
             child_plan_digest: child.run.plan_digest.clone(),
             child_input_digest: frame.child_input_digest.clone(),
         };
-        value.validate(hook)?;
+        value.validate_frame(frame)?;
         Ok(value)
     }
 
     pub fn validate(&self, hook: &WorkflowCompositeHookMetadata) -> Result<(), String> {
-        let frame = &hook.frame;
+        self.validate_frame(&hook.frame)
+    }
+
+    pub fn validate_frame(&self, frame: &WorkflowCompositeFrame) -> Result<(), String> {
         if self.schema != WORKFLOW_COMPOSITE_CHILD_REFERENCE_SCHEMA
             || self.organization_id != frame.organization_id
             || self.project_id != frame.project_id

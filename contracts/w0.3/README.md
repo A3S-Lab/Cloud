@@ -341,12 +341,23 @@ WorkflowRun runtime/Flow v3 executes these regions through authority-bound
 deterministic ordinary child Goal, Plan, WorkflowRun, and Operation from each
 frame, uses the existing Outbox/Flow start path, records an exact
 `workflow_run` child reference, and resumes the parent with a digest-bound
-frame resolution. Iteration dispatch is sequential in ordinal order, so the
-declared concurrency remains an enforced upper bound. Loop also enforces its
-iteration/time bounds and passes terminal output into the next frame. Parent
-cancellation and timeout adopt, cancel, and await children before the parent
-terminates. No mutable region store, scheduler, queue, worker, event history,
-or second Flow mechanism was added.
+frame resolution. Runtime v3-v21 Iteration dispatch remains sequential in
+ordinal order for exact historic replay. Loop also remains sequential,
+enforces its iteration/time bounds, and passes terminal output into the next
+frame.
+
+New policies with `maximum_concurrency > 1` compile to WorkflowRun
+input/runtime/Flow v22. Runtime v22 creates one digest-bound
+`workflow-composite-wave:<step>:<first-ordinal>:<count>` Hook per contiguous
+wave of at most ten frames. The coordinator concurrently starts or adopts the
+same deterministic ordinary child WorkflowRuns, verifies and links every
+created child, and resumes only after the complete wave is terminal. Reduction
+remains ordinal; `terminate` cancels and awaits in-flight siblings, while
+`continue_null` and `remove_failed` wait for the full wave. Parent cancellation
+and timeout adopt, cancel, and await every child before the parent terminates.
+Runtime build `a3s-cloud-workflows@24` retains `@1` through `@23`. No public
+contract, mutable region store, scheduler, queue, worker, event history, or
+second Flow mechanism was added.
 
 ## Finite Execution
 

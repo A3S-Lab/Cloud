@@ -250,6 +250,16 @@ Runtime build `a3s-cloud-workflows@23` explicitly retains `@1` through `@22`.
 Constraint-only migration `151` widens only the existing closed Workflow
 payload-schema registry.
 
+An Iteration region whose immutable policy declares `maximumConcurrency > 1`
+pins WorkflowRun input/runtime/Flow v22. Runtime v22 partitions the ordered
+frame set into bounded waves, records one authority-bound Flow Hook per wave,
+starts or adopts every ordinary child WorkflowRun in that wave concurrently,
+and resumes only after every child is terminal and linked. Reduction remains
+ordinal-stable for `Terminate`, `ContinueNull`, and `RemoveFailed`; parent
+cancellation or timeout cancels and awaits every in-flight sibling. Runtime
+v3-v21 Iteration replay remains serial, and Loop remains sequential. Runtime
+build `a3s-cloud-workflows@24` explicitly retains `@1` through `@23`.
+
 Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`
 field from verified Flow history. Execution terminal observations retain exact
@@ -390,17 +400,20 @@ references. Pre-Flow immutable inputs may appear at sequence zero; Plan v1
 conflicts.
 
 Composite policy, exact child identity, deterministic frame/export and ordinal
-region reducers, and Flow-backed child lifecycle are implemented. Runtime v3
-uses one exact hook per ordinal and deterministic ordinary child WorkflowRun,
-links its Flow identity, resumes digest-bound results, and propagates parent
-cancellation/timeout before termination. Iteration is initially sequential
-under its declared concurrency ceiling. Descriptor-bound Application Answer,
+region reducers, and Flow-backed child lifecycle are implemented. Runtime
+v3-v21 uses one exact hook per ordinal and deterministic ordinary child
+WorkflowRun, links its Flow identity, resumes digest-bound results, and
+propagates parent cancellation/timeout before termination. Runtime v22 adds
+bounded-parallel Iteration waves with concurrent start/adoption and
+all-terminal linkage before resume; reduction remains deterministic by
+ordinal, while Loop remains sequential. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, and repeated-frame Answer semantics are
 implemented through Run v11-v15. Workflow-local Transform, Output, and Branch
 failure routes are implemented through Run v16-v18, descriptor-bound
 Iteration/Loop failure routes are implemented through Run v19, exact typed
-Variable Aggregation is implemented through Run v20, and typed List Operator
-execution is implemented through Run v21. Current finite
+Variable Aggregation is implemented through Run v20, typed List Operator
+execution is implemented through Run v21, and bounded-parallel Iteration is
+implemented through Run v22. Current finite
 Execution and Connector projections retain bounded owning-context evidence
 URNs. The
 remaining business-service and Agent/MCP/model/Tool capability dispatch,
@@ -485,6 +498,11 @@ Exact Workflow-local Variable Aggregation is implemented through Run v20 while
 retaining Plan v2-v11 and every earlier runtime semantic.
 Exact Workflow-local List Operator execution is implemented through Run v21,
 retains the same Plans, and composes every earlier runtime semantic.
+Any graph containing an Iteration policy with `maximumConcurrency > 1` emits
+Run v22. Its authority-bound wave Hook batches no more than the immutable
+ceiling, starts or adopts each deterministic child concurrently, waits for all
+children to become terminal and linked, then reduces results by ordinal.
+Historical v3-v21 Iteration remains serial and Loop remains sequential.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.

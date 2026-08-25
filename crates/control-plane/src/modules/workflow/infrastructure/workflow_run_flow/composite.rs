@@ -4,7 +4,9 @@ use crate::modules::workflow::domain::{
     ResolvedWorkflowRunStep, WorkflowCompositeFrame, WorkflowCompositeFrameRequest,
     WorkflowCompositeFrameResolution, WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy,
     WorkflowCompositeRegionResult, WorkflowCompositeRegionResultRequest,
-    WorkflowCompositeResumePayload, WorkflowRunInput, WorkflowVariableContract,
+    WorkflowCompositeResumePayload, WorkflowCompositeWaveHookMetadata,
+    WorkflowCompositeWaveRequest, WorkflowIterationRegionPolicy, WorkflowRunInput,
+    WorkflowVariableContract, WorkflowVariableDefaults, WORKFLOW_RUN_INPUT_SCHEMA_V22,
 };
 use a3s_flow::{FlowEvent, HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
 use chrono::Duration;
@@ -12,7 +14,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub(super) enum CompositeStepResolution {
-    Await(WorkflowCompositeHookMetadata),
+    AwaitFrame(WorkflowCompositeHookMetadata),
+    AwaitWave(WorkflowCompositeWaveHookMetadata),
     Complete(WorkflowCompositeRegionResult),
     Failed(String),
 }
@@ -55,6 +58,17 @@ pub(super) fn observed_composite_hooks<'a>(
             serde_json::from_value::<WorkflowCompositeHookMetadata>(hook.metadata.clone())
                 .map_err(|error| format!("Workflow composite hook metadata is invalid: {error}"))?;
         metadata.validate(&input.plan, &regions, &variables)?;
+        if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22
+            && matches!(
+                regions.resolve(&metadata.frame.region_step_id),
+                Some(WorkflowCompositeRegionPolicy::Iteration(policy))
+                    if policy.maximum_concurrency > 1
+            )
+        {
+            return Err(
+                "Workflow parallel Iteration frame hook is incompatible with runtime v22".into(),
+            );
+        }
         if metadata.frame.organization_id != input.organization_id
             || metadata.frame.project_id != input.project_id
             || metadata.frame.workflow_run_id != input.workflow_run_id
@@ -162,6 +176,21 @@ pub(super) fn resolve_step(
                     "Workflow iteration input exceeds its immutable item bound".into(),
                 ));
             }
+            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22 && iteration.maximum_concurrency > 1 {
+                return resolve_parallel_iteration(
+                    input,
+                    step,
+                    items,
+                    expected_items,
+                    available,
+                    request,
+                    iteration,
+                    &regions,
+                    &variables,
+                    defaults.as_ref(),
+                    context,
+                );
+            }
             let mut resolutions = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
                 let ordinal = u32::try_from(index).map_err(|_| {
@@ -182,7 +211,7 @@ pub(super) fn resolve_step(
                 .map_err(CompositeStepError::Invalid)?;
                 match observe_frame(context, frame, &input.plan, &regions, &variables)? {
                     FrameObservation::Await(hook) => {
-                        return Ok(CompositeStepResolution::Await(hook))
+                        return Ok(CompositeStepResolution::AwaitFrame(hook))
                     }
                     FrameObservation::Resolved(resolution) => {
                         if let WorkflowCompositeFrameResolution::Failed { error, .. } = &resolution
@@ -238,7 +267,7 @@ pub(super) fn resolve_step(
                 let resolution =
                     match observe_frame(context, frame, &input.plan, &regions, &variables)? {
                         FrameObservation::Await(hook) => {
-                            return Ok(CompositeStepResolution::Await(hook))
+                            return Ok(CompositeStepResolution::AwaitFrame(hook))
                         }
                         FrameObservation::Resolved(resolution) => resolution,
                     };
@@ -280,6 +309,85 @@ pub(super) fn resolve_step(
             ))
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_parallel_iteration(
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    items: &[Value],
+    expected_items: u32,
+    available: BTreeMap<String, Value>,
+    request: WorkflowCompositeRegionResultRequest,
+    iteration: &WorkflowIterationRegionPolicy,
+    regions: &crate::modules::workflow::domain::WorkflowCompositeRegions,
+    variables: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
+    context: &WorkflowContext<'_>,
+) -> Result<CompositeStepResolution, CompositeStepError> {
+    let concurrency = usize::try_from(iteration.maximum_concurrency).map_err(|_| {
+        CompositeStepError::Invalid(
+            "Workflow iteration concurrency exceeds runtime bounds".to_owned(),
+        )
+    })?;
+    let mut resolutions = Vec::with_capacity(items.len());
+    for (wave_index, effective_inputs) in items.chunks(concurrency).enumerate() {
+        let first = wave_index.checked_mul(concurrency).ok_or_else(|| {
+            CompositeStepError::Invalid("Workflow iteration wave ordinal overflowed".to_owned())
+        })?;
+        let first_ordinal = u32::try_from(first).map_err(|_| {
+            CompositeStepError::Invalid("Workflow iteration wave ordinal overflowed".to_owned())
+        })?;
+        let metadata = WorkflowCompositeWaveHookMetadata::new(
+            WorkflowCompositeWaveRequest {
+                organization_id: input.organization_id,
+                project_id: input.project_id,
+                workflow_run_id: input.workflow_run_id,
+                plan_revision_id: input.plan_revision_id,
+                plan_digest: input.plan_digest.clone(),
+                region_step_id: step.plan.id.clone(),
+                first_ordinal,
+                effective_inputs: effective_inputs.to_vec(),
+                available_variables: available.clone(),
+            },
+            &input.plan,
+            regions,
+            variables,
+            defaults,
+        )
+        .map_err(CompositeStepError::Invalid)?;
+        let (wave, primary_failure) = match super::composite_wave::observe_wave(
+            context, metadata, input, regions, variables, defaults,
+        )? {
+            super::composite_wave::WaveObservation::Await(metadata) => {
+                return Ok(CompositeStepResolution::AwaitWave(metadata))
+            }
+            super::composite_wave::WaveObservation::Resolved {
+                resolutions,
+                primary_failure,
+            } => (resolutions, primary_failure),
+        };
+        if iteration.failure_mode
+            == crate::modules::workflow::domain::WorkflowIterationFailureMode::Terminate
+        {
+            if let Some((ordinal, error)) = primary_failure {
+                return Ok(CompositeStepResolution::Failed(format!(
+                    "Workflow iteration frame {ordinal} failed: {error}"
+                )));
+            }
+        }
+        resolutions.extend(wave);
+    }
+    WorkflowCompositeRegionResult::resolve_iteration(
+        request,
+        expected_items,
+        &input.plan,
+        regions,
+        variables,
+        resolutions,
+    )
+    .map(CompositeStepResolution::Complete)
+    .map_err(CompositeStepError::Invalid)
 }
 
 fn loop_time_budget_exhausted(

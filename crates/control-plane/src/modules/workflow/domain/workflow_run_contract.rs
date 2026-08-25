@@ -2,17 +2,17 @@ use super::entities::digest_payload_set;
 use super::{
     descriptor_failure_output, validate_application_runtime_variable_contract,
     validate_runtime_variable_contract, validate_typed_projection_configurations, CapabilityType,
-    WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy,
-    WorkflowPolicyMode, WorkflowRunApplicationProjection, WorkflowStepConfiguration,
-    WorkflowStepKind, WorkflowVariableContract, WorkflowVariableDefaults,
-    WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
-    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V10,
-    WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3,
-    WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_SCHEMA_V6,
-    WORKFLOW_PLAN_SCHEMA_V7, WORKFLOW_PLAN_SCHEMA_V8, WORKFLOW_PLAN_SCHEMA_V9,
-    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
-    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec,
+    WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep,
+    WorkflowPolicy, WorkflowPolicyMode, WorkflowRunApplicationProjection,
+    WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
+    WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
+    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V10, WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
+    WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_PLAN_SCHEMA_V7, WORKFLOW_PLAN_SCHEMA_V8,
+    WORKFLOW_PLAN_SCHEMA_V9, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, OrganizationId, PlanRevisionId, ProjectId, Sha256Digest,
@@ -28,6 +28,7 @@ mod v18;
 mod v19;
 mod v20;
 mod v21;
+mod v22;
 
 pub const WORKFLOW_RUN_INPUT_SCHEMA: &str = "cloud.workflow-run.input.v1";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-runtime.v1";
@@ -94,6 +95,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V20: &str = "20";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V21: &str = "cloud.workflow-run.input.v21";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21: &str = "cloud.workflow-run-runtime.v21";
 pub const WORKFLOW_RUN_FLOW_VERSION_V21: &str = "21";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V22: &str = "cloud.workflow-run.input.v22";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22: &str = "cloud.workflow-run-runtime.v22";
+pub const WORKFLOW_RUN_FLOW_VERSION_V22: &str = "22";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -259,6 +263,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V19
                 | WORKFLOW_RUN_INPUT_SCHEMA_V20
                 | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                | WORKFLOW_RUN_INPUT_SCHEMA_V22
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -1069,6 +1074,25 @@ impl WorkflowRunInput {
                     regions,
                     application_projection,
                 ) => v21::validate(self, resolved, defaults, regions, application_projection)?,
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V22,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22,
+                    WORKFLOW_RUN_FLOW_VERSION_V22,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5
+                    | WORKFLOW_PLAN_SCHEMA_V6
+                    | WORKFLOW_PLAN_SCHEMA_V7
+                    | WORKFLOW_PLAN_SCHEMA_V8
+                    | WORKFLOW_PLAN_SCHEMA_V9
+                    | WORKFLOW_PLAN_SCHEMA_V10
+                    | WORKFLOW_PLAN_SCHEMA_V11,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    application_projection,
+                ) => v22::validate(self, resolved, defaults, regions, application_projection)?,
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
@@ -1142,22 +1166,44 @@ impl WorkflowRunInput {
         let has_list_operator = resolved
             .iter()
             .any(|step| step.configuration.list_operator().is_some());
-        if has_list_operator != (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V21) {
+        if (has_list_operator
+            && !matches!(
+                self.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V21 | WORKFLOW_RUN_INPUT_SCHEMA_V22
+            ))
+            || (!has_list_operator && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V21)
+        {
             return Err(
-                "WorkflowRun List Operator semantics require the exact v21 runtime generation"
+                "WorkflowRun List Operator semantics require runtime generation v21 or a composing v22 generation"
                     .into(),
             );
         }
         if (has_variable_aggregate
             && !matches!(
                 self.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V20 | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                WORKFLOW_RUN_INPUT_SCHEMA_V20
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
             ))
             || (!has_variable_aggregate && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V20)
         {
             return Err(
-                "WorkflowRun Variable Aggregator semantics require runtime generation v20 or a composing v21 generation"
-                    .into()
+                "WorkflowRun Variable Aggregator semantics require runtime generation v20 or a composing v21/v22 generation"
+                    .into(),
+            );
+        }
+        let has_parallel_iteration = composite_regions.as_ref().is_some_and(|regions| {
+            regions.spec().regions.iter().any(|region| {
+                matches!(
+                    region,
+                    WorkflowCompositeRegionPolicy::Iteration(policy)
+                        if policy.maximum_concurrency > 1
+                )
+            })
+        });
+        if self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22 && !has_parallel_iteration {
+            return Err(
+                "WorkflowRun v22 requires an Iteration with bounded parallel semantics".into(),
             );
         }
         let has_connector = resolved.iter().any(|step| {

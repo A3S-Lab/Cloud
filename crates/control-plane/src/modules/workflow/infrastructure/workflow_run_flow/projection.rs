@@ -9,7 +9,8 @@ use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
     composite_child_evidence_references, execution_evidence_references, flow_step_id,
     human_decision_evidence_references, FlowResumePayload, WorkflowCompositeFrameResolution,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload, WorkflowExecutionHookMetadata,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
+    WorkflowCompositeWaveResumePayload, WorkflowExecutionHookMetadata,
     WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
     WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
     WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
@@ -71,8 +72,8 @@ pub fn project_workflow_run_record(
         workflow_local_failures,
     } = completed_workflow_steps(&record.run.execution_input, &resolved_steps, snapshot)?;
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
-    let composite_hooks =
-        super::composite::observed_composite_hooks(&record.run.execution_input, snapshot)?;
+    let composite_frames =
+        super::composite_wave::observed_composite_frames(&record.run.execution_input, snapshot)?;
 
     for projection in &mut projected.steps {
         let resolved = resolved_steps
@@ -168,23 +169,23 @@ pub fn project_workflow_run_record(
             .unwrap_or_default();
         let composite_hook = (resolved.plan.kind == WorkflowStepKind::Subworkflow)
             .then(|| {
-                composite_hooks
+                composite_frames
                     .iter()
-                    .filter(|observed| observed.metadata.frame.region_step_id == resolved.plan.id)
-                    .max_by_key(|observed| observed.metadata.frame.ordinal)
+                    .filter(|observed| observed.frame.region_step_id == resolved.plan.id)
+                    .max_by_key(|observed| observed.frame.ordinal)
             })
             .flatten();
         let composite_evidence_references = if resolved.plan.kind == WorkflowStepKind::Subworkflow {
             composite_child_evidence_references(
-                composite_hooks
+                composite_frames
                     .iter()
                     .filter(|observed| {
-                        observed.metadata.frame.region_step_id == resolved.plan.id
+                        observed.frame.region_step_id == resolved.plan.id
                             && snapshot
                                 .child_operations
-                                .contains_key(&observed.metadata.flow_hook_id())
+                                .contains_key(&observed.child_reference_id)
                     })
-                    .map(|observed| observed.metadata.frame.child_workflow_run_id()),
+                    .map(|observed| observed.frame.child_workflow_run_id()),
             )?
         } else {
             Vec::new()
@@ -611,7 +612,6 @@ pub fn project_workflow_run_record(
                     }
                 };
                 let attempt = observed
-                    .metadata
                     .frame
                     .ordinal
                     .checked_add(1)
@@ -1160,6 +1160,80 @@ pub(super) fn completed_workflow_steps(
                                 completed.insert(result.step_id.clone(), *result);
                             }
                         }
+                    }
+                }
+            }
+        }
+        let defaults = input
+            .variable_defaults
+            .as_ref()
+            .map(|resolved| resolved.restore())
+            .transpose()?;
+        for observed in super::composite_wave::observed_composite_wave_hooks(input, snapshot)? {
+            if observed.hook.status != HookStatus::Received {
+                continue;
+            }
+            let payload = observed.hook.payload.as_ref().ok_or_else(|| {
+                format!(
+                    "Workflow composite wave hook {:?} is received without a payload",
+                    observed.hook.hook_id
+                )
+            })?;
+            let payload =
+                serde_json::from_value::<WorkflowCompositeWaveResumePayload>(payload.clone())
+                    .map_err(|error| {
+                        format!("Workflow composite wave resume payload is invalid: {error}")
+                    })?;
+            let primary_failure = payload
+                .resolutions
+                .iter()
+                .find_map(
+                    crate::modules::workflow::domain::WorkflowCompositeWaveFrameResolution::primary_failure,
+                )
+                .map(|(_, error)| error.to_owned());
+            payload.validate(
+                &observed.metadata,
+                &input.plan,
+                &regions,
+                &variables,
+                defaults.as_ref(),
+            )?;
+            let Some(error) = primary_failure else {
+                continue;
+            };
+            let step_id = observed.metadata.region_step_id.clone();
+            let terminal = matches!(
+                regions.resolve(&step_id),
+                Some(WorkflowCompositeRegionPolicy::Iteration(policy))
+                    if policy.failure_mode
+                        == crate::modules::workflow::domain::WorkflowIterationFailureMode::Terminate
+            );
+            if !terminal {
+                continue;
+            }
+            composite_failures.insert(step_id.clone(), error);
+            let resolved = resolved_steps
+                .iter()
+                .find(|resolved| resolved.plan.id == step_id)
+                .ok_or_else(|| "Workflow composite failure lost its resolved step".to_owned())?;
+            if let Some(result) =
+                local_composite_failure_route_result(&snapshot.run_id, input, resolved)
+                    .map_err(|error| error.to_string())?
+            {
+                let failure = serde_json::from_value::<
+                    crate::modules::workflow::domain::WorkflowStepFailureOutput,
+                >(result.output.clone())
+                .map_err(|error| {
+                    format!("Workflow composite failure output is invalid: {error}")
+                })?;
+                workflow_local_failures.insert(step_id, failure.message);
+                match completed.get(&result.step_id) {
+                    Some(existing) if existing != result.as_ref() => {
+                        return Err("Workflow composite failure materializer replay drifted".into())
+                    }
+                    Some(_) => {}
+                    None => {
+                        completed.insert(result.step_id.clone(), *result);
                     }
                 }
             }

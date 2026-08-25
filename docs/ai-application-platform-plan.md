@@ -431,9 +431,11 @@ optional default and composite ACL material; the inspection surface added in
 `cloud.workflow-run.variable-inspection.v1` read projection. It reports the
 observed Flow sequence and materialized/unavailable state, redacts Secret
 references, adds no variable store, and rejects Plan v1. Composite-region
-frames/exports and sequential Iteration/Loop dispatch are implemented through
-exact Flow hooks, ordinary child WorkflowRuns, durable child references, and
-parent cancellation/timeout propagation. Descriptor-bound Application Answer,
+frames/exports, bounded-parallel Iteration waves, and sequential Loop dispatch
+are implemented through exact Flow hooks, ordinary child WorkflowRuns, durable
+child references, process-death adoption, and parent cancellation/timeout
+propagation. New parallel policies use WorkflowRun/Flow v22; v3-v21 histories
+retain serial replay. Descriptor-bound Application Answer,
 conversation-variable snapshot/CAS, repeated-frame Answer, deterministic
 variable-write failure routing, and root/frame Answer failure routing are
 implemented. Workflow-local Transform, Output, and Branch plus
@@ -463,13 +465,14 @@ component HTTP Request response-consumption path, but the node remains publicly
 unavailable until the remaining AUT0.5 provider, recovery, integration, and
 interface gates pass.
 
-The initial `Iteration` executor dispatches deterministic item ordinals
-sequentially, preserving the declared maximum concurrency as a strict ceiling,
-and applies bounded result ordering, failure, cancellation, and maximum-item
-policy. `Loop` is sequential with a boolean condition, maximum iteration count,
-time budget, stable iteration identity, previous-output carry, and explicit
-exports. Any later bounded parallel waves must use existing Flow primitives;
-Cloud must not create a parallel queue or expand unbounded state into Flow
+`Iteration` dispatches deterministic item ordinals in contiguous waves bounded
+by the immutable maximum concurrency of ten. Each wave uses one existing Flow
+Hook, starts or adopts ordinary child WorkflowRuns concurrently, waits for all
+terminal observations, and reduces output, failures, updates, and exports by
+ordinal. Terminating failures cancel and await in-flight siblings. `Loop`
+remains sequential with a boolean condition, maximum iteration count, time
+budget, stable iteration identity, previous-output carry, and explicit exports.
+Cloud creates no parallel queue and does not expand unbounded state into Flow
 history.
 
 `Answer` and `Output` have different semantics. `Answer` appends ordered
@@ -821,7 +824,8 @@ The recommended sequence is:
    typed-variable foundations, digest-bound defaults, Flow-derived inspection,
    built-in discovery, multi-output aggregation, bounded composite
    policy/child bindings, deterministic frame/export and ordered region
-   reducers, Flow-backed sequential Iteration/Loop child lifecycle, Plan v3
+   reducers, Flow-backed bounded-parallel Iteration waves and sequential Loop
+   child lifecycle, Plan v3
    finite-Execution failure routing, Plan v4 exact default-output
    folding/evidence, Plan v5 Connector failure routing, Plan v6
    Application-variable failure routing, and Plan v7 Application-Answer

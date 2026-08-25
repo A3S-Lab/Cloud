@@ -30,7 +30,7 @@ use a3s_flow::{
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::Mutex;
+use tokio::sync::{Barrier, Mutex};
 
 #[derive(Debug, Clone, Copy)]
 struct TestFlowRuntime;
@@ -47,6 +47,16 @@ impl FlowRuntime for TestFlowRuntime {
             return Ok(invocation
                 .context()
                 .complete(serde_json::json!({"test": true})));
+        }
+        if invocation.spec.name == WORKFLOW_RUN_FLOW_NAME
+            && invocation
+                .input
+                .get("goal_input")
+                .and_then(|input| input.get("ticketId"))
+                .and_then(serde_json::Value::as_str)
+                == Some("FAIL")
+        {
+            return Ok(invocation.context().fail("test composite child failed"));
         }
         WorkflowRunFlowRuntime::default()
             .run_workflow(invocation)
@@ -234,6 +244,10 @@ struct FakeWorkflowCompositePort {
     requests: Mutex<Vec<WorkflowCompositeExecutionRequest>>,
     creates: AtomicUsize,
     terminal_on_start: bool,
+    terminal_ordinals: std::collections::BTreeSet<u32>,
+    start_barrier: Option<Arc<Barrier>>,
+    starts_in_flight: AtomicUsize,
+    maximum_starts_in_flight: AtomicUsize,
 }
 
 impl FakeWorkflowCompositePort {
@@ -244,6 +258,10 @@ impl FakeWorkflowCompositePort {
             requests: Mutex::new(Vec::new()),
             creates: AtomicUsize::new(0),
             terminal_on_start: false,
+            terminal_ordinals: std::collections::BTreeSet::new(),
+            start_barrier: None,
+            starts_in_flight: AtomicUsize::new(0),
+            maximum_starts_in_flight: AtomicUsize::new(0),
         }
     }
 
@@ -254,8 +272,27 @@ impl FakeWorkflowCompositePort {
         }
     }
 
+    fn terminal_with_barrier(engine: FlowEngine, parties: usize) -> Self {
+        Self {
+            terminal_on_start: true,
+            start_barrier: Some(Arc::new(Barrier::new(parties))),
+            ..Self::queued(engine)
+        }
+    }
+
+    fn terminal_ordinals(engine: FlowEngine, ordinals: impl IntoIterator<Item = u32>) -> Self {
+        Self {
+            terminal_ordinals: ordinals.into_iter().collect(),
+            ..Self::queued(engine)
+        }
+    }
+
     fn create_count(&self) -> usize {
         self.creates.load(Ordering::SeqCst)
+    }
+
+    fn maximum_starts_in_flight(&self) -> usize {
+        self.maximum_starts_in_flight.load(Ordering::SeqCst)
     }
 
     async fn requests(&self) -> Vec<WorkflowCompositeExecutionRequest> {
@@ -269,6 +306,34 @@ impl FakeWorkflowCompositePort {
             .values()
             .map(|record| record.run.status)
             .collect()
+    }
+
+    async fn status_for_ordinal(&self, ordinal: u32) -> WorkflowRunStatus {
+        let child_id = self
+            .requests
+            .lock()
+            .await
+            .iter()
+            .find(|request| request.frame.ordinal == ordinal)
+            .expect("composite frame request")
+            .workflow_run_id();
+        self.children
+            .lock()
+            .await
+            .get(&child_id)
+            .expect("composite child")
+            .run
+            .status
+    }
+
+    async fn latest_updated_at(&self) -> DateTime<Utc> {
+        self.children
+            .lock()
+            .await
+            .values()
+            .map(|record| record.run.updated_at)
+            .max()
+            .expect("composite child")
     }
 
     async fn finish_cancellation(&self, at: DateTime<Utc>) {
@@ -290,6 +355,39 @@ impl FakeWorkflowCompositePort {
                     observed_at: at,
                 })
                 .expect("finish composite child cancellation");
+        }
+    }
+
+    async fn refresh_terminal_children(&self) {
+        let child_ids = self
+            .children
+            .lock()
+            .await
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for child_id in child_ids {
+            let record = self
+                .children
+                .lock()
+                .await
+                .get(&child_id)
+                .cloned()
+                .expect("composite child");
+            let snapshot = self
+                .engine
+                .snapshot(&record.run.flow_run_id)
+                .await
+                .expect("composite child snapshot");
+            let history = self
+                .engine
+                .history(&record.run.flow_run_id)
+                .await
+                .expect("composite child history");
+            let projected = super::project_workflow_run_record(&record, &snapshot, &history)
+                .expect("project composite child")
+                .expect("terminal composite child projection");
+            self.children.lock().await.insert(child_id, projected);
         }
     }
 
@@ -356,7 +454,7 @@ impl FakeWorkflowCompositePort {
             )
             .await
             .map_err(|error| ApplicationError::Internal(error.to_string()))?;
-        if !self.terminal_on_start {
+        if !self.terminal_on_start && !self.terminal_ordinals.contains(&request.frame.ordinal) {
             return Ok(record);
         }
         let snapshot = self
@@ -390,6 +488,13 @@ impl IWorkflowCompositeExecutionPort for FakeWorkflowCompositePort {
         let id = request.workflow_run_id();
         if let Some(record) = self.children.lock().await.get(&id).cloned() {
             return Ok(record);
+        }
+        if let Some(barrier) = self.start_barrier.as_ref() {
+            let in_flight = self.starts_in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.maximum_starts_in_flight
+                .fetch_max(in_flight, Ordering::SeqCst);
+            barrier.wait().await;
+            self.starts_in_flight.fetch_sub(1, Ordering::SeqCst);
         }
         let record = self.build_child(request).await?;
         self.creates.fetch_add(1, Ordering::SeqCst);
@@ -917,11 +1022,18 @@ async fn replacement_coordinator_adopts_the_same_child_after_process_death() {
 async fn composite_workflow_fixture(
     items: serde_json::Value,
 ) -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+    composite_workflow_fixture_with_concurrency(items, 1).await
+}
+
+async fn composite_workflow_fixture_with_concurrency(
+    items: serde_json::Value,
+    maximum_concurrency: u32,
+) -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     let mut input = composite_workflow_run_input(
         WorkflowCompositeRegionPolicy::Iteration(WorkflowIterationRegionPolicy {
             step_id: "batch".into(),
             maximum_items: 3,
-            maximum_concurrency: 1,
+            maximum_concurrency,
             failure_mode: WorkflowIterationFailureMode::Terminate,
         }),
         items,
@@ -989,6 +1101,9 @@ async fn application_composite_workflow_fixture() -> (FlowEngine, WorkflowRunRec
         .expect("start Application composite WorkflowRun Flow");
     (engine, record, now)
 }
+
+#[path = "parallel_iteration_tests.rs"]
+mod parallel_iteration_tests;
 
 #[tokio::test]
 async fn terminal_composite_children_are_linked_resumed_and_adopted_per_frame() {

@@ -2,9 +2,9 @@ use super::FlowWorkflowRunCoordinator;
 use crate::modules::shared_kernel::domain::canonical_timestamp;
 use crate::modules::workflow::domain::{
     WorkflowApplicationFrameAuthority, WorkflowCompositeChildReferenceMetadata,
-    WorkflowCompositeFrameResolution, WorkflowCompositeHookMetadata, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeResumePayload, WorkflowRunCoordinationError, WorkflowRunRecord,
-    WorkflowRunStatus,
+    WorkflowCompositeFrame, WorkflowCompositeFrameResolution, WorkflowCompositeHookMetadata,
+    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload, WorkflowRunCoordinationError,
+    WorkflowRunRecord, WorkflowRunStatus,
 };
 use crate::modules::workflow::WorkflowCompositeExecutionRequest;
 use a3s_flow::{ChildOperationReference, FlowError, FlowEvent, HookStatus, WorkflowRunSnapshot};
@@ -35,10 +35,16 @@ impl FlowWorkflowRunCoordinator {
             .iter()
             .filter(|hook| hook.status == HookStatus::Active)
             .collect::<Vec<_>>();
-        if active.len() > 1 {
+        let active_waves = self.active_composite_wave_count(record, snapshot, history)?;
+        if active.len() + active_waves > 1 {
             return Err(WorkflowRunCoordinationError::Unavailable(
                 "WorkflowRun replay exposed more than one active composite hook".into(),
             ));
+        }
+        if active_waves == 1 {
+            return self
+                .coordinate_active_composite_wave(record, snapshot, history)
+                .await;
         }
         let Some(hook) = active.first() else {
             return Ok(());
@@ -77,7 +83,7 @@ impl FlowWorkflowRunCoordinator {
             Err(error) => return Err(super::application_unavailable(error)),
         };
         let linked = self
-            .link_composite_child(record, snapshot, &hook.metadata, &child)
+            .link_composite_child_frame(record, snapshot, &hook.metadata.frame, &child)
             .await?;
         if linked && child.run.status.is_terminal() {
             self.resume_terminal_composite(record, &hook.metadata, &child)
@@ -93,8 +99,11 @@ impl FlowWorkflowRunCoordinator {
         history: &[a3s_flow::FlowEventEnvelope],
     ) -> Result<bool, WorkflowRunCoordinationError> {
         let hooks = composite_hooks(record, snapshot, history)?;
+        let waves_terminal = self
+            .cancel_composite_wave_children(record, snapshot, history)
+            .await?;
         if hooks.is_empty() {
-            return Ok(true);
+            return Ok(waves_terminal);
         }
         let port = self.composites.as_ref().ok_or_else(|| {
             WorkflowRunCoordinationError::Unavailable(
@@ -129,7 +138,7 @@ impl FlowWorkflowRunCoordinator {
                 },
             };
             let linked = self
-                .link_composite_child(record, snapshot, &hook.metadata, &child)
+                .link_composite_child_frame(record, snapshot, &hook.metadata.frame, &child)
                 .await?;
             if !child.run.status.is_terminal() {
                 let cancellation_at = canonical_timestamp(requested_at.max(child.run.updated_at));
@@ -145,20 +154,20 @@ impl FlowWorkflowRunCoordinator {
             }
             all_terminal &= linked && child.run.status.is_terminal();
         }
-        Ok(all_terminal)
+        Ok(all_terminal && waves_terminal)
     }
 
-    async fn link_composite_child(
+    pub(super) async fn link_composite_child_frame(
         &self,
         record: &WorkflowRunRecord,
         snapshot: &WorkflowRunSnapshot,
-        hook: &WorkflowCompositeHookMetadata,
+        frame: &WorkflowCompositeFrame,
         child: &WorkflowRunRecord,
     ) -> Result<bool, WorkflowRunCoordinationError> {
-        let metadata = WorkflowCompositeChildReferenceMetadata::new(hook, child)
+        let metadata = WorkflowCompositeChildReferenceMetadata::new_for_frame(frame, child)
             .map_err(WorkflowRunCoordinationError::Unavailable)?;
         let reference = ChildOperationReference::new(
-            hook.flow_hook_id(),
+            frame.child_reference_id(),
             "workflow_run",
             child.run.operation_id.to_string(),
         )
@@ -212,7 +221,17 @@ impl FlowWorkflowRunCoordinator {
         hook: &WorkflowCompositeHookMetadata,
         child: &WorkflowRunRecord,
     ) -> Result<(), WorkflowRunCoordinationError> {
-        let resolution = match child.run.status {
+        let resolution = Self::terminal_composite_resolution(record, &hook.frame, child)?;
+        self.resume_composite_resolution(record, hook, resolution)
+            .await
+    }
+
+    pub(super) fn terminal_composite_resolution(
+        record: &WorkflowRunRecord,
+        frame: &WorkflowCompositeFrame,
+        child: &WorkflowRunRecord,
+    ) -> Result<WorkflowCompositeFrameResolution, WorkflowRunCoordinationError> {
+        Ok(match child.run.status {
             WorkflowRunStatus::Completed => {
                 let output = child.run.output.clone().ok_or_else(|| {
                     WorkflowRunCoordinationError::Unavailable(
@@ -243,34 +262,34 @@ impl FlowWorkflowRunCoordinator {
                     })?
                     .restore()
                     .map_err(WorkflowRunCoordinationError::Unavailable)?;
-                match hook.frame.resolve(
+                match frame.resolve(
                     &record.run.execution_input.plan,
                     &regions,
                     &variables,
                     output,
                 ) {
                     Ok(result) => {
-                        WorkflowCompositeFrameResolution::completed(hook.frame.clone(), result)
+                        WorkflowCompositeFrameResolution::completed(frame.clone(), result)
                     }
                     Err(error) => WorkflowCompositeFrameResolution::failed(
-                        hook.frame.clone(),
+                        frame.clone(),
                         composite_error("Workflow child output rejected", &error),
                     ),
                 }
             }
             WorkflowRunStatus::Failed => WorkflowCompositeFrameResolution::failed(
-                hook.frame.clone(),
+                frame.clone(),
                 composite_error(
                     "Workflow child failed",
                     child.run.error.as_deref().unwrap_or("no failure detail"),
                 ),
             ),
             WorkflowRunStatus::Cancelled => WorkflowCompositeFrameResolution::failed(
-                hook.frame.clone(),
+                frame.clone(),
                 "Workflow child was cancelled",
             ),
             WorkflowRunStatus::TimedOut => WorkflowCompositeFrameResolution::failed(
-                hook.frame.clone(),
+                frame.clone(),
                 composite_error(
                     "Workflow child timed out",
                     child.run.error.as_deref().unwrap_or("deadline exceeded"),
@@ -281,9 +300,7 @@ impl FlowWorkflowRunCoordinator {
                     "non-terminal Workflow composite child cannot resume its parent".into(),
                 ))
             }
-        };
-        self.resume_composite_resolution(record, hook, resolution)
-            .await
+        })
     }
 
     async fn resume_composite_resolution(
@@ -471,7 +488,7 @@ fn composite_request(
     Ok(CompositeRequest::Ready(Box::new(request)))
 }
 
-fn cancellation_authority(
+pub(super) fn cancellation_authority(
     record: &WorkflowRunRecord,
 ) -> Result<
     (
@@ -506,7 +523,7 @@ fn cancellation_authority(
     }
 }
 
-fn composite_error(prefix: &str, detail: &str) -> String {
+pub(super) fn composite_error(prefix: &str, detail: &str) -> String {
     let sanitized = detail
         .replace(['\0', '\r', '\n'], " ")
         .chars()
