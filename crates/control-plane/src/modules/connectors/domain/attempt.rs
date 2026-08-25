@@ -530,12 +530,12 @@ impl ConnectorExecutionAttemptCursor {
             .next()
             .and_then(|part| part.parse::<i64>().ok())
             .and_then(DateTime::<Utc>::from_timestamp_micros)
-            .ok_or_else(&invalid)?;
+            .ok_or_else(invalid)?;
         let attempt_id = parts
             .next()
             .and_then(|part| Uuid::parse_str(part).ok())
             .filter(|value| !value.is_nil())
-            .ok_or_else(&invalid)?;
+            .ok_or_else(invalid)?;
         if parts.next().is_some() {
             return Err(invalid());
         }
