@@ -48,6 +48,42 @@ impl PullRequestPreviewProjectionOutcome {
     }
 }
 
+/// Consumer-local immutable fingerprint of one owner-published Sources fact.
+/// Transport metadata is intentionally excluded; every field that can change
+/// projection meaning or ownership is included.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestPreviewFactFingerprint {
+    pub source_pull_request_change_id: SourcePullRequestChangeId,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub source_environment_id: EnvironmentId,
+    pub source_subscription_id: SourceSubscriptionId,
+    pub pull_request_id: u64,
+    pub pull_request_number: u64,
+    pub fact_digest: Sha256Digest,
+    pub fact_occurred_at: DateTime<Utc>,
+}
+
+impl PullRequestPreviewFactFingerprint {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.source_pull_request_change_id.as_uuid().is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.source_environment_id.as_uuid().is_nil()
+            || self.source_subscription_id.as_uuid().is_nil()
+            || self.pull_request_id == 0
+            || self.pull_request_id > i64::MAX as u64
+            || self.pull_request_number == 0
+            || self.pull_request_number > i64::MAX as u64
+            || self.fact_digest != Sha256Digest::parse(self.fact_digest.as_str())?
+            || self.fact_occurred_at != canonical_timestamp(self.fact_occurred_at)
+        {
+            return Err("pull-request Preview fact fingerprint is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 /// Consumer-owned immutable evidence that one Sources fact reached a terminal
 /// projection decision.
 ///
@@ -78,20 +114,10 @@ impl PullRequestPreviewProjectionReceipt {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.source_pull_request_change_id.as_uuid().is_nil()
-            || self.organization_id.as_uuid().is_nil()
-            || self.project_id.as_uuid().is_nil()
-            || self.source_environment_id.as_uuid().is_nil()
-            || self.source_subscription_id.as_uuid().is_nil()
-            || self.pull_request_id == 0
-            || self.pull_request_id > i64::MAX as u64
-            || self.pull_request_number == 0
-            || self.pull_request_number > i64::MAX as u64
-            || self.fact_digest != Sha256Digest::parse(self.fact_digest.as_str())?
-            || self.fact_occurred_at != canonical_timestamp(self.fact_occurred_at)
-            || self
-                .policy_revision_id
-                .is_some_and(|id| id.as_uuid().is_nil())
+        self.fingerprint().validate()?;
+        if self
+            .policy_revision_id
+            .is_some_and(|id| id.as_uuid().is_nil())
             || self.preview_id.is_some_and(|id| id.as_uuid().is_nil())
             || self.preview_aggregate_version == Some(0)
             || self.preview_id.is_some() != self.preview_aggregate_version.is_some()
@@ -119,25 +145,22 @@ impl PullRequestPreviewProjectionReceipt {
         Ok(())
     }
 
-    pub fn matches_fact(
-        &self,
-        organization_id: OrganizationId,
-        project_id: ProjectId,
-        source_environment_id: EnvironmentId,
-        source_subscription_id: SourceSubscriptionId,
-        pull_request_id: u64,
-        pull_request_number: u64,
-        fact_digest: &Sha256Digest,
-        fact_occurred_at: DateTime<Utc>,
-    ) -> bool {
-        self.organization_id == organization_id
-            && self.project_id == project_id
-            && self.source_environment_id == source_environment_id
-            && self.source_subscription_id == source_subscription_id
-            && self.pull_request_id == pull_request_id
-            && self.pull_request_number == pull_request_number
-            && &self.fact_digest == fact_digest
-            && self.fact_occurred_at == canonical_timestamp(fact_occurred_at)
+    pub fn fingerprint(&self) -> PullRequestPreviewFactFingerprint {
+        PullRequestPreviewFactFingerprint {
+            source_pull_request_change_id: self.source_pull_request_change_id,
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            source_environment_id: self.source_environment_id,
+            source_subscription_id: self.source_subscription_id,
+            pull_request_id: self.pull_request_id,
+            pull_request_number: self.pull_request_number,
+            fact_digest: self.fact_digest.clone(),
+            fact_occurred_at: self.fact_occurred_at,
+        }
+    }
+
+    pub fn matches_fact(&self, candidate: &PullRequestPreviewFactFingerprint) -> bool {
+        self.fingerprint().eq(candidate)
     }
 }
 
@@ -214,8 +237,24 @@ impl CommitPullRequestPreviewProjection {
             {
                 return Err("Preview mutation and projection receipt are inconsistent".into());
             }
-        } else if receipt_version != self.expected_preview {
-            return Err("Preview observation and projection receipt are inconsistent".into());
+        } else {
+            let observation_is_valid = match self.receipt.outcome {
+                PullRequestPreviewProjectionOutcome::NoApplicablePolicy
+                | PullRequestPreviewProjectionOutcome::ForkDenied => {
+                    self.expected_preview.is_none() && receipt_version.is_none()
+                }
+                PullRequestPreviewProjectionOutcome::IgnoredDuplicate
+                | PullRequestPreviewProjectionOutcome::IgnoredStale => {
+                    self.expected_preview.is_some() && receipt_version == self.expected_preview
+                }
+                PullRequestPreviewProjectionOutcome::Created
+                | PullRequestPreviewProjectionOutcome::Updated
+                | PullRequestPreviewProjectionOutcome::Reactivated
+                | PullRequestPreviewProjectionOutcome::CleanupRequired => false,
+            };
+            if !observation_is_valid {
+                return Err("Preview observation and projection receipt are inconsistent".into());
+            }
         }
         Ok(())
     }
@@ -242,4 +281,55 @@ pub trait IPullRequestPreviewProjectionRepository: Send + Sync {
         &self,
         write: CommitPullRequestPreviewProjection,
     ) -> Result<IdempotentWrite<PullRequestPreviewProjectionReceipt>, RepositoryError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn mutation_outcomes_require_a_preview_while_first_fork_denial_does_not() {
+        let mut forged = receipt(PullRequestPreviewProjectionOutcome::Created);
+        forged.preview_id = Some(PullRequestPreviewId::new());
+        forged.preview_aggregate_version = Some(1);
+        assert!(CommitPullRequestPreviewProjection {
+            receipt: forged,
+            expected_preview: None,
+            preview: None,
+        }
+        .validate()
+        .is_err());
+
+        assert!(CommitPullRequestPreviewProjection {
+            receipt: receipt(PullRequestPreviewProjectionOutcome::ForkDenied),
+            expected_preview: None,
+            preview: None,
+        }
+        .validate()
+        .is_ok());
+    }
+
+    fn receipt(
+        outcome: PullRequestPreviewProjectionOutcome,
+    ) -> PullRequestPreviewProjectionReceipt {
+        PullRequestPreviewProjectionReceipt {
+            source_pull_request_change_id: SourcePullRequestChangeId::new(),
+            organization_id: OrganizationId::new(),
+            project_id: ProjectId::new(),
+            source_environment_id: EnvironmentId::new(),
+            source_subscription_id: SourceSubscriptionId::new(),
+            pull_request_id: 1_000_042,
+            pull_request_number: 42,
+            fact_digest: Sha256Digest::from_bytes(b"projection fact"),
+            fact_occurred_at: Utc
+                .with_ymd_and_hms(2026, 8, 26, 4, 0, 0)
+                .single()
+                .expect("timestamp"),
+            policy_revision_id: Some(PullRequestPreviewPolicyRevisionId::new()),
+            preview_id: None,
+            preview_aggregate_version: None,
+            outcome,
+        }
+    }
 }

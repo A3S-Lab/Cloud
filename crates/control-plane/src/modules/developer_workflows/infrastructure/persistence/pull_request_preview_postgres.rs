@@ -372,18 +372,7 @@ fn exact_replay(
     existing: PullRequestPreviewProjectionReceipt,
     candidate: &PullRequestPreviewProjectionReceipt,
 ) -> Result<IdempotentWrite<PullRequestPreviewProjectionReceipt>, PostgresPersistenceError> {
-    if existing.source_pull_request_change_id != candidate.source_pull_request_change_id
-        || !existing.matches_fact(
-            candidate.organization_id,
-            candidate.project_id,
-            candidate.source_environment_id,
-            candidate.source_subscription_id,
-            candidate.pull_request_id,
-            candidate.pull_request_number,
-            &candidate.fact_digest,
-            candidate.fact_occurred_at,
-        )
-    {
+    if !existing.matches_fact(&candidate.fingerprint()) {
         return Err(conflict(
             "Sources pull-request fact ID changed content or owner binding",
         ));

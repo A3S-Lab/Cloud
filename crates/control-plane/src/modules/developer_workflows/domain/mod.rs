@@ -56,8 +56,8 @@ pub use pull_request_preview::{
 };
 pub use pull_request_preview_projection::{
     CommitPullRequestPreviewProjection, IPullRequestPreviewProjectionRepository,
-    PullRequestPreviewProjectionOutcome, PullRequestPreviewProjectionReceipt,
-    PullRequestPreviewVersion,
+    PullRequestPreviewFactFingerprint, PullRequestPreviewProjectionOutcome,
+    PullRequestPreviewProjectionReceipt, PullRequestPreviewVersion,
 };
 pub(crate) use repository::BuildPlanWriteReference;
 pub use repository::{AcceptBuildPlanWrite, IBuildPlanRepository};

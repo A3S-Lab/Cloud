@@ -1290,8 +1290,10 @@ async fn build_api_worker_application(
                     Arc::clone(&alert_policies),
                     Arc::clone(&resource_grants),
                     Arc::clone(&build_candidates),
-                    developer_workflows.preview_policies,
-                    developer_workflows.preview_projections,
+                    DeveloperWorkflowProjectionDependencies {
+                        policies: developer_workflows.preview_policies,
+                        previews: developer_workflows.preview_projections,
+                    },
                 ),
             },
         )?)
@@ -1723,8 +1725,10 @@ async fn build_relay_application(
                 alert_policies,
                 resource_grants,
                 build_candidates,
-                preview_policies,
-                preview_projections,
+                DeveloperWorkflowProjectionDependencies {
+                    policies: preview_policies,
+                    previews: preview_projections,
+                },
             ),
         },
     )?;
@@ -1765,6 +1769,11 @@ fn build_outbox_relay(
         .fold(relay, OutboxRelay::with_projector))
 }
 
+struct DeveloperWorkflowProjectionDependencies {
+    policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    previews: Arc<dyn IPullRequestPreviewProjectionRepository>,
+}
+
 fn build_outbox_projectors(
     notifications: Arc<dyn INotificationRepository>,
     assets: Arc<dyn IAssetRepository>,
@@ -1772,12 +1781,13 @@ fn build_outbox_projectors(
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
-    preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
-    preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
+    developer_workflows: DeveloperWorkflowProjectionDependencies,
 ) -> Vec<Arc<dyn IIntegrationEventProjector>> {
-    let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
-        PullRequestPreviewProjectionService::new(preview_policies, preview_projections),
-    );
+    let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> =
+        Arc::new(PullRequestPreviewProjectionService::new(
+            developer_workflows.policies,
+            developer_workflows.previews,
+        ));
     vec![
         Arc::new(
             OutboxNotificationProjector::new(notifications, memberships)

@@ -2,12 +2,13 @@ use crate::modules::developer_workflows::domain::{
     reconcile_pull_request_preview, CommitPullRequestPreviewProjection,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionRepository,
     PreviewReconcileOutcome, PullRequestChange, PullRequestPreview,
-    PullRequestPreviewPolicyAuthority, PullRequestPreviewProjectionOutcome,
-    PullRequestPreviewProjectionReceipt, PullRequestPreviewVersion,
+    PullRequestPreviewFactFingerprint, PullRequestPreviewPolicyAuthority,
+    PullRequestPreviewProjectionOutcome, PullRequestPreviewProjectionReceipt,
+    PullRequestPreviewVersion,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, IdempotentWrite, OrganizationId, ProjectId,
-    RepositoryError, Sha256Digest, SourcePullRequestChangeId, SourceSubscriptionId,
+    EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    SourcePullRequestChangeId, SourceSubscriptionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -28,17 +29,21 @@ pub struct ProjectCommittedPullRequestChange {
 impl ProjectCommittedPullRequestChange {
     pub fn validate(&self) -> Result<(), String> {
         self.change.validate()?;
-        if self.source_pull_request_change_id.as_uuid().is_nil()
-            || self.organization_id.as_uuid().is_nil()
-            || self.project_id.as_uuid().is_nil()
-            || self.source_environment_id.as_uuid().is_nil()
-            || self.source_subscription_id.as_uuid().is_nil()
-            || self.fact_digest != Sha256Digest::parse(self.fact_digest.as_str())?
-            || self.fact_occurred_at != canonical_timestamp(self.fact_occurred_at)
-        {
-            return Err("committed pull-request change projection input is invalid".into());
+        self.fingerprint().validate()
+    }
+
+    pub fn fingerprint(&self) -> PullRequestPreviewFactFingerprint {
+        PullRequestPreviewFactFingerprint {
+            source_pull_request_change_id: self.source_pull_request_change_id,
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            source_environment_id: self.source_environment_id,
+            source_subscription_id: self.source_subscription_id,
+            pull_request_id: self.change.pull_request_id,
+            pull_request_number: self.change.pull_request_number,
+            fact_digest: self.fact_digest.clone(),
+            fact_occurred_at: self.fact_occurred_at,
         }
-        Ok(())
     }
 }
 
@@ -184,16 +189,7 @@ fn replay(
     input: &ProjectCommittedPullRequestChange,
     receipt: PullRequestPreviewProjectionReceipt,
 ) -> Result<IdempotentWrite<PullRequestPreviewProjectionReceipt>, RepositoryError> {
-    if !receipt.matches_fact(
-        input.organization_id,
-        input.project_id,
-        input.source_environment_id,
-        input.source_subscription_id,
-        input.change.pull_request_id,
-        input.change.pull_request_number,
-        &input.fact_digest,
-        input.fact_occurred_at,
-    ) {
+    if !receipt.matches_fact(&input.fingerprint()) {
         return Err(RepositoryError::Conflict(
             "Sources pull-request fact ID changed content or owner binding".into(),
         ));

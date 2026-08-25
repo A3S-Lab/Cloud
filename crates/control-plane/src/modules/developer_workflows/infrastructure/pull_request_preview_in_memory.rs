@@ -121,15 +121,5 @@ fn same_fact(
     existing: &PullRequestPreviewProjectionReceipt,
     candidate: &PullRequestPreviewProjectionReceipt,
 ) -> bool {
-    existing.source_pull_request_change_id == candidate.source_pull_request_change_id
-        && existing.matches_fact(
-            candidate.organization_id,
-            candidate.project_id,
-            candidate.source_environment_id,
-            candidate.source_subscription_id,
-            candidate.pull_request_id,
-            candidate.pull_request_number,
-            &candidate.fact_digest,
-            candidate.fact_occurred_at,
-        )
+    existing.matches_fact(&candidate.fingerprint())
 }

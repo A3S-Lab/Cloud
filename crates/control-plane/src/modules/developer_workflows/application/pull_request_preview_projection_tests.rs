@@ -247,15 +247,14 @@ impl Fixture {
             },
         })
         .expect("policy contract");
-        let revision = AcceptedPullRequestPreviewPolicyRevision::accept(
+        AcceptedPullRequestPreviewPolicyRevision::accept(
             self.source_environment_id,
             contract,
             revision_number,
             self.owner_principal_id,
             timestamp(accepted_second),
         )
-        .expect("accepted policy");
-        revision
+        .expect("accepted policy")
     }
 
     fn policy_write(
