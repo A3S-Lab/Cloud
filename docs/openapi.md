@@ -11,15 +11,18 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.63.0`.
+The current semantic contract version is `1.64.0`.
 
-Contract `1.63.0` closes every core Workflow success payload already returned
-by the control plane. Goal, Plan revision, node-catalog, run, cancellation,
-wait, output, variable-inspection, diagnostics, and history operations now
-reference reusable closed schemas through the standard response envelope.
-The schemas preserve the existing JSON fields and routes while documenting
-their UUIDs, digests, finite enums, nullable projections, collection bounds,
-typed failure evidence, diagnostic statistics, and exact nested resources.
+Contract `1.64.0` completes operation-specific success documentation for every
+Workflow-tagged route. Ontology collection, aggregate, revision, diff, and
+mutation operations now expose reusable closed schemas. HumanTask collection,
+aggregate, claim, release, and Form-backed submission operations do the same,
+including their assignment policy, release reference, interaction request,
+output mapping, lifecycle, and nullable state projections. Contract `1.63.0`
+already closed Goal, Plan revision, node-catalog, run, cancellation, wait,
+output, variable-inspection, diagnostics, and history payloads. Both increments
+preserve existing JSON fields and routes while documenting UUIDs, digests,
+finite enums, collection bounds, typed evidence, and exact nested resources.
 No authorization boundary, request shape, runtime behavior, or response byte
 is changed.
 
@@ -91,7 +94,8 @@ Reading any referenced owner resource still requires its normal authorization
 boundary. Populating this existing field did not itself change a route or JSON
 shape; contract `1.60.0` was introduced by the separate diagnostics operation,
 `1.61.0` adds Variable Aggregator payload semantics, `1.62.0` adds List
-Operator payload semantics, and `1.63.0` closes the existing core Workflow
+Operator payload semantics, `1.63.0` closes the existing core Workflow success
+payload schemas, and `1.64.0` closes the remaining Ontology and HumanTask
 success payload schemas as described above.
 
 ## Contract completeness

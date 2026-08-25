@@ -872,6 +872,10 @@ REST/OpenAPI `1.63.0` keeps those response bytes stable while replacing generic
 success data documentation with closed reusable schemas for Workflow Goal,
 Plan, discovery, run lifecycle, output, variable inspection, diagnostics, and
 history payloads.
+REST/OpenAPI `1.64.0` applies the same closed reusable contract to Ontology
+aggregates, revisions and diffs, plus HumanTask lifecycle and Form interaction
+payloads. Every Workflow-tagged success response is now operation-specific;
+the transport bytes and ownership boundaries remain unchanged.
 
 REST/OpenAPI `1.60.0` adds one project-authorized
 `cloud.workflow-run.diagnostics.v1` read. The adapter samples a consistent A3S

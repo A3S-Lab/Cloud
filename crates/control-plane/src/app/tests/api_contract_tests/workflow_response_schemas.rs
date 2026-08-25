@@ -245,3 +245,164 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
     }
     Ok(())
 }
+
+#[test]
+fn workflow_ontology_and_human_task_responses_are_closed_and_typed() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let schemas = &document["components"]["schemas"];
+
+    for name in [
+        "Ontology",
+        "OntologyMigrationPolicy",
+        "OntologyRevisionSummary",
+        "OntologyRevision",
+        "OntologyChange",
+        "OntologyDiff",
+        "OntologyRevisionDiff",
+        "OntologyMutation",
+        "FormReleaseRef",
+        "FormInteractionOutputMappingIdentity",
+        "FormInteractionOutputMappingRegistry",
+        "WorkflowInteractionIdentity",
+        "FormInteractionAssignment",
+        "FormInteractionTaskBinding",
+        "FormInteractionRequest",
+        "HumanTaskAssignmentPolicy",
+        "HumanTaskSummary",
+        "HumanTask",
+        "HumanTaskMutation",
+    ] {
+        assert_eq!(
+            schemas[name]["additionalProperties"], false,
+            "{name} must reject undocumented fields"
+        );
+    }
+    assert_eq!(
+        schemas["OntologyRevision"]["properties"]["migrationPolicy"]["$ref"],
+        "#/components/schemas/OntologyMigrationPolicy"
+    );
+    assert_eq!(
+        schemas["OntologyMutation"]["properties"]["diff"]["allOf"][0]["$ref"],
+        "#/components/schemas/OntologyDiff"
+    );
+    assert_eq!(
+        schemas["HumanTask"]["properties"]["formRelease"]["$ref"],
+        "#/components/schemas/FormReleaseRef"
+    );
+    assert_eq!(
+        schemas["HumanTask"]["properties"]["interactionRequest"]["allOf"][0]["$ref"],
+        "#/components/schemas/FormInteractionRequest"
+    );
+    assert_eq!(
+        schemas["FormInteractionOutputMapping"]["discriminator"]["propertyName"],
+        "kind"
+    );
+
+    for (success_schema, data_schema) in [
+        ("OntologySuccessResponse", "Ontology"),
+        ("OntologyListSuccessResponse", "OntologyList"),
+        (
+            "OntologyRevisionSummaryListSuccessResponse",
+            "OntologyRevisionSummaryList",
+        ),
+        ("OntologyRevisionSuccessResponse", "OntologyRevision"),
+        ("OntologyMutationSuccessResponse", "OntologyMutation"),
+        ("OntologyDiffSuccessResponse", "OntologyRevisionDiff"),
+        ("HumanTaskSuccessResponse", "HumanTask"),
+        ("HumanTaskListSuccessResponse", "HumanTaskList"),
+        ("HumanTaskMutationSuccessResponse", "HumanTaskMutation"),
+    ] {
+        assert_eq!(
+            schemas[success_schema]["allOf"][0]["properties"]["data"]["$ref"],
+            format!("#/components/schemas/{data_schema}")
+        );
+    }
+
+    for (path, response) in [
+        (
+            "/organizations/{organization_id}/projects/{project_id}/ontologies",
+            "OntologyListSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/ontologies/{ontology_id}",
+            "OntologySuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/ontologies/{ontology_id}/revisions",
+            "OntologyRevisionSummaryListSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/ontologies/{ontology_id}/revisions/{revision_id}",
+            "OntologyRevisionSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/ontologies/{ontology_id}/revisions/{from_revision_id}/diff/{to_revision_id}",
+            "OntologyDiffSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/projects/{project_id}/human-tasks",
+            "HumanTaskListSuccess200",
+        ),
+        (
+            "/organizations/{organization_id}/human-tasks/{human_task_id}",
+            "HumanTaskSuccess200",
+        ),
+    ] {
+        assert_eq!(
+            document["paths"][path]["get"]["responses"]["200"]["$ref"],
+            format!("#/components/responses/{response}"),
+            "GET {path} must use its exact success response"
+        );
+    }
+
+    for path in [
+        "/organizations/{organization_id}/projects/{project_id}/ontologies",
+        "/organizations/{organization_id}/ontologies/{ontology_id}/revisions",
+    ] {
+        for status in ["200", "201"] {
+            assert_eq!(
+                document["paths"][path]["post"]["responses"][status]["$ref"],
+                format!("#/components/responses/OntologyMutationSuccess{status}")
+            );
+        }
+    }
+    for path in [
+        "/organizations/{organization_id}/human-tasks/{human_task_id}/claim",
+        "/organizations/{organization_id}/human-tasks/{human_task_id}/release",
+        "/organizations/{organization_id}/human-tasks/{human_task_id}/submission",
+    ] {
+        assert_eq!(
+            document["paths"][path]["post"]["responses"]["200"]["$ref"],
+            "#/components/responses/HumanTaskMutationSuccess200"
+        );
+    }
+
+    for path in document["paths"]
+        .as_object()
+        .expect("OpenAPI paths")
+        .values()
+    {
+        for operation in path.as_object().expect("OpenAPI path item").values() {
+            let is_workflow = operation["tags"]
+                .as_array()
+                .is_some_and(|tags| tags.iter().any(|tag| tag.as_str() == Some("Workflow")));
+            if !is_workflow {
+                continue;
+            }
+            for (status, response) in operation["responses"]
+                .as_object()
+                .expect("OpenAPI responses")
+            {
+                if status.starts_with('2') {
+                    assert_ne!(
+                        response["$ref"],
+                        format!("#/components/responses/Success{status}"),
+                        "Workflow success response {status} must be operation-specific"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}

@@ -130,10 +130,11 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.63.0`. The contract now documents the
-client's existing Goal, Plan, node-catalog, run, output, variable-inspection,
-diagnostics, and history result types as closed reusable OpenAPI schemas. It
-enumerates
+The client targets REST contract `1.64.0`. The contract now documents every
+existing Workflow result type as a closed operation-specific OpenAPI schema,
+including Ontology aggregates/revisions/diffs, HumanTask lifecycle and Form
+interaction payloads, Goal, Plan, node catalog, run, output,
+variable-inspection, diagnostics, and history. It enumerates
 `cloud.workflow.configuration.variable-aggregate.v1` and
 `cloud.workflow.configuration.list-operator.v1` in returned Workflow payloads.
 Publication still transports those configurations as bounded ACL text; Cloud

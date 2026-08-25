@@ -505,7 +505,10 @@ REST/OpenAPI `1.62.0` adds
 route or JSON property. REST/OpenAPI `1.63.0` additionally documents the
 existing core Workflow Goal, Plan, discovery, run, output,
 variable-inspection, diagnostics, and history success payloads through closed
-reusable schemas without changing response bytes. Business-service and
+reusable schemas without changing response bytes. REST/OpenAPI `1.64.0`
+extends that exact contract to Ontology aggregate/revision/diff and HumanTask
+lifecycle/Form-interaction responses, eliminating generic success schemas from
+all Workflow-tagged operations. Business-service and
 remaining Agent/MCP/model/Tool failure semantics,
 compensation, full provider conformance, and public availability remain
 unimplemented parts of `W0.3`.

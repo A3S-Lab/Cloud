@@ -572,15 +572,16 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.63.0`
+  responses, envelopes, and compatibility metadata; current contract `1.64.0`
   retains the exact-owner redacted recipient-contact self-service lifecycle,
   SMTP-only outbound-subscription v4 target union, alert-policy v2, Gateway
   Route policy timeline, request-time audit attribution, one signed audit page,
   audit-retention status, and the complete signed audit manifest, then adds
   authorized bounded WorkflowRun diagnostics/statistics, enumerates the
   versioned Variable Aggregator and List Operator payload schemas through the
-  existing ACL transport and maintained client, and closes the existing core
-  Workflow success payload schemas without changing response bytes.
+  existing ACL transport and maintained client, and closes every
+  Workflow-tagged success payload schema—including Ontology revision/diff and
+  HumanTask interaction resources—without changing response bytes.
   Legacy alert-policy project/environment fields remain nullable for v1
   compatibility. Four deprecated nullable Connector projections preserve
   `1.52` response compatibility and are `null` for SMTP, without exposing

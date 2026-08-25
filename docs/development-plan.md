@@ -482,10 +482,12 @@ transport is verified by the
 [N5c PostgreSQL 17, NATS JetStream, and Mailpit H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/32594431022/job/97083071084)
 and does not widen Notifications or the HTTP-only Connector contract.
 
-The current REST/OpenAPI contract is `1.63.0`. It closes the existing core
-Workflow Goal, Plan, node-catalog, run, output, variable-inspection,
-diagnostics, and history success payloads as reusable OpenAPI schemas without
-changing their bytes. It also retains `1.62.0`'s versioned List Operator and
+The current REST/OpenAPI contract is `1.64.0`. It closes every Workflow-tagged
+success payload as a reusable operation-specific OpenAPI schema without
+changing response bytes. This includes Ontology aggregate, revision, mutation,
+and diff payloads; HumanTask lifecycle and Form interaction payloads; and
+`1.63.0`'s Goal, Plan, node-catalog, run, output, variable-inspection,
+diagnostics, and history payloads. It also retains `1.62.0`'s versioned List Operator and
 Variable Aggregator Workflow payload enums through the existing ACL transport
 and maintained client. It retains
 `1.60.0`'s authorized bounded WorkflowRun diagnostics/statistics over
@@ -1883,7 +1885,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.63.0`. Focused tests
+  and every API response pin the current contract `1.64.0`. Focused tests
   regenerate the candidate from the resolved route table and reject snapshot
   drift. CI compares
   the committed contract with the pull request base and rejects operation

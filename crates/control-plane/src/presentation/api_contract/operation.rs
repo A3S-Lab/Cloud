@@ -1976,7 +1976,25 @@ fn is_workflow_revision_item_path(path: &str) -> bool {
 }
 
 fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<String> {
-    if method == "post" && is_workflow_definition_mutation_path(path) {
+    if method == "post" && is_ontology_mutation_path(path) {
+        Some(format!("OntologyMutationSuccess{status}"))
+    } else if method == "get" && is_ontology_collection_path(path) {
+        Some("OntologyListSuccess200".into())
+    } else if method == "get" && is_ontology_item_path(path) {
+        Some("OntologySuccess200".into())
+    } else if method == "get" && is_ontology_revision_mutation_path(path) {
+        Some("OntologyRevisionSummaryListSuccess200".into())
+    } else if method == "get" && is_ontology_revision_item_path(path) {
+        Some("OntologyRevisionSuccess200".into())
+    } else if method == "get" && is_ontology_diff_path(path) {
+        Some("OntologyDiffSuccess200".into())
+    } else if method == "post" && is_human_task_mutation_path(path) {
+        Some(format!("HumanTaskMutationSuccess{status}"))
+    } else if method == "get" && is_human_task_collection_path(path) {
+        Some("HumanTaskListSuccess200".into())
+    } else if method == "get" && is_human_task_item_path(path) {
+        Some("HumanTaskSuccess200".into())
+    } else if method == "post" && is_workflow_definition_mutation_path(path) {
         Some(format!("WorkflowDefinitionMutationSuccess{status}"))
     } else if method == "post" && is_workflow_goal_mutation_path(path) {
         Some(format!("WorkflowGoalMutationSuccess{status}"))
@@ -2017,6 +2035,34 @@ fn workflow_success_component(method: &str, path: &str, status: u16) -> Option<S
     } else {
         None
     }
+}
+
+fn is_ontology_collection_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/ontologies")
+}
+
+fn is_ontology_item_path(path: &str) -> bool {
+    path.ends_with("/ontologies/{ontology_id}")
+}
+
+fn is_ontology_revision_item_path(path: &str) -> bool {
+    path.ends_with("/ontologies/{ontology_id}/revisions/{revision_id}")
+}
+
+fn is_ontology_diff_path(path: &str) -> bool {
+    path.ends_with("/ontologies/{ontology_id}/revisions/{from_revision_id}/diff/{to_revision_id}")
+}
+
+fn is_human_task_collection_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/human-tasks")
+}
+
+fn is_human_task_item_path(path: &str) -> bool {
+    path.ends_with("/human-tasks/{human_task_id}")
+}
+
+fn is_human_task_mutation_path(path: &str) -> bool {
+    is_human_task_assignment_mutation_path(path) || is_human_task_submission_path(path)
 }
 
 fn is_workflow_goal_mutation_path(path: &str) -> bool {

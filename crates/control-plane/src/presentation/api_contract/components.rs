@@ -1,5 +1,7 @@
 use super::workflow_components::install_workflow_component_schemas;
 use super::workflow_goal_components::install_workflow_goal_component_schemas;
+use super::workflow_human_task_components::install_workflow_human_task_component_schemas;
+use super::workflow_ontology_components::install_workflow_ontology_component_schemas;
 use super::workflow_run_components::install_workflow_run_component_schemas;
 use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::OPENAPI_CONTRACT_VERSION;
@@ -331,6 +333,8 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
     install_workflow_component_schemas(&mut schema_components);
     install_workflow_goal_component_schemas(&mut schema_components);
+    install_workflow_human_task_component_schemas(&mut schema_components);
+    install_workflow_ontology_component_schemas(&mut schema_components);
     install_workflow_run_component_schemas(&mut schema_components);
     install_workflow_run_observation_component_schemas(&mut schema_components);
     schema_components.insert(
@@ -381,6 +385,18 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "WorkflowRunHistoryPageSuccessResponse",
             "WorkflowRunHistoryPage",
         ),
+        ("OntologySuccessResponse", "Ontology"),
+        ("OntologyListSuccessResponse", "OntologyList"),
+        (
+            "OntologyRevisionSummaryListSuccessResponse",
+            "OntologyRevisionSummaryList",
+        ),
+        ("OntologyRevisionSuccessResponse", "OntologyRevision"),
+        ("OntologyMutationSuccessResponse", "OntologyMutation"),
+        ("OntologyDiffSuccessResponse", "OntologyRevisionDiff"),
+        ("HumanTaskSuccessResponse", "HumanTask"),
+        ("HumanTaskListSuccessResponse", "HumanTaskList"),
+        ("HumanTaskMutationSuccessResponse", "HumanTaskMutation"),
     ] {
         schema_components.insert(
             name.into(),
@@ -544,6 +560,23 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "WorkflowRunHistoryPageSuccess200",
             "WorkflowRunHistoryPageSuccessResponse",
         ),
+        ("OntologySuccess200", "OntologySuccessResponse"),
+        ("OntologyListSuccess200", "OntologyListSuccessResponse"),
+        (
+            "OntologyRevisionSummaryListSuccess200",
+            "OntologyRevisionSummaryListSuccessResponse",
+        ),
+        (
+            "OntologyRevisionSuccess200",
+            "OntologyRevisionSuccessResponse",
+        ),
+        ("OntologyDiffSuccess200", "OntologyDiffSuccessResponse"),
+        ("HumanTaskSuccess200", "HumanTaskSuccessResponse"),
+        ("HumanTaskListSuccess200", "HumanTaskListSuccessResponse"),
+        (
+            "HumanTaskMutationSuccess200",
+            "HumanTaskMutationSuccessResponse",
+        ),
     ] {
         response_components.insert(
             name.into(),
@@ -556,6 +589,15 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/WorkflowGoalMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 201] {
+        response_components.insert(
+            format!("OntologyMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/OntologyMutationSuccessResponse",
             ),
         );
     }
