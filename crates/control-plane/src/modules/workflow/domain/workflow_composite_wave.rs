@@ -2,8 +2,8 @@ use super::workflow_composite_frame::validate_plan_bindings;
 use super::{
     WorkflowCompositeFrame, WorkflowCompositeFrameMode, WorkflowCompositeFrameRequest,
     WorkflowCompositeFrameResolution, WorkflowCompositeFrameResult, WorkflowCompositeRegionPolicy,
-    WorkflowCompositeRegionResultRequest, WorkflowCompositeRegions, WorkflowPlan,
-    WorkflowIterationFailureMode, WorkflowVariableContract, WorkflowVariableDefaults,
+    WorkflowCompositeRegionResultRequest, WorkflowCompositeRegions, WorkflowIterationFailureMode,
+    WorkflowPlan, WorkflowVariableContract, WorkflowVariableDefaults,
     WORKFLOW_COMPOSITE_FRAME_MAX_BYTES, WORKFLOW_ITERATION_MAX_CONCURRENCY,
 };
 use crate::modules::shared_kernel::domain::{

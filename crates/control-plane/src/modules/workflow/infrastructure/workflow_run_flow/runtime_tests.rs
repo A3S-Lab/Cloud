@@ -1447,7 +1447,6 @@ async fn composite_hook(
     serde_json::from_value(hook.metadata.clone()).map_err(FlowError::Serialization)
 }
 
-
 async fn resume_completed_composite(
     engine: &FlowEngine,
     run_id: &str,

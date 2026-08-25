@@ -197,9 +197,8 @@ async fn terminating_parallel_iteration_cancels_and_awaits_in_flight_siblings() 
         a3s_flow::HookStatus::Active
     );
 
-    let cancellation_at = canonical_timestamp(
-        port.latest_updated_at().await + chrono::Duration::milliseconds(1),
-    );
+    let cancellation_at =
+        canonical_timestamp(port.latest_updated_at().await + chrono::Duration::milliseconds(1));
     port.finish_cancellation(cancellation_at).await;
     let failed = coordinator
         .reconcile(

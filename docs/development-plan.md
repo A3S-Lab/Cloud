@@ -868,7 +868,7 @@ commit and query tenant-scoped desired state.
   plus local/NATS provider gate. The
   [2026-08-19 `main` job](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
   certifies the earlier locked composition; the updated revisions require a new
-  `main` certification run. Code `7.0.2` at revision `bbdd636b` resolves the
+  `main` certification run. Code `8.0.0` at revision `44b41131` resolves the
   same exact Flow source, so the transitive graph contains one Flow authority.
 - The root source override pins every ACL `0.3.0` consumer, including Cloud,
   Code, and Box, to exact ACL revision `5317e166`; a contract test rejects a

@@ -1,6 +1,7 @@
 use crate::modules::workflow::domain::{
-    WorkflowCompositeFrame, WorkflowCompositeFrameResolution, WorkflowCompositeWaveHookMetadata,
-    WorkflowCompositeWaveResumePayload, WorkflowRunInput, WORKFLOW_RUN_INPUT_SCHEMA_V22,
+    WorkflowCompositeFrame, WorkflowCompositeFrameResolution, WorkflowCompositeWaveFrameResolution,
+    WorkflowCompositeWaveHookMetadata, WorkflowCompositeWaveResumePayload, WorkflowRunInput,
+    WORKFLOW_RUN_INPUT_SCHEMA_V22,
 };
 use a3s_flow::{HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
 
