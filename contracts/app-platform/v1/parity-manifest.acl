@@ -564,7 +564,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.iteration" {
-    availability = "internal"
+    availability = "unavailable"
     category = "node"
     dependencies = []
     evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0053-bounded-parallel-iteration-waves.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite_wave.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/parallel_iteration_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/parallel_iteration_tests.rs"]

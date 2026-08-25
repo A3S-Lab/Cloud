@@ -88,7 +88,6 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             "enterprise.organizations-workspaces",
             "node.human-input",
             "node.if-else",
-            "node.iteration",
             "node.list-operator",
             "node.output",
             "node.template",
