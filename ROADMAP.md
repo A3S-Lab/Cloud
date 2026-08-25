@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Developer Workflows consumption, Preview lifecycle-state persistence, owner composition/handoff, interfaces, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. Resource-owner composition/handoff, cleanup/expiry execution, interfaces, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -1000,8 +1000,8 @@ arrival order; close, merge, and an explicit clock input request cleanup, while
 reopen reuses the same identities. Known forks are denied or isolated; a newer
 denied-fork fact requests cleanup of any existing Preview, and only an active
 same-repository Preview can be eligible for explicitly enabled
-protected Secrets. `P0.3-C3` supplies the production committed-fact producer;
-the Developer Workflows consumer remains a later boundary.
+protected Secrets. `P0.3-C3` supplies the production committed-fact producer,
+and `P0.3-C4` supplies the durable Developer Workflows consumer projection.
 
 Component-only `P0.3-C2` adds canonical
 `a3s.cloud.pull-request-preview-policy.v1` configuration and immutable policy
@@ -1030,8 +1030,33 @@ semantics while keeping delivery ID, signature, raw body, and raw-body digest
 private to Sources. Push behavior remains unchanged; PR facts create no
 SourceRevision or push-delivery reservation. C3 adds no second Inbox, Outbox,
 relay, retry rail, worker, Preview state, Environment, BuildRun, Workload,
-Route, Operation, timer, or scheduler. Developer Workflows consumption,
-persisted Preview lifecycle, and owner handoffs remain open.
+Route, Operation, timer, or scheduler. C4 supplies Developer Workflows
+consumption and persisted Preview lifecycle; resource-owner handoffs remain
+open.
+
+Component-only `P0.3-C4` closes the Developer Workflows consumer projection:
+
+- one anti-corruption projector maps only
+  `source.pull-request-change.committed@1` into a consumer-owned Application
+  port inside the existing Outbox Relay;
+- a new Preview selects the latest policy accepted at or before the fact's
+  `occurred_at`, then retains that exact revision across its lifecycle so Relay
+  delay and later policy acceptance cannot rewrite owner, quota, fork trust,
+  protected-Secret eligibility, or lifetime;
+- migration `157` persists one Developer Workflows-owned Preview aggregate and
+  immutable per-fact projection receipts. A PR-scoped advisory lock, exact
+  observed-version comparison, `+1` CAS mutation, and receipt insert share one
+  PostgreSQL transaction; exact replay returns the first decision and changed
+  fact content or binding conflicts; and
+- no-policy, denied-fork, duplicate, and stale facts reach terminal local
+  decisions without inventing transport state. The same projector family is
+  composed by all-in-one and dedicated Relay processes.
+
+C4 adds no Inbox, publisher, queue, retry rail, worker, Environment,
+SourceRevision, BuildRun, Workload, Deployment, Route, Operation, cleanup
+timer, scheduler, or public interface. Projects, Artifacts, Workloads, Edge,
+Operations, expiry/cleanup, and management remain explicit later owner
+handoffs, so Preview availability is still false.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

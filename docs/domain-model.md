@@ -115,7 +115,8 @@ distributes committed facts after the corresponding database transaction.
 | Committed pull-request change | An immutable Sources Published Language fact for one exact active Subscription's view of a verified change. It contains semantic tenant/repository/branch/commit/PR/provider-time evidence and a stable opaque ID, but no provider delivery ID, signature, raw body, or raw-body digest. |
 | BuildPlan proposal | A transient, canonical, reviewable P0 detection result bound to an exact source-layout identity, detector revision, evidence digest, project root, and Sources-owned build recipe; it is not accepted desired state. |
 | Accepted BuildPlan | An immutable Developer Workflows-owned acceptance contract bound to one exact Sources-owned revision and project root; actor/time are audit facts outside its deterministic ACL digest. |
-| Pull-request Preview | Developer Workflows lifecycle intent with a stable logical identity and deterministic ordinary Environment identity, exact source-subscription/PR binding, owner, bounded lifetime/quota, fork trust, and cleanup decision; Projects, Sources, Workloads, Edge, and Operations retain their resource authorities. |
+| Pull-request Preview | Developer Workflows lifecycle projection with a stable logical identity and deterministic ordinary Environment identity, exact source-subscription/PR and immutable policy-revision authority, provider-time/content ordering, owner, bounded lifetime/quota, fork trust, and cleanup decision; Projects, Sources, Workloads, Edge, and Operations retain their resource authorities. |
+| Pull-request Preview projection receipt | Immutable Developer Workflows evidence that one opaque Sources fact reached one terminal local projection outcome and optional Preview version. It detects content/binding drift but is not an Inbox, queue, retry, or provider-delivery record. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -481,8 +482,8 @@ and a pure Preview lifecycle reducer. The reducer owns a minimal local
 pull-request observation (installation reference, canonical branches,
 repositories, commit, provider times, action, and merge state), not the Sources
 webhook-verifier DTO, delivery payload, signature, or credential semantics. C3
-now publishes the committed Sources fact; a future Developer Workflows
-consumer adapter must translate only that Published Language into this input.
+publishes the committed Sources fact; C4's anti-corruption projector translates
+only that Published Language into this input through the existing Outbox Relay.
 Stable Preview identity includes exact
 Organization, Project, Sources subscription, base repository, provider PR ID,
 and number; a second stable identity denotes the ordinary Environment that a
@@ -493,10 +494,10 @@ state independent of arrival order. Close/merge and an explicit clock input
 produce only a cleanup decision; reopen retains both identities. Forks are
 denied or isolated, a newer
 denied-fork fact requests cleanup of an existing Preview, and forks are never
-protected-Secret eligible in this slice. No Preview state is persisted or
-production-dispatched, and no Environment, SourceRevision, BuildRun, Workload,
-Route, Operation, timer, scheduler, or non-ACL configuration authority is
-added.
+protected-Secret eligible in this slice. C1 itself adds no persistence; C4 now
+persists the reducer's local lifecycle projection without creating an
+Environment, SourceRevision, BuildRun, Workload, Route, Operation, timer,
+scheduler, or non-ACL configuration authority.
 
 Component-only `P0.3-C2` adds the canonical
 `a3s.cloud.pull-request-preview-policy.v1` policy aggregate and append-only
@@ -524,11 +525,36 @@ fields; Developer Workflows cannot receive or depend on `SourceWebhookDelivery`,
 Sources repository. This is an asynchronous Published Language boundary, not a
 shared aggregate or a synchronous read-back of mutable Sources state.
 
-C3 adds no Preview aggregate or reducer persistence. The next boundary must be
-a Developer Workflows-owned idempotent consumer/projection that orders these
-facts using the existing provider-time/content reducer and then requests
-resource changes only through Projects, Artifacts, Workloads, Edge, and
-Operations owner interfaces.
+C3 adds no Preview aggregate or reducer persistence. Component-only
+`P0.3-C4` supplies that consumer boundary without changing Sources. One
+`PullRequestPreviewProjector` implements the existing shared Outbox Relay's
+projector contract and maps the closed fact to the consumer-owned Application
+port. It neither subscribes to A3S Event independently nor owns a publisher,
+Inbox, queue, retry loop, or worker.
+
+For the first applicable fact, the Application service queries the latest
+policy accepted at or before the fact's `occurred_at`. The resulting exact
+policy revision is embedded as immutable Preview lifecycle authority. Later
+facts retain it even when a newer policy exists; explicit future policy
+reconciliation alone may rebind owner, quota, fork trust, protected-Secret
+eligibility, or lifetime. Exact fact replay returns the original receipt,
+while changed digest, event time, tenant, Subscription, or PR binding
+conflicts. Facts with no applicable policy and first denied-fork facts commit a
+receipt without a Preview. Duplicate and stale facts commit a receipt pointing
+to the unchanged Preview version.
+
+Migration `157` persists `developer_pull_request_previews` and immutable
+`developer_pull_request_change_projections`. One PR-scoped advisory lock,
+observed-version comparison, optional exact `+1` aggregate mutation, and
+receipt insert share one transaction. Foreign keys retain the exact immutable
+policy revision; database triggers reject authority drift, skipped CAS,
+Preview deletion, and receipt mutation. A restarted repository reconstructs
+the policy-bound aggregate and resumes the same reducer. The in-memory adapter
+implements the same contract.
+
+C4 remains component-only and exposes no API. Projects, Artifacts, Workloads,
+Edge, and Operations handoffs, expiry/cleanup execution, and management remain
+open; their aggregates and mechanisms cannot move into Developer Workflows.
 
 ### 3.4 Asset hosting
 

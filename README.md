@@ -121,7 +121,7 @@ not imply availability.
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
 | Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request Published Language |
-| Supply | Developer Workflows | Reviewable BuildPlan/workload-profile proposals, canonical Preview Policy revisions, preview intent, acceptance decisions |
+| Supply | Developer Workflows | Reviewable BuildPlan/workload-profile proposals, canonical Preview Policy revisions, durable PR lifecycle projection, acceptance decisions |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildRun, admitted output, provenance, evidence, retention, node artifact transport |
 | Execution | Operations | User-visible long-running operation identity and progress projection |
@@ -217,8 +217,9 @@ already enforce that current debt can shrink but cannot spread:
   Artifacts now keeps byte streaming and input I/O in Application ports;
   external checkout, provider credentials, and deterministic packaging stay
   behind a Sources-owned adapter; committed pull-request facts cross only the
-  Sources Published Language and shared Outbox, while hosted-Asset staging and
-  public Infrastructure remain frozen debt;
+  Sources Published Language and are reduced by one Developer Workflows
+  projector in the shared Outbox Relay, while hosted-Asset staging and public
+  Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
 - Shared Kernel dependencies and public outer-layer facades cannot expand.
@@ -237,7 +238,7 @@ capability.
 | --- | --- |
 | `F0` foundation | Verified PostgreSQL tenancy, identity, ORM-backed Flow operations, Outbox/projections, API, and migration authority |
 | Box/Runtime/node/deployment baseline | Historical evidence; current Box re-certification remains in progress |
-| Sources, builds, artifacts, developer workflows | In progress; P0 profile/preview/import completion remains unavailable |
+| Sources, builds, artifacts, developer workflows | In progress; PR lifecycle projection is durable, while owner handoff, interfaces, monorepos, and import completion remain unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v11/Run v19 descriptor-bound composite failure routing, Run v20 typed Variable Aggregation, Run v21 typed List Operator execution, bounded owner-evidence correlations, and authorized run diagnostics/statistics |

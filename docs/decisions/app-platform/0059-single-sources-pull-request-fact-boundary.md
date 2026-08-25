@@ -59,3 +59,7 @@ This decision certifies only the Sources producer boundary. Developer Workflows
 still needs an idempotent consumer/projection, persisted Preview lifecycle, and
 explicit Projects, Artifacts, Workloads, Edge, and Operations owner handoffs
 before pull-request Previews are available.
+
+Follow-up decision [0061](0061-single-developer-preview-projection-authority.md)
+implements the consumer projection and persisted lifecycle while leaving every
+resource-owner handoff and availability gate open.

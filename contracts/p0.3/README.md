@@ -28,5 +28,18 @@ Migration `156` extends the single `source_webhook_inbox`; C3 creates no second
 Inbox, Outbox, relay, retry rail, or worker. The contract contains no provider
 credential, checkout path, source revision, Preview aggregate, Environment
 mutation, BuildRun, Workload, Route, Operation, cleanup worker, timer, or
-scheduler authority. Developer Workflows fact consumption, Preview state
-persistence, and owner handoffs remain later P0.3 slices.
+scheduler authority.
+
+Component-only `P0.3-C4` production-composes one Developer Workflows projector
+inside the existing Outbox Relay. Migration `157` persists one
+policy-revision-bound Preview lifecycle row plus immutable consumer decision
+receipts. New Previews select policy by the committed fact's event time;
+subsequent facts retain that exact authority. Receipt replay, digest drift,
+provider-time/content ordering, aggregate CAS, process restart, and atomic
+state-plus-receipt persistence are closed without another Inbox, queue, retry
+rail, or worker.
+
+C4 still creates no Environment, BuildRun, Workload, Deployment, Route,
+Operation, cleanup timer, scheduler, or public interface. Explicit
+Projects/Artifacts/Workloads/Edge/Operations owner composition and handoff
+remain later P0.3 slices, so pull-request Previews remain unavailable.

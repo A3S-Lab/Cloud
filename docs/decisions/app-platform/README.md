@@ -65,6 +65,7 @@ AI application platform parity manifest.
 | [0058](0058-terminal-connector-attempt-resolution.md) | Close expired Connector dispatches with an exact indeterminate resolution |
 | [0059](0059-single-sources-pull-request-fact-boundary.md) | Publish exact Subscription-bound pull-request changes through the single Sources Inbox and shared Outbox |
 | [0060](0060-exact-composite-profile-and-evidence-authority.md) | Bind composite semantic profiles and evidence changes to exact immutable runtime authority |
+| [0061](0061-single-developer-preview-projection-authority.md) | Project pull-request Preview lifecycle through one Developer Workflows consumer authority |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding
