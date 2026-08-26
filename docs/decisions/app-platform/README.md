@@ -72,6 +72,7 @@ AI application platform parity manifest.
 | [0065](0065-single-accepted-workload-profile-production-compilation.md) | Compose one exact accepted workload-profile compilation path from the existing owner ACLs |
 | [0066](0066-single-build-plan-detection-production-composition.md) | Compose one closed BuildPlan detection path from the fixed detector interface set |
 | [0067](0067-single-owner-authorized-build-plan-acceptance-composition.md) | Compose one owner-authorized BuildPlan acceptance path through existing Identity, Projects, Sources, and persistence authorities |
+| [0068](0068-single-owner-authorized-workload-profile-acceptance-composition.md) | Compose workload-profile acceptance through the shared owner authorization port and existing revision authority |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

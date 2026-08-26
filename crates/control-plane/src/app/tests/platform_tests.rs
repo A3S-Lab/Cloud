@@ -554,6 +554,33 @@ fn build_plan_acceptance_has_one_owner_authorized_production_composition_path() 
 }
 
 #[test]
+fn workload_profile_acceptance_has_one_shared_owner_authorized_production_composition_path() {
+    let composition = include_str!("../../app.rs");
+
+    assert_eq!(
+        composition
+            .matches("AcceptWorkloadProfileHandler::new(")
+            .count(),
+        1,
+        "Developer Workflows workload-profile acceptance must be composed exactly once"
+    );
+    assert_eq!(
+        composition
+            .matches("Arc::clone(&developer_workflow_authorization)")
+            .count(),
+        2,
+        "BuildPlan and workload-profile acceptance must share the one authorization port instance"
+    );
+    assert_eq!(
+        composition
+            .matches("crate::modules::developer_workflows::AcceptWorkloadProfile, _")
+            .count(),
+        1,
+        "the canonical workload-profile acceptance command must be registered once on the existing CQRS bus"
+    );
+}
+
+#[test]
 fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() {
     let composition = include_str!("../../app.rs");
     let adapters = include_str!("../postgres_adapters.rs");

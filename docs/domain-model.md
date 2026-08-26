@@ -503,8 +503,24 @@ adapter combines that owner fact with the deterministic exact accepted
 BuildPlan loaded through the local repository, validates the complete binding,
 and returns the existing consumer-owned view. It imports no Artifacts Domain or
 Infrastructure model and creates no persistence, event, relay, queue, worker,
-Operation, or lifecycle. Production composition and every owner lifecycle write
-remain unavailable.
+Operation, or lifecycle.
+
+`P0.2-C4` production-composes one internal exact accepted-revision compilation
+query. It loads the accepted BuildPlan and immutable workload-profile revision
+only through local repository interfaces, verifies their exact identity and
+relationship, and traverses the sole Artifacts, Workloads, and Executions
+anti-corruption adapters. The result retains logical profile, revision, and
+revision-number causation but creates no owner state.
+
+`P0.2-C5` production-composes the existing authorization-first acceptance
+command. The composition root constructs one
+`Arc<dyn IDeveloperWorkflowAuthorizationPort>` shared with BuildPlan acceptance,
+so both commands reuse the same Identity evaluator and exact Projects
+Environment boundary. The command still owns only local ports and delegates the
+only revision/idempotency/audit/Outbox write to migration `147`'s existing
+repository transaction. No second authorization, persistence, event-delivery,
+or orchestration mechanism exists.
+
 Developer Workflows does not create BuildRuns, Workloads, Routes, Executions,
 or Automations, or evaluate timers.
 

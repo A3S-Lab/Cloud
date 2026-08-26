@@ -1063,7 +1063,7 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
 }
 
 #[test]
-fn developer_workflows_build_plan_acceptance_reuses_owner_authorization_interfaces() {
+fn developer_workflows_acceptance_reuses_owner_authorization_interfaces() {
     let adapter_path = "developer_workflows/infrastructure/authorization.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))
         .expect("read Developer Workflows authorization adapter");
@@ -1079,7 +1079,7 @@ fn developer_workflows_build_plan_acceptance_reuses_owner_authorization_interfac
     ] {
         assert!(
             compact.contains(required),
-            "BuildPlan acceptance lost its owner interface boundary {required}"
+            "Developer Workflows acceptance lost its owner interface boundary {required}"
         );
     }
     for forbidden in [
@@ -1095,26 +1095,32 @@ fn developer_workflows_build_plan_acceptance_reuses_owner_authorization_interfac
     ] {
         assert!(
             !production.contains(forbidden),
-            "BuildPlan authorization adapter introduced a concrete or duplicate mechanism {forbidden}"
+            "Developer Workflows authorization adapter introduced a concrete or duplicate mechanism {forbidden}"
         );
     }
 
-    let acceptance = std::fs::read_to_string(
-        module_root().join("developer_workflows/application/acceptance.rs"),
-    )
-    .expect("read BuildPlan acceptance handler");
-    let production_acceptance = production_source(&acceptance);
-    for forbidden in [
-        "crate::modules::identity",
-        "crate::modules::projects",
-        "crate::modules::sources",
-        "ResourceAccessEvaluator",
-        "Postgres",
+    for (label, relative) in [
+        ("BuildPlan", "developer_workflows/application/acceptance.rs"),
+        (
+            "workload profile",
+            "developer_workflows/application/workload_profile_acceptance.rs",
+        ),
     ] {
-        assert!(
-            !production_acceptance.contains(forbidden),
-            "BuildPlan Application handler imported foreign owner policy or infrastructure {forbidden}"
-        );
+        let acceptance = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {label} acceptance handler: {error}"));
+        let production_acceptance = production_source(&acceptance);
+        for forbidden in [
+            "crate::modules::identity",
+            "crate::modules::projects",
+            "crate::modules::sources",
+            "ResourceAccessEvaluator",
+            "Postgres",
+        ] {
+            assert!(
+                !production_acceptance.contains(forbidden),
+                "{label} Application handler imported foreign owner policy or infrastructure {forbidden}"
+            );
+        }
     }
 }
 

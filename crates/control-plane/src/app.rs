@@ -75,10 +75,11 @@ use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
 use crate::modules::developer_workflows::{
-    AcceptBuildPlanHandler, ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector,
-    BuildPlanDetectionService, CompileAcceptedWorkloadProfileHandler,
+    AcceptBuildPlanHandler, AcceptWorkloadProfileHandler, ArtifactsWorkloadBuildOutcomeAdapter,
+    AssetAclBuildPlanDetector, BuildPlanDetectionService, CompileAcceptedWorkloadProfileHandler,
     DetectBuildPlanProposalsHandler, DockerfileBuildPlanDetector,
-    ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository, IPreviewEnvironmentPort,
+    ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
+    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
     IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
     IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ProjectsPreviewEnvironmentAdapter,
@@ -2056,16 +2057,23 @@ fn build_management_application_with_health(
         Arc::clone(&agents),
         Arc::clone(&workflow_runs),
     ));
+    let developer_workflow_authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort> =
+        Arc::new(IdentityProjectsDeveloperWorkflowAuthorizationAdapter::new(
+            Arc::clone(&memberships),
+            Arc::clone(&resource_grants),
+            Arc::clone(&environments),
+        ));
     let accept_developer_build_plans = AcceptBuildPlanHandler::new(
         Arc::clone(&developer_workflow_build_plans),
         Arc::new(RepositoryBuildPlanSourceRevisionPort::new(Arc::clone(
             &sources,
         ))),
-        Arc::new(IdentityProjectsDeveloperWorkflowAuthorizationAdapter::new(
-            Arc::clone(&memberships),
-            Arc::clone(&resource_grants),
-            Arc::clone(&environments),
-        )),
+        Arc::clone(&developer_workflow_authorization),
+    );
+    let accept_developer_workload_profiles = AcceptWorkloadProfileHandler::new(
+        Arc::clone(&developer_workload_profiles),
+        Arc::clone(&developer_workflow_build_plans),
+        Arc::clone(&developer_workflow_authorization),
     );
     let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(Arc::new(
         BuildPlanDetectionService::new(vec![
@@ -2917,6 +2925,9 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::developer_workflows::AcceptBuildPlan, _>(
                     accept_developer_build_plans,
+                )
+                .command_handler::<crate::modules::developer_workflows::AcceptWorkloadProfile, _>(
+                    accept_developer_workload_profiles,
                 )
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(
