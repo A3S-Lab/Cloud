@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.67.0" src="https://img.shields.io/badge/REST_contract-1.67.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.68.0" src="https://img.shields.io/badge/REST_contract-1.68.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -247,7 +247,7 @@ capability.
 | Sources, builds, artifacts, developer workflows | In progress; PR lifecycle, ordinary Projects Environment, ordinary Sources SourceRevision, and Artifacts build-admission/retirement handoffs are durable component foundations. Workload/route/operation and Environment cleanup handoffs, interfaces, monorepos, and import completion remain unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
-| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, and Run v24 exact AgentRelease dispatch with restart-safe adoption, cancellation, provider evidence, and bounded owner correlations |
+| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
 | AI Applications, Files/Knowledge, Automations | Component foundations in progress; complete products unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |
@@ -366,7 +366,7 @@ creating their own control planes:
    Flow-owned, reverse-order cancellation compensation for accepted exact
    Connector effects, including a distinct cleanup response step when
    cancellation preempts ordinary typed-response materialization. Agent-bearing
-   Run admission now emits Run v24 for exact `agent.classic` or `agent.release`
+   Run admission emits Run v24 for exact `agent.classic` or `agent.release`
    steps bound to one immutable `AgentRelease` and `agent.execute`. The
    Agents-owned application port creates or adopts one dedicated conversation
    and Agent execution, verifies the published artifact digest, links the child
@@ -375,7 +375,13 @@ creating their own control planes:
    cancelled projections retain the exact Agent conversation, execution, and
    Operation URNs; successful output also pins the immutable provider profile
    and provider-run identity. Migration `161` admits the Agent projection kind,
-   and runtime build `a3s-cloud-workflows@26` keeps `@1` through `@25` replayable.
+   Plan v12 and Run v25 additionally admit one exact descriptor-owned `error`
+   output. Dispatch rejection, terminal execution failure, and terminal child
+   cancellation become redacted `cloud.workflow.step-failure.v9` values on that
+   ordinary DAG edge; the Agent source projection remains failed and retains
+   its exact child evidence. Migration `163` admits only this failed Agent
+   selected-handle shape. Runtime build `a3s-cloud-workflows@27` keeps `@1`
+   through `@26` replayable.
    This is a component-only backend capability; public Agent node availability
    remains closed. Composite Run admission binds each
    `workflow.iteration` or `workflow.loop` descriptor to the matching immutable
@@ -434,7 +440,7 @@ creating their own control planes:
     that fixed order and returns `result`, optional `first_record`, and
     optional `last_record`. Constraint-only migration `151` widens only the
     existing payload-schema registry. The maintained client enumerates Plan
-    v5-v11, failure v2-v8, and both exact local-transform configuration schemas.
+    v5-v12, failure v2-v9, and both exact local-transform configuration schemas.
     Verified terminal finite Execution projections
     now retain exact child Execution and Operation URNs, while received
     Connector observations retain exact attempt URNs in the existing bounded,
@@ -445,10 +451,11 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.67.0` is the current contract. It
-    admits the exact `cloud.workflow.policy.v4` cancellation-compensation
-    policy value through OpenAPI and the maintained TypeScript client without
-    adding a route or response field. It retains
+    copied evidence bodies. REST/OpenAPI `1.68.0` is the current contract. It
+    enumerates Plan v12/compiler v12, `cloud.workflow.step-failure.v9`, and the
+    three closed Agent failure classifications through OpenAPI and the maintained
+    TypeScript client without adding a route or response field. It retains
+    `1.67.0`'s exact `cloud.workflow.policy.v4` cancellation-compensation policy,
     `1.66.0`'s bounded unresolved Connector-attempt reads and exact idempotent
     operator conclusion that closes an expired dispatch only as body-free
     `indeterminate` evidence, plus `1.65.0`'s exact Connector revision
@@ -496,7 +503,9 @@ creating their own control planes:
     Plan order during Flow-owned cancellation and close the accepted-effect /
     typed-response race with a distinct stable cleanup step. Run v24 adds exact
     Agent child dispatch, restart adoption, terminal semantic output, provider
-    evidence, and cancellation cleanup without changing the public API. Public
+    evidence, and cancellation cleanup. Plan v12/Run v25 add only the exact
+    descriptor-bound Agent error branch and redacted failure v9 interpretation,
+    without adding a public route. Public
     business-service and Agent node availability, MCP/model/Tool dispatch,
     broader provider conformance and revocation, general or multi-provider
     compensation, and later `W0` gates remain open.

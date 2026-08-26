@@ -6,7 +6,8 @@ use crate::modules::workflow::test_support::{
     application_variable_workflow_run_input, application_workflow_run_input,
     cancellation_compensating_connector_workflow_run_input, connector_workflow_run_input,
     connector_workflow_run_input_v5, connector_workflow_run_input_v6,
-    human_decision_workflow_run_input, routed_application_answer_and_variable_workflow_run_input,
+    human_decision_workflow_run_input, routed_agent_workflow_run_input,
+    routed_application_answer_and_variable_workflow_run_input,
     routed_application_answer_workflow_run_input,
     routed_application_frame_answer_workflow_run_input,
     routed_application_variable_workflow_run_input, routed_composite_workflow_run_input,
@@ -14,6 +15,30 @@ use crate::modules::workflow::test_support::{
     typed_variable_workflow_run_input, workflow_run_input, TEST_AGENT_STEP_ID, TEST_ANSWER_STEP_ID,
     TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v25_agent_failure_routing_is_exact_and_preserves_v24_replay() {
+    let input = routed_agent_workflow_run_input().expect("valid routed Agent WorkflowRun input");
+    assert_eq!(input.plan.schema, WORKFLOW_PLAN_SCHEMA_V12);
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V25);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V25
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V25);
+    input.validate().expect("valid v25 Agent failure input");
+
+    let mut downgraded = input;
+    downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V24.into();
+    downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24.into();
+    downgraded.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V24.into();
+    assert!(downgraded.validate().is_err());
+
+    agent_workflow_run_input()
+        .expect("historic v24 Agent input remains replayable")
+        .validate()
+        .expect("valid historic v24 Agent replay");
+}
 
 #[test]
 fn v24_agent_dispatch_is_exact_and_version_fenced() {

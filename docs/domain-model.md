@@ -4201,8 +4201,14 @@ adopts the dedicated conversation and Agent execution, while Flow retains the
 exact child Operation and terminal resume authority. Successful output includes
 the immutable provider profile/run identity, and completed or cancelled step
 evidence retains conversation, Agent execution, and Operation URNs. Runtime
-build `a3s-cloud-workflows@26` retains `@1` through `@25`, and migration `161`
-widens only the existing step-kind constraint for the Agent projection. Migration `122` adds nullable default-output evidence to
+build `a3s-cloud-workflows@26` retained `@1` through `@25`, and migration `161`
+widens only the existing step-kind constraint for the Agent projection. An exact
+descriptor-owned Agent `error` output emits Plan v12/Run v25. Dispatch rejection,
+terminal execution failure, and terminal child cancellation materialize one of
+three redacted `cloud.workflow.step-failure.v9` classifications; the source
+projection remains failed and preserves its exact child evidence. Current build
+`a3s-cloud-workflows@27` retains `@1` through `@26`, and migration `163` widens
+only the existing failed-Agent selected-handle constraint. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

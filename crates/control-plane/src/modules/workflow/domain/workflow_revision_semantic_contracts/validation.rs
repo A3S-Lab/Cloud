@@ -47,6 +47,22 @@ fn is_exact_finite_execution_descriptor(descriptor: &WorkflowStepDescriptorSpec)
 }
 
 fn is_exact_agent_descriptor(descriptor: &WorkflowStepDescriptorSpec) -> bool {
+    let exact_failure = (descriptor.failure.error_output.is_none()
+        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !descriptor.failure.failure_branch)
+        || descriptor
+            .failure
+            .error_output
+            .as_ref()
+            .is_some_and(|output| {
+                output.name == "error"
+                    && output.value_type == WorkflowDataType::Object
+                    && output.cardinality == WorkflowStepPortCardinality::Single
+                    && output.required
+                    && !output.dynamic
+                    && descriptor.failure.fallback == WorkflowStepFallbackMode::FailureBranch
+                    && descriptor.failure.failure_branch
+            });
     matches!(descriptor.id.as_str(), "agent.classic" | "agent.release")
         && descriptor.semantic_profile == descriptor.id
         && descriptor.owner == WorkflowStepOwner::Agents
@@ -55,11 +71,9 @@ fn is_exact_agent_descriptor(descriptor: &WorkflowStepDescriptorSpec) -> bool {
         && descriptor.required_bindings == [WorkflowStepBindingKind::CapabilityReference]
         && descriptor.allowed_capability_types == [CapabilityType::AgentRelease]
         && descriptor.default_policy_digest.is_none()
-        && descriptor.failure.error_output.is_none()
         && descriptor.failure.retry_classification
             == WorkflowStepRetryClassification::OwnerClassified
-        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
-        && !descriptor.failure.failure_branch
+        && exact_failure
 }
 
 pub(super) fn is_exact_agent_release_capability(capability: Option<&CapabilityReference>) -> bool {
@@ -352,5 +366,93 @@ pub(super) fn validate_default_material(
         (false, Some(_)) => {
             Err("Workflow variable defaults are present without digest-backed declarations".into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::workflow::domain::{
+        WorkflowStepDescriptorAdmission, WorkflowStepPort, WorkflowStepPresentationSpec,
+    };
+
+    fn digest(character: char) -> Sha256Digest {
+        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
+    }
+
+    fn port(name: &str, value_type: WorkflowDataType) -> WorkflowStepPort {
+        WorkflowStepPort {
+            name: name.into(),
+            value_type,
+            cardinality: WorkflowStepPortCardinality::Single,
+            required: true,
+            dynamic: false,
+        }
+    }
+
+    fn exact_agent_descriptor() -> WorkflowStepDescriptorSpec {
+        WorkflowStepDescriptorSpec {
+            id: "agent.release".into(),
+            revision: "1.0.0".into(),
+            owner: WorkflowStepOwner::Agents,
+            kind: Some(WorkflowStepKind::Agent),
+            semantic_profile: "agent.release".into(),
+            execution_class: WorkflowStepExecutionClass::OwningApplicationPort,
+            input_ports: vec![port("request", WorkflowDataType::Object)],
+            output_ports: vec![port("result", WorkflowDataType::Object)],
+            configuration_schema_digest: digest('a'),
+            default_policy_digest: None,
+            required_bindings: vec![WorkflowStepBindingKind::CapabilityReference],
+            allowed_capability_types: vec![CapabilityType::AgentRelease],
+            failure: WorkflowStepFailureContract {
+                error_output: None,
+                retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+                fallback: WorkflowStepFallbackMode::Unsupported,
+                failure_branch: false,
+            },
+            minimum_compiler_schema_version: 2,
+            maximum_compiler_schema_version: 2,
+            admission: WorkflowStepDescriptorAdmission::Admitted,
+            unavailable_reason: None,
+            presentation: WorkflowStepPresentationSpec {
+                label: "Agent".into(),
+                summary: "Executes one exact Agent release".into(),
+                icon_key: "agent.release".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn exact_agent_dispatch_admits_only_legacy_unsupported_or_typed_object_failure_branch() {
+        let legacy = exact_agent_descriptor();
+        assert!(descriptor_has_runtime_dispatch(&legacy));
+
+        let mut routed = legacy.clone();
+        routed.failure.error_output = Some(port("error", WorkflowDataType::Object));
+        routed.failure.fallback = WorkflowStepFallbackMode::FailureBranch;
+        routed.failure.failure_branch = true;
+        assert!(descriptor_has_runtime_dispatch(&routed));
+
+        let mut wrong_name = routed.clone();
+        wrong_name
+            .failure
+            .error_output
+            .as_mut()
+            .expect("error port")
+            .name = "failed".into();
+        assert!(!descriptor_has_runtime_dispatch(&wrong_name));
+
+        let mut wrong_type = routed.clone();
+        wrong_type
+            .failure
+            .error_output
+            .as_mut()
+            .expect("error port")
+            .value_type = WorkflowDataType::String;
+        assert!(!descriptor_has_runtime_dispatch(&wrong_type));
+
+        let mut wrong_fallback = routed;
+        wrong_fallback.failure.fallback = WorkflowStepFallbackMode::Unsupported;
+        assert!(!descriptor_has_runtime_dispatch(&wrong_fallback));
     }
 }

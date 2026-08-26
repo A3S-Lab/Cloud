@@ -17,7 +17,7 @@ use crate::modules::workflow::domain::{
     WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
     WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
     WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24, WORKFLOW_RUN_INPUT_SCHEMA_V25,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
@@ -502,13 +502,17 @@ pub fn project_workflow_run_record(
                 } else {
                     None
                 };
+                let selected_handle = failure
+                    .as_ref()
+                    .and_then(|_| completed.get(&projection.step_id))
+                    .and_then(|result| result.selected_handle.clone());
                 (
                     step_status,
                     u32::try_from(metadata.step_attempt).map_err(|_| {
                         "Workflow Agent attempt exceeds projection bounds".to_owned()
                     })?,
                     result,
-                    None,
+                    selected_handle,
                     failure,
                     sequence,
                     at,
@@ -957,7 +961,9 @@ fn input_projects_cancellation_connector_work(
 ) -> bool {
     if !matches!(
         input.schema.as_str(),
-        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+        WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
+            | WORKFLOW_RUN_INPUT_SCHEMA_V25
     ) || resolved.plan.kind != WorkflowStepKind::Service
     {
         return false;
@@ -982,7 +988,9 @@ fn connector_response_projection_step<'a>(
     let ordinary_step = snapshot.steps.get(&ordinary_step_id);
     let may_use_cancellation_cleanup = matches!(
         input.schema.as_str(),
-        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+        WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
+            | WORKFLOW_RUN_INPUT_SCHEMA_V25
     ) && snapshot.cancellation.is_some()
         && resolved
             .policy
@@ -1241,6 +1249,7 @@ pub(super) fn completed_workflow_steps(
                     match agent_result(
                         &snapshot.run_id,
                         &metadata.flow_hook_id(),
+                        input,
                         resolved,
                         &metadata,
                         payload,
@@ -1250,7 +1259,10 @@ pub(super) fn completed_workflow_steps(
                         AgentResolution::Succeeded(result) => {
                             completed.insert(result.step_id.clone(), *result);
                         }
-                        AgentResolution::Failed(error) => {
+                        AgentResolution::Failed { error, routed } => {
+                            if let Some(result) = routed {
+                                completed.insert(result.step_id.clone(), *result);
+                            }
                             agent_failures.insert(resolved.plan.id.clone(), error);
                         }
                     }

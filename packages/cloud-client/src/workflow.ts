@@ -230,6 +230,9 @@ export type WorkflowStepFailureClassification =
   | 'dispatch_rejected'
   | 'execution_failed'
   | 'execution_cancelled'
+  | 'agent_dispatch_rejected'
+  | 'agent_execution_failed'
+  | 'agent_execution_cancelled'
   | 'provider_rejected'
   | 'provider_attempts_exhausted'
   | 'provider_indeterminate'
@@ -272,7 +275,8 @@ export interface WorkflowStepFailureOutput {
     | 'cloud.workflow.step-failure.v5'
     | 'cloud.workflow.step-failure.v6'
     | 'cloud.workflow.step-failure.v7'
-    | 'cloud.workflow.step-failure.v8';
+    | 'cloud.workflow.step-failure.v8'
+    | 'cloud.workflow.step-failure.v9';
   stepId: string;
   classification: WorkflowStepFailureClassification;
   message: string;
@@ -312,7 +316,8 @@ export interface WorkflowPlan {
     | 'cloud.workflow.plan.v8'
     | 'cloud.workflow.plan.v9'
     | 'cloud.workflow.plan.v10'
-    | 'cloud.workflow.plan.v11';
+    | 'cloud.workflow.plan.v11'
+    | 'cloud.workflow.plan.v12';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
@@ -324,7 +329,8 @@ export interface WorkflowPlan {
     | 'cloud.workflow.plan-compiler.v8'
     | 'cloud.workflow.plan-compiler.v9'
     | 'cloud.workflow.plan-compiler.v10'
-    | 'cloud.workflow.plan-compiler.v11';
+    | 'cloud.workflow.plan-compiler.v11'
+    | 'cloud.workflow.plan-compiler.v12';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
@@ -357,7 +363,8 @@ export interface WorkflowPlanRevision {
     | 'cloud.workflow.plan.v8'
     | 'cloud.workflow.plan.v9'
     | 'cloud.workflow.plan.v10'
-    | 'cloud.workflow.plan.v11';
+    | 'cloud.workflow.plan.v11'
+    | 'cloud.workflow.plan.v12';
   compilerRevision:
     | 'cloud.workflow.plan-compiler.v1'
     | 'cloud.workflow.plan-compiler.v2'
@@ -369,7 +376,8 @@ export interface WorkflowPlanRevision {
     | 'cloud.workflow.plan-compiler.v8'
     | 'cloud.workflow.plan-compiler.v9'
     | 'cloud.workflow.plan-compiler.v10'
-    | 'cloud.workflow.plan-compiler.v11';
+    | 'cloud.workflow.plan-compiler.v11'
+    | 'cloud.workflow.plan-compiler.v12';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;

@@ -443,7 +443,10 @@ descriptor-bound Iteration/Loop failure routes are also implemented.
 The component-only Agent backend now admits only exact `agent.classic` and
 `agent.release` descriptors with an immutable AgentRelease and `agent.execute`.
 WorkflowRun v24 owns the Hook/child correlation while Agents owns conversation,
-execution, provider events, restart adoption, and cancellation; public Agent
+execution, provider events, restart adoption, and cancellation. Plan v12/Run
+v25 additionally routes dispatch rejection, terminal failure, and terminal
+cancellation through one exact descriptor-owned `error` output using redacted
+failure-v9 data; public Agent
 node availability remains closed. Business-service and MCP/model/Tool semantics
 remain open and fail closed.
 Existing `cloud.workflow.plan.v1` histories are
@@ -503,7 +506,7 @@ Webhook Trigger) and does not count the category header as a separate node.
 | Webhook Trigger | invocation-only / `automation.webhook` | `AUT0.2` |
 | LLM | `model` / `model.llm` | `W0.4` plus `I0.2` |
 | Knowledge Retrieval | `service` / `knowledge.retrieve` | `K0.4` plus `W0.4` |
-| Agent | `agent` with `agent.classic` and `agent.release` profiles | Component-only Run v24 backend implemented; public `W0.4` availability still requires the selected provider, conformance, revocation, and recovery gates |
+| Agent | `agent` with `agent.classic` and `agent.release` profiles | Component-only Run v24 lifecycle and Plan v12/Run v25 failure routing implemented; public `W0.4` availability still requires the selected provider, conformance, revocation, and recovery gates |
 | Question Classifier | `model` / `model.question-classifier` | `W0.4` plus `I0.2` |
 | If-Else | `branch` / `workflow.if-else` | `W0.3` |
 | Code | `execution` / `execution.code` | `W0.4` plus Executions, A3S Code, Runtime, and Box |

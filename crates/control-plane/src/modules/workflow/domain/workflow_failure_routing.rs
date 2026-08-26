@@ -110,6 +110,20 @@ pub(crate) fn has_connector_failure_route(workflow: &WorkflowSpec) -> bool {
     })
 }
 
+pub(crate) fn has_agent_failure_route(workflow: &WorkflowSpec) -> bool {
+    let steps = workflow
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    workflow.edges.iter().any(|edge| {
+        edge.source_handle.is_some()
+            && steps
+                .get(edge.source.as_str())
+                .is_some_and(|step| step.kind == WorkflowStepKind::Agent)
+    })
+}
+
 pub(crate) fn has_transform_failure_route(workflow: &WorkflowSpec) -> bool {
     let steps = workflow
         .steps
@@ -198,6 +212,7 @@ fn supports_failure_route(
     step.kind == WorkflowStepKind::Transform
         || step.kind == WorkflowStepKind::Branch
         || step.kind == WorkflowStepKind::Execution
+        || step.kind == WorkflowStepKind::Agent
         || is_connector_step(step)
         || (step.kind == WorkflowStepKind::Service
             && step.capability.is_none()
@@ -333,6 +348,20 @@ mod tests {
             ),
             Ok(true)
         );
+
+        let agent_workflow = routed_workflow(WorkflowStepKind::Agent);
+        assert_eq!(
+            validate_descriptor_failure_routes(
+                &agent_workflow,
+                &execution_failures,
+                &no_application_steps,
+                &no_application_steps,
+                &no_workflow_output_steps,
+                &no_application_steps,
+            ),
+            Ok(true)
+        );
+        assert!(has_agent_failure_route(&agent_workflow));
 
         let transform_workflow = routed_workflow(WorkflowStepKind::Transform);
         assert_eq!(

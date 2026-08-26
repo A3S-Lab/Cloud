@@ -11,7 +11,15 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.67.0`.
+The current semantic contract version is `1.68.0`.
+
+Contract `1.68.0` extends the existing closed Workflow response enums with
+Plan schema/compiler v12, `cloud.workflow.step-failure.v9`, and
+`agent_dispatch_rejected`, `agent_execution_failed`, and
+`agent_execution_cancelled`. These values expose descriptor-bound Agent failure
+routing through the existing Plan and step-projection fields. Failure payloads
+contain only a closed classification and fixed redacted message. No route,
+request property, response property, or authorization boundary is added.
 
 Contract `1.67.0` adds `cloud.workflow.policy.v4` to the closed Workflow policy
 schema enumeration and maintained TypeScript client. Version 4 binds one exact
@@ -92,6 +100,8 @@ WorkflowRun responses already expose the bounded
 closed, canonical URN families:
 
 - `urn:a3s:cloud:connectors:attempt:<uuid>`;
+- `urn:a3s:cloud:agents:conversation:<uuid>`;
+- `urn:a3s:cloud:agents:execution:<uuid>`;
 - `urn:a3s:cloud:executions:execution:<uuid>`;
 - `urn:a3s:cloud:forms:submission:<uuid>`;
 - `urn:a3s:cloud:operations:operation:<uuid>`;
@@ -123,7 +133,9 @@ Operator payload semantics, `1.63.0` closes the existing core Workflow success
 payload schemas, `1.64.0` closes the remaining Ontology and HumanTask success
 payload schemas, `1.65.0` adds exact Connector revision revocation plus closed
 Connector success payloads, and `1.66.0` adds the safe terminal-indeterminate
-attempt recovery surface described above.
+attempt recovery surface described above. Contract `1.67.0` adds exact
+Connector cancellation-compensation policy semantics, and `1.68.0` adds the
+closed Agent failure-route values described above.
 
 ## Contract completeness
 

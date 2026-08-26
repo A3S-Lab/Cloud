@@ -1,9 +1,10 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    has_application_answer_failure_route, has_application_variable_failure_route,
-    has_branch_failure_route, has_composite_failure_route, has_workflow_output_failure_route,
-    validate_descriptor_failure_routes, WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec,
-    WorkflowStepBindingKind, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBindings,
+    has_agent_failure_route, has_application_answer_failure_route,
+    has_application_variable_failure_route, has_branch_failure_route, has_composite_failure_route,
+    has_workflow_output_failure_route, validate_descriptor_failure_routes,
+    WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind,
+    WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBindings,
     WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass, WorkflowStepFallbackMode,
     WorkflowStepKind, WorkflowStepOwner, WorkflowVariableContract, WorkflowVariableDefaults,
     WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
@@ -657,8 +658,14 @@ impl WorkflowRevisionSemanticContracts {
             return Err("Workflow plan semantic contract authority drifted".into());
         }
         let workflow = plan.workflow_spec()?;
+        if has_agent_failure_route(&workflow) && plan.schema != super::WORKFLOW_PLAN_SCHEMA_V12 {
+            return Err("Workflow descriptor-bound Agent failure routes require Plan v12".into());
+        }
         if self.has_composite_failure_route(&workflow)
-            && plan.schema != super::WORKFLOW_PLAN_SCHEMA_V11
+            && !matches!(
+                plan.schema.as_str(),
+                super::WORKFLOW_PLAN_SCHEMA_V11 | super::WORKFLOW_PLAN_SCHEMA_V12
+            )
         {
             return Err(
                 "Workflow descriptor-bound composite failure routes require Plan v11".into(),
@@ -667,7 +674,9 @@ impl WorkflowRevisionSemanticContracts {
         if self.has_branch_failure_route(&workflow)
             && !matches!(
                 plan.schema.as_str(),
-                super::WORKFLOW_PLAN_SCHEMA_V10 | super::WORKFLOW_PLAN_SCHEMA_V11
+                super::WORKFLOW_PLAN_SCHEMA_V10
+                    | super::WORKFLOW_PLAN_SCHEMA_V11
+                    | super::WORKFLOW_PLAN_SCHEMA_V12
             )
         {
             return Err("Workflow descriptor-bound Branch failure routes require Plan v10".into());
@@ -722,6 +731,9 @@ impl WorkflowRevisionSemanticContracts {
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 super::WORKFLOW_PLAN_SCHEMA_V11
+                    if step.failure.as_ref() == Some(expected_failure)
+                        && step.default_output == expected_default_output => {}
+                super::WORKFLOW_PLAN_SCHEMA_V12
                     if step.failure.as_ref() == Some(expected_failure)
                         && step.default_output == expected_default_output => {}
                 _ => {

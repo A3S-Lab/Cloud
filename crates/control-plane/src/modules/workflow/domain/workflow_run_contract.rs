@@ -1,14 +1,15 @@
 use super::entities::digest_payload_set;
 use super::{
-    descriptor_failure_output, validate_application_runtime_variable_contract,
-    validate_runtime_variable_contract, validate_typed_projection_configurations, CapabilityType,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec,
-    WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep,
-    WorkflowPolicy, WorkflowPolicyMode, WorkflowRunApplicationProjection,
-    WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
-    WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
-    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V10, WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V2,
+    descriptor_failure_output, has_agent_failure_route,
+    validate_application_runtime_variable_contract, validate_runtime_variable_contract,
+    validate_typed_projection_configurations, CapabilityType, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy,
+    WorkflowPolicyMode, WorkflowRunApplicationProjection, WorkflowStepConfiguration,
+    WorkflowStepKind, WorkflowVariableContract, WorkflowVariableDefaults,
+    WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V10,
+    WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V12, WORKFLOW_PLAN_SCHEMA_V2,
     WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
     WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_PLAN_SCHEMA_V7, WORKFLOW_PLAN_SCHEMA_V8,
     WORKFLOW_PLAN_SCHEMA_V9, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
@@ -31,6 +32,7 @@ mod v21;
 mod v22;
 mod v23;
 mod v24;
+mod v25;
 
 pub const WORKFLOW_RUN_INPUT_SCHEMA: &str = "cloud.workflow-run.input.v1";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-runtime.v1";
@@ -106,6 +108,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V23: &str = "23";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V24: &str = "cloud.workflow-run.input.v24";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24: &str = "cloud.workflow-run-runtime.v24";
 pub const WORKFLOW_RUN_FLOW_VERSION_V24: &str = "24";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V25: &str = "cloud.workflow-run.input.v25";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V25: &str = "cloud.workflow-run-runtime.v25";
+pub const WORKFLOW_RUN_FLOW_VERSION_V25: &str = "25";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -274,6 +279,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V22
                 | WORKFLOW_RUN_INPUT_SCHEMA_V23
                 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+                | WORKFLOW_RUN_INPUT_SCHEMA_V25
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -1141,6 +1147,16 @@ impl WorkflowRunInput {
                     regions,
                     application_projection,
                 ) => v24::validate(self, resolved, defaults, regions, application_projection)?,
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V25,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V25,
+                    WORKFLOW_RUN_FLOW_VERSION_V25,
+                    WORKFLOW_PLAN_SCHEMA_V12,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    application_projection,
+                ) => v25::validate(self, resolved, defaults, regions, application_projection)?,
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
@@ -1160,8 +1176,8 @@ impl WorkflowRunInput {
             return Err("WorkflowRun input authority or timeout contract is invalid".into());
         }
         self.plan.validate()?;
+        let workflow = self.plan.workflow_spec()?;
         if let Some(contract) = variable_contract.as_ref() {
-            let workflow = self.plan.workflow_spec()?;
             if let Some(application) = self.application_projection.as_ref().filter(|projection| {
                 matches!(
                     projection.schema.as_str(),
@@ -1222,6 +1238,7 @@ impl WorkflowRunInput {
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
                     | WORKFLOW_RUN_INPUT_SCHEMA_V24
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V25
             ))
             || (!has_list_operator && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V21)
         {
@@ -1238,6 +1255,7 @@ impl WorkflowRunInput {
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
                     | WORKFLOW_RUN_INPUT_SCHEMA_V24
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V25
             ))
             || (!has_variable_aggregate && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V20)
         {
@@ -1268,7 +1286,9 @@ impl WorkflowRunInput {
         if (has_cancellation_compensation
             && !matches!(
                 self.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+                WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V25
             ))
             || (!has_cancellation_compensation && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23)
         {
@@ -1280,8 +1300,18 @@ impl WorkflowRunInput {
         let has_agent = resolved
             .iter()
             .any(|step| step.plan.kind == WorkflowStepKind::Agent);
-        if (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V24) != has_agent {
-            return Err("WorkflowRun Agent semantics require exact runtime generation v24".into());
+        let agent_runtime = matches!(
+            self.schema.as_str(),
+            WORKFLOW_RUN_INPUT_SCHEMA_V24 | WORKFLOW_RUN_INPUT_SCHEMA_V25
+        );
+        if agent_runtime != has_agent {
+            return Err("WorkflowRun Agent semantics require runtime generation v24 or v25".into());
+        }
+        let has_agent_failure_route = has_agent_failure_route(&workflow);
+        if (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V25) != has_agent_failure_route {
+            return Err(
+                "WorkflowRun Agent failure routing requires exact runtime generation v25".into(),
+            );
         }
         let has_connector = resolved.iter().any(|step| {
             step.plan.capability.as_ref().is_some_and(|capability| {
@@ -1342,8 +1372,10 @@ impl WorkflowRunInput {
                     | WorkflowStepKind::HumanDecision
                     | WorkflowStepKind::Execution
                     | WorkflowStepKind::Output
-            ) || (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V24
-                && step.plan.kind == WorkflowStepKind::Agent)
+            ) || (matches!(
+                self.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V24 | WORKFLOW_RUN_INPUT_SCHEMA_V25
+            ) && step.plan.kind == WorkflowStepKind::Agent)
                 || (composite_runtime && step.plan.kind == WorkflowStepKind::Subworkflow)
                 || (connector_runtime_capable
                     && step.plan.kind == WorkflowStepKind::Service

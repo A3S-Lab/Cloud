@@ -12,11 +12,14 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     IWorkflowRunCoordinator, WorkflowAgentChildReferenceMetadata, WorkflowAgentStepOutput,
-    WorkflowRun, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepProjectionStatus,
-    WORKFLOW_RUN_FLOW_NAME,
+    WorkflowRun, WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus,
+    WorkflowStepFailureClassification, WorkflowStepFailureOutput, WorkflowStepProjectionStatus,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
-use crate::modules::workflow::test_support::{agent_workflow_run_input, TEST_AGENT_STEP_ID};
+use crate::modules::workflow::test_support::{
+    agent_workflow_run_input, routed_agent_workflow_run_input, TEST_AGENT_STEP_ID,
+};
 use a3s_cloud_contracts::{AgentProtocolRunIdentityV1, AGENT_PROTOCOL_V1};
 use a3s_flow::{
     FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId, RuntimeCommand, StepInvocation,
@@ -132,6 +135,24 @@ impl FakeWorkflowAgentPort {
                 finished_at,
             ))
             .expect("cancel Workflow Agent execution");
+    }
+
+    async fn finish_failed(&self, reason: &str, finished_at: DateTime<Utc>) {
+        let mut stored = self.execution.lock().await;
+        let execution = stored.as_mut().expect("Workflow Agent execution");
+        let finished_at = canonical_timestamp(finished_at.max(execution.updated_at));
+        if execution.status == AgentExecutionStatus::Pending {
+            execution
+                .start(finished_at)
+                .expect("start Workflow Agent execution");
+        }
+        execution
+            .apply_event(&agent_event(
+                AgentExecutionEventKind::ExecutionFailed,
+                serde_json::json!({"reason": reason}),
+                finished_at,
+            ))
+            .expect("fail Workflow Agent execution");
     }
 
     async fn ensure_request(&self, request: &WorkflowAgentRequest) -> ApplicationResult<()> {
@@ -348,7 +369,19 @@ fn agent_event(
 }
 
 async fn workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
-    let mut input = agent_workflow_run_input().expect("Agent WorkflowRun input");
+    workflow_fixture_with(agent_workflow_run_input().expect("Agent WorkflowRun input")).await
+}
+
+async fn routed_workflow_fixture() -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
+    workflow_fixture_with(
+        routed_agent_workflow_run_input().expect("routed Agent WorkflowRun input"),
+    )
+    .await
+}
+
+async fn workflow_fixture_with(
+    mut input: WorkflowRunInput,
+) -> (FlowEngine, WorkflowRunRecord, DateTime<Utc>) {
     let now = canonical_timestamp(Utc::now());
     input.requested_at = now;
     input.deadline_at = now + chrono::Duration::hours(1);
@@ -557,4 +590,157 @@ async fn permanent_agent_dispatch_rejection_fails_without_a_child_reference() {
         .find(|step| step.step_id == TEST_AGENT_STEP_ID)
         .expect("failed Agent projection");
     assert_eq!(step.status, WorkflowStepProjectionStatus::Failed);
+}
+
+#[tokio::test]
+async fn permanent_agent_dispatch_rejection_follows_the_descriptor_bound_failure_edge() {
+    let (engine, record, now) = routed_workflow_fixture().await;
+    let coordinator = FlowWorkflowRunCoordinator::with_agents(
+        engine.clone(),
+        Arc::new(RejectingWorkflowAgentPort),
+    );
+
+    let completed = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate routed Agent rejection")
+        .expect("completed Agent failure branch projection");
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    assert!(engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("routed Agent WorkflowRun snapshot")
+        .child_operations
+        .is_empty());
+
+    let agent = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_AGENT_STEP_ID)
+        .expect("failed Agent projection");
+    assert_eq!(agent.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(agent.selected_handle.as_deref(), Some("error"));
+    assert!(agent.result.is_none());
+    assert!(agent.evidence_references.is_empty());
+    assert_eq!(agent.error.as_deref(), Some("Agent dispatch was rejected"));
+    assert!(!agent
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("exact Agent release does not exist"));
+
+    let failure = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .and_then(|step| step.result.clone())
+        .and_then(|result| serde_json::from_value::<WorkflowStepFailureOutput>(result).ok())
+        .expect("typed Agent failure branch output");
+    assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9);
+    assert_eq!(
+        failure.classification,
+        WorkflowStepFailureClassification::AgentDispatchRejected
+    );
+    assert_eq!(failure.message, "Agent dispatch was rejected");
+    assert!(failure.details.is_none());
+}
+
+#[tokio::test]
+async fn terminal_agent_failure_follows_the_same_typed_failure_edge() {
+    let (engine, record, now) = routed_workflow_fixture().await;
+    let port = Arc::new(FakeWorkflowAgentPort::queued(engine.clone()));
+    let coordinator = FlowWorkflowRunCoordinator::with_agents(
+        engine,
+        port.clone() as Arc<dyn IWorkflowAgentPort>,
+    );
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("start routed Agent")
+        .expect("waiting routed Agent projection");
+    let finished_at = now + chrono::Duration::seconds(1);
+    port.finish_failed("private provider terminal failure", finished_at)
+        .await;
+
+    let completed = coordinator
+        .reconcile(&waiting, finished_at + chrono::Duration::milliseconds(1))
+        .await
+        .expect("resume failed Agent")
+        .expect("completed Agent failure branch");
+    assert_routed_terminal_agent_failure(
+        &completed,
+        WorkflowStepFailureClassification::AgentExecutionFailed,
+        "Agent execution failed",
+        "private provider terminal failure",
+    );
+}
+
+#[tokio::test]
+async fn terminal_agent_cancellation_follows_the_same_typed_failure_edge() {
+    let (engine, record, now) = routed_workflow_fixture().await;
+    let port = Arc::new(FakeWorkflowAgentPort::queued(engine.clone()));
+    let coordinator = FlowWorkflowRunCoordinator::with_agents(
+        engine,
+        port.clone() as Arc<dyn IWorkflowAgentPort>,
+    );
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("start routed Agent")
+        .expect("waiting routed Agent projection");
+    let finished_at = now + chrono::Duration::seconds(1);
+    port.finish_cancelled(finished_at).await;
+
+    let completed = coordinator
+        .reconcile(&waiting, finished_at + chrono::Duration::milliseconds(1))
+        .await
+        .expect("resume cancelled Agent")
+        .expect("completed Agent cancellation branch");
+    assert_routed_terminal_agent_failure(
+        &completed,
+        WorkflowStepFailureClassification::AgentExecutionCancelled,
+        "Agent execution was cancelled",
+        "child Agent execution was cancelled",
+    );
+}
+
+fn assert_routed_terminal_agent_failure(
+    completed: &WorkflowRunRecord,
+    classification: WorkflowStepFailureClassification,
+    stable_message: &str,
+    private_error: &str,
+) {
+    assert_eq!(completed.run.status, WorkflowRunStatus::Completed);
+    let agent = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == TEST_AGENT_STEP_ID)
+        .expect("failed Agent projection");
+    assert_eq!(agent.status, WorkflowStepProjectionStatus::Failed);
+    assert_eq!(agent.selected_handle.as_deref(), Some("error"));
+    assert_eq!(agent.error.as_deref(), Some(stable_message));
+    assert!(!agent
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains(private_error));
+    assert!(agent.result.is_none());
+    assert_eq!(agent.evidence_references.len(), 3);
+    assert!(agent.evidence_references[0].starts_with("urn:a3s:cloud:agents:conversation:"));
+    assert!(agent.evidence_references[1].starts_with("urn:a3s:cloud:agents:execution:"));
+    assert!(agent.evidence_references[2].starts_with("urn:a3s:cloud:operations:operation:"));
+
+    let failure = completed
+        .steps
+        .iter()
+        .find(|step| step.step_id == "failure_output")
+        .and_then(|step| step.result.clone())
+        .and_then(|result| serde_json::from_value::<WorkflowStepFailureOutput>(result).ok())
+        .expect("typed Agent terminal failure branch output");
+    assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9);
+    assert_eq!(failure.classification, classification);
+    assert_eq!(failure.message, stable_message);
+    assert!(!serde_json::to_string(&failure)
+        .expect("encoded Agent failure")
+        .contains("private"));
 }

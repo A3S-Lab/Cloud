@@ -142,7 +142,10 @@ inspection and descriptor-bound Connector failure routing, are now present. The
 component-only Agent slice is also present: exact `agent.classic` and
 `agent.release` descriptors bind one immutable `AgentRelease` plus
 `agent.execute`, and WorkflowRun v24 delegates conversation, execution,
-provider-event, and cancellation ownership to the Agents application port. The
+provider-event, and cancellation ownership to the Agents application port.
+An exact descriptor-owned `error` output emits Plan v12/Run v25 and maps
+dispatch rejection, terminal execution failure, or terminal cancellation to a
+redacted failure-v9 value on the ordinary DAG. The
 descriptor registry uses
 canonical ACL, exact SemVer identity, typed ports, existing coarse
 step/capability types, owner/execution class, semantic/configuration/default-
@@ -451,7 +454,12 @@ event. Successful output pins provider profile and provider-run evidence;
 completed or cancelled projection retains the Agent conversation, execution,
 and Operation URNs. Parent cancellation requests child cancellation and waits
 for terminal cleanup before closing the WorkflowRun. Migration `161` widens
-only the existing projection-kind constraint for this runtime path. Version 23
+only the existing projection-kind constraint for this runtime path. Plan v12
+and Run v25 bind the exact Agent `error` handle and materialize only
+`agent_dispatch_rejected`, `agent_execution_failed`, or
+`agent_execution_cancelled` as redacted `cloud.workflow.step-failure.v9` data.
+The source projection remains failed, exact child evidence is retained, and
+migration `163` widens only the failed-Agent selected-handle constraint. Version 23
 walks resolved Plan steps in reverse order, materializes a missing typed source
 response under a distinct stable cleanup step, creates purpose-bound Connector
 Hook v4 authority, and reaches `Cancelled` only after every admitted
@@ -560,11 +568,13 @@ typed-response materializer, a distinct stable cleanup step performs the same
 immutable response-object read. It skips an already accepted ordinary target
 effect, rejects indeterminate authority,
 and never calls a provider-side cancellation API. Runtime build
-`a3s-cloud-workflows@26` retains `@1` through `@25` for replay. Any revision
+`a3s-cloud-workflows@27` retains `@1` through `@26` for replay. Any revision
 containing an exact admitted Agent step emits Run v24 before lower composing
-generations are selected. Run v24 preserves v23 compensation, v22 wave, and all
-earlier runtime semantics while adding only the exact Agents-owned child
-lifecycle. Current finite Execution, Agent, Connector, HumanDecision, and
+generations are selected; if that descriptor selects its exact failure edge,
+Plan v12 selects Run v25 instead. Run v24 preserves v23 compensation, v22 wave,
+and all earlier runtime semantics while adding only the exact Agents-owned child
+lifecycle. Run v25 composes the same lifecycle with descriptor-bound Agent
+failure interpretation. Current finite Execution, Agent, Connector, HumanDecision, and
 Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.

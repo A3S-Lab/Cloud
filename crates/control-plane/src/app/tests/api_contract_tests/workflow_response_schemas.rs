@@ -116,6 +116,30 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
         schemas["WorkflowPlan"]["properties"]["steps"]["items"]["$ref"],
         "#/components/schemas/WorkflowPlanStep"
     );
+    assert!(schemas["WorkflowPlan"]["properties"]["schema"]["enum"]
+        .as_array()
+        .is_some_and(|values| values.contains(&json!("cloud.workflow.plan.v12"))));
+    assert!(
+        schemas["WorkflowPlan"]["properties"]["compilerRevision"]["enum"]
+            .as_array()
+            .is_some_and(|values| values.contains(&json!("cloud.workflow.plan-compiler.v12")))
+    );
+    assert!(
+        schemas["WorkflowStepFailureOutput"]["properties"]["schema"]["enum"]
+            .as_array()
+            .is_some_and(|values| values.contains(&json!("cloud.workflow.step-failure.v9")))
+    );
+    for classification in [
+        "agent_dispatch_rejected",
+        "agent_execution_failed",
+        "agent_execution_cancelled",
+    ] {
+        assert!(
+            schemas["WorkflowStepFailureOutput"]["properties"]["classification"]["enum"]
+                .as_array()
+                .is_some_and(|values| values.contains(&json!(classification)))
+        );
+    }
     assert_eq!(
         schemas["WorkflowRun"]["properties"]["steps"]["items"]["$ref"],
         "#/components/schemas/WorkflowStepProjection"

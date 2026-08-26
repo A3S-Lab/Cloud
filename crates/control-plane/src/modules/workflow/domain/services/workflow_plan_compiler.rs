@@ -1,17 +1,18 @@
 use crate::modules::shared_kernel::domain::{PlanRevisionId, PrincipalId, WorkflowGoalId};
 use crate::modules::workflow::domain::{
-    has_connector_failure_route, has_transform_failure_route, OntologyRevision, PlanRevision,
-    WorkflowDefinition, WorkflowGoal, WorkflowGoalContract, WorkflowPlan, WorkflowPlanStep,
-    WorkflowRevision, WorkflowStepBindingKind, WORKFLOW_PLAN_COMPILER_REVISION,
-    WORKFLOW_PLAN_COMPILER_REVISION_V10, WORKFLOW_PLAN_COMPILER_REVISION_V11,
+    has_agent_failure_route, has_connector_failure_route, has_transform_failure_route,
+    OntologyRevision, PlanRevision, WorkflowDefinition, WorkflowGoal, WorkflowGoalContract,
+    WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WorkflowStepBindingKind,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V10,
+    WORKFLOW_PLAN_COMPILER_REVISION_V11, WORKFLOW_PLAN_COMPILER_REVISION_V12,
     WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_COMPILER_REVISION_V3,
     WORKFLOW_PLAN_COMPILER_REVISION_V4, WORKFLOW_PLAN_COMPILER_REVISION_V5,
     WORKFLOW_PLAN_COMPILER_REVISION_V6, WORKFLOW_PLAN_COMPILER_REVISION_V7,
     WORKFLOW_PLAN_COMPILER_REVISION_V8, WORKFLOW_PLAN_COMPILER_REVISION_V9, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V10, WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4, WORKFLOW_PLAN_SCHEMA_V5,
-    WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_PLAN_SCHEMA_V7, WORKFLOW_PLAN_SCHEMA_V8,
-    WORKFLOW_PLAN_SCHEMA_V9,
+    WORKFLOW_PLAN_SCHEMA_V10, WORKFLOW_PLAN_SCHEMA_V11, WORKFLOW_PLAN_SCHEMA_V12,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_SCHEMA_V3, WORKFLOW_PLAN_SCHEMA_V4,
+    WORKFLOW_PLAN_SCHEMA_V5, WORKFLOW_PLAN_SCHEMA_V6, WORKFLOW_PLAN_SCHEMA_V7,
+    WORKFLOW_PLAN_SCHEMA_V8, WORKFLOW_PLAN_SCHEMA_V9,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -27,7 +28,11 @@ pub struct WorkflowPlanCompiler;
 
 impl WorkflowPlanCompiler {
     pub fn compiler_revision(workflow_revision: &WorkflowRevision) -> &'static str {
-        if workflow_revision
+        if workflow_revision.semantic_contracts.is_some()
+            && has_agent_failure_route(workflow_revision.contract.spec())
+        {
+            WORKFLOW_PLAN_COMPILER_REVISION_V12
+        } else if workflow_revision
             .semantic_contracts
             .as_ref()
             .is_some_and(|contracts| {
@@ -143,12 +148,15 @@ impl WorkflowPlanCompiler {
         let composite_failure_version = semantic_contracts.is_some_and(|contracts| {
             contracts.has_composite_failure_route(workflow_revision.contract.spec())
         });
+        let agent_failure_version = semantic_contracts.is_some()
+            && has_agent_failure_route(workflow_revision.contract.spec());
         let connector_failure_version = semantic_contracts.is_some()
             && has_connector_failure_route(workflow_revision.contract.spec());
         let default_output_version =
             semantic_contracts.is_some_and(|contracts| contracts.has_default_output_fallback());
         let failure_version = semantic_contracts.is_some()
-            && (composite_failure_version
+            && (agent_failure_version
+                || composite_failure_version
                 || branch_failure_version
                 || workflow_output_failure_version
                 || transform_failure_version
@@ -210,7 +218,9 @@ impl WorkflowPlanCompiler {
             goal_id,
             plan_revision_id,
             WorkflowPlan {
-                schema: if composite_failure_version {
+                schema: if agent_failure_version {
+                    WORKFLOW_PLAN_SCHEMA_V12
+                } else if composite_failure_version {
                     WORKFLOW_PLAN_SCHEMA_V11
                 } else if branch_failure_version {
                     WORKFLOW_PLAN_SCHEMA_V10

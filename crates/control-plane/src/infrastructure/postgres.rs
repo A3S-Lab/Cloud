@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 162;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "162";
+pub const CLOUD_MIGRATION_COUNT: i64 = 163;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "163";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1505,6 +1505,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/162_artifact_preview_build_lifecycle_projections.sql"
+            )),
+        ),
+        Migration::new(
+            "163",
+            "Workflow Agent failure step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/163_workflow_agent_failure_step_projections.sql"
             )),
         ),
     ]
@@ -3446,6 +3454,35 @@ mod workflow_agent_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 161 added unrelated persistence: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod workflow_agent_failure_step_projection_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/163_workflow_agent_failure_step_projections.sql"
+    ));
+
+    #[test]
+    fn migration_163_admits_only_failed_agent_routing_evidence() {
+        for expected in [
+            "drop constraint workflow_step_projections_selected_handle_routing_check",
+            "add constraint workflow_step_projections_selected_handle_routing_check check",
+            "selected_handle is null",
+            "kind = 'branch'",
+            "kind in ('transform', 'execution', 'agent', 'service', 'output', 'subworkflow')",
+            "status = 'failed'",
+            "descriptor-bound Transform, Execution, Agent, Connector",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in ["create table", "add column", "create queue", "retry"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 163 added duplicate state or policy: {forbidden}"
             );
         }
     }

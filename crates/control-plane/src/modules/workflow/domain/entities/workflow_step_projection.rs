@@ -241,6 +241,7 @@ impl WorkflowStepProjection {
                 self.kind,
                 WorkflowStepKind::Transform
                     | WorkflowStepKind::Execution
+                    | WorkflowStepKind::Agent
                     | WorkflowStepKind::Service
                     | WorkflowStepKind::Output
                     | WorkflowStepKind::Subworkflow

@@ -5,16 +5,18 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::WORKFLOW_RUN_OUTPUT_MAX_BYTES;
 use crate::modules::workflow::domain::{
     WorkflowAgentHookMetadata, WorkflowAgentOutcome, WorkflowAgentProviderEvidence,
-    WorkflowAgentResumePayload, WorkflowAgentStepOutput, WORKFLOW_AGENT_RESULT_SCHEMA,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
-    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
+    WorkflowAgentResumePayload, WorkflowAgentStepOutput, WorkflowStepFailureClassification,
+    WorkflowStepFailureOutput, WORKFLOW_AGENT_RESULT_SCHEMA, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
+    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9,
 };
 use crate::modules::workflow::infrastructure::workflow_run_flow::execution;
 use crate::modules::workflow::test_support::{
     agent_workflow_run_input, branch_failure_workflow_run_input,
     default_output_execution_workflow_run_input, digest, multi_output_workflow_run_input,
-    output_failure_workflow_run_input, timestamp, transform_failure_workflow_run_input,
-    workflow_run_input, TEST_AGENT_STEP_ID, TEST_EXECUTION_STEP_ID,
+    output_failure_workflow_run_input, routed_agent_workflow_run_input, timestamp,
+    transform_failure_workflow_run_input, workflow_run_input, TEST_AGENT_STEP_ID,
+    TEST_EXECUTION_STEP_ID,
 };
 use a3s_flow::{
     CancellationRequest, FlowEvent, FlowEventEnvelope, StepFailureAction, WorkflowSpec,
@@ -99,6 +101,7 @@ fn agent_hook_and_terminal_result_are_exact_and_replay_safe() {
     let resolution = agent_result(
         &input.workflow_run_id.to_string(),
         &hook_id,
+        &input,
         agent_step,
         &expected,
         &encoded,
@@ -119,12 +122,14 @@ fn agent_hook_and_terminal_result_are_exact_and_replay_safe() {
         agent_result(
             &input.workflow_run_id.to_string(),
             &hook_id,
+            &input,
             agent_step,
             &expected,
             &serde_json::to_value(rejected).expect("encoded Agent rejection"),
         )
         .expect("Agent rejection result"),
-        AgentResolution::Failed(reason) if reason == "release is unavailable"
+        AgentResolution::Failed { error, routed: None }
+            if error == "release is unavailable"
     ));
 
     let mut drifted = encoded;
@@ -133,12 +138,113 @@ fn agent_hook_and_terminal_result_are_exact_and_replay_safe() {
         agent_result(
             &input.workflow_run_id.to_string(),
             &hook_id,
+            &input,
             agent_step,
             &expected,
             &drifted,
         ),
         Err(FlowError::NonDeterministic { .. })
     ));
+}
+
+#[test]
+fn agent_failures_route_as_redacted_exact_v9_values() {
+    let input = routed_agent_workflow_run_input().expect("routed Agent WorkflowRun input");
+    let resolved = input.resolved_steps().expect("resolved routed Agent plan");
+    let agent_step = resolved
+        .iter()
+        .find(|step| step.plan.id == TEST_AGENT_STEP_ID)
+        .expect("Agent step");
+    let metadata =
+        WorkflowAgentHookMetadata::from_run_step(&input, agent_step, input.goal_input.clone())
+            .expect("Agent hook metadata");
+    let run_id = input.workflow_run_id.to_string();
+    let hook_id = metadata.flow_hook_id();
+
+    let cases = [
+        (
+            WorkflowAgentResumePayload::rejected(&metadata, "private release failure")
+                .expect("Agent rejection"),
+            WorkflowStepFailureClassification::AgentDispatchRejected,
+            "Agent dispatch was rejected",
+        ),
+        (
+            WorkflowAgentResumePayload::new(
+                &metadata,
+                agent_test_output(
+                    &metadata,
+                    WorkflowAgentOutcome::Failed {
+                        reason: "private provider failure".into(),
+                    },
+                ),
+            )
+            .expect("Agent failed output"),
+            WorkflowStepFailureClassification::AgentExecutionFailed,
+            "Agent execution failed",
+        ),
+        (
+            WorkflowAgentResumePayload::new(
+                &metadata,
+                agent_test_output(&metadata, WorkflowAgentOutcome::Cancelled),
+            )
+            .expect("Agent cancelled output"),
+            WorkflowStepFailureClassification::AgentExecutionCancelled,
+            "Agent execution was cancelled",
+        ),
+    ];
+
+    for (payload, classification, message) in cases {
+        let resolution = agent_result(
+            &run_id,
+            &hook_id,
+            &input,
+            agent_step,
+            &metadata,
+            &serde_json::to_value(payload).expect("encoded Agent failure"),
+        )
+        .expect("routed Agent failure");
+        let AgentResolution::Failed {
+            error,
+            routed: Some(result),
+        } = resolution
+        else {
+            panic!("Agent failure must select its descriptor-bound route");
+        };
+        assert_eq!(error, message);
+        assert!(!error.contains("private"));
+        assert_eq!(result.kind, WorkflowStepKind::Agent);
+        assert_eq!(result.selected_handle.as_deref(), Some("error"));
+        let failure = serde_json::from_value::<WorkflowStepFailureOutput>(result.output.clone())
+            .expect("typed Agent failure output");
+        assert_eq!(failure.schema, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9);
+        assert_eq!(failure.classification, classification);
+        assert_eq!(failure.message, message);
+        assert!(failure.details.is_none());
+        assert!(!result.output.to_string().contains("private"));
+        result
+            .validate(agent_step)
+            .expect("valid routed Agent result");
+    }
+}
+
+fn agent_test_output(
+    metadata: &WorkflowAgentHookMetadata,
+    outcome: WorkflowAgentOutcome,
+) -> WorkflowAgentStepOutput {
+    WorkflowAgentStepOutput {
+        schema: WORKFLOW_AGENT_RESULT_SCHEMA.into(),
+        conversation_id: AgentConversationId::new(),
+        agent_execution_id: AgentExecutionId::new(),
+        operation_id: OperationId::new(),
+        agent_asset_id: metadata.agent_asset_id,
+        agent_asset_release_id: metadata.agent_asset_release_id,
+        agent_release_digest: metadata.agent_release_digest.clone(),
+        provider: None,
+        outcome,
+        text: String::new(),
+        terminal_event_sequence: 1,
+        finished_at: timestamp(8, 2),
+    }
 }
 
 #[test]

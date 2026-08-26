@@ -11,6 +11,7 @@ use crate::modules::workflow::{
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V3, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V4,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8,
+    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9,
 };
 use serde_json::{json, Map, Value};
 
@@ -174,7 +175,8 @@ fn workflow_step_failure_output_schema() -> Value {
                     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
                     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6,
                     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
-                    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8
+                    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8,
+                    WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9
                 ]
             },
             "stepId": identifier_schema(),
@@ -182,6 +184,8 @@ fn workflow_step_failure_output_schema() -> Value {
                 "type": "string",
                 "enum": [
                     "dispatch_rejected", "execution_failed", "execution_cancelled",
+                    "agent_dispatch_rejected", "agent_execution_failed",
+                    "agent_execution_cancelled",
                     "provider_rejected", "provider_attempts_exhausted", "provider_indeterminate",
                     "provider_observation_limit", "provider_response_invalid",
                     "application_invalid", "application_not_found", "application_conflict",

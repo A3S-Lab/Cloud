@@ -13,6 +13,7 @@ pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5: &str = "cloud.workflow.step-fa
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V6: &str = "cloud.workflow.step-failure.v6";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7: &str = "cloud.workflow.step-failure.v7";
 pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8: &str = "cloud.workflow.step-failure.v8";
+pub const WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9: &str = "cloud.workflow.step-failure.v9";
 pub const WORKFLOW_STEP_DEFAULT_OUTPUT_EVIDENCE_SCHEMA: &str =
     "cloud.workflow.step-default-output.v1";
 
@@ -22,6 +23,9 @@ pub enum WorkflowStepFailureClassification {
     DispatchRejected,
     ExecutionFailed,
     ExecutionCancelled,
+    AgentDispatchRejected,
+    AgentExecutionFailed,
+    AgentExecutionCancelled,
     ProviderRejected,
     ProviderAttemptsExhausted,
     ProviderIndeterminate,
@@ -40,6 +44,9 @@ impl WorkflowStepFailureClassification {
             Self::DispatchRejected => "dispatch_rejected",
             Self::ExecutionFailed => "execution_failed",
             Self::ExecutionCancelled => "execution_cancelled",
+            Self::AgentDispatchRejected => "agent_dispatch_rejected",
+            Self::AgentExecutionFailed => "agent_execution_failed",
+            Self::AgentExecutionCancelled => "agent_execution_cancelled",
             Self::ProviderRejected => "provider_rejected",
             Self::ProviderAttemptsExhausted => "provider_attempts_exhausted",
             Self::ProviderIndeterminate => "provider_indeterminate",
@@ -61,6 +68,15 @@ impl WorkflowStepFailureClassification {
                 | Self::ProviderIndeterminate
                 | Self::ProviderObservationLimit
                 | Self::ProviderResponseInvalid
+        )
+    }
+
+    const fn is_agent(self) -> bool {
+        matches!(
+            self,
+            Self::AgentDispatchRejected
+                | Self::AgentExecutionFailed
+                | Self::AgentExecutionCancelled
         )
     }
 
@@ -259,6 +275,23 @@ impl WorkflowStepFailureOutput {
         Ok(value)
     }
 
+    pub(crate) fn agent(
+        step: &ResolvedWorkflowRunStep,
+        classification: WorkflowStepFailureClassification,
+    ) -> Result<Self, String> {
+        let message = agent_failure_message(classification)
+            .ok_or_else(|| "Workflow Agent failure classification is invalid".to_owned())?;
+        let value = Self {
+            schema: WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9.into(),
+            step_id: step.plan.id.clone(),
+            classification,
+            message: message.into(),
+            details: None,
+        };
+        value.validate(step)?;
+        Ok(value)
+    }
+
     pub fn validate(&self, step: &ResolvedWorkflowRunStep) -> Result<(), String> {
         self.validate_observation(step)?;
         let failure =
@@ -282,6 +315,12 @@ impl WorkflowStepFailureOutput {
             return Err("Workflow step failure output identity or message is invalid".into());
         }
         self.validate_shape()?;
+        if self.classification.is_agent() {
+            if !is_agent_step(step) {
+                return Err("Workflow Agent failure requires an exact Agent step".into());
+            }
+            return Ok(());
+        }
         if self.classification.is_provider() {
             if !is_connector_step(step) {
                 return Err("Workflow provider failure requires an exact Connector step".into());
@@ -421,6 +460,11 @@ impl WorkflowStepFailureOutput {
                 WorkflowStepFailureClassification::WorkflowLocalInvalid,
                 None,
             ) if self.message == workflow_composite_failure_message() => Ok(()),
+            (WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9, classification, None)
+                if agent_failure_message(classification) == Some(self.message.as_str()) =>
+            {
+                Ok(())
+            }
             _ => Err("Workflow step failure details do not match their classification".into()),
         }
     }
@@ -440,6 +484,21 @@ const fn workflow_branch_failure_message() -> &'static str {
 
 const fn workflow_composite_failure_message() -> &'static str {
     "Workflow composite region did not complete"
+}
+
+fn agent_failure_message(
+    classification: WorkflowStepFailureClassification,
+) -> Option<&'static str> {
+    match classification {
+        WorkflowStepFailureClassification::AgentDispatchRejected => {
+            Some("Agent dispatch was rejected")
+        }
+        WorkflowStepFailureClassification::AgentExecutionFailed => Some("Agent execution failed"),
+        WorkflowStepFailureClassification::AgentExecutionCancelled => {
+            Some("Agent execution was cancelled")
+        }
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -527,6 +586,16 @@ fn is_connector_step(step: &ResolvedWorkflowRunStep) -> bool {
     step.plan.kind == WorkflowStepKind::Service
         && step.plan.capability.as_ref().is_some_and(|capability| {
             capability.capability_type == CapabilityType::ConnectorRevision
+        })
+}
+
+fn is_agent_step(step: &ResolvedWorkflowRunStep) -> bool {
+    step.plan.kind == WorkflowStepKind::Agent
+        && step.plan.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::AgentRelease
+                && capability.capability == "agent.execute"
+                && uuid::Uuid::parse_str(&capability.revision)
+                    .is_ok_and(|revision| !revision.is_nil())
         })
 }
 
