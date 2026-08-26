@@ -1,8 +1,9 @@
 use super::*;
 use a3s_cloud_contracts::{
-    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCommandAck, NodeCommandAckReceipt,
-    NodeCommandLeaseResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeObservationBatchV2,
-    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
+    NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1, NodeCodeAgentEventBatchV1,
+    NodeCodeAgentEventReceiptV1, NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse,
+    NodeGatewayAck, NodeGatewayAckReceipt, NodeObservationBatchV2, NodeObservationReceipt,
+    NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
@@ -152,6 +153,15 @@ impl NodeControlTransport for LogTransport {
     ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
         Err(NodeControlClientError::Invalid(
             "unexpected Code event upload".into(),
+        ))
+    }
+
+    async fn record_agent_provider_events(
+        &self,
+        _batch: &NodeAgentProviderEventBatchV1,
+    ) -> Result<NodeAgentProviderEventReceiptV1, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected Agent provider event upload".into(),
         ))
     }
 

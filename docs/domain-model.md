@@ -1219,11 +1219,15 @@ The same certified revision consumes exact crates.io releases
 The component-level `A1.3` foundation persists one canonical immutable
 provider-profile ACL and its profile/capability digests on the existing
 execution binding. New Code starts, cancellation, recovery, receipts, and event
-pages use the provider-neutral contract through a native adapter; durable legacy
-Code history remains replayable. A deterministic non-Code reference Harness
-shares the same conformance suite for process restart, exact replay,
-cancellation, idempotent cleanup, redaction, unsupported capabilities, retention
-gaps, and schema failures. Runtime selection of additional providers and
+pages use the provider-neutral contract through a native adapter. The common
+node event envelope is admitted only after exact authenticated-node,
+provider-profile, Runtime, execution, run, and cursor matching; semantic events,
+execution progress, and the idempotent receipt share one repository transaction.
+Durable legacy Code history and its native event endpoint remain replayable. A
+deterministic non-Code reference Harness shares the same conformance suite for
+process restart, exact replay, cancellation, idempotent cleanup, redaction,
+unsupported capabilities, retention gaps, and schema failures. Runtime
+selection of additional providers, a production non-Code node adapter, and
 retained real-provider evidence remain open.
 
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)

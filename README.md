@@ -521,11 +521,15 @@ creating their own control planes:
     `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`. The component-level `A1.3`
     foundation now freezes one canonical ACL provider profile, capability
     negotiation, provider-neutral start/cancel/recover commands and event-page
-    evidence, migrates new Code runs onto that contract while retaining legacy
+    evidence, and admits profile-bound event batches through the authenticated
+    Node Control API with exact Runtime/run identity checks and idempotent
+    in-memory/PostgreSQL receipts. It migrates new Code runs onto the common
+    contract while retaining the native event endpoint and durable legacy
     history replay, and exercises Code plus a deterministic non-Code reference
     Harness through one restart/cancellation/cleanup conformance suite. Runtime
-    selection of additional providers and retained real-provider evidence remain
-    open; `A1.4` through `A1.6` are not claimed.
+    selection of additional providers, a production non-Code node adapter, and
+    retained real-provider evidence remain open; `A1.4` through `A1.6` are not
+    claimed.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

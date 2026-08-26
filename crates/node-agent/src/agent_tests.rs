@@ -1,11 +1,11 @@
 use super::*;
 use crate::GatewaySnapshotInstallOutcome;
 use a3s_cloud_contracts::{
-    GatewaySnapshot, NodeCertificate, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
-    NodeCommandEnvelope, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandPayload,
-    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt,
-    NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
-    NodeResourceInventoryReceipt,
+    GatewaySnapshot, NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1,
+    NodeCertificate, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCommandEnvelope,
+    NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandPayload, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatchV2,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
@@ -227,6 +227,15 @@ impl NodeControlTransport for FakeTransport {
     ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
         Err(NodeControlClientError::Invalid(
             "unexpected Code event upload".into(),
+        ))
+    }
+
+    async fn record_agent_provider_events(
+        &self,
+        _batch: &NodeAgentProviderEventBatchV1,
+    ) -> Result<NodeAgentProviderEventReceiptV1, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected Agent provider event upload".into(),
         ))
     }
 

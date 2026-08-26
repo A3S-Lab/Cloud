@@ -1,4 +1,5 @@
 mod code_agent_writes;
+mod provider_event_writes;
 mod queries;
 mod rows;
 mod schema;
@@ -6,18 +7,18 @@ mod writes;
 
 use crate::infrastructure::{idempotency_replay, transaction_error};
 use crate::modules::agents::domain::{
-    AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationWrite,
-    AgentConversationWriteReference, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
-    AgentExecutionEventsWrite, AgentExecutionWrite, AgentExecutionWriteReference,
-    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
-    IAgentRepository, RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite,
-    StartAgentExecutionWrite,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunWrite,
+    AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
+    AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
+    AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
+    CreateAgentConversationWrite, IAgentRepository, RecoverAgentCodeRunWrite,
+    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
     ProjectId, RepositoryError,
 };
-use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
+use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
 
@@ -81,6 +82,13 @@ impl IAgentRepository for PostgresAgentRepository {
         write: AcceptAgentCodeEventBatchWrite,
     ) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError> {
         code_agent_writes::accept_code_event_batch(&self.executor, write).await
+    }
+
+    async fn accept_provider_event_batch(
+        &self,
+        write: AcceptAgentProviderEventBatchWrite,
+    ) -> Result<NodeAgentProviderEventReceiptV1, RepositoryError> {
+        provider_event_writes::accept_provider_event_batch(&self.executor, write).await
     }
 
     async fn replay_conversation(

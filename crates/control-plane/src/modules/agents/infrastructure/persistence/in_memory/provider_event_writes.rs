@@ -1,0 +1,148 @@
+use super::{
+    corrupt, invalid_repository_write, replay, store_replay, IdempotencyResponse,
+    InMemoryAgentRepository,
+};
+use crate::modules::agents::domain::{
+    AcceptAgentProviderEventBatchWrite, AgentExecutionEvent, AgentExecutionEventDraft,
+};
+use crate::modules::shared_kernel::domain::{AgentExecutionId, RepositoryError};
+use a3s_cloud_contracts::NodeAgentProviderEventReceiptV1;
+
+pub(super) async fn accept_provider_event_batch(
+    repository: &InMemoryAgentRepository,
+    write: AcceptAgentProviderEventBatchWrite,
+) -> Result<NodeAgentProviderEventReceiptV1, RepositoryError> {
+    write.validate().map_err(invalid_repository_write)?;
+    let mut state = repository.state.write().await;
+    if let Some(response) = replay(&state, &write.idempotency)? {
+        let IdempotencyResponse::ProviderEvents(mut receipt) = response else {
+            return Err(corrupt("Agent provider event replay type changed"));
+        };
+        receipt.receipt.replayed = true;
+        receipt.validate_for(&write.batch).map_err(|error| {
+            corrupt(format!(
+                "Agent provider event replay changed its immutable receipt: {error}"
+            ))
+        })?;
+        return Ok(receipt);
+    }
+
+    let execution_id = AgentExecutionId::from_uuid(write.batch.binding.execution_id);
+    let execution_key = (write.organization_id, execution_id);
+    let mut execution = state
+        .executions
+        .get(&execution_key)
+        .cloned()
+        .ok_or(RepositoryError::NotFound)?;
+    let conversation_key = (write.organization_id, execution.conversation_id);
+    let mut conversation = state
+        .conversations
+        .get(&conversation_key)
+        .cloned()
+        .ok_or_else(|| corrupt("Agent execution conversation is missing"))?;
+    let binding = execution
+        .code
+        .as_ref()
+        .cloned()
+        .ok_or(RepositoryError::NotFound)?;
+    if binding.node_id() != write.authenticated_node_id {
+        return Err(RepositoryError::NotFound);
+    }
+    let current_binding = binding
+        .node_provider_runtime_binding(execution.id.as_uuid())
+        .map_err(corrupt)?;
+    if current_binding != write.batch.binding {
+        if binding
+            .can_settle_recovery_predecessor_provider_runtime_binding(
+                &write.batch.binding,
+                execution.id,
+            )
+            .map_err(corrupt)?
+        {
+            let receipt = write.receipt(false).map_err(corrupt)?;
+            store_replay(
+                &mut state,
+                write.idempotency,
+                IdempotencyResponse::ProviderEvents(receipt.clone()),
+            );
+            return Ok(receipt);
+        }
+        return Err(RepositoryError::Conflict(
+            "Agent provider event batch changed its bound Runtime or run identity".into(),
+        ));
+    }
+
+    let projected_at = write.accepted_at.max(execution.updated_at);
+    let drafts = if write.batch.page.retention_gap {
+        binding
+            .validate_provider_recovery_page(&write.batch.page)
+            .map_err(RepositoryError::Conflict)?;
+        execution
+            .recover_code_run(&binding, projected_at)
+            .map_err(RepositoryError::Conflict)?;
+        Vec::new()
+    } else {
+        let drafts =
+            AgentExecutionEventDraft::semantic_from_provider_page(&write.batch.page, projected_at)
+                .map_err(invalid_repository_write)?;
+        execution
+            .accept_provider_event_page(&write.batch.page, projected_at, &drafts)
+            .map_err(RepositoryError::Conflict)?;
+        drafts
+    };
+
+    let events = if drafts.is_empty() {
+        Vec::new()
+    } else {
+        let last_occurred_at = drafts
+            .last()
+            .ok_or_else(|| corrupt("non-empty Agent provider event page omitted its last draft"))?
+            .occurred_at;
+        let first_sequence = conversation
+            .allocate_event_sequences(drafts.len(), last_occurred_at)
+            .map_err(RepositoryError::Conflict)?;
+        drafts
+            .into_iter()
+            .enumerate()
+            .map(|(offset, draft)| {
+                let offset = u64::try_from(offset)
+                    .map_err(|_| corrupt("Agent event sequence offset overflowed"))?;
+                let sequence = first_sequence
+                    .checked_add(offset)
+                    .ok_or_else(|| corrupt("Agent event sequence overflowed"))?;
+                AgentExecutionEvent::from_draft(
+                    write.organization_id,
+                    conversation.id,
+                    execution.id,
+                    sequence,
+                    draft,
+                )
+                .map_err(invalid_repository_write)
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    for event in &events {
+        let key = (event.organization_id, event.conversation_id, event.sequence);
+        if state.events.contains_key(&key) {
+            return Err(corrupt("Agent event sequence is already committed"));
+        }
+    }
+
+    let receipt = write.receipt(false).map_err(corrupt)?;
+    if !events.is_empty() {
+        state.conversations.insert(conversation_key, conversation);
+    }
+    state.executions.insert(execution_key, execution);
+    for event in events {
+        state.events.insert(
+            (event.organization_id, event.conversation_id, event.sequence),
+            event,
+        );
+    }
+    store_replay(
+        &mut state,
+        write.idempotency,
+        IdempotencyResponse::ProviderEvents(receipt.clone()),
+    );
+    Ok(receipt)
+}

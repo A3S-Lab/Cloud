@@ -3,11 +3,11 @@ use crate::code_harness::CodeHarnessTransport;
 use a3s_cloud_contracts::{
     AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1, AgentProtocolCommandReceiptV1,
     AgentProtocolCommandV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
-    AgentProtocolRunIdentityV1, NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse,
-    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt,
-    NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
-    NodeResourceInventoryReceipt, AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1,
-    AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
+    AgentProtocolRunIdentityV1, NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1,
+    NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatchV2,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
+    AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1, AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence,
@@ -222,6 +222,15 @@ impl NodeControlTransport for EventTransport {
                 .count()
                 > 1,
         })
+    }
+
+    async fn record_agent_provider_events(
+        &self,
+        _batch: &NodeAgentProviderEventBatchV1,
+    ) -> Result<NodeAgentProviderEventReceiptV1, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected Agent provider event upload".into(),
+        ))
     }
 
     async fn record_gateway_acknowledgement(

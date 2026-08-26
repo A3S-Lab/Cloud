@@ -22,8 +22,8 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
-    AGENT_PROTOCOL_V1,
+    AgentProtocolRunStateV1, NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1,
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, AGENT_PROTOCOL_V1,
 };
 use a3s_cloud_node_agent::FileNodeIdentityStore;
 use chrono::{DateTime, Duration, Utc};
@@ -33,7 +33,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn authenticated_node_projects_code_semantics_and_replays_one_receipt() {
+async fn authenticated_node_accepts_legacy_and_provider_event_batches_with_exact_replay() {
     let directory = tempfile::tempdir().expect("node-control directory");
     let authority = Arc::new(
         LocalCertificateAuthority::load_or_create(directory.path().join("node-ca"))
@@ -130,6 +130,68 @@ async fn authenticated_node_projects_code_semantics_and_replays_one_receipt() {
     assert_eq!(events[0].kind, AgentExecutionEventKind::ExecutionRequested);
     assert_eq!(events[1].kind, AgentExecutionEventKind::ModelOutput);
     assert_eq!(events[2].kind, AgentExecutionEventKind::ExecutionCompleted);
+
+    let (provider_execution, native_provider_batch) =
+        prepare_execution(agents.as_ref(), organization_id, NodeId::from_uuid(node_id)).await;
+    let provider_binding = agents
+        .find_execution(organization_id, provider_execution.id)
+        .await
+        .expect("read provider execution")
+        .expect("provider execution")
+        .code
+        .expect("provider binding");
+    let provider_batch = NodeAgentProviderEventBatchV1 {
+        schema: NodeAgentProviderEventBatchV1::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id,
+        binding: provider_binding
+            .node_provider_runtime_binding(provider_execution.id.as_uuid())
+            .expect("provider Runtime binding"),
+        page: crate::modules::agents::infrastructure::project_code_event_page(
+            &provider_binding,
+            &native_provider_batch.page,
+        )
+        .expect("provider page"),
+        sent_at_ms: native_provider_batch.sent_at_ms,
+    };
+    provider_batch.validate().expect("provider event batch");
+
+    let first = post_provider_batch(&router, &provider_batch).await;
+    assert_eq!(first.status(), axum::http::StatusCode::OK);
+    let first = decode_provider_receipt(first).await;
+    first
+        .validate_for(&provider_batch)
+        .expect("exact provider receipt");
+    assert!(!first.receipt.replayed);
+
+    let replay = post_provider_batch(&router, &provider_batch).await;
+    assert_eq!(replay.status(), axum::http::StatusCode::OK);
+    let replay = decode_provider_receipt(replay).await;
+    replay
+        .validate_for(&provider_batch)
+        .expect("exact provider replay receipt");
+    assert!(replay.receipt.replayed);
+    assert_eq!(replay.batch_id, first.batch_id);
+    assert_eq!(replay.receipt.page_digest, first.receipt.page_digest);
+
+    let stored = agents
+        .find_execution(organization_id, provider_execution.id)
+        .await
+        .expect("read provider execution")
+        .expect("stored provider execution");
+    assert_eq!(stored.status, AgentExecutionStatus::Succeeded);
+    let events = agents
+        .list_events(
+            organization_id,
+            provider_execution.conversation_id,
+            None,
+            10,
+        )
+        .await
+        .expect("list provider-projected events");
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[1].kind, AgentExecutionEventKind::ModelOutput);
+    assert_eq!(events[2].kind, AgentExecutionEventKind::ExecutionCompleted);
 }
 
 async fn prepare_execution(
@@ -146,12 +208,17 @@ async fn prepare_execution(
         requested_at,
     )
     .expect("Agent conversation");
+    let conversation_key = conversation.id.to_string();
     agents
         .create_conversation(CreateAgentConversationWrite {
             event: AgentConversationCreated::envelope(&conversation, Uuid::now_v7())
                 .expect("conversation event"),
             conversation: conversation.clone(),
-            idempotency: idempotency("node-control-code-conversations", "create", b"create"),
+            idempotency: idempotency(
+                "node-control-code-conversations",
+                &conversation_key,
+                conversation_key.as_bytes(),
+            ),
         })
         .await
         .expect("create conversation");
@@ -178,6 +245,7 @@ async fn prepare_execution(
         requested_at,
     )
     .expect("Agent execution");
+    let execution_key = execution.id.to_string();
     agents
         .start_execution(StartAgentExecutionWrite {
             initial_event: AgentExecutionEventDraft::new(
@@ -190,7 +258,11 @@ async fn prepare_execution(
             event: AgentExecutionStarted::envelope(&execution, Uuid::now_v7())
                 .expect("execution event"),
             execution: execution.clone(),
-            idempotency: idempotency("node-control-code-executions", "start", b"start"),
+            idempotency: idempotency(
+                "node-control-code-executions",
+                &execution_key,
+                execution_key.as_bytes(),
+            ),
         })
         .await
         .expect("start execution");
@@ -310,4 +382,33 @@ async fn decode_receipt(response: axum::response::Response) -> NodeCodeAgentEven
         .await
         .expect("event receipt body");
     serde_json::from_slice(&body).expect("event receipt")
+}
+
+async fn post_provider_batch(
+    router: &axum::Router,
+    batch: &NodeAgentProviderEventBatchV1,
+) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/v1/node-control/agent-provider-events")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(batch).expect("encode provider event batch"),
+                ))
+                .expect("provider event request"),
+        )
+        .await
+        .expect("provider event response")
+}
+
+async fn decode_provider_receipt(
+    response: axum::response::Response,
+) -> NodeAgentProviderEventReceiptV1 {
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("provider event receipt body");
+    serde_json::from_slice(&body).expect("provider event receipt")
 }

@@ -21,7 +21,7 @@ fn idempotency(scope: &str, key: &str, body: &[u8]) -> IdempotencyRequest {
     IdempotencyRequest::new(scope, key, body).expect("idempotency")
 }
 
-fn conversation() -> AgentConversation {
+pub(super) fn conversation() -> AgentConversation {
     AgentConversation::create(
         OrganizationId::new(),
         ProjectId::new(),
@@ -32,7 +32,7 @@ fn conversation() -> AgentConversation {
     .expect("conversation")
 }
 
-async fn create_conversation(
+pub(super) async fn create_conversation(
     repository: &InMemoryAgentRepository,
     conversation: AgentConversation,
 ) -> AgentConversation {
@@ -49,7 +49,7 @@ async fn create_conversation(
         .conversation
 }
 
-fn execution(conversation: &AgentConversation) -> AgentExecution {
+pub(super) fn execution(conversation: &AgentConversation) -> AgentExecution {
     let digest = Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("digest");
     let binding = AgentReleaseBinding::new(
         conversation.organization_id,
@@ -73,7 +73,7 @@ fn execution(conversation: &AgentConversation) -> AgentExecution {
     .expect("execution")
 }
 
-async fn start_execution(
+pub(super) async fn start_execution(
     repository: &InMemoryAgentRepository,
     execution: AgentExecution,
 ) -> AgentExecutionWrite {
@@ -96,7 +96,7 @@ async fn start_execution(
         .expect("start execution")
 }
 
-fn code_binding(
+pub(super) fn code_binding(
     execution: &AgentExecution,
     node_id: NodeId,
     bound_at: DateTime<Utc>,
@@ -146,7 +146,7 @@ fn event_record(
     .expect("Code event record")
 }
 
-fn event_batch(
+pub(super) fn event_batch(
     execution: &AgentExecution,
     binding: &AgentCodeRunBinding,
     batch_id: Uuid,

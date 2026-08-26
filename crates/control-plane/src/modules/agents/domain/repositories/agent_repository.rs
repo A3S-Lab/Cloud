@@ -8,7 +8,8 @@ use crate::modules::shared_kernel::domain::{
     NodeId, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
+    AgentProviderEventReceiptV1, DomainEventEnvelope, NodeAgentProviderEventBatchV1,
+    NodeAgentProviderEventReceiptV1, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -300,6 +301,95 @@ impl AcceptAgentCodeEventBatchWrite {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AcceptAgentProviderEventBatchWrite {
+    pub organization_id: OrganizationId,
+    pub authenticated_node_id: NodeId,
+    pub batch: NodeAgentProviderEventBatchV1,
+    pub accepted_at: DateTime<Utc>,
+    pub idempotency: IdempotencyRequest,
+}
+
+impl AcceptAgentProviderEventBatchWrite {
+    pub fn new(
+        organization_id: OrganizationId,
+        authenticated_node_id: NodeId,
+        batch: NodeAgentProviderEventBatchV1,
+        accepted_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let encoded = serde_json::to_vec(&batch)
+            .map_err(|error| format!("could not encode Agent provider event batch: {error}"))?;
+        let idempotency = IdempotencyRequest::new(
+            Self::idempotency_scope(organization_id, authenticated_node_id),
+            batch.batch_id.to_string(),
+            &encoded,
+        )?;
+        let write = Self {
+            organization_id,
+            authenticated_node_id,
+            batch,
+            accepted_at: canonical_timestamp(accepted_at),
+            idempotency,
+        };
+        write.validate()?;
+        Ok(write)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.batch.validate()?;
+        self.accepted_at_ms()?;
+        let encoded = serde_json::to_vec(&self.batch)
+            .map_err(|error| format!("could not encode Agent provider event batch: {error}"))?;
+        let expected_idempotency = IdempotencyRequest::new(
+            Self::idempotency_scope(self.organization_id, self.authenticated_node_id),
+            self.batch.batch_id.to_string(),
+            &encoded,
+        )?;
+        if self.organization_id.as_uuid().is_nil()
+            || self.authenticated_node_id.as_uuid() != self.batch.node_id
+            || self.batch.binding.execution_id.is_nil()
+            || self.accepted_at != canonical_timestamp(self.accepted_at)
+            || self.idempotency != expected_idempotency
+        {
+            return Err("Agent provider event batch write is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn accepted_at_ms(&self) -> Result<u64, String> {
+        u64::try_from(self.accepted_at.timestamp_millis())
+            .map_err(|_| "Agent provider event acceptance time is invalid".to_owned())
+    }
+
+    pub fn receipt(&self, replayed: bool) -> Result<NodeAgentProviderEventReceiptV1, String> {
+        let profile = self.batch.binding.profile()?;
+        // The receipt contract orders delivery evidence on the node clock. The
+        // aggregate continues to mutate only with `accepted_at`, the Cloud
+        // clock, so node clock skew cannot advance domain time.
+        let receipt_time_ms = self.accepted_at_ms()?.max(self.batch.sent_at_ms);
+        let receipt = AgentProviderEventReceiptV1::accepted(
+            &profile,
+            self.batch.batch_id,
+            &self.batch.page,
+            receipt_time_ms,
+            replayed,
+        )?;
+        let receipt = NodeAgentProviderEventReceiptV1 {
+            schema: NodeAgentProviderEventReceiptV1::SCHEMA.into(),
+            batch_id: self.batch.batch_id,
+            node_id: self.batch.node_id,
+            execution_id: self.batch.binding.execution_id,
+            receipt,
+        };
+        receipt.validate_for(&self.batch)?;
+        Ok(receipt)
+    }
+
+    fn idempotency_scope(organization_id: OrganizationId, node_id: NodeId) -> String {
+        format!("organizations/{organization_id}/nodes/{node_id}/agent-provider-event-batches")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentConversationWriteReference {
     pub organization_id: OrganizationId,
@@ -357,6 +447,11 @@ pub trait IAgentRepository: Send + Sync {
         &self,
         write: AcceptAgentCodeEventBatchWrite,
     ) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError>;
+
+    async fn accept_provider_event_batch(
+        &self,
+        write: AcceptAgentProviderEventBatchWrite,
+    ) -> Result<NodeAgentProviderEventReceiptV1, RepositoryError>;
 
     async fn replay_conversation(
         &self,

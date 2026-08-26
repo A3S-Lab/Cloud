@@ -1598,8 +1598,12 @@ The current component-level `A1.3` foundation adds:
   conformance suite, and one deterministic non-Code reference Harness; and
 - provider-profile-bound start, cancel, recover, receipt, and event-page
   evidence over the existing Fleet command, Node Agent journal, Workload,
-  Runtime, Flow, and semantic-event authorities. Legacy Code commands remain
-  replayable, while new commands use the common envelope.
+  Runtime, Flow, and semantic-event authorities. The authenticated Node Control
+  API now accepts the common event-batch envelope, proves the exact node,
+  profile, Runtime, execution, run, and cursor identities, and commits semantic
+  projection plus its replay receipt atomically in both repositories. Legacy
+  Code commands and its native event endpoint remain replayable during the
+  adapter migration, while new commands use the common envelope.
 
 Later A1 sub-gates extend that same context with:
 

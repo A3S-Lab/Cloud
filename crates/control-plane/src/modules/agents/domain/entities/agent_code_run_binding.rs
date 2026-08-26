@@ -344,6 +344,28 @@ impl AgentCodeRunBinding {
                 || is_recovery_run_id(&previous.code_run_identity.run_id))
     }
 
+    pub fn can_settle_recovery_predecessor_provider_runtime_binding(
+        &self,
+        previous: &NodeAgentProviderRuntimeBindingV1,
+        execution_id: AgentExecutionId,
+    ) -> Result<bool, String> {
+        previous.validate()?;
+        let mut expected = previous.clone();
+        expected.provider_run_identity.run_id =
+            Self::recovery_run_id(execution_id, &previous.provider_run_identity.run_id);
+        let current = self.node_provider_runtime_binding(execution_id.as_uuid())?;
+        if current == expected {
+            return Ok(true);
+        }
+
+        let mut same_lineage = previous.clone();
+        same_lineage.provider_run_identity.run_id = self.provider_identity()?.run_id;
+        Ok(current == same_lineage
+            && is_recovery_run_id(&self.identity.run_id)
+            && (previous.provider_run_identity.run_id == format!("agent-execution-{execution_id}")
+                || is_recovery_run_id(&previous.provider_run_identity.run_id)))
+    }
+
     pub fn validate_recovery_page(&self, page: &AgentProtocolEventPageV1) -> Result<(), String> {
         page.validate()
             .map_err(|error| format!("invalid A3S Code event page ({})", error.code()))?;

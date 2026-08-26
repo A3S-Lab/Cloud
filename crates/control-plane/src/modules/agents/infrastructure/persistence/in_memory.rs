@@ -1,20 +1,23 @@
 use crate::modules::agents::domain::{
-    AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationStatus,
-    AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
-    AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
-    AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
-    BindAgentCodeRunWrite, CreateAgentConversationWrite, IAgentRepository,
-    RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunWrite,
+    AgentConversation, AgentConversationStatus, AgentConversationWrite,
+    AgentConversationWriteReference, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionEventsWrite,
+    AgentExecutionEventsWriteReference, AgentExecutionWrite, AgentExecutionWriteReference,
+    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
+    IAgentRepository, RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite,
+    StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
     ProjectId, RepositoryError,
 };
-use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
+use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
+
+mod provider_event_writes;
 
 #[derive(Default)]
 pub struct InMemoryAgentRepository {
@@ -43,6 +46,7 @@ enum IdempotencyResponse {
     Execution(AgentExecutionWriteReference),
     Events(AgentExecutionEventsWriteReference),
     CodeEvents(NodeCodeAgentEventReceiptV1),
+    ProviderEvents(NodeAgentProviderEventReceiptV1),
 }
 
 impl InMemoryAgentRepository {
@@ -604,6 +608,13 @@ impl IAgentRepository for InMemoryAgentRepository {
         Ok(receipt)
     }
 
+    async fn accept_provider_event_batch(
+        &self,
+        write: AcceptAgentProviderEventBatchWrite,
+    ) -> Result<NodeAgentProviderEventReceiptV1, RepositoryError> {
+        provider_event_writes::accept_provider_event_batch(self, write).await
+    }
+
     async fn replay_conversation(
         &self,
         idempotency: &IdempotencyRequest,
@@ -894,3 +905,7 @@ fn corrupt(message: impl Into<String>) -> RepositoryError {
 #[cfg(test)]
 #[path = "in_memory/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "in_memory/provider_event_tests.rs"]
+mod provider_event_tests;

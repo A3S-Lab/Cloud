@@ -4667,10 +4667,13 @@ identity, parent execution, tool, approval, or checkpoint fields and does not
 dispatch Fleet, Runtime, or Workload work. `A1.2` adds the native Code provider
 identity and versioned command/event-batch delivery. The component-level `A1.3`
 foundation freezes the common provider contract, migrates new Code delivery
-through that adapter, and certifies a deterministic second Harness without
-another lifecycle; production non-Code selection and retained evidence remain
-open. `A1.4` adds one closed immutable invocation profile, the remaining exact
-bindings, and Tool events; `A1.5` adds
+through that adapter, admits the common event-batch envelope through the
+authenticated Node Control API with transactional replay receipts, and
+certifies a deterministic second Harness without another lifecycle. The native
+Code event endpoint remains compatible during migration; production non-Code
+selection, its node adapter, and retained evidence remain open. `A1.4` adds one
+closed immutable invocation profile, the remaining exact bindings, and Tool
+events; `A1.5` adds
 approvals; and `A1.6` adds checkpoints, forks, and trajectories. Model output,
 failures, and terminal state already use semantic execution events rather than
 Flow history or Runtime logs.
