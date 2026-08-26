@@ -4,6 +4,7 @@ mod build_log_query;
 mod build_run_reconciler;
 mod commands;
 mod external_source_archive;
+mod external_source_build_outcome;
 mod hosted_artifact_query;
 mod hosted_build_outcome;
 mod node_artifact_store;
@@ -30,6 +31,9 @@ pub use commands::{
 };
 pub use external_source_archive::{
     ExternalSourceArchiveRequest, IExternalSourceArchivePort, OpenExternalSourceArchive,
+};
+pub use external_source_build_outcome::{
+    ExternalSourceBuildOutcomeQueryService, IExternalSourceBuildOutcomeQueryPort,
 };
 pub use hosted_artifact_query::{
     HostedArtifactLocation, HostedArtifactQueryService, IHostedArtifactQueryPort,

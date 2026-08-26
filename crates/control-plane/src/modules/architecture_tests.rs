@@ -915,6 +915,77 @@ fn developer_workflows_executions_admission_is_confined_to_one_infrastructure_ad
 }
 
 #[test]
+fn developer_workflows_artifacts_outcome_handoff_has_one_anti_corruption_adapter() {
+    let adapter_path = "developer_workflows/infrastructure/build_outcome.rs";
+    let mut artifacts_imports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("developer_workflows")
+            && source.contains("crate::modules::artifacts")
+        {
+            artifacts_imports.insert(display(relative));
+        }
+    });
+
+    assert_eq!(
+        artifacts_imports,
+        lines(adapter_path),
+        "Developer Workflows must consume Artifacts only through one Infrastructure anti-corruption adapter"
+    );
+
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Artifacts build-outcome adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    assert!(
+        compact_adapter.contains(
+            "implIWorkloadBuildOutcomePortforArtifactsWorkloadBuildOutcomeAdapter"
+        ) && production_adapter.contains("Arc<dyn IExternalSourceBuildOutcomeQueryPort>")
+            && production_adapter.contains("Arc<dyn IBuildPlanRepository>"),
+        "the Artifacts adapter must implement the consumer port and combine only the owner outcome query with the local accepted-plan authority"
+    );
+    for forbidden in [
+        "crate::modules::artifacts::domain",
+        "crate::modules::artifacts::infrastructure",
+        "IBuildRunRepository",
+        "BuildRunStatus",
+        "BuildEvidence",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "OperationRequest",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "the component-only Artifacts adapter imported owner lifecycle or duplicate delivery mechanism {forbidden}"
+        );
+    }
+
+    let owner_fact = std::fs::read_to_string(
+        module_root().join("artifacts/published/external_source_build_outcome.rs"),
+    )
+    .expect("read Artifacts external-source build fact");
+    let owner_query = std::fs::read_to_string(
+        module_root().join("artifacts/application/external_source_build_outcome.rs"),
+    )
+    .expect("read Artifacts external-source build query");
+    let production_query = production_source(&owner_query);
+    for forbidden in [
+        "developer_workflows",
+        "BuildPlan",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !owner_fact.contains(forbidden) && !production_query.contains(forbidden),
+            "the Artifacts owner fact/query adopted consumer or duplicate lifecycle vocabulary {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))

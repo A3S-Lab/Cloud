@@ -482,8 +482,20 @@ confine the concrete Workloads and Executions translations to one Infrastructure
 adapter per owner; they use the existing `ServiceTemplate`/`ExecutionTemplate`
 validation and digest contracts and return only the consumer receipt. The
 scheduled profile's schedule remains in the compiled result and no adapter
-creates a timer or scheduler row. Artifacts outcome adaptation, production
-composition, and every owner lifecycle write remain unavailable.
+creates a timer or scheduler row.
+
+Component-only `P0.2-C3c` makes the build input equally explicit. Artifacts
+owns `a3s.cloud.external-source-build-outcome.v1` and the owner-side query that
+can project it only from a terminal, successful, verified external-source
+BuildRun. The Published Language carries source/recipe, digest-pinned OCI,
+provenance, attempt/version/Operation, and chronology evidence, but it has no
+BuildPlan or lifecycle vocabulary. The sole Developer Workflows Infrastructure
+adapter combines that owner fact with the deterministic exact accepted
+BuildPlan loaded through the local repository, validates the complete binding,
+and returns the existing consumer-owned view. It imports no Artifacts Domain or
+Infrastructure model and creates no persistence, event, relay, queue, worker,
+Operation, or lifecycle. Production composition and every owner lifecycle write
+remain unavailable.
 Developer Workflows does not create BuildRuns, Workloads, Routes, Executions,
 or Automations, or evaluate timers.
 

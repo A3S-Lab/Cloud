@@ -1,4 +1,5 @@
 mod asset_acl_detector;
+mod build_outcome;
 mod dockerfile_detector;
 mod in_memory;
 mod preview_environment;
@@ -13,6 +14,7 @@ mod workload_profile_in_memory;
 mod persistence;
 
 pub use asset_acl_detector::AssetAclBuildPlanDetector;
+pub use build_outcome::ArtifactsWorkloadBuildOutcomeAdapter;
 pub use dockerfile_detector::DockerfileBuildPlanDetector;
 pub use in_memory::InMemoryBuildPlanRepository;
 pub use persistence::{

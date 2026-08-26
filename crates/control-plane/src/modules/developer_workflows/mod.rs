@@ -21,12 +21,13 @@ pub use application::{
 };
 pub use domain::*;
 pub use infrastructure::{
-    AssetAclBuildPlanDetector, DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter,
-    InMemoryBuildPlanRepository, InMemoryPullRequestPreviewPolicyRepository,
-    InMemoryPullRequestPreviewProjectionRepository, InMemoryWorkloadProfileRepository,
-    PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
-    PostgresPullRequestPreviewProjectionRepository, PostgresWorkloadProfileRepository,
-    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjector,
-    RepositoryBuildPlanSourceRevisionPort, WorkloadsServiceProfileAdapter,
+    ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, DockerfileBuildPlanDetector,
+    ExecutionsScheduledTaskProfileAdapter, InMemoryBuildPlanRepository,
+    InMemoryPullRequestPreviewPolicyRepository, InMemoryPullRequestPreviewProjectionRepository,
+    InMemoryWorkloadProfileRepository, PostgresBuildPlanRepository,
+    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+    PostgresWorkloadProfileRepository, ProjectsPreviewEnvironmentAdapter,
+    PullRequestPreviewProjector, RepositoryBuildPlanSourceRevisionPort,
+    WorkloadsServiceProfileAdapter,
 };
 pub use published::*;
