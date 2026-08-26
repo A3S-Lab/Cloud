@@ -206,6 +206,9 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
+pub const CLOUD_MIGRATION_COUNT: i64 = 159;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "159";
+
 fn cloud_migrations() -> Vec<Migration> {
     vec![
         Migration::new(
@@ -1486,6 +1489,10 @@ fn cloud_migrations() -> Vec<Migration> {
 #[cfg(test)]
 #[path = "postgres_tests/workflow_transform_failure_migration.rs"]
 mod workflow_transform_failure_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/cloud_migration_manifest.rs"]
+mod cloud_migration_manifest_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/workflow_composite_failure_migration.rs"]

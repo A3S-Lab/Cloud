@@ -15,7 +15,8 @@ use a3s_cloud_control_plane::config::{
 };
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
-    PostgresBootstrapError, PostgresMigrationReport,
+    PostgresBootstrapError, PostgresMigrationReport, CLOUD_MIGRATION_COUNT,
+    LATEST_CLOUD_MIGRATION_VERSION,
 };
 use a3s_cloud_control_plane::modules::artifacts::{IBuildEvidenceSigner, LocalBuildEvidenceSigner};
 use a3s_cloud_control_plane::modules::assets::{
@@ -67,9 +68,6 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
-
-const CLOUD_MIGRATION_COUNT: i64 = 157;
-const LATEST_CLOUD_MIGRATION_VERSION: &str = "157";
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,
