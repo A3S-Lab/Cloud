@@ -1,4 +1,5 @@
 mod asset_acl_detector;
+mod authorization;
 mod build_outcome;
 mod dockerfile_detector;
 mod in_memory;
@@ -11,9 +12,13 @@ mod service_profile;
 mod source_revision;
 mod workload_profile_in_memory;
 
+#[cfg(test)]
+mod authorization_tests;
+
 mod persistence;
 
 pub use asset_acl_detector::AssetAclBuildPlanDetector;
+pub use authorization::IdentityProjectsDeveloperWorkflowAuthorizationAdapter;
 pub use build_outcome::ArtifactsWorkloadBuildOutcomeAdapter;
 pub use dockerfile_detector::DockerfileBuildPlanDetector;
 pub use in_memory::InMemoryBuildPlanRepository;

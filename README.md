@@ -121,7 +121,7 @@ not imply availability.
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
 | Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
-| Supply | Developer Workflows | Production-composed canonical BuildPlan detection and exact accepted-profile compilation, reviewable BuildPlan/workload-profile proposals, canonical Preview Policy revisions, durable PR lifecycle projection and owner-facing handoff intent, acceptance decisions |
+| Supply | Developer Workflows | Production-composed canonical BuildPlan detection, owner-authorized BuildPlan acceptance, and exact accepted-profile compilation; reviewable BuildPlan/workload-profile proposals, canonical Preview Policy revisions, durable PR lifecycle projection and owner-facing handoff intent |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildCandidate, sole BuildRun lifecycle, Preview build-admission/retirement fence, admitted output, successful external-source outcome Published Language, provenance, evidence, retention, node artifact transport |
 | Execution | Operations | User-visible long-running operation identity and progress projection |
@@ -230,7 +230,10 @@ already enforce that current debt can shrink but cannot spread:
   lifecycle, worker, relay, or scheduler. One internal BuildPlan detection
   query similarly composes the authoritative Asset ACL and heuristic
   Dockerfile adapters through the sole bounded detector service without source
-  access, persistence, or acceptance. Hosted-Asset staging and public
+  access or persistence. One internal acceptance command reuses Identity's
+  sole grant evaluator plus Projects and Sources owner interfaces before the
+  existing immutable BuildPlan transaction; it adds no authorization,
+  persistence, delivery, or lifecycle mechanism. Hosted-Asset staging and public
   Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
@@ -250,7 +253,7 @@ capability.
 | --- | --- |
 | `F0` foundation | Verified PostgreSQL tenancy, identity, ORM-backed Flow operations, Outbox/projections, API, and migration authority |
 | Box/Runtime/node/deployment baseline | Historical evidence; current Box re-certification remains in progress |
-| Sources, builds, artifacts, developer workflows | In progress; canonical BuildPlan detection and exact accepted-profile compilation are production-composed, while PR lifecycle, ordinary Projects Environment, ordinary Sources SourceRevision, and Artifacts build-admission/retirement handoffs are durable component foundations. Source-layout acquisition, acceptance/public interfaces, Workload/route/operation and Environment cleanup handoffs, monorepos, and import completion remain unavailable |
+| Sources, builds, artifacts, developer workflows | In progress; canonical BuildPlan detection, owner-authorized BuildPlan acceptance, and exact accepted-profile compilation are production-composed, while PR lifecycle, ordinary Projects Environment, ordinary Sources SourceRevision, and Artifacts build-admission/retirement handoffs are durable component foundations. Source-layout acquisition, workload-profile acceptance, public interfaces, Workload/route/operation and Environment cleanup handoffs, monorepos, and import completion remain unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |

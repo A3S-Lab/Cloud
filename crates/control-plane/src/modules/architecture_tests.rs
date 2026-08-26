@@ -787,7 +787,7 @@ fn developer_workflows_preview_projection_reuses_the_single_outbox_relay() {
 }
 
 #[test]
-fn developer_workflows_projects_handoff_is_confined_to_one_infrastructure_adapter() {
+fn developer_workflows_projects_boundaries_are_confined_to_two_infrastructure_adapters() {
     let mut projects_imports = BTreeSet::new();
     visit_production_sources(|relative, source| {
         if context(relative) != Some("developer_workflows") {
@@ -800,8 +800,11 @@ fn developer_workflows_projects_handoff_is_confined_to_one_infrastructure_adapte
 
     assert_eq!(
         projects_imports,
-        lines("developer_workflows/infrastructure/preview_environment.rs"),
-        "Developer Workflows must reach Projects only through its consumer-owned Application port and one Infrastructure adapter"
+        lines(
+            "developer_workflows/infrastructure/authorization.rs\n\
+             developer_workflows/infrastructure/preview_environment.rs",
+        ),
+        "Developer Workflows must reach Projects only through its authorization-read and Preview-lifecycle Infrastructure adapters"
     );
 
     let projector = std::fs::read_to_string(
@@ -1055,6 +1058,62 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
         assert!(
             !production.contains(forbidden),
             "BuildPlan detection query imported a concrete adapter or lifecycle mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn developer_workflows_build_plan_acceptance_reuses_owner_authorization_interfaces() {
+    let adapter_path = "developer_workflows/infrastructure/authorization.rs";
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Developer Workflows authorization adapter");
+    let production = production_source(&adapter);
+    let compact = production.split_whitespace().collect::<String>();
+
+    for required in [
+        "Arc<dynIMembershipRepository>",
+        "Arc<dynIResourceGrantRepository>",
+        "Arc<dynIEnvironmentRepository>",
+        "ResourceAccessEvaluator::for_membership",
+        "implIDeveloperWorkflowAuthorizationPort",
+    ] {
+        assert!(
+            compact.contains(required),
+            "BuildPlan acceptance lost its owner interface boundary {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "a3s_orm",
+        "sqlx",
+        "ApiToken",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandBus",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "BuildPlan authorization adapter introduced a concrete or duplicate mechanism {forbidden}"
+        );
+    }
+
+    let acceptance = std::fs::read_to_string(
+        module_root().join("developer_workflows/application/acceptance.rs"),
+    )
+    .expect("read BuildPlan acceptance handler");
+    let production_acceptance = production_source(&acceptance);
+    for forbidden in [
+        "crate::modules::identity",
+        "crate::modules::projects",
+        "crate::modules::sources",
+        "ResourceAccessEvaluator",
+        "Postgres",
+    ] {
+        assert!(
+            !production_acceptance.contains(forbidden),
+            "BuildPlan Application handler imported foreign owner policy or infrastructure {forbidden}"
         );
     }
 }

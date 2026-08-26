@@ -35,9 +35,10 @@ impl DeveloperWorkflowEnvironmentAccess {
 
 /// Consumer-owned authorization port.
 ///
-/// Identity implements this contract without exposing grant evaluators or its
-/// internal policy vocabulary. A concealed or absent environment returns
-/// `false`; provider/storage failures remain typed repository errors.
+/// A Developer Workflows infrastructure adapter bridges Identity and Projects
+/// owner interfaces without exposing their policy vocabulary to Application.
+/// A concealed or absent environment returns `false`; provider/storage failures
+/// remain typed repository errors.
 #[async_trait]
 pub trait IDeveloperWorkflowAuthorizationPort: Send + Sync {
     async fn can_write_environment(

@@ -71,6 +71,7 @@ AI application platform parity manifest.
 | [0064](0064-flow-owned-connector-cancellation-compensation.md) | Compensate completed exact Connector effects during Flow-owned cancellation |
 | [0065](0065-single-accepted-workload-profile-production-compilation.md) | Compose one exact accepted workload-profile compilation path from the existing owner ACLs |
 | [0066](0066-single-build-plan-detection-production-composition.md) | Compose one closed BuildPlan detection path from the fixed detector interface set |
+| [0067](0067-single-owner-authorized-build-plan-acceptance-composition.md) | Compose one owner-authorized BuildPlan acceptance path through existing Identity, Projects, Sources, and persistence authorities |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

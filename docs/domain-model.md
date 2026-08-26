@@ -446,9 +446,18 @@ action, then verifies exact source identity, commit, recipe, scope, and time
 through a typed Sources port. Identity grant evaluators and policy types do not
 enter the command. Migration `146` persists
 canonical ACL, redundant closed evidence, idempotency, audit, and Outbox
-atomically, reparses ACL on reads, and rejects mutation. Production composition,
-public interfaces, and all BuildRun/Workload/Route/scheduler handoffs remain
-outside this slice.
+atomically, reparses ACL on reads, and rejects mutation.
+
+`P0.1-C4` now production-composes that internal command without changing the
+model. One Developer Workflows Infrastructure adapter implements the existing
+consumer authorization port by validating active Identity Membership/Resource
+Grant evidence, reusing Identity's sole `ResourceAccessEvaluator`, and querying
+the exact Projects Environment only after scope admission. The existing
+Sources adapter remains the only source-revision evidence boundary, and the
+existing BuildPlan repository remains the only acceptance transaction. Public
+interfaces and all source-layout acquisition, BuildRun, Workload, Route,
+Operation, scheduling, and downstream lifecycle handoffs remain outside this
+slice.
 
 Component-only `P0.2-C1/C2` owns explicit workload-profile intent and its
 acceptance history. Canonical `a3s.cloud.workload-profile.v1` binds a closed
