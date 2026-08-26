@@ -1,12 +1,14 @@
 use crate::modules::workflow::domain::{
-    WorkflowApplicationAnswerHookMetadata, WorkflowApplicationVariableSnapshotHookMetadata,
+    WorkflowAgentChildReferenceMetadata, WorkflowAgentHookMetadata, WorkflowAgentResumePayload,
+    WorkflowAgentResumeResolution, WorkflowApplicationAnswerHookMetadata,
+    WorkflowApplicationVariableSnapshotHookMetadata,
     WorkflowApplicationVariableSnapshotResumePayload, WorkflowApplicationVariableWriteHookMetadata,
     WorkflowCompositeChildReferenceMetadata, WorkflowCompositeFrameResolution,
     WorkflowCompositeResumePayload, WorkflowCompositeWaveResumePayload,
     WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
     WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
     WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowRunRecord, WorkflowStepKind,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    WORKFLOW_AGENT_STEP_ATTEMPT, WORKFLOW_EXECUTION_STEP_ATTEMPT,
 };
 use a3s_flow::{FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind, WorkflowRunSnapshot};
 use std::collections::BTreeMap;
@@ -106,6 +108,14 @@ pub(super) fn verify_flow_authority(
                 expected_hooks.insert(hook_id);
                 execution_hook(&record.run.execution_input, resolved, snapshot)?;
             }
+            WorkflowStepKind::Agent => {
+                let hook_id = format!(
+                    "workflow-agent:{}:{}",
+                    resolved.plan.id, WORKFLOW_AGENT_STEP_ATTEMPT
+                );
+                expected_hooks.insert(hook_id);
+                agent_hook(&record.run.execution_input, resolved, snapshot)?;
+            }
             WorkflowStepKind::Service => {
                 let observed = super::connector::observed_connector_hooks(
                     &record.run.execution_input,
@@ -150,6 +160,7 @@ pub(super) fn verify_flow_authority(
         return Err("WorkflowRun correlated Flow contains an unexpected hook".into());
     }
     verify_execution_child_references(record, snapshot)?;
+    verify_agent_child_references(record, snapshot)?;
     verify_composite_child_references(record, snapshot)?;
     Ok(())
 }
@@ -172,7 +183,7 @@ fn verify_execution_child_references(
         observed.insert(metadata.flow_hook_id(), (hook, metadata));
     }
     for (reference_id, child) in &snapshot.child_operations {
-        if child.kind == "workflow_run" {
+        if matches!(child.kind.as_str(), "workflow_run" | "agent_execution") {
             continue;
         }
         let Some((hook, metadata)) = observed.get(reference_id) else {
@@ -244,6 +255,94 @@ fn verify_execution_child_references(
                 return Err(
                     "rejected Workflow execution dispatch unexpectedly linked a child".into(),
                 )
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn verify_agent_child_references(
+    record: &WorkflowRunRecord,
+    snapshot: &WorkflowRunSnapshot,
+) -> Result<(), String> {
+    let resolved_steps = record.run.execution_input.resolved_steps()?;
+    let mut observed = BTreeMap::new();
+    for resolved in &resolved_steps {
+        if resolved.plan.kind != WorkflowStepKind::Agent {
+            continue;
+        }
+        let Some((hook, metadata)) = agent_hook(&record.run.execution_input, resolved, snapshot)?
+        else {
+            continue;
+        };
+        observed.insert(metadata.flow_hook_id(), (hook, metadata));
+    }
+    for (reference_id, child) in &snapshot.child_operations {
+        if child.kind != "agent_execution" {
+            continue;
+        }
+        let Some((hook, metadata)) = observed.get(reference_id) else {
+            return Err(
+                "WorkflowRun correlated Flow contains an unexpected Agent child operation".into(),
+            );
+        };
+        let operation_id = uuid::Uuid::parse_str(&child.operation_id)
+            .map_err(|_| "Workflow child Agent operation identity is invalid".to_owned())?;
+        if child.reference_id != *reference_id
+            || operation_id.is_nil()
+            || child.flow_run_id.as_deref() != Some(child.operation_id.as_str())
+        {
+            return Err("Workflow child Agent reference identity drifted".into());
+        }
+        let child_metadata =
+            serde_json::from_value::<WorkflowAgentChildReferenceMetadata>(child.metadata.clone())
+                .map_err(|error| format!("Workflow child Agent metadata is invalid: {error}"))?;
+        child_metadata.validate(metadata)?;
+        if operation_id != child_metadata.operation_id.as_uuid() {
+            return Err("Workflow child Agent operation metadata drifted".into());
+        }
+        if hook.status != HookStatus::Received {
+            continue;
+        }
+        let payload = hook
+            .payload
+            .as_ref()
+            .ok_or_else(|| "received Workflow Agent hook has no payload".to_owned())?;
+        let payload = serde_json::from_value::<WorkflowAgentResumePayload>(payload.clone())
+            .map_err(|error| format!("Workflow Agent resume payload is invalid: {error}"))?;
+        payload.validate(metadata)?;
+        match payload.resolution {
+            WorkflowAgentResumeResolution::Completed { output, .. }
+                if output.conversation_id == child_metadata.conversation_id
+                    && output.agent_execution_id == child_metadata.agent_execution_id
+                    && output.operation_id == child_metadata.operation_id => {}
+            WorkflowAgentResumeResolution::Completed { .. } => {
+                return Err("Workflow Agent result changed its child operation authority".into())
+            }
+            WorkflowAgentResumeResolution::Rejected { .. } => {
+                return Err("rejected Workflow Agent dispatch unexpectedly linked a child".into())
+            }
+        }
+    }
+    for (reference_id, (hook, metadata)) in observed {
+        if hook.status != HookStatus::Received {
+            continue;
+        }
+        let payload = hook
+            .payload
+            .as_ref()
+            .ok_or_else(|| "received Workflow Agent hook has no payload".to_owned())?;
+        let payload = serde_json::from_value::<WorkflowAgentResumePayload>(payload.clone())
+            .map_err(|error| format!("Workflow Agent resume payload is invalid: {error}"))?;
+        payload.validate(&metadata)?;
+        let linked = snapshot.child_operations.contains_key(&reference_id);
+        match payload.resolution {
+            WorkflowAgentResumeResolution::Completed { .. } if !linked => {
+                return Err("completed Workflow Agent result has no durable child reference".into())
+            }
+            WorkflowAgentResumeResolution::Rejected { .. } if linked => {
+                return Err("rejected Workflow Agent dispatch unexpectedly linked a child".into())
             }
             _ => {}
         }
@@ -388,6 +487,32 @@ pub(super) fn execution_hook<'a>(
     )?;
     if hook.hook_id != hook_id || hook.token != expected.flow_hook_token() || observed != expected {
         return Err("Workflow execution hook authority drifted".into());
+    }
+    Ok(Some((hook, observed)))
+}
+
+pub(super) fn agent_hook<'a>(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    snapshot: &'a WorkflowRunSnapshot,
+) -> Result<Option<(&'a HookSnapshot, WorkflowAgentHookMetadata)>, String> {
+    let hook_id = format!(
+        "workflow-agent:{}:{}",
+        resolved.plan.id, WORKFLOW_AGENT_STEP_ATTEMPT
+    );
+    let Some(hook) = snapshot.hooks.get(&hook_id) else {
+        return Ok(None);
+    };
+    let observed = serde_json::from_value::<WorkflowAgentHookMetadata>(hook.metadata.clone())
+        .map_err(|error| format!("Workflow Agent hook metadata is invalid: {error}"))?;
+    observed.validate()?;
+    let expected = WorkflowAgentHookMetadata::from_run_step(
+        input,
+        resolved,
+        observed.effective_input.clone(),
+    )?;
+    if hook.hook_id != hook_id || hook.token != expected.flow_hook_token() || observed != expected {
+        return Err("Workflow Agent hook authority drifted".into());
     }
     Ok(Some((hook, observed)))
 }

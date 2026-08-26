@@ -342,6 +342,14 @@ impl WorkflowRevision {
             )
         })
     }
+
+    pub(crate) fn has_agent_step(&self) -> bool {
+        self.contract
+            .spec()
+            .steps
+            .iter()
+            .any(|step| step.kind == super::super::WorkflowStepKind::Agent)
+    }
 }
 
 fn validate_runtime_dispatch_support(

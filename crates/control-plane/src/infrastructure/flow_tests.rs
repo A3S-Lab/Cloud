@@ -157,7 +157,7 @@ async fn runtime_router_preserves_all_production_workflow_identities() -> Result
             }
         );
     }
-    for version in 1..=23 {
+    for version in 1..=24 {
         assert_eq!(
             router()
                 .run_workflow(workflow("cloud.workflow-run", &version.to_string()))

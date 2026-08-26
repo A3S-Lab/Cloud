@@ -1,9 +1,10 @@
 use super::super::{
-    CapabilityType, WorkflowCompositeRegions, WorkflowDataType, WorkflowStepBindingKind,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
-    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
-    WorkflowStepPortCardinality, WorkflowStepRetryClassification, WorkflowStepSpec,
-    WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDefaults,
+    CapabilityReference, CapabilityType, WorkflowCompositeRegions, WorkflowDataType,
+    WorkflowStepBindingKind, WorkflowStepDescriptorBindings, WorkflowStepDescriptorSpec,
+    WorkflowStepExecutionClass, WorkflowStepFailureContract, WorkflowStepFallbackMode,
+    WorkflowStepKind, WorkflowStepOwner, WorkflowStepPortCardinality,
+    WorkflowStepRetryClassification, WorkflowStepSpec, WorkflowVariableContract,
+    WorkflowVariableContractSpec, WorkflowVariableDefaults,
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use serde::Serialize;
@@ -19,6 +20,9 @@ pub(super) fn descriptor_has_runtime_dispatch(descriptor: &WorkflowStepDescripto
             match (descriptor.owner, descriptor.kind) {
                 (WorkflowStepOwner::Executions, Some(WorkflowStepKind::Execution)) => {
                     is_exact_finite_execution_descriptor(descriptor)
+                }
+                (WorkflowStepOwner::Agents, Some(WorkflowStepKind::Agent)) => {
+                    is_exact_agent_descriptor(descriptor)
                 }
                 (WorkflowStepOwner::Connectors, Some(WorkflowStepKind::Service)) => true,
                 (WorkflowStepOwner::Applications, Some(WorkflowStepKind::Service)) => {
@@ -40,6 +44,30 @@ fn is_exact_finite_execution_descriptor(descriptor: &WorkflowStepDescriptorSpec)
         && descriptor.owner == WorkflowStepOwner::Executions
         && descriptor.kind == Some(WorkflowStepKind::Execution)
         && descriptor.execution_class == WorkflowStepExecutionClass::OwningApplicationPort
+}
+
+fn is_exact_agent_descriptor(descriptor: &WorkflowStepDescriptorSpec) -> bool {
+    matches!(descriptor.id.as_str(), "agent.classic" | "agent.release")
+        && descriptor.semantic_profile == descriptor.id
+        && descriptor.owner == WorkflowStepOwner::Agents
+        && descriptor.kind == Some(WorkflowStepKind::Agent)
+        && descriptor.execution_class == WorkflowStepExecutionClass::OwningApplicationPort
+        && descriptor.required_bindings == [WorkflowStepBindingKind::CapabilityReference]
+        && descriptor.allowed_capability_types == [CapabilityType::AgentRelease]
+        && descriptor.default_policy_digest.is_none()
+        && descriptor.failure.error_output.is_none()
+        && descriptor.failure.retry_classification
+            == WorkflowStepRetryClassification::OwnerClassified
+        && descriptor.failure.fallback == WorkflowStepFallbackMode::Unsupported
+        && !descriptor.failure.failure_branch
+}
+
+pub(super) fn is_exact_agent_release_capability(capability: Option<&CapabilityReference>) -> bool {
+    capability.is_some_and(|capability| {
+        capability.capability_type == CapabilityType::AgentRelease
+            && capability.capability == "agent.execute"
+            && uuid::Uuid::parse_str(&capability.revision).is_ok_and(|revision| !revision.is_nil())
+    })
 }
 
 pub(super) fn validate_connector_retry_authority(

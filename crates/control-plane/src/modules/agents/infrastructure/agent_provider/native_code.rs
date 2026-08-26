@@ -127,9 +127,7 @@ pub(crate) fn project_code_event_page(
     let events = page
         .events
         .iter()
-        .filter_map(|record| {
-            (record.event.event_type == AgentEventTypeV1::TEXT_DELTA).then_some(record)
-        })
+        .filter(|record| record.event.event_type == AgentEventTypeV1::TEXT_DELTA)
         .map(|record| {
             let text = record
                 .event

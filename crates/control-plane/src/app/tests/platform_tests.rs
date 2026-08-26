@@ -820,7 +820,7 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
 }
 
 #[test]
-fn workflow_worker_injects_the_single_applications_effect_authority() {
+fn workflow_worker_injects_agent_and_applications_effect_authorities() {
     let application = include_str!("../../app.rs");
     let worker = application
         .split_once("let worker_workflow = if let Some(flow) = flow.as_ref() {")
@@ -828,6 +828,8 @@ fn workflow_worker_injects_the_single_applications_effect_authority() {
         .map(|(body, _)| body)
         .expect("Workflow worker composition root");
     for required in [
+        "WorkflowAgentApplicationService::new(",
+        "workflow_agent_port,",
         "WorkflowApplicationEffectsService::new(Arc::clone(&application_sessions))",
         "FlowWorkflowRunCoordinator::with_all_ports_and_application_effects(",
         "workflow_application_effects,",

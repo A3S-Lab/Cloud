@@ -1,20 +1,145 @@
 use super::*;
-use crate::modules::shared_kernel::domain::{Sha256Digest, WorkflowRunId};
+use crate::modules::shared_kernel::domain::{
+    AgentConversationId, AgentExecutionId, OperationId, Sha256Digest, WorkflowRunId,
+};
 use crate::modules::workflow::domain::WORKFLOW_RUN_OUTPUT_MAX_BYTES;
 use crate::modules::workflow::domain::{
+    WorkflowAgentHookMetadata, WorkflowAgentOutcome, WorkflowAgentProviderEvidence,
+    WorkflowAgentResumePayload, WorkflowAgentStepOutput, WORKFLOW_AGENT_RESULT_SCHEMA,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V5,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7,
 };
 use crate::modules::workflow::infrastructure::workflow_run_flow::execution;
 use crate::modules::workflow::test_support::{
-    branch_failure_workflow_run_input, default_output_execution_workflow_run_input, digest,
-    multi_output_workflow_run_input, output_failure_workflow_run_input, timestamp,
-    transform_failure_workflow_run_input, workflow_run_input, TEST_EXECUTION_STEP_ID,
+    agent_workflow_run_input, branch_failure_workflow_run_input,
+    default_output_execution_workflow_run_input, digest, multi_output_workflow_run_input,
+    output_failure_workflow_run_input, timestamp, transform_failure_workflow_run_input,
+    workflow_run_input, TEST_AGENT_STEP_ID, TEST_EXECUTION_STEP_ID,
 };
 use a3s_flow::{
     CancellationRequest, FlowEvent, FlowEventEnvelope, StepFailureAction, WorkflowSpec,
 };
 use uuid::Uuid;
+
+#[test]
+fn agent_hook_and_terminal_result_are_exact_and_replay_safe() {
+    let input = agent_workflow_run_input().expect("Agent WorkflowRun input");
+    let resolved = input.resolved_steps().expect("resolved Agent plan");
+    let agent_step = resolved
+        .iter()
+        .find(|step| step.plan.id == TEST_AGENT_STEP_ID)
+        .expect("Agent step");
+    let input_result = WorkflowLocalStepResult {
+        step_id: "input".into(),
+        kind: WorkflowStepKind::Input,
+        output: input.goal_input.clone(),
+        output_digest: execution::value_digest(&input.goal_input, "Agent test input")
+            .expect("input digest"),
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    let command = run_workflow(invocation(
+        &input,
+        vec![envelope(
+            &input,
+            1,
+            timestamp(8, 1),
+            FlowEvent::StepCompleted {
+                step_id: flow_step_id("input"),
+                output: serde_json::to_value(input_result).expect("input result"),
+            },
+        )],
+    ))
+    .expect("Agent hook command");
+    let RuntimeCommand::CreateHook {
+        hook_id,
+        token,
+        metadata,
+        ..
+    } = command
+    else {
+        panic!("Agent step must suspend on an exact hook");
+    };
+    let observed = serde_json::from_value::<WorkflowAgentHookMetadata>(metadata)
+        .expect("typed Agent hook metadata");
+    let expected =
+        WorkflowAgentHookMetadata::from_run_step(&input, agent_step, input.goal_input.clone())
+            .expect("expected Agent hook metadata");
+    assert_eq!(observed, expected);
+    assert_eq!(hook_id, expected.flow_hook_id());
+    assert_eq!(token, expected.flow_hook_token());
+
+    let output = WorkflowAgentStepOutput {
+        schema: WORKFLOW_AGENT_RESULT_SCHEMA.into(),
+        conversation_id: AgentConversationId::new(),
+        agent_execution_id: AgentExecutionId::new(),
+        operation_id: OperationId::new(),
+        agent_asset_id: expected.agent_asset_id,
+        agent_asset_release_id: expected.agent_asset_release_id,
+        agent_release_digest: expected.agent_release_digest.clone(),
+        provider: Some(WorkflowAgentProviderEvidence {
+            kind: "a3s-code".into(),
+            revision: "1".into(),
+            protocol: "agent.provider.v1".into(),
+            native_protocol: "agent.protocol.v1".into(),
+            profile_digest: Sha256Digest::parse(digest('1')).expect("profile digest"),
+            capability_digest: Sha256Digest::parse(digest('2')).expect("capability digest"),
+            session_id: "session-1".into(),
+            run_id: "run-1".into(),
+        }),
+        outcome: WorkflowAgentOutcome::Succeeded,
+        text: "hello from the Agent".into(),
+        terminal_event_sequence: 3,
+        finished_at: timestamp(8, 2),
+    };
+    let payload =
+        WorkflowAgentResumePayload::new(&expected, output.clone()).expect("Agent resume payload");
+    let encoded = serde_json::to_value(payload).expect("encoded Agent resume payload");
+    let resolution = agent_result(
+        &input.workflow_run_id.to_string(),
+        &hook_id,
+        agent_step,
+        &expected,
+        &encoded,
+    )
+    .expect("Agent terminal result");
+    let AgentResolution::Succeeded(result) = resolution else {
+        panic!("successful Agent terminal output must resolve the step");
+    };
+    assert_eq!(result.kind, WorkflowStepKind::Agent);
+    assert_eq!(
+        result.output,
+        serde_json::to_value(output).expect("encoded Agent output")
+    );
+
+    let rejected = WorkflowAgentResumePayload::rejected(&expected, "release is unavailable")
+        .expect("Agent rejection payload");
+    assert!(matches!(
+        agent_result(
+            &input.workflow_run_id.to_string(),
+            &hook_id,
+            agent_step,
+            &expected,
+            &serde_json::to_value(rejected).expect("encoded Agent rejection"),
+        )
+        .expect("Agent rejection result"),
+        AgentResolution::Failed(reason) if reason == "release is unavailable"
+    ));
+
+    let mut drifted = encoded;
+    drifted["flowHookId"] = serde_json::json!("workflow-agent:other:1");
+    assert!(matches!(
+        agent_result(
+            &input.workflow_run_id.to_string(),
+            &hook_id,
+            agent_step,
+            &expected,
+            &drifted,
+        ),
+        Err(FlowError::NonDeterministic { .. })
+    ));
+}
 
 #[test]
 fn effective_input_is_stable_for_zero_one_and_many_dependencies() {

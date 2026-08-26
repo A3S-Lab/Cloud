@@ -1,15 +1,18 @@
 use super::entities::{
     WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
 };
-use super::WorkflowExecutionStepOutput;
+use super::{WorkflowAgentStepOutput, WorkflowExecutionStepOutput};
 use crate::modules::shared_kernel::domain::{
-    FormSubmissionId, HumanTaskId, WorkflowDecisionId, WorkflowRunId,
+    AgentConversationId, AgentExecutionId, FormSubmissionId, HumanTaskId, OperationId,
+    WorkflowDecisionId, WorkflowRunId,
 };
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
 const EXECUTION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:executions:execution:";
 const OPERATION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:operations:operation:";
+const AGENT_CONVERSATION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:agents:conversation:";
+const AGENT_EXECUTION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:agents:execution:";
 const CONNECTOR_ATTEMPT_REFERENCE_PREFIX: &str = "urn:a3s:cloud:connectors:attempt:";
 const FORM_SUBMISSION_REFERENCE_PREFIX: &str = "urn:a3s:cloud:forms:submission:";
 const HUMAN_TASK_REFERENCE_PREFIX: &str = "urn:a3s:cloud:workflow:human-task:";
@@ -24,6 +27,29 @@ pub(crate) fn execution_evidence_references(
     checked_evidence_references([
         format!("{EXECUTION_REFERENCE_PREFIX}{}", output.execution_id),
         format!("{OPERATION_REFERENCE_PREFIX}{}", output.operation_id),
+    ])
+}
+
+pub(crate) fn agent_evidence_references(
+    output: &WorkflowAgentStepOutput,
+) -> Result<Vec<String>, String> {
+    output.validate_shape()?;
+    agent_identity_evidence_references(
+        output.conversation_id,
+        output.agent_execution_id,
+        output.operation_id,
+    )
+}
+
+pub(crate) fn agent_identity_evidence_references(
+    conversation_id: AgentConversationId,
+    execution_id: AgentExecutionId,
+    operation_id: OperationId,
+) -> Result<Vec<String>, String> {
+    checked_evidence_references([
+        format!("{AGENT_CONVERSATION_REFERENCE_PREFIX}{conversation_id}"),
+        format!("{AGENT_EXECUTION_REFERENCE_PREFIX}{execution_id}"),
+        format!("{OPERATION_REFERENCE_PREFIX}{operation_id}"),
     ])
 }
 
@@ -110,6 +136,8 @@ fn checked_evidence_references(
 fn valid_reference(reference: &str) -> bool {
     [
         EXECUTION_REFERENCE_PREFIX,
+        AGENT_CONVERSATION_REFERENCE_PREFIX,
+        AGENT_EXECUTION_REFERENCE_PREFIX,
         OPERATION_REFERENCE_PREFIX,
         CONNECTOR_ATTEMPT_REFERENCE_PREFIX,
         FORM_SUBMISSION_REFERENCE_PREFIX,
@@ -127,11 +155,12 @@ fn valid_reference(reference: &str) -> bool {
 mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::{
-        canonical_timestamp, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId,
-        OperationId, Sha256Digest,
+        canonical_timestamp, AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId,
+        ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId, OperationId, Sha256Digest,
     };
     use crate::modules::workflow::domain::{
-        WorkflowExecutionOutcome, WORKFLOW_EXECUTION_RESULT_SCHEMA,
+        WorkflowAgentOutcome, WorkflowAgentStepOutput, WorkflowExecutionOutcome,
+        WORKFLOW_AGENT_RESULT_SCHEMA, WORKFLOW_EXECUTION_RESULT_SCHEMA,
     };
     use chrono::Utc;
 
@@ -159,6 +188,36 @@ mod tests {
             [
                 format!("{EXECUTION_REFERENCE_PREFIX}{execution_id}"),
                 format!("{OPERATION_REFERENCE_PREFIX}{execution_id}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn agent_references_retain_conversation_execution_and_operation_authority() {
+        let conversation_id = AgentConversationId::new();
+        let execution_id = AgentExecutionId::new();
+        let operation_id = OperationId::new();
+        let output = WorkflowAgentStepOutput {
+            schema: WORKFLOW_AGENT_RESULT_SCHEMA.into(),
+            conversation_id,
+            agent_execution_id: execution_id,
+            operation_id,
+            agent_asset_id: AssetId::new(),
+            agent_asset_release_id: AssetReleaseId::new(),
+            agent_release_digest: digest('a'),
+            provider: None,
+            outcome: WorkflowAgentOutcome::Cancelled,
+            text: String::new(),
+            terminal_event_sequence: 2,
+            finished_at: canonical_timestamp(Utc::now()),
+        };
+
+        assert_eq!(
+            agent_evidence_references(&output).expect("Agent evidence references"),
+            [
+                format!("{AGENT_CONVERSATION_REFERENCE_PREFIX}{conversation_id}"),
+                format!("{AGENT_EXECUTION_REFERENCE_PREFIX}{execution_id}"),
+                format!("{OPERATION_REFERENCE_PREFIX}{operation_id}"),
             ]
         );
     }

@@ -17,10 +17,10 @@ use std::collections::{BTreeMap, BTreeSet};
 mod validation;
 
 use validation::{
-    descriptor_has_runtime_dispatch, digest_contract_set, is_exact_application_answer_descriptor,
-    is_exact_application_final_output_descriptor, is_exact_application_variable_descriptor,
-    is_exact_workflow_output_descriptor, validate_capability_binding,
-    validate_connector_retry_authority, validate_default_material,
+    descriptor_has_runtime_dispatch, digest_contract_set, is_exact_agent_release_capability,
+    is_exact_application_answer_descriptor, is_exact_application_final_output_descriptor,
+    is_exact_application_variable_descriptor, is_exact_workflow_output_descriptor,
+    validate_capability_binding, validate_connector_retry_authority, validate_default_material,
     validate_default_output_authority, validate_supported_bindings, validate_variable_read_ports,
 };
 
@@ -863,6 +863,14 @@ impl WorkflowRevisionSemanticContracts {
         for step in &workflow.steps {
             let descriptor = self.descriptor_for_step(&step.id)?.spec();
             if descriptor_has_runtime_dispatch(descriptor) {
+                if step.kind == WorkflowStepKind::Agent
+                    && !is_exact_agent_release_capability(step.capability.as_ref())
+                {
+                    return Err(format!(
+                        "Workflow Agent step {:?} must bind one exact agent.execute release",
+                        step.id
+                    ));
+                }
                 continue;
             }
             return Err(format!(

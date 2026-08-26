@@ -1,10 +1,10 @@
 use crate::modules::forms::domain::{AcceptedFormSubmission, FormSubmission};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, sha256_digest, AuthorizationDecisionRef, ConnectorProfileId,
-    ConnectorRevisionId, EnvironmentId, ExecutionTemplateId, ExecutionTemplateRevisionId, FormId,
-    FormReleaseId, FormSubmissionId, HumanTaskId, OntologyId, OntologyRevisionId, OrganizationId,
-    PlanRevisionId, PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId, WorkflowGoalId,
-    WorkflowRevisionId, WorkflowRunId,
+    canonical_json_bounded, sha256_digest, AssetId, AssetReleaseId, AuthorizationDecisionRef,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, ExecutionTemplateId,
+    ExecutionTemplateRevisionId, FormId, FormReleaseId, FormSubmissionId, HumanTaskId, OntologyId,
+    OntologyRevisionId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, Sha256Digest,
+    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::entities::digest_payload_set;
 use crate::modules::workflow::domain::{
@@ -34,23 +34,24 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_FLOW_VERSION_V11, WORKFLOW_RUN_FLOW_VERSION_V12, WORKFLOW_RUN_FLOW_VERSION_V14,
     WORKFLOW_RUN_FLOW_VERSION_V15, WORKFLOW_RUN_FLOW_VERSION_V16, WORKFLOW_RUN_FLOW_VERSION_V17,
     WORKFLOW_RUN_FLOW_VERSION_V18, WORKFLOW_RUN_FLOW_VERSION_V19, WORKFLOW_RUN_FLOW_VERSION_V2,
-    WORKFLOW_RUN_FLOW_VERSION_V22, WORKFLOW_RUN_FLOW_VERSION_V23, WORKFLOW_RUN_FLOW_VERSION_V3,
-    WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5, WORKFLOW_RUN_FLOW_VERSION_V6,
-    WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V11,
-    WORKFLOW_RUN_INPUT_SCHEMA_V12, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
-    WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17, WORKFLOW_RUN_INPUT_SCHEMA_V18,
-    WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_INPUT_SCHEMA_V22,
-    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4,
-    WORKFLOW_RUN_INPUT_SCHEMA_V5, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7,
-    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
+    WORKFLOW_RUN_FLOW_VERSION_V22, WORKFLOW_RUN_FLOW_VERSION_V23, WORKFLOW_RUN_FLOW_VERSION_V24,
+    WORKFLOW_RUN_FLOW_VERSION_V3, WORKFLOW_RUN_FLOW_VERSION_V4, WORKFLOW_RUN_FLOW_VERSION_V5,
+    WORKFLOW_RUN_FLOW_VERSION_V6, WORKFLOW_RUN_FLOW_VERSION_V7, WORKFLOW_RUN_FLOW_VERSION_V8,
+    WORKFLOW_RUN_FLOW_VERSION_V9, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V10,
+    WORKFLOW_RUN_INPUT_SCHEMA_V11, WORKFLOW_RUN_INPUT_SCHEMA_V12, WORKFLOW_RUN_INPUT_SCHEMA_V14,
+    WORKFLOW_RUN_INPUT_SCHEMA_V15, WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17,
+    WORKFLOW_RUN_INPUT_SCHEMA_V18, WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
+    WORKFLOW_RUN_INPUT_SCHEMA_V3, WORKFLOW_RUN_INPUT_SCHEMA_V4, WORKFLOW_RUN_INPUT_SCHEMA_V5,
+    WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V7, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V11,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V12, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V14,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V15, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V16,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V17, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V18,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V19, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V3,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V4, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V5,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V6, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V7,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
@@ -68,6 +69,7 @@ use chrono::{DateTime, TimeZone, Utc};
 pub(crate) const TEST_HOOK_ID: &str = "human_review-2";
 pub(crate) const TEST_HUMAN_STEP_ID: &str = "human_review";
 pub(crate) const TEST_EXECUTION_STEP_ID: &str = "execute";
+pub(crate) const TEST_AGENT_STEP_ID: &str = "agent";
 pub(crate) const TEST_CONNECTOR_STEP_ID: &str = "invoke";
 pub(crate) const TEST_ANSWER_STEP_ID: &str = "answer";
 pub(crate) const TEST_SECOND_ANSWER_STEP_ID: &str = "answer_second";
@@ -756,6 +758,111 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn agent_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = execution_workflow_run_input()?;
+    let old_configuration_digest = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == TEST_EXECUTION_STEP_ID)
+        .ok_or_else(|| "WorkflowRun Agent test plan lost its target step".to_owned())?
+        .configuration_digest
+        .clone();
+    let agent_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Agent))?;
+    input
+        .payloads
+        .retain(|payload| payload.digest != old_configuration_digest);
+    input
+        .payloads
+        .push(ResolvedWorkflowPayload::from_payload(&agent_configuration));
+    input
+        .payloads
+        .sort_by(|left, right| left.digest.cmp(&right.digest));
+
+    let asset_id = AssetId::new();
+    let asset_release_id = AssetReleaseId::new();
+    let semantic_digest = Sha256Digest::parse(digest('8'))?;
+    for step in &mut input.plan.steps {
+        if step.id == TEST_EXECUTION_STEP_ID {
+            step.id = TEST_AGENT_STEP_ID.into();
+            step.kind = WorkflowStepKind::Agent;
+            step.configuration_digest = agent_configuration.digest().clone();
+            step.capability = Some(CapabilityReference {
+                owner: CapabilityOwner::Assets,
+                capability_type: CapabilityType::AgentRelease,
+                resource_id: asset_id.as_uuid(),
+                revision: asset_release_id.to_string(),
+                digest: Sha256Digest::parse(digest('e'))?,
+                capability: "agent.execute".into(),
+            });
+        }
+        step.descriptor = Some(WorkflowStepDescriptorBinding {
+            step_id: step.id.clone(),
+            descriptor_id: if step.kind == WorkflowStepKind::Agent {
+                "agent.release".into()
+            } else {
+                format!("workflow.{}", step.kind.as_str())
+            },
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: semantic_digest.clone(),
+        });
+    }
+    for edge in &mut input.plan.edges {
+        if edge.source == TEST_EXECUTION_STEP_ID {
+            edge.source = TEST_AGENT_STEP_ID.into();
+        }
+        if edge.target == TEST_EXECUTION_STEP_ID {
+            edge.target = TEST_AGENT_STEP_ID.into();
+        }
+    }
+    let schema_digest = input.plan.steps[0].output_schema_digest.clone();
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.agent-runtime".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![WorkflowVariableDeclaration {
+            name: "request".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::Any,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: true,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: None,
+        }],
+        reads: Vec::new(),
+        assignments: Vec::new(),
+        exports: Vec::new(),
+    })?;
+    let restored_payloads = input
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    input.plan.workflow_payload_set_digest = digest_payload_set(&restored_payloads)?;
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V2.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V2.into();
+    input.plan.semantic_contract_set_digest = Some(Sha256Digest::parse(digest('9'))?);
+    input.plan.variable_contract_digest = Some(variables.digest().clone());
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun Agent test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V24.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V24.into();
+    input.variable_contract = Some(ResolvedWorkflowVariableContract::from_contract(&variables));
     input.validate()?;
     Ok(input)
 }

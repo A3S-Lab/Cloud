@@ -6,6 +6,7 @@ use super::{
 };
 use crate::modules::workflow::domain::{
     descriptor_failure_output, flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep,
+    WorkflowAgentHookMetadata, WorkflowAgentResumePayload, WorkflowAgentResumeResolution,
     WorkflowApplicationAnswerFailureResumePayload, WorkflowApplicationAnswerHookMetadata,
     WorkflowApplicationAnswerResumePayload, WorkflowApplicationVariableSnapshotHookMetadata,
     WorkflowApplicationVariableWriteFailureResumePayload,
@@ -21,6 +22,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_RUN_INPUT_SCHEMA_V15, WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17,
     WORKFLOW_RUN_INPUT_SCHEMA_V18, WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20,
     WORKFLOW_RUN_INPUT_SCHEMA_V21, WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{FlowError, RetryPolicy, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -249,6 +251,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                             | WORKFLOW_RUN_INPUT_SCHEMA_V21
                             | WORKFLOW_RUN_INPUT_SCHEMA_V22
                             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                            | WORKFLOW_RUN_INPUT_SCHEMA_V24
                     ) && failure_route_handle(&input, step)?.is_some()
                     {
                         ready.push(context.step_with_retry(
@@ -363,6 +366,43 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     } => {
                         return Ok(context.fail(format!(
                             "Workflow execution step {:?} failed: {error}",
+                            step.plan.id
+                        )));
+                    }
+                }
+            }
+            return Ok(context.create_hook(
+                hook_id,
+                metadata.flow_hook_token(),
+                serde_json::to_value(metadata)?,
+            ));
+        }
+        if step.plan.kind == WorkflowStepKind::Agent {
+            super::execution::validate_data_schema(
+                &step.input_schema,
+                &effective_input,
+                "Workflow Agent step input",
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let metadata =
+                WorkflowAgentHookMetadata::from_run_step(&input, step, effective_input.clone())
+                    .map_err(FlowError::InvalidWorkflow)?;
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow Agent hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            if let Some(payload) = context.hook_payload(&hook_id) {
+                match agent_result(&invocation.run_id, &hook_id, step, &metadata, payload)? {
+                    AgentResolution::Succeeded(result) => {
+                        resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                        continue;
+                    }
+                    AgentResolution::Failed(error) => {
+                        return Ok(context.fail(format!(
+                            "Workflow Agent step {:?} failed: {error}",
                             step.plan.id
                         )));
                     }
@@ -610,6 +650,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && step.plan.kind == WorkflowStepKind::Transform
             {
                 if let Some(result) =
@@ -628,6 +669,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && step.plan.kind == WorkflowStepKind::Output
             {
                 if let Some(result) =
@@ -645,6 +687,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && step.plan.kind == WorkflowStepKind::Branch
             {
                 if let Some(result) =
@@ -704,6 +747,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 | WORKFLOW_RUN_INPUT_SCHEMA_V21
                 | WORKFLOW_RUN_INPUT_SCHEMA_V22
                 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                | WORKFLOW_RUN_INPUT_SCHEMA_V24
         ) && step.plan.kind == WorkflowStepKind::Transform)
             || (matches!(
                 input.schema.as_str(),
@@ -714,6 +758,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && step.plan.kind == WorkflowStepKind::Output)
             || (matches!(
                 input.schema.as_str(),
@@ -723,6 +768,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && step.plan.kind == WorkflowStepKind::Branch);
         if routed_local_failure && failure_route_handle(&input, step)?.is_some() {
             ready.push(context.step_with_retry(
@@ -754,6 +800,57 @@ pub(super) enum ExecutionResolution {
         error: String,
         routed: Option<Box<WorkflowLocalStepResult>>,
     },
+}
+
+pub(super) enum AgentResolution {
+    Succeeded(Box<WorkflowLocalStepResult>),
+    Failed(String),
+}
+
+pub(super) fn agent_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowAgentHookMetadata,
+    observed: &Value,
+) -> Result<AgentResolution, FlowError> {
+    let payload = serde_json::from_value::<WorkflowAgentResumePayload>(observed.clone())
+        .map_err(|_| agent_payload_drift(run_id, &step.plan.id))?;
+    payload
+        .validate(metadata)
+        .map_err(|_| agent_payload_drift(run_id, &step.plan.id))?;
+    if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+        return Err(agent_payload_drift(run_id, &step.plan.id));
+    }
+    let (output, output_digest) = match payload.resolution {
+        WorkflowAgentResumeResolution::Rejected { reason } => {
+            return Ok(AgentResolution::Failed(reason));
+        }
+        WorkflowAgentResumeResolution::Completed {
+            output,
+            output_digest,
+        } => {
+            if let Some(error) = output.outcome.failure_message() {
+                return Ok(AgentResolution::Failed(error));
+            }
+            (output, output_digest)
+        }
+    };
+    let output =
+        serde_json::to_value(&output).map_err(|_| agent_payload_drift(run_id, &step.plan.id))?;
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::Agent,
+        output,
+        output_digest,
+        selected_handle: None,
+        composite_region_result: None,
+        default_output_evidence: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| agent_payload_drift(run_id, &step.plan.id))?;
+    Ok(AgentResolution::Succeeded(Box::new(result)))
 }
 
 pub(super) fn execution_result(
@@ -890,6 +987,7 @@ pub(super) fn local_transform_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || step.plan.kind != WorkflowStepKind::Transform
         || failure_route_handle(input, step)?.is_none()
     {
@@ -914,6 +1012,7 @@ pub(super) fn local_output_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || step.plan.kind != WorkflowStepKind::Output
         || step
             .plan
@@ -942,6 +1041,7 @@ pub(super) fn local_branch_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || step.plan.kind != WorkflowStepKind::Branch
         || step.plan.capability.is_some()
         || step.plan.descriptor.is_none()
@@ -966,6 +1066,7 @@ pub(super) fn local_composite_failure_route_result(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || step.plan.kind != WorkflowStepKind::Subworkflow
         || failure_route_handle(input, step)?.is_none()
     {
@@ -1005,6 +1106,7 @@ pub(super) fn application_variable_write_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) =>
         {
             let payload = serde_json::from_value::<
@@ -1123,6 +1225,15 @@ fn execution_payload_drift(run_id: &str, step_id: &str) -> FlowError {
     }
 }
 
+fn agent_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow Agent step {step_id:?} received an invalid authority-bound payload"
+        ),
+    }
+}
+
 pub(super) fn human_decision_result(
     run_id: &str,
     hook_id: &str,
@@ -1216,6 +1327,7 @@ pub(super) fn application_answer_resolution(
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) =>
         {
             let payload = serde_json::from_value::<WorkflowApplicationAnswerFailureResumePayload>(

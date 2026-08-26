@@ -1,18 +1,60 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::test_support::{
-    application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
-    application_nested_frame_answer_authorities, application_variable_workflow_run_input,
-    application_workflow_run_input, cancellation_compensating_connector_workflow_run_input,
-    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
+    agent_workflow_run_input, application_answer_workflow_run_input,
+    application_frame_answer_workflow_run_inputs, application_nested_frame_answer_authorities,
+    application_variable_workflow_run_input, application_workflow_run_input,
+    cancellation_compensating_connector_workflow_run_input, connector_workflow_run_input,
+    connector_workflow_run_input_v5, connector_workflow_run_input_v6,
     human_decision_workflow_run_input, routed_application_answer_and_variable_workflow_run_input,
     routed_application_answer_workflow_run_input,
     routed_application_frame_answer_workflow_run_input,
     routed_application_variable_workflow_run_input, routed_composite_workflow_run_input,
     routed_connector_workflow_run_input, routed_execution_workflow_run_input,
-    typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
+    typed_variable_workflow_run_input, workflow_run_input, TEST_AGENT_STEP_ID, TEST_ANSWER_STEP_ID,
     TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v24_agent_dispatch_is_exact_and_version_fenced() {
+    let input = agent_workflow_run_input().expect("valid Agent WorkflowRun input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V24);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V24);
+    input.validate().expect("valid v24 Agent input");
+
+    let agent = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == TEST_AGENT_STEP_ID)
+        .expect("Agent plan step");
+    let capability = agent.capability.as_ref().expect("AgentRelease capability");
+    assert_eq!(capability.owner, CapabilityOwner::Assets);
+    assert_eq!(capability.capability_type, CapabilityType::AgentRelease);
+    assert_eq!(capability.capability, "agent.execute");
+    assert!(uuid::Uuid::parse_str(&capability.revision).is_ok());
+
+    let mut downgraded = input.clone();
+    downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V23.into();
+    downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23.into();
+    downgraded.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V23.into();
+    assert!(downgraded.validate().is_err());
+
+    let mut capability_drift = input;
+    capability_drift
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == TEST_AGENT_STEP_ID)
+        .and_then(|step| step.capability.as_mut())
+        .expect("AgentRelease capability")
+        .capability = "agent.run".into();
+    assert!(capability_drift.validate().is_err());
+}
 
 #[test]
 fn v23_cancellation_compensation_is_exact_and_version_fenced() {

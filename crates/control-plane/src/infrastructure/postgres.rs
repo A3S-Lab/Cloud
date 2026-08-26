@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 160;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "160";
+pub const CLOUD_MIGRATION_COUNT: i64 = 161;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "161";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1489,6 +1489,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/160_agent_provider_profiles.sql"
+            )),
+        ),
+        Migration::new(
+            "161",
+            "Workflow Agent step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/161_workflow_agent_step_projections.sql"
             )),
         ),
     ]
@@ -3397,6 +3405,35 @@ mod workflow_connector_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 123 added duplicate state or policy: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod workflow_agent_step_projection_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/161_workflow_agent_step_projections.sql"
+    ));
+
+    #[test]
+    fn migration_161_admits_only_runtime_wired_projection_kinds_including_agent() {
+        for expected in [
+            "drop constraint workflow_step_projections_kind_check",
+            "add constraint workflow_step_projections_kind_check check",
+            "'agent'",
+            "'execution'",
+            "'service'",
+            "'subworkflow'",
+            "exact Assets-owned AgentRelease",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in ["create table", "add column", "selected_handle"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 161 added unrelated persistence: {forbidden}"
             );
         }
     }

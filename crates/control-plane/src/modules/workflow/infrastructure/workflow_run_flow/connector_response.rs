@@ -8,10 +8,11 @@ use crate::modules::workflow::domain::{
     flow_step_id, CapabilityType, ResolvedWorkflowRunStep, WorkflowConnectorAttemptEvidence,
     WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
     WorkflowConnectorInvocationPurpose, WorkflowConnectorStepOutput, WorkflowStepKind,
-    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23,
+    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
@@ -62,6 +63,7 @@ impl WorkflowConnectorResponseStepInput {
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24
             )
             || self.step.plan.kind != WorkflowStepKind::Service
             || self.step.plan.id != self.metadata.step_id
@@ -281,12 +283,14 @@ fn verify_cancellation_source_response_step_history(
     let cancellation = snapshot.cancellation.as_ref().ok_or_else(|| {
         "Workflow Connector cancellation-source response precedes cancellation".to_owned()
     })?;
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
-        || step
-            .policy
-            .as_ref()
-            .and_then(|policy| policy.cancellation_compensation.as_ref())
-            .is_none()
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+    ) || step
+        .policy
+        .as_ref()
+        .and_then(|policy| policy.cancellation_compensation.as_ref())
+        .is_none()
         || snapshot
             .steps
             .get(&flow_step_id(&step.plan.id))

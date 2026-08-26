@@ -7,7 +7,7 @@ use crate::modules::workflow::domain::{
     WorkflowCompositeResumePayload, WorkflowCompositeWaveHookMetadata,
     WorkflowCompositeWaveRequest, WorkflowIterationRegionPolicy, WorkflowRunInput,
     WorkflowVariableContract, WorkflowVariableDefaults, WORKFLOW_RUN_INPUT_SCHEMA_V22,
-    WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{FlowEvent, HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
 use chrono::Duration;
@@ -61,7 +61,9 @@ pub(super) fn observed_composite_hooks<'a>(
         metadata.validate(&input.plan, &regions, &variables)?;
         if matches!(
             input.schema.as_str(),
-            WORKFLOW_RUN_INPUT_SCHEMA_V22 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            WORKFLOW_RUN_INPUT_SCHEMA_V22
+                | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                | WORKFLOW_RUN_INPUT_SCHEMA_V24
         ) && matches!(
             regions.resolve(&metadata.frame.region_step_id),
             Some(WorkflowCompositeRegionPolicy::Iteration(policy))
@@ -180,7 +182,9 @@ pub(super) fn resolve_step(
             }
             if matches!(
                 input.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V22 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                WORKFLOW_RUN_INPUT_SCHEMA_V22
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ) && iteration.maximum_concurrency > 1
             {
                 return resolve_parallel_iteration(

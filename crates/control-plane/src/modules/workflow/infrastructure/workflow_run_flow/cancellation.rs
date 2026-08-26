@@ -2,7 +2,7 @@ use super::{connector, WorkflowLocalStepResult};
 use crate::modules::workflow::domain::{
     flow_step_id, ResolvedWorkflowRunStep, WorkflowConnectorHookMetadata,
     WorkflowConnectorInvocationPurpose, WorkflowRunInput, WorkflowStepFailureClassification,
-    WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{FlowError, FlowEvent, RetryPolicy, RuntimeCommand, WorkflowContext};
 
@@ -28,7 +28,10 @@ pub(super) fn resolve_cancellation(
     input: &WorkflowRunInput,
     context: &WorkflowContext<'_>,
 ) -> Result<RuntimeCommand, FlowError> {
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23 {
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+    ) {
         return Ok(context.cancel());
     }
     let resolved = input.resolved_steps().map_err(FlowError::InvalidWorkflow)?;

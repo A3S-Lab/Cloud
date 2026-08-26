@@ -1,7 +1,7 @@
 use crate::modules::workflow::domain::{
     WorkflowCompositeFrame, WorkflowCompositeFrameResolution, WorkflowCompositeWaveFrameResolution,
     WorkflowCompositeWaveHookMetadata, WorkflowCompositeWaveResumePayload, WorkflowRunInput,
-    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
 
@@ -36,7 +36,9 @@ pub(super) fn observed_composite_wave_hooks<'a>(
     }
     if !matches!(
         input.schema.as_str(),
-        WORKFLOW_RUN_INPUT_SCHEMA_V22 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+        WORKFLOW_RUN_INPUT_SCHEMA_V22
+            | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) {
         return Err(
             "Workflow composite wave hook is incompatible with its runtime generation".into(),

@@ -1,20 +1,23 @@
 use super::workflow::{
-    application_answer_resolution, application_variable_write_resolution,
+    agent_result, application_answer_resolution, application_variable_write_resolution,
     connector_failure_route_result, execution_result, human_decision_result, inactive_step_ids,
     local_branch_failure_route_result, local_composite_failure_route_result,
-    local_output_failure_route_result, local_transform_failure_route_result,
+    local_output_failure_route_result, local_transform_failure_route_result, AgentResolution,
     ApplicationAnswerResolution, ApplicationVariableWriteResolution, ExecutionResolution,
 };
 use super::WorkflowLocalStepResult;
 use crate::modules::workflow::domain::{
+    agent_evidence_references, agent_identity_evidence_references,
     composite_child_evidence_references, execution_evidence_references, flow_step_id,
-    human_decision_evidence_references, FlowResumePayload, WorkflowCompositeFrameResolution,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
-    WorkflowCompositeWaveResumePayload, WorkflowConnectorInvocationPurpose,
-    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
-    WorkflowExecutionResumeResolution, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    human_decision_evidence_references, FlowResumePayload, WorkflowAgentChildReferenceMetadata,
+    WorkflowAgentHookMetadata, WorkflowAgentResumePayload, WorkflowAgentResumeResolution,
+    WorkflowCompositeFrameResolution, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeResumePayload, WorkflowCompositeWaveResumePayload,
+    WorkflowConnectorInvocationPurpose, WorkflowExecutionHookMetadata,
+    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
+    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
+    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
@@ -66,6 +69,7 @@ pub fn project_workflow_run_record(
     let resolved_steps = record.run.execution_input.resolved_steps()?;
     let CompletedWorkflowSteps {
         completed,
+        agent_failures,
         execution_failures,
         connector_failures,
         application_failures,
@@ -143,6 +147,11 @@ pub fn project_workflow_run_record(
         } else {
             None
         };
+        let agent_hook = if resolved.plan.kind == WorkflowStepKind::Agent {
+            agent_hook(&record.run.execution_input, resolved, snapshot)?
+        } else {
+            None
+        };
         let connector_hooks = if resolved.plan.kind == WorkflowStepKind::Service
             && !record
                 .run
@@ -166,6 +175,11 @@ pub fn project_workflow_run_record(
         let execution_evidence_references = execution_hook
             .as_ref()
             .map(|(hook, metadata)| projected_execution_evidence_references(hook, metadata))
+            .transpose()?
+            .unwrap_or_default();
+        let agent_evidence_references = agent_hook
+            .as_ref()
+            .map(|(hook, metadata)| projected_agent_evidence_references(hook, metadata, snapshot))
             .transpose()?
             .unwrap_or_default();
         let composite_hook = (resolved.plan.kind == WorkflowStepKind::Subworkflow)
@@ -439,6 +453,62 @@ pub fn project_workflow_run_record(
                     })?,
                     result,
                     selected_handle,
+                    failure,
+                    sequence,
+                    at,
+                )
+            } else if let Some((hook, metadata)) = agent_hook.as_ref() {
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    cancellation_sequence(snapshot)?
+                } else {
+                    last_hook_sequence(history, &hook.hook_id)
+                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                };
+                let at = history
+                    .iter()
+                    .find(|event| event.sequence == sequence)
+                    .map(|event| event.timestamp)
+                    .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let failure = agent_failures.get(&projection.step_id).cloned();
+                let step_status = match hook.status {
+                    HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received if failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
+                    HookStatus::Received => WorkflowStepProjectionStatus::Completed,
+                    HookStatus::Disposed | HookStatus::Cancelled => {
+                        WorkflowStepProjectionStatus::Cancelled
+                    }
+                    status => {
+                        return Err(format!(
+                            "Workflow Agent hook {:?} has unsupported status {status:?}",
+                            hook.hook_id
+                        ))
+                    }
+                };
+                let result = if step_status == WorkflowStepProjectionStatus::Completed {
+                    Some(
+                        completed
+                            .get(&projection.step_id)
+                            .ok_or_else(|| {
+                                format!(
+                                    "Workflow Agent step {:?} has no received result",
+                                    projection.step_id
+                                )
+                            })?
+                            .output
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
+                (
+                    step_status,
+                    u32::try_from(metadata.step_attempt).map_err(|_| {
+                        "Workflow Agent attempt exceeds projection bounds".to_owned()
+                    })?,
+                    result,
+                    None,
                     failure,
                     sequence,
                     at,
@@ -717,6 +787,8 @@ pub fn project_workflow_run_record(
             &projection.evidence_references,
             if resolved.plan.kind == WorkflowStepKind::Execution {
                 execution_evidence_references
+            } else if resolved.plan.kind == WorkflowStepKind::Agent {
+                agent_evidence_references
             } else if resolved.plan.kind == WorkflowStepKind::Service {
                 connector_evidence_references
             } else if resolved.plan.kind == WorkflowStepKind::HumanDecision {
@@ -791,6 +863,43 @@ fn projected_execution_evidence_references(
     }
 }
 
+fn projected_agent_evidence_references(
+    hook: &HookSnapshot,
+    metadata: &WorkflowAgentHookMetadata,
+    snapshot: &WorkflowRunSnapshot,
+) -> Result<Vec<String>, String> {
+    if hook.status != HookStatus::Received {
+        let Some(child) = snapshot.child_operations.get(&hook.hook_id) else {
+            return Ok(Vec::new());
+        };
+        if child.kind != "agent_execution" {
+            return Err("Workflow Agent evidence references the wrong child kind".into());
+        }
+        let child_metadata =
+            serde_json::from_value::<WorkflowAgentChildReferenceMetadata>(child.metadata.clone())
+                .map_err(|error| format!("Workflow Agent child metadata is invalid: {error}"))?;
+        child_metadata.validate(metadata)?;
+        return agent_identity_evidence_references(
+            child_metadata.conversation_id,
+            child_metadata.agent_execution_id,
+            child_metadata.operation_id,
+        );
+    }
+    let payload = hook
+        .payload
+        .as_ref()
+        .ok_or_else(|| format!("Workflow Agent hook {:?} has no payload", hook.hook_id))?;
+    let payload = serde_json::from_value::<WorkflowAgentResumePayload>(payload.clone())
+        .map_err(|error| format!("Workflow Agent resume payload is invalid: {error}"))?;
+    payload.validate(metadata)?;
+    match &payload.resolution {
+        WorkflowAgentResumeResolution::Completed { output, .. } => {
+            agent_evidence_references(output)
+        }
+        WorkflowAgentResumeResolution::Rejected { .. } => Ok(Vec::new()),
+    }
+}
+
 fn projected_human_decision_evidence_references(
     hook: &HookSnapshot,
     flow_run_id: &str,
@@ -846,8 +955,10 @@ fn input_projects_cancellation_connector_work(
     connector_hook: Option<&super::connector::ObservedConnectorHook<'_>>,
     snapshot: &WorkflowRunSnapshot,
 ) -> bool {
-    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
-        || resolved.plan.kind != WorkflowStepKind::Service
+    if !matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+    ) || resolved.plan.kind != WorkflowStepKind::Service
     {
         return false;
     }
@@ -869,8 +980,10 @@ fn connector_response_projection_step<'a>(
 ) -> Option<(String, &'a a3s_flow::StepSnapshot)> {
     let ordinary_step_id = flow_step_id(&resolved.plan.id);
     let ordinary_step = snapshot.steps.get(&ordinary_step_id);
-    let may_use_cancellation_cleanup = input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23
-        && snapshot.cancellation.is_some()
+    let may_use_cancellation_cleanup = matches!(
+        input.schema.as_str(),
+        WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+    ) && snapshot.cancellation.is_some()
         && resolved
             .policy
             .as_ref()
@@ -891,6 +1004,7 @@ fn connector_response_projection_step<'a>(
 
 pub(super) struct CompletedWorkflowSteps {
     pub(super) completed: BTreeMap<String, WorkflowLocalStepResult>,
+    pub(super) agent_failures: BTreeMap<String, String>,
     pub(super) execution_failures: BTreeMap<String, String>,
     pub(super) connector_failures: BTreeMap<String, String>,
     pub(super) application_failures: BTreeMap<String, String>,
@@ -937,6 +1051,7 @@ pub(super) fn completed_workflow_steps(
         }
     }
 
+    let mut agent_failures = BTreeMap::new();
     let mut execution_failures = BTreeMap::new();
     let mut connector_failures = BTreeMap::new();
     let mut application_failures = BTreeMap::new();
@@ -1108,6 +1223,35 @@ pub(super) fn completed_workflow_steps(
                                 completed.insert(result.step_id.clone(), *result);
                             }
                             execution_failures.insert(resolved.plan.id.clone(), error);
+                        }
+                    }
+                }
+            }
+            WorkflowStepKind::Agent => {
+                let Some((hook, metadata)) = agent_hook(input, resolved, snapshot)? else {
+                    continue;
+                };
+                if hook.status == HookStatus::Received {
+                    let payload = hook.payload.as_ref().ok_or_else(|| {
+                        format!(
+                            "Workflow Agent hook {:?} is received without a payload",
+                            hook.hook_id
+                        )
+                    })?;
+                    match agent_result(
+                        &snapshot.run_id,
+                        &metadata.flow_hook_id(),
+                        resolved,
+                        &metadata,
+                        payload,
+                    )
+                    .map_err(|error| error.to_string())?
+                    {
+                        AgentResolution::Succeeded(result) => {
+                            completed.insert(result.step_id.clone(), *result);
+                        }
+                        AgentResolution::Failed(error) => {
+                            agent_failures.insert(resolved.plan.id.clone(), error);
                         }
                     }
                 }
@@ -1356,6 +1500,7 @@ pub(super) fn completed_workflow_steps(
     }
     Ok(CompletedWorkflowSteps {
         completed,
+        agent_failures,
         execution_failures,
         connector_failures,
         application_failures,
@@ -1365,7 +1510,7 @@ pub(super) fn completed_workflow_steps(
 }
 
 pub(super) use super::projection_authority::{
-    application_answer_hook, application_variable_snapshot_hook,
+    agent_hook, application_answer_hook, application_variable_snapshot_hook,
     application_variable_snapshot_payload, application_variable_write_hook, execution_hook,
     human_decision_hook, verify_flow_authority,
 };

@@ -2,7 +2,8 @@ use super::{
     AgentExecutionReconciler, AppendAgentExecutionEvents, AppendAgentExecutionEventsHandler,
     CancelAgentExecution, CancelAgentExecutionHandler, CreateAgentConversation,
     CreateAgentConversationHandler, GetAgentExecutionEvents, GetAgentExecutionEventsHandler,
-    StartAgentExecution, StartAgentExecutionHandler, AGENT_EXECUTION_WORKFLOW_NAME,
+    IWorkflowAgentPort, StartAgentExecution, StartAgentExecutionHandler,
+    WorkflowAgentApplicationService, WorkflowAgentRequest, AGENT_EXECUTION_WORKFLOW_NAME,
     AGENT_EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::agents::domain::{
@@ -22,9 +23,11 @@ use crate::modules::operations::{IOperationRepository, InMemoryOperationReposito
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
+use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, ResourceName, Sha256Digest,
+    IdempotentWrite, OrganizationId, PlanRevisionId, ProjectId, RepositoryError, ResourceName,
+    Sha256Digest, WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -244,6 +247,146 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         page.records[2].kind,
         AgentExecutionEventKind::ExecutionCompleted
     );
+}
+
+#[tokio::test]
+async fn workflow_agent_port_pins_release_replays_output_and_cancellation() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
+    let requested_at = drafted_at + Duration::seconds(1);
+    let environment = Environment::create(
+        organization_id,
+        project_id,
+        environment_id,
+        EnvironmentName::parse("Production").expect("Environment name"),
+        drafted_at,
+    );
+    let asset = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("workflow-agent").expect("Asset name"),
+        AssetKind::Agent,
+        drafted_at,
+    )
+    .expect("Agent Asset");
+    let (release, build) = published_release(&asset, drafted_at);
+    let release_digest = release
+        .artifact
+        .as_ref()
+        .expect("published artifact")
+        .digest()
+        .clone();
+    let environments = Arc::new(TestEnvironmentRepository { environment });
+    let assets = Arc::new(TestAssetRepository {
+        asset: asset.clone(),
+        release: release.clone(),
+    });
+    let builds = Arc::new(InMemoryBuildRunRepository::new());
+    builds.seed_build(build).await;
+    let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
+    let agents = Arc::new(InMemoryAgentRepository::new());
+    let service =
+        WorkflowAgentApplicationService::new(environments, agents.clone(), assets, artifacts);
+    let request = WorkflowAgentRequest {
+        organization_id,
+        project_id,
+        environment_id,
+        workflow_run_id: WorkflowRunId::new(),
+        plan_revision_id: PlanRevisionId::new(),
+        plan_digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+            .expect("plan digest"),
+        step_id: "agent".into(),
+        step_attempt: 1,
+        agent_asset_id: asset.id,
+        agent_asset_release_id: release.id,
+        agent_release_digest: release_digest,
+        capability: "agent.execute".into(),
+        input: serde_json::json!({"message": "hello"}),
+        requested_at,
+    };
+
+    let started = service
+        .start_or_adopt(&request)
+        .await
+        .expect("start Workflow Agent execution");
+    let replayed = service
+        .start_or_adopt(&request)
+        .await
+        .expect("replay Workflow Agent execution");
+    assert_eq!(replayed, started);
+
+    let context = || CqrsContext::new(ModuleRef::new());
+    let append_handler = AppendAgentExecutionEventsHandler::new(agents.clone());
+    let appended = append_handler
+        .execute(
+            AppendAgentExecutionEvents {
+                organization_id,
+                conversation_id: started.conversation_id,
+                execution_id: started.id,
+                events: vec![
+                    event(
+                        AgentExecutionEventKind::ModelOutput,
+                        serde_json::json!({"text": "hello "}),
+                        requested_at + Duration::seconds(1),
+                    ),
+                    event(
+                        AgentExecutionEventKind::ModelOutput,
+                        serde_json::json!({"text": "world"}),
+                        requested_at + Duration::seconds(1),
+                    ),
+                    event(
+                        AgentExecutionEventKind::ExecutionCompleted,
+                        serde_json::json!({}),
+                        requested_at + Duration::seconds(1),
+                    ),
+                ],
+                idempotency_key: "workflow-agent:events:complete".into(),
+            },
+            context(),
+        )
+        .await
+        .expect("append Workflow Agent events")
+        .expect("append Workflow Agent events result");
+    let observation = service
+        .terminal_observation(&request, &appended.execution)
+        .await
+        .expect("observe Workflow Agent terminal output")
+        .expect("terminal Workflow Agent observation");
+    assert_eq!(observation.execution, appended.execution);
+    assert_eq!(observation.output_text, "hello world");
+    assert_eq!(observation.terminal_event_sequence, 4);
+
+    let mut drifted = request.clone();
+    drifted.agent_release_digest =
+        Sha256Digest::parse(format!("sha256:{}", "f".repeat(64))).expect("drift digest");
+    assert!(matches!(
+        service.start_or_adopt(&drifted).await,
+        Err(ApplicationError::Conflict(_))
+    ));
+
+    let mut cancellation_request = request.clone();
+    cancellation_request.workflow_run_id = WorkflowRunId::new();
+    cancellation_request.requested_at = requested_at + Duration::seconds(10);
+    let cancellable = service
+        .start_or_adopt(&cancellation_request)
+        .await
+        .expect("start cancellable Workflow Agent execution");
+    let cancellation_at = cancellation_request.requested_at + Duration::seconds(1);
+    let cancelling = service
+        .request_cancellation(&cancellation_request, cancellation_at)
+        .await
+        .expect("request Workflow Agent cancellation")
+        .expect("cancelling Workflow Agent execution");
+    assert_eq!(cancelling.id, cancellable.id);
+    assert_eq!(cancelling.status, AgentExecutionStatus::Cancelling);
+    let replayed_cancellation = service
+        .request_cancellation(&cancellation_request, cancellation_at)
+        .await
+        .expect("replay Workflow Agent cancellation")
+        .expect("replayed cancelling execution");
+    assert_eq!(replayed_cancellation, cancelling);
 }
 
 fn event(

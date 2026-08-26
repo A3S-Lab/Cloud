@@ -4124,9 +4124,17 @@ during Flow 1.1 cleanup-aware cancellation. A distinct stable cleanup response
 step closes cancellation between accepted evidence and ordinary typed-response
 materialization. Purpose-bound Hook v4 and C6
 attempt identities keep compensation distinct from ordinary target execution;
-indeterminate authority fails closed. Runtime build
-`a3s-cloud-workflows@25` retains `@1` through `@24`, and migration `158` widens
-only the closed Workflow payload-schema registry. Migration `122` adds nullable default-output evidence to
+indeterminate authority fails closed. The v23-era runtime build
+`a3s-cloud-workflows@25` retained `@1` through `@24`, and migration `158` widens
+only the closed Workflow payload-schema registry. An exact admitted Agent step
+emits immutable Run v24. Its Hook binds the Plan, environment, Agent asset and
+release, artifact digest, and `agent.execute`; an Agents-owned port creates or
+adopts the dedicated conversation and Agent execution, while Flow retains the
+exact child Operation and terminal resume authority. Successful output includes
+the immutable provider profile/run identity, and completed or cancelled step
+evidence retains conversation, Agent execution, and Operation URNs. Runtime
+build `a3s-cloud-workflows@26` retains `@1` through `@25`, and migration `161`
+widens only the existing step-kind constraint for the Agent projection. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

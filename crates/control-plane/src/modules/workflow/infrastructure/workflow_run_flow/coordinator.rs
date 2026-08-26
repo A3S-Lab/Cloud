@@ -4,6 +4,7 @@ use super::projection::{
     application_variable_snapshot_payload, application_variable_write_hook, execution_hook,
     verify_flow_authority,
 };
+use crate::modules::agents::IWorkflowAgentPort;
 use crate::modules::applications::{
     ApplicationInvocationStatus, ApplicationMessageKind, IWorkflowApplicationEffectsPort,
     WorkflowApplicationEffectRequest, WorkflowApplicationMessageRequest,
@@ -30,7 +31,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
     WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17, WORKFLOW_RUN_INPUT_SCHEMA_V18,
     WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20, WORKFLOW_RUN_INPUT_SCHEMA_V21,
-    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23,
+    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -40,6 +41,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
+mod agent;
 mod application_answers;
 mod application_variables;
 mod composite;
@@ -53,6 +55,7 @@ use application_variables::{application_variable_hooks, ObservedApplicationVaria
 pub struct FlowWorkflowRunCoordinator {
     engine: FlowEngine,
     executions: Option<Arc<dyn IWorkflowExecutionPort>>,
+    agents: Option<Arc<dyn IWorkflowAgentPort>>,
     composites: Option<Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>>,
     connectors: Option<Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>>,
     application_effects: Option<Arc<dyn IWorkflowApplicationEffectsPort>>,
@@ -63,6 +66,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: None,
+            agents: None,
             composites: None,
             connectors: None,
             application_effects: None,
@@ -76,6 +80,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: Some(executions),
+            agents: None,
             composites: None,
             connectors: None,
             application_effects: None,
@@ -90,6 +95,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: Some(executions),
+            agents: None,
             composites: Some(composites),
             connectors: None,
             application_effects: None,
@@ -105,6 +111,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: Some(executions),
+            agents: None,
             composites: Some(composites),
             connectors: Some(connectors),
             application_effects: None,
@@ -116,11 +123,13 @@ impl FlowWorkflowRunCoordinator {
         executions: Arc<dyn IWorkflowExecutionPort>,
         composites: Arc<dyn crate::modules::workflow::IWorkflowCompositeExecutionPort>,
         connectors: Arc<dyn crate::modules::connectors::IWorkflowConnectorPort>,
+        agents: Arc<dyn IWorkflowAgentPort>,
         application_effects: Arc<dyn IWorkflowApplicationEffectsPort>,
     ) -> Self {
         Self {
             engine,
             executions: Some(executions),
+            agents: Some(agents),
             composites: Some(composites),
             connectors: Some(connectors),
             application_effects: Some(application_effects),
@@ -135,6 +144,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: None,
+            agents: None,
             composites: Some(composites),
             connectors: None,
             application_effects: None,
@@ -149,6 +159,7 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: None,
+            agents: None,
             composites: None,
             connectors: Some(connectors),
             application_effects: None,
@@ -163,9 +174,22 @@ impl FlowWorkflowRunCoordinator {
         Self {
             engine,
             executions: None,
+            agents: None,
             composites: None,
             connectors: None,
             application_effects: Some(application_effects),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_agents(engine: FlowEngine, agents: Arc<dyn IWorkflowAgentPort>) -> Self {
+        Self {
+            engine,
+            executions: None,
+            agents: Some(agents),
+            composites: None,
+            connectors: None,
+            application_effects: None,
         }
     }
 
@@ -742,10 +766,16 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
             let execution_children_terminal = self
                 .cancel_execution_children(record, &snapshot, &history, now)
                 .await?;
+            let agent_children_terminal = self
+                .cancel_agent_children(record, &snapshot, &history, now)
+                .await?;
             let composite_children_terminal = self
                 .cancel_composite_children(record, &snapshot, &history)
                 .await?;
-            if !execution_children_terminal || !composite_children_terminal {
+            if !execution_children_terminal
+                || !agent_children_terminal
+                || !composite_children_terminal
+            {
                 return Ok(None);
             }
             if !snapshot.status.is_terminal() {
@@ -798,6 +828,8 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
             self.coordinate_active_application_answer(record, &snapshot, &history)
                 .await?;
             self.coordinate_active_execution(record, &snapshot, &history)
+                .await?;
+            self.coordinate_active_agent(record, &snapshot, &history)
                 .await?;
             self.coordinate_active_composite(record, &snapshot, &history)
                 .await?;
@@ -1037,6 +1069,7 @@ fn application_variable_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || !input
         .plan
         .edges
@@ -1076,6 +1109,7 @@ fn application_answer_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
             | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            | WORKFLOW_RUN_INPUT_SCHEMA_V24
     ) || !input
         .plan
         .edges
@@ -1186,6 +1220,8 @@ fn unavailable_at(operation: &str, error: FlowError) -> WorkflowRunCoordinationE
     WorkflowRunCoordinationError::Unavailable(format!("could not {operation}: {error}"))
 }
 
+#[cfg(test)]
+mod agent_tests;
 #[cfg(test)]
 mod application_tests;
 #[cfg(test)]

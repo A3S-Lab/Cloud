@@ -139,6 +139,10 @@ discovery, internal Workflow-local, reachable-Output, HumanTask, and finite
 Execution portions of `W0.3`, including its descriptor-bound typed failure
 edge and exact default-output fallback, plus Flow-derived authorized variable
 inspection and descriptor-bound Connector failure routing, are now present. The
+component-only Agent slice is also present: exact `agent.classic` and
+`agent.release` descriptors bind one immutable `AgentRelease` plus
+`agent.execute`, and WorkflowRun v24 delegates conversation, execution,
+provider-event, and cancellation ownership to the Agents application port. The
 descriptor registry uses
 canonical ACL, exact SemVer identity, typed ports, existing coarse
 step/capability types, owner/execution class, semantic/configuration/default-
@@ -151,12 +155,15 @@ bound descriptor; semantic-free revisions admit only Workflow-local,
 HumanDecision, finite Execution, and Connector Service steps. Caller-provided
 admission metadata cannot alias the finite task port to `execution.code` or
 another Executions profile: descriptor-bearing finite tasks require the exact
-`executions.finite` identity and semantic profile. It also cannot enable
-unwired Agent, MCP, model, Tool, Memory, or other owning-context ports, and
-Subworkflow requires descriptor/composite-region authority. Exact Application
-variable/Answer ports and semantic composite
-regions remain admitted. Exact Applications-generated presets retain their
-deferred internal composition contract without claiming runtime availability.
+`executions.finite` identity and semantic profile. It also cannot enable MCP,
+model, Tool, Memory, or other unwired owning-context ports. Agent dispatch is
+limited to the two exact descriptor profiles and a non-nil release revision;
+caller-named Agent aliases remain unavailable. Subworkflow requires
+descriptor/composite-region authority. Exact Application variable/Answer ports
+and semantic composite regions remain admitted. Exact Applications-generated
+Agent presets use the component runtime path, while unwired model presets retain
+their deferred internal composition contract without claiming public
+availability.
 Historic restored revisions, Plans, Goals, and persisted Run histories retain
 structural compatibility, but new Goal/Plan and Run compilation rechecks the
 same dispatch set. An unwired historic revision or internal provider preset
@@ -275,10 +282,11 @@ frame advances the Subworkflow projection with its exact A3S Flow child-link
 sequence when that sequence is newer than the current Hook event, preserving
 the same-sequence replay-drift fence as bounded evidence grows.
 
-Current finite Execution, Connector, HumanDecision, and Subworkflow steps also
+Current finite Execution, Agent, Connector, HumanDecision, and Subworkflow steps also
 populate the existing bounded `WorkflowStepProjection.evidenceReferences`
 field from verified Flow history. Execution terminal observations retain exact
-child Execution and Operation URNs; received Connector observations retain
+child Execution and Operation URNs. Agent terminal and cancellation projection
+retains exact conversation, Agent execution, and Operation URNs; received Connector observations retain
 exact attempt URNs. Received HumanDecision resumes retain exact HumanTask and
 WorkflowDecision URNs and, for interactive outcomes, the accepted
 FormSubmission URN. Automatic expiry and cancellation retain no synthetic
@@ -434,22 +442,31 @@ Iteration/Loop failure routes are implemented through Run v19, exact typed
 Variable Aggregation is implemented through Run v20, typed List Operator
 execution is implemented through Run v21, bounded-parallel Iteration is
 implemented through Run v22, and Flow-owned cancellation compensation for
-accepted exact Connector effects is implemented through Run v23. Version 23
+accepted exact Connector effects is implemented through Run v23. Run v24
+composes those histories with exact Agent dispatch: it creates one
+authority-bound Hook, starts or adopts a dedicated Agents-owned conversation
+and Agent execution, verifies the published release digest, links the exact
+child Flow operation, and resumes only after a matching terminal semantic
+event. Successful output pins provider profile and provider-run evidence;
+completed or cancelled projection retains the Agent conversation, execution,
+and Operation URNs. Parent cancellation requests child cancellation and waits
+for terminal cleanup before closing the WorkflowRun. Migration `161` widens
+only the existing projection-kind constraint for this runtime path. Version 23
 walks resolved Plan steps in reverse order, materializes a missing typed source
 response under a distinct stable cleanup step, creates purpose-bound Connector
 Hook v4 authority, and reaches `Cancelled` only after every admitted
-compensation is terminal. Current finite
-Execution and Connector projections retain bounded owning-context evidence
+compensation is terminal. Current finite Execution, Agent, and Connector
+projections retain bounded owning-context evidence
 URNs. One exact Connector domain-result compensation path composes ordinary
 durable Service, Branch, and Output steps at component scope. Deferred
 Connector cancellation and immutable-deadline termination project the terminal
 Flow event, retain the existing attempt correlation, and cannot redispatch the
 provider after coordinator replacement. Policy v4 and migration `158` add one
 exact downstream Connector compensation binding without another table or
-scheduler. The remaining business-service public integration and
-Agent/MCP/model/Tool capability dispatch, provider-side
-cancellation/revocation, general domain-driven or multi-provider compensation,
-full provider conformance, and public Workflow availability remain open.
+scheduler. Public Agent and business-service integration, MCP/model/Tool
+capability dispatch, broader provider conformance and revocation, general
+domain-driven or multi-provider compensation, and public Workflow availability
+remain open.
 Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
 exact descriptor handle, and lets the ordinary DAG and Flow history activate
@@ -543,8 +560,12 @@ typed-response materializer, a distinct stable cleanup step performs the same
 immutable response-object read. It skips an already accepted ordinary target
 effect, rejects indeterminate authority,
 and never calls a provider-side cancellation API. Runtime build
-`a3s-cloud-workflows@25` retains `@1` through `@24` for replay.
-Current finite Execution, Connector, HumanDecision, and Subworkflow projections
+`a3s-cloud-workflows@26` retains `@1` through `@25` for replay. Any revision
+containing an exact admitted Agent step emits Run v24 before lower composing
+generations are selected. Run v24 preserves v23 compensation, v22 wave, and all
+earlier runtime semantics while adding only the exact Agents-owned child
+lifecycle. Current finite Execution, Agent, Connector, HumanDecision, and
+Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.
 REST/OpenAPI `1.60.0`, the maintained client, CLI, and one read-only Management

@@ -6,8 +6,9 @@ use crate::modules::agents::{
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
     AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
     CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionChangeSetHandler,
-    GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository,
+    GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository, IWorkflowAgentPort,
     ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
+    WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
@@ -1068,6 +1069,15 @@ async fn build_api_worker_application(
                     )
                 })?,
             )));
+        let workflow_agent_artifacts: Arc<dyn IHostedArtifactQueryPort> =
+            Arc::new(HostedArtifactQueryService::new(Arc::clone(&builds)));
+        let workflow_agent_port: Arc<dyn IWorkflowAgentPort> =
+            Arc::new(WorkflowAgentApplicationService::new(
+                Arc::clone(&environments),
+                Arc::clone(&agents),
+                Arc::clone(&assets),
+                workflow_agent_artifacts,
+            ));
         let workflow_application_effects: Arc<dyn IWorkflowApplicationEffectsPort> = Arc::new(
             WorkflowApplicationEffectsService::new(Arc::clone(&application_sessions)),
         );
@@ -1077,6 +1087,7 @@ async fn build_api_worker_application(
                 workflow_execution_port,
                 workflow_composite_port,
                 workflow_connector_port,
+                workflow_agent_port,
                 workflow_application_effects,
             ),
         );

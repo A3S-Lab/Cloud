@@ -30,6 +30,7 @@ mod v20;
 mod v21;
 mod v22;
 mod v23;
+mod v24;
 
 pub const WORKFLOW_RUN_INPUT_SCHEMA: &str = "cloud.workflow-run.input.v1";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-runtime.v1";
@@ -102,6 +103,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V22: &str = "22";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V23: &str = "cloud.workflow-run.input.v23";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23: &str = "cloud.workflow-run-runtime.v23";
 pub const WORKFLOW_RUN_FLOW_VERSION_V23: &str = "23";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V24: &str = "cloud.workflow-run.input.v24";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24: &str = "cloud.workflow-run-runtime.v24";
+pub const WORKFLOW_RUN_FLOW_VERSION_V24: &str = "24";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -269,6 +273,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V21
                 | WORKFLOW_RUN_INPUT_SCHEMA_V22
                 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                | WORKFLOW_RUN_INPUT_SCHEMA_V24
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -1117,6 +1122,25 @@ impl WorkflowRunInput {
                     regions,
                     application_projection,
                 ) => v23::validate(self, resolved, defaults, regions, application_projection)?,
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V24,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V24,
+                    WORKFLOW_RUN_FLOW_VERSION_V24,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5
+                    | WORKFLOW_PLAN_SCHEMA_V6
+                    | WORKFLOW_PLAN_SCHEMA_V7
+                    | WORKFLOW_PLAN_SCHEMA_V8
+                    | WORKFLOW_PLAN_SCHEMA_V9
+                    | WORKFLOW_PLAN_SCHEMA_V10
+                    | WORKFLOW_PLAN_SCHEMA_V11,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    application_projection,
+                ) => v24::validate(self, resolved, defaults, regions, application_projection)?,
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
@@ -1197,6 +1221,7 @@ impl WorkflowRunInput {
                 WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ))
             || (!has_list_operator && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V21)
         {
@@ -1212,6 +1237,7 @@ impl WorkflowRunInput {
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
                     | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24
             ))
             || (!has_variable_aggregate && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V20)
         {
@@ -1239,11 +1265,23 @@ impl WorkflowRunInput {
                 .as_ref()
                 .is_some_and(|policy| policy.cancellation_compensation.is_some())
         });
-        if (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23) != has_cancellation_compensation {
+        if (has_cancellation_compensation
+            && !matches!(
+                self.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+            ))
+            || (!has_cancellation_compensation && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23)
+        {
             return Err(
-                "WorkflowRun cancellation compensation requires exact runtime generation v23"
+                "WorkflowRun cancellation compensation requires runtime generation v23 or a later composing generation"
                     .into(),
             );
+        }
+        let has_agent = resolved
+            .iter()
+            .any(|step| step.plan.kind == WorkflowStepKind::Agent);
+        if (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V24) != has_agent {
+            return Err("WorkflowRun Agent semantics require exact runtime generation v24".into());
         }
         let has_connector = resolved.iter().any(|step| {
             step.plan.capability.as_ref().is_some_and(|capability| {
@@ -1282,6 +1320,20 @@ impl WorkflowRunInput {
                     step.plan.id
                 ));
             }
+            let exact_agent_release = step.plan.capability.as_ref().is_some_and(|capability| {
+                capability.capability_type == CapabilityType::AgentRelease
+                    && capability.capability == "agent.execute"
+                    && uuid::Uuid::parse_str(&capability.revision)
+                        .is_ok_and(|revision| !revision.is_nil())
+            });
+            if step.plan.kind == WorkflowStepKind::Agent
+                && (self.plan.environment_id.is_none() || !exact_agent_release)
+            {
+                return Err(format!(
+                    "WorkflowRun Agent step {:?} requires one exact agent.execute release and environment",
+                    step.plan.id
+                ));
+            }
             let supported = matches!(
                 step.plan.kind,
                 WorkflowStepKind::Input
@@ -1290,8 +1342,9 @@ impl WorkflowRunInput {
                     | WorkflowStepKind::HumanDecision
                     | WorkflowStepKind::Execution
                     | WorkflowStepKind::Output
-            ) || (composite_runtime
-                && step.plan.kind == WorkflowStepKind::Subworkflow)
+            ) || (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V24
+                && step.plan.kind == WorkflowStepKind::Agent)
+                || (composite_runtime && step.plan.kind == WorkflowStepKind::Subworkflow)
                 || (connector_runtime_capable
                     && step.plan.kind == WorkflowStepKind::Service
                     && connector_step)

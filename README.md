@@ -243,7 +243,7 @@ capability.
 | Sources, builds, artifacts, developer workflows | In progress; PR lifecycle projection and the ordinary Projects Environment handoff are durable, while build/deploy/route/cleanup handoffs, interfaces, monorepos, and import completion remain unavailable |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
-| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and W0.3 includes Plan v11/Run v19 descriptor-bound composite failure routing, Run v20 typed Variable Aggregation, Run v21 typed List Operator execution, bounded owner-evidence correlations, and authorized run diagnostics/statistics |
+| Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, and Run v24 exact AgentRelease dispatch with restart-safe adoption, cancellation, provider evidence, and bounded owner correlations |
 | AI Applications, Files/Knowledge, Automations | Component foundations in progress; complete products unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |
@@ -361,8 +361,19 @@ creating their own control planes:
    histories retain serial replay. Run v23 composes those semantics with
    Flow-owned, reverse-order cancellation compensation for accepted exact
    Connector effects, including a distinct cleanup response step when
-   cancellation preempts ordinary typed-response materialization. Composite Run
-   admission binds each
+   cancellation preempts ordinary typed-response materialization. Agent-bearing
+   Run admission now emits Run v24 for exact `agent.classic` or `agent.release`
+   steps bound to one immutable `AgentRelease` and `agent.execute`. The
+   Agents-owned application port creates or adopts one dedicated conversation
+   and Agent execution, verifies the published artifact digest, links the child
+   Agent Flow identity, resumes only from a matching terminal semantic event,
+   and waits for child cancellation before parent termination. Completed and
+   cancelled projections retain the exact Agent conversation, execution, and
+   Operation URNs; successful output also pins the immutable provider profile
+   and provider-run identity. Migration `161` admits the Agent projection kind,
+   and runtime build `a3s-cloud-workflows@26` keeps `@1` through `@25` replayable.
+   This is a component-only backend capability; public Agent node availability
+   remains closed. Composite Run admission binds each
    `workflow.iteration` or `workflow.loop` descriptor to the matching immutable
    region policy, and linked child evidence advances on its exact Flow
    child-operation event. It also pins finite Execution error
@@ -452,9 +463,11 @@ creating their own control planes:
     must use the exact `executions.finite` identity and semantic profile;
     `execution.code` and caller-named aliases remain fenced until their owning
     contracts land. Semantic-free Agent, MCP, model, Tool, Memory, and
-    Subworkflow steps are rejected; caller-supplied descriptors for the first
-    five cannot self-declare availability before their owning ports land. Exact
-    Applications-generated presets remain deferred internal composition
+    Subworkflow steps are rejected. Descriptor-bearing Agent steps admit only
+    the exact `agent.classic` or `agent.release` identity, Agents ownership, one
+    non-nil immutable `AgentRelease`, and `agent.execute`; caller-named aliases
+    remain fenced. Exact Applications-generated Agent presets use this internal
+    runtime path, while unwired model presets remain deferred composition
     evidence. Historic revisions, Plans, Goals, and persisted Run histories
     remain readable, but every new Goal/Plan or Run compilation rechecks the
     same closed dispatch set. Unwired internal provider presets therefore cannot
@@ -477,11 +490,12 @@ creating their own control planes:
     outcome. Migration `158`, Workflow policy v4, Connector Hook v4, and Run
     v23 additionally compensate accepted exact Connector effects in reverse
     Plan order during Flow-owned cancellation and close the accepted-effect /
-    typed-response race with a distinct stable cleanup step. Public
-    business-service
-    availability, remaining Agent/MCP/model/Tool dispatch, provider-side
-    cancellation, general or multi-provider compensation, retained provider
-    evidence, and later `W0` gates remain open.
+    typed-response race with a distinct stable cleanup step. Run v24 adds exact
+    Agent child dispatch, restart adoption, terminal semantic output, provider
+    evidence, and cancellation cleanup without changing the public API. Public
+    business-service and Agent node availability, MCP/model/Tool dispatch,
+    broader provider conformance and revocation, general or multi-provider
+    compensation, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` is verified and carries start,

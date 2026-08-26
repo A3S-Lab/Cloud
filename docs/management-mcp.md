@@ -655,9 +655,11 @@ the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The executor supports Workflow-local `input`, `transform`,
 `branch`, `human_decision`, finite `execution`, composite `subworkflow`
-Iteration/Loop, and `output`. HumanTask submission is exposed by the protected
-tool below. Business-service and remaining Agent/MCP/model/Tool provider
-capability steps and compensation are not exposed.
+Iteration/Loop, `output`, and the component-only exact `agent.classic` /
+`agent.release` backend path. HumanTask submission is exposed by the protected
+tool below. Agent authoring/catalog availability, business-service and
+MCP/model/Tool provider capability steps, and general compensation are not
+exposed.
 
 `a3s_cloud_workflow_run_variables_get` accepts one `workflowRunId` and returns
 the same `cloud.workflow-run.variable-inspection.v1` response as REST contract

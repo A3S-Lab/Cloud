@@ -158,6 +158,49 @@ impl IWorkflowConnectorPort for UnusedConnectorPort {
     }
 }
 
+struct UnusedAgentPort;
+
+#[async_trait]
+impl IWorkflowAgentPort for UnusedAgentPort {
+    async fn start_or_adopt(
+        &self,
+        _request: &WorkflowAgentRequest,
+    ) -> ApplicationResult<AgentExecution> {
+        Err(ApplicationError::Internal(
+            "Application recovery gate reached the Agent port".into(),
+        ))
+    }
+
+    async fn adopt(
+        &self,
+        _request: &WorkflowAgentRequest,
+    ) -> ApplicationResult<Option<AgentExecution>> {
+        Err(ApplicationError::Internal(
+            "Application recovery gate reached the Agent port".into(),
+        ))
+    }
+
+    async fn request_cancellation(
+        &self,
+        _request: &WorkflowAgentRequest,
+        _requested_at: chrono::DateTime<Utc>,
+    ) -> ApplicationResult<Option<AgentExecution>> {
+        Err(ApplicationError::Internal(
+            "Application recovery gate reached the Agent port".into(),
+        ))
+    }
+
+    async fn terminal_observation(
+        &self,
+        _request: &WorkflowAgentRequest,
+        _execution: &AgentExecution,
+    ) -> ApplicationResult<Option<WorkflowAgentTerminalObservation>> {
+        Err(ApplicationError::Internal(
+            "Application recovery gate reached the Agent port".into(),
+        ))
+    }
+}
+
 pub(super) fn coordinator(
     engine: FlowEngine,
     effects: Arc<dyn IWorkflowApplicationEffectsPort>,
@@ -167,6 +210,7 @@ pub(super) fn coordinator(
         Arc::new(UnusedExecutionPort),
         Arc::new(UnusedCompositePort),
         Arc::new(UnusedConnectorPort),
+        Arc::new(UnusedAgentPort),
         effects,
     )
 }

@@ -2,6 +2,9 @@ use super::application_workflow_runs_support::{persist_ontology, persist_workflo
 use super::applications_support::{cqrs_contract, digest, seed_scope};
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
+use a3s_cloud_control_plane::modules::agents::{
+    AgentExecution, IWorkflowAgentPort, WorkflowAgentRequest, WorkflowAgentTerminalObservation,
+};
 use a3s_cloud_control_plane::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationInvocationHandler, AdmitApplicationSession,
     AdmitApplicationSessionHandler, Application, ApplicationInvocation,

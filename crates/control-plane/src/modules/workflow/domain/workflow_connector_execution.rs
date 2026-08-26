@@ -2,8 +2,8 @@ use super::{
     CapabilityType, ResolvedWorkflowRunStep, WorkflowPolicyMode, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepKind, WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
     WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V13,
-    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V8,
-    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V24, WORKFLOW_RUN_INPUT_SCHEMA_V6,
+    WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, ConnectorProfileId,
@@ -99,12 +99,14 @@ impl WorkflowConnectorHookMetadata {
         step_attempt: u32,
         observation: u32,
     ) -> Result<Self, String> {
-        if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
-            || source
-                .policy
-                .as_ref()
-                .and_then(|policy| policy.cancellation_compensation.as_ref())
-                .is_none_or(|compensation| compensation.step_id != target.plan.id)
+        if !matches!(
+            input.schema.as_str(),
+            WORKFLOW_RUN_INPUT_SCHEMA_V23 | WORKFLOW_RUN_INPUT_SCHEMA_V24
+        ) || source
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.cancellation_compensation.as_ref())
+            .is_none_or(|compensation| compensation.step_id != target.plan.id)
         {
             return Err(
                 "Workflow Connector cancellation compensation lost its immutable policy authority"
@@ -174,7 +176,8 @@ impl WorkflowConnectorHookMetadata {
                     | WORKFLOW_RUN_INPUT_SCHEMA_V9
                     | WORKFLOW_RUN_INPUT_SCHEMA_V10
                     | WORKFLOW_RUN_INPUT_SCHEMA_V13
-                    | WORKFLOW_RUN_INPUT_SCHEMA_V23 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V23
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V24 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
                     WORKFLOW_RUN_INPUT_SCHEMA_V6 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into(),
                     _ => WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
                 }
