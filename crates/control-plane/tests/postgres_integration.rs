@@ -3960,8 +3960,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert!(workflow_step_kind_constraint.contains("'human_decision'"));
     assert!(workflow_step_kind_constraint.contains("'execution'"));
+    assert!(workflow_step_kind_constraint.contains("'agent'"));
     assert!(workflow_step_kind_constraint.contains("'service'"));
-    for unavailable in ["agent", "mcp", "model", "tool", "memory", "subworkflow"] {
+    for unavailable in ["mcp", "model", "tool", "memory", "subworkflow"] {
         assert!(
             !workflow_step_kind_constraint.contains(&format!("'{unavailable}'")),
             "WorkflowStepProjection admitted unavailable kind {unavailable}"
