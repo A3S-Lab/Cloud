@@ -394,6 +394,7 @@ pub(in crate::modules::sources) fn lifecycle_event(
         revision.map(|value| value.repository.identity().to_owned()),
         revision.map(|value| value.commit_sha.as_str().to_owned()),
         revision.map(|value| value.recipe_digest.clone()),
+        revision.map(|value| value.accepted_at),
     );
     fact.validate()?;
     Ok(DomainEventEnvelope {

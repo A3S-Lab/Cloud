@@ -1,7 +1,9 @@
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GitCommitSha, OrganizationId, ProjectId, PullRequestPreviewId, Sha256Digest,
-    SourcePullRequestChangeId, SourceRevisionId, SourceSubscriptionId,
+    canonical_timestamp, EnvironmentId, GitCommitSha, OrganizationId, ProjectId,
+    PullRequestPreviewId, Sha256Digest, SourcePullRequestChangeId, SourceRevisionId,
+    SourceSubscriptionId,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY: &str =
@@ -45,6 +47,7 @@ pub struct PreviewSourceRevisionLifecycleCommittedFact {
     repository_identity: Option<String>,
     commit_sha: Option<String>,
     recipe_digest: Option<String>,
+    source_revision_accepted_at: Option<DateTime<Utc>>,
 }
 
 impl PreviewSourceRevisionLifecycleCommittedFact {
@@ -63,6 +66,7 @@ impl PreviewSourceRevisionLifecycleCommittedFact {
         repository_identity: Option<String>,
         commit_sha: Option<String>,
         recipe_digest: Option<String>,
+        source_revision_accepted_at: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
             source_pull_request_change_id,
@@ -78,6 +82,7 @@ impl PreviewSourceRevisionLifecycleCommittedFact {
             repository_identity,
             commit_sha,
             recipe_digest,
+            source_revision_accepted_at,
         }
     }
 
@@ -101,6 +106,7 @@ impl PreviewSourceRevisionLifecycleCommittedFact {
             self.repository_identity.as_deref(),
             self.commit_sha.as_deref(),
             self.recipe_digest.as_deref(),
+            self.source_revision_accepted_at,
         ) {
             (
                 PreviewSourceRevisionLifecycleState::Active,
@@ -108,16 +114,26 @@ impl PreviewSourceRevisionLifecycleCommittedFact {
                 Some(repository),
                 Some(commit),
                 Some(recipe),
+                Some(accepted_at),
             ) if !revision_id.as_uuid().is_nil()
                 && !repository.trim().is_empty()
-                && repository.len() <= 2_048 =>
+                && repository.len() <= 2_048
+                && accepted_at == canonical_timestamp(accepted_at) =>
             {
                 GitCommitSha::parse(commit)?;
                 Sha256Digest::parse(recipe)?;
             }
-            (PreviewSourceRevisionLifecycleState::CleanupRequired, None, None, None, None)
+            (
+                PreviewSourceRevisionLifecycleState::CleanupRequired,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
             | (
                 PreviewSourceRevisionLifecycleState::SuppressedInactiveSubscription,
+                None,
                 None,
                 None,
                 None,
@@ -178,5 +194,12 @@ impl PreviewSourceRevisionLifecycleCommittedFact {
 
     pub fn recipe_digest(&self) -> Option<&str> {
         self.recipe_digest.as_deref()
+    }
+
+    /// Stable creation time of the ordinary Sources revision. Consumers must
+    /// not substitute the enclosing Preview lifecycle time because multiple
+    /// Preview versions may intentionally reuse the same revision identity.
+    pub const fn source_revision_accepted_at(&self) -> Option<DateTime<Utc>> {
+        self.source_revision_accepted_at
     }
 }

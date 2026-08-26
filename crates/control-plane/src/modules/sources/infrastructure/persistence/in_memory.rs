@@ -756,6 +756,18 @@ mod preview_projection_tests {
             event.event_key
                 != crate::modules::sources::published::SOURCE_REVISION_ACCEPTED_EVENT_KEY
         }));
+        for event in events {
+            let fact: PreviewSourceRevisionLifecycleCommittedFact =
+                serde_json::from_value(event.payload).expect("Preview Source lifecycle fact");
+            fact.validate().expect("valid lifecycle fact");
+            assert_eq!(fact.state(), PreviewSourceRevisionLifecycleState::Active);
+            assert_eq!(fact.source_revision_id(), Some(revision_id));
+            assert_eq!(
+                fact.source_revision_accepted_at(),
+                Some(revisions[0].accepted_at),
+                "later Preview versions must retain the ordinary SourceRevision creation time"
+            );
+        }
     }
 
     #[tokio::test]

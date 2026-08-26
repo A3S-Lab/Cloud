@@ -17,7 +17,8 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     PrincipalId, RepositoryError, SourcePullRequestChangeId, SourceSubscriptionId,
 };
 use a3s_cloud_control_plane::modules::sources::published::{
-    GitProvider, GitRepository, PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    GitProvider, GitRepository, PreviewSourceRevisionLifecycleCommittedFact,
+    PreviewSourceRevisionLifecycleState, PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
     PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY, PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
     SOURCE_REVISION_ACCEPTED_EVENT_KEY,
 };
@@ -356,6 +357,36 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
         (2, 1, 0),
         "Sources must retain both immutable version receipts, publish only the latest specialized fact, and not bypass the Artifacts fence"
     );
+    let source_lifecycle_messages = load_outbox_messages(
+        &database,
+        organization_id,
+        PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    )
+    .await?;
+    assert_eq!(source_lifecycle_messages.len(), 1);
+    let source_lifecycle = &source_lifecycle_messages[0];
+    let source_fact: PreviewSourceRevisionLifecycleCommittedFact =
+        serde_json::from_value(source_lifecycle.payload.clone())?;
+    source_fact.validate()?;
+    assert_eq!(
+        source_fact.state(),
+        PreviewSourceRevisionLifecycleState::Active
+    );
+    assert_eq!(source_fact.preview_aggregate_version(), 2);
+    assert_eq!(source_lifecycle.aggregate_version, 2);
+    assert_eq!(
+        source_lifecycle.causation_id,
+        Some(lifecycle_messages[1].event_id)
+    );
+    assert_eq!(
+        source_lifecycle.correlation_id,
+        lifecycle_messages[1].correlation_id
+    );
+    assert_eq!(
+        source_fact.source_revision_accepted_at(),
+        Some(lifecycle_messages[1].occurred_at),
+        "the specialized fact must retain the ordinary SourceRevision creation time"
+    );
     assert_eq!(
         database
             .fetch_one_as(
@@ -421,12 +452,25 @@ async fn load_lifecycle_messages(
     database: &Database<PostgresDialect, PostgresExecutor>,
     organization_id: OrganizationId,
 ) -> Result<Vec<OutboxMessage>, Box<dyn std::error::Error>> {
+    load_outbox_messages(
+        database,
+        organization_id,
+        PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY,
+    )
+    .await
+}
+
+async fn load_outbox_messages(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: OrganizationId,
+    event_key: &str,
+) -> Result<Vec<OutboxMessage>, Box<dyn std::error::Error>> {
     let rows = database
         .fetch_all_as(
             sql_query::<LifecycleOutboxRow>("select event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, causation_id, payload from outbox_events where organization_id = ")
                 .bind(organization_id.as_uuid())
                 .append(" and event_key = ")
-                .bind(PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY)
+                .bind(event_key)
                 .append(" order by aggregate_version"),
         )
         .await?;
