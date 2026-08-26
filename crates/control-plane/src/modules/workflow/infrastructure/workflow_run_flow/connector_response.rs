@@ -6,12 +6,13 @@ use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
     flow_step_id, CapabilityType, ResolvedWorkflowRunStep, WorkflowConnectorAttemptEvidence,
-    WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorStepOutput,
-    WorkflowStepKind, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
+    WorkflowConnectorInvocationPurpose, WorkflowConnectorStepOutput, WorkflowStepKind,
+    WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V13,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V8, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V9,
 };
 use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -60,6 +61,7 @@ impl WorkflowConnectorResponseStepInput {
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V20
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21
                     | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22
+                    | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23
             )
             || self.step.plan.kind != WorkflowStepKind::Service
             || self.step.plan.id != self.metadata.step_id
@@ -188,8 +190,10 @@ pub(super) fn verify_step_history(
     snapshot: &a3s_flow::WorkflowRunSnapshot,
     history: &[a3s_flow::FlowEventEnvelope],
 ) -> Result<(), String> {
-    let expected = observed
-        .last()
+    let cleanup_materialized =
+        verify_cancellation_source_response_step_history(input, step, observed, snapshot, history)?;
+    let latest = observed.last();
+    let expected = latest
         .map(|hook| super::connector::accepted_response_step_input(input, step, hook))
         .transpose()?
         .flatten();
@@ -202,6 +206,9 @@ pub(super) fn verify_step_history(
         return Ok(());
     };
     let Some(flow_step) = flow_step else {
+        if cleanup_materialized {
+            return Ok(());
+        }
         if snapshot.status.is_terminal() {
             return Err("terminal Workflow Connector response lost its typed step".into());
         }
@@ -231,9 +238,16 @@ pub(super) fn verify_step_history(
     };
     let expected_input = serde_json::to_value(&expected)
         .map_err(|error| format!("could not encode Workflow Connector response step: {error}"))?;
-    let expected_retry = if super::workflow::failure_route_handle(input, step)
-        .map_err(|_| "Workflow Connector failure route is invalid".to_owned())?
-        .is_some()
+    let compensation_response = latest.is_some_and(|hook| {
+        matches!(
+            hook.metadata.purpose,
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { .. }
+        )
+    });
+    let expected_retry = if !compensation_response
+        && super::workflow::failure_route_handle(input, step)
+            .map_err(|_| "Workflow Connector failure route is invalid".to_owned())?
+            .is_some()
     {
         a3s_flow::RetryPolicy::none().continue_workflow_on_failure()
     } else {
@@ -251,6 +265,104 @@ pub(super) fn verify_step_history(
         expected.validate_result(&result)?;
     }
     Ok(())
+}
+
+fn verify_cancellation_source_response_step_history(
+    input: &crate::modules::workflow::domain::WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    observed: &[super::connector::ObservedConnectorHook<'_>],
+    snapshot: &a3s_flow::WorkflowRunSnapshot,
+    history: &[a3s_flow::FlowEventEnvelope],
+) -> Result<bool, String> {
+    let cleanup_step_id = super::cancellation::cancellation_source_response_step_id(&step.plan.id);
+    let Some(flow_step) = snapshot.steps.get(&cleanup_step_id) else {
+        return Ok(false);
+    };
+    let cancellation = snapshot.cancellation.as_ref().ok_or_else(|| {
+        "Workflow Connector cancellation-source response precedes cancellation".to_owned()
+    })?;
+    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
+        || step
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.cancellation_compensation.as_ref())
+            .is_none()
+        || snapshot
+            .steps
+            .get(&flow_step_id(&step.plan.id))
+            .and_then(|ordinary| ordinary.output.as_ref())
+            .is_some()
+    {
+        return Err(
+            "Workflow Connector cancellation-source response has no exact cleanup authority".into(),
+        );
+    }
+    let mut expected = None;
+    for hook in observed.iter().rev() {
+        if !matches!(
+            hook.metadata.purpose,
+            WorkflowConnectorInvocationPurpose::Normal
+        ) {
+            continue;
+        }
+        if let Some(candidate) = super::connector::accepted_response_step_input(input, step, hook)?
+        {
+            expected = Some(candidate);
+            break;
+        }
+    }
+    let expected = expected.ok_or_else(|| {
+        "Workflow Connector cancellation-source response lost accepted source evidence".to_owned()
+    })?;
+    let created = history
+        .iter()
+        .filter(|event| {
+            matches!(
+                &event.event,
+                a3s_flow::FlowEvent::StepCreated { step_id, .. }
+                    if step_id == &cleanup_step_id
+            )
+        })
+        .collect::<Vec<_>>();
+    if created.len() != 1 || created[0].sequence <= cancellation.sequence {
+        return Err(
+            "Workflow Connector cancellation-source response must have one post-cancellation creation event"
+                .into(),
+        );
+    }
+    let a3s_flow::FlowEvent::StepCreated {
+        step_name,
+        input: observed_input,
+        retry,
+        ..
+    } = &created[0].event
+    else {
+        return Err(
+            "Workflow Connector cancellation-source response creation history is invalid".into(),
+        );
+    };
+    let expected_input = serde_json::to_value(&expected).map_err(|error| {
+        format!("could not encode Workflow Connector cancellation-source response step: {error}")
+    })?;
+    if flow_step.step_id != cleanup_step_id
+        || step_name != WORKFLOW_CONNECTOR_RESPONSE_STEP_NAME
+        || observed_input != &expected_input
+        || retry != &a3s_flow::RetryPolicy::none()
+    {
+        return Err(
+            "Workflow Connector cancellation-source response creation authority drifted".into(),
+        );
+    }
+    if let Some(output) = flow_step.output.as_ref() {
+        let result =
+            serde_json::from_value::<WorkflowLocalStepResult>(output.clone()).map_err(|error| {
+                format!(
+                    "Workflow Connector cancellation-source response result is invalid: {error}"
+                )
+            })?;
+        expected.validate_result(&result)?;
+    }
+    Ok(true)
 }
 
 pub(super) fn parse_json_output(

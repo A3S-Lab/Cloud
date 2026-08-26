@@ -15,7 +15,8 @@ fn workflow_definition_and_revision_responses_are_closed_and_typed() -> Result<(
             "cloud.workflow.data-schema.v1",
             "cloud.workflow.policy.v1",
             "cloud.workflow.policy.v2",
-            "cloud.workflow.policy.v3"
+            "cloud.workflow.policy.v3",
+            "cloud.workflow.policy.v4"
         ])
     );
     assert_eq!(schemas["WorkflowRevision"]["additionalProperties"], false);

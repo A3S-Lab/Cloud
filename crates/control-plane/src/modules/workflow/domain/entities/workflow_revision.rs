@@ -4,9 +4,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     validate_list_operator_binding, validate_variable_aggregate_binding, CapabilityType,
-    WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy,
-    WorkflowRevisionSemanticContracts, WorkflowSpec, WorkflowStepFailureContract, WorkflowStepKind,
-    WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
+    WorkflowContract, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
+    WorkflowPayloadKind, WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowSpec,
+    WorkflowStepFailureContract, WorkflowStepKind, WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -332,6 +332,16 @@ impl WorkflowRevision {
             )
         })
     }
+
+    pub(crate) fn has_cancellation_compensation(&self) -> bool {
+        self.payloads.iter().any(|payload| {
+            matches!(
+                payload.content(),
+                WorkflowPayloadContent::Policy(policy)
+                    if policy.cancellation_compensation.is_some()
+            )
+        })
+    }
 }
 
 fn validate_runtime_dispatch_support(
@@ -392,6 +402,7 @@ fn validate_payload_bindings(
     }
 
     let mut referenced = BTreeSet::new();
+    let mut policies = BTreeMap::<&str, &WorkflowPolicy>::new();
     for step in &contract.spec().steps {
         let configuration = require_payload(
             &by_digest,
@@ -446,6 +457,9 @@ fn validate_payload_bindings(
             .transpose()?;
         validate_retry_policy_binding(step, policy)?;
         validate_default_output_policy_binding(step, policy, output_schema, semantic_contracts)?;
+        if let Some(policy) = policy {
+            policies.insert(step.id.as_str(), policy);
+        }
         validate_list_operator_binding(
             step,
             configuration,
@@ -467,6 +481,7 @@ fn validate_payload_bindings(
             validate_branch_handles(contract, &step.id, configuration, failure)?;
         }
     }
+    validate_cancellation_compensation_bindings(contract.spec(), &policies)?;
     let stored = payloads
         .iter()
         .map(|payload| payload.digest().clone())
@@ -477,6 +492,109 @@ fn validate_payload_bindings(
         );
     }
     Ok(())
+}
+
+fn validate_cancellation_compensation_bindings(
+    workflow: &WorkflowSpec,
+    policies: &BTreeMap<&str, &WorkflowPolicy>,
+) -> Result<(), String> {
+    let steps = workflow
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    workflow.topological_order(Default::default())?;
+    let mut targets = BTreeSet::new();
+    for source in &workflow.steps {
+        let Some(compensation) = policies
+            .get(source.id.as_str())
+            .and_then(|policy| policy.cancellation_compensation.as_ref())
+        else {
+            continue;
+        };
+        let Some(target) = steps.get(compensation.step_id.as_str()).copied() else {
+            return Err(format!(
+                "Workflow Connector step {:?} references missing cancellation compensation {:?}",
+                source.id, compensation.step_id
+            ));
+        };
+        if source.id == target.id {
+            return Err(format!(
+                "Workflow Connector step {:?} cannot compensate itself",
+                source.id
+            ));
+        }
+        if !is_exact_connector_step(source) || !is_exact_connector_step(target) {
+            return Err(format!(
+                "Workflow cancellation compensation {:?} -> {:?} requires exact connector.http Service steps",
+                source.id, target.id
+            ));
+        }
+        if source.output_schema_digest != target.input_schema_digest {
+            return Err(format!(
+                "Workflow cancellation compensation {:?} -> {:?} has incompatible output and input schemas",
+                source.id, target.id
+            ));
+        }
+        if !workflow_path_exists(&workflow.edges, &source.id, &target.id) {
+            return Err(format!(
+                "Workflow cancellation compensation {:?} must be downstream of {:?}",
+                target.id, source.id
+            ));
+        }
+        if policies
+            .get(target.id.as_str())
+            .is_some_and(|policy| policy.cancellation_compensation.is_some())
+        {
+            return Err(format!(
+                "Workflow cancellation compensation target {:?} cannot own another compensation",
+                target.id
+            ));
+        }
+        if !targets.insert(target.id.as_str()) {
+            return Err(format!(
+                "Workflow cancellation compensation target {:?} is assigned more than once",
+                target.id
+            ));
+        }
+        let incoming = workflow
+            .edges
+            .iter()
+            .filter(|edge| edge.target == target.id)
+            .collect::<Vec<_>>();
+        if incoming.len() != 1 || incoming[0].source_handle.is_none() {
+            return Err(format!(
+                "Workflow cancellation compensation target {:?} must also be reachable through one explicit handled route",
+                target.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn workflow_path_exists(edges: &[WorkflowEdgeSpec], source: &str, target: &str) -> bool {
+    let mut pending = vec![source.to_owned()];
+    let mut visited = BTreeSet::new();
+    while let Some(current) = pending.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        for edge in edges.iter().filter(|edge| edge.source == current) {
+            if edge.target == target {
+                return true;
+            }
+            pending.push(edge.target.clone());
+        }
+    }
+    false
+}
+
+fn is_exact_connector_step(step: &WorkflowStepSpec) -> bool {
+    step.kind == WorkflowStepKind::Service
+        && step.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::ConnectorRevision
+                && capability.capability == "connector.http"
+        })
 }
 
 fn validate_default_output_policy_binding(
@@ -538,7 +656,7 @@ fn validate_retry_policy_binding(
     match (connector, retry) {
         (true, Some(_)) | (false, None) => Ok(()),
         (true, None) => Err(format!(
-            "Workflow Connector step {:?} requires an exact policy v2 retry budget",
+            "Workflow Connector step {:?} requires an exact retry budget",
             step.id
         )),
         (false, Some(_)) => Err(format!(
@@ -947,7 +1065,8 @@ mod runtime_dispatch_tests {
 mod retry_policy_tests {
     use super::*;
     use crate::modules::workflow::domain::{
-        CapabilityOwner, CapabilityReference, WorkflowPolicyMode, WorkflowRetryPolicy,
+        CapabilityOwner, CapabilityReference, WorkflowCancellationCompensation, WorkflowEdgeSpec,
+        WorkflowPolicyMode, WorkflowRetryPolicy,
     };
     use uuid::Uuid;
 
@@ -982,7 +1101,17 @@ mod retry_policy_tests {
             candidates: Vec::new(),
             retry,
             default_output: None,
+            cancellation_compensation: None,
         }
+    }
+
+    fn connector_step(id: &str, input: Sha256Digest, output: Sha256Digest) -> WorkflowStepSpec {
+        let mut value = step(true);
+        value.id = id.into();
+        value.label = id.into();
+        value.input_schema_digest = input;
+        value.output_schema_digest = output;
+        value
     }
 
     #[test]
@@ -996,5 +1125,81 @@ mod retry_policy_tests {
         assert!(validate_retry_policy_binding(&step(true), Some(&policy(None))).is_err());
         assert!(validate_retry_policy_binding(&step(false), Some(&policy(Some(retry)))).is_err());
         assert!(validate_retry_policy_binding(&step(false), Some(&policy(None))).is_ok());
+    }
+
+    #[test]
+    fn cancellation_compensation_requires_one_downstream_exact_connector_route() {
+        let schema = digest('b');
+        let local_step =
+            |id: &str, kind: WorkflowStepKind, schema: Sha256Digest| WorkflowStepSpec {
+                id: id.into(),
+                label: id.into(),
+                kind,
+                configuration_digest: digest('f'),
+                input_schema_digest: schema.clone(),
+                output_schema_digest: schema,
+                policy_digest: None,
+                capability: None,
+            };
+        let workflow = WorkflowSpec {
+            name: "Cancellation compensation".into(),
+            description: String::new(),
+            steps: vec![
+                local_step("input", WorkflowStepKind::Input, digest('a')),
+                connector_step("reserve", digest('a'), schema.clone()),
+                connector_step("release", schema.clone(), digest('c')),
+                local_step("success_output", WorkflowStepKind::Output, schema.clone()),
+                local_step("compensation_output", WorkflowStepKind::Output, digest('c')),
+            ],
+            edges: vec![
+                WorkflowEdgeSpec {
+                    id: "input-reserve".into(),
+                    source: "input".into(),
+                    target: "reserve".into(),
+                    source_handle: None,
+                },
+                WorkflowEdgeSpec {
+                    id: "reserve-success".into(),
+                    source: "reserve".into(),
+                    target: "success_output".into(),
+                    source_handle: None,
+                },
+                WorkflowEdgeSpec {
+                    id: "reserve-release".into(),
+                    source: "reserve".into(),
+                    target: "release".into(),
+                    source_handle: Some("compensate".into()),
+                },
+                WorkflowEdgeSpec {
+                    id: "release-compensation".into(),
+                    source: "release".into(),
+                    target: "compensation_output".into(),
+                    source_handle: None,
+                },
+            ],
+        };
+        let mut source_policy = policy(Some(WorkflowRetryPolicy {
+            maximum_attempts: 3,
+            default_delay_seconds: 5,
+        }));
+        source_policy.cancellation_compensation = Some(WorkflowCancellationCompensation {
+            step_id: "release".into(),
+        });
+        let target_policy = policy(Some(WorkflowRetryPolicy {
+            maximum_attempts: 3,
+            default_delay_seconds: 5,
+        }));
+        let policies = BTreeMap::from([("reserve", &source_policy), ("release", &target_policy)]);
+
+        let validation = validate_cancellation_compensation_bindings(&workflow, &policies);
+        assert!(validation.is_ok(), "{validation:?}");
+
+        let mut implicit_route = workflow.clone();
+        implicit_route.edges[2].source_handle = None;
+        assert!(validate_cancellation_compensation_bindings(&implicit_route, &policies).is_err());
+
+        let mut incompatible = workflow;
+        incompatible.steps[2].input_schema_digest = digest('d');
+        assert!(validate_cancellation_compensation_bindings(&incompatible, &policies).is_err());
     }
 }

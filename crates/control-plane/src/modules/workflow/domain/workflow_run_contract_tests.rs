@@ -3,9 +3,9 @@ use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_diges
 use crate::modules::workflow::test_support::{
     application_answer_workflow_run_input, application_frame_answer_workflow_run_inputs,
     application_nested_frame_answer_authorities, application_variable_workflow_run_input,
-    application_workflow_run_input, connector_workflow_run_input, connector_workflow_run_input_v5,
-    connector_workflow_run_input_v6, human_decision_workflow_run_input,
-    routed_application_answer_and_variable_workflow_run_input,
+    application_workflow_run_input, cancellation_compensating_connector_workflow_run_input,
+    connector_workflow_run_input, connector_workflow_run_input_v5, connector_workflow_run_input_v6,
+    human_decision_workflow_run_input, routed_application_answer_and_variable_workflow_run_input,
     routed_application_answer_workflow_run_input,
     routed_application_frame_answer_workflow_run_input,
     routed_application_variable_workflow_run_input, routed_composite_workflow_run_input,
@@ -13,6 +13,25 @@ use crate::modules::workflow::test_support::{
     typed_variable_workflow_run_input, workflow_run_input, TEST_ANSWER_STEP_ID,
     TEST_APPLICATION_VARIABLE_STEP_ID, TEST_CONNECTOR_STEP_ID, TEST_HUMAN_STEP_ID,
 };
+
+#[test]
+fn v23_cancellation_compensation_is_exact_and_version_fenced() {
+    let input = cancellation_compensating_connector_workflow_run_input()
+        .expect("valid cancellation-compensating Connector input");
+    assert_eq!(input.schema, WORKFLOW_RUN_INPUT_SCHEMA_V23);
+    assert_eq!(
+        input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23
+    );
+    assert_eq!(input.flow_workflow_version, WORKFLOW_RUN_FLOW_VERSION_V23);
+    input.validate().expect("valid v23 input");
+
+    let mut downgraded = input;
+    downgraded.schema = WORKFLOW_RUN_INPUT_SCHEMA_V21.into();
+    downgraded.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V21.into();
+    downgraded.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V21.into();
+    assert!(downgraded.validate().is_err());
+}
 
 #[test]
 fn v22_parallel_iteration_is_exact_and_preserves_legacy_serial_replay() {
@@ -669,6 +688,7 @@ fn run_input_retry_budget_remains_bound_to_an_exact_connector_revision() {
             default_delay_seconds: 5,
         }),
         default_output: None,
+        cancellation_compensation: None,
     });
     assert!(super::workflow_run_contract::validate_runtime_retry_policy(&step).is_err());
 

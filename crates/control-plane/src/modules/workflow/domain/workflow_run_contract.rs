@@ -29,6 +29,7 @@ mod v19;
 mod v20;
 mod v21;
 mod v22;
+mod v23;
 
 pub const WORKFLOW_RUN_INPUT_SCHEMA: &str = "cloud.workflow-run.input.v1";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-runtime.v1";
@@ -98,6 +99,9 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V21: &str = "21";
 pub const WORKFLOW_RUN_INPUT_SCHEMA_V22: &str = "cloud.workflow-run.input.v22";
 pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V22: &str = "cloud.workflow-run-runtime.v22";
 pub const WORKFLOW_RUN_FLOW_VERSION_V22: &str = "22";
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V23: &str = "cloud.workflow-run.input.v23";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23: &str = "cloud.workflow-run-runtime.v23";
+pub const WORKFLOW_RUN_FLOW_VERSION_V23: &str = "23";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA: &str =
     "cloud.workflow-run.application-projection.v1";
 pub const WORKFLOW_RUN_APPLICATION_PROJECTION_SCHEMA_V2: &str =
@@ -264,6 +268,7 @@ impl WorkflowRunInput {
                 | WORKFLOW_RUN_INPUT_SCHEMA_V20
                 | WORKFLOW_RUN_INPUT_SCHEMA_V21
                 | WORKFLOW_RUN_INPUT_SCHEMA_V22
+                | WORKFLOW_RUN_INPUT_SCHEMA_V23
         ) {
             WORKFLOW_RUN_INPUT_MAX_BYTES_V2
         } else {
@@ -1093,6 +1098,25 @@ impl WorkflowRunInput {
                     regions,
                     application_projection,
                 ) => v22::validate(self, resolved, defaults, regions, application_projection)?,
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V23,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23,
+                    WORKFLOW_RUN_FLOW_VERSION_V23,
+                    WORKFLOW_PLAN_SCHEMA_V2
+                    | WORKFLOW_PLAN_SCHEMA_V3
+                    | WORKFLOW_PLAN_SCHEMA_V4
+                    | WORKFLOW_PLAN_SCHEMA_V5
+                    | WORKFLOW_PLAN_SCHEMA_V6
+                    | WORKFLOW_PLAN_SCHEMA_V7
+                    | WORKFLOW_PLAN_SCHEMA_V8
+                    | WORKFLOW_PLAN_SCHEMA_V9
+                    | WORKFLOW_PLAN_SCHEMA_V10
+                    | WORKFLOW_PLAN_SCHEMA_V11,
+                    Some(resolved),
+                    defaults,
+                    regions,
+                    application_projection,
+                ) => v23::validate(self, resolved, defaults, regions, application_projection)?,
                 _ => {
                     return Err(
                         "WorkflowRun input, runtime, plan, and Flow versions are incompatible"
@@ -1160,6 +1184,7 @@ impl WorkflowRunInput {
             return Err("WorkflowRun payload set drifted from the PlanRevision".into());
         }
         let resolved = resolve_steps(&self.plan, &restored)?;
+        validate_runtime_cancellation_compensation(&resolved, &self.plan.edges)?;
         let has_variable_aggregate = resolved
             .iter()
             .any(|step| step.configuration.variable_aggregate().is_some());
@@ -1169,12 +1194,14 @@ impl WorkflowRunInput {
         if (has_list_operator
             && !matches!(
                 self.schema.as_str(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V21 | WORKFLOW_RUN_INPUT_SCHEMA_V22
+                WORKFLOW_RUN_INPUT_SCHEMA_V21
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V22
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V23
             ))
             || (!has_list_operator && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V21)
         {
             return Err(
-                "WorkflowRun List Operator semantics require runtime generation v21 or a composing v22 generation"
+                "WorkflowRun List Operator semantics require runtime generation v21 or a later composing generation"
                     .into(),
             );
         }
@@ -1184,11 +1211,12 @@ impl WorkflowRunInput {
                 WORKFLOW_RUN_INPUT_SCHEMA_V20
                     | WORKFLOW_RUN_INPUT_SCHEMA_V21
                     | WORKFLOW_RUN_INPUT_SCHEMA_V22
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V23
             ))
             || (!has_variable_aggregate && self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V20)
         {
             return Err(
-                "WorkflowRun Variable Aggregator semantics require runtime generation v20 or a composing v21/v22 generation"
+                "WorkflowRun Variable Aggregator semantics require runtime generation v20 or a later composing generation"
                     .into(),
             );
         }
@@ -1204,6 +1232,17 @@ impl WorkflowRunInput {
         if self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22 && !has_parallel_iteration {
             return Err(
                 "WorkflowRun v22 requires an Iteration with bounded parallel semantics".into(),
+            );
+        }
+        let has_cancellation_compensation = resolved.iter().any(|step| {
+            step.policy
+                .as_ref()
+                .is_some_and(|policy| policy.cancellation_compensation.is_some())
+        });
+        if (self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23) != has_cancellation_compensation {
+            return Err(
+                "WorkflowRun cancellation compensation requires exact runtime generation v23"
+                    .into(),
             );
         }
         let has_connector = resolved.iter().any(|step| {
@@ -1305,6 +1344,86 @@ impl WorkflowRunInput {
         }
         Ok(restored)
     }
+}
+
+fn validate_runtime_cancellation_compensation(
+    resolved: &[ResolvedWorkflowRunStep],
+    edges: &[WorkflowEdgeSpec],
+) -> Result<(), String> {
+    let by_id = resolved
+        .iter()
+        .map(|step| (step.plan.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
+    let mut targets = BTreeSet::new();
+    for source in resolved {
+        let Some(compensation) = source
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.cancellation_compensation.as_ref())
+        else {
+            continue;
+        };
+        let target = by_id
+            .get(compensation.step_id.as_str())
+            .copied()
+            .ok_or_else(|| {
+                format!(
+                    "WorkflowRun Connector step {:?} lost cancellation compensation {:?}",
+                    source.plan.id, compensation.step_id
+                )
+            })?;
+        let exact_connector = |step: &ResolvedWorkflowRunStep| {
+            step.plan.kind == WorkflowStepKind::Service
+                && step.plan.capability.as_ref().is_some_and(|capability| {
+                    capability.capability_type == CapabilityType::ConnectorRevision
+                        && capability.capability == "connector.http"
+                })
+        };
+        if source.plan.id == target.plan.id
+            || !exact_connector(source)
+            || !exact_connector(target)
+            || source.plan.output_schema_digest != target.plan.input_schema_digest
+            || !runtime_workflow_path_exists(edges, &source.plan.id, &target.plan.id)
+            || target
+                .policy
+                .as_ref()
+                .is_some_and(|policy| policy.cancellation_compensation.is_some())
+            || !targets.insert(target.plan.id.as_str())
+        {
+            return Err(format!(
+                "WorkflowRun cancellation compensation {:?} -> {:?} drifted from its exact Connector authority",
+                source.plan.id, target.plan.id
+            ));
+        }
+        let incoming = edges
+            .iter()
+            .filter(|edge| edge.target == target.plan.id)
+            .collect::<Vec<_>>();
+        if incoming.len() != 1 || incoming[0].source_handle.is_none() {
+            return Err(format!(
+                "WorkflowRun cancellation compensation target {:?} lost its explicit handled route",
+                target.plan.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn runtime_workflow_path_exists(edges: &[WorkflowEdgeSpec], source: &str, target: &str) -> bool {
+    let mut pending = vec![source.to_owned()];
+    let mut visited = BTreeSet::new();
+    while let Some(current) = pending.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        for edge in edges.iter().filter(|edge| edge.source == current) {
+            if edge.target == target {
+                return true;
+            }
+            pending.push(edge.target.clone());
+        }
+    }
+    false
 }
 
 fn validate_runtime_default_output(step: &ResolvedWorkflowRunStep) -> Result<(), String> {

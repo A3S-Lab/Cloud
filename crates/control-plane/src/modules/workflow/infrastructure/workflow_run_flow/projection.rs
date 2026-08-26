@@ -10,10 +10,11 @@ use crate::modules::workflow::domain::{
     composite_child_evidence_references, execution_evidence_references, flow_step_id,
     human_decision_evidence_references, FlowResumePayload, WorkflowCompositeFrameResolution,
     WorkflowCompositeRegionPolicy, WorkflowCompositeResumePayload,
-    WorkflowCompositeWaveResumePayload, WorkflowExecutionHookMetadata,
-    WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution, WorkflowRunFlowState,
-    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFailureClassification,
-    WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
+    WorkflowCompositeWaveResumePayload, WorkflowConnectorInvocationPurpose,
+    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
+    WorkflowExecutionResumeResolution, WorkflowRunFlowState, WorkflowRunInput, WorkflowRunRecord,
+    WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFlowState, WorkflowStepKind,
+    WorkflowStepProjectionStatus, WORKFLOW_RUN_INPUT_SCHEMA_V23,
 };
 use a3s_flow::{
     FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, StepStatus, WorkflowRunSnapshot,
@@ -213,7 +214,7 @@ pub fn project_workflow_run_record(
                     .map(|(hook, _)| *hook)
                     .unwrap_or(snapshot_hook);
                 let sequence = if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
+                    cancellation_sequence(snapshot)?
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
@@ -274,7 +275,7 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some((hook, metadata)) = answer_hook {
                 let sequence = if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
+                    cancellation_sequence(snapshot)?
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
@@ -332,7 +333,7 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some((hook, metadata)) = human_hook {
                 let sequence = if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
+                    cancellation_sequence(snapshot)?
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
@@ -384,7 +385,7 @@ pub fn project_workflow_run_record(
                 )
             } else if let Some((hook, metadata)) = execution_hook.as_ref() {
                 let sequence = if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
+                    cancellation_sequence(snapshot)?
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
@@ -446,28 +447,37 @@ pub fn project_workflow_run_record(
                 let hook = observed.hook;
                 let failure = connector_failures.get(&projection.step_id).cloned();
                 let completed_result = completed.get(&projection.step_id);
-                let typed_response_sequence =
-                    if observed.metadata.requires_typed_response() && flow_step.is_some() {
-                        Some(
-                            last_step_sequence(history, &durable_step_id).ok_or_else(|| {
-                                format!("Flow step {durable_step_id:?} has no history")
-                            })?,
+                let typed_response_step = observed
+                    .metadata
+                    .requires_typed_response()
+                    .then(|| {
+                        connector_response_projection_step(
+                            &record.run.execution_input,
+                            resolved,
+                            snapshot,
                         )
-                    } else {
-                        None
-                    };
+                    })
+                    .flatten();
+                let typed_response_sequence = typed_response_step
+                    .as_ref()
+                    .map(|(response_step_id, _)| {
+                        last_step_sequence(history, response_step_id)
+                            .ok_or_else(|| format!("Flow step {response_step_id:?} has no history"))
+                    })
+                    .transpose()?;
                 let terminal_without_connector_result = snapshot.status.is_terminal()
                     && failure.is_none()
                     && completed_result.is_none();
-                let sequence =
-                    if hook.status == HookStatus::Cancelled || terminal_without_connector_result {
-                        snapshot.last_sequence
-                    } else if let Some(sequence) = typed_response_sequence {
-                        sequence
-                    } else {
-                        last_hook_sequence(history, &hook.hook_id)
-                            .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
-                    };
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    cancellation_sequence(snapshot)?
+                } else if terminal_without_connector_result {
+                    snapshot.last_sequence
+                } else if let Some(sequence) = typed_response_sequence {
+                    sequence
+                } else {
+                    last_hook_sequence(history, &hook.hook_id)
+                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                };
                 let at = history
                     .iter()
                     .find(|event| event.sequence == sequence)
@@ -527,8 +537,12 @@ pub fn project_workflow_run_record(
                 resolved.plan.kind != WorkflowStepKind::Subworkflow
                     || !composite_failures.contains_key(&projection.step_id)
             }) {
-                let sequence = last_step_sequence(history, &durable_step_id)
-                    .ok_or_else(|| format!("Flow step {durable_step_id:?} has no history"))?;
+                let sequence = if flow_step.status == StepStatus::Cancelled {
+                    cancellation_sequence(snapshot)?
+                } else {
+                    last_step_sequence(history, &durable_step_id)
+                        .ok_or_else(|| format!("Flow step {durable_step_id:?} has no history"))?
+                };
                 let at = history
                     .iter()
                     .find(|event| event.sequence == sequence)
@@ -593,14 +607,18 @@ pub fn project_workflow_run_record(
             } else if let Some(observed) = composite_hook {
                 let hook = observed.hook;
                 let hook_sequence = if hook.status == HookStatus::Cancelled {
-                    snapshot.last_sequence
+                    cancellation_sequence(snapshot)?
                 } else {
                     last_hook_sequence(history, &hook.hook_id)
                         .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
                 };
-                let sequence = composite_child_sequence
-                    .map(|child_sequence| hook_sequence.max(child_sequence))
-                    .unwrap_or(hook_sequence);
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    hook_sequence
+                } else {
+                    composite_child_sequence
+                        .map(|child_sequence| hook_sequence.max(child_sequence))
+                        .unwrap_or(hook_sequence)
+                };
                 let at = history
                     .iter()
                     .find(|event| event.sequence == sequence)
@@ -733,6 +751,15 @@ pub fn project_workflow_run_record(
         {
             continue;
         }
+        let projects_cancellation_connector_work = input_projects_cancellation_connector_work(
+            &record.run.execution_input,
+            resolved,
+            connector_hook,
+            snapshot,
+        );
+        if projection.status.is_terminal() && projects_cancellation_connector_work {
+            continue;
+        }
         projection.project_flow(desired)?;
     }
     if projected.run.aggregate_version != expected_version + 1 {
@@ -805,6 +832,63 @@ fn replay_compatible_evidence_references(
     }
 }
 
+fn cancellation_sequence(snapshot: &WorkflowRunSnapshot) -> Result<u64, String> {
+    snapshot
+        .cancellation
+        .as_ref()
+        .map(|cancellation| cancellation.sequence)
+        .ok_or_else(|| "cancelled Workflow work precedes its cancellation request".to_owned())
+}
+
+fn input_projects_cancellation_connector_work(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    connector_hook: Option<&super::connector::ObservedConnectorHook<'_>>,
+    snapshot: &WorkflowRunSnapshot,
+) -> bool {
+    if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
+        || resolved.plan.kind != WorkflowStepKind::Service
+    {
+        return false;
+    }
+    let compensation_invocation = connector_hook.is_some_and(|observed| {
+        matches!(
+            observed.metadata.purpose,
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { .. }
+        )
+    });
+    let cleanup_step_id =
+        super::cancellation::cancellation_source_response_step_id(&resolved.plan.id);
+    compensation_invocation || snapshot.steps.contains_key(&cleanup_step_id)
+}
+
+fn connector_response_projection_step<'a>(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    snapshot: &'a WorkflowRunSnapshot,
+) -> Option<(String, &'a a3s_flow::StepSnapshot)> {
+    let ordinary_step_id = flow_step_id(&resolved.plan.id);
+    let ordinary_step = snapshot.steps.get(&ordinary_step_id);
+    let may_use_cancellation_cleanup = input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V23
+        && snapshot.cancellation.is_some()
+        && resolved
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.cancellation_compensation.as_ref())
+            .is_some()
+        && ordinary_step
+            .and_then(|step| step.output.as_ref())
+            .is_none();
+    if may_use_cancellation_cleanup {
+        let cleanup_step_id =
+            super::cancellation::cancellation_source_response_step_id(&resolved.plan.id);
+        if let Some(cleanup_step) = snapshot.steps.get(&cleanup_step_id) {
+            return Some((cleanup_step_id, cleanup_step));
+        }
+    }
+    ordinary_step.map(|step| (ordinary_step_id, step))
+}
+
 pub(super) struct CompletedWorkflowSteps {
     pub(super) completed: BTreeMap<String, WorkflowLocalStepResult>,
     pub(super) execution_failures: BTreeMap<String, String>,
@@ -835,7 +919,15 @@ pub(super) fn completed_workflow_steps(
                     result.step_id
                 )
             })?;
-        if durable_step_id != &flow_step_id(&result.step_id) {
+        let expected_durable_step_id = if result.kind == WorkflowStepKind::Service {
+            connector_response_projection_step(input, resolved, snapshot)
+                .filter(|(_, response_step)| response_step.output.is_some())
+                .map(|(response_step_id, _)| response_step_id)
+                .unwrap_or_else(|| flow_step_id(&result.step_id))
+        } else {
+            flow_step_id(&result.step_id)
+        };
+        if durable_step_id != &expected_durable_step_id {
             return Err("WorkflowRun Flow step result identity drifted".into());
         }
         result.validate(resolved)?;
@@ -1035,12 +1127,12 @@ pub(super) fn completed_workflow_steps(
                         super::connector::ConnectorProjectionResolution::Running
                             if observed.metadata.requires_typed_response() =>
                         {
-                            let durable_step_id = flow_step_id(&resolved.plan.id);
-                            snapshot.steps.get(&durable_step_id).and_then(|step| {
-                                (step.status == StepStatus::Failed).then(|| {
+                            connector_response_projection_step(input, resolved, snapshot)
+                                .and_then(|(_, response_step)| {
+                                (response_step.status == StepStatus::Failed).then(|| {
                                     super::connector::ConnectorStepFailure {
                                         classification: WorkflowStepFailureClassification::ProviderResponseInvalid,
-                                        message: step.error.clone().unwrap_or_else(|| {
+                                        message: response_step.error.clone().unwrap_or_else(|| {
                                             "Workflow Connector response step failed without an error"
                                                 .into()
                                         }),

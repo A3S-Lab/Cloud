@@ -10,13 +10,13 @@ use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Sh
 use crate::modules::workflow::domain::{
     flow_step_id, IWorkflowRunCoordinator, WorkflowRun, WorkflowRunInput, WorkflowRunRecord,
     WorkflowRunStatus, WorkflowStepFailureClassification, WorkflowStepFailureOutput,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V8,
-    WORKFLOW_RUN_FLOW_VERSION_V9,
+    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V23,
+    WORKFLOW_RUN_FLOW_VERSION_V8, WORKFLOW_RUN_FLOW_VERSION_V9,
 };
 use crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime;
 use crate::modules::workflow::test_support::{
-    connector_workflow_run_input, digest, routed_connector_workflow_run_input,
-    TEST_CONNECTOR_STEP_ID,
+    cancellation_compensating_connector_workflow_run_input, connector_workflow_run_input, digest,
+    routed_connector_workflow_run_input, TEST_CONNECTOR_STEP_ID,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -320,6 +320,78 @@ async fn coordinator_projects_the_descriptor_bound_connector_failure_route() {
         .expect("Flow snapshot")
         .child_operations
         .is_empty());
+}
+
+#[tokio::test]
+async fn coordinator_dispatches_cancellation_compensation_before_terminal_projection() {
+    let (engine, mut record, now) = fixture_with(
+        cancellation_compensating_connector_workflow_run_input()
+            .expect("cancellation-compensating Connector WorkflowRun input"),
+        WORKFLOW_RUN_FLOW_VERSION_V23,
+    )
+    .await;
+    let port = Arc::new(FakeConnectorPort::accepted(now));
+    let coordinator = FlowWorkflowRunCoordinator::with_connectors(
+        engine.clone(),
+        port.clone() as Arc<dyn IWorkflowConnectorPort>,
+    );
+
+    let waiting = coordinator
+        .reconcile(&record, now)
+        .await
+        .expect("coordinate completed cancellation source")
+        .expect("waiting projection");
+    assert_eq!(waiting.run.status, WorkflowRunStatus::Waiting);
+    assert_eq!(port.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(port.requests.lock().await[0].step_id, "reserve");
+
+    record = waiting;
+    let cancellation_at = canonical_timestamp(record.run.updated_at + Duration::milliseconds(1));
+    record
+        .run
+        .request_cancellation(
+            Some("operator requested cancellation".into()),
+            PrincipalId::new(),
+            cancellation_at,
+        )
+        .expect("request cancellation");
+    let cancelled = coordinator
+        .reconcile(&record, cancellation_at + Duration::milliseconds(1))
+        .await
+        .expect("coordinate cancellation compensation")
+        .expect("cancelled projection");
+
+    assert_eq!(cancelled.run.status, WorkflowRunStatus::Cancelled);
+    assert_eq!(port.calls.load(Ordering::SeqCst), 2);
+    let requests = port.requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].step_id, "reserve");
+    assert_eq!(requests[1].step_id, "release");
+    assert!(requests.iter().all(|request| request.step_id != "charge"));
+    drop(requests);
+
+    let compensation_hook_id = "workflow-connector-cancellation-compensation:reserve:release:1:1";
+    let snapshot = engine
+        .snapshot(&record.run.flow_run_id)
+        .await
+        .expect("cancelled snapshot");
+    assert_eq!(
+        snapshot.hooks[compensation_hook_id].status,
+        a3s_flow::HookStatus::Received
+    );
+    assert_eq!(
+        engine
+            .history(&record.run.flow_run_id)
+            .await
+            .expect("cancelled history")
+            .iter()
+            .filter(|event| matches!(
+                &event.event,
+                FlowEvent::HookCreated { hook_id, .. } if hook_id == compensation_hook_id
+            ))
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]

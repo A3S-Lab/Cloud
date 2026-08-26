@@ -45,7 +45,8 @@ export interface WorkflowPayload {
     | 'cloud.workflow.data-schema.v1'
     | 'cloud.workflow.policy.v1'
     | 'cloud.workflow.policy.v2'
-    | 'cloud.workflow.policy.v3';
+    | 'cloud.workflow.policy.v3'
+    | 'cloud.workflow.policy.v4';
   digest: string;
   canonicalAcl: string;
 }

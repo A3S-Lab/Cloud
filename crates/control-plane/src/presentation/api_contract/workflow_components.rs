@@ -4,11 +4,12 @@ use crate::modules::workflow::{
     WORKFLOW_CONFIGURATION_SCHEMA, WORKFLOW_DATA_SCHEMA, WORKFLOW_DEFINITION_SCHEMA,
     WORKFLOW_LIST_OPERATOR_CONFIGURATION_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES,
     WORKFLOW_POLICY_SCHEMA, WORKFLOW_POLICY_SCHEMA_V2, WORKFLOW_POLICY_SCHEMA_V3,
-    WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES,
-    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_MAX_ACL_BYTES,
-    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
-    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
-    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+    WORKFLOW_POLICY_SCHEMA_V4, WORKFLOW_REVISION_MAX_PAYLOADS,
+    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_MAX_ACL_BYTES, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
+    WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
 use serde_json::{json, Map, Value};
 
@@ -27,7 +28,8 @@ pub(super) fn install_workflow_component_schemas(schemas: &mut Map<String, Value
                 WORKFLOW_DATA_SCHEMA,
                 WORKFLOW_POLICY_SCHEMA,
                 WORKFLOW_POLICY_SCHEMA_V2,
-                WORKFLOW_POLICY_SCHEMA_V3
+                WORKFLOW_POLICY_SCHEMA_V3,
+                WORKFLOW_POLICY_SCHEMA_V4
             ]
         }),
     );
@@ -46,17 +48,19 @@ pub(super) fn install_workflow_component_schemas(schemas: &mut Map<String, Value
         "WorkflowDataSchemaPayload".into(),
         workflow_payload_variant_schema("data_schema", &[WORKFLOW_DATA_SCHEMA]),
     );
-    schemas.insert(
-        "WorkflowPolicyPayload".into(),
-        workflow_payload_variant_schema(
-            "policy",
-            &[
-                WORKFLOW_POLICY_SCHEMA,
-                WORKFLOW_POLICY_SCHEMA_V2,
-                WORKFLOW_POLICY_SCHEMA_V3,
-            ],
-        ),
+    let mut workflow_policy_payload = workflow_payload_variant_schema(
+        "policy",
+        &[
+            WORKFLOW_POLICY_SCHEMA,
+            WORKFLOW_POLICY_SCHEMA_V2,
+            WORKFLOW_POLICY_SCHEMA_V3,
+            WORKFLOW_POLICY_SCHEMA_V4,
+        ],
     );
+    workflow_policy_payload["description"] = json!(
+        "Canonical ACL workflow policy. cloud.workflow.policy.v4 adds one exact cancellation-compensation target to a retryable connector.http source; the target must be a downstream connector.http step with matching schema authority and exactly one explicit handled input route."
+    );
+    schemas.insert("WorkflowPolicyPayload".into(), workflow_policy_payload);
     schemas.insert(
         "WorkflowPayload".into(),
         json!({

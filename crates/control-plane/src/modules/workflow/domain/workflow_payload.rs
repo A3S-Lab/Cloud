@@ -39,6 +39,7 @@ pub const WORKFLOW_DATA_SCHEMA: &str = "cloud.workflow.data-schema.v1";
 pub const WORKFLOW_POLICY_SCHEMA: &str = "cloud.workflow.policy.v1";
 pub const WORKFLOW_POLICY_SCHEMA_V2: &str = "cloud.workflow.policy.v2";
 pub const WORKFLOW_POLICY_SCHEMA_V3: &str = "cloud.workflow.policy.v3";
+pub const WORKFLOW_POLICY_SCHEMA_V4: &str = "cloud.workflow.policy.v4";
 pub const WORKFLOW_PAYLOAD_MAX_ACL_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_DEFAULT_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_RETRY_MAXIMUM_ATTEMPTS: u32 = 32;
@@ -444,6 +445,20 @@ pub struct WorkflowDefaultOutput {
     pub digest: Sha256Digest,
 }
 
+/// Identifies the exact Connector step that compensates one completed
+/// Connector side effect when its WorkflowRun is cancelled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowCancellationCompensation {
+    pub step_id: String,
+}
+
+impl WorkflowCancellationCompensation {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_identifier("Workflow cancellation-compensation step", &self.step_id)
+    }
+}
+
 impl WorkflowDefaultOutput {
     pub fn new(port: impl Into<String>, value: Value) -> Result<Self, String> {
         let canonical = canonical_default_output_bytes(&value)?;
@@ -494,6 +509,8 @@ pub struct WorkflowPolicy {
     pub retry: Option<WorkflowRetryPolicy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_output: Option<WorkflowDefaultOutput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancellation_compensation: Option<WorkflowCancellationCompensation>,
 }
 
 impl WorkflowPolicy {
@@ -502,9 +519,17 @@ impl WorkflowPolicy {
             WorkflowPolicyMode::Static
                 if self.expression.is_none() && self.candidates.is_empty() =>
             {
-                if self.retry.is_some() && self.default_output.is_some() {
+                if self.default_output.is_some()
+                    && (self.retry.is_some() || self.cancellation_compensation.is_some())
+                {
                     return Err(
-                        "Workflow static policy cannot combine provider retry and default-output ownership"
+                        "Workflow static policy cannot combine provider or cancellation-compensation ownership with default-output ownership"
+                            .into(),
+                    );
+                }
+                if self.cancellation_compensation.is_some() && self.retry.is_none() {
+                    return Err(
+                        "Workflow cancellation compensation requires an exact provider retry budget"
                             .into(),
                     );
                 }
@@ -514,12 +539,18 @@ impl WorkflowPolicy {
                 if let Some(default_output) = &self.default_output {
                     default_output.validate()?;
                 }
+                if let Some(compensation) = &self.cancellation_compensation {
+                    compensation.validate()?;
+                }
                 Ok(())
             }
             WorkflowPolicyMode::RecordedChoice => {
-                if self.retry.is_some() || self.default_output.is_some() {
+                if self.retry.is_some()
+                    || self.default_output.is_some()
+                    || self.cancellation_compensation.is_some()
+                {
                     return Err(
-                        "Workflow recorded-choice policy cannot own provider retry or default-output behavior"
+                        "Workflow recorded-choice policy cannot own provider retry, cancellation compensation, or default-output behavior"
                             .into(),
                     );
                 }
@@ -685,6 +716,9 @@ const fn content_schema_name(content: &WorkflowPayloadContent) -> &'static str {
         }) => WORKFLOW_VARIABLE_AGGREGATE_CONFIGURATION_SCHEMA,
         WorkflowPayloadContent::Configuration(_) => WORKFLOW_CONFIGURATION_SCHEMA,
         WorkflowPayloadContent::DataSchema(_) => WORKFLOW_DATA_SCHEMA,
+        WorkflowPayloadContent::Policy(value) if value.cancellation_compensation.is_some() => {
+            WORKFLOW_POLICY_SCHEMA_V4
+        }
         WorkflowPayloadContent::Policy(value) if value.default_output.is_some() => {
             WORKFLOW_POLICY_SCHEMA_V3
         }
@@ -733,6 +767,7 @@ fn payload_schema(kind: WorkflowPayloadKind, declared_schema: &str) -> Result<Sc
         (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA) => policy_schema(1),
         (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA_V2) => policy_schema(2),
         (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA_V3) => policy_schema(3),
+        (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA_V4) => policy_schema(4),
         _ => Err(format!(
             "Workflow {} payload schema is unsupported",
             kind.as_str()
@@ -824,7 +859,7 @@ fn policy_schema(version: u8) -> Result<Schema, String> {
                 .labels(Cardinality::exactly(1))
                 .unordered(true),
         );
-    if version == 2 {
+    if matches!(version, 2 | 4) {
         let retry = Schema::new()
             .attribute(
                 "maximum_attempts",
@@ -849,6 +884,14 @@ fn policy_schema(version: u8) -> Result<Schema, String> {
         root = root.block(
             "default_output",
             BlockSchema::new(default_output)
+                .occurrences(Cardinality::exactly(1))
+                .labels(Cardinality::exactly(1)),
+        );
+    }
+    if version == 4 {
+        root = root.block(
+            "cancellation_compensation",
+            BlockSchema::new(Schema::new())
                 .occurrences(Cardinality::exactly(1))
                 .labels(Cardinality::exactly(1)),
         );
@@ -983,12 +1026,15 @@ fn parse_policy(root: &Block, schema: &str) -> Result<WorkflowPolicy, String> {
         })
         .collect::<Result<Vec<_>, String>>()?;
     candidates.sort_by(|left, right| left.id.cmp(&right.id));
-    let retry = if schema == WORKFLOW_POLICY_SCHEMA_V2 {
+    let retry = if matches!(
+        schema,
+        WORKFLOW_POLICY_SCHEMA_V2 | WORKFLOW_POLICY_SCHEMA_V4
+    ) {
         let retry = root
             .blocks
             .iter()
             .find(|block| block.name == "retry")
-            .ok_or_else(|| "Workflow policy v2 retry block is missing".to_owned())?;
+            .ok_or_else(|| "Workflow provider retry block is missing".to_owned())?;
         Some(parse_retry_policy(retry)?)
     } else {
         None
@@ -1003,12 +1049,27 @@ fn parse_policy(root: &Block, schema: &str) -> Result<WorkflowPolicy, String> {
     } else {
         None
     };
+    let cancellation_compensation = if schema == WORKFLOW_POLICY_SCHEMA_V4 {
+        let compensation = root
+            .blocks
+            .iter()
+            .find(|block| block.name == "cancellation_compensation")
+            .ok_or_else(|| {
+                "Workflow policy v4 cancellation_compensation block is missing".to_owned()
+            })?;
+        Some(WorkflowCancellationCompensation {
+            step_id: required_label(compensation, "Workflow cancellation compensation")?,
+        })
+    } else {
+        None
+    };
     let value = WorkflowPolicy {
         mode: WorkflowPolicyMode::parse(&required_string(root, "mode")?)?,
         expression: optional_string(root, "expression")?,
         candidates,
         retry,
         default_output,
+        cancellation_compensation,
     };
     value.validate()?;
     Ok(value)
@@ -1136,6 +1197,13 @@ fn payload_document(content: &WorkflowPayloadContent) -> Result<Document, String
                         .label(&default_output.port)
                         .attr("canonical_json", string(&canonical_json))
                         .attr("digest", string(default_output.digest.as_str()))
+                        .build(),
+                );
+            }
+            if let Some(compensation) = &value.cancellation_compensation {
+                root = root.nested_block(
+                    BlockBuilder::new("cancellation_compensation")
+                        .label(&compensation.step_id)
                         .build(),
                 );
             }

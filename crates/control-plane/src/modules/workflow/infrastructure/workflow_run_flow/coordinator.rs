@@ -30,7 +30,7 @@ use crate::modules::workflow::domain::{
     WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V14, WORKFLOW_RUN_INPUT_SCHEMA_V15,
     WORKFLOW_RUN_INPUT_SCHEMA_V16, WORKFLOW_RUN_INPUT_SCHEMA_V17, WORKFLOW_RUN_INPUT_SCHEMA_V18,
     WORKFLOW_RUN_INPUT_SCHEMA_V19, WORKFLOW_RUN_INPUT_SCHEMA_V20, WORKFLOW_RUN_INPUT_SCHEMA_V21,
-    WORKFLOW_RUN_INPUT_SCHEMA_V22,
+    WORKFLOW_RUN_INPUT_SCHEMA_V22, WORKFLOW_RUN_INPUT_SCHEMA_V23,
 };
 use a3s_flow::{
     CancellationRequest, ChildOperationReference, FlowEngine, FlowError, FlowEvent, HookStatus,
@@ -757,6 +757,30 @@ impl IWorkflowRunCoordinator for FlowWorkflowRunCoordinator {
                         )
                         .await
                         .map_err(unavailable)?;
+                    let cancellation_snapshot = self
+                        .engine
+                        .snapshot(&record.run.flow_run_id)
+                        .await
+                        .map_err(|error| {
+                            unavailable_at("refresh cancelling WorkflowRun snapshot", error)
+                        })?;
+                    let cancellation_history = self
+                        .engine
+                        .history(&record.run.flow_run_id)
+                        .await
+                        .map_err(|error| {
+                        unavailable_at("refresh cancelling WorkflowRun history", error)
+                    })?;
+                    verify_flow_authority(record, &cancellation_snapshot, &cancellation_history)
+                        .map_err(WorkflowRunCoordinationError::Unavailable)?;
+                    if !cancellation_snapshot.status.is_terminal() {
+                        self.coordinate_active_connector(
+                            record,
+                            &cancellation_snapshot,
+                            &cancellation_history,
+                        )
+                        .await?;
+                    }
                 } else {
                     self.engine
                         .terminate_for_timeout(
@@ -1012,6 +1036,7 @@ fn application_variable_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
+            | WORKFLOW_RUN_INPUT_SCHEMA_V23
     ) || !input
         .plan
         .edges
@@ -1050,6 +1075,7 @@ fn application_answer_failure_classification(
             | WORKFLOW_RUN_INPUT_SCHEMA_V20
             | WORKFLOW_RUN_INPUT_SCHEMA_V21
             | WORKFLOW_RUN_INPUT_SCHEMA_V22
+            | WORKFLOW_RUN_INPUT_SCHEMA_V23
     ) || !input
         .plan
         .edges

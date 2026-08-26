@@ -119,13 +119,6 @@ async fn runtime_router_preserves_all_production_workflow_identities() -> Result
         ("cloud.build", "5", "build"),
         ("cloud.execution", "1", "execution"),
         ("cloud.agent-execution", "1", "agent_execution"),
-        ("cloud.workflow-run", "1", "workflow_run"),
-        ("cloud.workflow-run", "2", "workflow_run"),
-        ("cloud.workflow-run", "3", "workflow_run"),
-        ("cloud.workflow-run", "4", "workflow_run"),
-        ("cloud.workflow-run", "5", "workflow_run"),
-        ("cloud.workflow-run", "6", "workflow_run"),
-        ("cloud.workflow-run", "7", "workflow_run"),
         (
             "cloud.object-namespace.seal",
             "1",
@@ -161,6 +154,16 @@ async fn runtime_router_preserves_all_production_workflow_identities() -> Result
             router().run_workflow(workflow(name, version)).await?,
             RuntimeCommand::Complete {
                 output: json!(expected)
+            }
+        );
+    }
+    for version in 1..=23 {
+        assert_eq!(
+            router()
+                .run_workflow(workflow("cloud.workflow-run", &version.to_string()))
+                .await?,
+            RuntimeCommand::Complete {
+                output: json!("workflow_run")
             }
         );
     }

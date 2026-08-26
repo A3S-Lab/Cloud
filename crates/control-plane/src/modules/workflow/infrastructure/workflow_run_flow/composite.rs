@@ -7,6 +7,7 @@ use crate::modules::workflow::domain::{
     WorkflowCompositeResumePayload, WorkflowCompositeWaveHookMetadata,
     WorkflowCompositeWaveRequest, WorkflowIterationRegionPolicy, WorkflowRunInput,
     WorkflowVariableContract, WorkflowVariableDefaults, WORKFLOW_RUN_INPUT_SCHEMA_V22,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23,
 };
 use a3s_flow::{FlowEvent, HookSnapshot, WorkflowContext, WorkflowRunSnapshot};
 use chrono::Duration;
@@ -58,15 +59,16 @@ pub(super) fn observed_composite_hooks<'a>(
             serde_json::from_value::<WorkflowCompositeHookMetadata>(hook.metadata.clone())
                 .map_err(|error| format!("Workflow composite hook metadata is invalid: {error}"))?;
         metadata.validate(&input.plan, &regions, &variables)?;
-        if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22
-            && matches!(
-                regions.resolve(&metadata.frame.region_step_id),
-                Some(WorkflowCompositeRegionPolicy::Iteration(policy))
-                    if policy.maximum_concurrency > 1
-            )
-        {
+        if matches!(
+            input.schema.as_str(),
+            WORKFLOW_RUN_INPUT_SCHEMA_V22 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+        ) && matches!(
+            regions.resolve(&metadata.frame.region_step_id),
+            Some(WorkflowCompositeRegionPolicy::Iteration(policy))
+                if policy.maximum_concurrency > 1
+        ) {
             return Err(
-                "Workflow parallel Iteration frame hook is incompatible with runtime v22".into(),
+                "Workflow parallel Iteration frame hook is incompatible with a wave-based runtime generation".into(),
             );
         }
         if metadata.frame.organization_id != input.organization_id
@@ -176,7 +178,11 @@ pub(super) fn resolve_step(
                     "Workflow iteration input exceeds its immutable item bound".into(),
                 ));
             }
-            if input.schema == WORKFLOW_RUN_INPUT_SCHEMA_V22 && iteration.maximum_concurrency > 1 {
+            if matches!(
+                input.schema.as_str(),
+                WORKFLOW_RUN_INPUT_SCHEMA_V22 | WORKFLOW_RUN_INPUT_SCHEMA_V23
+            ) && iteration.maximum_concurrency > 1
+            {
                 return resolve_parallel_iteration(
                     input,
                     step,

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.66.0" src="https://img.shields.io/badge/REST_contract-1.66.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.67.0" src="https://img.shields.io/badge/REST_contract-1.67.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -358,7 +358,11 @@ creating their own control planes:
    Flow-backed bounded-parallel Iteration waves, and sequential Loop child
    WorkflowRun dispatch, linkage, cancellation, process-death adoption, and
    recovery. New parallel policies use WorkflowRun/Flow v22 while v3-v21
-   histories retain serial replay. Composite Run admission binds each
+   histories retain serial replay. Run v23 composes those semantics with
+   Flow-owned, reverse-order cancellation compensation for accepted exact
+   Connector effects, including a distinct cleanup response step when
+   cancellation preempts ordinary typed-response materialization. Composite Run
+   admission binds each
    `workflow.iteration` or `workflow.loop` descriptor to the matching immutable
    region policy, and linked child evidence advances on its exact Flow
    child-operation event. It also pins finite Execution error
@@ -426,10 +430,13 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.66.0` is the current contract. It
-    adds bounded unresolved Connector-attempt reads plus an exact idempotent
+    copied evidence bodies. REST/OpenAPI `1.67.0` is the current contract. It
+    admits the exact `cloud.workflow.policy.v4` cancellation-compensation
+    policy value through OpenAPI and the maintained TypeScript client without
+    adding a route or response field. It retains
+    `1.66.0`'s bounded unresolved Connector-attempt reads and exact idempotent
     operator conclusion that closes an expired dispatch only as body-free
-    `indeterminate` evidence. It retains `1.65.0`'s exact Connector revision
+    `indeterminate` evidence, plus `1.65.0`'s exact Connector revision
     revocation and closed operation-specific Connector success schemas, plus
     `1.64.0`'s complete Workflow-tagged schemas, without changing prior response
     bytes. The
@@ -467,10 +474,14 @@ creating their own control planes:
     exposes only safe attempt metadata and an audited `indeterminate`
     conclusion after the exact outcome deadline. Terminal replay remains
     indeterminate and cannot redispatch, retry, cancel, or fabricate a provider
-    outcome. Public business-service
-    availability, remaining
-    Agent/MCP/model/Tool dispatch, general and cancellation-triggered
-    compensation, retained provider evidence, and later `W0` gates remain open.
+    outcome. Migration `158`, Workflow policy v4, Connector Hook v4, and Run
+    v23 additionally compensate accepted exact Connector effects in reverse
+    Plan order during Flow-owned cancellation and close the accepted-effect /
+    typed-response race with a distinct stable cleanup step. Public
+    business-service
+    availability, remaining Agent/MCP/model/Tool dispatch, provider-side
+    cancellation, general or multi-provider compensation, retained provider
+    evidence, and later `W0` gates remain open.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented. Native Code `A1.2` is verified and carries start,

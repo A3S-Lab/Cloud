@@ -16,6 +16,7 @@ pub(crate) fn default_output_execution_workflow_run_input() -> Result<WorkflowRu
             candidates: Vec::new(),
             retry: None,
             default_output: Some(default_output),
+            cancellation_compensation: None,
         }))?;
     let policy_digest = default_policy.digest().clone();
     input

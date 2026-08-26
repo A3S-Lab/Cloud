@@ -3967,6 +3967,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "cloud.workflow.policy.v1",
         "cloud.workflow.policy.v2",
         "cloud.workflow.policy.v3",
+        "cloud.workflow.policy.v4",
     ] {
         assert!(
             workflow_payload_schema_constraint.contains(&format!("'{schema}'")),

@@ -378,6 +378,7 @@ fn policy_records_dynamic_choice_inputs() {
         ],
         retry: None,
         default_output: None,
+        cancellation_compensation: None,
     };
     let payload =
         WorkflowPayload::from_content(WorkflowPayloadContent::Policy(policy)).expect("policy");
@@ -392,6 +393,7 @@ fn policy_v2_freezes_a_bounded_provider_retry_budget_without_changing_v1() {
         candidates: Vec::new(),
         retry: None,
         default_output: None,
+        cancellation_compensation: None,
     };
     let legacy_payload =
         WorkflowPayload::from_content(WorkflowPayloadContent::Policy(legacy.clone()))
@@ -413,6 +415,7 @@ fn policy_v2_freezes_a_bounded_provider_retry_budget_without_changing_v1() {
             default_delay_seconds: 15,
         }),
         default_output: None,
+        cancellation_compensation: None,
     };
     let payload = WorkflowPayload::from_content(WorkflowPayloadContent::Policy(policy.clone()))
         .expect("retry policy");
@@ -443,6 +446,53 @@ fn policy_v2_freezes_a_bounded_provider_retry_budget_without_changing_v1() {
         .canonical_acl()
         .replace(WORKFLOW_POLICY_SCHEMA, WORKFLOW_POLICY_SCHEMA_V2);
     assert!(WorkflowPayload::parse_acl(WorkflowPayloadKind::Policy, &v2_without_retry).is_err());
+}
+
+#[test]
+fn policy_v4_canonicalizes_exact_cancellation_compensation_authority() {
+    let policy = WorkflowPolicy {
+        mode: WorkflowPolicyMode::Static,
+        expression: None,
+        candidates: Vec::new(),
+        retry: Some(WorkflowRetryPolicy {
+            maximum_attempts: 4,
+            default_delay_seconds: 15,
+        }),
+        default_output: None,
+        cancellation_compensation: Some(WorkflowCancellationCompensation {
+            step_id: "release_reservation".into(),
+        }),
+    };
+    let payload = WorkflowPayload::from_content(WorkflowPayloadContent::Policy(policy.clone()))
+        .expect("cancellation-compensation policy");
+    assert_eq!(payload.schema(), WORKFLOW_POLICY_SCHEMA_V4);
+    assert!(payload
+        .canonical_acl()
+        .contains("cancellation_compensation \"release_reservation\""));
+    let reparsed = WorkflowPayload::parse_acl(WorkflowPayloadKind::Policy, payload.canonical_acl())
+        .expect("canonical cancellation-compensation ACL");
+    assert_eq!(reparsed, payload);
+    assert_eq!(
+        reparsed.content(),
+        &WorkflowPayloadContent::Policy(policy.clone())
+    );
+
+    let unknown = payload
+        .canonical_acl()
+        .replace("cancellation_compensation", "unknown_compensation");
+    assert!(WorkflowPayload::parse_acl(WorkflowPayloadKind::Policy, &unknown).is_err());
+
+    let mut missing_retry = policy.clone();
+    missing_retry.retry = None;
+    assert!(WorkflowPayload::from_content(WorkflowPayloadContent::Policy(missing_retry)).is_err());
+
+    let mut invalid_target = policy;
+    invalid_target
+        .cancellation_compensation
+        .as_mut()
+        .expect("compensation")
+        .step_id = "not a portable step".into();
+    assert!(WorkflowPayload::from_content(WorkflowPayloadContent::Policy(invalid_target)).is_err());
 }
 
 #[test]
@@ -486,6 +536,7 @@ fn provider_retry_budget_rejects_unbounded_or_choice_semantics() {
             default_delay_seconds: 1,
         }),
         default_output: None,
+        cancellation_compensation: None,
     };
     assert!(choice_with_retry.validate().is_err());
 }
@@ -503,6 +554,7 @@ fn policy_v3_freezes_canonical_default_output_without_changing_older_policies() 
         candidates: Vec::new(),
         retry: None,
         default_output: Some(output.clone()),
+        cancellation_compensation: None,
     };
     let mixed_ownership = WorkflowPolicy {
         retry: Some(WorkflowRetryPolicy {

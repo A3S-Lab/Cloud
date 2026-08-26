@@ -4107,7 +4107,15 @@ child in a wave is started or adopted concurrently, linked, and observed
 terminal before the wave resumes; `Terminate`, `ContinueNull`, and
 `RemoveFailed` reduce in ordinal order. Runtime v3-v21 Iteration replay remains
 serial, Loop remains sequential, and `a3s-cloud-workflows@24` retains `@1`
-through `@23`. Migration `122` adds nullable default-output evidence to
+through `@23`. An exact `cloud.workflow.policy.v4` binding emits immutable Run
+v23 and compensates accepted exact Connector effects in reverse Plan order
+during Flow 1.1 cleanup-aware cancellation. A distinct stable cleanup response
+step closes cancellation between accepted evidence and ordinary typed-response
+materialization. Purpose-bound Hook v4 and C6
+attempt identities keep compensation distinct from ordinary target execution;
+indeterminate authority fails closed. Runtime build
+`a3s-cloud-workflows@25` retains `@1` through `@24`, and migration `158` widens
+only the closed Workflow payload-schema registry. Migration `122` adds nullable default-output evidence to
 the existing step projection. Migration `123` admits the already wired Service
 projection kind and its failed selected-handle shape; aggregate validation
 still proves the exact descriptor binding and declared handle. Migration `143`

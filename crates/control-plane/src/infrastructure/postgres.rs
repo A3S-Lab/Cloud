@@ -1465,6 +1465,14 @@ fn cloud_migrations() -> Vec<Migration> {
             )),
         ),
         Migration::new(
+            "158",
+            "Workflow cancellation compensation policy schema",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/158_workflow_cancellation_compensation_policy.sql"
+            )),
+        ),
+        Migration::new(
             "159",
             "Sources pull-request Preview SourceRevision projections",
             include_str!(concat!(
@@ -1494,6 +1502,10 @@ mod hosted_build_context_boundary_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/workflow_list_operator_payload_schema_migration_151.rs"]
 mod workflow_list_operator_payload_schema_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/workflow_cancellation_compensation_policy_migration.rs"]
+mod workflow_cancellation_compensation_policy_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/artifact_build_candidate_projection_migration.rs"]

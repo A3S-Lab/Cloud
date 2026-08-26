@@ -27,6 +27,7 @@ pub(crate) fn connector_workflow_run_input() -> Result<WorkflowRunInput, String>
             default_delay_seconds: 5,
         }),
         default_output: None,
+        cancellation_compensation: None,
     };
     let retry_payload =
         WorkflowPayload::from_content(WorkflowPayloadContent::Policy(retry_policy))?;
@@ -323,6 +324,175 @@ pub(crate) fn compensating_connector_workflow_run_input() -> Result<WorkflowRunI
         &input.plan,
         WORKFLOW_PLAN_MAX_BYTES,
         "WorkflowRun compensation test plan",
+    )?))?;
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn cancellation_compensating_connector_workflow_run_input(
+) -> Result<WorkflowRunInput, String> {
+    let mut input = compensating_connector_workflow_run_input()?;
+    let policy = WorkflowPayload::from_content(WorkflowPayloadContent::Policy(WorkflowPolicy {
+        mode: WorkflowPolicyMode::Static,
+        expression: None,
+        candidates: Vec::new(),
+        retry: Some(WorkflowRetryPolicy {
+            maximum_attempts: 3,
+            default_delay_seconds: 5,
+        }),
+        default_output: None,
+        cancellation_compensation: Some(WorkflowCancellationCompensation {
+            step_id: "release".into(),
+        }),
+    }))?;
+    input
+        .plan
+        .steps
+        .iter_mut()
+        .find(|step| step.id == "reserve")
+        .ok_or_else(|| "WorkflowRun cancellation fixture lost reserve".to_owned())?
+        .policy_digest = Some(policy.digest().clone());
+    input
+        .payloads
+        .push(ResolvedWorkflowPayload::from_payload(&policy));
+    input
+        .payloads
+        .sort_by(|left, right| left.digest.cmp(&right.digest));
+    let restored_payloads = input
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    input.plan.workflow_payload_set_digest = digest_payload_set(&restored_payloads)?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun cancellation-compensation test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V23.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V23.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V23.into();
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn multiple_cancellation_compensating_connector_workflow_run_input(
+) -> Result<WorkflowRunInput, String> {
+    let mut input = cancellation_compensating_connector_workflow_run_input()?;
+    let reserve = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "reserve")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun multiple-compensation fixture lost reserve".to_owned())?;
+    let release = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "release")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun multiple-compensation fixture lost release".to_owned())?;
+    let mut route_second = input
+        .plan
+        .steps
+        .iter()
+        .find(|step| step.id == "route_charge")
+        .cloned()
+        .ok_or_else(|| "WorkflowRun multiple-compensation fixture lost route".to_owned())?;
+    route_second.id = "route_second_release".into();
+    route_second
+        .descriptor
+        .as_mut()
+        .ok_or_else(|| "WorkflowRun multiple-compensation route lost its descriptor".to_owned())?
+        .step_id = route_second.id.clone();
+
+    let mut reserve_second = compensation_connector_step(&reserve, "reserve_second", '6')?;
+    let release_second = compensation_connector_step(&release, "release_second", '7')?;
+    let second_policy =
+        WorkflowPayload::from_content(WorkflowPayloadContent::Policy(WorkflowPolicy {
+            mode: WorkflowPolicyMode::Static,
+            expression: None,
+            candidates: Vec::new(),
+            retry: Some(WorkflowRetryPolicy {
+                maximum_attempts: 3,
+                default_delay_seconds: 5,
+            }),
+            default_output: None,
+            cancellation_compensation: Some(WorkflowCancellationCompensation {
+                step_id: "release_second".into(),
+            }),
+        }))?;
+    reserve_second.policy_digest = Some(second_policy.digest().clone());
+
+    input.plan.steps.insert(2, reserve_second);
+    input.plan.steps.insert(6, route_second);
+    input.plan.steps.insert(7, release_second);
+    input.plan.edges = vec![
+        edge("input-reserve", "input", "reserve", None),
+        edge("reserve-reserve-second", "reserve", "reserve_second", None),
+        edge("reserve-second-charge", "reserve_second", "charge", None),
+        edge("charge-route", "charge", "route_charge", None),
+        edge(
+            "route-release",
+            "route_charge",
+            "release",
+            Some("compensate"),
+        ),
+        edge(
+            "route-success-output",
+            "route_charge",
+            "success_output",
+            Some("complete"),
+        ),
+        edge(
+            "release-route-second",
+            "release",
+            "route_second_release",
+            None,
+        ),
+        edge(
+            "route-second-release",
+            "route_second_release",
+            "release_second",
+            Some("compensate"),
+        ),
+        edge(
+            "route-second-success-output",
+            "route_second_release",
+            "success_output",
+            Some("complete"),
+        ),
+        edge(
+            "release-second-compensation-output",
+            "release_second",
+            "compensation_output",
+            None,
+        ),
+        edge(
+            "release-second-failure-output",
+            "release_second",
+            "failure_output",
+            None,
+        ),
+    ];
+    input
+        .payloads
+        .push(ResolvedWorkflowPayload::from_payload(&second_policy));
+    input
+        .payloads
+        .sort_by(|left, right| left.digest.cmp(&right.digest));
+    let restored_payloads = input
+        .payloads
+        .iter()
+        .map(ResolvedWorkflowPayload::restore)
+        .collect::<Result<Vec<_>, _>>()?;
+    input.plan.workflow_payload_set_digest = digest_payload_set(&restored_payloads)?;
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun multiple cancellation-compensation test plan",
     )?))?;
     input.validate()?;
     Ok(input)

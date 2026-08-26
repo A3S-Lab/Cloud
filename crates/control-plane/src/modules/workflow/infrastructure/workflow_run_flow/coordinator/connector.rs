@@ -2,9 +2,9 @@ use super::{application_unavailable, permanent_dispatch_error, unavailable_at};
 use crate::modules::connectors::{ConnectorExecutionOutcome, WorkflowConnectorAttemptResult};
 use crate::modules::workflow::domain::{
     WorkflowConnectorAttemptEvidence, WorkflowConnectorAttemptOutcome,
-    WorkflowConnectorHookMetadata, WorkflowConnectorResponseObjectReference,
-    WorkflowConnectorResumePayload, WorkflowRunCoordinationError, WorkflowRunRecord,
-    WorkflowStepKind,
+    WorkflowConnectorHookMetadata, WorkflowConnectorInvocationPurpose,
+    WorkflowConnectorResponseObjectReference, WorkflowConnectorResumePayload,
+    WorkflowRunCoordinationError, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepKind,
 };
 use a3s_flow::{FlowEvent, HookStatus, WorkflowRunSnapshot};
 
@@ -27,6 +27,19 @@ impl super::FlowWorkflowRunCoordinator {
         if active.len() > 1 {
             return Err(WorkflowRunCoordinationError::Unavailable(
                 "WorkflowRun replay exposed more than one active Connector hook".into(),
+            ));
+        }
+        if active.iter().any(|hook| match &hook.metadata.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => {
+                record.run.status == WorkflowRunStatus::Cancelling
+            }
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { .. } => {
+                record.run.status != WorkflowRunStatus::Cancelling
+            }
+        }) {
+            return Err(WorkflowRunCoordinationError::Unavailable(
+                "Workflow Connector invocation purpose does not match the WorkflowRun lifecycle"
+                    .into(),
             ));
         }
         let Some(hook) = active.first() else {

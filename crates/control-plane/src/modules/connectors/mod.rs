@@ -20,8 +20,8 @@ pub use application::{
     ReadConnectorResponseObject, ResolveConnectorExecutionAttempt,
     ResolveConnectorExecutionAttemptHandler, ReviseConnectorProfile, ReviseConnectorProfileHandler,
     RevokeConnectorRevision, RevokeConnectorRevisionHandler, WorkflowConnectorApplicationService,
-    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptRequest,
-    WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,
+    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptPurpose,
+    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,
     DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
     WORKFLOW_CONNECTOR_CAPABILITY,
 };

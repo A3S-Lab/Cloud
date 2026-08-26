@@ -2,8 +2,8 @@ use super::{
     CapabilityType, ResolvedWorkflowRunStep, WorkflowPolicyMode, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepKind, WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
     WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA_V10, WORKFLOW_RUN_INPUT_SCHEMA_V13,
-    WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V8, WORKFLOW_RUN_INPUT_SCHEMA_V9,
-    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_INPUT_SCHEMA_V23, WORKFLOW_RUN_INPUT_SCHEMA_V6, WORKFLOW_RUN_INPUT_SCHEMA_V8,
+    WORKFLOW_RUN_INPUT_SCHEMA_V9, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, ConnectorProfileId,
@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA: &str = "cloud.workflow.connector-hook.v1";
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2: &str = "cloud.workflow.connector-hook.v2";
 pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3: &str = "cloud.workflow.connector-hook.v3";
+pub const WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4: &str = "cloud.workflow.connector-hook.v4";
 pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA: &str = "cloud.workflow.connector-resume.v1";
 pub const WORKFLOW_CONNECTOR_RESUME_SCHEMA_V2: &str = "cloud.workflow.connector-resume.v2";
 pub const WORKFLOW_CONNECTOR_EVIDENCE_SCHEMA: &str = "cloud.workflow.connector-evidence.v1";
@@ -26,6 +27,22 @@ pub const WORKFLOW_CONNECTOR_RESULT_SCHEMA_V2: &str = "cloud.workflow.connector-
 pub const WORKFLOW_CONNECTOR_RESPONSE_OBJECT_SCHEMA: &str =
     "cloud.workflow.connector-response-object.v1";
 pub const WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT: u32 = 1_024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkflowConnectorInvocationPurpose {
+    #[default]
+    Normal,
+    CancellationCompensation {
+        source_step_id: String,
+    },
+}
+
+impl WorkflowConnectorInvocationPurpose {
+    fn is_normal(&self) -> bool {
+        matches!(self, Self::Normal)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,6 +66,11 @@ pub struct WorkflowConnectorHookMetadata {
     pub effective_input_digest: Sha256Digest,
     pub retry_policy_digest: Sha256Digest,
     pub retry_policy: WorkflowRetryPolicy,
+    #[serde(
+        default,
+        skip_serializing_if = "WorkflowConnectorInvocationPurpose::is_normal"
+    )]
+    pub purpose: WorkflowConnectorInvocationPurpose,
 }
 
 impl WorkflowConnectorHookMetadata {
@@ -58,6 +80,56 @@ impl WorkflowConnectorHookMetadata {
         effective_input: serde_json::Value,
         step_attempt: u32,
         observation: u32,
+    ) -> Result<Self, String> {
+        Self::build(
+            input,
+            step,
+            effective_input,
+            step_attempt,
+            observation,
+            WorkflowConnectorInvocationPurpose::Normal,
+        )
+    }
+
+    pub fn from_cancellation_compensation(
+        input: &WorkflowRunInput,
+        source: &ResolvedWorkflowRunStep,
+        target: &ResolvedWorkflowRunStep,
+        effective_input: serde_json::Value,
+        step_attempt: u32,
+        observation: u32,
+    ) -> Result<Self, String> {
+        if input.schema != WORKFLOW_RUN_INPUT_SCHEMA_V23
+            || source
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.cancellation_compensation.as_ref())
+                .is_none_or(|compensation| compensation.step_id != target.plan.id)
+        {
+            return Err(
+                "Workflow Connector cancellation compensation lost its immutable policy authority"
+                    .into(),
+            );
+        }
+        Self::build(
+            input,
+            target,
+            effective_input,
+            step_attempt,
+            observation,
+            WorkflowConnectorInvocationPurpose::CancellationCompensation {
+                source_step_id: source.plan.id.clone(),
+            },
+        )
+    }
+
+    fn build(
+        input: &WorkflowRunInput,
+        step: &ResolvedWorkflowRunStep,
+        effective_input: serde_json::Value,
+        step_attempt: u32,
+        observation: u32,
+        purpose: WorkflowConnectorInvocationPurpose,
     ) -> Result<Self, String> {
         if step.plan.kind != WorkflowStepKind::Service {
             return Err("Workflow Connector hook requires a Service step".into());
@@ -94,13 +166,18 @@ impl WorkflowConnectorHookMetadata {
             "Workflow Connector effective input",
         )?;
         let value = Self {
-            schema: match input.schema.as_str() {
-                WORKFLOW_RUN_INPUT_SCHEMA_V8
-                | WORKFLOW_RUN_INPUT_SCHEMA_V9
-                | WORKFLOW_RUN_INPUT_SCHEMA_V10
-                | WORKFLOW_RUN_INPUT_SCHEMA_V13 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
-                WORKFLOW_RUN_INPUT_SCHEMA_V6 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into(),
-                _ => WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
+            schema: if !purpose.is_normal() {
+                WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4.into()
+            } else {
+                match input.schema.as_str() {
+                    WORKFLOW_RUN_INPUT_SCHEMA_V8
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V9
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V10
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V13
+                    | WORKFLOW_RUN_INPUT_SCHEMA_V23 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3.into(),
+                    WORKFLOW_RUN_INPUT_SCHEMA_V6 => WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2.into(),
+                    _ => WORKFLOW_CONNECTOR_HOOK_SCHEMA.into(),
+                }
             },
             organization_id: input.organization_id,
             project_id: input.project_id,
@@ -120,6 +197,7 @@ impl WorkflowConnectorHookMetadata {
             effective_input_digest: Sha256Digest::parse(sha256_digest(&canonical_input))?,
             retry_policy_digest,
             retry_policy,
+            purpose,
         };
         value.validate()?;
         Ok(value)
@@ -131,6 +209,7 @@ impl WorkflowConnectorHookMetadata {
             WORKFLOW_CONNECTOR_HOOK_SCHEMA
                 | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
                 | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
+                | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4
         ) || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()
@@ -147,6 +226,15 @@ impl WorkflowConnectorHookMetadata {
             return Err("Workflow Connector hook metadata is invalid".into());
         }
         self.retry_policy.validate()?;
+        match (&self.purpose, self.schema.as_str()) {
+            (WorkflowConnectorInvocationPurpose::Normal, schema)
+                if schema != WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4 => {}
+            (
+                WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id },
+                WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4,
+            ) if valid_step_id(source_step_id) && source_step_id != &self.step_id => {}
+            _ => return Err("Workflow Connector hook purpose is invalid".into()),
+        }
         Sha256Digest::parse(self.plan_digest.as_str())?;
         Sha256Digest::parse(self.configuration_digest.as_str())?;
         Sha256Digest::parse(self.connector_revision_digest.as_str())?;
@@ -165,40 +253,77 @@ impl WorkflowConnectorHookMetadata {
     pub fn requires_response_object(&self) -> bool {
         matches!(
             self.schema.as_str(),
-            WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2 | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
+            WORKFLOW_CONNECTOR_HOOK_SCHEMA_V2
+                | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
+                | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4
         )
     }
 
     pub fn requires_typed_response(&self) -> bool {
-        self.schema == WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3
+        matches!(
+            self.schema.as_str(),
+            WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3 | WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4
+        )
     }
 
     pub fn flow_hook_id(&self) -> String {
-        format!(
-            "workflow-connector:{}:{}:{}",
-            self.step_id, self.step_attempt, self.observation
-        )
+        match &self.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => format!(
+                "workflow-connector:{}:{}:{}",
+                self.step_id, self.step_attempt, self.observation
+            ),
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                format!(
+                    "workflow-connector-cancellation-compensation:{source_step_id}:{}:{}:{}",
+                    self.step_id, self.step_attempt, self.observation
+                )
+            }
+        }
     }
 
     pub fn flow_hook_token(&self) -> String {
-        format!(
-            "workflow-connector:{}:{}:{}:{}",
-            self.workflow_run_id, self.step_id, self.step_attempt, self.observation
-        )
+        match &self.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => format!(
+                "workflow-connector:{}:{}:{}:{}",
+                self.workflow_run_id, self.step_id, self.step_attempt, self.observation
+            ),
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                format!(
+                    "workflow-connector-cancellation-compensation:{}:{source_step_id}:{}:{}:{}",
+                    self.workflow_run_id, self.step_id, self.step_attempt, self.observation
+                )
+            }
+        }
     }
 
     pub fn observation_wait_id(&self) -> String {
-        format!(
-            "workflow-connector-observe:{}:{}:{}",
-            self.step_id, self.step_attempt, self.observation
-        )
+        match &self.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => format!(
+                "workflow-connector-observe:{}:{}:{}",
+                self.step_id, self.step_attempt, self.observation
+            ),
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                format!(
+                "workflow-connector-cancellation-compensation-observe:{source_step_id}:{}:{}:{}",
+                self.step_id, self.step_attempt, self.observation
+            )
+            }
+        }
     }
 
     pub fn retry_wait_id(&self) -> String {
-        format!(
-            "workflow-connector-retry:{}:{}",
-            self.step_id, self.step_attempt
-        )
+        match &self.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => format!(
+                "workflow-connector-retry:{}:{}",
+                self.step_id, self.step_attempt
+            ),
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                format!(
+                    "workflow-connector-cancellation-compensation-retry:{source_step_id}:{}:{}",
+                    self.step_id, self.step_attempt
+                )
+            }
+        }
     }
 }
 
@@ -875,7 +1000,9 @@ mod tests {
         WorkflowRunApplicationProjection, WORKFLOW_RUN_FLOW_VERSION_V10,
         WORKFLOW_RUN_INPUT_SCHEMA_V13, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V10,
     };
-    use crate::modules::workflow::test_support::connector_workflow_run_input;
+    use crate::modules::workflow::test_support::{
+        cancellation_compensating_connector_workflow_run_input, connector_workflow_run_input,
+    };
 
     fn authority() -> (WorkflowConnectorHookMetadata, Uuid, Sha256Digest, u64) {
         let input = connector_workflow_run_input().expect("Connector WorkflowRun input");
@@ -962,6 +1089,52 @@ mod tests {
         .expect("metadata");
         assert_eq!(metadata.schema, WORKFLOW_CONNECTOR_HOOK_SCHEMA_V3);
         assert!(metadata.requires_typed_response());
+    }
+
+    #[test]
+    fn cancellation_compensation_metadata_has_distinct_purpose_bound_authority() {
+        let input = cancellation_compensating_connector_workflow_run_input()
+            .expect("cancellation-compensating Connector WorkflowRun input");
+        let steps = input.resolved_steps().expect("resolved steps");
+        let source = steps
+            .iter()
+            .find(|step| step.plan.id == "reserve")
+            .expect("source step");
+        let target = steps
+            .iter()
+            .find(|step| step.plan.id == "release")
+            .expect("compensation step");
+        let metadata = WorkflowConnectorHookMetadata::from_cancellation_compensation(
+            &input,
+            source,
+            target,
+            serde_json::json!({"reservationId": "resv-0001"}),
+            1,
+            1,
+        )
+        .expect("cancellation compensation metadata");
+
+        assert_eq!(metadata.schema, WORKFLOW_CONNECTOR_HOOK_SCHEMA_V4);
+        assert_eq!(
+            metadata.purpose,
+            WorkflowConnectorInvocationPurpose::CancellationCompensation {
+                source_step_id: "reserve".into()
+            }
+        );
+        assert_eq!(
+            metadata.flow_hook_id(),
+            "workflow-connector-cancellation-compensation:reserve:release:1:1"
+        );
+        assert!(metadata.requires_response_object());
+        assert!(metadata.requires_typed_response());
+        metadata.validate().expect("valid purpose-bound metadata");
+
+        let encoded = serde_json::to_value(&metadata).expect("encoded metadata");
+        assert_eq!(
+            encoded["purpose"]["kind"],
+            serde_json::json!("cancellation_compensation")
+        );
+        assert_eq!(encoded["purpose"]["source_step_id"], "reserve");
     }
 
     #[test]

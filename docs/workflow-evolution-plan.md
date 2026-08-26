@@ -432,17 +432,25 @@ implemented through Run v11-v15. Workflow-local Transform, Output, and Branch
 failure routes are implemented through Run v16-v18, descriptor-bound
 Iteration/Loop failure routes are implemented through Run v19, exact typed
 Variable Aggregation is implemented through Run v20, typed List Operator
-execution is implemented through Run v21, and bounded-parallel Iteration is
-implemented through Run v22. Current finite
+execution is implemented through Run v21, bounded-parallel Iteration is
+implemented through Run v22, and Flow-owned cancellation compensation for
+accepted exact Connector effects is implemented through Run v23. Version 23
+walks resolved Plan steps in reverse order, materializes a missing typed source
+response under a distinct stable cleanup step, creates purpose-bound Connector
+Hook v4 authority, and reaches `Cancelled` only after every admitted
+compensation is terminal. Current finite
 Execution and Connector projections retain bounded owning-context evidence
 URNs. One exact Connector domain-result compensation path composes ordinary
 durable Service, Branch, and Output steps at component scope. Deferred
 Connector cancellation and immutable-deadline termination project the terminal
 Flow event, retain the existing attempt correlation, and cannot redispatch the
-provider after coordinator replacement. The remaining business-service public
-integration and Agent/MCP/model/Tool capability dispatch, provider-side
-cancellation/revocation, general and cancellation-triggered compensation, full
-provider conformance, and public Workflow availability remain open. Runtime v4 converts authority-bound Execution dispatch rejection,
+provider after coordinator replacement. Policy v4 and migration `158` add one
+exact downstream Connector compensation binding without another table or
+scheduler. The remaining business-service public integration and
+Agent/MCP/model/Tool capability dispatch, provider-side
+cancellation/revocation, general domain-driven or multi-provider compensation,
+full provider conformance, and public Workflow availability remain open.
+Runtime v4 converts authority-bound Execution dispatch rejection,
 failure, or cancellation into `cloud.workflow.step-failure.v1`, selects the
 exact descriptor handle, and lets the ordinary DAG and Flow history activate
 the error path. The Execution projection remains failed even if its reachable
@@ -526,7 +534,16 @@ Any graph containing an Iteration policy with `maximumConcurrency > 1` emits
 Run v22. Its authority-bound wave Hook batches no more than the immutable
 ceiling, starts or adopts each deterministic child concurrently, waits for all
 children to become terminal and linked, then reduces results by ordinal.
-Historical v3-v21 Iteration remains serial and Loop remains sequential.
+Historical v3-v21 Iteration remains serial and Loop remains sequential. Any
+revision with an exact policy-v4 cancellation compensation binding emits Run
+v23 before lower composing generations are selected. Runtime v23 preserves the
+v22 wave semantics, uses Flow 1.1 cleanup-aware cancellation, and compensates
+only accepted exact Connector effects. If cancellation preempts the ordinary
+typed-response materializer, a distinct stable cleanup step performs the same
+immutable response-object read. It skips an already accepted ordinary target
+effect, rejects indeterminate authority,
+and never calls a provider-side cancellation API. Runtime build
+`a3s-cloud-workflows@25` retains `@1` through `@24` for replay.
 Current finite Execution, Connector, HumanDecision, and Subworkflow projections
 retain closed, bounded child/Operation/attempt/task/decision/submission evidence
 URNs from verified Flow history.
@@ -551,10 +568,13 @@ reusable schemas without changing response bytes. REST/OpenAPI `1.64.0`
 extends that exact contract to Ontology aggregate/revision/diff and HumanTask
 lifecycle/Form-interaction responses, eliminating generic success schemas from
 all Workflow-tagged operations. One exact Connector domain-result compensation
-composition is implemented with ordinary durable steps at component scope.
-Business-service public integration, remaining Agent/MCP/model/Tool failure
-semantics, general and cancellation-triggered compensation, full provider
-conformance, and public availability remain unimplemented parts of `W0.3`.
+composition is implemented with ordinary durable steps at component scope. Run
+v23 additionally compensates accepted exact Connector effects in reverse order
+during Flow-owned cancellation and closes the accepted-effect / typed-response
+race with a distinct stable cleanup step. Business-service public integration,
+remaining Agent/MCP/model/Tool failure semantics, provider-side cancellation,
+general or multi-provider compensation, full provider conformance, and public
+availability remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 

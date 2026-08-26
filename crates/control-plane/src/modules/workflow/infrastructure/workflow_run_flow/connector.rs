@@ -1,12 +1,13 @@
 use super::WorkflowLocalStepResult;
 use crate::modules::connectors::domain::MAXIMUM_CONNECTOR_BODY_BYTES;
 use crate::modules::connectors::{
-    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptRequest,
-    WorkflowConnectorResponseMode,
+    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptPurpose,
+    WorkflowConnectorAttemptRequest, WorkflowConnectorResponseMode,
 };
 use crate::modules::workflow::domain::{
     connector_attempt_evidence_references, ResolvedWorkflowRunStep,
-    WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata, WorkflowConnectorResumePayload,
+    WorkflowConnectorAttemptOutcome, WorkflowConnectorHookMetadata,
+    WorkflowConnectorInvocationPurpose, WorkflowConnectorResumePayload,
     WorkflowConnectorResumeResolution, WorkflowConnectorStepOutput, WorkflowRetryPolicy,
     WorkflowRunInput, WorkflowStepFailureClassification, WorkflowStepKind,
     WORKFLOW_CONNECTOR_MAX_OBSERVATIONS_PER_ATTEMPT,
@@ -52,6 +53,50 @@ pub(super) fn resolve_step(
     effective_input: serde_json::Value,
     context: &WorkflowContext<'_>,
 ) -> Result<ConnectorStepResolution, ConnectorStepError> {
+    resolve_step_with(run_id, input, step, context, |step_attempt, observation| {
+        WorkflowConnectorHookMetadata::from_run_step(
+            input,
+            step,
+            effective_input.clone(),
+            step_attempt,
+            observation,
+        )
+    })
+}
+
+pub(super) fn resolve_cancellation_compensation(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    source: &ResolvedWorkflowRunStep,
+    target: &ResolvedWorkflowRunStep,
+    effective_input: serde_json::Value,
+    context: &WorkflowContext<'_>,
+) -> Result<ConnectorStepResolution, ConnectorStepError> {
+    resolve_step_with(
+        run_id,
+        input,
+        target,
+        context,
+        |step_attempt, observation| {
+            WorkflowConnectorHookMetadata::from_cancellation_compensation(
+                input,
+                source,
+                target,
+                effective_input.clone(),
+                step_attempt,
+                observation,
+            )
+        },
+    )
+}
+
+fn resolve_step_with(
+    run_id: &str,
+    input: &WorkflowRunInput,
+    step: &ResolvedWorkflowRunStep,
+    context: &WorkflowContext<'_>,
+    mut metadata_for: impl FnMut(u32, u32) -> Result<WorkflowConnectorHookMetadata, String>,
+) -> Result<ConnectorStepResolution, ConnectorStepError> {
     let retry_policy = step
         .policy
         .as_ref()
@@ -67,14 +112,8 @@ pub(super) fn resolve_step(
     for step_attempt in 1..=retry_policy.maximum_attempts {
         let mut observation = 1_u32;
         loop {
-            let metadata = WorkflowConnectorHookMetadata::from_run_step(
-                input,
-                step,
-                effective_input.clone(),
-                step_attempt,
-                observation,
-            )
-            .map_err(ConnectorStepError::Invalid)?;
+            let metadata =
+                metadata_for(step_attempt, observation).map_err(ConnectorStepError::Invalid)?;
             let authority = attempt_authority(&metadata).map_err(ConnectorStepError::Invalid)?;
             let hook_id = metadata.flow_hook_id();
             if context.hook_disposed(&hook_id) {
@@ -190,6 +229,14 @@ pub(super) fn attempt_request(
         plan_digest: metadata.plan_digest.clone(),
         step_id: metadata.step_id.clone(),
         step_attempt: metadata.step_attempt,
+        purpose: match &metadata.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => WorkflowConnectorAttemptPurpose::Normal,
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                WorkflowConnectorAttemptPurpose::CancellationCompensation {
+                    source_step_id: source_step_id.clone(),
+                }
+            }
+        },
         connector_profile_id: metadata.connector_profile_id,
         connector_revision_id: metadata.connector_revision_id,
         connector_revision_digest: metadata.connector_revision_digest.clone(),
@@ -351,24 +398,48 @@ pub(super) fn observed_connector_hooks<'a>(
     step: &ResolvedWorkflowRunStep,
     snapshot: &'a WorkflowRunSnapshot,
 ) -> Result<Vec<ObservedConnectorHook<'a>>, String> {
-    let prefix = format!("workflow-connector:{}:", step.plan.id);
     let mut observed = Vec::new();
     for hook in snapshot
         .hooks
         .values()
-        .filter(|hook| hook.hook_id.starts_with(&prefix))
+        .filter(|hook| hook.hook_id.starts_with("workflow-connector"))
     {
         let metadata =
             serde_json::from_value::<WorkflowConnectorHookMetadata>(hook.metadata.clone())
                 .map_err(|error| format!("Workflow Connector hook metadata is invalid: {error}"))?;
         metadata.validate()?;
-        let expected = WorkflowConnectorHookMetadata::from_run_step(
-            input,
-            step,
-            metadata.effective_input.clone(),
-            metadata.step_attempt,
-            metadata.observation,
-        )?;
+        if metadata.step_id != step.plan.id {
+            continue;
+        }
+        let expected = match &metadata.purpose {
+            WorkflowConnectorInvocationPurpose::Normal => {
+                WorkflowConnectorHookMetadata::from_run_step(
+                    input,
+                    step,
+                    metadata.effective_input.clone(),
+                    metadata.step_attempt,
+                    metadata.observation,
+                )?
+            }
+            WorkflowConnectorInvocationPurpose::CancellationCompensation { source_step_id } => {
+                let source = input
+                    .resolved_steps()?
+                    .into_iter()
+                    .find(|resolved| resolved.plan.id == *source_step_id)
+                    .ok_or_else(|| {
+                        "Workflow Connector cancellation compensation lost its source step"
+                            .to_owned()
+                    })?;
+                WorkflowConnectorHookMetadata::from_cancellation_compensation(
+                    input,
+                    &source,
+                    step,
+                    metadata.effective_input.clone(),
+                    metadata.step_attempt,
+                    metadata.observation,
+                )?
+            }
+        };
         if hook.hook_id != expected.flow_hook_id()
             || hook.token != expected.flow_hook_token()
             || metadata != expected
@@ -377,8 +448,24 @@ pub(super) fn observed_connector_hooks<'a>(
         }
         observed.push(ObservedConnectorHook { hook, metadata });
     }
-    observed.sort_by_key(|item| (item.metadata.step_attempt, item.metadata.observation));
-    validate_hook_sequence(snapshot, &observed)?;
+    observed.sort_by_key(|item| {
+        (
+            matches!(
+                item.metadata.purpose,
+                WorkflowConnectorInvocationPurpose::CancellationCompensation { .. }
+            ),
+            item.metadata.step_attempt,
+            item.metadata.observation,
+        )
+    });
+    let compensation_start = observed.partition_point(|item| {
+        matches!(
+            item.metadata.purpose,
+            WorkflowConnectorInvocationPurpose::Normal
+        )
+    });
+    validate_hook_sequence(snapshot, &observed[..compensation_start])?;
+    validate_hook_sequence(snapshot, &observed[compensation_start..])?;
     Ok(observed)
 }
 

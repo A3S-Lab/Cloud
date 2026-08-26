@@ -551,5 +551,5 @@ fn compiler_pins_list_operator_to_run_v21_without_a_new_plan_schema() {
     assert!(downgraded
         .validate()
         .expect_err("v20 downgrade")
-        .contains("runtime generation v21 or a composing v22 generation"));
+        .contains("runtime generation v21 or a later composing generation"));
 }

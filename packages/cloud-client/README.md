@@ -130,11 +130,14 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.66.0`. It adds bounded unresolved Connector
-attempt reads and an exact idempotent `indeterminate` conclusion for dispatches
-past their outcome deadline. Contract `1.65.0` added exact Connector revision
-revocation reads and writes plus closed operation-specific Connector schemas;
-`1.64.0` already closed every Workflow result type, including Ontology
+The client targets REST contract `1.67.0`. It adds
+`cloud.workflow.policy.v4` to returned Workflow payload types for exact
+Flow-owned Connector cancellation compensation. Contract `1.66.0` added
+bounded unresolved Connector-attempt reads and an exact idempotent
+`indeterminate` conclusion for dispatches past their outcome deadline.
+Contract `1.65.0` added exact Connector revision revocation reads and writes
+plus closed operation-specific Connector schemas; `1.64.0` already closed every
+Workflow result type, including Ontology
 aggregates/revisions/diffs, HumanTask lifecycle and Form interaction payloads,
 Goal, Plan, node catalog, run, output, variable-inspection, diagnostics, and
 history. The client also enumerates

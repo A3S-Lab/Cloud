@@ -11,7 +11,14 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.66.0`.
+The current semantic contract version is `1.67.0`.
+
+Contract `1.67.0` adds `cloud.workflow.policy.v4` to the closed Workflow policy
+schema enumeration and maintained TypeScript client. Version 4 binds one exact
+Connector Service source to one downstream exact Connector compensation step
+for Flow-owned cancellation cleanup; only an accepted source effect is eligible
+at runtime. It adds no route or response property; older policy and WorkflowRun
+histories retain their exact bytes and replay behavior.
 
 Contract `1.66.0` adds the bounded unresolved Connector execution-attempt
 collection, an exact safe attempt read, an exact resolution read, and one

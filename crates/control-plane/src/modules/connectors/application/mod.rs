@@ -39,8 +39,8 @@ pub use revision_revocation::{
 };
 pub use workflow_port::{
     IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptAuthority,
-    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,
-    WORKFLOW_CONNECTOR_CAPABILITY,
+    WorkflowConnectorAttemptPurpose, WorkflowConnectorAttemptRequest,
+    WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode, WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
 #[cfg(test)]

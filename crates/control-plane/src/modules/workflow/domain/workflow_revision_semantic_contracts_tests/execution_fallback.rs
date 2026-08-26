@@ -480,6 +480,7 @@ fn connector_failure_route_fixture() -> FailureRouteFixture {
                 default_delay_seconds: 5,
             }),
             default_output: None,
+            cancellation_compensation: None,
         }))
         .expect("Connector retry policy");
     let connector_step = fixture
@@ -604,6 +605,7 @@ fn default_output_fixture() -> FailureRouteFixture {
             WorkflowDefaultOutput::new("result", json!({"status": "temporarily_unavailable"}))
                 .expect("default output"),
         ),
+        cancellation_compensation: None,
     }))
     .expect("default-output policy");
     fixture

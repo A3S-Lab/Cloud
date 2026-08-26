@@ -25,6 +25,15 @@ pub enum WorkflowConnectorResponseMode {
     ImmutableObjectReference,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum WorkflowConnectorAttemptPurpose {
+    #[default]
+    Normal,
+    CancellationCompensation {
+        source_step_id: String,
+    },
+}
+
 /// One Flow-owned attempt against an exact, immutable Connector revision.
 ///
 /// The request carries Workflow authority but no endpoint, credential, retry
@@ -40,6 +49,7 @@ pub struct WorkflowConnectorAttemptRequest {
     pub plan_digest: Sha256Digest,
     pub step_id: String,
     pub step_attempt: u32,
+    pub purpose: WorkflowConnectorAttemptPurpose,
     pub connector_profile_id: ConnectorProfileId,
     pub connector_revision_id: ConnectorRevisionId,
     pub connector_revision_digest: Sha256Digest,
@@ -75,6 +85,19 @@ impl WorkflowConnectorAttemptRequest {
         {
             return Err("Workflow Connector attempt authority is invalid".into());
         }
+        if let WorkflowConnectorAttemptPurpose::CancellationCompensation { source_step_id } =
+            &self.purpose
+        {
+            if source_step_id == &self.step_id
+                || source_step_id.is_empty()
+                || source_step_id.len() > 96
+                || !source_step_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                return Err("Workflow Connector attempt purpose is invalid".into());
+            }
+        }
         Sha256Digest::parse(self.plan_digest.as_str())?;
         Sha256Digest::parse(self.connector_revision_digest.as_str())?;
         canonical_json_bounded(
@@ -89,16 +112,31 @@ impl WorkflowConnectorAttemptRequest {
     /// authority. A Flow redelivery reuses it; a Flow retry generation does not.
     pub fn connector_attempt_id(&self) -> Result<Uuid, String> {
         self.validate()?;
-        let identity = format!(
-            "a3s.cloud.workflow-connector-attempt.v1\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
-            self.plan_revision_id,
-            self.plan_digest,
-            self.step_id,
-            self.step_attempt,
-            self.connector_profile_id,
-            self.connector_revision_id,
-            self.connector_revision_digest,
-        );
+        let identity = match &self.purpose {
+            WorkflowConnectorAttemptPurpose::Normal => format!(
+                "a3s.cloud.workflow-connector-attempt.v1\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+                self.plan_revision_id,
+                self.plan_digest,
+                self.step_id,
+                self.step_attempt,
+                self.connector_profile_id,
+                self.connector_revision_id,
+                self.connector_revision_digest,
+            ),
+            WorkflowConnectorAttemptPurpose::CancellationCompensation { source_step_id } => {
+                format!(
+                    "a3s.cloud.workflow-connector-cancellation-compensation-attempt.v1\0{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+                    self.plan_revision_id,
+                    self.plan_digest,
+                    source_step_id,
+                    self.step_id,
+                    self.step_attempt,
+                    self.connector_profile_id,
+                    self.connector_revision_id,
+                    self.connector_revision_digest,
+                )
+            }
+        };
         Ok(Uuid::new_v5(
             &self.workflow_run_id.as_uuid(),
             identity.as_bytes(),
@@ -503,6 +541,7 @@ mod tests {
             plan_digest: digest('a'),
             step_id: "send-request".into(),
             step_attempt: 1,
+            purpose: WorkflowConnectorAttemptPurpose::Normal,
             connector_profile_id: revision.profile_id,
             connector_revision_id: revision.id,
             connector_revision_digest: revision.definition.digest().clone(),
@@ -647,6 +686,21 @@ mod tests {
         assert_ne!(
             next_attempt.connector_attempt_id().expect("next attempt"),
             first
+        );
+
+        let mut compensation = request.clone();
+        compensation.purpose = WorkflowConnectorAttemptPurpose::CancellationCompensation {
+            source_step_id: "reserve".into(),
+        };
+        let compensation_id = compensation
+            .connector_attempt_id()
+            .expect("compensation attempt");
+        assert_ne!(compensation_id, first);
+        assert_eq!(
+            compensation
+                .connector_attempt_id()
+                .expect("compensation redelivery"),
+            compensation_id
         );
 
         let mut drifted_plan = request;
