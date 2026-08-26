@@ -505,6 +505,31 @@ fn accepted_workload_profile_compilation_has_one_production_composition_path() {
 }
 
 #[test]
+fn build_plan_detection_has_one_closed_production_composition_path() {
+    let composition = include_str!("../../app.rs");
+
+    for constructor in [
+        "Arc::new(AssetAclBuildPlanDetector)",
+        "Arc::new(DockerfileBuildPlanDetector)",
+        "BuildPlanDetectionService::new(",
+        "DetectBuildPlanProposalsHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Developer Workflows production detection must compose {constructor} exactly once"
+        );
+    }
+    assert_eq!(
+        composition
+            .matches("crate::modules::developer_workflows::DetectBuildPlanProposals,")
+            .count(),
+        1,
+        "the canonical BuildPlan detection query must be registered once on the existing CQRS bus"
+    );
+}
+
+#[test]
 fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() {
     let composition = include_str!("../../app.rs");
     let adapters = include_str!("../postgres_adapters.rs");

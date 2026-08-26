@@ -74,12 +74,14 @@ use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
 use crate::modules::developer_workflows::{
-    ArtifactsWorkloadBuildOutcomeAdapter, CompileAcceptedWorkloadProfileHandler,
-    ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository, IPreviewEnvironmentPort,
-    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
-    IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
-    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
-    PullRequestPreviewProjector, WorkloadProfileCompilationService, WorkloadsServiceProfileAdapter,
+    ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
+    CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
+    DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
+    IPreviewEnvironmentPort, IPullRequestPreviewPolicyRepository,
+    IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
+    IWorkloadProfileRepository, ProjectsPreviewEnvironmentAdapter,
+    PullRequestPreviewProjectionService, PullRequestPreviewProjector,
+    WorkloadProfileCompilationService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -2047,6 +2049,13 @@ fn build_management_application_with_health(
         Arc::clone(&agents),
         Arc::clone(&workflow_runs),
     ));
+    let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(Arc::new(
+        BuildPlanDetectionService::new(vec![
+            Arc::new(AssetAclBuildPlanDetector),
+            Arc::new(DockerfileBuildPlanDetector),
+        ])
+        .map_err(BootError::Internal)?,
+    ));
     let developer_workflow_build_outcomes = Arc::new(ExternalSourceBuildOutcomeQueryService::new(
         Arc::clone(&builds),
     ));
@@ -3400,6 +3409,10 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
                     GetBuildRunLogsHandler::new(get_build_logs),
                 )
+                .query_handler::<
+                    crate::modules::developer_workflows::DetectBuildPlanProposals,
+                    _,
+                >(detect_developer_build_plans)
                 .query_handler::<
                     crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,
                     _,

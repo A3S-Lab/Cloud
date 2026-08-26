@@ -2,6 +2,7 @@ mod acceptance;
 mod accepted_profile_compilation;
 mod authorization;
 mod build_outcome;
+mod build_plan_detection_query;
 mod detection;
 mod preview_environment;
 mod preview_policy_acceptance;
@@ -25,6 +26,7 @@ pub use build_outcome::{
     IWorkloadBuildOutcomePort, VerifiedOciArtifact, VerifiedWorkloadBuildOutcome,
     WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
+pub use build_plan_detection_query::{DetectBuildPlanProposals, DetectBuildPlanProposalsHandler};
 pub use detection::BuildPlanDetectionService;
 pub use preview_environment::{
     EnsurePreviewEnvironment, IPreviewEnvironmentPort, PreviewEnvironmentBinding,
@@ -63,6 +65,9 @@ mod profile_compilation_tests;
 
 #[cfg(test)]
 mod accepted_profile_compilation_tests;
+
+#[cfg(test)]
+mod build_plan_detection_query_tests;
 
 #[cfg(test)]
 mod workload_profile_acceptance_tests;

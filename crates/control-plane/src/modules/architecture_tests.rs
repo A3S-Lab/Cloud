@@ -1027,6 +1027,39 @@ fn developer_workflows_accepted_profile_compilation_keeps_one_read_only_interfac
 }
 
 #[test]
+fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_of_application() {
+    let source = std::fs::read_to_string(
+        module_root().join("developer_workflows/application/build_plan_detection_query.rs"),
+    )
+    .expect("read BuildPlan detection query");
+    let production = production_source(&source);
+    let compact = production.split_whitespace().collect::<String>();
+
+    assert!(
+        compact.contains("Arc<BuildPlanDetectionService>")
+            && compact.contains("implQueryHandler<DetectBuildPlanProposals>"),
+        "BuildPlan detection must enter Application through one local service and query boundary"
+    );
+    for forbidden in [
+        "AssetAclBuildPlanDetector",
+        "DockerfileBuildPlanDetector",
+        "crate::modules::assets",
+        "crate::modules::sources",
+        "Repository",
+        "Postgres",
+        "CommandHandler",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "BuildPlan detection query imported a concrete adapter or lifecycle mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))
