@@ -3958,11 +3958,23 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'workflow_step_projections'::regclass and conname = 'workflow_step_projections_kind_check'",
         ))
         .await?;
-    assert!(workflow_step_kind_constraint.contains("'human_decision'"));
-    assert!(workflow_step_kind_constraint.contains("'execution'"));
-    assert!(workflow_step_kind_constraint.contains("'agent'"));
-    assert!(workflow_step_kind_constraint.contains("'service'"));
-    for unavailable in ["mcp", "model", "tool", "memory", "subworkflow"] {
+    for available in [
+        "input",
+        "transform",
+        "branch",
+        "human_decision",
+        "execution",
+        "agent",
+        "service",
+        "subworkflow",
+        "output",
+    ] {
+        assert!(
+            workflow_step_kind_constraint.contains(&format!("'{available}'")),
+            "WorkflowStepProjection omitted available kind {available}"
+        );
+    }
+    for unavailable in ["mcp", "model", "tool", "memory"] {
         assert!(
             !workflow_step_kind_constraint.contains(&format!("'{unavailable}'")),
             "WorkflowStepProjection admitted unavailable kind {unavailable}"
