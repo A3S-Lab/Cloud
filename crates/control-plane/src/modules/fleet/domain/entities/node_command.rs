@@ -117,6 +117,7 @@ impl NodeCommand {
                 | NodeCommandResult::BoxBuildInspected { .. }
                 | NodeCommandResult::BoxBuildCancelled { .. }
                 | NodeCommandResult::BoxBuildRemoved { .. }
+                | NodeCommandResult::AgentProviderCommandAccepted { .. }
                 | NodeCommandResult::CodeAgentCommandAccepted { .. }
                 | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
                 | NodeCommandResult::PluginHostPlanned { .. }

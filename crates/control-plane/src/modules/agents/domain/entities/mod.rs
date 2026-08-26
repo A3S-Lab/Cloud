@@ -4,6 +4,7 @@ mod agent_event_content;
 mod agent_execution;
 mod agent_execution_change_set;
 mod agent_execution_event;
+mod agent_provider_profile_binding;
 mod agent_release_binding;
 
 const MAX_AGENT_EXECUTION_FAILURE_BYTES: usize = 16 * 1024;
@@ -17,4 +18,5 @@ pub use agent_execution_event::{
     AgentExecutionEvent, AgentExecutionEventDraft, AgentExecutionEventKind,
     MAX_AGENT_EVENTS_PER_APPEND,
 };
+pub use agent_provider_profile_binding::AgentProviderProfileBinding;
 pub use agent_release_binding::AgentReleaseBinding;

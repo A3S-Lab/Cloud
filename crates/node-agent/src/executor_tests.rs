@@ -6,12 +6,13 @@ use crate::durable_cell_operator::{
 use a3s_cloud_contracts::{
     AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
     AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStartV1, AgentProtocolRunStateV1, AppliedGatewaySnapshot, GatewaySnapshot,
+    AgentProtocolRunStartV1, AgentProtocolRunStateV1, AgentProviderCommandV1, AgentProviderProfile,
+    AgentProviderRunIdentityV1, AgentProviderRunStartV1, AppliedGatewaySnapshot, GatewaySnapshot,
     GatewaySnapshotObservationRequest, GatewaySnapshotObservationState,
-    NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata, NodeCommandPayload,
-    NodeDurableCellOperatorBindingV1, NodeResourceClaimBinding, NodeResourceClaimPrepare,
-    NodeResourceClaimRelease, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
-    ResourceKind, ResourceSlotBinding, ResourceUnit, AGENT_PROTOCOL_V1,
+    NodeAgentProviderRuntimeBindingV1, NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata,
+    NodeCommandPayload, NodeDurableCellOperatorBindingV1, NodeResourceClaimBinding,
+    NodeResourceClaimPrepare, NodeResourceClaimRelease, NodeResourceInventory, NodeResourceSlot,
+    ResourceAllocation, ResourceKind, ResourceSlotBinding, ResourceUnit, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -1033,7 +1034,7 @@ async fn gateway_observation_is_read_only_exact_and_journaled_for_replay() {
 }
 
 #[tokio::test]
-async fn code_commands_are_forwarded_to_the_bound_a3s_code_harness_once() {
+async fn provider_and_legacy_code_commands_are_forwarded_once() {
     let directory = tempfile::tempdir().expect("journal directory");
     let node_id = Uuid::now_v7();
     let execution_id = Uuid::now_v7();
@@ -1105,7 +1106,7 @@ async fn code_commands_are_forwarded_to_the_bound_a3s_code_harness_once() {
         1,
         binding.runtime_generation,
         NodeCommandPayload::CodeAgentCommand {
-            binding: Box::new(binding),
+            binding: Box::new(binding.clone()),
             command: Box::new(code_command.clone()),
         },
     );
@@ -1152,6 +1153,81 @@ async fn code_commands_are_forwarded_to_the_bound_a3s_code_harness_once() {
     assert_eq!(replayed.outcome, acknowledgement.outcome);
     assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
     assert_eq!(harness.calls.load(Ordering::SeqCst), 1);
+
+    let profile = AgentProviderProfile::parse_acl(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/a1.3/a3s-code-provider-profile.acl"
+    )))
+    .expect("Code provider profile");
+    let provider_identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        binding.code_run_identity.agent_release_identity.clone(),
+        binding.code_run_identity.session_id.clone(),
+        binding.code_run_identity.run_id.clone(),
+    )
+    .expect("provider run identity");
+    let provider_binding = NodeAgentProviderRuntimeBindingV1 {
+        schema: NodeAgentProviderRuntimeBindingV1::SCHEMA.into(),
+        execution_id,
+        workload_id: binding.workload_id,
+        workload_revision_id: binding.workload_revision_id,
+        deployment_id: binding.deployment_id,
+        replica_id: binding.replica_id,
+        runtime_unit_id: binding.runtime_unit_id.clone(),
+        runtime_generation: binding.runtime_generation,
+        runtime_spec_digest: binding.runtime_spec_digest.clone(),
+        service_port_name: binding.service_port_name.clone(),
+        provider_profile_acl: profile.canonical_acl().into(),
+        provider_profile_digest: profile.digest().into(),
+        provider_run_identity: provider_identity.clone(),
+    };
+    let provider_command = AgentProviderCommandV1::Start {
+        request: AgentProviderRunStartV1::new(
+            "execution-1:provider-start".into(),
+            provider_identity,
+            "Fix the failing test.".into(),
+        )
+        .expect("provider start command"),
+    };
+    let provider_envelope = claim_command(
+        node_id,
+        execution_id,
+        2,
+        provider_binding.runtime_generation,
+        NodeCommandPayload::AgentProviderCommand {
+            binding: Box::new(provider_binding.clone()),
+            command: Box::new(provider_command.clone()),
+        },
+    );
+    let provider_acknowledgement = executor
+        .execute(provider_envelope.clone())
+        .await
+        .expect("forward provider-neutral command");
+    provider_acknowledgement
+        .validate_against(&provider_envelope)
+        .expect("exact provider command acknowledgement");
+    let NodeCommandOutcome::Succeeded { result } = &provider_acknowledgement.outcome else {
+        panic!("provider command must succeed");
+    };
+    let NodeCommandResult::AgentProviderCommandAccepted { receipt } = result.as_ref() else {
+        panic!("provider command returned another result kind");
+    };
+    receipt
+        .validate_for(&profile, &provider_command)
+        .expect("provider-neutral receipt");
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
+
+    let mut provider_redelivery = provider_envelope;
+    provider_redelivery.lease_id = Uuid::now_v7();
+    let provider_replay = executor
+        .execute(provider_redelivery)
+        .await
+        .expect("replay provider command");
+    assert_eq!(provider_replay.outcome, provider_acknowledgement.outcome);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

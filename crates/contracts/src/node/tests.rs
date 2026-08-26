@@ -703,6 +703,7 @@ fn node_protocol_errors_are_versioned_and_strict() {
     assert_eq!(decoded, error);
 }
 
+mod agent_provider_tests;
 mod code_agent_tests;
 mod durable_cell_tests;
 mod gateway_tests;

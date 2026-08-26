@@ -10,6 +10,7 @@ use crate::modules::agents::domain::{
     StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
+use crate::modules::agents::NativeCodeAgentExecutionProvider;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft,
@@ -26,8 +27,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
-    AgentProtocolCommandReceiptV1, AgentProtocolCommandV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, DomainEventEnvelope, NodeCommandAck, NodeCommandEnvelope,
+    AgentProtocolRunIdentityV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
+    AgentProviderRunStateV1, DomainEventEnvelope, NodeCommandAck, NodeCommandEnvelope,
     NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
     NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport, AGENT_PROTOCOL_V1,
 };
@@ -41,12 +42,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 #[test]
-fn agent_flow_reuses_code_protocol_without_owning_a_run_lifecycle() {
+fn agent_flow_uses_the_provider_contract_without_owning_a_run_lifecycle() {
     let source = [include_str!("runtime.rs"), include_str!("recovery.rs")].join("\n");
+    assert!(source.contains("NodeCommandPayload::AgentProviderCommand"));
     assert!(source.contains("NodeCommandPayload::CodeAgentCommand"));
-    assert!(source.contains("AgentProtocolCommandV1::Start"));
-    assert!(source.contains("AgentProtocolCommandV1::Cancel"));
-    assert!(source.contains("AgentProtocolCommandV1::Recover"));
+    assert!(source.contains("AgentProviderCommandV1"));
+    assert!(!source.contains("AgentProtocolCommandV1::Start"));
+    assert!(!source.contains("AgentProtocolCommandV1::Cancel"));
+    assert!(!source.contains("AgentProtocolCommandV1::Recover"));
     assert!(source.contains("a3s-code-cancel-v1"));
     assert!(source.contains("a3s-code-recover-v1"));
     assert!(source.contains("list_active_runtime_targets"));
@@ -105,6 +108,9 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
     let flow_runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents: agents.clone(),
+            provider: Arc::new(
+                NativeCodeAgentExecutionProvider::new().expect("native Code provider"),
+            ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
             node_control: nodes.clone(),
         },
@@ -221,18 +227,18 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
     )
     .await;
     assert_eq!(recovery_dispatched.command_id.as_uuid(), recover.command_id);
-    let NodeCommandPayload::CodeAgentCommand {
+    let NodeCommandPayload::AgentProviderCommand {
         binding: recovered_node_binding,
         command: recovered_command,
     } = &recover.payload
     else {
-        panic!("recovery must use the Code Agent command path");
+        panic!("recovery must use the Agent provider command path");
     };
     assert_eq!(
-        recovered_node_binding.code_run_identity.run_id,
+        recovered_node_binding.provider_run_identity.run_id,
         recovered_run_id
     );
-    let AgentProtocolCommandV1::Recover { request } = recovered_command.as_ref() else {
+    let AgentProviderCommandV1::Recover { request } = recovered_command.as_ref() else {
         panic!("recovery command expected");
     };
     assert_eq!(request.checkpoint_run_id, binding.identity().run_id);
@@ -256,15 +262,18 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
         lease_code_command(nodes.as_ref(), node_id, agent_instance_id, recover.sequence).await;
     assert_ne!(cancel.command_id, start.command_id);
     assert_ne!(cancel.command_id, recover.command_id);
-    let NodeCommandPayload::CodeAgentCommand {
+    let NodeCommandPayload::AgentProviderCommand {
         binding: cancelled_binding,
         command: cancel_command,
     } = &cancel.payload
     else {
-        panic!("cancellation must use the Code Agent command path");
+        panic!("cancellation must use the Agent provider command path");
     };
-    assert_eq!(cancelled_binding.code_run_identity.run_id, recovered_run_id);
-    let AgentProtocolCommandV1::Cancel { request } = cancel_command.as_ref() else {
+    assert_eq!(
+        cancelled_binding.provider_run_identity.run_id,
+        recovered_run_id
+    );
+    let AgentProviderCommandV1::Cancel { request } = cancel_command.as_ref() else {
         panic!("cancel command expected");
     };
     assert_eq!(request.identity.run_id, recovered_run_id);
@@ -524,17 +533,20 @@ async fn lease_and_ack_code_command(
     expected_kind: AgentCommandKind,
 ) -> NodeCommandEnvelope {
     let envelope = lease_code_command(nodes, node_id, agent_instance_id, after_sequence).await;
-    let NodeCommandPayload::CodeAgentCommand { command, .. } = &envelope.payload else {
-        panic!("leased command must be an A3S Code command");
+    let NodeCommandPayload::AgentProviderCommand {
+        binding, command, ..
+    } = &envelope.payload
+    else {
+        panic!("leased command must be an Agent provider command");
     };
     assert!(matches!(
         (expected_kind, command.as_ref()),
         (
             AgentCommandKind::Start,
-            AgentProtocolCommandV1::Start { .. }
+            AgentProviderCommandV1::Start { .. }
         ) | (
             AgentCommandKind::Recover,
-            AgentProtocolCommandV1::Recover { .. }
+            AgentProviderCommandV1::Recover { .. }
         )
     ));
     let earliest_evidence_at = envelope
@@ -542,18 +554,14 @@ async fn lease_and_ack_code_command(
         .checked_add_signed(Duration::milliseconds(1))
         .expect("command evidence timestamp");
     let completed_at = canonical_timestamp(Utc::now().max(earliest_evidence_at));
-    let receipt = AgentProtocolCommandReceiptV1 {
-        schema: AgentProtocolCommandReceiptV1::SCHEMA.into(),
-        action: command.action(),
-        request_id: command.request_id().into(),
-        identity: command.identity().clone(),
-        command_digest: command.digest().expect("Code command digest"),
-        state: AgentProtocolRunStateV1::Created,
-        latest_event_sequence_exclusive: 0,
-        observed_at_ms: u64::try_from(completed_at.timestamp_millis())
-            .expect("command completion timestamp"),
-        replayed: false,
-    };
+    let receipt = AgentProviderCommandReceiptV1::accepted(
+        &binding.profile().expect("provider profile"),
+        command,
+        AgentProviderRunStateV1::Created,
+        u64::try_from(completed_at.timestamp_millis()).expect("command completion timestamp"),
+        false,
+    )
+    .expect("provider command receipt");
     nodes
         .acknowledge_command(
             NodeCommandAck {
@@ -565,7 +573,7 @@ async fn lease_and_ack_code_command(
                 payload_digest: envelope.payload_digest.clone(),
                 completed_at,
                 outcome: NodeCommandOutcome::Succeeded {
-                    result: Box::new(NodeCommandResult::CodeAgentCommandAccepted {
+                    result: Box::new(NodeCommandResult::AgentProviderCommandAccepted {
                         receipt: Box::new(receipt),
                     }),
                 },

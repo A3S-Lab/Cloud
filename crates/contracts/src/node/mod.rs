@@ -1,7 +1,9 @@
+mod agent_provider;
 mod artifact;
 mod box_build;
 mod code_agent;
 mod command;
+mod command_lease;
 mod durable_cell;
 mod enrollment;
 mod error;
@@ -14,6 +16,10 @@ mod secret;
 #[cfg(test)]
 mod tests;
 
+pub use agent_provider::{
+    NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1,
+    NodeAgentProviderRuntimeBindingV1, NODE_AGENT_PROVIDER_COMMAND_SCHEMA_V1,
+};
 pub use artifact::{
     artifact_uri, validate_cloud_artifact, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
@@ -33,9 +39,9 @@ pub use code_agent::{
 };
 pub use command::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,
-    NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult,
+    NodeCommandMetadata, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
 };
+pub use command_lease::{NodeCommandLeaseRequest, NodeCommandLeaseResponse};
 pub use durable_cell::{
     NodeDurableCellOperatorBindingV1, NodeDurableCellOperatorObservationV1,
     NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,

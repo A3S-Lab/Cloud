@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 159;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "159";
+pub const CLOUD_MIGRATION_COUNT: i64 = 160;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "160";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1483,6 +1483,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/159_source_pull_request_preview_revision_projections.sql"
             )),
         ),
+        Migration::new(
+            "160",
+            "immutable Agent provider profiles and provider-neutral execution bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/160_agent_provider_profiles.sql"
+            )),
+        ),
     ]
 }
 
@@ -1537,6 +1545,10 @@ mod developer_pull_request_preview_projection_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/source_pull_request_preview_revision_projection_migration.rs"]
 mod source_pull_request_preview_revision_projection_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/agent_provider_profile_migration.rs"]
+mod agent_provider_profile_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

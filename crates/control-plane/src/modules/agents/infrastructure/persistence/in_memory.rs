@@ -480,6 +480,11 @@ impl IAgentRepository for InMemoryAgentRepository {
         }
 
         let projected_at = write.accepted_at.max(execution.updated_at);
+        let provider_page = crate::modules::agents::infrastructure::project_code_event_page(
+            &binding,
+            &write.batch.page,
+        )
+        .map_err(invalid_repository_write)?;
         let drafts = if write.batch.page.retention_gap {
             if write.batch.change_set.is_some() {
                 return Err(RepositoryError::Conflict(
@@ -487,7 +492,7 @@ impl IAgentRepository for InMemoryAgentRepository {
                 ));
             }
             binding
-                .validate_recovery_page(&write.batch.page)
+                .validate_provider_recovery_page(&provider_page)
                 .map_err(RepositoryError::Conflict)?;
             execution
                 .recover_code_run(&binding, projected_at)
@@ -495,10 +500,10 @@ impl IAgentRepository for InMemoryAgentRepository {
             Vec::new()
         } else {
             let drafts =
-                AgentExecutionEventDraft::semantic_from_code_page(&write.batch.page, projected_at)
+                AgentExecutionEventDraft::semantic_from_provider_page(&provider_page, projected_at)
                     .map_err(invalid_repository_write)?;
             execution
-                .accept_code_event_page(&write.batch.page, projected_at, &drafts)
+                .accept_provider_event_page(&provider_page, projected_at, &drafts)
                 .map_err(RepositoryError::Conflict)?;
             drafts
         };

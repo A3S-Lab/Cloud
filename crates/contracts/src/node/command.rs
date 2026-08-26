@@ -15,15 +15,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::{AgentProviderCommandReceiptV1, AgentProviderCommandV1};
+
 use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
-    GatewaySnapshotObservationRequest, NodeBoxBuildCancelResult, NodeBoxBuildInspection,
-    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
+    GatewaySnapshotObservationRequest, NodeAgentProviderRuntimeBindingV1, NodeBoxBuildCancelResult,
+    NodeBoxBuildInspection, NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
     NodeCodeAgentRuntimeBindingV1, NodeDurableCellOperatorBindingV1,
     NodeDurableCellOperatorObservationV1, NodeGatewayAck, NodeGatewaySnapshotObservation,
     NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding, NodeResourceClaimPrepare,
     NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
-    NODE_CODE_AGENT_COMMAND_SCHEMA_V1, NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
+    NODE_AGENT_PROVIDER_COMMAND_SCHEMA_V1, NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
+    NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +53,11 @@ pub enum NodeCommandPayload {
     DurableCellOperatorObserve {
         binding: Box<NodeDurableCellOperatorBindingV1>,
     },
+    AgentProviderCommand {
+        binding: Box<NodeAgentProviderRuntimeBindingV1>,
+        command: Box<AgentProviderCommandV1>,
+    },
+    /// Legacy native A3S Code payload retained for durable command replay.
     CodeAgentCommand {
         binding: Box<NodeCodeAgentRuntimeBindingV1>,
         command: Box<AgentProtocolCommandV1>,
@@ -113,6 +121,7 @@ impl NodeCommandPayload {
             Self::RuntimeStop { .. } => "runtime_stop",
             Self::RuntimeRemove { .. } => "runtime_remove",
             Self::DurableCellOperatorObserve { .. } => "durable_cell_operator_observe",
+            Self::AgentProviderCommand { .. } => "agent_provider_command",
             Self::CodeAgentCommand { .. } => "code_agent_command",
             Self::BoxBuildStart { .. } => "box_build_start",
             Self::BoxBuildInspect { .. } => "box_build_inspect",
@@ -144,6 +153,7 @@ impl NodeCommandPayload {
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
             Self::DurableCellOperatorObserve { .. } => NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
+            Self::AgentProviderCommand { .. } => NODE_AGENT_PROVIDER_COMMAND_SCHEMA_V1,
             Self::CodeAgentCommand { .. } => NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
             Self::BoxBuildStart { .. } => "a3s.cloud.box-build-start.v1",
             Self::BoxBuildInspect { .. } => "a3s.cloud.box-build-inspect.v1",
@@ -167,6 +177,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
             Self::DurableCellOperatorObserve { binding } => binding.runtime_generation,
+            Self::AgentProviderCommand { binding, .. } => binding.runtime_generation,
             Self::CodeAgentCommand { binding, .. } => binding.runtime_generation,
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
@@ -208,6 +219,7 @@ impl NodeCommandPayload {
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
             Self::DurableCellOperatorObserve { binding } => binding.validate(),
+            Self::AgentProviderCommand { binding, command } => binding.validate_command(command),
             Self::CodeAgentCommand { binding, command } => binding.validate_command(command),
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
@@ -356,6 +368,11 @@ impl NodeCommandEnvelope {
             {
                 return Err("Code Agent command aggregate does not match its execution".into());
             }
+            NodeCommandPayload::AgentProviderCommand { binding, .. }
+                if self.aggregate_id != binding.execution_id =>
+            {
+                return Err("Agent provider command aggregate does not match its execution".into());
+            }
             NodeCommandPayload::DurableCellOperatorObserve { binding }
                 if self.aggregate_id != binding.application_id =>
             {
@@ -371,6 +388,7 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
             | NodeCommandPayload::DurableCellOperatorObserve { .. }
+            | NodeCommandPayload::AgentProviderCommand { .. }
             | NodeCommandPayload::CodeAgentCommand { .. }
             | NodeCommandPayload::BoxBuildStart { .. }
             | NodeCommandPayload::BoxBuildInspect { .. }
@@ -423,6 +441,10 @@ pub enum NodeCommandResult {
     DurableCellOperatorObserved {
         observation: NodeDurableCellOperatorObservationV1,
     },
+    AgentProviderCommandAccepted {
+        receipt: Box<AgentProviderCommandReceiptV1>,
+    },
+    /// Legacy native A3S Code result retained for durable acknowledgement replay.
     CodeAgentCommandAccepted {
         receipt: Box<AgentProtocolCommandReceiptV1>,
     },
@@ -478,6 +500,7 @@ impl NodeCommandResult {
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
             Self::DurableCellOperatorObserved { observation } => observation.validate(),
+            Self::AgentProviderCommandAccepted { receipt } => receipt.validate(),
             Self::CodeAgentCommandAccepted { receipt } => receipt
                 .validate()
                 .map_err(|error| format!("invalid A3S Code command receipt ({})", error.code())),
@@ -598,6 +621,13 @@ impl NodeCommandResult {
                     format!("A3S Code command receipt does not match ({})", error.code())
                 })
             }
+            (
+                NodeCommandPayload::AgentProviderCommand { binding, command },
+                Self::AgentProviderCommandAccepted { receipt },
+            ) => {
+                binding.validate_command(command)?;
+                receipt.validate_for(&binding.profile()?, command)
+            }
             (NodeCommandPayload::BoxBuildStart { request }, Self::BoxBuildStarted { started }) => {
                 started.validate_for(request)
             }
@@ -693,11 +723,11 @@ fn plugin_host_timestamp(label: &str, milliseconds: u64) -> Result<DateTime<Utc>
         .ok_or_else(|| format!("Plugin Host {label} time exceeds supported bounds"))
 }
 
-fn code_agent_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
+fn agent_provider_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
     let milliseconds = i64::try_from(milliseconds)
-        .map_err(|_| "A3S Code receipt time exceeds supported bounds".to_string())?;
+        .map_err(|_| "Agent provider receipt time exceeds supported bounds".to_string())?;
     DateTime::from_timestamp_millis(milliseconds)
-        .ok_or_else(|| "A3S Code receipt time exceeds supported bounds".to_string())
+        .ok_or_else(|| "Agent provider receipt time exceeds supported bounds".to_string())
 }
 
 fn durable_cell_operator_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
@@ -849,8 +879,12 @@ impl NodeCommandAck {
                     plugin_host_timestamp("observation", observation.observed_at_ms)?,
                     false,
                 )),
+                NodeCommandResult::AgentProviderCommandAccepted { receipt } => Some((
+                    agent_provider_timestamp(receipt.observed_at_ms)?,
+                    receipt.replayed,
+                )),
                 NodeCommandResult::CodeAgentCommandAccepted { receipt } => Some((
-                    code_agent_timestamp(receipt.observed_at_ms)?,
+                    agent_provider_timestamp(receipt.observed_at_ms)?,
                     receipt.replayed,
                 )),
                 NodeCommandResult::DurableCellOperatorObserved { observation } => Some((
@@ -883,6 +917,7 @@ impl NodeCommandAck {
                         ..
                     }
                     | NodeCommandPayload::DurableCellOperatorObserve { .. }
+                    | NodeCommandPayload::AgentProviderCommand { .. }
                     | NodeCommandPayload::CodeAgentCommand { .. }
                     | NodeCommandPayload::BoxBuildStart { .. }
                     | NodeCommandPayload::BoxBuildInspect { .. }
@@ -933,78 +968,6 @@ impl NodeCommandAck {
                     );
                 }
             }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NodeCommandLeaseRequest {
-    pub schema: String,
-    pub node_id: Uuid,
-    pub agent_instance_id: Uuid,
-    pub after_sequence: u64,
-    pub max_commands: u16,
-    pub wait_ms: u64,
-}
-
-impl NodeCommandLeaseRequest {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-command-lease-request.v1";
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema != Self::SCHEMA {
-            return Err(format!(
-                "unsupported command lease request schema {:?}",
-                self.schema
-            ));
-        }
-        validate_uuid("node_id", self.node_id)?;
-        validate_uuid("agent_instance_id", self.agent_instance_id)?;
-        if self.max_commands == 0 || self.max_commands > 64 || self.wait_ms > 60_000 {
-            return Err("command lease bounds are invalid".into());
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NodeCommandLeaseResponse {
-    pub schema: String,
-    pub lease_id: Uuid,
-    pub node_id: Uuid,
-    pub agent_instance_id: Uuid,
-    pub leased_until: DateTime<Utc>,
-    pub commands: Vec<NodeCommandEnvelope>,
-}
-
-impl NodeCommandLeaseResponse {
-    pub const SCHEMA: &'static str = "a3s.cloud.node-command-lease-response.v1";
-
-    pub fn validate(&self, now: DateTime<Utc>) -> Result<(), String> {
-        if self.schema != Self::SCHEMA {
-            return Err(format!(
-                "unsupported command lease response schema {:?}",
-                self.schema
-            ));
-        }
-        validate_uuid("lease_id", self.lease_id)?;
-        validate_uuid("node_id", self.node_id)?;
-        validate_uuid("agent_instance_id", self.agent_instance_id)?;
-        if self.leased_until <= now || self.commands.len() > 64 {
-            return Err("command lease expiry or batch size is invalid".into());
-        }
-        let mut previous = None;
-        for command in &self.commands {
-            command.validate()?;
-            if command.lease_id != self.lease_id || command.node_id != self.node_id {
-                return Err("leased command identity does not match its lease".into());
-            }
-            if previous.is_some_and(|sequence| command.sequence <= sequence) {
-                return Err("leased commands are not ordered by sequence".into());
-            }
-            previous = Some(command.sequence);
         }
         Ok(())
     }

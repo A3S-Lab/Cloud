@@ -54,7 +54,7 @@ async fn lease_and_ack_code_command(
     agent_instance_id: Uuid,
     after_sequence: u64,
     expected: ExpectedCommand,
-    state: AgentProtocolRunStateV1,
+    state: AgentProviderRunStateV1,
 ) -> TestResult<NodeCommandEnvelope> {
     let now = canonical_timestamp(Utc::now());
     let lease = nodes
@@ -84,19 +84,22 @@ async fn lease_and_ack_code_command(
         .into_iter()
         .next()
         .ok_or_else(|| invalid("Fleet omitted the sole leased Agent Code command"))?;
-    let NodeCommandPayload::CodeAgentCommand { command, .. } = &envelope.payload else {
-        return Err(invalid("Fleet leased a non-Code command for Agent recovery").into());
+    let NodeCommandPayload::AgentProviderCommand {
+        binding, command, ..
+    } = &envelope.payload
+    else {
+        return Err(invalid("Fleet leased a non-provider command for Agent recovery").into());
     };
     let kind_matches = matches!(
         (expected, command.as_ref()),
-        (ExpectedCommand::Start, AgentProtocolCommandV1::Start { .. })
+        (ExpectedCommand::Start, AgentProviderCommandV1::Start { .. })
             | (
                 ExpectedCommand::Recover,
-                AgentProtocolCommandV1::Recover { .. }
+                AgentProviderCommandV1::Recover { .. }
             )
             | (
                 ExpectedCommand::Cancel,
-                AgentProtocolCommandV1::Cancel { .. }
+                AgentProviderCommandV1::Cancel { .. }
             )
     );
     if !kind_matches {
@@ -112,18 +115,13 @@ async fn lease_and_ack_code_command(
             .checked_add_signed(Duration::milliseconds(1))
             .ok_or_else(|| invalid("Agent Code acknowledgement time overflowed"))?,
     );
-    let receipt = AgentProtocolCommandReceiptV1 {
-        schema: AgentProtocolCommandReceiptV1::SCHEMA.into(),
-        action: command.action(),
-        request_id: command.request_id().into(),
-        identity: command.identity().clone(),
-        command_digest: command.digest()?,
+    let receipt = AgentProviderCommandReceiptV1::accepted(
+        &binding.profile()?,
+        command,
         state,
-        latest_event_sequence_exclusive: 0,
-        observed_at_ms: u64::try_from(completed_at.timestamp_millis())?,
-        replayed: false,
-    };
-    receipt.validate_for(command)?;
+        u64::try_from(completed_at.timestamp_millis())?,
+        false,
+    )?;
     nodes
         .acknowledge_command(
             NodeCommandAck {
@@ -135,7 +133,7 @@ async fn lease_and_ack_code_command(
                 payload_digest: envelope.payload_digest.clone(),
                 completed_at,
                 outcome: NodeCommandOutcome::Succeeded {
-                    result: Box::new(NodeCommandResult::CodeAgentCommandAccepted {
+                    result: Box::new(NodeCommandResult::AgentProviderCommandAccepted {
                         receipt: Box::new(receipt),
                     }),
                 },
@@ -146,19 +144,19 @@ async fn lease_and_ack_code_command(
     Ok(envelope)
 }
 
-fn command_identity(command: &NodeCommandEnvelope) -> TestResult<&AgentProtocolRunIdentityV1> {
-    let NodeCommandPayload::CodeAgentCommand { command, .. } = &command.payload else {
-        return Err(invalid("Fleet command is not an Agent Code command").into());
+fn command_identity(command: &NodeCommandEnvelope) -> TestResult<&AgentProviderRunIdentityV1> {
+    let NodeCommandPayload::AgentProviderCommand { command, .. } = &command.payload else {
+        return Err(invalid("Fleet command is not an Agent provider command").into());
     };
     Ok(command.identity())
 }
 
 fn recovery_identity(command: &NodeCommandEnvelope) -> TestResult<(String, String)> {
-    let NodeCommandPayload::CodeAgentCommand { command, .. } = &command.payload else {
-        return Err(invalid("Fleet recovery is not an Agent Code command").into());
+    let NodeCommandPayload::AgentProviderCommand { command, .. } = &command.payload else {
+        return Err(invalid("Fleet recovery is not an Agent provider command").into());
     };
-    let AgentProtocolCommandV1::Recover { request } = command.as_ref() else {
-        return Err(invalid("Fleet command is not an Agent Code recovery").into());
+    let AgentProviderCommandV1::Recover { request } = command.as_ref() else {
+        return Err(invalid("Fleet command is not an Agent provider recovery").into());
     };
     Ok((
         request.identity.run_id.clone(),

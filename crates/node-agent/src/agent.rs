@@ -536,6 +536,7 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }
             | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::AgentProviderCommandAccepted { .. }
             | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
@@ -571,6 +572,7 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::BoxBuildCancelled { .. }
             | NodeCommandResult::BoxBuildRemoved { .. }
             | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::AgentProviderCommandAccepted { .. }
             | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }

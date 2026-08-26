@@ -556,6 +556,14 @@ pub(super) async fn persist_execution(
     expected_version: u64,
 ) -> Result<(), PostgresPersistenceError> {
     let code = execution.code.as_ref();
+    let provider = code
+        .map(|binding| binding.provider())
+        .transpose()
+        .map_err(|error| {
+            PostgresPersistenceError::Invariant(format!(
+                "Agent provider profile binding is invalid: {error}"
+            ))
+        })?;
     let rows = execute(
         transaction,
         update_table::<AgentExecutions>()
@@ -573,71 +581,95 @@ pub(super) async fn persist_execution(
             )
             .set(AgentExecutions::finished_at(), execution.finished_at)
             .set(
-                AgentExecutions::code_node_id(),
+                AgentExecutions::provider_kind(),
+                provider.map(|binding| binding.kind().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_revision(),
+                provider.map(|binding| binding.revision().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_protocol(),
+                provider.map(|binding| binding.protocol().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_native_protocol(),
+                provider.map(|binding| binding.native_protocol().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_profile_acl(),
+                provider.map(|binding| binding.profile_acl().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_profile_digest(),
+                provider.map(|binding| binding.profile_digest().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_capability_digest(),
+                provider.map(|binding| binding.capability_digest().to_owned()),
+            )
+            .set(
+                AgentExecutions::provider_node_id(),
                 code.map(|binding| binding.node_id().as_uuid()),
             )
             .set(
-                AgentExecutions::code_workload_id(),
+                AgentExecutions::provider_workload_id(),
                 code.map(|binding| binding.workload_id().as_uuid()),
             )
             .set(
-                AgentExecutions::code_workload_revision_id(),
+                AgentExecutions::provider_workload_revision_id(),
                 code.map(|binding| binding.workload_revision_id().as_uuid()),
             )
             .set(
-                AgentExecutions::code_deployment_id(),
+                AgentExecutions::provider_deployment_id(),
                 code.map(|binding| binding.deployment_id().as_uuid()),
             )
             .set(
-                AgentExecutions::code_replica_id(),
+                AgentExecutions::provider_replica_id(),
                 code.map(|binding| binding.replica_id().as_uuid()),
             )
             .set(
-                AgentExecutions::code_runtime_unit_id(),
+                AgentExecutions::provider_runtime_unit_id(),
                 code.map(|binding| binding.runtime_unit_id().to_owned()),
             )
             .set(
-                AgentExecutions::code_runtime_generation(),
+                AgentExecutions::provider_runtime_generation(),
                 code.map(|binding| binding.runtime_generation()),
             )
             .set(
-                AgentExecutions::code_runtime_spec_digest(),
+                AgentExecutions::provider_runtime_spec_digest(),
                 code.map(|binding| binding.runtime_spec_digest().as_str().to_owned()),
             )
             .set(
-                AgentExecutions::code_service_port_name(),
+                AgentExecutions::provider_service_port_name(),
                 code.map(|binding| binding.service_port_name().to_owned()),
             )
             .set(
-                AgentExecutions::code_protocol(),
-                code.map(|binding| binding.identity().protocol.clone()),
-            )
-            .set(
-                AgentExecutions::code_release_identity(),
+                AgentExecutions::provider_release_identity(),
                 code.map(|binding| binding.identity().agent_release_identity.clone()),
             )
             .set(
-                AgentExecutions::code_session_id(),
+                AgentExecutions::provider_session_id(),
                 code.map(|binding| binding.identity().session_id.clone()),
             )
             .set(
-                AgentExecutions::code_run_id(),
+                AgentExecutions::provider_run_id(),
                 code.map(|binding| binding.identity().run_id.clone()),
             )
             .set(
-                AgentExecutions::code_event_cursor(),
+                AgentExecutions::provider_event_cursor(),
                 code.and_then(|binding| binding.accepted_after_event_sequence()),
             )
             .set(
-                AgentExecutions::code_state(),
+                AgentExecutions::provider_state(),
                 code.map(|binding| binding.observed_state().as_str().to_owned()),
             )
             .set(
-                AgentExecutions::code_bound_at(),
+                AgentExecutions::provider_bound_at(),
                 code.map(|binding| binding.bound_at()),
             )
             .set(
-                AgentExecutions::code_observed_at(),
+                AgentExecutions::provider_observed_at(),
                 code.and_then(|binding| binding.observed_at()),
             )
             .filter(AgentExecutions::organization_id().eq(execution.organization_id.as_uuid()))

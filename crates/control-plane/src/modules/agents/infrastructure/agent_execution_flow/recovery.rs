@@ -1,12 +1,10 @@
-use super::runtime::observe_pending;
+use super::runtime::{observe_pending, provider_command_payload_matches};
 use super::types::{DispatchedAgentExecution, ObserveOutput, PreparedAgentExecution};
 use super::{flow_error, AgentExecutionFlowRuntime};
 use crate::modules::agents::domain::{AgentCodeRunBinding, AgentExecution};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, NodeCommandId};
-use a3s_cloud_contracts::{
-    AgentProtocolCommandV1, AgentProtocolRunRecoverV1, NodeCommandPayload, RuntimeServiceEndpoint,
-};
+use a3s_cloud_contracts::{AgentProviderCommandV1, NodeCommandPayload, RuntimeServiceEndpoint};
 use a3s_flow::FlowError;
 use a3s_runtime::contract::{RuntimeUnitClass, RuntimeUnitState, TransportProtocol};
 use chrono::{DateTime, Utc};
@@ -35,7 +33,7 @@ pub(super) async fn begin(
         );
     };
     let checkpoint_run_id = previous.prepared.binding.identity().run_id.clone();
-    let expected = command(&execution, &checkpoint_run_id)?;
+    let expected = command(runtime, &execution, &checkpoint_run_id)?;
     let command_id = command_id(execution.id, &checkpoint_run_id);
     let node_id = binding.node_id();
     let prepared = PreparedAgentExecution {
@@ -64,11 +62,14 @@ pub(super) async fn begin(
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
-                    payload: NodeCommandPayload::CodeAgentCommand {
+                    payload: NodeCommandPayload::AgentProviderCommand {
                         binding: Box::new(
                             prepared
                                 .binding
-                                .node_runtime_binding(execution.id.as_uuid()),
+                                .node_provider_runtime_binding(execution.id.as_uuid())
+                                .map_err(|error| {
+                                    flow_error("could not bind Agent provider recovery", error)
+                                })?,
                         ),
                         command: Box::new(expected.clone()),
                     },
@@ -161,68 +162,60 @@ pub(super) async fn active_runtime_process(
 }
 
 pub(super) fn command(
+    runtime: &AgentExecutionFlowRuntime,
     execution: &AgentExecution,
     checkpoint_run_id: &str,
-) -> a3s_flow::Result<AgentProtocolCommandV1> {
-    let identity = execution
+) -> a3s_flow::Result<AgentProviderCommandV1> {
+    let binding = execution
         .code
         .as_ref()
-        .ok_or_else(|| FlowError::Runtime("Agent execution has no A3S Code binding".into()))?
-        .identity()
-        .clone();
+        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?;
+    let identity = binding
+        .provider_identity()
+        .map_err(|error| flow_error("could not bind Agent recovery provider identity", error))?;
     if identity.run_id != AgentCodeRunBinding::recovery_run_id(execution.id, checkpoint_run_id) {
         return Err(FlowError::Runtime(
             "Agent execution recovery run does not match its checkpoint".into(),
         ));
     }
-    let command = AgentProtocolCommandV1::Recover {
-        request: AgentProtocolRunRecoverV1 {
-            schema: AgentProtocolRunRecoverV1::SCHEMA.into(),
-            request_id: format!(
+    runtime
+        .provider
+        .recover_command(
+            format!(
                 "agent-recover-{}",
                 command_id(execution.id, checkpoint_run_id)
             ),
             identity,
-            checkpoint_run_id: checkpoint_run_id.into(),
-        },
-    };
-    command.validate().map_err(|error| {
-        flow_error(
-            "Agent execution recovery is not a valid A3S Code command",
-            error,
+            checkpoint_run_id.into(),
         )
-    })?;
-    Ok(command)
+        .map_err(|error| {
+            flow_error(
+                "Agent execution recovery is not a valid provider command",
+                error,
+            )
+        })
 }
 
 pub(super) fn validate_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
     checkpoint_run_id: &str,
-    expected: &AgentProtocolCommandV1,
+    expected: &AgentProviderCommandV1,
     command: &NodeCommand,
 ) -> a3s_flow::Result<()> {
-    let NodeCommandPayload::CodeAgentCommand {
-        binding,
-        command: actual,
-    } = &command.payload
-    else {
-        return Err(FlowError::Runtime(
-            "Agent execution recovery is not an A3S Code command".into(),
-        ));
-    };
     if command.id != command_id(execution.id, checkpoint_run_id)
         || command.node_id != prepared.binding.node_id()
         || command.aggregate_id != execution.id.as_uuid()
         || command.correlation_id != execution.operation_id.as_uuid()
-        || **binding
-            != prepared
-                .binding
-                .node_runtime_binding(execution.id.as_uuid())
-        || **actual != *expected
+        || !provider_command_payload_matches(
+            &prepared.binding,
+            execution.id.as_uuid(),
+            expected,
+            &command.payload,
+        )?
     {
         return Err(FlowError::Runtime(
-            "A3S Code recovery command changed its durable identity".into(),
+            "Agent provider recovery command changed its durable identity".into(),
         ));
     }
     Ok(())

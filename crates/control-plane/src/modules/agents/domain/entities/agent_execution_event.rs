@@ -126,6 +126,60 @@ impl AgentExecutionEventDraft {
         )?);
         Ok(drafts)
     }
+
+    /// Project the bounded provider-neutral semantic subset into the sole
+    /// Cloud conversation sequence. Provider-private records remain outside
+    /// Cloud and only their contiguous source cursor evidence is retained.
+    pub fn semantic_from_provider_page(
+        page: &a3s_cloud_contracts::AgentProviderEventPageV1,
+        projected_at: DateTime<Utc>,
+    ) -> Result<Vec<Self>, String> {
+        use a3s_cloud_contracts::{AgentProviderRunStateV1, AgentProviderSemanticEventV1};
+
+        page.validate()?;
+        let projected_at = canonical_timestamp(projected_at);
+        let mut drafts = page
+            .events
+            .iter()
+            .map(|record| match &record.event {
+                AgentProviderSemanticEventV1::ModelOutput { text } => Self::new(
+                    AgentExecutionEventKind::ModelOutput,
+                    AgentEventContent::inline_json(serde_json::json!({"text": text}))?,
+                    projected_at,
+                ),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if !page.state.is_terminal() || page.has_more {
+            return Ok(drafts);
+        }
+
+        let (kind, content) = match page.state {
+            AgentProviderRunStateV1::Completed => (
+                AgentExecutionEventKind::ExecutionCompleted,
+                serde_json::json!({}),
+            ),
+            AgentProviderRunStateV1::Failed => (
+                AgentExecutionEventKind::ExecutionFailed,
+                serde_json::json!({
+                    "reason": page
+                        .terminal_failure
+                        .as_deref()
+                        .ok_or_else(|| "failed provider page omitted its reason".to_owned())?
+                }),
+            ),
+            AgentProviderRunStateV1::Cancelled => (
+                AgentExecutionEventKind::ExecutionCancelled,
+                serde_json::json!({}),
+            ),
+            _ => return Err("non-terminal provider state reached terminal projection".into()),
+        };
+        drafts.push(Self::new(
+            kind,
+            AgentEventContent::inline_json(content)?,
+            projected_at,
+        )?);
+        Ok(drafts)
+    }
 }
 
 fn normalize_failure_reason(reason: &str) -> String {

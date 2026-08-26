@@ -1,0 +1,7 @@
+agent_provider "reference.echo" {
+  capabilities = ["cancellation", "cleanup", "event_pages", "streaming_output"]
+  native_protocol = "a3s.cloud.reference-echo-agent.v1"
+  protocol = "a3s.cloud.agent-provider.v1"
+  revision = "1.0.0"
+  schema = "a3s.cloud.agent-provider-profile.v1"
+}

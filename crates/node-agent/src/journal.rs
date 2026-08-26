@@ -611,11 +611,12 @@ fn state_mutation_digest(
             request.validate().map_err(CommandJournalError::Invalid)?;
             Ok(None)
         }
-        // This journal provides exact node-command replay only. A3S Code owns
-        // run idempotency and permits start/cancel/recover commands for the
-        // same Runtime generation, so it must not gain a second generation
-        // fence here.
-        NodeCommandPayload::CodeAgentCommand { .. }
+        // This journal provides exact node-command replay only. The Agent
+        // provider owns run idempotency and permits start/cancel/recover
+        // commands for the same Runtime generation, so it must not gain a
+        // second generation fence here.
+        NodeCommandPayload::AgentProviderCommand { .. }
+        | NodeCommandPayload::CodeAgentCommand { .. }
         | NodeCommandPayload::DurableCellOperatorObserve { .. } => Ok(None),
         // Fleet journals remote delivery and exact command replay. The shared
         // A3S Use Manager owns assignment-generation fencing and its nested
@@ -678,6 +679,7 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
             | NodeCommandPayload::DurableCellOperatorObserve { .. }
+            | NodeCommandPayload::AgentProviderCommand { .. }
             | NodeCommandPayload::CodeAgentCommand { .. }
             | NodeCommandPayload::BoxBuildStart { .. }
             | NodeCommandPayload::BoxBuildInspect { .. }

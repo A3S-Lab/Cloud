@@ -972,6 +972,10 @@ async fn build_api_worker_application(
         let agent_execution_runtime = AgentExecutionFlowRuntime::new(
             AgentExecutionFlowRuntimeDependencies {
                 agents: Arc::clone(&agents),
+                provider: Arc::new(
+                    crate::modules::agents::NativeCodeAgentExecutionProvider::new()
+                        .map_err(ControlPlaneStartupError::AgentExecution)?,
+                ),
                 workload_targets: Arc::clone(&workload_targets),
                 node_control: Arc::clone(&node_control),
             },

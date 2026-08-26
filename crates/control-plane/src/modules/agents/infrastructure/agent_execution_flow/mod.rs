@@ -7,7 +7,7 @@ mod workflow;
 mod tests;
 
 use crate::infrastructure::flow_step_retry_policy;
-use crate::modules::agents::domain::IAgentRepository;
+use crate::modules::agents::domain::{AgentExecutionProvider, IAgentRepository};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use a3s_flow::{
@@ -79,6 +79,7 @@ fn duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 #[derive(Clone)]
 pub struct AgentExecutionFlowRuntimeDependencies {
     pub agents: Arc<dyn IAgentRepository>,
+    pub provider: Arc<dyn AgentExecutionProvider>,
     pub workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
     pub node_control: Arc<dyn INodeControlRepository>,
 }
@@ -86,6 +87,7 @@ pub struct AgentExecutionFlowRuntimeDependencies {
 #[derive(Clone)]
 pub struct AgentExecutionFlowRuntime {
     agents: Arc<dyn IAgentRepository>,
+    provider: Arc<dyn AgentExecutionProvider>,
     workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     config: AgentExecutionFlowConfig,
@@ -98,6 +100,7 @@ impl AgentExecutionFlowRuntime {
     ) -> Self {
         Self {
             agents: dependencies.agents,
+            provider: dependencies.provider,
             workload_targets: dependencies.workload_targets,
             node_control: dependencies.node_control,
             config,

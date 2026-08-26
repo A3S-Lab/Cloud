@@ -269,6 +269,42 @@ impl CommandExecutor {
                     .map_err(DurableCellOperatorError::Protocol)?;
                 Ok(NodeCommandResult::DurableCellOperatorObserved { observation })
             }
+            NodeCommandPayload::AgentProviderCommand { binding, command } => {
+                binding
+                    .validate_command(command)
+                    .map_err(CodeHarnessError::Invalid)?;
+                let code_binding = binding.code_binding().map_err(CodeHarnessError::Invalid)?;
+                let code_command = binding
+                    .code_command(command)
+                    .map_err(CodeHarnessError::Invalid)?;
+                let endpoint =
+                    code_harness::resolve_runtime_endpoint(self.runtime.as_ref(), &code_binding)
+                        .await?;
+                let transport = self.code_harness.as_deref().ok_or_else(|| {
+                    CodeHarnessError::Unavailable(
+                        "the node-local A3S Code Harness transport is not configured".into(),
+                    )
+                })?;
+                let timeout = envelope
+                    .not_after
+                    .signed_duration_since(Utc::now())
+                    .to_std()
+                    .map_err(|_| {
+                        CodeHarnessError::Invalid(
+                            "node command deadline elapsed before provider dispatch".into(),
+                        )
+                    })?;
+                let native_receipt = transport
+                    .send_command(&endpoint, &code_command, timeout)
+                    .await?;
+                let receipt = binding
+                    .code_receipt(command, &native_receipt)
+                    .map_err(CodeHarnessError::Protocol)?;
+                Ok(NodeCommandResult::AgentProviderCommandAccepted {
+                    receipt: Box::new(receipt),
+                })
+            }
+            // Commands persisted before the provider-neutral envelope remain replayable.
             NodeCommandPayload::CodeAgentCommand { binding, command } => {
                 binding
                     .validate_command(command)
@@ -457,6 +493,11 @@ fn completion_timestamp(
             }
             NodeCommandResult::GatewaySnapshotObserved { observation } => {
                 Some(observation.observed_at)
+            }
+            NodeCommandResult::AgentProviderCommandAccepted { receipt } => {
+                i64::try_from(receipt.observed_at_ms)
+                    .ok()
+                    .and_then(DateTime::from_timestamp_millis)
             }
             NodeCommandResult::CodeAgentCommandAccepted { receipt } => {
                 i64::try_from(receipt.observed_at_ms)

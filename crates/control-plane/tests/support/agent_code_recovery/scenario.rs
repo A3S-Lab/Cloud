@@ -254,7 +254,7 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         agent_instance_id,
         runtime_command.sequence,
         ExpectedCommand::Start,
-        AgentProtocolRunStateV1::Created,
+        AgentProviderRunStateV1::Created,
     )
     .await?;
     let initial_observe = run_step(

@@ -9,15 +9,15 @@ use crate::modules::agents::domain::{
     AgentExecutionEventKind, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
     RecoverAgentCodeRunWrite,
 };
+use crate::modules::agents::infrastructure::{accept_code_receipt, encode_code_command};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, NodeCommandId, OperationId, Sha256Digest,
 };
 use crate::modules::workloads::{project_runtime_spec, ActiveRuntimeTarget};
 use a3s_cloud_contracts::{
-    AgentProtocolCommandV1, AgentProtocolRunCancelV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStartV1, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
-    RuntimeServiceEndpoint, AGENT_PROTOCOL_V1,
+    AgentProtocolRunIdentityV1, AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, RuntimeServiceEndpoint, AGENT_PROTOCOL_V1,
 };
 use a3s_flow::FlowError;
 use a3s_runtime::contract::TransportProtocol;
@@ -180,12 +180,15 @@ pub(super) async fn dispatch(
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
-                    payload: NodeCommandPayload::CodeAgentCommand {
+                    payload: NodeCommandPayload::AgentProviderCommand {
                         binding: Box::new(
                             input
                                 .prepared
                                 .binding
-                                .node_runtime_binding(execution.id.as_uuid()),
+                                .node_provider_runtime_binding(execution.id.as_uuid())
+                                .map_err(|error| {
+                                    flow_error("could not bind Agent provider command", error)
+                                })?,
                         ),
                         command: Box::new(expected.clone()),
                     },
@@ -257,22 +260,19 @@ pub(super) async fn observe(
         .map_err(|error| flow_error("could not load A3S Code command result", error))?
     {
         match acknowledgement.outcome {
-            NodeCommandOutcome::Succeeded { result } => match *result {
-                NodeCommandResult::CodeAgentCommandAccepted { receipt } => {
-                    receipt.validate_for(&expected).map_err(|error| {
-                        flow_error("A3S Code command receipt is inconsistent", error)
-                    })?
-                }
-                _ => {
+            NodeCommandOutcome::Succeeded { result } => {
+                if let Err(error) =
+                    accept_provider_result(&input.dispatched.prepared.binding, &expected, &result)
+                {
                     return fail_observation(
                         runtime,
                         execution,
-                        "A3S Code command returned another result kind",
+                        &error,
                         acknowledgement.completed_at,
                     )
-                    .await
+                    .await;
                 }
-            },
+            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 return fail_observation(
                     runtime,
@@ -367,7 +367,7 @@ async fn observe_cancellation(
     execution: AgentExecution,
     prepared: &PreparedAgentExecution,
 ) -> a3s_flow::Result<ObserveOutput> {
-    let expected = cancel_command(&execution)?;
+    let expected = cancel_command(runtime, &execution)?;
     let command_id = cancel_command_id(execution.id, &expected.identity().run_id);
     let node_id = prepared.binding.node_id();
     let command = match runtime
@@ -390,11 +390,14 @@ async fn observe_cancellation(
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
-                    payload: NodeCommandPayload::CodeAgentCommand {
+                    payload: NodeCommandPayload::AgentProviderCommand {
                         binding: Box::new(
                             prepared
                                 .binding
-                                .node_runtime_binding(execution.id.as_uuid()),
+                                .node_provider_runtime_binding(execution.id.as_uuid())
+                                .map_err(|error| {
+                                    flow_error("could not bind Agent provider cancellation", error)
+                                })?,
                         ),
                         command: Box::new(expected.clone()),
                     },
@@ -415,22 +418,17 @@ async fn observe_cancellation(
         .map_err(|error| flow_error("could not load A3S Code cancel result", error))?
     {
         match acknowledgement.outcome {
-            NodeCommandOutcome::Succeeded { result } => match *result {
-                NodeCommandResult::CodeAgentCommandAccepted { receipt } => {
-                    receipt.validate_for(&expected).map_err(|error| {
-                        flow_error("A3S Code cancel receipt is inconsistent", error)
-                    })?;
-                }
-                _ => {
+            NodeCommandOutcome::Succeeded { result } => {
+                if let Err(error) = accept_provider_result(&prepared.binding, &expected, &result) {
                     return fail_observation(
                         runtime,
                         execution,
-                        "A3S Code cancel command returned another result kind",
+                        &error,
                         acknowledgement.completed_at,
                     )
                     .await;
                 }
-            },
+            }
             NodeCommandOutcome::Rejected { failure } | NodeCommandOutcome::Failed { failure } => {
                 return fail_observation(
                     runtime,
@@ -511,7 +509,8 @@ async fn ready_binding(
         .started_at_ms
         .ok_or_else(|| "A3S Code Harness Runtime has no process start time".to_owned())?;
     let spec_digest = Sha256Digest::parse(spec.digest()?)?;
-    let binding = AgentCodeRunBinding::new(
+    let binding = AgentCodeRunBinding::new_with_provider(
+        runtime.provider.profile().clone(),
         node_id,
         target.workload.id,
         target.revision.id,
@@ -536,7 +535,7 @@ async fn ready_binding(
 async fn start_command(
     runtime: &AgentExecutionFlowRuntime,
     execution: &AgentExecution,
-) -> a3s_flow::Result<AgentProtocolCommandV1> {
+) -> a3s_flow::Result<AgentProviderCommandV1> {
     let event = runtime
         .agents
         .find_execution_request(execution.organization_id, execution.id)
@@ -555,91 +554,79 @@ async fn start_command(
         serde_json::Value::String(prompt) => prompt.clone(),
         input => serde_json::to_string(input)?,
     };
-    let identity = execution
+    let binding = execution
         .code
         .as_ref()
-        .ok_or_else(|| FlowError::Runtime("Agent execution has no A3S Code binding".into()))?
-        .identity()
-        .clone();
-    let command = AgentProtocolCommandV1::Start {
-        request: AgentProtocolRunStartV1 {
-            schema: AgentProtocolRunStartV1::SCHEMA.into(),
-            request_id: format!("agent-execution-{}-start", execution.id),
-            identity,
+        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?;
+    runtime
+        .provider
+        .start_command(
+            format!("agent-execution-{}-start", execution.id),
+            binding
+                .provider_identity()
+                .map_err(|error| flow_error("could not bind Agent provider identity", error))?,
             prompt,
-        },
-    };
-    command.validate().map_err(|error| {
-        flow_error("Agent execution input is not a valid A3S Code start", error)
-    })?;
-    Ok(command)
+        )
+        .map_err(|error| flow_error("Agent execution input is not a valid provider start", error))
 }
 
 async fn dispatched_command(
     runtime: &AgentExecutionFlowRuntime,
     execution: &AgentExecution,
     dispatched: &DispatchedAgentExecution,
-) -> a3s_flow::Result<AgentProtocolCommandV1> {
+) -> a3s_flow::Result<AgentProviderCommandV1> {
     match dispatched.recovery_checkpoint_run_id.as_deref() {
-        Some(checkpoint_run_id) => recovery::command(execution, checkpoint_run_id),
+        Some(checkpoint_run_id) => recovery::command(runtime, execution, checkpoint_run_id),
         None => start_command(runtime, execution).await,
     }
 }
 
-fn cancel_command(execution: &AgentExecution) -> a3s_flow::Result<AgentProtocolCommandV1> {
-    let identity = execution
+fn cancel_command(
+    runtime: &AgentExecutionFlowRuntime,
+    execution: &AgentExecution,
+) -> a3s_flow::Result<AgentProviderCommandV1> {
+    let binding = execution
         .code
         .as_ref()
-        .ok_or_else(|| FlowError::Runtime("Agent execution has no A3S Code binding".into()))?
-        .identity()
-        .clone();
-    let command = AgentProtocolCommandV1::Cancel {
-        request: AgentProtocolRunCancelV1 {
-            schema: AgentProtocolRunCancelV1::SCHEMA.into(),
-            request_id: format!(
-                "agent-cancel-{}",
-                cancel_command_id(execution.id, &identity.run_id)
-            ),
+        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?;
+    let identity = binding
+        .provider_identity()
+        .map_err(|error| flow_error("could not bind Agent provider identity", error))?;
+    let command_id = cancel_command_id(execution.id, &identity.run_id);
+    runtime
+        .provider
+        .cancel_command(
+            format!("agent-cancel-{command_id}"),
             identity,
-            reason: "Cloud Agent execution cancellation requested".into(),
-        },
-    };
-    command.validate().map_err(|error| {
-        flow_error(
-            "Agent execution cancellation is not a valid A3S Code command",
-            error,
+            "Cloud Agent execution cancellation requested".into(),
         )
-    })?;
-    Ok(command)
+        .map_err(|error| {
+            flow_error(
+                "Agent execution cancellation is not a valid provider command",
+                error,
+            )
+        })
 }
 
 fn validate_start_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
-    expected: &AgentProtocolCommandV1,
+    expected: &AgentProviderCommandV1,
     command: &NodeCommand,
 ) -> a3s_flow::Result<()> {
-    let NodeCommandPayload::CodeAgentCommand {
-        binding,
-        command: actual,
-    } = &command.payload
-    else {
-        return Err(FlowError::Runtime(
-            "Agent execution command is not an A3S Code command".into(),
-        ));
-    };
     if command.id != NodeCommandId::from_uuid(execution.id.as_uuid())
         || command.node_id != prepared.binding.node_id()
         || command.aggregate_id != execution.id.as_uuid()
         || command.correlation_id != execution.operation_id.as_uuid()
-        || **binding
-            != prepared
-                .binding
-                .node_runtime_binding(execution.id.as_uuid())
-        || **actual != *expected
+        || !provider_command_payload_matches(
+            &prepared.binding,
+            execution.id.as_uuid(),
+            expected,
+            &command.payload,
+        )?
     {
         return Err(FlowError::Runtime(
-            "A3S Code start command changed its durable identity".into(),
+            "Agent provider start command changed its durable identity".into(),
         ));
     }
     Ok(())
@@ -648,7 +635,7 @@ fn validate_start_command(
 fn validate_dispatched_command(
     execution: &AgentExecution,
     dispatched: &DispatchedAgentExecution,
-    expected: &AgentProtocolCommandV1,
+    expected: &AgentProviderCommandV1,
     command: &NodeCommand,
 ) -> a3s_flow::Result<()> {
     match dispatched.recovery_checkpoint_run_id.as_deref() {
@@ -666,33 +653,72 @@ fn validate_dispatched_command(
 fn validate_cancel_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
-    expected: &AgentProtocolCommandV1,
+    expected: &AgentProviderCommandV1,
     command: &NodeCommand,
 ) -> a3s_flow::Result<()> {
-    let NodeCommandPayload::CodeAgentCommand {
-        binding,
-        command: actual,
-    } = &command.payload
-    else {
-        return Err(FlowError::Runtime(
-            "Agent execution cancellation is not an A3S Code command".into(),
-        ));
-    };
     if command.id != cancel_command_id(execution.id, &expected.identity().run_id)
         || command.node_id != prepared.binding.node_id()
         || command.aggregate_id != execution.id.as_uuid()
         || command.correlation_id != execution.operation_id.as_uuid()
-        || **binding
-            != prepared
-                .binding
-                .node_runtime_binding(execution.id.as_uuid())
-        || **actual != *expected
+        || !provider_command_payload_matches(
+            &prepared.binding,
+            execution.id.as_uuid(),
+            expected,
+            &command.payload,
+        )?
     {
         return Err(FlowError::Runtime(
-            "A3S Code cancel command changed its durable identity".into(),
+            "Agent provider cancel command changed its durable identity".into(),
         ));
     }
     Ok(())
+}
+
+pub(super) fn provider_command_payload_matches(
+    binding: &AgentCodeRunBinding,
+    execution_id: uuid::Uuid,
+    expected: &AgentProviderCommandV1,
+    payload: &NodeCommandPayload,
+) -> a3s_flow::Result<bool> {
+    match payload {
+        NodeCommandPayload::AgentProviderCommand {
+            binding: actual_binding,
+            command: actual,
+        } => Ok(**actual_binding
+            == binding
+                .node_provider_runtime_binding(execution_id)
+                .map_err(|error| flow_error("could not validate Agent provider binding", error))?
+            && **actual == *expected),
+        NodeCommandPayload::CodeAgentCommand {
+            binding: actual_binding,
+            command: actual,
+        } => {
+            let expected_native = encode_code_command(binding, expected).map_err(|error| {
+                flow_error("could not validate legacy native Code command", error)
+            })?;
+            Ok(
+                **actual_binding == binding.node_runtime_binding(execution_id)
+                    && **actual == expected_native,
+            )
+        }
+        _ => Ok(false),
+    }
+}
+
+fn accept_provider_result(
+    binding: &AgentCodeRunBinding,
+    command: &AgentProviderCommandV1,
+    result: &NodeCommandResult,
+) -> Result<(), String> {
+    match result {
+        NodeCommandResult::AgentProviderCommandAccepted { receipt } => {
+            receipt.validate_for(&binding.provider()?.profile()?, command)
+        }
+        NodeCommandResult::CodeAgentCommandAccepted { receipt } => {
+            accept_code_receipt(binding, command, receipt).map(|_| ())
+        }
+        _ => Err("Agent provider command returned another result kind".into()),
+    }
 }
 
 fn cancel_command_id(

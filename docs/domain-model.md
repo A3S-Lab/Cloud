@@ -1146,6 +1146,16 @@ process-incarnation timestamp, recover-before-cancel ordering, and cleanup.
 The same certified revision consumes exact crates.io releases
 `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`.
 
+The component-level `A1.3` foundation persists one canonical immutable
+provider-profile ACL and its profile/capability digests on the existing
+execution binding. New Code starts, cancellation, recovery, receipts, and event
+pages use the provider-neutral contract through a native adapter; durable legacy
+Code history remains replayable. A deterministic non-Code reference Harness
+shares the same conformance suite for process restart, exact replay,
+cancellation, idempotent cleanup, redaction, unsupported capabilities, retention
+gaps, and schema failures. Runtime selection of additional providers and
+retained real-provider evidence remain open.
+
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
@@ -3363,13 +3373,14 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
-### Agent conversation and execution (`A1.1` foundation; native `A1.2` verified)
+### Agent conversation and execution (`A1.1`; native `A1.2`; component `A1.3`)
 
 - A conversation belongs to one organization, project, and environment and
   owns the sole positive monotonic `last_event_sequence` head.
 - In `A1.1`, an execution binds one exact published Agent release, its
-  successful BuildRun, and its immutable OCI artifact identity. `A1.3` adds
-  the immutable Harness provider profile and conformance identity. `A1.4` adds
+  successful BuildRun, and its immutable OCI artifact identity. Component-level
+  `A1.3` adds the immutable canonical ACL Harness provider profile, exact
+  profile/capability digests, and conformance identity. `A1.4` adds
   one closed immutable invocation profile containing exact instructions,
   environment/security policy, Skill, MCP, model, workspace, Secret-reference,
   and Tool identities before dispatch. Mutable manifests, process environment,

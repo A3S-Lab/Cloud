@@ -4,7 +4,7 @@ use super::schema::{
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationStatus, AgentEventContent,
     AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventKind,
-    AgentExecutionStatus, AgentReleaseBinding,
+    AgentExecutionStatus, AgentProviderProfileBinding, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, DeploymentId,
@@ -68,23 +68,29 @@ impl Selection for ExecutionSelection {
             AgentExecutions::started_at().expression(),
             AgentExecutions::cancellation_requested_at().expression(),
             AgentExecutions::finished_at().expression(),
-            AgentExecutions::code_node_id().expression(),
-            AgentExecutions::code_workload_id().expression(),
-            AgentExecutions::code_workload_revision_id().expression(),
-            AgentExecutions::code_deployment_id().expression(),
-            AgentExecutions::code_replica_id().expression(),
-            AgentExecutions::code_runtime_unit_id().expression(),
-            AgentExecutions::code_runtime_generation().expression(),
-            AgentExecutions::code_runtime_spec_digest().expression(),
-            AgentExecutions::code_service_port_name().expression(),
-            AgentExecutions::code_protocol().expression(),
-            AgentExecutions::code_release_identity().expression(),
-            AgentExecutions::code_session_id().expression(),
-            AgentExecutions::code_run_id().expression(),
-            AgentExecutions::code_event_cursor().expression(),
-            AgentExecutions::code_state().expression(),
-            AgentExecutions::code_bound_at().expression(),
-            AgentExecutions::code_observed_at().expression(),
+            AgentExecutions::provider_kind().expression(),
+            AgentExecutions::provider_revision().expression(),
+            AgentExecutions::provider_protocol().expression(),
+            AgentExecutions::provider_native_protocol().expression(),
+            AgentExecutions::provider_profile_acl().expression(),
+            AgentExecutions::provider_profile_digest().expression(),
+            AgentExecutions::provider_capability_digest().expression(),
+            AgentExecutions::provider_node_id().expression(),
+            AgentExecutions::provider_workload_id().expression(),
+            AgentExecutions::provider_workload_revision_id().expression(),
+            AgentExecutions::provider_deployment_id().expression(),
+            AgentExecutions::provider_replica_id().expression(),
+            AgentExecutions::provider_runtime_unit_id().expression(),
+            AgentExecutions::provider_runtime_generation().expression(),
+            AgentExecutions::provider_runtime_spec_digest().expression(),
+            AgentExecutions::provider_service_port_name().expression(),
+            AgentExecutions::provider_release_identity().expression(),
+            AgentExecutions::provider_session_id().expression(),
+            AgentExecutions::provider_run_id().expression(),
+            AgentExecutions::provider_event_cursor().expression(),
+            AgentExecutions::provider_state().expression(),
+            AgentExecutions::provider_bound_at().expression(),
+            AgentExecutions::provider_observed_at().expression(),
         ]
     }
 }
@@ -155,23 +161,29 @@ pub(super) struct ExecutionRow {
     started_at: Option<DateTime<Utc>>,
     cancellation_requested_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
-    code_node_id: Option<Uuid>,
-    code_workload_id: Option<Uuid>,
-    code_workload_revision_id: Option<Uuid>,
-    code_deployment_id: Option<Uuid>,
-    code_replica_id: Option<Uuid>,
-    code_runtime_unit_id: Option<String>,
-    code_runtime_generation: Option<u64>,
-    code_runtime_spec_digest: Option<String>,
-    code_service_port_name: Option<String>,
-    code_protocol: Option<String>,
-    code_release_identity: Option<String>,
-    code_session_id: Option<String>,
-    code_run_id: Option<String>,
-    code_event_cursor: Option<u64>,
-    code_state: Option<String>,
-    code_bound_at: Option<DateTime<Utc>>,
-    code_observed_at: Option<DateTime<Utc>>,
+    provider_kind: Option<String>,
+    provider_revision: Option<String>,
+    provider_protocol: Option<String>,
+    provider_native_protocol: Option<String>,
+    provider_profile_acl: Option<String>,
+    provider_profile_digest: Option<String>,
+    provider_capability_digest: Option<String>,
+    provider_node_id: Option<Uuid>,
+    provider_workload_id: Option<Uuid>,
+    provider_workload_revision_id: Option<Uuid>,
+    provider_deployment_id: Option<Uuid>,
+    provider_replica_id: Option<Uuid>,
+    provider_runtime_unit_id: Option<String>,
+    provider_runtime_generation: Option<u64>,
+    provider_runtime_spec_digest: Option<String>,
+    provider_service_port_name: Option<String>,
+    provider_release_identity: Option<String>,
+    provider_session_id: Option<String>,
+    provider_run_id: Option<String>,
+    provider_event_cursor: Option<u64>,
+    provider_state: Option<String>,
+    provider_bound_at: Option<DateTime<Utc>>,
+    provider_observed_at: Option<DateTime<Utc>>,
 }
 
 pub(super) struct EventRow {
@@ -217,12 +229,16 @@ from_row!(ExecutionRow, {
     agent_artifact_uri: 7, agent_artifact_digest: 8, agent_artifact_media_type: 9,
     agent_artifact_size_bytes: 10, status: 11, failure: 12, aggregate_version: 13,
     requested_at: 14, updated_at: 15, started_at: 16,
-    cancellation_requested_at: 17, finished_at: 18, code_node_id: 19,
-    code_workload_id: 20, code_workload_revision_id: 21, code_deployment_id: 22,
-    code_replica_id: 23, code_runtime_unit_id: 24, code_runtime_generation: 25,
-    code_runtime_spec_digest: 26, code_service_port_name: 27, code_protocol: 28,
-    code_release_identity: 29, code_session_id: 30, code_run_id: 31,
-    code_event_cursor: 32, code_state: 33, code_bound_at: 34, code_observed_at: 35,
+    cancellation_requested_at: 17, finished_at: 18, provider_kind: 19,
+    provider_revision: 20, provider_protocol: 21, provider_native_protocol: 22,
+    provider_profile_acl: 23, provider_profile_digest: 24,
+    provider_capability_digest: 25, provider_node_id: 26, provider_workload_id: 27,
+    provider_workload_revision_id: 28, provider_deployment_id: 29,
+    provider_replica_id: 30, provider_runtime_unit_id: 31,
+    provider_runtime_generation: 32, provider_runtime_spec_digest: 33,
+    provider_service_port_name: 34, provider_release_identity: 35,
+    provider_session_id: 36, provider_run_id: 37, provider_event_cursor: 38,
+    provider_state: 39, provider_bound_at: 40, provider_observed_at: 41,
 });
 
 from_row!(EventRow, {
@@ -294,41 +310,60 @@ impl ExecutionRow {
     }
 
     fn code_binding(&self) -> Result<Option<AgentCodeRunBinding>, RepositoryError> {
-        let all_absent = self.code_node_id.is_none()
-            && self.code_workload_id.is_none()
-            && self.code_workload_revision_id.is_none()
-            && self.code_deployment_id.is_none()
-            && self.code_replica_id.is_none()
-            && self.code_runtime_unit_id.is_none()
-            && self.code_runtime_generation.is_none()
-            && self.code_runtime_spec_digest.is_none()
-            && self.code_service_port_name.is_none()
-            && self.code_protocol.is_none()
-            && self.code_release_identity.is_none()
-            && self.code_session_id.is_none()
-            && self.code_run_id.is_none()
-            && self.code_event_cursor.is_none()
-            && self.code_state.is_none()
-            && self.code_bound_at.is_none()
-            && self.code_observed_at.is_none();
+        let all_absent = self.provider_kind.is_none()
+            && self.provider_revision.is_none()
+            && self.provider_protocol.is_none()
+            && self.provider_native_protocol.is_none()
+            && self.provider_profile_acl.is_none()
+            && self.provider_profile_digest.is_none()
+            && self.provider_capability_digest.is_none()
+            && self.provider_node_id.is_none()
+            && self.provider_workload_id.is_none()
+            && self.provider_workload_revision_id.is_none()
+            && self.provider_deployment_id.is_none()
+            && self.provider_replica_id.is_none()
+            && self.provider_runtime_unit_id.is_none()
+            && self.provider_runtime_generation.is_none()
+            && self.provider_runtime_spec_digest.is_none()
+            && self.provider_service_port_name.is_none()
+            && self.provider_release_identity.is_none()
+            && self.provider_session_id.is_none()
+            && self.provider_run_id.is_none()
+            && self.provider_event_cursor.is_none()
+            && self.provider_state.is_none()
+            && self.provider_bound_at.is_none()
+            && self.provider_observed_at.is_none();
         let required = (
-            self.code_node_id,
-            self.code_workload_id,
-            self.code_workload_revision_id,
-            self.code_deployment_id,
-            self.code_replica_id,
-            self.code_runtime_unit_id.as_deref(),
-            self.code_runtime_generation,
-            self.code_runtime_spec_digest.as_deref(),
-            self.code_service_port_name.as_deref(),
-            self.code_protocol.as_deref(),
-            self.code_release_identity.as_deref(),
-            self.code_session_id.as_deref(),
-            self.code_run_id.as_deref(),
-            self.code_state.as_deref(),
-            self.code_bound_at,
+            self.provider_kind.as_deref(),
+            self.provider_revision.as_deref(),
+            self.provider_protocol.as_deref(),
+            self.provider_native_protocol.as_deref(),
+            self.provider_profile_acl.as_deref(),
+            self.provider_profile_digest.as_deref(),
+            self.provider_capability_digest.as_deref(),
+            self.provider_node_id,
+            self.provider_workload_id,
+            self.provider_workload_revision_id,
+            self.provider_deployment_id,
+            self.provider_replica_id,
+            self.provider_runtime_unit_id.as_deref(),
+            self.provider_runtime_generation,
+            self.provider_runtime_spec_digest.as_deref(),
+            self.provider_service_port_name.as_deref(),
+            self.provider_release_identity.as_deref(),
+            self.provider_session_id.as_deref(),
+            self.provider_run_id.as_deref(),
+            self.provider_state.as_deref(),
+            self.provider_bound_at,
         );
         let (
+            Some(kind),
+            Some(revision),
+            Some(provider_protocol),
+            Some(native_protocol),
+            Some(profile_acl),
+            Some(profile_digest),
+            Some(capability_digest),
             Some(node_id),
             Some(workload_id),
             Some(workload_revision_id),
@@ -338,7 +373,6 @@ impl ExecutionRow {
             Some(runtime_generation),
             Some(runtime_spec_digest),
             Some(service_port_name),
-            Some(protocol),
             Some(release_identity),
             Some(session_id),
             Some(run_id),
@@ -349,12 +383,24 @@ impl ExecutionRow {
             if all_absent {
                 return Ok(None);
             }
-            return Err(corrupt("Agent Code run binding is incomplete"));
+            return Err(corrupt("Agent provider run binding is incomplete"));
         };
-        let digest = Sha256Digest::parse(runtime_spec_digest)
-            .map_err(|error| corrupt(format!("Code Runtime spec digest is invalid: {error}")))?;
+        let digest = Sha256Digest::parse(runtime_spec_digest).map_err(|error| {
+            corrupt(format!("provider Runtime spec digest is invalid: {error}"))
+        })?;
         let state = parse_code_state(state)?;
-        AgentCodeRunBinding::restore(
+        let provider = AgentProviderProfileBinding::restore(
+            kind.into(),
+            revision.into(),
+            provider_protocol.into(),
+            native_protocol.into(),
+            profile_acl.into(),
+            profile_digest.into(),
+            capability_digest.into(),
+        )
+        .map_err(|error| corrupt(format!("Agent provider profile is invalid: {error}")))?;
+        AgentCodeRunBinding::restore_with_provider(
+            provider,
             NodeId::from_uuid(node_id),
             WorkloadId::from_uuid(workload_id),
             WorkloadRevisionId::from_uuid(workload_revision_id),
@@ -366,15 +412,15 @@ impl ExecutionRow {
             service_port_name,
             AgentProtocolRunIdentityV1 {
                 schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
-                protocol: protocol.into(),
+                protocol: native_protocol.into(),
                 agent_release_identity: release_identity.into(),
                 session_id: session_id.into(),
                 run_id: run_id.into(),
             },
-            self.code_event_cursor,
+            self.provider_event_cursor,
             state,
             bound_at,
-            self.code_observed_at,
+            self.provider_observed_at,
         )
         .map(Some)
         .map_err(|error| corrupt(format!("Agent Code run binding is invalid: {error}")))

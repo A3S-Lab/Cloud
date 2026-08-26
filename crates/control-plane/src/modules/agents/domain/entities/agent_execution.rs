@@ -101,6 +101,9 @@ impl AgentExecution {
         self.started_at = self.started_at.map(canonical_timestamp);
         self.cancellation_requested_at = self.cancellation_requested_at.map(canonical_timestamp);
         self.finished_at = self.finished_at.map(canonical_timestamp);
+        if let Some(code) = self.code.as_mut() {
+            code.restore_legacy_provider()?;
+        }
         self.validate()?;
         Ok(self)
     }
@@ -245,6 +248,65 @@ impl AgentExecution {
         };
         if !terminal_matches {
             return Err("A3S Code page and semantic terminal projection disagree".into());
+        }
+        next.validate()?;
+        *self = next;
+        Ok(())
+    }
+
+    pub fn accept_provider_event_page(
+        &mut self,
+        page: &a3s_cloud_contracts::AgentProviderEventPageV1,
+        accepted_at: DateTime<Utc>,
+        semantic_events: &[AgentExecutionEventDraft],
+    ) -> Result<(), String> {
+        let mut next = self.clone();
+        let state = {
+            let binding = next
+                .code
+                .as_mut()
+                .ok_or_else(|| "Agent execution has no bound provider run".to_string())?;
+            binding.accept_provider_event_page(page)?;
+            page.state
+        };
+        let accepted_at = canonical_timestamp(accepted_at).max(next.updated_at);
+        if next.status.is_terminal() {
+            return Err("terminal Agent execution cannot accept provider events".into());
+        }
+        if state == a3s_cloud_contracts::AgentProviderRunStateV1::Created {
+            next.record_observation(accepted_at)?;
+        } else if next.status == AgentExecutionStatus::Pending {
+            next.start(accepted_at)?;
+        } else {
+            next.record_observation(accepted_at)?;
+        }
+        for event in semantic_events {
+            if event.occurred_at != accepted_at
+                || event.kind == AgentExecutionEventKind::ExecutionRequested
+            {
+                return Err("Agent provider semantic projection is invalid".into());
+            }
+            next.apply_event_inner(event)?;
+        }
+        let expected_terminal = state.is_terminal() && !page.has_more;
+        let terminal_matches = if expected_terminal {
+            match state {
+                a3s_cloud_contracts::AgentProviderRunStateV1::Completed => {
+                    next.status == AgentExecutionStatus::Succeeded
+                }
+                a3s_cloud_contracts::AgentProviderRunStateV1::Failed => {
+                    next.status == AgentExecutionStatus::Failed
+                }
+                a3s_cloud_contracts::AgentProviderRunStateV1::Cancelled => {
+                    next.status == AgentExecutionStatus::Cancelled
+                }
+                _ => false,
+            }
+        } else {
+            !next.status.is_terminal()
+        };
+        if !terminal_matches {
+            return Err("Agent provider page and semantic terminal projection disagree".into());
         }
         next.validate()?;
         *self = next;

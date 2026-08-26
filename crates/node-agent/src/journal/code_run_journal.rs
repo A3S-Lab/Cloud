@@ -18,6 +18,23 @@ impl CommandJournal {
             };
             match (&entry.envelope.payload, result.as_ref()) {
                 (
+                    NodeCommandPayload::AgentProviderCommand { binding, command },
+                    NodeCommandResult::AgentProviderCommandAccepted { receipt },
+                ) => {
+                    binding
+                        .validate_command(command)
+                        .map_err(CommandJournalError::Invalid)?;
+                    receipt
+                        .validate_for(
+                            &binding.profile().map_err(CommandJournalError::Invalid)?,
+                            command,
+                        )
+                        .map_err(CommandJournalError::Invalid)?;
+                    if let Ok(code_binding) = binding.code_binding() {
+                        bindings.insert(binding.execution_id, code_binding);
+                    }
+                }
+                (
                     NodeCommandPayload::CodeAgentCommand { binding, command },
                     NodeCommandResult::CodeAgentCommandAccepted { receipt },
                 ) => {

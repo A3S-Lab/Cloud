@@ -1,11 +1,12 @@
 use crate::migrate_and_connect_for_test;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
-    AgentProtocolCommandReceiptV1, AgentProtocolCommandV1, AgentProtocolEventPageV1,
-    AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
-    DomainEventEnvelope, NodeCodeAgentEventBatchV1, NodeCommandAck, NodeCommandEnvelope,
-    NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
-    NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport, RuntimeServiceEndpoint,
+    AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
+    AgentProtocolRunStateV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
+    AgentProviderRunIdentityV1, AgentProviderRunStateV1, DomainEventEnvelope,
+    NodeCodeAgentEventBatchV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
+    RuntimeObservationReport, RuntimeServiceEndpoint,
 };
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
@@ -13,8 +14,8 @@ use a3s_cloud_control_plane::modules::agents::{
     AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
     CreateAgentConversation, CreateAgentConversationHandler, IAgentRepository,
-    PostgresAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecution,
-    StartAgentExecutionHandler,
+    NativeCodeAgentExecutionProvider, PostgresAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, PostgresBuildRunRepository,
@@ -119,7 +120,7 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         state.agent_instance_id,
         state.start_sequence,
         ExpectedCommand::Recover,
-        AgentProtocolRunStateV1::Planning,
+        AgentProviderRunStateV1::Planning,
     )
     .await?;
     let (first_recovery_identity, first_checkpoint) = recovery_identity(&first_recovery)?;
@@ -195,7 +196,7 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         state.agent_instance_id,
         first_recovery.sequence,
         ExpectedCommand::Recover,
-        AgentProtocolRunStateV1::Planning,
+        AgentProviderRunStateV1::Planning,
     )
     .await?;
     let (process_recovery_run_id, process_checkpoint) = recovery_identity(&second_recovery)?;
@@ -219,7 +220,7 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         state.agent_instance_id,
         second_recovery.sequence,
         ExpectedCommand::Cancel,
-        AgentProtocolRunStateV1::Cancelled,
+        AgentProviderRunStateV1::Cancelled,
     )
     .await?;
     let cancel_run_id = command_identity(&cancel)?.run_id.clone();

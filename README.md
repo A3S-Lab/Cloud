@@ -489,9 +489,16 @@ creating their own control planes:
    gaps, and same-generation provider-process restart recovery through the
    existing Flow/Fleet/Runtime/node-journal path. The
    [retained clean Linux PostgreSQL 17 and real Box Runtime recovery gate](https://github.com/A3S-Lab/Cloud/actions/runs/32875814179/job/97893488672)
-   proves durable command, receipt, event, process-incarnation, and cleanup
-   behavior while Cloud consumes the exact crates.io releases
-   `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`.
+    proves durable command, receipt, event, process-incarnation, and cleanup
+    behavior while Cloud consumes the exact crates.io releases
+    `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`. The component-level `A1.3`
+    foundation now freezes one canonical ACL provider profile, capability
+    negotiation, provider-neutral start/cancel/recover commands and event-page
+    evidence, migrates new Code runs onto that contract while retaining legacy
+    history replay, and exercises Code plus a deterministic non-Code reference
+    Harness through one restart/cancellation/cleanup conformance suite. Runtime
+    selection of additional providers and retained real-provider evidence remain
+    open; `A1.4` through `A1.6` are not claimed.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

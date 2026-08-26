@@ -105,7 +105,7 @@ pub(super) async fn pending_operation_starts(
                         .eq("pending")
                         .or(AgentExecutions::status().eq("cancelling")),
                 )
-                .filter(AgentExecutions::code_run_id().is_null())
+                .filter(AgentExecutions::provider_run_id().is_null())
                 .order_by(AgentExecutions::requested_at(), OrderDirection::Asc)
                 .order_by(AgentExecutions::id(), OrderDirection::Asc)
                 .limit(limit_u64(limit)?),
