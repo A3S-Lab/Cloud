@@ -7,7 +7,9 @@ use a3s_cloud_control_plane::modules::developer_workflows::{
     PullRequestPreviewPolicyRevisionAccepted,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{PrincipalId, SourceSubscriptionId};
-use a3s_cloud_control_plane::modules::sources::published::{GitProvider, GitRepository};
+use a3s_cloud_control_plane::modules::sources::published::{
+    BuildRecipe, GitProvider, GitRepository,
+};
 use a3s_orm::DatabaseError;
 use chrono::Duration as ChronoDuration;
 
@@ -417,6 +419,15 @@ pub(super) async fn seed_scope_and_subscription(
                 .append(", 0, null)"),
         )
         .await?;
+    let recipe = BuildRecipe::dockerfile(
+        BuildRecipe::SCHEMA,
+        BuildRecipe::DOCKERFILE_KIND,
+        ".",
+        "Dockerfile",
+        None,
+        vec!["linux/amd64".into()],
+    )?;
+    let recipe_digest = recipe.digest()?;
     database
         .execute(
             sql_query::<()>("insert into github_repository_subscriptions (organization_id, project_id, environment_id, id, connection_id, installation_id, repository_provider, repository_url, repository_identity, branch_name, recipe, recipe_digest, status, aggregate_version, created_at, deactivated_at) values (")
@@ -430,16 +441,9 @@ pub(super) async fn seed_scope_and_subscription(
                 .append(", ")
                 .bind(connection_id)
                 .append(", 42, 'github', 'https://github.com/a3s-lab/cloud', 'github:github.com/a3s-lab/cloud', 'main', ")
-                .bind(json!({
-                    "schema": "a3s.cloud.build-recipe.v1",
-                    "kind": "dockerfile",
-                    "contextPath": ".",
-                    "dockerfilePath": "Dockerfile",
-                    "target": null,
-                    "platforms": ["linux/amd64"]
-                }))
+                .bind(serde_json::to_value(recipe)?)
                 .append(", ")
-                .bind(format!("sha256:{}", "a".repeat(64)))
+                .bind(recipe_digest)
                 .append(", 'active', 1, ")
                 .bind(created_at)
                 .append(", null)"),
