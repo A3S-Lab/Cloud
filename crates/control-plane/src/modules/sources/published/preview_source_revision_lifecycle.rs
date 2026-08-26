@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub const PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY: &str =
     "source.pull-request-preview-revision.lifecycle-committed";
 pub const PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION: u32 = 1;
+pub const PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

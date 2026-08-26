@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 161;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "161";
+pub const CLOUD_MIGRATION_COUNT: i64 = 162;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "162";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1499,6 +1499,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/161_workflow_agent_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "162",
+            "Artifacts Preview build lifecycle projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/162_artifact_preview_build_lifecycle_projections.sql"
+            )),
+        ),
     ]
 }
 
@@ -1557,6 +1565,10 @@ mod source_pull_request_preview_revision_projection_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/agent_provider_profile_migration.rs"]
 mod agent_provider_profile_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/artifact_preview_build_lifecycle_projection_migration.rs"]
+mod artifact_preview_build_lifecycle_projection_migration_tests;
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
     Migrator::new(executor.clone())

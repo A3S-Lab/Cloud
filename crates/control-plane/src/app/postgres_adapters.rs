@@ -4,7 +4,7 @@ use crate::modules::applications::{
     PostgresApplicationSessionRepository,
 };
 use crate::modules::artifacts::{
-    IBuildCandidateProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
+    IArtifactBuildProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
 };
 use crate::modules::assets::{
     IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
@@ -120,7 +120,7 @@ impl PostgresAdapterFactory {
                 self.executor.clone(),
             )),
             builds: artifacts.builds,
-            build_candidates: artifacts.build_candidates,
+            build_projections: artifacts.build_projections,
             executions: Arc::new(PostgresExecutionRepository::new(self.executor.clone())),
             execution_templates: Arc::new(PostgresExecutionTemplateRepository::new(
                 self.executor.clone(),
@@ -158,7 +158,7 @@ impl PostgresAdapterFactory {
             notifications: notifications.notifications,
             alert_policies: notifications.alert_policies,
             assets: assets.assets,
-            build_candidates: artifacts.build_candidates,
+            build_projections: artifacts.build_projections,
             environments: projects.environments,
             preview_policies: developer_workflows.preview_policies,
             preview_projections: developer_workflows.preview_projections,
@@ -218,7 +218,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) audit_records: Arc<dyn IAuditRecordRepository>,
     pub(super) security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     pub(super) builds: Arc<dyn IBuildRunRepository>,
-    pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    pub(super) build_projections: Arc<dyn IArtifactBuildProjectionPort>,
     pub(super) executions: Arc<dyn IExecutionRepository>,
     pub(super) execution_templates: Arc<dyn IExecutionTemplateRepository>,
     pub(super) agents: Arc<dyn IAgentRepository>,
@@ -237,7 +237,7 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) notifications: Arc<dyn INotificationRepository>,
     pub(super) alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     pub(super) assets: Arc<dyn IAssetRepository>,
-    pub(super) build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    pub(super) build_projections: Arc<dyn IArtifactBuildProjectionPort>,
     pub(super) environments: Arc<dyn IEnvironmentRepository>,
     pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
@@ -265,7 +265,7 @@ impl DeveloperWorkflowPostgresAdapters {
 
 struct ArtifactPostgresAdapters {
     builds: Arc<dyn IBuildRunRepository>,
-    build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    build_projections: Arc<dyn IArtifactBuildProjectionPort>,
 }
 
 impl ArtifactPostgresAdapters {
@@ -273,7 +273,7 @@ impl ArtifactPostgresAdapters {
         let repository = Arc::new(PostgresBuildRunRepository::new(executor));
         Self {
             builds: repository.clone(),
-            build_candidates: repository,
+            build_projections: repository,
         }
     }
 }

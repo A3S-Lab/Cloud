@@ -424,7 +424,7 @@ supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Component-only `P0.3-C1` verifies typed GitHub pull-request facts and deterministically reduces them to bounded Preview identity, trust, expiry, and cleanup decisions. `P0.3-C2` adds canonical Preview Policy ACL, exact active-Subscription admission through a consumer-owned port, and immutable policy revisions through migration `153`; identical desired state converges without another revision. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound `source.pull-request-change.committed@1` facts through migration `156`, the existing provider Inbox, and the shared transactional Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Preview lifecycle projection and immutable local receipts through migration `157` and that existing Relay. `P0.3-C5a` atomically publishes committed lifecycle versions and idempotently creates their ordinary Projects Environment through one consumer-owned port and the same Relay/projector. Public interfaces, later resource-owner handoffs, cleanup/expiry execution, monorepos, and Compose import remain open. |
+| P0 | In progress; unavailable | Component-only `P0.1-C1/C2` implement bounded canonical source-layout detection and exact SourceRevision-bound immutable BuildPlan acceptance through migration `146`. `P0.2-C1/C2` add closed canonical web/worker/scheduled profile intent, exact successful-BuildRun compilation to existing owner templates, and authorization-first append-only revision persistence through migration `147`, with canonical read checks, idempotency, audit, and Outbox. Component-only `P0.3-C1` verifies typed GitHub pull-request facts and deterministically reduces them to bounded Preview identity, trust, expiry, and cleanup decisions. `P0.3-C2` adds canonical Preview Policy ACL, exact active-Subscription admission through a consumer-owned port, and immutable policy revisions through migration `153`; identical desired state converges without another revision. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound `source.pull-request-change.committed@1` facts through migration `156`, the existing provider Inbox, and the shared transactional Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Preview lifecycle projection and immutable local receipts through migration `157` and that existing Relay. `P0.3-C5a` atomically publishes committed lifecycle versions and idempotently creates their ordinary Projects Environment through one consumer-owned port and the same Relay/projector. `P0.3-C5b` projects each applied version to one ordinary Sources SourceRevision or cleanup/suppression receipt through migration `159` and publishes one bounded specialized fact in the same transaction. Component-only `P0.3-C5c` consumes that fact through the existing Artifacts projector and migration `162`, admits only the latest active candidate, retires the sole BuildRun lifecycle atomically, and allows only an exact retirement-receipt-bound same-revision retry. Public interfaces, Workloads/Edge/Operations and Environment cleanup owner handoffs, Preview expiry execution, monorepos, and Compose import remain open. |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
@@ -1885,8 +1885,56 @@ Component-only `P0.3-C5a` defines the Projects Environment handoff:
 C5a adds no Inbox, Outbox implementation, publisher, relay, queue, retry loop,
 saga, worker, or scheduler. It creates no SourceRevision, BuildRun, Workload,
 Deployment, Route, Operation, Secret material, cleanup/expiry execution, or
-interface. Artifacts, Workloads, Edge, Operations, cleanup, and management
-remain explicit later owner handoffs; Preview availability remains false.
+interface.
+
+`P0.3-C5b` defines the Sources SourceRevision handoff:
+
+- one `PullRequestPreviewSourceProjector` consumes only the bounded committed
+  Preview lifecycle fact through the existing Relay and invokes the
+  Sources-owned `IPreviewSourceRevisionProjectionPort`;
+- an active version validates the exact active Subscription and already-created
+  Preview Environment before creating or adopting one ordinary immutable
+  external `SourceRevision`. Cleanup and inactive-Subscription versions carry
+  no revision and never delete Sources history;
+- migration `159` persists an append-only Sources receipt keyed by exact Preview
+  aggregate version. A Preview-scoped advisory lock, replay/content checks,
+  SourceRevision write, receipt, and Outbox publication are one transaction;
+  and
+- every newly applied version publishes one exact bounded
+  `source.pull-request-preview-revision.lifecycle-committed@1` fact. Ignored
+  stale versions publish nothing and consumers never read Sources storage.
+
+C5b adds no provider Inbox, delivery reservation, SourceRevision lifecycle,
+queue, retry loop, worker, scheduler, BuildRun, or cleanup controller.
+
+Component-only `P0.3-C5c` defines the Artifacts build handoff:
+
+- the existing `BuildCandidateProjector` consumes only the specialized Sources
+  Published Language and calls the Artifacts-owned
+  `IPreviewBuildLifecycleProjectionPort`. One composite
+  `IArtifactBuildProjectionPort` supplies both ordinary candidate and Preview
+  projection interfaces without merging their semantics or importing a foreign
+  aggregate;
+- migration `162` adds immutable optional Preview provenance to the existing
+  candidate projection and one append-only receipt per Preview version. Exact
+  replay returns the original receipt, reused event/content/scope conflicts,
+  and the maximum version is the local admission head;
+- only the latest applied active head may reserve a BuildRun. Cleanup,
+  suppression, or replacement locks the candidate and latest existing BuildRun
+  in the same projection transaction and records pending suppression, terminal
+  observation, or one ordinary BuildRun cancellation request; and
+- a later active version for the same SourceRevision authorizes at most one
+  retry only when an earlier immutable receipt names that exact cancelled or
+  failed BuildRun. Without a new retirement/reopen pair, repeated reservation
+  remains empty.
+
+C5c adds no Inbox, queue, worker, saga, scheduler, second candidate table,
+BuildRun lifecycle, or retry mechanism. Focused unit and architecture tests
+pass; the checked-in real PostgreSQL gate covers concurrent projection and
+reservation, stale delivery, atomic cancellation, bounded retry, restart, and
+immutability, but retained evidence is still pending. Workloads, Edge,
+Operations, Environment archive/delete, Preview expiry/cleanup execution, and
+management remain explicit later handoffs; Preview availability remains false.
 
 ### Exit gate
 

@@ -7,6 +7,7 @@ mod external_source_archive;
 mod hosted_artifact_query;
 mod hosted_build_outcome;
 mod node_artifact_store;
+mod preview_build_lifecycle;
 mod queries;
 pub(crate) mod resource_access;
 
@@ -39,6 +40,12 @@ pub(crate) use hosted_build_outcome::project_hosted_build_outcome;
 pub use node_artifact_store::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
     NodeArtifactWrite, OpenNodeArtifact,
+};
+pub use preview_build_lifecycle::{
+    IArtifactBuildProjectionPort, IPreviewBuildLifecycleProjectionPort,
+    PreviewBuildLifecycleProjectionOutcome, PreviewBuildLifecycleProjectionReceipt,
+    PreviewBuildLifecycleState, PreviewBuildRetirement, PreviewBuildSourceRevision,
+    ProjectPreviewBuildLifecycle,
 };
 pub use queries::{
     BuildRunLogPage, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler,

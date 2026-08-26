@@ -13,9 +13,9 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildCandidate, BuildCandidateEvidence, BuildCandidateProjector, BuildRun,
-    BuildRunStatus, BuildSubject, IBuildCandidateProjectionPort, IBuildRunRepository,
-    OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
-    ValidatedOciBuildOutput,
+    BuildRunStatus, BuildSubject, IArtifactBuildProjectionPort, IBuildCandidateProjectionPort,
+    IBuildRunRepository, OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
@@ -924,10 +924,10 @@ pub async fn exercise_hosted_build_run_persistence(
         payload: hosted_build_requested.payload,
         delivery_attempts: 1,
     };
-    let left_candidates: Arc<dyn IBuildCandidateProjectionPort> = left_repository.clone();
-    let right_candidates: Arc<dyn IBuildCandidateProjectionPort> = right_repository.clone();
-    let left_projector = BuildCandidateProjector::new(left_candidates);
-    let right_projector = BuildCandidateProjector::new(right_candidates);
+    let left_projections: Arc<dyn IArtifactBuildProjectionPort> = left_repository.clone();
+    let right_projections: Arc<dyn IArtifactBuildProjectionPort> = right_repository.clone();
+    let left_projector = BuildCandidateProjector::new(left_projections);
+    let right_projector = BuildCandidateProjector::new(right_projections);
     let (left_projection, right_projection) = tokio::join!(
         left_projector.project(&message),
         right_projector.project(&message)

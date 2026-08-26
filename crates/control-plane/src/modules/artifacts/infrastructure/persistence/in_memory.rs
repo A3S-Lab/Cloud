@@ -1,6 +1,8 @@
 use crate::modules::artifacts::application::{
     hosted_build_outcome_event, BuildCandidate, BuildCandidateEvidence,
-    IBuildCandidateProjectionPort,
+    IBuildCandidateProjectionPort, IPreviewBuildLifecycleProjectionPort,
+    PreviewBuildLifecycleProjectionOutcome, PreviewBuildLifecycleProjectionReceipt,
+    PreviewBuildLifecycleState, PreviewBuildRetirement, ProjectPreviewBuildLifecycle,
 };
 use crate::modules::artifacts::domain::repositories::{
     validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
@@ -12,22 +14,31 @@ use crate::modules::artifacts::domain::{
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, Sha256Digest, SourceRevisionId,
+    IdempotentWrite, OrganizationId, ProjectId, PullRequestPreviewId, RepositoryError,
+    Sha256Digest, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::RwLock;
 
+mod build_run_repository;
+mod candidate_projection;
+
 #[derive(Default)]
 pub struct InMemoryBuildRunRepository {
     state: RwLock<State>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct State {
     builds: BTreeMap<(OrganizationId, BuildRunId), BuildRun>,
     candidates: BTreeMap<(OrganizationId, u8, uuid::Uuid), BuildCandidate>,
+    preview_lifecycle_receipts: BTreeMap<
+        (OrganizationId, PullRequestPreviewId, u64),
+        PreviewBuildLifecycleProjectionReceipt,
+    >,
+    preview_lifecycle_events: BTreeMap<uuid::Uuid, (OrganizationId, PullRequestPreviewId, u64)>,
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
@@ -116,375 +127,104 @@ impl InMemoryBuildRunRepository {
     }
 }
 
-fn candidate_key(candidate: &BuildCandidate) -> (OrganizationId, u8, uuid::Uuid) {
-    match candidate.subject() {
-        BuildSubject::ExternalSourceRevision {
-            source_revision_id, ..
-        } => (candidate.organization_id(), 0, source_revision_id.as_uuid()),
-        BuildSubject::AssetRelease {
-            asset_release_id, ..
-        } => (candidate.organization_id(), 1, asset_release_id.as_uuid()),
-    }
-}
-
-fn candidate_sort_key(candidate: &BuildCandidate) -> (DateTime<Utc>, u8, uuid::Uuid, uuid::Uuid) {
-    let (organization_id, kind, subject_id) = candidate_key(candidate);
-    (
-        candidate.requested_at(),
-        kind,
-        organization_id.as_uuid(),
-        subject_id,
-    )
-}
-
-#[async_trait]
-impl IBuildCandidateProjectionPort for InMemoryBuildRunRepository {
-    async fn project_candidate(&self, candidate: BuildCandidate) -> Result<(), RepositoryError> {
-        candidate.validate().map_err(RepositoryError::Storage)?;
-        let key = candidate_key(&candidate);
-        let mut state = self.state.write().await;
-        match state.candidates.get(&key) {
-            Some(existing) if existing == &candidate => Ok(()),
-            Some(_) => Err(RepositoryError::Conflict(
-                "build candidate fact conflicts with its existing projection".into(),
-            )),
-            None => {
-                state.candidates.insert(key, candidate);
-                Ok(())
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl IBuildRunRepository for InMemoryBuildRunRepository {
-    async fn reserve_pending(&self, limit: usize) -> Result<Vec<BuildRun>, RepositoryError> {
-        let mut state = self.state.write().await;
-        let existing_sources = state
-            .builds
-            .values()
-            .filter_map(BuildRun::source_revision_id)
-            .collect::<BTreeSet<_>>();
-        let existing_releases = state
-            .builds
-            .values()
-            .filter_map(|build| {
-                build
-                    .asset_release_id()
-                    .map(|asset_release_id| (build.organization_id, asset_release_id))
-            })
-            .collect::<BTreeSet<_>>();
-        let mut pending = state
-            .candidates
-            .values()
-            .filter(|candidate| match candidate.subject() {
-                BuildSubject::ExternalSourceRevision {
-                    source_revision_id, ..
-                } => !existing_sources.contains(&source_revision_id),
-                BuildSubject::AssetRelease {
-                    asset_release_id, ..
-                } => !existing_releases.contains(&(candidate.organization_id(), asset_release_id)),
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        pending.sort_by_key(candidate_sort_key);
-        let mut reserved = Vec::new();
-        for candidate in pending.into_iter().take(limit.max(1)) {
-            let build = match candidate.subject() {
-                BuildSubject::ExternalSourceRevision {
-                    project_id,
-                    environment_id,
-                    source_revision_id,
-                } => BuildRun::reserve(
-                    candidate.organization_id(),
-                    project_id,
-                    environment_id,
-                    source_revision_id,
-                    candidate.requested_at(),
-                ),
-                BuildSubject::AssetRelease {
-                    asset_id,
-                    asset_release_id,
-                } => BuildRun::reserve_asset_release(
-                    candidate.organization_id(),
-                    asset_id,
-                    asset_release_id,
-                    candidate.requested_at(),
-                ),
-            };
-            state
-                .builds
-                .insert((build.organization_id, build.id), build.clone());
-            reserved.push(build);
-        }
-        Ok(reserved)
-    }
-
-    async fn pending_operation_starts(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<BuildRun>, RepositoryError> {
-        let state = self.state.read().await;
-        let mut builds = state
-            .builds
-            .values()
-            .filter(|build| !state.started_operations.contains(&build.id))
-            .cloned()
-            .collect::<Vec<_>>();
-        builds.sort_by_key(|build| (build.requested_at, build.id));
-        builds.truncate(limit.max(1));
-        Ok(builds)
-    }
-
-    async fn find(
-        &self,
-        organization_id: OrganizationId,
-        build_run_id: BuildRunId,
-    ) -> Result<BuildRun, RepositoryError> {
-        self.state
-            .read()
-            .await
-            .builds
-            .get(&(organization_id, build_run_id))
-            .cloned()
-            .ok_or(RepositoryError::NotFound)
-    }
-
-    async fn find_by_source_revision(
-        &self,
-        organization_id: OrganizationId,
-        source_revision_id: SourceRevisionId,
-    ) -> Result<Option<BuildRun>, RepositoryError> {
-        Ok(self
-            .state
-            .read()
-            .await
-            .builds
-            .values()
-            .filter(|build| {
-                build.organization_id == organization_id
-                    && build.source_revision_id() == Some(source_revision_id)
-            })
-            .max_by_key(|build| build.attempt)
-            .cloned())
-    }
-
-    async fn find_by_asset_release(
-        &self,
-        organization_id: OrganizationId,
-        asset_release_id: AssetReleaseId,
-    ) -> Result<Option<BuildRun>, RepositoryError> {
-        Ok(self
-            .state
-            .read()
-            .await
-            .builds
-            .values()
-            .filter(|build| {
-                build.organization_id == organization_id
-                    && build.asset_release_id() == Some(asset_release_id)
-            })
-            .max_by_key(|build| build.attempt)
-            .cloned())
-    }
-
-    async fn list(
-        &self,
-        organization_id: OrganizationId,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
-        limit: usize,
-    ) -> Result<Vec<BuildRun>, RepositoryError> {
-        let mut builds = self
-            .state
-            .read()
-            .await
-            .builds
-            .values()
-            .filter(|build| {
-                build.organization_id == organization_id
-                    && build.project_id() == Some(project_id)
-                    && build.environment_id() == Some(environment_id)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        builds
-            .sort_by_key(|build| std::cmp::Reverse((build.requested_at, build.attempt, build.id)));
-        builds.truncate(limit.max(1));
-        Ok(builds)
-    }
-
-    async fn request_cancellation(
-        &self,
-        request: RequestBuildCancellationBundle,
-    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
-        let mut state = self.state.write().await;
-        let key = (
-            request.idempotency.scope.clone(),
-            request.idempotency.key.clone(),
-        );
-        if let Some((digest, build_run)) = state.cancellation_idempotency.get(&key) {
-            if digest != &request.idempotency.request_digest {
-                return Err(RepositoryError::IdempotencyConflict);
-            }
-            return Ok(IdempotentWrite {
-                value: build_run.clone(),
-                replayed: true,
-            });
-        }
-        let storage_key = (request.build_run.organization_id, request.build_run.id);
-        let current = state
-            .builds
-            .get(&storage_key)
-            .ok_or(RepositoryError::NotFound)?;
-        validate_build_run_transition(current, &request.build_run, request.expected_version)?;
-        state.builds.insert(storage_key, request.build_run.clone());
-        state.cancellation_idempotency.insert(
-            key,
-            (
-                request.idempotency.request_digest,
-                request.build_run.clone(),
-            ),
-        );
-        Ok(IdempotentWrite {
-            value: request.build_run,
-            replayed: false,
-        })
-    }
-
-    async fn replay_cancellation(
-        &self,
-        idempotency: &IdempotencyRequest,
-    ) -> Result<Option<BuildRun>, RepositoryError> {
-        let state = self.state.read().await;
-        let key = (idempotency.scope.clone(), idempotency.key.clone());
-        let Some((digest, build_run)) = state.cancellation_idempotency.get(&key) else {
-            return Ok(None);
-        };
-        if digest != &idempotency.request_digest {
-            return Err(RepositoryError::IdempotencyConflict);
-        }
-        Ok(Some(build_run.clone()))
-    }
-
-    async fn request_retry(
-        &self,
-        request: RequestBuildRetryBundle,
-    ) -> Result<IdempotentWrite<BuildRun>, RepositoryError> {
-        let mut state = self.state.write().await;
-        let key = (
-            request.idempotency.scope.clone(),
-            request.idempotency.key.clone(),
-        );
-        if let Some((digest, build_run)) = state.retry_idempotency.get(&key) {
-            if digest != &request.idempotency.request_digest {
-                return Err(RepositoryError::IdempotencyConflict);
-            }
-            return Ok(IdempotentWrite {
-                value: build_run.clone(),
-                replayed: true,
-            });
-        }
-        let previous_id = request
-            .retry
-            .retry_of_build_run_id
-            .ok_or_else(|| RepositoryError::Conflict("build retry has no parent".into()))?;
-        let previous = state
-            .builds
-            .get(&(request.retry.organization_id, previous_id))
-            .ok_or(RepositoryError::NotFound)?;
-        validate_build_run_retry(previous, &request.retry, request.expected_previous_version)?;
-        if state.builds.values().any(|build| {
-            build.organization_id == request.retry.organization_id
-                && build.retry_of_build_run_id == Some(previous_id)
-        }) {
-            return Err(RepositoryError::Conflict(
-                "build run already has a retry attempt".into(),
-            ));
-        }
-        let storage_key = (request.retry.organization_id, request.retry.id);
-        if state.builds.contains_key(&storage_key) {
-            return Err(RepositoryError::Conflict(
-                "build retry identity already exists".into(),
-            ));
-        }
-        state.builds.insert(storage_key, request.retry.clone());
-        state.retry_idempotency.insert(
-            key,
-            (request.idempotency.request_digest, request.retry.clone()),
-        );
-        Ok(IdempotentWrite {
-            value: request.retry,
-            replayed: false,
-        })
-    }
-
-    async fn replay_retry(
-        &self,
-        idempotency: &IdempotencyRequest,
-    ) -> Result<Option<BuildRun>, RepositoryError> {
-        let state = self.state.read().await;
-        let key = (idempotency.scope.clone(), idempotency.key.clone());
-        let Some((digest, build_run)) = state.retry_idempotency.get(&key) else {
-            return Ok(None);
-        };
-        if digest != &idempotency.request_digest {
-            return Err(RepositoryError::IdempotencyConflict);
-        }
-        Ok(Some(build_run.clone()))
-    }
-
-    async fn save(
-        &self,
-        build_run: BuildRun,
-        expected_version: u64,
-    ) -> Result<BuildRun, RepositoryError> {
-        let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
-        let mut state = self.state.write().await;
-        let key = (build_run.organization_id, build_run.id);
-        let existing = state.builds.get(&key).ok_or(RepositoryError::NotFound)?;
-        validate_build_run_transition(existing, &build_run, expected_version)?;
-        state.builds.insert(key, build_run.clone());
-        Ok(build_run)
-    }
-
-    async fn finalize(
-        &self,
-        build_run: BuildRun,
-        expected_version: u64,
-    ) -> Result<BuildRun, RepositoryError> {
-        let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
-        let mut state = self.state.write().await;
-        let key = (build_run.organization_id, build_run.id);
-        let existing = state
-            .builds
-            .get(&key)
-            .cloned()
-            .ok_or(RepositoryError::NotFound)?;
-        let mode = validate_build_run_finalization(&existing, &build_run, expected_version)?;
-        let outcome = if mode == BuildRunFinalizationMode::Transition {
-            hosted_build_outcome_event(&build_run).map_err(RepositoryError::Storage)?
-        } else {
-            None
-        };
-        state.builds.insert(key, build_run.clone());
-        if let Some(outcome) = outcome {
-            state.outbox.push(outcome);
-        }
-        Ok(build_run)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::application::PreviewBuildSourceRevision;
     use crate::modules::artifacts::domain::test_support::hosted_build_ready_for_completion;
-    use crate::modules::artifacts::domain::BuildSubject;
+    use crate::modules::artifacts::domain::{BuildRunStatus, BuildSubject};
     use crate::modules::artifacts::published::{
         HostedBuildOutcome, HOSTED_BUILD_OUTCOME_EVENT_KEY,
     };
-    use chrono::Duration;
+    use crate::modules::shared_kernel::domain::{SourcePullRequestChangeId, SourceSubscriptionId};
+    use chrono::{Duration, TimeZone};
     use std::sync::Arc;
+
+    struct PreviewFixture {
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        source_environment_id: EnvironmentId,
+        source_subscription_id: SourceSubscriptionId,
+        preview_id: PullRequestPreviewId,
+        preview_environment_id: EnvironmentId,
+        correlation_id: uuid::Uuid,
+        base_at: DateTime<Utc>,
+    }
+
+    impl PreviewFixture {
+        fn new() -> Self {
+            Self {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                source_environment_id: EnvironmentId::new(),
+                source_subscription_id: SourceSubscriptionId::new(),
+                preview_id: PullRequestPreviewId::new(),
+                preview_environment_id: EnvironmentId::new(),
+                correlation_id: uuid::Uuid::now_v7(),
+                base_at: Utc
+                    .with_ymd_and_hms(2026, 8, 26, 1, 0, 0)
+                    .single()
+                    .expect("Preview base time"),
+            }
+        }
+
+        fn active(
+            &self,
+            version: u64,
+            source_revision_id: SourceRevisionId,
+            accepted_at: DateTime<Utc>,
+            marker: char,
+        ) -> ProjectPreviewBuildLifecycle {
+            self.input(
+                version,
+                PreviewBuildLifecycleState::Active,
+                Some(PreviewBuildSourceRevision {
+                    source_revision_id,
+                    repository_identity: format!("github:github.com/a3s-lab/preview-{marker}"),
+                    commit_sha: GitCommitSha::parse(marker.to_string().repeat(40))
+                        .expect("Preview commit"),
+                    recipe_digest: Sha256Digest::parse(format!(
+                        "sha256:{}",
+                        marker.to_string().repeat(64)
+                    ))
+                    .expect("Preview recipe digest"),
+                    accepted_at,
+                }),
+            )
+        }
+
+        fn inactive(
+            &self,
+            version: u64,
+            state: PreviewBuildLifecycleState,
+        ) -> ProjectPreviewBuildLifecycle {
+            self.input(version, state, None)
+        }
+
+        fn input(
+            &self,
+            version: u64,
+            state: PreviewBuildLifecycleState,
+            source_revision: Option<PreviewBuildSourceRevision>,
+        ) -> ProjectPreviewBuildLifecycle {
+            ProjectPreviewBuildLifecycle {
+                lifecycle_event_id: uuid::Uuid::now_v7(),
+                correlation_id: self.correlation_id,
+                lifecycle_causation_id: uuid::Uuid::now_v7(),
+                source_pull_request_change_id: SourcePullRequestChangeId::new(),
+                organization_id: self.organization_id,
+                project_id: self.project_id,
+                source_environment_id: self.source_environment_id,
+                source_subscription_id: self.source_subscription_id,
+                preview_id: self.preview_id,
+                preview_aggregate_version: version,
+                preview_environment_id: self.preview_environment_id,
+                state,
+                source_revision,
+                fact_occurred_at: self.base_at + Duration::seconds(version as i64),
+            }
+        }
+    }
 
     #[tokio::test]
     async fn concurrent_reservation_creates_one_build_per_revision() {
@@ -539,6 +279,164 @@ mod tests {
             build.subject,
             BuildSubject::asset_release(asset_id, asset_release_id)
         );
+    }
+
+    #[tokio::test]
+    async fn preview_lifecycle_cancels_retired_build_and_reopens_same_revision_once() {
+        let repository = InMemoryBuildRunRepository::new();
+        let fixture = PreviewFixture::new();
+        let source_revision_id = SourceRevisionId::new();
+        let accepted_at = fixture.base_at + Duration::seconds(1);
+        let active = fixture.active(1, source_revision_id, accepted_at, 'a');
+        let projected = repository
+            .project_preview_build_lifecycle(active.clone())
+            .await
+            .expect("project active Preview build");
+        assert!(!projected.replayed);
+        assert_eq!(
+            projected.value.outcome,
+            PreviewBuildLifecycleProjectionOutcome::Applied
+        );
+
+        let first = repository
+            .reserve_pending(1)
+            .await
+            .expect("reserve active Preview build")
+            .pop()
+            .expect("first Preview build");
+        assert_eq!(first.source_revision_id(), Some(source_revision_id));
+        assert_eq!(first.attempt, 1);
+
+        let cleanup = fixture.inactive(2, PreviewBuildLifecycleState::CleanupRequired);
+        let cleaned = repository
+            .project_preview_build_lifecycle(cleanup)
+            .await
+            .expect("project Preview cleanup");
+        assert_eq!(
+            cleaned.value.retirement,
+            PreviewBuildRetirement::CancellationRequested {
+                source_revision_id,
+                build_run_id: first.id,
+            }
+        );
+        let cancelling = repository
+            .find(fixture.organization_id, first.id)
+            .await
+            .expect("cancelled Preview build");
+        assert_eq!(cancelling.status, BuildRunStatus::Cancelling);
+        assert!(repository
+            .reserve_pending(1)
+            .await
+            .expect("suppressed reservation")
+            .is_empty());
+
+        let expected_version = cancelling.aggregate_version;
+        let mut cancelled = cancelling;
+        cancelled
+            .complete(fixture.base_at + Duration::seconds(2) + Duration::milliseconds(1))
+            .expect("complete Preview cancellation");
+        let cancelled = repository
+            .finalize(cancelled, expected_version)
+            .await
+            .expect("finalize Preview cancellation");
+        assert_eq!(cancelled.status, BuildRunStatus::Cancelled);
+
+        repository
+            .project_preview_build_lifecycle(fixture.active(
+                3,
+                source_revision_id,
+                accepted_at,
+                'a',
+            ))
+            .await
+            .expect("reopen Preview revision");
+        let retry = repository
+            .reserve_pending(1)
+            .await
+            .expect("reserve reopened Preview build")
+            .pop()
+            .expect("Preview retry");
+        assert_eq!(retry.attempt, 2);
+        assert_eq!(retry.retry_of_build_run_id, Some(first.id));
+        assert!(repository
+            .reserve_pending(1)
+            .await
+            .expect("repeat reopened reservation")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn preview_head_suppresses_unreserved_predecessor_and_ignores_late_fact() {
+        let repository = InMemoryBuildRunRepository::new();
+        let fixture = PreviewFixture::new();
+        let first_revision_id = SourceRevisionId::new();
+        let second_revision_id = SourceRevisionId::new();
+        let first = fixture.active(
+            1,
+            first_revision_id,
+            fixture.base_at + Duration::seconds(1),
+            'b',
+        );
+        repository
+            .project_preview_build_lifecycle(first.clone())
+            .await
+            .expect("project first Preview revision");
+        let second = fixture.active(
+            3,
+            second_revision_id,
+            fixture.base_at + Duration::seconds(3),
+            'c',
+        );
+        let advanced = repository
+            .project_preview_build_lifecycle(second.clone())
+            .await
+            .expect("advance Preview revision");
+        assert_eq!(
+            advanced.value.retirement,
+            PreviewBuildRetirement::PendingSuppressed {
+                source_revision_id: first_revision_id,
+            }
+        );
+        let reserved = repository
+            .reserve_pending(2)
+            .await
+            .expect("reserve current Preview build");
+        assert_eq!(reserved.len(), 1);
+        assert_eq!(reserved[0].source_revision_id(), Some(second_revision_id));
+
+        let replay = repository
+            .project_preview_build_lifecycle(second.clone())
+            .await
+            .expect("replay current Preview fact");
+        assert!(replay.replayed);
+        let mut conflict = second;
+        conflict.correlation_id = uuid::Uuid::now_v7();
+        assert!(matches!(
+            repository.project_preview_build_lifecycle(conflict).await,
+            Err(RepositoryError::Conflict(_))
+        ));
+
+        let late = ProjectPreviewBuildLifecycle {
+            lifecycle_event_id: uuid::Uuid::now_v7(),
+            lifecycle_causation_id: uuid::Uuid::now_v7(),
+            source_pull_request_change_id: SourcePullRequestChangeId::new(),
+            preview_aggregate_version: 2,
+            fact_occurred_at: fixture.base_at + Duration::seconds(2),
+            ..first
+        };
+        let ignored = repository
+            .project_preview_build_lifecycle(late)
+            .await
+            .expect("ignore late Preview fact");
+        assert_eq!(
+            ignored.value.outcome,
+            PreviewBuildLifecycleProjectionOutcome::IgnoredStale
+        );
+        assert!(repository
+            .find_by_source_revision(fixture.organization_id, first_revision_id)
+            .await
+            .expect("find suppressed Preview build")
+            .is_none());
     }
 
     #[tokio::test]

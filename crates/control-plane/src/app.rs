@@ -29,7 +29,7 @@ use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildCandidateProjector, BuildFlowRuntime,
     BuildFlowRuntimeDependencies, CancelBuildRunHandler, CloudBuildSourceResolver,
     GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler,
-    HostedArtifactQueryService, IBuildArtifactPublisher, IBuildCandidateProjectionPort,
+    HostedArtifactQueryService, IArtifactBuildProjectionPort, IBuildArtifactPublisher,
     IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
     IBuildRunRepository, IBuildSourceResolver, IHostedArtifactQueryPort, INodeArtifactStore,
     ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
@@ -551,7 +551,7 @@ async fn build_api_worker_application(
         .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
     let builds = adapters.builds;
-    let build_candidates = adapters.build_candidates;
+    let build_projections = adapters.build_projections;
     let executions = adapters.executions;
     let execution_templates = adapters.execution_templates;
     let agents = adapters.agents;
@@ -1313,7 +1313,7 @@ async fn build_api_worker_application(
                     Arc::clone(&memberships),
                     Arc::clone(&alert_policies),
                     Arc::clone(&resource_grants),
-                    Arc::clone(&build_candidates),
+                    Arc::clone(&build_projections),
                     PullRequestPreviewProjectionDependencies {
                         policies: developer_workflows.preview_policies,
                         previews: developer_workflows.preview_projections,
@@ -1733,7 +1733,7 @@ async fn build_relay_application(
         resource_grants,
         notifications,
         assets,
-        build_candidates,
+        build_projections,
         environments,
         preview_policies,
         preview_projections,
@@ -1752,7 +1752,7 @@ async fn build_relay_application(
                 memberships,
                 alert_policies,
                 resource_grants,
-                build_candidates,
+                build_projections,
                 PullRequestPreviewProjectionDependencies {
                     policies: preview_policies,
                     previews: preview_projections,
@@ -1812,7 +1812,7 @@ fn build_outbox_projectors(
     memberships: Arc<dyn IMembershipRepository>,
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
-    build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    build_projections: Arc<dyn IArtifactBuildProjectionPort>,
     preview: PullRequestPreviewProjectionDependencies,
 ) -> Vec<Arc<dyn IIntegrationEventProjector>> {
     let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
@@ -1826,7 +1826,7 @@ fn build_outbox_projectors(
                 .with_alert_policies(alert_policies, resource_grants),
         ),
         Arc::new(HostedBuildOutcomeProjector::new(assets)),
-        Arc::new(BuildCandidateProjector::new(build_candidates)),
+        Arc::new(BuildCandidateProjector::new(build_projections)),
         Arc::new(PullRequestPreviewProjector::new(
             preview_service,
             preview_environments,

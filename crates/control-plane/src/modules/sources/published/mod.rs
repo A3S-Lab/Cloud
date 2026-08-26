@@ -20,6 +20,7 @@ pub use preview_source_revision_lifecycle::{
     PreviewSourceRevisionLifecycleCommittedFact, PreviewSourceRevisionLifecycleState,
     PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
     PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
+    PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES,
 };
 pub use pull_request_change_committed::{
     PullRequestChangeCommittedFact, SourcePullRequestChangeKind,

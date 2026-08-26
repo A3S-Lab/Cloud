@@ -119,6 +119,9 @@ distributes committed facts after the corresponding database transaction.
 | Pull-request Preview projection receipt | Immutable Developer Workflows evidence that one opaque Sources fact reached one terminal local projection outcome and optional Preview version. It detects content/binding drift but is not an Inbox, queue, retry, or provider-delivery record. |
 | Committed Preview lifecycle | Owner-neutral Developer Workflows fact for one exact committed Preview aggregate version. It freezes policy, source/PR, Environment identity, trust, quota, status, correlation, and causation evidence without exposing another context's aggregate or private provider delivery. |
 | Preview Environment handoff | Consumer-owned Application request that asks Projects to ensure the one deterministic ordinary Environment for an active Preview. Projects alone validates and persists the aggregate, idempotency, uniqueness, and event. |
+| Preview SourceRevision projection receipt | Immutable Sources evidence that one exact Preview version created or adopted an ordinary SourceRevision, required cleanup, was suppressed by an inactive Subscription, or was stale. It is a version fence, not another SourceRevision lifecycle or delivery queue. |
+| Committed Preview SourceRevision lifecycle | Bounded Sources Published Language fact carrying the exact ordinary SourceRevision evidence for an active Preview version, or an explicit cleanup/suppression state with no revision. Artifacts consumes it without querying Sources storage. |
+| Preview build lifecycle projection receipt | Immutable Artifacts version/admission/retirement fence that binds an exact Preview version to its optional candidate and prior BuildRun retirement evidence. It is not an Inbox, build queue, retry scheduler, or second BuildRun lifecycle. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
@@ -580,6 +583,42 @@ Projects table directly. This creation-only effect is monotonic and therefore
 order-independent; later build, deployment, route, and cleanup consumers must
 persist an aggregate-version fence before acting on lifecycle transitions.
 
+`P0.3-C5b` supplies that fence at the Sources boundary. A separate
+`PullRequestPreviewSourceProjector` consumes only the committed Developer
+Workflows fact through the existing Outbox Relay and invokes the Sources-owned
+`IPreviewSourceRevisionProjectionPort`. For an active version, Sources
+validates the exact Subscription and Projects Environment, then creates or
+adopts one ordinary immutable external `SourceRevision`; cleanup or inactive
+Subscription state carries no revision and never deletes history. Migration
+`159` stores one append-only `PreviewSourceRevisionProjectionReceipt` per
+Preview aggregate version. The Preview-scoped advisory lock, exact replay and
+scope checks, optional SourceRevision, receipt, and one bounded
+`PreviewSourceRevisionLifecycleCommittedFact` share a Sources transaction.
+Ignored stale versions publish nothing. Neither Developer Workflows nor a later
+consumer reads Sources storage.
+
+Component-only `P0.3-C5c` consumes that specialized Sources Published Language
+through the existing `BuildCandidateProjector` and the Artifacts-owned
+`IPreviewBuildLifecycleProjectionPort`. The composition-facing
+`IArtifactBuildProjectionPort` combines the ordinary candidate projection and
+Preview lifecycle interfaces on one adapter without combining their domain
+semantics. Migration `162` adds optional immutable Preview provenance to the
+existing `artifact_build_candidates` projection and stores one append-only
+`PreviewBuildLifecycleProjectionReceipt` per Preview aggregate version. The
+receipt is the sole Artifacts-local head used for admission; an old active fact
+cannot make a candidate current after a later cleanup or replacement.
+
+An applied active head inserts or adopts the immutable candidate. Cleanup,
+suppression, or SourceRevision replacement locks the candidate and latest
+BuildRun in the same transaction. It records pending suppression if no run was
+reserved, observes an already terminal run, or requests cancellation on the
+existing BuildRun aggregate. A later active version for the same
+SourceRevision can reserve one retry only when an earlier immutable retirement
+receipt names that exact cancelled or failed BuildRun; that receipt cannot
+authorize another attempt. BuildRun remains the sole executable build state
+machine, so C5c introduces no build queue, worker, scheduler, saga, retry rail,
+or second lifecycle.
+
 ```mermaid
 flowchart LR
   subgraph S[Sources authority]
@@ -609,10 +648,30 @@ flowchart LR
     PA --> PE -->|same Projects transaction| EF
   end
 
+  subgraph S2[Sources Preview projection]
+    SP[PullRequestPreviewSourceProjector]
+    SR[(Ordinary SourceRevision + version receipt)]
+    RF[source.pull-request-preview-revision.lifecycle-committed@1]
+    SP --> SR -->|same Sources transaction| RF
+  end
+
+  subgraph A[Artifacts authority]
+    BP[BuildCandidateProjector]
+    AP[IPreviewBuildLifecycleProjectionPort]
+    AR[(Immutable candidate + version/retirement receipt)]
+    BR[(Sole BuildRun lifecycle)]
+    BP --> AP --> AR
+    AR -->|active head admits| BR
+    AR -->|retirement requests cancellation| BR
+  end
+
   SF --> O --> R --> PJ
   LF --> O
   EP --> PA
   EF --> O
+  R --> SP
+  RF --> O
+  R --> BP
 ```
 
 The cardinality and authority invariants are:
@@ -624,12 +683,18 @@ The cardinality and authority invariants are:
 - one committed Preview mutation has exactly one lifecycle fact; and
 - one logical active Preview maps to one deterministic ordinary Projects
   Environment. Different binding under that identity is a conflict, not an
-  update or second aggregate.
+  update or second aggregate;
+- one newly applied Preview version has exactly one Sources projection receipt
+  and specialized fact, while stale delivery has a receipt but no new fact;
+- one active Sources fact maps to one immutable Artifacts candidate, but only
+  the latest applied active receipt can reserve its BuildRun; and
+- one exact BuildRun retirement receipt authorizes at most one later retry of
+  that same SourceRevision.
 
-C5a remains component-only and exposes no API. Artifacts, Workloads, Edge, and
-Operations handoffs, expiry/cleanup execution, Environment archive/delete, and
-management remain open; their aggregates and mechanisms cannot move into
-Developer Workflows.
+C5a-C5c remain component-only and expose no API. Workloads, Edge, and Operations
+handoffs, expiry/cleanup execution, Environment archive/delete, and management
+remain open; their aggregates and mechanisms cannot move into Developer
+Workflows, Sources, or Artifacts.
 
 ### 3.4 Asset hosting
 

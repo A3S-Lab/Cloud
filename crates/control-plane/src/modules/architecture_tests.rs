@@ -426,11 +426,15 @@ fn artifacts_input_io_ports_stay_out_of_the_domain_layer() {
 
 #[test]
 fn artifacts_candidate_reservation_reads_only_its_fact_projection() {
-    let source = std::fs::read_to_string(
+    let repository = std::fs::read_to_string(
         module_root().join("artifacts/infrastructure/persistence/postgres.rs"),
     )
     .expect("read Artifacts PostgreSQL repository");
-    let reservation = source
+    let projection = std::fs::read_to_string(
+        module_root().join("artifacts/infrastructure/persistence/postgres/candidate_projection.rs"),
+    )
+    .expect("read Artifacts PostgreSQL candidate projection");
+    let reservation = repository
         .split("async fn reserve_pending(")
         .nth(1)
         .and_then(|tail| tail.split("async fn pending_operation_starts(").next())
@@ -438,8 +442,8 @@ fn artifacts_candidate_reservation_reads_only_its_fact_projection() {
 
     assert!(
         reservation.contains("SELECT_BUILD_CANDIDATES")
-            && source.contains(
-                "const SELECT_BUILD_CANDIDATES: &str = \"select c.organization_id, c.subject_kind, c.subject_id, c.project_id, c.environment_id, c.source_revision_id, c.asset_id, c.asset_release_id, c.repository_identity, c.commit_sha, c.owner_input_digest, c.requested_at from artifact_build_candidates c\"",
+            && projection.contains(
+                "const SELECT_BUILD_CANDIDATES: &str = \"select c.organization_id, c.subject_kind, c.subject_id, c.preview_id, c.project_id, c.environment_id, c.source_revision_id, c.asset_id, c.asset_release_id, c.repository_identity, c.commit_sha, c.owner_input_digest, c.requested_at from artifact_build_candidates c\"",
             ),
         "BuildRun reservation lost its Artifacts-owned fact projection"
     );
@@ -468,7 +472,10 @@ fn artifacts_candidate_projector_consumes_only_published_owner_facts() {
     for required in [
         "crate::modules::assets::published",
         "crate::modules::sources::published",
-        "IBuildCandidateProjectionPort",
+        "IArtifactBuildProjectionPort",
+        "PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY",
+        "PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES",
+        "project_preview_build_lifecycle",
     ] {
         assert!(
             source.contains(required),

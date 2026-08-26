@@ -1,5 +1,6 @@
 use crate::modules::artifacts::application::{
-    BuildCandidate, BuildCandidateEvidence, IBuildCandidateProjectionPort,
+    BuildCandidate, BuildCandidateEvidence, IArtifactBuildProjectionPort,
+    PreviewBuildLifecycleState, PreviewBuildSourceRevision, ProjectPreviewBuildLifecycle,
 };
 use crate::modules::artifacts::domain::BuildSubject;
 use crate::modules::assets::published::{
@@ -7,9 +8,14 @@ use crate::modules::assets::published::{
     HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
 };
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
-use crate::modules::shared_kernel::domain::{GitCommitSha, RepositoryError, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    canonical_json_bounded, canonical_timestamp, GitCommitSha, RepositoryError, Sha256Digest,
+};
 use crate::modules::sources::published::{
-    SourceRevisionAcceptedFact, SOURCE_REVISION_ACCEPTED_EVENT_KEY,
+    PreviewSourceRevisionLifecycleCommittedFact, PreviewSourceRevisionLifecycleState,
+    SourceRevisionAcceptedFact, PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
+    PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES, SOURCE_REVISION_ACCEPTED_EVENT_KEY,
     SOURCE_REVISION_ACCEPTED_SCHEMA_VERSION,
 };
 use async_trait::async_trait;
@@ -18,12 +24,12 @@ use std::sync::Arc;
 /// Anti-corruption adapter from owner-published integration facts into the
 /// Artifacts candidate projection.
 pub struct BuildCandidateProjector {
-    candidates: Arc<dyn IBuildCandidateProjectionPort>,
+    projections: Arc<dyn IArtifactBuildProjectionPort>,
 }
 
 impl BuildCandidateProjector {
-    pub fn new(candidates: Arc<dyn IBuildCandidateProjectionPort>) -> Self {
-        Self { candidates }
+    pub fn new(projections: Arc<dyn IArtifactBuildProjectionPort>) -> Self {
+        Self { projections }
     }
 
     async fn project_source(&self, message: &OutboxMessage) -> Result<(), RepositoryError> {
@@ -59,7 +65,7 @@ impl BuildCandidateProjector {
             message.occurred_at,
         )
         .map_err(invalid_message)?;
-        self.candidates.project_candidate(candidate).await
+        self.projections.project_candidate(candidate).await
     }
 
     async fn project_hosted_asset(&self, message: &OutboxMessage) -> Result<(), RepositoryError> {
@@ -89,7 +95,101 @@ impl BuildCandidateProjector {
             message.occurred_at,
         )
         .map_err(invalid_message)?;
-        self.candidates.project_candidate(candidate).await
+        self.projections.project_candidate(candidate).await
+    }
+
+    async fn project_preview_source_lifecycle(
+        &self,
+        message: &OutboxMessage,
+    ) -> Result<(), RepositoryError> {
+        canonical_json_bounded(
+            &message.payload,
+            PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES,
+            "Preview SourceRevision lifecycle fact",
+        )
+        .map_err(invalid_message)?;
+        let fact: PreviewSourceRevisionLifecycleCommittedFact =
+            decode(message, "Preview SourceRevision lifecycle")?;
+        fact.validate().map_err(invalid_message)?;
+        let lifecycle_causation_id = message.causation_id.ok_or_else(|| {
+            invalid_message("Preview SourceRevision lifecycle has no causation".into())
+        })?;
+        if message.event_id.is_nil()
+            || message.schema_version != PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION
+            || message.organization_id != fact.organization_id().as_uuid()
+            || message.aggregate_id != fact.preview_id().as_uuid()
+            || message.aggregate_version != fact.preview_aggregate_version()
+            || message.occurred_at != canonical_timestamp(message.occurred_at)
+            || message.correlation_id.is_nil()
+            || lifecycle_causation_id.is_nil()
+        {
+            return Err(invalid_message(
+                "Preview SourceRevision lifecycle envelope and fact identity differ".into(),
+            ));
+        }
+        let state = match fact.state() {
+            PreviewSourceRevisionLifecycleState::Active => PreviewBuildLifecycleState::Active,
+            PreviewSourceRevisionLifecycleState::CleanupRequired => {
+                PreviewBuildLifecycleState::CleanupRequired
+            }
+            PreviewSourceRevisionLifecycleState::SuppressedInactiveSubscription => {
+                PreviewBuildLifecycleState::SuppressedInactiveSubscription
+            }
+        };
+        let source_revision = match fact.state() {
+            PreviewSourceRevisionLifecycleState::Active => Some(PreviewBuildSourceRevision {
+                source_revision_id: fact.source_revision_id().ok_or_else(|| {
+                    invalid_message(
+                        "active Preview lifecycle omitted its SourceRevision identity".into(),
+                    )
+                })?,
+                repository_identity: fact
+                    .repository_identity()
+                    .ok_or_else(|| {
+                        invalid_message(
+                            "active Preview lifecycle omitted its repository identity".into(),
+                        )
+                    })?
+                    .to_owned(),
+                commit_sha: GitCommitSha::parse(fact.commit_sha().ok_or_else(|| {
+                    invalid_message("active Preview lifecycle omitted its commit".into())
+                })?)
+                .map_err(invalid_message)?,
+                recipe_digest: Sha256Digest::parse(fact.recipe_digest().ok_or_else(|| {
+                    invalid_message("active Preview lifecycle omitted its recipe".into())
+                })?)
+                .map_err(invalid_message)?,
+                accepted_at: fact.source_revision_accepted_at().ok_or_else(|| {
+                    invalid_message(
+                        "active Preview lifecycle omitted its SourceRevision acceptance time"
+                            .into(),
+                    )
+                })?,
+            }),
+            PreviewSourceRevisionLifecycleState::CleanupRequired
+            | PreviewSourceRevisionLifecycleState::SuppressedInactiveSubscription => None,
+        };
+        let input = ProjectPreviewBuildLifecycle {
+            lifecycle_event_id: message.event_id,
+            correlation_id: message.correlation_id,
+            lifecycle_causation_id,
+            source_pull_request_change_id: fact.source_pull_request_change_id(),
+            organization_id: fact.organization_id(),
+            project_id: fact.project_id(),
+            source_environment_id: fact.source_environment_id(),
+            source_subscription_id: fact.source_subscription_id(),
+            preview_id: fact.preview_id(),
+            preview_aggregate_version: fact.preview_aggregate_version(),
+            preview_environment_id: fact.preview_environment_id(),
+            state,
+            source_revision,
+            fact_occurred_at: message.occurred_at,
+        };
+        input.validate().map_err(invalid_message)?;
+        self.projections
+            .project_preview_build_lifecycle(input)
+            .await?;
+        Ok(())
     }
 }
 
@@ -99,6 +199,9 @@ impl IIntegrationEventProjector for BuildCandidateProjector {
         match message.event_key.as_str() {
             SOURCE_REVISION_ACCEPTED_EVENT_KEY => self.project_source(message).await,
             HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY => self.project_hosted_asset(message).await,
+            PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY => {
+                self.project_preview_source_lifecycle(message).await
+            }
             _ => Ok(()),
         }
     }
@@ -114,21 +217,22 @@ where
 
 fn invalid_message(error: String) -> RepositoryError {
     RepositoryError::Storage(format!(
-        "Artifacts build candidate fact is invalid: {error}"
+        "Artifacts build projection fact is invalid: {error}"
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::artifacts::domain::IBuildRunRepository;
+    use crate::modules::artifacts::domain::{BuildRunStatus, IBuildRunRepository};
     use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
     use crate::modules::assets::domain::{
         Asset, AssetKind, AssetRelease, AssetReleaseVersion, HostedAssetBuildRequested,
     };
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, OrganizationId, ProjectId,
-        ResourceName, Sha256Digest, SourceRevisionId,
+        PullRequestPreviewId, ResourceName, Sha256Digest, SourcePullRequestChangeId,
+        SourceRevisionId, SourceSubscriptionId,
     };
     use crate::modules::sources::domain::{
         ExternalSourceRevision, NewExternalSourceRevision, SourceRevisionAccepted,
@@ -144,8 +248,8 @@ mod tests {
         let envelope =
             SourceRevisionAccepted::envelope(&revision, Uuid::now_v7()).expect("source fact");
         let repository = Arc::new(InMemoryBuildRunRepository::new());
-        let candidates: Arc<dyn IBuildCandidateProjectionPort> = repository.clone();
-        let projector = BuildCandidateProjector::new(candidates);
+        let projections: Arc<dyn IArtifactBuildProjectionPort> = repository.clone();
+        let projector = BuildCandidateProjector::new(projections);
         let message = outbox_message(envelope);
 
         projector.project(&message).await.expect("first projection");
@@ -194,8 +298,8 @@ mod tests {
         let envelope = HostedAssetBuildRequested::envelope(&asset, &release, Uuid::now_v7())
             .expect("hosted build request");
         let repository = Arc::new(InMemoryBuildRunRepository::new());
-        let candidates: Arc<dyn IBuildCandidateProjectionPort> = repository.clone();
-        let projector = BuildCandidateProjector::new(candidates);
+        let projections: Arc<dyn IArtifactBuildProjectionPort> = repository.clone();
+        let projector = BuildCandidateProjector::new(projections);
 
         projector
             .project(&outbox_message(envelope.clone()))
@@ -227,6 +331,171 @@ mod tests {
             Err(RepositoryError::Storage(message))
                 if message.contains("envelope and fact identity differ")
         ));
+    }
+
+    #[tokio::test]
+    async fn preview_lifecycle_fact_admits_one_build_and_cancels_it_on_cleanup() {
+        let repository = Arc::new(InMemoryBuildRunRepository::new());
+        let projections: Arc<dyn IArtifactBuildProjectionPort> = repository.clone();
+        let projector = BuildCandidateProjector::new(projections);
+        let fixture = PreviewFactFixture::new();
+        let source_revision_id = SourceRevisionId::new();
+        let accepted_at = fixture.base_at;
+        let active = fixture.message(
+            1,
+            PreviewSourceRevisionLifecycleState::Active,
+            Some((source_revision_id, accepted_at, 'a')),
+        );
+
+        projector.project(&active).await.expect("active projection");
+        projector
+            .project(&active)
+            .await
+            .expect("exact lifecycle replay");
+        let build = repository
+            .reserve_pending(2)
+            .await
+            .expect("reserve Preview build")
+            .pop()
+            .expect("one Preview build");
+        assert_eq!(build.source_revision_id(), Some(source_revision_id));
+        assert_eq!(build.requested_at, accepted_at);
+        assert!(repository
+            .reserve_pending(1)
+            .await
+            .expect("repeat reservation")
+            .is_empty());
+
+        let cleanup = fixture.message(
+            2,
+            PreviewSourceRevisionLifecycleState::CleanupRequired,
+            None,
+        );
+        projector
+            .project(&cleanup)
+            .await
+            .expect("cleanup projection");
+        let cancelling = repository
+            .find(fixture.organization_id, build.id)
+            .await
+            .expect("retired Preview build");
+        assert_eq!(cancelling.status, BuildRunStatus::Cancelling);
+        assert!(repository
+            .reserve_pending(1)
+            .await
+            .expect("cleanup suppresses reservation")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn preview_lifecycle_fact_rejects_unbound_or_oversized_envelopes() {
+        let repository = Arc::new(InMemoryBuildRunRepository::new());
+        let projections: Arc<dyn IArtifactBuildProjectionPort> = repository;
+        let projector = BuildCandidateProjector::new(projections);
+        let fixture = PreviewFactFixture::new();
+        let source_revision_id = SourceRevisionId::new();
+        let active = fixture.message(
+            1,
+            PreviewSourceRevisionLifecycleState::Active,
+            Some((source_revision_id, fixture.base_at, 'b')),
+        );
+
+        let mut missing_causation = active.clone();
+        missing_causation.causation_id = None;
+        assert!(matches!(
+            projector.project(&missing_causation).await,
+            Err(RepositoryError::Storage(message)) if message.contains("has no causation")
+        ));
+
+        let mut drifted_version = active.clone();
+        drifted_version.aggregate_version += 1;
+        assert!(matches!(
+            projector.project(&drifted_version).await,
+            Err(RepositoryError::Storage(message))
+                if message.contains("envelope and fact identity differ")
+        ));
+
+        let mut oversized = active;
+        oversized.payload["untrusted_padding"] =
+            serde_json::json!("x".repeat(PREVIEW_SOURCE_REVISION_LIFECYCLE_MAX_BYTES));
+        assert!(matches!(
+            projector.project(&oversized).await,
+            Err(RepositoryError::Storage(message)) if message.contains("exceeds")
+        ));
+    }
+
+    struct PreviewFactFixture {
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        source_environment_id: EnvironmentId,
+        source_subscription_id: SourceSubscriptionId,
+        preview_id: PullRequestPreviewId,
+        preview_environment_id: EnvironmentId,
+        correlation_id: Uuid,
+        base_at: chrono::DateTime<Utc>,
+    }
+
+    impl PreviewFactFixture {
+        fn new() -> Self {
+            Self {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                source_environment_id: EnvironmentId::new(),
+                source_subscription_id: SourceSubscriptionId::new(),
+                preview_id: PullRequestPreviewId::new(),
+                preview_environment_id: EnvironmentId::new(),
+                correlation_id: Uuid::now_v7(),
+                base_at: canonical_timestamp(Utc::now()),
+            }
+        }
+
+        fn message(
+            &self,
+            version: u64,
+            state: PreviewSourceRevisionLifecycleState,
+            revision: Option<(SourceRevisionId, chrono::DateTime<Utc>, char)>,
+        ) -> OutboxMessage {
+            let (source_revision_id, repository_identity, commit_sha, recipe_digest, accepted_at) =
+                match revision {
+                    Some((source_revision_id, accepted_at, fill)) => (
+                        Some(source_revision_id),
+                        Some("github:github.com/a3s-lab/cloud"),
+                        Some(fill.to_string().repeat(40)),
+                        Some(format!("sha256:{}", fill.to_string().repeat(64))),
+                        Some(accepted_at),
+                    ),
+                    None => (None, None, None, None, None),
+                };
+            let occurred_at = self.base_at + chrono::Duration::seconds(version as i64);
+            OutboxMessage {
+                event_id: Uuid::now_v7(),
+                event_key: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
+                schema_version: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
+                organization_id: self.organization_id.as_uuid(),
+                aggregate_id: self.preview_id.as_uuid(),
+                aggregate_version: version,
+                occurred_at,
+                correlation_id: self.correlation_id,
+                causation_id: Some(Uuid::now_v7()),
+                payload: serde_json::json!({
+                    "source_pull_request_change_id": SourcePullRequestChangeId::new(),
+                    "organization_id": self.organization_id,
+                    "project_id": self.project_id,
+                    "source_environment_id": self.source_environment_id,
+                    "source_subscription_id": self.source_subscription_id,
+                    "preview_id": self.preview_id,
+                    "preview_aggregate_version": version,
+                    "preview_environment_id": self.preview_environment_id,
+                    "state": state.as_str(),
+                    "source_revision_id": source_revision_id,
+                    "repository_identity": repository_identity,
+                    "commit_sha": commit_sha,
+                    "recipe_digest": recipe_digest,
+                    "source_revision_accepted_at": accepted_at,
+                }),
+                delivery_attempts: 1,
+            }
+        }
     }
 
     fn source_revision(accepted_at: chrono::DateTime<Utc>) -> ExternalSourceRevision {

@@ -2,10 +2,7 @@ use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
 };
-use crate::modules::artifacts::application::{
-    hosted_build_outcome_event, BuildCandidate, BuildCandidateEvidence,
-    IBuildCandidateProjectionPort,
-};
+use crate::modules::artifacts::application::hosted_build_outcome_event;
 use crate::modules::artifacts::domain::repositories::{
     validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
     BuildRunFinalizationMode,
@@ -16,9 +13,9 @@ use crate::modules::artifacts::domain::{
     RequestBuildRetryBundle, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    IdempotentWrite, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId,
-    RepositoryError, Sha256Digest, SourceRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
+    SourceRevisionId,
 };
 use a3s_cloud_contracts::NodeBoxBuildOutput;
 use a3s_orm::{
@@ -29,43 +26,15 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
+mod candidate_projection;
+
+use candidate_projection::{
+    load_latest_build_for_candidate_for_update, map_candidate_row,
+    preview_candidate_is_current_postgres, preview_retry_requested_at_postgres, BuildCandidateRow,
+    SELECT_BUILD_CANDIDATES,
+};
+
 const SELECT_BUILDS: &str = "select b.organization_id, b.subject_kind, b.project_id, b.environment_id, b.source_revision_id, b.asset_id, b.asset_release_id, b.id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.build_request_digest, b.box_build_output, b.output, b.publication_target, b.published_artifact, b.published_output, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
-
-struct BuildCandidateRow {
-    organization_id: Uuid,
-    subject_kind: String,
-    subject_id: Uuid,
-    project_id: Option<Uuid>,
-    environment_id: Option<Uuid>,
-    source_revision_id: Option<Uuid>,
-    asset_id: Option<Uuid>,
-    asset_release_id: Option<Uuid>,
-    repository_identity: Option<String>,
-    commit_sha: String,
-    owner_input_digest: String,
-    requested_at: DateTime<Utc>,
-}
-
-impl FromRow for BuildCandidateRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            organization_id: decode(row, 0)?,
-            subject_kind: decode(row, 1)?,
-            subject_id: decode(row, 2)?,
-            project_id: decode(row, 3)?,
-            environment_id: decode(row, 4)?,
-            source_revision_id: decode(row, 5)?,
-            asset_id: decode(row, 6)?,
-            asset_release_id: decode(row, 7)?,
-            repository_identity: decode(row, 8)?,
-            commit_sha: decode(row, 9)?,
-            owner_input_digest: decode(row, 10)?,
-            requested_at: decode(row, 11)?,
-        })
-    }
-}
-
-const SELECT_BUILD_CANDIDATES: &str = "select c.organization_id, c.subject_kind, c.subject_id, c.project_id, c.environment_id, c.source_revision_id, c.asset_id, c.asset_release_id, c.repository_identity, c.commit_sha, c.owner_input_digest, c.requested_at from artifact_build_candidates c";
 
 #[derive(Clone)]
 pub struct PostgresBuildRunRepository {
@@ -79,89 +48,6 @@ impl PostgresBuildRunRepository {
 }
 
 #[async_trait]
-impl IBuildCandidateProjectionPort for PostgresBuildRunRepository {
-    async fn project_candidate(&self, candidate: BuildCandidate) -> Result<(), RepositoryError> {
-        candidate.validate().map_err(|error| {
-            RepositoryError::Storage(format!("invalid build candidate: {error}"))
-        })?;
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    let values = candidate_values(&candidate);
-                    let inserted = execute(
-                        transaction,
-                        sql_query::<()>(
-                            "insert into artifact_build_candidates (organization_id, subject_kind, subject_id, project_id, environment_id, source_revision_id, asset_id, asset_release_id, repository_identity, commit_sha, owner_input_digest, requested_at) values (",
-                        )
-                        .bind(values.organization_id)
-                        .append(", ")
-                        .bind(values.subject_kind)
-                        .append(", ")
-                        .bind(values.subject_id)
-                        .append(", ")
-                        .bind(values.project_id)
-                        .append(", ")
-                        .bind(values.environment_id)
-                        .append(", ")
-                        .bind(values.source_revision_id)
-                        .append(", ")
-                        .bind(values.asset_id)
-                        .append(", ")
-                        .bind(values.asset_release_id)
-                        .append(", ")
-                        .bind(values.repository_identity)
-                        .append(", ")
-                        .bind(values.commit_sha)
-                        .append(", ")
-                        .bind(values.owner_input_digest)
-                        .append(", ")
-                        .bind(values.requested_at)
-                        .append(") on conflict (organization_id, subject_kind, subject_id) do nothing"),
-                    )
-                    .await?;
-                    if inserted == 1 {
-                        return Ok(());
-                    }
-                    if inserted != 0 {
-                        return Err(PostgresPersistenceError::Invariant(format!(
-                            "projecting a build candidate affected {inserted} rows"
-                        )));
-                    }
-                    let existing = fetch_optional::<BuildCandidateRow, _>(
-                        transaction,
-                        sql_query::<BuildCandidateRow>(SELECT_BUILD_CANDIDATES)
-                            .append(" where c.organization_id = ")
-                            .bind(values.organization_id)
-                            .append(" and c.subject_kind = ")
-                            .bind(values.subject_kind)
-                            .append(" and c.subject_id = ")
-                            .bind(values.subject_id)
-                            .append(" for update"),
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        PostgresPersistenceError::Invariant(
-                            "conflicting build candidate could not be reloaded".into(),
-                        )
-                    })?;
-                    if map_candidate_row(existing)? == candidate {
-                        Ok(())
-                    } else {
-                        Err(PostgresPersistenceError::Repository(
-                            RepositoryError::Conflict(
-                                "build candidate fact conflicts with its existing projection"
-                                    .into(),
-                            ),
-                        ))
-                    }
-                })
-            })
-            .await
-            .map_err(transaction_error)
-    }
-}
-
-#[async_trait]
 impl IBuildRunRepository for PostgresBuildRunRepository {
     async fn reserve_pending(&self, limit: usize) -> Result<Vec<BuildRun>, RepositoryError> {
         self.executor
@@ -171,7 +57,7 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                         transaction,
                         sql_query::<BuildCandidateRow>(SELECT_BUILD_CANDIDATES)
                         .append(
-                            " left join build_runs b on b.organization_id = c.organization_id and b.subject_kind = c.subject_kind and ((c.subject_kind = 'external_source_revision' and b.source_revision_id = c.source_revision_id) or (c.subject_kind = 'asset_release' and b.asset_release_id = c.asset_release_id)) where b.id is null order by c.requested_at asc, c.subject_kind asc, c.subject_id asc limit ",
+                            " left join lateral (select b.id, b.status from build_runs b where b.organization_id = c.organization_id and b.subject_kind = c.subject_kind and ((c.subject_kind = 'external_source_revision' and b.source_revision_id = c.source_revision_id) or (c.subject_kind = 'asset_release' and b.asset_release_id = c.asset_release_id)) order by b.attempt desc limit 1) latest_build on true left join lateral (select p.preview_aggregate_version, p.state, p.outcome, p.source_revision_id from artifact_preview_build_lifecycle_projections p where p.organization_id = c.organization_id and p.preview_id = c.preview_id order by p.preview_aggregate_version desc limit 1) preview_head on c.preview_id is not null where (c.preview_id is null or (preview_head.outcome = 'applied' and preview_head.state = 'active' and preview_head.source_revision_id = c.source_revision_id)) and (latest_build.id is null or (c.preview_id is not null and latest_build.status in ('failed', 'cancelled') and exists (select 1 from artifact_preview_build_lifecycle_projections retirement where retirement.organization_id = c.organization_id and retirement.preview_id = c.preview_id and retirement.preview_aggregate_version < preview_head.preview_aggregate_version and retirement.retired_source_revision_id = c.source_revision_id and retirement.retired_build_run_id = latest_build.id and retirement.retirement in ('cancellation_requested', 'terminal_observed')))) order by c.requested_at asc, c.subject_kind asc, c.subject_id asc limit ",
                         )
                         .bind(limit.max(1))
                         .append(" for update of c skip locked"),
@@ -180,27 +66,53 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     let mut builds = Vec::with_capacity(limit.max(1).min(pending.len()));
                     for row in pending {
                         let candidate = map_candidate_row(row)?;
-                        let build = match candidate.subject() {
-                            BuildSubject::ExternalSourceRevision {
-                                project_id,
-                                environment_id,
-                                source_revision_id,
-                            } => BuildRun::reserve(
-                                candidate.organization_id(),
-                                project_id,
-                                environment_id,
-                                source_revision_id,
-                                candidate.requested_at(),
-                            ),
-                            BuildSubject::AssetRelease {
-                                asset_id,
-                                asset_release_id,
-                            } => BuildRun::reserve_asset_release(
-                                candidate.organization_id(),
-                                asset_id,
-                                asset_release_id,
-                                candidate.requested_at(),
-                            ),
+                        if !preview_candidate_is_current_postgres(transaction, &candidate).await? {
+                            continue;
+                        }
+                        let previous = load_latest_build_for_candidate_for_update(
+                            transaction,
+                            &candidate,
+                        )
+                        .await?;
+                        let build = match previous {
+                            Some(previous) => {
+                                let Some(requested_at) = preview_retry_requested_at_postgres(
+                                    transaction,
+                                    &candidate,
+                                    &previous,
+                                )
+                                .await?
+                                else {
+                                    continue;
+                                };
+                                BuildRun::retry(&previous, requested_at).map_err(|error| {
+                                    PostgresPersistenceError::Invariant(format!(
+                                        "Preview BuildRun retry is invalid: {error}"
+                                    ))
+                                })?
+                            }
+                            None => match candidate.subject() {
+                                BuildSubject::ExternalSourceRevision {
+                                    project_id,
+                                    environment_id,
+                                    source_revision_id,
+                                } => BuildRun::reserve(
+                                    candidate.organization_id(),
+                                    project_id,
+                                    environment_id,
+                                    source_revision_id,
+                                    candidate.requested_at(),
+                                ),
+                                BuildSubject::AssetRelease {
+                                    asset_id,
+                                    asset_release_id,
+                                } => BuildRun::reserve_asset_release(
+                                    candidate.organization_id(),
+                                    asset_id,
+                                    asset_release_id,
+                                    candidate.requested_at(),
+                                ),
+                            },
                         };
                         insert_build(transaction, &build).await?;
                         builds.push(build);
@@ -652,156 +564,6 @@ async fn persist_build(
         PostgresPersistenceError::Invariant("updated build run could not be reloaded".into())
     })?;
     map_row(row).map_err(PostgresPersistenceError::Repository)
-}
-
-#[derive(Clone, Copy)]
-struct BuildCandidateValues<'a> {
-    organization_id: Uuid,
-    subject_kind: &'static str,
-    subject_id: Uuid,
-    project_id: Option<Uuid>,
-    environment_id: Option<Uuid>,
-    source_revision_id: Option<Uuid>,
-    asset_id: Option<Uuid>,
-    asset_release_id: Option<Uuid>,
-    repository_identity: Option<&'a str>,
-    commit_sha: &'a str,
-    owner_input_digest: &'a str,
-    requested_at: DateTime<Utc>,
-}
-
-fn candidate_values(candidate: &BuildCandidate) -> BuildCandidateValues<'_> {
-    match (candidate.subject(), candidate.evidence()) {
-        (
-            BuildSubject::ExternalSourceRevision {
-                project_id,
-                environment_id,
-                source_revision_id,
-            },
-            BuildCandidateEvidence::ExternalSourceRevision {
-                repository_identity,
-                commit_sha,
-                recipe_digest,
-            },
-        ) => BuildCandidateValues {
-            organization_id: candidate.organization_id().as_uuid(),
-            subject_kind: "external_source_revision",
-            subject_id: source_revision_id.as_uuid(),
-            project_id: Some(project_id.as_uuid()),
-            environment_id: Some(environment_id.as_uuid()),
-            source_revision_id: Some(source_revision_id.as_uuid()),
-            asset_id: None,
-            asset_release_id: None,
-            repository_identity: Some(repository_identity),
-            commit_sha: commit_sha.as_str(),
-            owner_input_digest: recipe_digest.as_str(),
-            requested_at: candidate.requested_at(),
-        },
-        (
-            BuildSubject::AssetRelease {
-                asset_id,
-                asset_release_id,
-            },
-            BuildCandidateEvidence::HostedAssetRelease {
-                commit_sha,
-                manifest_digest,
-            },
-        ) => BuildCandidateValues {
-            organization_id: candidate.organization_id().as_uuid(),
-            subject_kind: "asset_release",
-            subject_id: asset_release_id.as_uuid(),
-            project_id: None,
-            environment_id: None,
-            source_revision_id: None,
-            asset_id: Some(asset_id.as_uuid()),
-            asset_release_id: Some(asset_release_id.as_uuid()),
-            repository_identity: None,
-            commit_sha: commit_sha.as_str(),
-            owner_input_digest: manifest_digest.as_str(),
-            requested_at: candidate.requested_at(),
-        },
-        _ => unreachable!("validated build candidate pairs its subject and evidence"),
-    }
-}
-
-fn map_candidate_row(row: BuildCandidateRow) -> Result<BuildCandidate, PostgresPersistenceError> {
-    let BuildCandidateRow {
-        organization_id,
-        subject_kind,
-        subject_id,
-        project_id,
-        environment_id,
-        source_revision_id,
-        asset_id,
-        asset_release_id,
-        repository_identity,
-        commit_sha,
-        owner_input_digest,
-        requested_at,
-    } = row;
-    let (subject, evidence) = match (
-        subject_kind.as_str(),
-        project_id,
-        environment_id,
-        source_revision_id,
-        asset_id,
-        asset_release_id,
-        repository_identity,
-    ) {
-        (
-            "external_source_revision",
-            Some(project_id),
-            Some(environment_id),
-            Some(revision_id),
-            None,
-            None,
-            Some(repository_identity),
-        ) if subject_id == revision_id => (
-            BuildSubject::external_source_revision(
-                ProjectId::from_uuid(project_id),
-                EnvironmentId::from_uuid(environment_id),
-                SourceRevisionId::from_uuid(revision_id),
-            ),
-            BuildCandidateEvidence::external_source_revision(
-                repository_identity,
-                GitCommitSha::parse(commit_sha).map_err(PostgresPersistenceError::Invariant)?,
-                Sha256Digest::parse(owner_input_digest)
-                    .map_err(PostgresPersistenceError::Invariant)?,
-            )
-            .map_err(PostgresPersistenceError::Invariant)?,
-        ),
-        ("asset_release", None, None, None, Some(asset_id), Some(asset_release_id), None)
-            if subject_id == asset_release_id =>
-        {
-            (
-                BuildSubject::asset_release(
-                    AssetId::from_uuid(asset_id),
-                    AssetReleaseId::from_uuid(asset_release_id),
-                ),
-                BuildCandidateEvidence::hosted_asset_release(
-                    GitCommitSha::parse(commit_sha).map_err(PostgresPersistenceError::Invariant)?,
-                    Sha256Digest::parse(owner_input_digest)
-                        .map_err(PostgresPersistenceError::Invariant)?,
-                ),
-            )
-        }
-        _ => {
-            return Err(PostgresPersistenceError::Invariant(
-                "stored build candidate has an invalid subject shape".into(),
-            ))
-        }
-    };
-    BuildCandidate::new(
-        OrganizationId::from_uuid(organization_id),
-        subject,
-        evidence,
-        requested_at,
-    )
-    .map_err(|error| {
-        PostgresPersistenceError::Invariant(format!(
-            "stored build candidate failed validation: {error}"
-        ))
-    })
 }
 
 async fn insert_build(

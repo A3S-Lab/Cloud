@@ -142,6 +142,8 @@ mod application_sessions_support;
 mod application_workflow_runs_support;
 #[path = "support/applications.rs"]
 mod applications_support;
+#[path = "support/artifact_preview_build_lifecycle.rs"]
+mod artifact_preview_build_lifecycle_support;
 #[path = "support/assets.rs"]
 mod assets_support;
 #[path = "support/build_evidence.rs"]
@@ -705,6 +707,19 @@ async fn postgres_developer_pull_request_previews_project_once_and_survive_resta
     )
     .await
     .expect("PostgreSQL pull-request Preview projection gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_artifact_preview_build_lifecycle_is_fenced_recoverable_and_retry_bounded() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        artifact_preview_build_lifecycle_support::exercise_artifact_preview_build_lifecycle,
+    )
+    .await
+    .expect("PostgreSQL Artifacts Preview build lifecycle gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
