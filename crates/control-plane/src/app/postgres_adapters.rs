@@ -67,8 +67,8 @@ use crate::modules::sources::domain::{
     ISourceWebhookRepository,
 };
 use crate::modules::sources::{
-    PostgresGithubConnectionRepository, PostgresSourceRevisionRepository,
-    PostgresSourceSubscriptionRepository,
+    IPreviewSourceRevisionProjectionPort, PostgresGithubConnectionRepository,
+    PostgresSourceRevisionRepository, PostgresSourceSubscriptionRepository,
 };
 use crate::modules::workflow::{
     IHumanTaskRepository, IOntologyRepository, IWorkflowDefinitionRepository,
@@ -151,6 +151,7 @@ impl PostgresAdapterFactory {
         let assets = AssetPostgresAdapters::new(self.executor.clone());
         let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
         let developer_workflows = self.developer_workflow_projection();
+        let source_revisions = SourceRevisionPostgresAdapters::new(self.executor.clone());
         RelayPostgresAdapters {
             memberships: identity.memberships,
             resource_grants: identity.resource_grants,
@@ -161,6 +162,7 @@ impl PostgresAdapterFactory {
             environments: projects.environments,
             preview_policies: developer_workflows.preview_policies,
             preview_projections: developer_workflows.preview_projections,
+            preview_source_revisions: source_revisions.preview_projections,
             outbox: self.outbox(),
         }
     }
@@ -171,6 +173,12 @@ impl PostgresAdapterFactory {
 
     pub(super) fn developer_workflow_projection(&self) -> DeveloperWorkflowPostgresAdapters {
         DeveloperWorkflowPostgresAdapters::new(self.executor.clone())
+    }
+
+    pub(super) fn preview_source_revision_projection(
+        &self,
+    ) -> Arc<dyn IPreviewSourceRevisionProjectionPort> {
+        SourceRevisionPostgresAdapters::new(self.executor.clone()).preview_projections
     }
 
     pub(super) fn outbox(&self) -> Arc<dyn IOutboxRepository> {
@@ -233,6 +241,7 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) environments: Arc<dyn IEnvironmentRepository>,
     pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
+    pub(super) preview_source_revisions: Arc<dyn IPreviewSourceRevisionProjectionPort>,
     pub(super) outbox: Arc<dyn IOutboxRepository>,
 }
 
@@ -477,12 +486,35 @@ pub(super) struct SourcePostgresAdapters {
 
 impl SourcePostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
-        let revisions = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
+        let revisions = SourceRevisionPostgresAdapters::new(executor.clone());
         Self {
-            sources: revisions.clone(),
-            webhooks: revisions,
+            sources: revisions.sources,
+            webhooks: revisions.webhooks,
             subscriptions: Arc::new(PostgresSourceSubscriptionRepository::new(executor.clone())),
             github_connections: Arc::new(PostgresGithubConnectionRepository::new(executor)),
+        }
+    }
+}
+
+/// One concrete Sources repository exposed through its distinct owner ports.
+///
+/// API/Worker needs ordinary SourceRevision and webhook writes, while Relay
+/// needs the Preview lifecycle projection port. Keeping the constructor here
+/// preserves one adapter-selection rule without granting either process the
+/// other process's capabilities.
+struct SourceRevisionPostgresAdapters {
+    sources: Arc<dyn ISourceRevisionRepository>,
+    webhooks: Arc<dyn ISourceWebhookRepository>,
+    preview_projections: Arc<dyn IPreviewSourceRevisionProjectionPort>,
+}
+
+impl SourceRevisionPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        let repository = Arc::new(PostgresSourceRevisionRepository::new(executor));
+        Self {
+            sources: repository.clone(),
+            webhooks: repository.clone(),
+            preview_projections: repository,
         }
     }
 }

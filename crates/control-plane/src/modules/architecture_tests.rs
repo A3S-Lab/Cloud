@@ -810,6 +810,65 @@ fn developer_workflows_projects_handoff_is_confined_to_one_infrastructure_adapte
 }
 
 #[test]
+fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
+    let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
+    let projector = std::fs::read_to_string(module_root().join(projector_path))
+        .expect("read Sources Preview projector");
+    assert!(
+        projector.contains("developer_workflows::published")
+            && !projector.contains("developer_workflows::domain")
+            && projector.contains("Arc<dyn IPreviewSourceRevisionProjectionPort>"),
+        "Sources must consume only Developer Workflows Published Language through its own Application port"
+    );
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("src directory")
+            .join("app.rs"),
+    )
+    .expect("read application composition");
+    assert_eq!(
+        app.matches("PullRequestPreviewSourceProjector::new")
+            .count(),
+        1,
+        "all process roles must share one Sources Preview projector composition path"
+    );
+    let environments = app
+        .find("PullRequestPreviewProjector::new")
+        .expect("Projects Preview handoff composition");
+    let sources = app
+        .find("PullRequestPreviewSourceProjector::new")
+        .expect("Sources Preview handoff composition");
+    assert!(
+        environments < sources,
+        "active Preview Environment ownership must be handed off before Sources creates its ordinary SourceRevision"
+    );
+
+    for relative in [
+        "sources/application/preview_source_revision_projection.rs",
+        projector_path,
+        "sources/published/preview_source_revision_lifecycle.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        for forbidden in [
+            "IOutboxRepository",
+            "IEventPublisher",
+            "OutboxRelay",
+            "NatsProvider",
+            "tokio::spawn",
+            "SOURCE_REVISION_ACCEPTED_EVENT_KEY",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "{relative} introduced duplicate delivery or bypassed version fencing through {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn published_languages_never_alias_owner_domain_models() {
     let mut violations = BTreeSet::new();
 

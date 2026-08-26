@@ -17,8 +17,13 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     PrincipalId, RepositoryError, SourcePullRequestChangeId, SourceSubscriptionId,
 };
 use a3s_cloud_control_plane::modules::sources::published::{
-    GitProvider, GitRepository, PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY,
-    PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
+    GitProvider, GitRepository, PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY, PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
+    SOURCE_REVISION_ACCEPTED_EVENT_KEY,
+};
+use a3s_cloud_control_plane::modules::sources::{
+    IPreviewSourceRevisionProjectionPort, PostgresSourceRevisionRepository,
+    PullRequestPreviewSourceProjector,
 };
 use a3s_orm::{DecodeError, FromRow, FromValue, Row};
 use chrono::Duration as ChronoDuration;
@@ -40,6 +45,20 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
         (
             1,
             "Developer Workflows pull-request Preview projections".into()
+        )
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, String)>(
+                    "select count(*), max(name) from a3s_orm_migrations where version = ",
+                )
+                .bind("159"),
+            )
+            .await?,
+        (
+            1,
+            "Sources pull-request Preview SourceRevision projections".into()
         )
     );
 
@@ -120,6 +139,9 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
             PostgresProjectsRepository::new(executor.clone()),
         )));
     let projector = PullRequestPreviewProjector::new(service, environments);
+    let source_projection_port: Arc<dyn IPreviewSourceRevisionProjectionPort> =
+        Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
+    let source_projector = PullRequestPreviewSourceProjector::new(source_projection_port);
 
     let pull_request_id = 1_000_042;
     let opened = message(
@@ -177,6 +199,9 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     for message in &lifecycle_messages {
         projector.project(message).await?;
     }
+    for message in lifecycle_messages.iter().rev() {
+        source_projector.project(message).await?;
+    }
 
     let restarted_policies: Arc<dyn IPullRequestPreviewPolicyRepository> = Arc::new(
         PostgresPullRequestPreviewPolicyRepository::new(executor.clone()),
@@ -193,8 +218,13 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
         )));
     let restarted_projector =
         PullRequestPreviewProjector::new(restarted_service, restarted_environments);
+    let restarted_source_projection_port: Arc<dyn IPreviewSourceRevisionProjectionPort> =
+        Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
+    let restarted_source_projector =
+        PullRequestPreviewSourceProjector::new(restarted_source_projection_port);
     for message in &lifecycle_messages {
         restarted_projector.project(message).await?;
+        restarted_source_projector.project(message).await?;
     }
 
     let restarted = PostgresPullRequestPreviewProjectionRepository::new(executor.clone());
@@ -273,11 +303,13 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     assert_eq!(
         database
             .fetch_one_as(
-                sql_query::<(i64, i64, i64, i64, i64)>(
+                sql_query::<(i64, i64, i64, i64, i64, i64)>(
                     "select (select count(*) from external_source_revisions where organization_id = ",
                 )
                 .bind(organization_id.as_uuid())
                 .append("), (select count(*) from build_runs where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from artifact_build_candidates where organization_id = ")
                 .bind(organization_id.as_uuid())
                 .append("), (select count(*) from workloads where organization_id = ")
                 .bind(organization_id.as_uuid())
@@ -288,8 +320,52 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
                 .append(")"),
             )
             .await?,
-        (0, 0, 0, 0, 0),
-        "Projects Environment handoff must not create later owner state"
+        (1, 0, 0, 0, 0, 0),
+        "Sources handoff must create only the latest ordinary SourceRevision, not bypass Artifacts or later owners"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<String>(
+                    "select commit_sha from external_source_revisions where organization_id = ",
+                )
+                .bind(organization_id.as_uuid()),
+            )
+            .await?,
+        "b".repeat(40),
+        "active Preview version 2 must fence late version 1"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, i64, i64)>(
+                    "select (select count(*) from source_pull_request_preview_revision_projections where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key = ")
+                .bind(PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY)
+                .append("), (select count(*) from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key = ")
+                .bind(SOURCE_REVISION_ACCEPTED_EVENT_KEY)
+                .append(")"),
+            )
+            .await?,
+        (2, 1, 0),
+        "Sources must retain both immutable version receipts, publish only the latest specialized fact, and not bypass the Artifacts fence"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(String, String)>(
+                    "select min(outcome), max(outcome) from source_pull_request_preview_revision_projections where organization_id = ",
+                )
+                .bind(organization_id.as_uuid()),
+            )
+            .await?,
+        ("ignored_stale".into(), "projected".into())
     );
 
     let preview_mutation = database
@@ -319,6 +395,24 @@ pub(super) async fn exercise_developer_pull_request_preview_projection(
     assert_eq!(
         super::developer_preview_policies_support::database_error_message(&receipt_mutation),
         Some("pull-request change projection receipts are immutable")
+    );
+    let source_receipt_mutation = database
+        .execute(
+            sql_query::<()>(
+                "update source_pull_request_preview_revision_projections set fact_digest = ",
+            )
+            .bind(format!("sha256:{}", "e".repeat(64)))
+            .append(" where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and preview_id = ")
+            .bind(preview.id.as_uuid())
+            .append(" and preview_aggregate_version = 2"),
+        )
+        .await
+        .expect_err("Sources Preview projection receipt mutation must fail");
+    assert_eq!(
+        super::developer_preview_policies_support::database_error_message(&source_receipt_mutation),
+        Some("Preview Source revision projection receipts are immutable")
     );
     Ok(())
 }

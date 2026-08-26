@@ -8,6 +8,7 @@
 mod build_recipe;
 mod git_provider;
 mod git_repository;
+mod preview_source_revision_lifecycle;
 mod pull_request_change_committed;
 mod source_build_input;
 mod source_revision_accepted;
@@ -15,6 +16,11 @@ mod source_revision_accepted;
 pub use build_recipe::{BuildPlatform, BuildRecipe};
 pub use git_provider::GitProvider;
 pub use git_repository::GitRepository;
+pub use preview_source_revision_lifecycle::{
+    PreviewSourceRevisionLifecycleCommittedFact, PreviewSourceRevisionLifecycleState,
+    PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
+};
 pub use pull_request_change_committed::{
     PullRequestChangeCommittedFact, SourcePullRequestChangeKind,
     PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY, PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,

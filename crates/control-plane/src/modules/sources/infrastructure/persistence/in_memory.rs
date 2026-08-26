@@ -1,6 +1,11 @@
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
-    SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    PullRequestPreviewId, RepositoryError, SourceConnectionId, SourceRevisionId,
+    SourceSubscriptionId,
+};
+use crate::modules::sources::application::{
+    lifecycle_event, IPreviewSourceRevisionProjectionPort, PreviewSourceRevisionProjectionOutcome,
+    PreviewSourceRevisionProjectionReceipt, ProjectPreviewSourceRevision,
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, AcceptSourceWebhook, CreateGithubRepositorySubscription,
@@ -29,6 +34,10 @@ struct State {
     webhook_deliveries: BTreeMap<DeliveryKey, String>,
     webhook_inbox: BTreeMap<(String, String), SourceWebhookDelivery>,
     idempotency: BTreeMap<(String, String), (String, ExternalSourceRevision)>,
+    preview_source_revision_receipts: BTreeMap<
+        (OrganizationId, PullRequestPreviewId, u64),
+        PreviewSourceRevisionProjectionReceipt,
+    >,
     outbox: Vec<DomainEventEnvelope>,
 }
 
@@ -496,6 +505,122 @@ impl ISourceRevisionRepository for InMemorySourceRevisionRepository {
     }
 }
 
+#[async_trait]
+impl IPreviewSourceRevisionProjectionPort for InMemorySourceRevisionRepository {
+    async fn project_preview_source_revision(
+        &self,
+        input: ProjectPreviewSourceRevision,
+    ) -> Result<IdempotentWrite<PreviewSourceRevisionProjectionReceipt>, RepositoryError> {
+        input.validate().map_err(|error| {
+            RepositoryError::Storage(format!(
+                "invalid Preview Source revision projection: {error}"
+            ))
+        })?;
+        let mut state = self.state.write().await;
+        let receipt_key = (
+            input.organization_id,
+            input.preview_id,
+            input.preview_aggregate_version,
+        );
+        if let Some(existing) = state.preview_source_revision_receipts.get(&receipt_key) {
+            if !existing.matches_input(&input) {
+                return Err(RepositoryError::Conflict(
+                    "Preview aggregate version changed lifecycle fact or Sources binding".into(),
+                ));
+            }
+            return Ok(IdempotentWrite {
+                value: existing.clone(),
+                replayed: true,
+            });
+        }
+
+        let latest = state
+            .preview_source_revision_receipts
+            .iter()
+            .filter(|((organization_id, preview_id, _), _)| {
+                *organization_id == input.organization_id && *preview_id == input.preview_id
+            })
+            .max_by_key(|((_, _, version), _)| *version)
+            .map(|(_, receipt)| receipt.clone());
+        if latest
+            .as_ref()
+            .is_some_and(|receipt| !receipt.has_same_scope_as(&input))
+        {
+            return Err(RepositoryError::Conflict(
+                "Preview lifecycle changed its Sources projection scope".into(),
+            ));
+        }
+        if latest.as_ref().is_some_and(|receipt| {
+            receipt.preview_aggregate_version > input.preview_aggregate_version
+        }) {
+            let receipt = PreviewSourceRevisionProjectionReceipt::from_input(
+                &input,
+                PreviewSourceRevisionProjectionOutcome::IgnoredStale,
+                None,
+            )
+            .map_err(RepositoryError::Storage)?;
+            state
+                .preview_source_revision_receipts
+                .insert(receipt_key, receipt.clone());
+            return Ok(IdempotentWrite {
+                value: receipt,
+                replayed: false,
+            });
+        }
+
+        let subscription = state
+            .subscriptions
+            .get(&(input.organization_id, input.source_subscription_id))
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let decision = input.decide(&subscription).map_err(|error| {
+            RepositoryError::Conflict(format!(
+                "Preview Source projection authority is invalid: {error}"
+            ))
+        })?;
+        let mut next = state.clone();
+        let (outcome, revision) = match decision.revision {
+            Some(candidate) => {
+                let key = natural_key(&candidate);
+                let revision = if let Some(existing_id) = next.natural_ids.get(&key).copied() {
+                    next.revisions
+                        .get(&(input.organization_id, existing_id))
+                        .cloned()
+                        .ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "Preview Source natural identity points to a missing revision"
+                                    .into(),
+                            )
+                        })?
+                } else {
+                    next.natural_ids.insert(key, candidate.id);
+                    next.revisions
+                        .insert((input.organization_id, candidate.id), candidate.clone());
+                    candidate
+                };
+                (decision.outcome, Some(revision))
+            }
+            None => (decision.outcome, None),
+        };
+        let receipt = PreviewSourceRevisionProjectionReceipt::from_input(
+            &input,
+            outcome,
+            revision.as_ref().map(|value| value.id),
+        )
+        .map_err(RepositoryError::Storage)?;
+        let event =
+            lifecycle_event(&receipt, revision.as_ref()).map_err(RepositoryError::Storage)?;
+        next.preview_source_revision_receipts
+            .insert(receipt_key, receipt.clone());
+        next.outbox.push(event);
+        *state = next;
+        Ok(IdempotentWrite {
+            value: receipt,
+            replayed: false,
+        })
+    }
+}
+
 fn natural_key(revision: &ExternalSourceRevision) -> NaturalKey {
     (
         revision.organization_id,
@@ -524,4 +649,288 @@ fn owned_idempotency_key(idempotency: &IdempotencyRequest) -> (String, String) {
         idempotency.storage_key().0.to_owned(),
         idempotency.storage_key().1.to_owned(),
     )
+}
+
+#[cfg(test)]
+mod preview_projection_tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{
+        canonical_timestamp, GitCommitSha, PullRequestPreviewId, Sha256Digest,
+        SourcePullRequestChangeId,
+    };
+    use crate::modules::sources::application::{
+        IPreviewSourceRevisionProjectionPort, PreviewSourceRevisionDesiredState,
+        PreviewSourceRevisionProjectionOutcome, ProjectPreviewSourceRevision,
+    };
+    use crate::modules::sources::domain::{
+        BuildRecipe, GitProvider, GitReference, GitRepository, GithubInstallationId,
+        GithubRepositorySubscription, NewGithubRepositorySubscription,
+    };
+    use crate::modules::sources::published::{
+        PreviewSourceRevisionLifecycleCommittedFact, PreviewSourceRevisionLifecycleState,
+        PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY,
+    };
+    use chrono::{Duration, TimeZone, Utc};
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn active_versions_replay_exactly_and_reuse_one_ordinary_source_revision() {
+        let repository = InMemorySourceRevisionRepository::new();
+        let subscription = subscription(false);
+        seed(&repository, subscription.clone()).await;
+        let preview_id = PullRequestPreviewId::new();
+        let preview_environment_id = EnvironmentId::new();
+        let first = input(
+            &subscription,
+            preview_id,
+            preview_environment_id,
+            1,
+            PreviewSourceRevisionDesiredState::Active,
+        );
+
+        let accepted = repository
+            .project_preview_source_revision(first.clone())
+            .await
+            .expect("active Preview projection");
+        assert!(!accepted.replayed);
+        assert_eq!(
+            accepted.value.outcome,
+            PreviewSourceRevisionProjectionOutcome::Projected
+        );
+        let revision_id = accepted.value.source_revision_id.expect("revision ID");
+
+        let replay = repository
+            .project_preview_source_revision(first.clone())
+            .await
+            .expect("exact replay");
+        assert!(replay.replayed);
+        assert_eq!(replay.value, accepted.value);
+        assert_eq!(repository.outbox_events().await.len(), 1);
+
+        let mut drifted = first.clone();
+        drifted.fact_digest = Sha256Digest::from_bytes(b"drifted");
+        assert!(matches!(
+            repository.project_preview_source_revision(drifted).await,
+            Err(RepositoryError::Conflict(_))
+        ));
+
+        let mut causality_drift = first;
+        causality_drift.correlation_id = Uuid::now_v7();
+        assert!(matches!(
+            repository
+                .project_preview_source_revision(causality_drift)
+                .await,
+            Err(RepositoryError::Conflict(_))
+        ));
+
+        let second = input(
+            &subscription,
+            preview_id,
+            preview_environment_id,
+            2,
+            PreviewSourceRevisionDesiredState::Active,
+        );
+        let advanced = repository
+            .project_preview_source_revision(second)
+            .await
+            .expect("advanced Preview projection");
+        assert_eq!(advanced.value.source_revision_id, Some(revision_id));
+        let revisions = ISourceRevisionRepository::list(
+            &repository,
+            subscription.organization_id,
+            subscription.project_id,
+            preview_environment_id,
+        )
+        .await
+        .expect("Preview revisions");
+        assert_eq!(revisions.len(), 1);
+        assert_eq!(revisions[0].id, revision_id);
+
+        let events = repository.outbox_events().await;
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|event| {
+            event.event_key == PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY
+                && event.aggregate_id == preview_id.as_uuid()
+        }));
+        assert!(events.iter().all(|event| {
+            event.event_key
+                != crate::modules::sources::published::SOURCE_REVISION_ACCEPTED_EVENT_KEY
+        }));
+    }
+
+    #[tokio::test]
+    async fn newer_cleanup_fences_late_active_versions_without_a_ghost_revision() {
+        let repository = InMemorySourceRevisionRepository::new();
+        let subscription = subscription(false);
+        seed(&repository, subscription.clone()).await;
+        let preview_id = PullRequestPreviewId::new();
+        let preview_environment_id = EnvironmentId::new();
+        let cleanup = input(
+            &subscription,
+            preview_id,
+            preview_environment_id,
+            3,
+            PreviewSourceRevisionDesiredState::CleanupRequired,
+        );
+        let cleaned = repository
+            .project_preview_source_revision(cleanup)
+            .await
+            .expect("cleanup projection");
+        assert_eq!(
+            cleaned.value.outcome,
+            PreviewSourceRevisionProjectionOutcome::CleanupRequired
+        );
+        assert!(cleaned.value.source_revision_id.is_none());
+
+        for version in [1, 2] {
+            let late_active = input(
+                &subscription,
+                preview_id,
+                preview_environment_id,
+                version,
+                PreviewSourceRevisionDesiredState::Active,
+            );
+            let ignored = repository
+                .project_preview_source_revision(late_active)
+                .await
+                .expect("stale active projection");
+            assert_eq!(
+                ignored.value.outcome,
+                PreviewSourceRevisionProjectionOutcome::IgnoredStale
+            );
+        }
+        assert!(ISourceRevisionRepository::list(
+            &repository,
+            subscription.organization_id,
+            subscription.project_id,
+            preview_environment_id,
+        )
+        .await
+        .expect("Preview revisions")
+        .is_empty());
+        assert_eq!(repository.outbox_events().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn inactive_subscription_is_a_terminal_suppression_not_a_retry_loop() {
+        let repository = InMemorySourceRevisionRepository::new();
+        let subscription = subscription(true);
+        seed(&repository, subscription.clone()).await;
+        let preview_id = PullRequestPreviewId::new();
+        let preview_environment_id = EnvironmentId::new();
+        let active = input(
+            &subscription,
+            preview_id,
+            preview_environment_id,
+            1,
+            PreviewSourceRevisionDesiredState::Active,
+        );
+        let suppressed = repository
+            .project_preview_source_revision(active)
+            .await
+            .expect("inactive subscription suppression");
+        assert_eq!(
+            suppressed.value.outcome,
+            PreviewSourceRevisionProjectionOutcome::SuppressedInactiveSubscription
+        );
+        assert!(suppressed.value.source_revision_id.is_none());
+        let events = repository.outbox_events().await;
+        assert_eq!(events.len(), 1);
+        let fact: PreviewSourceRevisionLifecycleCommittedFact =
+            serde_json::from_value(events[0].payload.clone()).expect("lifecycle fact");
+        fact.validate().expect("valid lifecycle fact");
+        assert_eq!(
+            fact.state(),
+            PreviewSourceRevisionLifecycleState::SuppressedInactiveSubscription
+        );
+    }
+
+    async fn seed(
+        repository: &InMemorySourceRevisionRepository,
+        subscription: GithubRepositorySubscription,
+    ) {
+        repository.state.write().await.subscriptions.insert(
+            (subscription.organization_id, subscription.id),
+            subscription,
+        );
+    }
+
+    fn subscription(inactive: bool) -> GithubRepositorySubscription {
+        let created_at = Utc
+            .with_ymd_and_hms(2026, 8, 26, 4, 30, 0)
+            .single()
+            .expect("timestamp");
+        let mut subscription =
+            GithubRepositorySubscription::subscribe(NewGithubRepositorySubscription {
+                id: SourceSubscriptionId::new(),
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+                connection_id: SourceConnectionId::new(),
+                installation_id: GithubInstallationId::parse(42).expect("installation"),
+                repository: GitRepository::parse(
+                    GitProvider::Github,
+                    "https://github.com/a3s-lab/cloud",
+                )
+                .expect("repository"),
+                branch: GitReference::parse("branch", "main").expect("branch"),
+                recipe: BuildRecipe::dockerfile(
+                    BuildRecipe::SCHEMA,
+                    BuildRecipe::DOCKERFILE_KIND,
+                    ".",
+                    "Dockerfile",
+                    None,
+                    vec!["linux/amd64".into()],
+                )
+                .expect("recipe"),
+                created_at,
+            })
+            .expect("subscription");
+        if inactive {
+            subscription
+                .deactivate(created_at + Duration::seconds(1))
+                .expect("deactivation");
+        }
+        subscription
+    }
+
+    fn input(
+        subscription: &GithubRepositorySubscription,
+        preview_id: PullRequestPreviewId,
+        preview_environment_id: EnvironmentId,
+        version: u64,
+        desired_state: PreviewSourceRevisionDesiredState,
+    ) -> ProjectPreviewSourceRevision {
+        let occurred_at = Utc
+            .with_ymd_and_hms(2026, 8, 26, 5, 0, version as u32)
+            .single()
+            .expect("timestamp");
+        ProjectPreviewSourceRevision {
+            lifecycle_event_id: Uuid::now_v7(),
+            correlation_id: Uuid::now_v7(),
+            lifecycle_causation_id: Uuid::now_v7(),
+            source_pull_request_change_id: SourcePullRequestChangeId::new(),
+            organization_id: subscription.organization_id,
+            project_id: subscription.project_id,
+            source_environment_id: subscription.environment_id,
+            source_subscription_id: subscription.id,
+            preview_id,
+            preview_aggregate_version: version,
+            preview_environment_id,
+            installation_id: subscription.installation_id,
+            base_repository: subscription.repository.clone(),
+            base_branch: subscription.branch.clone(),
+            head_repository: matches!(desired_state, PreviewSourceRevisionDesiredState::Active)
+                .then(|| subscription.repository.clone()),
+            head_branch: GitReference::parse("branch", "feature/preview").expect("branch"),
+            head_commit_sha: GitCommitSha::parse("a".repeat(40)).expect("commit"),
+            pull_request_id: 42,
+            pull_request_number: 7,
+            desired_state,
+            fact_digest: Sha256Digest::from_bytes(
+                format!("fact-{version}-{}", desired_state.as_str()).as_bytes(),
+            ),
+            fact_occurred_at: canonical_timestamp(occurred_at),
+        }
+    }
 }

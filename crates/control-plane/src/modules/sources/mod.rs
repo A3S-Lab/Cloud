@@ -8,7 +8,10 @@ pub mod published;
 pub(crate) use application::publish_source_build_input;
 pub use application::{
     GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
-    ISourceBuildInputQueryPort, SourceBuildInputQueryError, SourceBuildInputQueryService,
+    IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
+    PreviewSourceRevisionDesiredState, PreviewSourceRevisionProjectionOutcome,
+    PreviewSourceRevisionProjectionReceipt, ProjectPreviewSourceRevision,
+    SourceBuildInputQueryError, SourceBuildInputQueryService,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{
@@ -57,6 +60,6 @@ pub use infrastructure::persistence::{
 pub use infrastructure::{
     ExternalSourceBuildArchiveAdapter, GitSourceCheckout, GithubAppClient,
     GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
-    RevalidatingGithubInstallationTokens,
+    PullRequestPreviewSourceProjector, RevalidatingGithubInstallationTokens,
 };
 pub use presentation::SourcesModule;

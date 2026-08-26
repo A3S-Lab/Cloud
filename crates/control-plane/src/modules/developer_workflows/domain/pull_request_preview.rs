@@ -1,3 +1,8 @@
+use crate::modules::developer_workflows::published::{
+    PREVIEW_MAX_ACTIVE_PER_POLICY, PREVIEW_MAX_CPU_MILLIS, PREVIEW_MAX_LIFETIME_SECONDS,
+    PREVIEW_MAX_MEMORY_BYTES, PREVIEW_MAX_STORAGE_BYTES, PREVIEW_MAX_WORKLOADS,
+    PREVIEW_MIN_LIFETIME_SECONDS, PREVIEW_MIN_MEMORY_BYTES, PREVIEW_MIN_STORAGE_BYTES,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId,
     PullRequestPreviewId, PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
@@ -7,16 +12,9 @@ use chrono::{DateTime, TimeDelta, Utc};
 use std::cmp::Ordering;
 use uuid::Uuid;
 
-pub const MIN_PREVIEW_LIFETIME_SECONDS: u32 = 5 * 60;
-pub const MAX_PREVIEW_LIFETIME_SECONDS: u32 = 30 * 24 * 60 * 60;
-pub const MAX_ACTIVE_PREVIEWS_PER_POLICY: u16 = 256;
-
-const MIN_PREVIEW_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_PREVIEW_MEMORY_BYTES: u64 = 512 * 1024 * 1024 * 1024;
-const MIN_PREVIEW_STORAGE_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_PREVIEW_STORAGE_BYTES: u64 = 4 * 1024 * 1024 * 1024 * 1024;
-const MAX_PREVIEW_CPU_MILLIS: u64 = 128_000;
-const MAX_PREVIEW_WORKLOADS: u16 = 32;
+pub const MIN_PREVIEW_LIFETIME_SECONDS: u32 = PREVIEW_MIN_LIFETIME_SECONDS;
+pub const MAX_PREVIEW_LIFETIME_SECONDS: u32 = PREVIEW_MAX_LIFETIME_SECONDS;
+pub const MAX_ACTIVE_PREVIEWS_PER_POLICY: u16 = PREVIEW_MAX_ACTIVE_PER_POLICY;
 const PREVIEW_NAMESPACE: Uuid = Uuid::from_bytes([
     0xac, 0xf1, 0x2e, 0xb7, 0xb2, 0x20, 0x4c, 0x19, 0x85, 0x62, 0x23, 0x4a, 0x7e, 0x6d, 0x31, 0x55,
 ]);
@@ -214,12 +212,12 @@ pub struct PreviewQuota {
 impl PreviewQuota {
     pub fn validate(&self) -> Result<(), String> {
         if self.maximum_workloads == 0
-            || self.maximum_workloads > MAX_PREVIEW_WORKLOADS
+            || self.maximum_workloads > PREVIEW_MAX_WORKLOADS
             || self.cpu_millis == 0
-            || self.cpu_millis > MAX_PREVIEW_CPU_MILLIS
-            || !(MIN_PREVIEW_MEMORY_BYTES..=MAX_PREVIEW_MEMORY_BYTES).contains(&self.memory_bytes)
+            || self.cpu_millis > PREVIEW_MAX_CPU_MILLIS
+            || !(PREVIEW_MIN_MEMORY_BYTES..=PREVIEW_MAX_MEMORY_BYTES).contains(&self.memory_bytes)
             || !self.memory_bytes.is_multiple_of(1024 * 1024)
-            || !(MIN_PREVIEW_STORAGE_BYTES..=MAX_PREVIEW_STORAGE_BYTES)
+            || !(PREVIEW_MIN_STORAGE_BYTES..=PREVIEW_MAX_STORAGE_BYTES)
                 .contains(&self.ephemeral_storage_bytes)
             || !self.ephemeral_storage_bytes.is_multiple_of(1024 * 1024)
         {

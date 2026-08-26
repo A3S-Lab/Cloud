@@ -1,5 +1,5 @@
 use super::subscription_postgres::{
-    map_row as map_subscription_row,
+    map_row as map_subscription_row, select_columns as subscription_select_columns,
     select_columns_for_authoritative_fanout as authoritative_subscription_select_columns,
     GithubRepositorySubscriptionRow,
 };
@@ -8,8 +8,13 @@ use crate::infrastructure::{
     store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
+    PullRequestPreviewId, RepositoryError, Sha256Digest, SourcePullRequestChangeId,
     SourceRevisionId,
+};
+use crate::modules::sources::application::{
+    lifecycle_event, IPreviewSourceRevisionProjectionPort, PreviewSourceRevisionProjectionOutcome,
+    PreviewSourceRevisionProjectionReceipt, ProjectPreviewSourceRevision,
 };
 use crate::modules::sources::domain::{
     AcceptSourceRevision, AcceptSourceWebhook, BuildRecipe, ExternalSourceRevision, GitCommitSha,
@@ -41,6 +46,29 @@ struct SourceRevisionRow {
     recipe_digest: String,
     aggregate_version: u64,
     accepted_at: DateTime<Utc>,
+}
+
+struct PreviewSourceRevisionProjectionReceiptRow {
+    organization_id: Uuid,
+    preview_id: Uuid,
+    preview_aggregate_version: u64,
+    lifecycle_event_id: Uuid,
+    correlation_id: Uuid,
+    lifecycle_causation_id: Uuid,
+    source_pull_request_change_id: Uuid,
+    project_id: Uuid,
+    source_environment_id: Uuid,
+    source_subscription_id: Uuid,
+    preview_environment_id: Uuid,
+    installation_id: u64,
+    base_repository_identity: String,
+    base_branch: String,
+    pull_request_id: u64,
+    pull_request_number: u64,
+    fact_digest: String,
+    fact_occurred_at: DateTime<Utc>,
+    outcome: String,
+    source_revision_id: Option<Uuid>,
 }
 
 struct SourceWebhookRow {
@@ -106,6 +134,33 @@ impl FromRow for SourceRevisionRow {
             recipe_digest: decode(row, 9)?,
             aggregate_version: decode(row, 10)?,
             accepted_at: decode(row, 11)?,
+        })
+    }
+}
+
+impl FromRow for PreviewSourceRevisionProjectionReceiptRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            organization_id: decode(row, 0)?,
+            preview_id: decode(row, 1)?,
+            preview_aggregate_version: decode(row, 2)?,
+            lifecycle_event_id: decode(row, 3)?,
+            correlation_id: decode(row, 4)?,
+            lifecycle_causation_id: decode(row, 5)?,
+            source_pull_request_change_id: decode(row, 6)?,
+            project_id: decode(row, 7)?,
+            source_environment_id: decode(row, 8)?,
+            source_subscription_id: decode(row, 9)?,
+            preview_environment_id: decode(row, 10)?,
+            installation_id: decode(row, 11)?,
+            base_repository_identity: decode(row, 12)?,
+            base_branch: decode(row, 13)?,
+            pull_request_id: decode(row, 14)?,
+            pull_request_number: decode(row, 15)?,
+            fact_digest: decode(row, 16)?,
+            fact_occurred_at: decode(row, 17)?,
+            outcome: decode(row, 18)?,
+            source_revision_id: decode(row, 19)?,
         })
     }
 }
@@ -491,6 +546,291 @@ impl ISourceRevisionRepository for PostgresSourceRevisionRepository {
             })
             .collect()
     }
+}
+
+#[async_trait]
+impl IPreviewSourceRevisionProjectionPort for PostgresSourceRevisionRepository {
+    async fn project_preview_source_revision(
+        &self,
+        input: ProjectPreviewSourceRevision,
+    ) -> Result<IdempotentWrite<PreviewSourceRevisionProjectionReceipt>, RepositoryError> {
+        input.validate().map_err(|error| {
+            RepositoryError::Storage(format!(
+                "invalid Preview Source revision projection: {error}"
+            ))
+        })?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    transaction
+                        .advisory_xact_lock(
+                            "a3s.cloud.source-pull-request-preview-revision",
+                            &format!("{}:{}", input.organization_id, input.preview_id),
+                        )
+                        .await?;
+                    if let Some(existing) = load_preview_source_revision_receipt(
+                        transaction,
+                        input.organization_id,
+                        input.preview_id,
+                        input.preview_aggregate_version,
+                    )
+                    .await?
+                    {
+                        return exact_preview_source_revision_replay(existing, &input);
+                    }
+
+                    let latest = load_latest_preview_source_revision_receipt(
+                        transaction,
+                        input.organization_id,
+                        input.preview_id,
+                    )
+                    .await?;
+                    if latest
+                        .as_ref()
+                        .is_some_and(|receipt| !receipt.has_same_scope_as(&input))
+                    {
+                        return Err(preview_projection_conflict(
+                            "Preview lifecycle changed its Sources projection scope",
+                        ));
+                    }
+                    if latest.as_ref().is_some_and(|receipt| {
+                        receipt.preview_aggregate_version > input.preview_aggregate_version
+                    }) {
+                        let receipt = PreviewSourceRevisionProjectionReceipt::from_input(
+                            &input,
+                            PreviewSourceRevisionProjectionOutcome::IgnoredStale,
+                            None,
+                        )
+                        .map_err(preview_projection_invariant)?;
+                        insert_preview_source_revision_receipt(transaction, &receipt).await?;
+                        return Ok(IdempotentWrite {
+                            value: receipt,
+                            replayed: false,
+                        });
+                    }
+
+                    let subscription = fetch_optional::<GithubRepositorySubscriptionRow, _>(
+                        transaction,
+                        subscription_select_columns()
+                            .append(" where organization_id = ")
+                            .bind(input.organization_id.as_uuid())
+                            .append(" and id = ")
+                            .bind(input.source_subscription_id.as_uuid())
+                            .append(" for share"),
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)
+                    .map_err(PostgresPersistenceError::from)
+                    .and_then(map_subscription_row)?;
+                    let decision = input.decide(&subscription).map_err(|error| {
+                        preview_projection_conflict(&format!(
+                            "Preview Source projection authority is invalid: {error}"
+                        ))
+                    })?;
+                    let revision = match decision.revision {
+                        Some(candidate) => {
+                            let (revision, _) =
+                                insert_source_revision(transaction, &candidate).await?;
+                            Some(revision)
+                        }
+                        None => None,
+                    };
+                    let receipt = PreviewSourceRevisionProjectionReceipt::from_input(
+                        &input,
+                        decision.outcome,
+                        revision.as_ref().map(|value| value.id),
+                    )
+                    .map_err(preview_projection_invariant)?;
+                    let event = lifecycle_event(&receipt, revision.as_ref())
+                        .map_err(preview_projection_invariant)?;
+                    insert_preview_source_revision_receipt(transaction, &receipt).await?;
+                    store_outbox(transaction, &event).await?;
+                    Ok(IdempotentWrite {
+                        value: receipt,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+}
+
+const SELECT_PREVIEW_SOURCE_REVISION_RECEIPTS: &str = "select organization_id, preview_id, preview_aggregate_version, lifecycle_event_id, correlation_id, lifecycle_causation_id, source_pull_request_change_id, project_id, source_environment_id, source_subscription_id, preview_environment_id, installation_id, base_repository_identity, base_branch, pull_request_id, pull_request_number, fact_digest, fact_occurred_at, outcome, source_revision_id from source_pull_request_preview_revision_projections";
+
+async fn load_preview_source_revision_receipt(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    preview_id: PullRequestPreviewId,
+    preview_aggregate_version: u64,
+) -> Result<Option<PreviewSourceRevisionProjectionReceipt>, PostgresPersistenceError> {
+    fetch_optional::<PreviewSourceRevisionProjectionReceiptRow, _>(
+        transaction,
+        sql_query::<PreviewSourceRevisionProjectionReceiptRow>(
+            SELECT_PREVIEW_SOURCE_REVISION_RECEIPTS,
+        )
+        .append(" where organization_id = ")
+        .bind(organization_id.as_uuid())
+        .append(" and preview_id = ")
+        .bind(preview_id.as_uuid())
+        .append(" and preview_aggregate_version = ")
+        .bind(preview_aggregate_version),
+    )
+    .await?
+    .map(map_preview_source_revision_receipt)
+    .transpose()
+}
+
+async fn load_latest_preview_source_revision_receipt(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    preview_id: PullRequestPreviewId,
+) -> Result<Option<PreviewSourceRevisionProjectionReceipt>, PostgresPersistenceError> {
+    fetch_optional::<PreviewSourceRevisionProjectionReceiptRow, _>(
+        transaction,
+        sql_query::<PreviewSourceRevisionProjectionReceiptRow>(
+            SELECT_PREVIEW_SOURCE_REVISION_RECEIPTS,
+        )
+        .append(" where organization_id = ")
+        .bind(organization_id.as_uuid())
+        .append(" and preview_id = ")
+        .bind(preview_id.as_uuid())
+        .append(" order by preview_aggregate_version desc limit 1"),
+    )
+    .await?
+    .map(map_preview_source_revision_receipt)
+    .transpose()
+}
+
+async fn insert_preview_source_revision_receipt(
+    transaction: &PostgresTransaction,
+    receipt: &PreviewSourceRevisionProjectionReceipt,
+) -> Result<(), PostgresPersistenceError> {
+    let installation_id = i64::try_from(receipt.installation_id.as_u64()).map_err(|_| {
+        preview_projection_invariant(
+            "Preview Source projection installation ID exceeds PostgreSQL bigint".into(),
+        )
+    })?;
+    let inserted = execute(
+        transaction,
+        sql_query::<()>(
+            "insert into source_pull_request_preview_revision_projections (organization_id, preview_id, preview_aggregate_version, lifecycle_event_id, correlation_id, lifecycle_causation_id, source_pull_request_change_id, project_id, source_environment_id, source_subscription_id, preview_environment_id, installation_id, base_repository_identity, base_branch, pull_request_id, pull_request_number, fact_digest, fact_occurred_at, outcome, source_revision_id) values (",
+        )
+        .bind(receipt.organization_id.as_uuid())
+        .append(", ")
+        .bind(receipt.preview_id.as_uuid())
+        .append(", ")
+        .bind(receipt.preview_aggregate_version)
+        .append(", ")
+        .bind(receipt.lifecycle_event_id)
+        .append(", ")
+        .bind(receipt.correlation_id)
+        .append(", ")
+        .bind(receipt.lifecycle_causation_id)
+        .append(", ")
+        .bind(receipt.source_pull_request_change_id.as_uuid())
+        .append(", ")
+        .bind(receipt.project_id.as_uuid())
+        .append(", ")
+        .bind(receipt.source_environment_id.as_uuid())
+        .append(", ")
+        .bind(receipt.source_subscription_id.as_uuid())
+        .append(", ")
+        .bind(receipt.preview_environment_id.as_uuid())
+        .append(", ")
+        .bind(installation_id)
+        .append(", ")
+        .bind(receipt.base_repository_identity.as_str())
+        .append(", ")
+        .bind(receipt.base_branch.as_str())
+        .append(", ")
+        .bind(receipt.pull_request_id)
+        .append(", ")
+        .bind(receipt.pull_request_number)
+        .append(", ")
+        .bind(receipt.fact_digest.as_str())
+        .append(", ")
+        .bind(receipt.fact_occurred_at)
+        .append(", ")
+        .bind(receipt.outcome.as_str())
+        .append(", ")
+        .bind(receipt.source_revision_id.map(|id| id.as_uuid()))
+        .append(") on conflict (organization_id, preview_id, preview_aggregate_version) do nothing"),
+    )
+    .await;
+    match inserted {
+        Ok(1) => Ok(()),
+        Ok(0) => Err(preview_projection_conflict(
+            "Preview aggregate version was committed concurrently",
+        )),
+        Ok(rows) => Err(preview_projection_invariant(format!(
+            "committing Preview Source revision receipt affected {rows} rows"
+        ))),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
+}
+
+fn map_preview_source_revision_receipt(
+    row: PreviewSourceRevisionProjectionReceiptRow,
+) -> Result<PreviewSourceRevisionProjectionReceipt, PostgresPersistenceError> {
+    PreviewSourceRevisionProjectionReceipt::restore(PreviewSourceRevisionProjectionReceipt {
+        lifecycle_event_id: row.lifecycle_event_id,
+        correlation_id: row.correlation_id,
+        lifecycle_causation_id: row.lifecycle_causation_id,
+        source_pull_request_change_id: SourcePullRequestChangeId::from_uuid(
+            row.source_pull_request_change_id,
+        ),
+        organization_id: OrganizationId::from_uuid(row.organization_id),
+        project_id: ProjectId::from_uuid(row.project_id),
+        source_environment_id: EnvironmentId::from_uuid(row.source_environment_id),
+        source_subscription_id:
+            crate::modules::shared_kernel::domain::SourceSubscriptionId::from_uuid(
+                row.source_subscription_id,
+            ),
+        preview_id: PullRequestPreviewId::from_uuid(row.preview_id),
+        preview_aggregate_version: row.preview_aggregate_version,
+        preview_environment_id: EnvironmentId::from_uuid(row.preview_environment_id),
+        installation_id: crate::modules::sources::domain::GithubInstallationId::parse(
+            row.installation_id,
+        )
+        .map_err(preview_projection_invariant)?,
+        base_repository_identity: row.base_repository_identity,
+        base_branch: row.base_branch,
+        pull_request_id: row.pull_request_id,
+        pull_request_number: row.pull_request_number,
+        fact_digest: Sha256Digest::parse(row.fact_digest).map_err(preview_projection_invariant)?,
+        fact_occurred_at: row.fact_occurred_at,
+        outcome: PreviewSourceRevisionProjectionOutcome::parse(&row.outcome)
+            .map_err(preview_projection_invariant)?,
+        source_revision_id: row.source_revision_id.map(SourceRevisionId::from_uuid),
+    })
+    .map_err(preview_projection_invariant)
+}
+
+fn exact_preview_source_revision_replay(
+    receipt: PreviewSourceRevisionProjectionReceipt,
+    input: &ProjectPreviewSourceRevision,
+) -> Result<IdempotentWrite<PreviewSourceRevisionProjectionReceipt>, PostgresPersistenceError> {
+    if !receipt.matches_input(input) {
+        return Err(preview_projection_conflict(
+            "Preview aggregate version changed lifecycle fact or Sources binding",
+        ));
+    }
+    Ok(IdempotentWrite {
+        value: receipt,
+        replayed: true,
+    })
+}
+
+fn preview_projection_invariant(error: String) -> PostgresPersistenceError {
+    PostgresPersistenceError::Invariant(format!(
+        "Preview Source revision projection is invalid: {error}"
+    ))
+}
+
+fn preview_projection_conflict(message: &str) -> PostgresPersistenceError {
+    PostgresPersistenceError::Repository(RepositoryError::Conflict(message.into()))
 }
 
 async fn reserve_webhook_delivery(

@@ -6,6 +6,7 @@ use super::{
 use crate::modules::developer_workflows::published::{
     PullRequestPreviewLifecycleCommitted, PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY,
     PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
+    PULL_REQUEST_PREVIEW_LIFECYCLE_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, GitCommitSha, SourcePullRequestChangeId,
@@ -14,8 +15,6 @@ use crate::modules::sources::published::{GitProvider, GitRepository};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-
-const MAX_PULL_REQUEST_PREVIEW_LIFECYCLE_BYTES: usize = 16 * 1024;
 
 /// Domain translator between one validated Preview aggregate version and its
 /// aggregate-free Published Language envelope.
@@ -70,7 +69,7 @@ impl PullRequestPreviewLifecycleEvent {
         }
         canonical_json_bounded(
             &envelope.payload,
-            MAX_PULL_REQUEST_PREVIEW_LIFECYCLE_BYTES,
+            PULL_REQUEST_PREVIEW_LIFECYCLE_MAX_BYTES,
             "Preview lifecycle payload",
         )?;
         let payload: PullRequestPreviewLifecycleCommitted =
@@ -103,9 +102,7 @@ impl PullRequestPreviewLifecycleEvent {
     }
 
     fn validate_payload(payload: &PullRequestPreviewLifecycleCommitted) -> Result<(), String> {
-        if payload.source_pull_request_change_id.as_uuid().is_nil() {
-            return Err("Preview lifecycle source fact identity is invalid".into());
-        }
+        payload.validate()?;
         let preview = Self::to_preview(payload)?;
         preview.validate()?;
         if payload != &Self::from_preview(&preview, payload.source_pull_request_change_id) {

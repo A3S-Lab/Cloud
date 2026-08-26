@@ -225,8 +225,9 @@ use crate::modules::sources::{
     DeactivateGithubRepositorySubscriptionHandler, ExternalSourceBuildArchiveAdapter,
     GetGithubConnectionHandler, GitSourceCheckout, GithubAppClient,
     GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer, GithubSourceResolver,
-    GithubWebhookVerifier, ISourceBuildInputQueryPort, ListGithubRepositorySubscriptionsHandler,
-    ListSourceRevisionsHandler, PrepareGithubConnectionOauthHandler,
+    GithubWebhookVerifier, IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
+    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
+    PrepareGithubConnectionOauthHandler, PullRequestPreviewSourceProjector,
     ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
     RevalidatingGithubInstallationTokens, SourceBuildInputQueryService, SourcesModule,
 };
@@ -500,6 +501,8 @@ async fn build_api_worker_application(
     let postgres_adapters = PostgresAdapterFactory::new(executor.clone());
     let developer_workflow_projection =
         run_relay.then(|| postgres_adapters.developer_workflow_projection());
+    let preview_source_revision_projection =
+        run_relay.then(|| postgres_adapters.preview_source_revision_projection());
     let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
     let organizations = adapters.identity.organizations;
     let api_tokens = adapters.identity.api_tokens;
@@ -1275,6 +1278,11 @@ async fn build_api_worker_application(
                 "relay process is missing its Developer Workflows projection adapters".into(),
             ))
         })?;
+        let preview_source_revisions = preview_source_revision_projection.ok_or_else(|| {
+            ControlPlaneStartupError::Framework(BootError::Internal(
+                "relay process is missing its Sources Preview projection adapter".into(),
+            ))
+        })?;
         Some(build_outbox_relay(
             &config,
             OutboxRelayDependencies {
@@ -1291,10 +1299,11 @@ async fn build_api_worker_application(
                     Arc::clone(&alert_policies),
                     Arc::clone(&resource_grants),
                     Arc::clone(&build_candidates),
-                    DeveloperWorkflowProjectionDependencies {
+                    PullRequestPreviewProjectionDependencies {
                         policies: developer_workflows.preview_policies,
                         previews: developer_workflows.preview_projections,
                         environments: Arc::clone(&environments),
+                        source_revisions: preview_source_revisions,
                     },
                 ),
             },
@@ -1713,6 +1722,7 @@ async fn build_relay_application(
         environments,
         preview_policies,
         preview_projections,
+        preview_source_revisions,
         alert_policies,
         outbox,
     } = PostgresAdapterFactory::new(executor.clone()).relay();
@@ -1728,10 +1738,11 @@ async fn build_relay_application(
                 alert_policies,
                 resource_grants,
                 build_candidates,
-                DeveloperWorkflowProjectionDependencies {
+                PullRequestPreviewProjectionDependencies {
                     policies: preview_policies,
                     previews: preview_projections,
                     environments,
+                    source_revisions: preview_source_revisions,
                 },
             ),
         },
@@ -1773,10 +1784,11 @@ fn build_outbox_relay(
         .fold(relay, OutboxRelay::with_projector))
 }
 
-struct DeveloperWorkflowProjectionDependencies {
+struct PullRequestPreviewProjectionDependencies {
     policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     previews: Arc<dyn IPullRequestPreviewProjectionRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    source_revisions: Arc<dyn IPreviewSourceRevisionProjectionPort>,
 }
 
 fn build_outbox_projectors(
@@ -1786,16 +1798,13 @@ fn build_outbox_projectors(
     alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     build_candidates: Arc<dyn IBuildCandidateProjectionPort>,
-    developer_workflows: DeveloperWorkflowProjectionDependencies,
+    preview: PullRequestPreviewProjectionDependencies,
 ) -> Vec<Arc<dyn IIntegrationEventProjector>> {
-    let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> =
-        Arc::new(PullRequestPreviewProjectionService::new(
-            developer_workflows.policies,
-            developer_workflows.previews,
-        ));
-    let preview_environments: Arc<dyn IPreviewEnvironmentPort> = Arc::new(
-        ProjectsPreviewEnvironmentAdapter::new(developer_workflows.environments),
+    let preview_service: Arc<dyn IPullRequestPreviewProjectionPort> = Arc::new(
+        PullRequestPreviewProjectionService::new(preview.policies, preview.previews),
     );
+    let preview_environments: Arc<dyn IPreviewEnvironmentPort> =
+        Arc::new(ProjectsPreviewEnvironmentAdapter::new(preview.environments));
     vec![
         Arc::new(
             OutboxNotificationProjector::new(notifications, memberships)
@@ -1806,6 +1815,9 @@ fn build_outbox_projectors(
         Arc::new(PullRequestPreviewProjector::new(
             preview_service,
             preview_environments,
+        )),
+        Arc::new(PullRequestPreviewSourceProjector::new(
+            preview.source_revisions,
         )),
     ]
 }
