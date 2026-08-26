@@ -477,10 +477,13 @@ owner's admission rules, and return an immutable contract-digest receipt.
 That receipt is correlated to the target kind, complete Organization/Project/
 Environment/BuildPlan/BuildRun/Source/Profile context, and exact Artifact
 digest, so a stale or cross-target owner response fails closed. Developer
-Workflows does not retain either owner template. Test adapters prove both owner
-invariants while concrete production adapters and composition remain
-unavailable. Developer Workflows does not create BuildRuns, Workloads, Routes,
-Executions, or Automations, or evaluate timers.
+Workflows does not retain either owner template. Component-only `P0.2-C3a`
+confines the concrete Workloads translation to one Infrastructure adapter; it
+uses the existing `ServiceTemplate` validation/digest and returns only the
+consumer receipt. Artifacts outcome adaptation, the Executions adapter,
+production composition, and every owner lifecycle write remain unavailable.
+Developer Workflows does not create BuildRuns, Workloads, Routes, Executions,
+or Automations, or evaluate timers.
 
 Component-only `P0.3-C1` adds authenticated typed GitHub pull-request changes
 and a pure Preview lifecycle reducer. The reducer owns a minimal local

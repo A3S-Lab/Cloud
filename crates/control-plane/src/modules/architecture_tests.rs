@@ -817,6 +817,48 @@ fn developer_workflows_projects_handoff_is_confined_to_one_infrastructure_adapte
 }
 
 #[test]
+fn developer_workflows_workloads_admission_is_confined_to_one_infrastructure_adapter() {
+    let adapter_path = "developer_workflows/infrastructure/service_profile.rs";
+    let mut workloads_imports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("developer_workflows")
+            && source.contains("crate::modules::workloads")
+        {
+            workloads_imports.insert(display(relative));
+        }
+    });
+
+    assert_eq!(
+        workloads_imports,
+        lines(adapter_path),
+        "Developer Workflows must reach Workloads only through its consumer-owned Application port and one Infrastructure adapter"
+    );
+
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Workloads Service-profile adapter");
+    assert!(
+        adapter.contains("impl IServiceProfileAdmissionPort for WorkloadsServiceProfileAdapter")
+            && adapter.contains("ServiceTemplate")
+            && adapter.contains("template.digest()"),
+        "the Workloads adapter must implement the consumer port and use the owner's exact template validation/digest contract"
+    );
+    for forbidden in [
+        "IWorkloadRepository",
+        "CreateDeploymentBundle",
+        "Deployment::create",
+        "OperationRequest",
+        "IOutboxRepository",
+        "OutboxRelay",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !adapter.contains(forbidden),
+            "the component-only Workloads adapter introduced owner lifecycle or delivery mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))
