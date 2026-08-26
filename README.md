@@ -121,7 +121,7 @@ not imply availability.
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
 | Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
-| Supply | Developer Workflows | Reviewable BuildPlan/workload-profile proposals, exact Workloads Service-template admission, canonical Preview Policy revisions, durable PR lifecycle projection and owner-facing handoff intent, acceptance decisions |
+| Supply | Developer Workflows | Reviewable BuildPlan/workload-profile proposals, exact Workloads Service/Executions Task-template admission, canonical Preview Policy revisions, durable PR lifecycle projection and owner-facing handoff intent, acceptance decisions |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildCandidate, sole BuildRun lifecycle, Preview build-admission/retirement fence, admitted output, provenance, evidence, retention, node artifact transport |
 | Execution | Operations | User-visible long-running operation identity and progress projection |

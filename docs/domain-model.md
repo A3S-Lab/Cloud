@@ -477,11 +477,13 @@ owner's admission rules, and return an immutable contract-digest receipt.
 That receipt is correlated to the target kind, complete Organization/Project/
 Environment/BuildPlan/BuildRun/Source/Profile context, and exact Artifact
 digest, so a stale or cross-target owner response fails closed. Developer
-Workflows does not retain either owner template. Component-only `P0.2-C3a`
-confines the concrete Workloads translation to one Infrastructure adapter; it
-uses the existing `ServiceTemplate` validation/digest and returns only the
-consumer receipt. Artifacts outcome adaptation, the Executions adapter,
-production composition, and every owner lifecycle write remain unavailable.
+Workflows does not retain either owner template. Component-only `P0.2-C3a/C3b`
+confine the concrete Workloads and Executions translations to one Infrastructure
+adapter per owner; they use the existing `ServiceTemplate`/`ExecutionTemplate`
+validation and digest contracts and return only the consumer receipt. The
+scheduled profile's schedule remains in the compiled result and no adapter
+creates a timer or scheduler row. Artifacts outcome adaptation, production
+composition, and every owner lifecycle write remain unavailable.
 Developer Workflows does not create BuildRuns, Workloads, Routes, Executions,
 or Automations, or evaluate timers.
 

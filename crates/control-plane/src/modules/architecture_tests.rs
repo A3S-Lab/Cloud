@@ -836,10 +836,16 @@ fn developer_workflows_workloads_admission_is_confined_to_one_infrastructure_ada
 
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))
         .expect("read Workloads Service-profile adapter");
+    let production_adapter = adapter
+        .split("#[cfg(test)]")
+        .next()
+        .expect("production Workloads adapter source");
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
     assert!(
-        adapter.contains("impl IServiceProfileAdmissionPort for WorkloadsServiceProfileAdapter")
-            && adapter.contains("ServiceTemplate")
-            && adapter.contains("template.digest()"),
+        compact_adapter
+            .contains("implIServiceProfileAdmissionPortforWorkloadsServiceProfileAdapter")
+            && production_adapter.contains("ServiceTemplate")
+            && compact_adapter.contains("template.digest()"),
         "the Workloads adapter must implement the consumer port and use the owner's exact template validation/digest contract"
     );
     for forbidden in [
@@ -852,8 +858,58 @@ fn developer_workflows_workloads_admission_is_confined_to_one_infrastructure_ada
         "tokio::spawn",
     ] {
         assert!(
-            !adapter.contains(forbidden),
+            !production_adapter.contains(forbidden),
             "the component-only Workloads adapter introduced owner lifecycle or delivery mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn developer_workflows_executions_admission_is_confined_to_one_infrastructure_adapter() {
+    let adapter_path = "developer_workflows/infrastructure/scheduled_task_profile.rs";
+    let mut executions_imports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("developer_workflows")
+            && source.contains("crate::modules::executions")
+        {
+            executions_imports.insert(display(relative));
+        }
+    });
+
+    assert_eq!(
+        executions_imports,
+        lines(adapter_path),
+        "Developer Workflows must reach Executions only through its consumer-owned Application port and one Infrastructure adapter"
+    );
+
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Executions scheduled-Task adapter");
+    let production_adapter = adapter
+        .split("#[cfg(test)]")
+        .next()
+        .expect("production Executions adapter source");
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    assert!(
+        compact_adapter.contains(
+            "implIScheduledTaskProfileAdmissionPortforExecutionsScheduledTaskProfileAdapter"
+        ) && production_adapter.contains("ExecutionTemplate")
+            && compact_adapter.contains("template.digest()"),
+        "the Executions adapter must implement the consumer port and use the owner's exact template validation/digest contract"
+    );
+    for forbidden in [
+        "IExecutionRepository",
+        "IExecutionTemplateRepository",
+        "CreateExecutionTemplateCommand",
+        "CreateExecutionHandler",
+        "Execution::create",
+        "OperationRequest",
+        "IOutboxRepository",
+        "OutboxRelay",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "the component-only Executions adapter introduced owner lifecycle or delivery mechanism {forbidden}"
         );
     }
 }
