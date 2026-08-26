@@ -1,4 +1,5 @@
 mod acceptance;
+mod accepted_profile_compilation;
 mod authorization;
 mod build_outcome;
 mod detection;
@@ -12,6 +13,10 @@ mod target_admission;
 mod workload_profile_acceptance;
 
 pub use acceptance::{AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult};
+pub use accepted_profile_compilation::{
+    CompileAcceptedWorkloadProfile, CompileAcceptedWorkloadProfileHandler,
+    CompiledAcceptedWorkloadProfile,
+};
 pub use authorization::{
     DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
     IDeveloperWorkflowAuthorizationPort,
@@ -55,6 +60,9 @@ mod tests;
 
 #[cfg(test)]
 mod profile_compilation_tests;
+
+#[cfg(test)]
+mod accepted_profile_compilation_tests;
 
 #[cfg(test)]
 mod workload_profile_acceptance_tests;

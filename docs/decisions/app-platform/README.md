@@ -69,6 +69,7 @@ AI application platform parity manifest.
 | [0062](0062-exact-finite-execution-dispatch-authority.md) | Admit only the exact finite Execution profile through the existing Workflow execution port |
 | [0063](0063-single-preview-environment-owner-handoff.md) | Hand active Preview lifecycle to the sole Projects Environment authority through the existing Outbox Relay |
 | [0064](0064-flow-owned-connector-cancellation-compensation.md) | Compensate completed exact Connector effects during Flow-owned cancellation |
+| [0065](0065-single-accepted-workload-profile-production-compilation.md) | Compose one exact accepted workload-profile compilation path from the existing owner ACLs |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

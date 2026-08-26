@@ -24,7 +24,9 @@ use crate::modules::applications::{
     WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
-use crate::modules::artifacts::application::BuildRunReconciler;
+use crate::modules::artifacts::application::{
+    BuildRunReconciler, ExternalSourceBuildOutcomeQueryService,
+};
 use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildCandidateProjector, BuildFlowRuntime,
     BuildFlowRuntimeDependencies, CancelBuildRunHandler, CloudBuildSourceResolver,
@@ -72,10 +74,12 @@ use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
 use crate::modules::developer_workflows::{
-    IPreviewEnvironmentPort, IPullRequestPreviewPolicyRepository,
-    IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
+    ArtifactsWorkloadBuildOutcomeAdapter, CompileAcceptedWorkloadProfileHandler,
+    ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository, IPreviewEnvironmentPort,
+    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
+    IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
     ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
-    PullRequestPreviewProjector,
+    PullRequestPreviewProjector, WorkloadProfileCompilationService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -583,6 +587,8 @@ async fn build_api_worker_application(
     let connector_revocations = connector_execution_adapters.revocations;
     let applications = adapters.applications;
     let application_sessions = adapters.application_sessions;
+    let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
+    let developer_workload_profiles = adapters.developer_workflows.workload_profiles;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
@@ -1675,6 +1681,8 @@ async fn build_api_worker_application(
                 connector_revocations,
                 applications,
                 application_sessions,
+                developer_workflow_build_plans,
+                developer_workload_profiles,
                 durable_cell_applications,
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
@@ -1900,6 +1908,8 @@ struct ManagementApplicationDependencies {
     connector_revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
     applications: Arc<dyn IApplicationRepository>,
     application_sessions: Arc<dyn IApplicationSessionRepository>,
+    developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
+    developer_workload_profiles: Arc<dyn IWorkloadProfileRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
@@ -1981,6 +1991,8 @@ fn build_management_application_with_health(
         connector_revocations,
         applications,
         application_sessions,
+        developer_workflow_build_plans,
+        developer_workload_profiles,
         durable_cell_applications,
         durable_cell_deployments,
         oci_artifacts,
@@ -2035,6 +2047,22 @@ fn build_management_application_with_health(
         Arc::clone(&agents),
         Arc::clone(&workflow_runs),
     ));
+    let developer_workflow_build_outcomes = Arc::new(ExternalSourceBuildOutcomeQueryService::new(
+        Arc::clone(&builds),
+    ));
+    let developer_workflow_compiler = Arc::new(WorkloadProfileCompilationService::new(
+        Arc::new(ArtifactsWorkloadBuildOutcomeAdapter::new(
+            developer_workflow_build_outcomes,
+            Arc::clone(&developer_workflow_build_plans),
+        )),
+        Arc::new(WorkloadsServiceProfileAdapter::new()),
+        Arc::new(ExecutionsScheduledTaskProfileAdapter::new()),
+    ));
+    let compile_developer_workload_profiles = CompileAcceptedWorkloadProfileHandler::new(
+        developer_workflow_build_plans,
+        developer_workload_profiles,
+        developer_workflow_compiler,
+    );
     let list_notifications = Arc::clone(&notifications);
     let get_notifications = Arc::clone(&notifications);
     let mark_notifications_read = notifications;
@@ -3372,6 +3400,10 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::artifacts::GetBuildRunLogs, _>(
                     GetBuildRunLogsHandler::new(get_build_logs),
                 )
+                .query_handler::<
+                    crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,
+                    _,
+                >(compile_developer_workload_profiles)
                 .query_handler::<crate::modules::executions::ListExecutions, _>(
                     ListExecutionsHandler::new(list_executions),
                 )

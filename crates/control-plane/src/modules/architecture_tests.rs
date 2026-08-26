@@ -986,6 +986,47 @@ fn developer_workflows_artifacts_outcome_handoff_has_one_anti_corruption_adapter
 }
 
 #[test]
+fn developer_workflows_accepted_profile_compilation_keeps_one_read_only_interface_boundary() {
+    let source = std::fs::read_to_string(
+        module_root().join("developer_workflows/application/accepted_profile_compilation.rs"),
+    )
+    .expect("read accepted workload-profile compilation query");
+    let production = production_source(&source);
+    let compact = production.split_whitespace().collect::<String>();
+
+    for required in [
+        "Arc<dynIBuildPlanRepository>",
+        "Arc<dynIWorkloadProfileRepository>",
+        "Arc<WorkloadProfileCompilationService>",
+        "implQueryHandler<CompileAcceptedWorkloadProfile>",
+    ] {
+        assert!(
+            compact.contains(required),
+            "accepted-profile compilation lost its local Application interface boundary {required}"
+        );
+    }
+
+    for forbidden in [
+        "crate::modules::artifacts",
+        "crate::modules::workloads",
+        "crate::modules::executions",
+        "Postgres",
+        "IBuildRunRepository",
+        "IWorkloadRepository",
+        "IExecutionRepository",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "accepted-profile compilation imported foreign owner internals or duplicate lifecycle mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))

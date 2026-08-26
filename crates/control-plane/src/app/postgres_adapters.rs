@@ -17,8 +17,10 @@ use crate::modules::connectors::{
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
 };
 use crate::modules::developer_workflows::{
-    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionRepository,
-    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+    IBuildPlanRepository, IPullRequestPreviewPolicyRepository,
+    IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
+    PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
+    PostgresPullRequestPreviewProjectionRepository, PostgresWorkloadProfileRepository,
 };
 use crate::modules::durable_cells::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
@@ -114,6 +116,9 @@ impl PostgresAdapterFactory {
             edge: EdgePostgresAdapters::new(self.executor.clone()),
             assets: AssetPostgresAdapters::new(self.executor.clone()),
             sources: SourcePostgresAdapters::new(self.executor.clone()),
+            developer_workflows: DeveloperWorkflowManagementPostgresAdapters::new(
+                self.executor.clone(),
+            ),
             search: Arc::new(PostgresSearchRepository::new(self.executor.clone())),
             audit_records: Arc::new(PostgresAuditRecordRepository::new(self.executor.clone())),
             security_investigations: Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(
@@ -171,8 +176,10 @@ impl PostgresAdapterFactory {
         ConnectorExecutionPostgresAdapters::new(self.executor.clone())
     }
 
-    pub(super) fn developer_workflow_projection(&self) -> DeveloperWorkflowPostgresAdapters {
-        DeveloperWorkflowPostgresAdapters::new(self.executor.clone())
+    pub(super) fn developer_workflow_projection(
+        &self,
+    ) -> DeveloperWorkflowProjectionPostgresAdapters {
+        DeveloperWorkflowProjectionPostgresAdapters::new(self.executor.clone())
     }
 
     pub(super) fn preview_source_revision_projection(
@@ -214,6 +221,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) edge: EdgePostgresAdapters,
     pub(super) assets: AssetPostgresAdapters,
     pub(super) sources: SourcePostgresAdapters,
+    pub(super) developer_workflows: DeveloperWorkflowManagementPostgresAdapters,
     pub(super) search: Arc<dyn ISearchRepository>,
     pub(super) audit_records: Arc<dyn IAuditRecordRepository>,
     pub(super) security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
@@ -245,12 +253,26 @@ pub(super) struct RelayPostgresAdapters {
     pub(super) outbox: Arc<dyn IOutboxRepository>,
 }
 
-pub(super) struct DeveloperWorkflowPostgresAdapters {
+pub(super) struct DeveloperWorkflowManagementPostgresAdapters {
+    pub(super) build_plans: Arc<dyn IBuildPlanRepository>,
+    pub(super) workload_profiles: Arc<dyn IWorkloadProfileRepository>,
+}
+
+impl DeveloperWorkflowManagementPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        Self {
+            build_plans: Arc::new(PostgresBuildPlanRepository::new(executor.clone())),
+            workload_profiles: Arc::new(PostgresWorkloadProfileRepository::new(executor)),
+        }
+    }
+}
+
+pub(super) struct DeveloperWorkflowProjectionPostgresAdapters {
     pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
 }
 
-impl DeveloperWorkflowPostgresAdapters {
+impl DeveloperWorkflowProjectionPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         Self {
             preview_policies: Arc::new(PostgresPullRequestPreviewPolicyRepository::new(

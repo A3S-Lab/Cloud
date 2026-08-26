@@ -18,6 +18,9 @@ use crate::modules::audit::{
 use crate::modules::connectors::{
     InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
 };
+use crate::modules::developer_workflows::{
+    InMemoryBuildPlanRepository, InMemoryWorkloadProfileRepository,
+};
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
@@ -2041,6 +2044,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             application_sessions: Arc::new(
                 crate::modules::applications::InMemoryApplicationSessionRepository::new(),
             ),
+            developer_workflow_build_plans: Arc::new(InMemoryBuildPlanRepository::new()),
+            developer_workload_profiles: Arc::new(InMemoryWorkloadProfileRepository::new()),
             durable_cell_applications: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
             ),

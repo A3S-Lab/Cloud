@@ -352,6 +352,8 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         "PostgresDurableCellApplicationRepository",
         "PostgresDurableCellDeploymentRepository",
         "PostgresConnectorExecutionAttemptRepository",
+        "PostgresBuildPlanRepository",
+        "PostgresWorkloadProfileRepository",
         "PostgresPullRequestPreviewPolicyRepository",
         "PostgresPullRequestPreviewProjectionRepository",
         "PostgresSourceRevisionRepository",
@@ -433,7 +435,8 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         "EdgePostgresAdapters::new",
         "AssetPostgresAdapters::new",
         "SourcePostgresAdapters::new",
-        "DeveloperWorkflowPostgresAdapters::new",
+        "DeveloperWorkflowManagementPostgresAdapters::new",
+        "DeveloperWorkflowProjectionPostgresAdapters::new",
     ] {
         assert!(
             adapters.contains(family),
@@ -452,6 +455,51 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         assert!(
             !adapters.contains(forbidden),
             "the adapter factory acquired I/O or persistence behavior: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn accepted_workload_profile_compilation_has_one_production_composition_path() {
+    let composition = include_str!("../../app.rs");
+    let adapters = include_str!("../postgres_adapters.rs");
+
+    for constructor in [
+        "ExternalSourceBuildOutcomeQueryService::new(",
+        "ArtifactsWorkloadBuildOutcomeAdapter::new(",
+        "WorkloadsServiceProfileAdapter::new(",
+        "ExecutionsScheduledTaskProfileAdapter::new(",
+        "WorkloadProfileCompilationService::new(",
+        "CompileAcceptedWorkloadProfileHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Developer Workflows production compilation must compose {constructor} exactly once"
+        );
+    }
+    assert_eq!(
+        composition
+            .matches("crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,")
+            .count(),
+        1,
+        "the exact accepted-profile query must be registered once on the existing CQRS bus"
+    );
+    assert_eq!(
+        adapters
+            .matches("DeveloperWorkflowManagementPostgresAdapters::new(")
+            .count(),
+        1,
+        "the API/Worker family must select one Developer Workflows management repository family"
+    );
+    for repository in [
+        "PostgresBuildPlanRepository",
+        "PostgresWorkloadProfileRepository",
+    ] {
+        assert_eq!(
+            adapters.matches(&format!("{repository}::new(")).count(),
+            1,
+            "Developer Workflows persistence must retain one constructor rule for {repository}"
         );
     }
 }

@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`; component-only `P0.2-C3a/C3b/C3c` add the concrete Workloads and Executions anti-corruption adapters plus the Artifacts-owned successful external-source BuildRun Published Language/query and sole Developer Workflows build-outcome adapter. They validate exact local BuildPlan and owner template contracts without creating owner lifecycle state. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. `P0.3-C5a` atomically publishes each committed Preview mutation and idempotently hands active lifecycle to the existing Projects Environment authority through that same Relay/projector. `P0.3-C5b` projects every applied lifecycle version into one ordinary Sources SourceRevision or cleanup/suppression receipt through migration `159`, then publishes one exact bounded specialized fact through the same transaction and Relay. Component-only `P0.3-C5c` consumes only that fact through the existing Artifacts projector and migration `162`; only the latest active Preview version can reserve the immutable candidate, retirement atomically requests cancellation on the sole BuildRun lifecycle, and an exact receipt-bound same-SourceRevision reopen authorizes at most one retry. P0.2 production composition, Workload/Execution lifecycle, route, operation, and schedule handoffs, Environment and Preview cleanup/expiry execution, interfaces, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`; component-only `P0.2-C3a/C3b/C3c` add the concrete Workloads and Executions anti-corruption adapters plus the Artifacts-owned successful external-source BuildRun Published Language/query and sole Developer Workflows build-outcome adapter. They validate exact local BuildPlan and owner template contracts without creating owner lifecycle state. `P0.2-C4` production-composes one internal exact accepted-revision compilation query through those existing repositories and ACLs while retaining revision causation and creating no owner lifecycle state. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. `P0.3-C5a` atomically publishes each committed Preview mutation and idempotently hands active lifecycle to the existing Projects Environment authority through that same Relay/projector. `P0.3-C5b` projects every applied lifecycle version into one ordinary Sources SourceRevision or cleanup/suppression receipt through migration `159`, then publishes one exact bounded specialized fact through the same transaction and Relay. Component-only `P0.3-C5c` consumes only that fact through the existing Artifacts projector and migration `162`; only the latest active Preview version can reserve the immutable candidate, retirement atomically requests cancellation on the sole BuildRun lifecycle, and an exact receipt-bound same-SourceRevision reopen authorizes at most one retry. P0.2 acceptance/public surfaces and Workload/Execution lifecycle, route, operation, and schedule handoffs, Environment and Preview cleanup/expiry execution, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -998,7 +998,8 @@ targets, resources, ports, and health policy into the existing Workloads
 The returned receipt remains bound to the complete BuildPlan/BuildRun/source/
 profile context and exact artifact digest. No Workload, revision, Deployment,
 Operation, Outbox event, retry, or rollout state is created; production
-composition and owner lifecycle handoff remain later slices.
+compilation is supplied by C4 and owner lifecycle handoff remains a later
+slice.
 
 Component-only `P0.2-C3b` replaces the scheduled-profile test-only target with
 one concrete Executions anti-corruption adapter. It implements the
@@ -1008,8 +1009,8 @@ input, resources, and execution timeout into the existing `ExecutionTemplate`,
 then invokes Executions' own validation and digest contract. The schedule stays
 in the compiled Developer Workflows result for a later owner handoff. No
 ExecutionTemplate revision, Execution, Operation, Outbox event, scheduler,
-retry, or timer state is created; production composition and owner lifecycle
-handoff remain later slices.
+retry, or timer state is created; production compilation is supplied by C4 and
+owner lifecycle handoff remains a later slice.
 
 Component-only `P0.2-C3c` closes the build-outcome anti-corruption boundary.
 Artifacts publishes the immutable
@@ -1023,7 +1024,21 @@ Published Language, loads the deterministic exact accepted BuildPlan through
 the local `IBuildPlanRepository`, and fails closed on scope, source, recipe, or
 acceptance-time drift before adding that local plan ID/digest. C3c adds no
 table, repository, event, relay, queue, worker, Operation, or lifecycle write;
-production composition and target-owner lifecycle handoff remain later slices.
+target-owner lifecycle handoff remains a later slice.
+
+`P0.2-C4` production-composes the exact accepted-profile compilation read path.
+One internal CQRS query requires the exact Organization, Project, Environment,
+BuildPlan, logical profile, profile revision, and successful BuildRun
+identities. Its Application handler loads the plan and revision through the
+consumer-owned repository interfaces, verifies immutable identity and
+relationship, and invokes the sole C3 Artifacts, Workloads, and Executions
+anti-corruption adapters. The result retains the exact profile revision
+identity and number for a later owner handoff. The typed PostgreSQL factory
+selects one API/Worker management repository family while the Relay Preview
+projection family remains separate, and the existing CQRS bus registers the
+query exactly once. C4 adds no public interface or authorization claim, table,
+migration, write, Outbox, relay, queue, worker, Operation, Workload/Execution,
+route, retry, timer, scheduler, or owner lifecycle.
 
 Component-only `P0.3-C1` adds the first pull-request Preview boundary. The
 existing HMAC-first GitHub verifier now parses only `opened`, `synchronize`,

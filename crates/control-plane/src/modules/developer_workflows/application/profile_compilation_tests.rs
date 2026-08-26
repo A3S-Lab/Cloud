@@ -539,7 +539,7 @@ fn verified_outcome(
     }
 }
 
-fn plan_and_build() -> (AcceptedBuildPlan, BuildRun) {
+pub(super) fn plan_and_build() -> (AcceptedBuildPlan, BuildRun) {
     let accepted_at = Utc
         .with_ymd_and_hms(2026, 8, 24, 1, 0, 0)
         .single()
@@ -634,7 +634,7 @@ fn resources(execution_timeout_ms: Option<u64>) -> WorkloadProfileResources {
     }
 }
 
-fn web_profile() -> WorkloadProfileSpec {
+pub(super) fn web_profile() -> WorkloadProfileSpec {
     WorkloadProfileSpec {
         name: "api".into(),
         kind: WorkloadProfileKind::Web,
