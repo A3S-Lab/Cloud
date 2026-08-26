@@ -58,14 +58,14 @@ struct ClaimRuntime {
     stop_not_found: AtomicBool,
 }
 
-struct CodeHarnessRuntime {
-    calls: AtomicUsize,
-    observation: RuntimeObservation,
+pub(super) struct CodeHarnessRuntime {
+    pub(super) calls: AtomicUsize,
+    pub(super) observation: RuntimeObservation,
 }
 
-struct RecordingCodeHarness {
-    calls: AtomicUsize,
-    expected_endpoint: RuntimeServiceEndpoint,
+pub(super) struct RecordingCodeHarness {
+    pub(super) calls: AtomicUsize,
+    pub(super) expected_endpoint: RuntimeServiceEndpoint,
 }
 
 struct RecordingDurableCellOperator {
@@ -319,7 +319,7 @@ fn command(
     .expect("command")
 }
 
-fn claim_command(
+pub(super) fn claim_command(
     node_id: Uuid,
     aggregate_id: Uuid,
     sequence: u64,

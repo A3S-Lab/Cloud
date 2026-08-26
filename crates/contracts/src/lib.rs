@@ -26,11 +26,15 @@ pub use a3s_runtime::contract::RuntimeServiceEndpoint;
 pub use agent_provider::{
     AgentProviderCapabilityNegotiationV1, AgentProviderCapabilityRequirementsV1,
     AgentProviderCapabilityV1, AgentProviderCommandActionV1, AgentProviderCommandReceiptV1,
-    AgentProviderCommandV1, AgentProviderEventPageV1, AgentProviderEventReceiptV1,
-    AgentProviderEventRecordV1, AgentProviderProfile, AgentProviderRunCancelV1,
-    AgentProviderRunIdentityV1, AgentProviderRunRecoverV1, AgentProviderRunStartV1,
-    AgentProviderRunStateV1, AgentProviderSemanticEventV1, AGENT_PROVIDER_PROFILE_SCHEMA_V1,
-    AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProviderCommandV1, AgentProviderEventPageRequestV1, AgentProviderEventPageV1,
+    AgentProviderEventReceiptV1, AgentProviderEventRecordV1, AgentProviderProfile,
+    AgentProviderRunCancelV1, AgentProviderRunIdentityV1, AgentProviderRunRecoverV1,
+    AgentProviderRunStartV1, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
+    AGENT_PROVIDER_COMMAND_HTTP_PATH_V1, AGENT_PROVIDER_EVENT_PAGE_HTTP_PATH_V1,
+    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES, AGENT_PROVIDER_MAX_EVENTS_PER_PAGE,
+    AGENT_PROVIDER_MAX_EVENT_PAGE_BYTES, AGENT_PROVIDER_PROFILE_SCHEMA_V1,
+    AGENT_PROVIDER_PROTOCOL_V1, NATIVE_CODE_AGENT_PROVIDER_KIND,
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use app_platform_manifest::{

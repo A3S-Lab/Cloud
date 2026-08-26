@@ -210,7 +210,12 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         )
         .await?
         .map_err(|error| invalid(format!("could not create Agent conversation: {error}")))?;
-    let execution = StartAgentExecutionHandler::new(agents.clone(), assets, artifacts)
+    let execution = StartAgentExecutionHandler::new(
+        agents.clone(),
+        assets,
+        artifacts,
+        Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
+    )
         .execute(
             StartAgentExecution {
                 organization_id,
@@ -218,6 +223,7 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
                 resource_access: ResourceAccessEvaluator::organization_wide(),
                 agent_asset_id: asset.id,
                 agent_asset_release_id: published.id,
+                provider_kind: NATIVE_CODE_AGENT_PROVIDER_KIND.into(),
                 input: json!({"prompt": "prove durable recovery"}),
                 idempotency_key: "start-recovery-execution".into(),
                 request_id: Uuid::now_v7(),

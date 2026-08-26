@@ -11,5 +11,8 @@ pub use agent_execution_flow::{
 pub(crate) use agent_provider::{
     accept_code_receipt, encode_code_command, project_code_event_page,
 };
-pub use agent_provider::{NativeCodeAgentExecutionProvider, ReferenceEchoAgentExecutionProvider};
+pub use agent_provider::{
+    BuiltInAgentExecutionProviderRegistry, NativeCodeAgentExecutionProvider,
+    ReferenceEchoAgentExecutionProvider,
+};
 pub use persistence::{InMemoryAgentRepository, PostgresAgentRepository};

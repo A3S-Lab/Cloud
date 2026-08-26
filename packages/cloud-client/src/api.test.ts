@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.68.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.69.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1971,6 +1971,7 @@ describe('CloudApi', () => {
     const input = {
       agentAssetId: 'agent / one',
       agentAssetReleaseId: 'release',
+      providerKind: 'reference.echo' as const,
       input: { message: 'hello' },
     };
 
@@ -2053,6 +2054,18 @@ describe('CloudApi', () => {
     expect(() => api.getAgentExecutionEvents('organization', 'conversation', { limit: 201 })).toThrow(
       'Agent event limit must be between 1 and 200'
     );
+    expect(() =>
+      api.startAgentExecution(
+        'organization',
+        'conversation',
+        {
+          agentAssetId: 'agent',
+          agentAssetReleaseId: 'release',
+          providerKind: 'unknown.provider' as never,
+        },
+        'agent:start'
+      )
+    ).toThrow('Agent provider kind must be a3s.code or reference.echo');
     expect(called).toBe(false);
   });
 

@@ -486,20 +486,23 @@ impl AgentCodeRunBinding {
     pub fn validate(&self) -> Result<(), String> {
         let provider = self.provider()?;
         provider.validate()?;
-        if provider.kind() != "a3s.code"
-            || provider.native_protocol() != AGENT_PROTOCOL_V1
+        let native_code = provider.kind() == super::NATIVE_CODE_AGENT_PROVIDER_KIND;
+        if self.identity.schema != AgentProtocolRunIdentityV1::SCHEMA
             || self.identity.protocol != provider.native_protocol()
+            || native_code && provider.native_protocol() != AGENT_PROTOCOL_V1
         {
-            return Err("Agent Code run binding has a different provider profile".into());
+            return Err("Agent run binding has a different provider profile".into());
         }
         self.provider_identity()?
             .validate_for(&provider.profile()?)?;
         if Sha256Digest::parse(self.runtime_spec_digest.as_str())? != self.runtime_spec_digest {
             return Err("Agent Code Runtime spec digest is invalid".into());
         }
-        self.identity
-            .validate()
-            .map_err(|error| format!("invalid A3S Code run identity ({})", error.code()))?;
+        if native_code {
+            self.identity
+                .validate()
+                .map_err(|error| format!("invalid A3S Code run identity ({})", error.code()))?;
+        }
         if self.node_id.as_uuid().is_nil()
             || self.workload_id.as_uuid().is_nil()
             || self.workload_revision_id.as_uuid().is_nil()
@@ -522,9 +525,11 @@ impl AgentCodeRunBinding {
         {
             return Err("Agent Code run binding is invalid".into());
         }
-        self.node_runtime_binding(uuid::Uuid::from_u128(1))
-            .validate()
-            .map_err(|error| format!("invalid legacy A3S Code Node binding: {error}"))?;
+        if native_code {
+            self.node_runtime_binding(uuid::Uuid::from_u128(1))
+                .validate()
+                .map_err(|error| format!("invalid legacy A3S Code Node binding: {error}"))?;
+        }
         self.node_provider_runtime_binding(uuid::Uuid::from_u128(1))?
             .validate()
     }

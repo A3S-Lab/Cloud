@@ -1,4 +1,5 @@
 mod code_run_journal;
+mod provider_run_journal;
 
 use crate::state_file::{self, SecureStateError, StateLock};
 use a3s_cloud_contracts::{
@@ -158,6 +159,7 @@ impl CommandJournal {
         }
         self.resource_claim_projection()?;
         self.code_run_bindings_projection()?;
+        self.provider_run_bindings_projection()?;
         Ok(())
     }
 

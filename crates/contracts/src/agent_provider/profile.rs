@@ -4,6 +4,9 @@ use sha2::{Digest, Sha256};
 
 pub const AGENT_PROVIDER_PROFILE_SCHEMA_V1: &str = "a3s.cloud.agent-provider-profile.v1";
 pub const AGENT_PROVIDER_PROTOCOL_V1: &str = "a3s.cloud.agent-provider.v1";
+pub const NATIVE_CODE_AGENT_PROVIDER_KIND: &str = "a3s.code";
+pub const REFERENCE_ECHO_AGENT_PROVIDER_KIND: &str = "reference.echo";
+pub const REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1: &str = "a3s.cloud.reference-echo-agent.v1";
 
 const AGENT_PROVIDER_BLOCK: &str = "agent_provider";
 const AGENT_PROVIDER_PROFILE_MAX_ACL_BYTES: usize = 16 * 1024;

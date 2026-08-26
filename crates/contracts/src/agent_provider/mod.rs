@@ -3,16 +3,20 @@ mod profile;
 mod protocol;
 
 pub use events::{
-    AgentProviderEventPageV1, AgentProviderEventReceiptV1, AgentProviderEventRecordV1,
-    AgentProviderSemanticEventV1,
+    AgentProviderEventPageRequestV1, AgentProviderEventPageV1, AgentProviderEventReceiptV1,
+    AgentProviderEventRecordV1, AgentProviderSemanticEventV1,
+    AGENT_PROVIDER_EVENT_PAGE_HTTP_PATH_V1, AGENT_PROVIDER_MAX_EVENTS_PER_PAGE,
+    AGENT_PROVIDER_MAX_EVENT_PAGE_BYTES,
 };
 pub use profile::{
     AgentProviderCapabilityNegotiationV1, AgentProviderCapabilityRequirementsV1,
     AgentProviderCapabilityV1, AgentProviderProfile, AGENT_PROVIDER_PROFILE_SCHEMA_V1,
-    AGENT_PROVIDER_PROTOCOL_V1,
+    AGENT_PROVIDER_PROTOCOL_V1, NATIVE_CODE_AGENT_PROVIDER_KIND,
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 pub use protocol::{
     AgentProviderCommandActionV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
     AgentProviderRunCancelV1, AgentProviderRunIdentityV1, AgentProviderRunRecoverV1,
-    AgentProviderRunStartV1, AgentProviderRunStateV1,
+    AgentProviderRunStartV1, AgentProviderRunStateV1, AGENT_PROVIDER_COMMAND_HTTP_PATH_V1,
+    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES,
 };

@@ -87,6 +87,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 agent_asset_release_id: AssetReleaseId::from_uuid(
                                     body.agent_asset_release_id,
                                 ),
+                                provider_kind: body.provider_kind,
                                 input: body.input,
                                 idempotency_key,
                                 request_id,

@@ -13,9 +13,9 @@ use a3s_cloud_control_plane::modules::agents::{
     AcceptAgentCodeEventBatchWrite, AgentCodeRunBinding, AgentExecutionCancellationRequested,
     AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
-    CreateAgentConversation, CreateAgentConversationHandler, IAgentRepository,
-    NativeCodeAgentExecutionProvider, PostgresAgentRepository,
-    RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
+    BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
+    IAgentRepository, PostgresAgentRepository, RequestAgentExecutionCancellationWrite,
+    StartAgentExecution, StartAgentExecutionHandler, NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, PostgresBuildRunRepository,

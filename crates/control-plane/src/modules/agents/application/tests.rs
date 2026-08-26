@@ -9,7 +9,7 @@ use super::{
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
 };
-use crate::modules::agents::InMemoryAgentRepository;
+use crate::modules::agents::{BuiltInAgentExecutionProviderRegistry, InMemoryAgentRepository};
 use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::artifacts::{HostedArtifactQueryService, InMemoryBuildRunRepository};
@@ -31,6 +31,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_cloud_contracts::{
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
+};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
@@ -95,13 +98,19 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         created.conversation.id
     );
 
-    let start_handler = StartAgentExecutionHandler::new(agents.clone(), assets, artifacts);
+    let start_handler = StartAgentExecutionHandler::new(
+        agents.clone(),
+        assets,
+        artifacts,
+        Arc::new(BuiltInAgentExecutionProviderRegistry::new().expect("provider registry")),
+    );
     let start = StartAgentExecution {
         organization_id,
         conversation_id: created.conversation.id,
         resource_access: ResourceAccessEvaluator::organization_wide(),
         agent_asset_id: asset.id,
         agent_asset_release_id: release.id,
+        provider_kind: REFERENCE_ECHO_AGENT_PROVIDER_KIND.into(),
         input: serde_json::json!({"message": "hello"}),
         idempotency_key: "agent-execution:start".into(),
         request_id: Uuid::now_v7(),
@@ -114,13 +123,29 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         .expect("start execution");
     assert_eq!(started.conversation.last_event_sequence, 1);
     assert_eq!(started.execution.status, AgentExecutionStatus::Pending);
+    assert_eq!(
+        started.execution.provider.kind(),
+        REFERENCE_ECHO_AGENT_PROVIDER_KIND
+    );
+    assert_eq!(
+        started.execution.provider.native_protocol(),
+        REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1
+    );
     let replayed_execution = start_handler
-        .execute(start, context())
+        .execute(start.clone(), context())
         .await
         .expect("start replay handler")
         .expect("replay execution");
     assert!(replayed_execution.replayed);
     assert_eq!(replayed_execution.execution.id, started.execution.id);
+    let mut unknown_provider = start;
+    unknown_provider.provider_kind = "unknown.provider".into();
+    unknown_provider.idempotency_key = "agent-execution:start:unknown".into();
+    assert!(matches!(
+        start_handler.execute(unknown_provider, context()).await,
+        Ok(Err(ApplicationError::Invalid(message)))
+            if message.contains("is not supported")
+    ));
 
     let cancel_handler = CancelAgentExecutionHandler::new(agents.clone());
     let cancel = CancelAgentExecution {

@@ -16,6 +16,7 @@ pub struct StartAgentExecution {
     pub resource_access: ResourceAccessEvaluator,
     pub agent_asset_id: AssetId,
     pub agent_asset_release_id: AssetReleaseId,
+    pub provider_kind: String,
     pub input: serde_json::Value,
     pub idempotency_key: String,
     pub request_id: Uuid,

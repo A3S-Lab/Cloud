@@ -98,6 +98,7 @@ describe('a3s-cloud Agent commands', () => {
         CONVERSATION_ID,
         AGENT_ID,
         RELEASE_ID,
+        '--provider-kind=reference.echo',
         '--idempotency-key=cli:agent-execution-1',
         '--output=json',
       ],
@@ -119,7 +120,11 @@ describe('a3s-cloud Agent commands', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'Idempotency-Key': 'cli:agent-execution-1' }),
-        body: JSON.stringify({ agentAssetId: AGENT_ID, agentAssetReleaseId: RELEASE_ID }),
+        body: JSON.stringify({
+          agentAssetId: AGENT_ID,
+          agentAssetReleaseId: RELEASE_ID,
+          providerKind: 'reference.echo',
+        }),
       })
     );
   });
@@ -219,9 +224,22 @@ describe('a3s-cloud Agent commands', () => {
       ['agent-executions', 'start', CONVERSATION_ID, AGENT_ID, 'not-a-uuid', '--idempotency-key=cli:invalid'],
       runtime
     );
+    const invalidProvider = await runCli(
+      [
+        'agent-executions',
+        'start',
+        CONVERSATION_ID,
+        AGENT_ID,
+        RELEASE_ID,
+        '--provider-kind=unknown.provider',
+        '--idempotency-key=cli:invalid-provider',
+      ],
+      runtime
+    );
 
     expect(invalidLimit).toBe(ExitCode.Usage);
     expect(invalidRelease).toBe(ExitCode.Usage);
+    expect(invalidProvider).toBe(ExitCode.Usage);
     expect(called).toBe(false);
   });
 });
@@ -255,6 +273,14 @@ function execution() {
       artifactDigest: `sha256:${'a'.repeat(64)}`,
       artifactMediaType: 'application/vnd.oci.image.manifest.v1+json',
       artifactSizeBytes: 1024,
+    },
+    provider: {
+      kind: 'a3s.code',
+      revision: '8.0.1',
+      protocol: 'a3s.cloud.agent-provider.v1',
+      nativeProtocol: 'a3s.code.agent.v1',
+      profileDigest: `sha256:${'b'.repeat(64)}`,
+      capabilityDigest: `sha256:${'c'.repeat(64)}`,
     },
     status: 'pending',
     failure: null,

@@ -419,7 +419,35 @@ async fn insert_execution(
                 AgentExecutions::cancellation_requested_at(),
                 execution.cancellation_requested_at,
             )
-            .value(AgentExecutions::finished_at(), execution.finished_at),
+            .value(AgentExecutions::finished_at(), execution.finished_at)
+            .value(
+                AgentExecutions::provider_kind(),
+                Some(execution.provider.kind().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_revision(),
+                Some(execution.provider.revision().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_protocol(),
+                Some(execution.provider.protocol().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_native_protocol(),
+                Some(execution.provider.native_protocol().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_profile_acl(),
+                Some(execution.provider.profile_acl().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_profile_digest(),
+                Some(execution.provider.profile_digest().to_owned()),
+            )
+            .value(
+                AgentExecutions::provider_capability_digest(),
+                Some(execution.provider.capability_digest().to_owned()),
+            ),
     )
     .await;
     match inserted {
@@ -556,14 +584,12 @@ pub(super) async fn persist_execution(
     expected_version: u64,
 ) -> Result<(), PostgresPersistenceError> {
     let code = execution.code.as_ref();
-    let provider = code
-        .map(|binding| binding.provider())
-        .transpose()
-        .map_err(|error| {
-            PostgresPersistenceError::Invariant(format!(
-                "Agent provider profile binding is invalid: {error}"
-            ))
-        })?;
+    execution.provider.validate().map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "Agent provider profile binding is invalid: {error}"
+        ))
+    })?;
+    let provider = &execution.provider;
     let rows = execute(
         transaction,
         update_table::<AgentExecutions>()
@@ -582,31 +608,31 @@ pub(super) async fn persist_execution(
             .set(AgentExecutions::finished_at(), execution.finished_at)
             .set(
                 AgentExecutions::provider_kind(),
-                provider.map(|binding| binding.kind().to_owned()),
+                Some(provider.kind().to_owned()),
             )
             .set(
                 AgentExecutions::provider_revision(),
-                provider.map(|binding| binding.revision().to_owned()),
+                Some(provider.revision().to_owned()),
             )
             .set(
                 AgentExecutions::provider_protocol(),
-                provider.map(|binding| binding.protocol().to_owned()),
+                Some(provider.protocol().to_owned()),
             )
             .set(
                 AgentExecutions::provider_native_protocol(),
-                provider.map(|binding| binding.native_protocol().to_owned()),
+                Some(provider.native_protocol().to_owned()),
             )
             .set(
                 AgentExecutions::provider_profile_acl(),
-                provider.map(|binding| binding.profile_acl().to_owned()),
+                Some(provider.profile_acl().to_owned()),
             )
             .set(
                 AgentExecutions::provider_profile_digest(),
-                provider.map(|binding| binding.profile_digest().to_owned()),
+                Some(provider.profile_digest().to_owned()),
             )
             .set(
                 AgentExecutions::provider_capability_digest(),
-                provider.map(|binding| binding.capability_digest().to_owned()),
+                Some(provider.capability_digest().to_owned()),
             )
             .set(
                 AgentExecutions::provider_node_id(),

@@ -1,3 +1,4 @@
+use super::agent_components::install_agent_component_schemas;
 use super::workflow_components::install_workflow_component_schemas;
 use super::workflow_goal_components::install_workflow_goal_component_schemas;
 use super::workflow_human_task_components::install_workflow_human_task_component_schemas;
@@ -337,6 +338,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .cloned()
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
     install_connector_component_schemas(&mut schema_components)?;
+    install_agent_component_schemas(&mut schema_components);
     install_workflow_component_schemas(&mut schema_components);
     install_workflow_goal_component_schemas(&mut schema_components);
     install_workflow_human_task_component_schemas(&mut schema_components);
@@ -403,6 +405,29 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         ("HumanTaskSuccessResponse", "HumanTask"),
         ("HumanTaskListSuccessResponse", "HumanTaskList"),
         ("HumanTaskMutationSuccessResponse", "HumanTaskMutation"),
+        ("AgentConversationSuccessResponse", "AgentConversation"),
+        (
+            "AgentConversationListSuccessResponse",
+            "AgentConversationList",
+        ),
+        (
+            "AgentConversationMutationSuccessResponse",
+            "AgentConversationMutation",
+        ),
+        ("AgentExecutionSuccessResponse", "AgentExecution"),
+        ("AgentExecutionListSuccessResponse", "AgentExecutionList"),
+        (
+            "AgentExecutionMutationSuccessResponse",
+            "AgentExecutionMutation",
+        ),
+        (
+            "AgentExecutionChangeSetSuccessResponse",
+            "AgentExecutionChangeSet",
+        ),
+        (
+            "AgentExecutionEventPageSuccessResponse",
+            "AgentExecutionEventPage",
+        ),
     ] {
         schema_components.insert(
             name.into(),
@@ -659,6 +684,27 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "HumanTaskMutationSuccess200",
             "HumanTaskMutationSuccessResponse",
         ),
+        (
+            "AgentConversationSuccess200",
+            "AgentConversationSuccessResponse",
+        ),
+        (
+            "AgentConversationListSuccess200",
+            "AgentConversationListSuccessResponse",
+        ),
+        ("AgentExecutionSuccess200", "AgentExecutionSuccessResponse"),
+        (
+            "AgentExecutionListSuccess200",
+            "AgentExecutionListSuccessResponse",
+        ),
+        (
+            "AgentExecutionChangeSetSuccess200",
+            "AgentExecutionChangeSetSuccessResponse",
+        ),
+        (
+            "AgentExecutionEventPageSuccess200",
+            "AgentExecutionEventPageSuccessResponse",
+        ),
     ] {
         response_components.insert(
             name.into(),
@@ -689,6 +735,24 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/WorkflowRunMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 201] {
+        response_components.insert(
+            format!("AgentConversationMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/AgentConversationMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 202] {
+        response_components.insert(
+            format!("AgentExecutionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/AgentExecutionMutationSuccessResponse",
             ),
         );
     }

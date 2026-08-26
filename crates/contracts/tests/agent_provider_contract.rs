@@ -1,9 +1,10 @@
 use a3s_cloud_contracts::{
     AgentProviderCapabilityRequirementsV1, AgentProviderCapabilityV1,
-    AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageV1,
-    AgentProviderEventReceiptV1, AgentProviderEventRecordV1, AgentProviderProfile,
-    AgentProviderRunIdentityV1, AgentProviderRunStartV1, AgentProviderRunStateV1,
-    AgentProviderSemanticEventV1, AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageRequestV1,
+    AgentProviderEventPageV1, AgentProviderEventReceiptV1, AgentProviderEventRecordV1,
+    AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunStartV1,
+    AgentProviderRunStateV1, AgentProviderSemanticEventV1, AGENT_PROVIDER_MAX_EVENTS_PER_PAGE,
+    AGENT_PROVIDER_PROTOCOL_V1,
 };
 
 const CODE_PROFILE: &str = include_str!(concat!(
@@ -69,6 +70,14 @@ fn versioned_commands_and_receipts_are_profile_bound() {
         "execution-1".into(),
     )
     .expect("run identity");
+    let identity_digest = identity.digest().expect("run identity digest");
+    assert_eq!(
+        identity_digest,
+        identity
+            .clone()
+            .digest()
+            .expect("stable run identity digest")
+    );
     let command = AgentProviderCommandV1::Start {
         request: AgentProviderRunStartV1::new(
             "execution-1-start".into(),
@@ -94,6 +103,39 @@ fn versioned_commands_and_receipts_are_profile_bound() {
 
     let other = AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("other profile");
     assert!(receipt.validate_for(&other, &command).is_err());
+}
+
+#[test]
+fn event_page_requests_are_profile_bound_and_use_the_public_limit() {
+    let profile = AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("provider profile");
+    let identity = AgentProviderRunIdentityV1::new(
+        profile.digest().to_owned(),
+        profile.capability_digest().to_owned(),
+        format!("sha256:{}", "a".repeat(64)),
+        "conversation-1".into(),
+        "execution-1".into(),
+    )
+    .expect("run identity");
+    let mut request = AgentProviderEventPageRequestV1 {
+        schema: AgentProviderEventPageRequestV1::SCHEMA.into(),
+        identity,
+        after_event_sequence: Some(7),
+        limit: u16::try_from(AGENT_PROVIDER_MAX_EVENTS_PER_PAGE)
+            .expect("public event-page limit fits the protocol field"),
+    };
+    request
+        .validate_for(&profile)
+        .expect("profile-bound event-page request");
+
+    request.limit = 0;
+    assert!(request.validate_for(&profile).is_err());
+    request.limit = u16::try_from(AGENT_PROVIDER_MAX_EVENTS_PER_PAGE + 1)
+        .expect("invalid event-page limit fits the protocol field");
+    assert!(request.validate_for(&profile).is_err());
+
+    let other = AgentProviderProfile::parse_acl(CODE_PROFILE).expect("other profile");
+    request.limit = 1;
+    assert!(request.validate_for(&other).is_err());
 }
 
 #[test]

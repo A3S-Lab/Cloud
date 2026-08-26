@@ -142,8 +142,8 @@ Commands:
   agent-executions list CONVERSATION List executions in one Agent conversation
   agent-executions get ID Get one Agent execution
   agent-executions changes ID Get the immutable Git-compatible result of one terminal execution
-  agent-executions start CONVERSATION AGENT RELEASE Start one exact Agent release idempotently
-  agent-executions cancel ID Cancel one Agent execution through its Code-owned run
+  agent-executions start CONVERSATION AGENT RELEASE Start one exact Agent release on a closed provider
+  agent-executions cancel ID Cancel one Agent execution through its bound provider run
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready
@@ -254,6 +254,7 @@ Global options:
   --expires-at <timestamp>   RFC 3339 credential expiry
   --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
   --agent-release-sha256 <digest> SHA-256 of the node-agent release binary
+  --provider-kind <kind>     a3s.code or reference.echo for agent-executions start
   --node-config <path>       Absolute A3S ACL node config path on the target host
   --actor-principal <uuid>   Exact audit actor Principal filter
   --action <action>          Exact lowercase dot-separated audit action filter

@@ -3,8 +3,8 @@ use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::application::support::{idempotency, validate_request_id};
 use crate::modules::agents::domain::{
     AgentConversationStatus, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentExecutionStarted, AgentReleaseBinding, IAgentRepository,
-    StartAgentExecutionWrite,
+    AgentExecutionEventKind, AgentExecutionProviderRegistry, AgentExecutionStarted,
+    AgentReleaseBinding, IAgentRepository, StartAgentExecutionWrite,
 };
 use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
@@ -17,6 +17,7 @@ pub struct StartAgentExecutionHandler {
     agents: Arc<dyn IAgentRepository>,
     assets: Arc<dyn IAssetRepository>,
     artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    providers: Arc<dyn AgentExecutionProviderRegistry>,
 }
 
 impl StartAgentExecutionHandler {
@@ -24,11 +25,13 @@ impl StartAgentExecutionHandler {
         agents: Arc<dyn IAgentRepository>,
         assets: Arc<dyn IAssetRepository>,
         artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        providers: Arc<dyn AgentExecutionProviderRegistry>,
     ) -> Self {
         Self {
             agents,
             assets,
             artifacts,
+            providers,
         }
     }
 }
@@ -43,6 +46,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
         let agents = Arc::clone(&self.agents);
         let assets = Arc::clone(&self.assets);
         let artifacts = Arc::clone(&self.artifacts);
+        let providers = Arc::clone(&self.providers);
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
@@ -58,6 +62,10 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                 Ok(conversation) => conversation,
                 Err(error) => return Ok(Err(error)),
             };
+            let provider = match providers.provider_by_kind(&command.provider_kind) {
+                Ok(provider) => provider,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let idempotency = match idempotency(
                 format!(
                     "organizations/{}/agent-conversations/{}/executions",
@@ -69,6 +77,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                     "conversationId": command.conversation_id,
                     "agentAssetId": command.agent_asset_id,
                     "agentAssetReleaseId": command.agent_asset_release_id,
+                    "providerKind": provider.profile().kind(),
                     "input": &command.input,
                 }),
             ) {
@@ -80,7 +89,8 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                     if execution.organization_id == command.organization_id
                         && execution.conversation_id == command.conversation_id
                         && execution.agent.asset_id() == command.agent_asset_id
-                        && execution.agent.asset_release_id() == command.agent_asset_release_id =>
+                        && execution.agent.asset_release_id() == command.agent_asset_release_id
+                        && &execution.provider == provider.profile() =>
                 {
                     return Ok(Ok(StartAgentExecutionResult {
                         conversation,
@@ -129,12 +139,13 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                 Ok(binding) => binding,
                 Err(error) => return Ok(Err(ApplicationError::Internal(error))),
             };
-            let execution = match AgentExecution::create(
+            let execution = match AgentExecution::create_with_provider(
                 command.organization_id,
                 conversation.id,
                 AgentExecutionId::new(),
                 OperationId::new(),
                 binding,
+                provider.profile().clone(),
                 command.requested_at,
             ) {
                 Ok(execution) => execution,

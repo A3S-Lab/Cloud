@@ -17,7 +17,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::{project_runtime_spec, ActiveRuntimeTarget};
 use a3s_cloud_contracts::{
     AgentProtocolRunIdentityV1, AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, RuntimeServiceEndpoint, AGENT_PROTOCOL_V1,
+    NodeCommandResult, RuntimeServiceEndpoint,
 };
 use a3s_flow::FlowError;
 use a3s_runtime::contract::TransportProtocol;
@@ -463,6 +463,9 @@ async fn ready_binding(
     target: &ActiveRuntimeTarget,
     now: DateTime<Utc>,
 ) -> Result<(AgentCodeRunBinding, u64), String> {
+    let provider = runtime
+        .providers
+        .provider_for_profile(&execution.provider)?;
     let node_id = target
         .replica_binding
         .node_id
@@ -510,7 +513,7 @@ async fn ready_binding(
         .ok_or_else(|| "A3S Code Harness Runtime has no process start time".to_owned())?;
     let spec_digest = Sha256Digest::parse(spec.digest()?)?;
     let binding = AgentCodeRunBinding::new_with_provider(
-        runtime.provider.profile().clone(),
+        provider.profile().clone(),
         node_id,
         target.workload.id,
         target.revision.id,
@@ -522,7 +525,7 @@ async fn ready_binding(
         service_port_name,
         AgentProtocolRunIdentityV1 {
             schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
-            protocol: AGENT_PROTOCOL_V1.into(),
+            protocol: provider.profile().native_protocol().into(),
             agent_release_identity: execution.agent.artifact_digest().as_str().into(),
             session_id: format!("agent-conversation-{}", execution.conversation_id),
             run_id: format!("agent-execution-{}", execution.id),
@@ -558,8 +561,14 @@ async fn start_command(
         .code
         .as_ref()
         .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?;
-    runtime
-        .provider
+    let profile = binding
+        .provider()
+        .map_err(|error| flow_error("could not restore Agent execution provider", error))?;
+    let provider = runtime
+        .providers
+        .provider_for_profile(profile)
+        .map_err(|error| flow_error("could not resolve Agent execution provider", error))?;
+    provider
         .start_command(
             format!("agent-execution-{}-start", execution.id),
             binding
@@ -593,8 +602,14 @@ fn cancel_command(
         .provider_identity()
         .map_err(|error| flow_error("could not bind Agent provider identity", error))?;
     let command_id = cancel_command_id(execution.id, &identity.run_id);
-    runtime
-        .provider
+    let profile = binding
+        .provider()
+        .map_err(|error| flow_error("could not restore Agent execution provider", error))?;
+    let provider = runtime
+        .providers
+        .provider_for_profile(profile)
+        .map_err(|error| flow_error("could not resolve Agent execution provider", error))?;
+    provider
         .cancel_command(
             format!("agent-cancel-{command_id}"),
             identity,

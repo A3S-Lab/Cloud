@@ -1,3 +1,7 @@
+use crate::agent_provider_harness::{
+    self, validate_reference_echo_binding, AgentProviderHarnessError,
+    SharedAgentProviderHarnessTransport,
+};
 use crate::box_build::{NodeBoxBuildError, NodeBoxBuildExecutor};
 use crate::code_harness::{self, CodeHarnessError, SharedCodeHarnessTransport};
 use crate::durable_cell_operator::{
@@ -30,6 +34,7 @@ pub struct CommandExecutor {
     resource_inventory: Option<Arc<dyn NodeResourceInventoryAuthority>>,
     plugin_host: Option<Arc<dyn PluginHostManager>>,
     code_harness: Option<SharedCodeHarnessTransport>,
+    agent_provider_harness: Option<SharedAgentProviderHarnessTransport>,
     durable_cell_operator: Option<SharedDurableCellOperatorTransport>,
 }
 
@@ -52,6 +57,7 @@ impl CommandExecutor {
             resource_inventory: None,
             plugin_host: None,
             code_harness: None,
+            agent_provider_harness: None,
             durable_cell_operator: None,
         }
     }
@@ -82,6 +88,14 @@ impl CommandExecutor {
 
     pub(crate) fn with_code_harness(mut self, code_harness: SharedCodeHarnessTransport) -> Self {
         self.code_harness = Some(code_harness);
+        self
+    }
+
+    pub(crate) fn with_agent_provider_harness(
+        mut self,
+        agent_provider_harness: SharedAgentProviderHarnessTransport,
+    ) -> Self {
+        self.agent_provider_harness = Some(agent_provider_harness);
         self
     }
 
@@ -272,34 +286,59 @@ impl CommandExecutor {
             NodeCommandPayload::AgentProviderCommand { binding, command } => {
                 binding
                     .validate_command(command)
-                    .map_err(CodeHarnessError::Invalid)?;
-                let code_binding = binding.code_binding().map_err(CodeHarnessError::Invalid)?;
-                let code_command = binding
-                    .code_command(command)
-                    .map_err(CodeHarnessError::Invalid)?;
-                let endpoint =
-                    code_harness::resolve_runtime_endpoint(self.runtime.as_ref(), &code_binding)
-                        .await?;
-                let transport = self.code_harness.as_deref().ok_or_else(|| {
-                    CodeHarnessError::Unavailable(
-                        "the node-local A3S Code Harness transport is not configured".into(),
-                    )
-                })?;
+                    .map_err(AgentProviderHarnessError::Invalid)?;
                 let timeout = envelope
                     .not_after
                     .signed_duration_since(Utc::now())
                     .to_std()
                     .map_err(|_| {
-                        CodeHarnessError::Invalid(
+                        AgentProviderHarnessError::Invalid(
                             "node command deadline elapsed before provider dispatch".into(),
                         )
                     })?;
-                let native_receipt = transport
-                    .send_command(&endpoint, &code_command, timeout)
+                let profile = binding
+                    .profile()
+                    .map_err(AgentProviderHarnessError::Invalid)?;
+                let receipt = if profile.kind()
+                    == a3s_cloud_contracts::NATIVE_CODE_AGENT_PROVIDER_KIND
+                {
+                    let code_binding = binding.code_binding().map_err(CodeHarnessError::Invalid)?;
+                    let code_command = binding
+                        .code_command(command)
+                        .map_err(CodeHarnessError::Invalid)?;
+                    let endpoint = code_harness::resolve_runtime_endpoint(
+                        self.runtime.as_ref(),
+                        &code_binding,
+                    )
                     .await?;
-                let receipt = binding
-                    .code_receipt(command, &native_receipt)
-                    .map_err(CodeHarnessError::Protocol)?;
+                    let transport = self.code_harness.as_deref().ok_or_else(|| {
+                        CodeHarnessError::Unavailable(
+                            "the node-local A3S Code Harness transport is not configured".into(),
+                        )
+                    })?;
+                    let native_receipt = transport
+                        .send_command(&endpoint, &code_command, timeout)
+                        .await?;
+                    binding
+                        .code_receipt(command, &native_receipt)
+                        .map_err(CodeHarnessError::Protocol)?
+                } else {
+                    validate_reference_echo_binding(binding)?;
+                    let endpoint = agent_provider_harness::resolve_runtime_endpoint(
+                        self.runtime.as_ref(),
+                        binding,
+                    )
+                    .await?;
+                    let transport = self.agent_provider_harness.as_deref().ok_or_else(|| {
+                        AgentProviderHarnessError::Unavailable(
+                            "the node-local Agent provider Harness transport is not configured"
+                                .into(),
+                        )
+                    })?;
+                    transport
+                        .send_command(&endpoint, binding, command, timeout)
+                        .await?
+                };
                 Ok(NodeCommandResult::AgentProviderCommandAccepted {
                     receipt: Box::new(receipt),
                 })
@@ -554,6 +593,7 @@ enum DispatchError {
     PluginHost(UseError),
     PluginHostUnavailable,
     CodeHarness(CodeHarnessError),
+    AgentProviderHarness(AgentProviderHarnessError),
     DurableCellOperator(DurableCellOperatorError),
 }
 
@@ -602,6 +642,12 @@ impl From<UseError> for DispatchError {
 impl From<CodeHarnessError> for DispatchError {
     fn from(error: CodeHarnessError) -> Self {
         Self::CodeHarness(error)
+    }
+}
+
+impl From<AgentProviderHarnessError> for DispatchError {
+    fn from(error: AgentProviderHarnessError) -> Self {
+        Self::AgentProviderHarness(error)
     }
 }
 
@@ -729,6 +775,18 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
                 NodeCommandOutcome::Rejected { failure }
             }
         }
+        DispatchError::AgentProviderHarness(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
         DispatchError::DurableCellOperator(error) => {
             let failure = NodeCommandFailure {
                 code: error.code().into(),
@@ -797,3 +855,7 @@ fn sanitize_plugin_host_error_code(code: &str) -> String {
 #[cfg(test)]
 #[path = "executor_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "executor_agent_provider_tests.rs"]
+mod agent_provider_tests;

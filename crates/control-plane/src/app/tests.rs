@@ -6,7 +6,7 @@ use crate::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SmtpConfig, SourcesConfig,
 };
-use crate::modules::agents::InMemoryAgentRepository;
+use crate::modules::agents::{BuiltInAgentExecutionProviderRegistry, InMemoryAgentRepository};
 use crate::modules::artifacts::{
     BuildEvidenceSigningError, BuildEvidenceSigningKey, IBuildEvidenceSigner,
     InMemoryBuildRunRepository, VerifiedBuildEvidenceSignature,
@@ -2061,6 +2061,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             executions: executions.unwrap_or_else(|| Arc::new(InMemoryExecutionRepository::new())),
             execution_templates: Arc::new(InMemoryExecutionTemplateRepository::new()),
             agents: test_agents.unwrap_or_else(|| Arc::new(InMemoryAgentRepository::new())),
+            agent_execution_providers: Arc::new(
+                BuiltInAgentExecutionProviderRegistry::new().map_err(BootError::Internal)?,
+            ),
             routes,
             mcp_credentials,
             secrets,

@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 163;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "163";
+pub const CLOUD_MIGRATION_COUNT: i64 = 164;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "164";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1513,6 +1513,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/163_workflow_agent_failure_step_projections.sql"
+            )),
+        ),
+        Migration::new(
+            "164",
+            "immutable Agent provider selection",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/164_agent_provider_selection.sql"
             )),
         ),
     ]
@@ -3483,6 +3491,34 @@ mod workflow_agent_failure_step_projection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 163 added duplicate state or policy: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_provider_selection_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/164_agent_provider_selection.sql"
+    ));
+
+    #[test]
+    fn migration_164_freezes_a_profile_before_runtime_dispatch() {
+        for expected in [
+            "where provider_kind is null",
+            "alter column provider_kind set not null",
+            "agent_executions_provider_binding_complete",
+            "provider_node_id is null",
+            "provider_node_id is not null",
+            "canonical ACL and digests remain recovery authority",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in ["create table", "create queue", "jsonb", "provider_config"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 164 added another authority: {forbidden}"
             );
         }
     }

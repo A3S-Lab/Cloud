@@ -4,7 +4,7 @@ use crate::modules::agents::domain::{
     AgentExecution, AgentExecutionCancellationRequested, AgentExecutionEventDraft,
     AgentExecutionEventKind, AgentExecutionStarted, AgentExecutionStatus, AgentReleaseBinding,
     CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
-    StartAgentExecutionWrite, MAX_INLINE_AGENT_EVENT_BYTES,
+    StartAgentExecutionWrite, MAX_INLINE_AGENT_EVENT_BYTES, NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
 use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
@@ -285,6 +285,7 @@ impl WorkflowAgentApplicationService {
             || execution.agent.asset_id() != request.agent_asset_id
             || execution.agent.asset_release_id() != request.agent_asset_release_id
             || execution.agent.artifact_digest() != &request.agent_release_digest
+            || execution.provider.kind() != NATIVE_CODE_AGENT_PROVIDER_KIND
             || execution.requested_at != request.requested_at
         {
             return Err(ApplicationError::Conflict(

@@ -1,3 +1,4 @@
+pub use a3s_cloud_contracts::NATIVE_CODE_AGENT_PROVIDER_KIND;
 use a3s_cloud_contracts::{AgentProviderProfile, AGENT_PROTOCOL_V1};
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +64,9 @@ impl AgentProviderProfileBinding {
 
     pub fn native_code() -> Result<Self, String> {
         let profile = AgentProviderProfile::parse_acl(NATIVE_CODE_PROVIDER_PROFILE_ACL)?;
-        if profile.kind() != "a3s.code" || profile.native_protocol() != AGENT_PROTOCOL_V1 {
+        if profile.kind() != NATIVE_CODE_AGENT_PROVIDER_KIND
+            || profile.native_protocol() != AGENT_PROTOCOL_V1
+        {
             return Err("native Code provider profile does not match A3S Code Core".into());
         }
         Self::from_profile(&profile)

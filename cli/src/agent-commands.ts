@@ -1,4 +1,8 @@
-import type { CloudApi, CloudSequenceQuery } from '@a3s/cloud-client';
+import {
+  type CloudApi,
+  type CloudSequenceQuery,
+  validateAgentProviderKind,
+} from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
@@ -98,10 +102,13 @@ export async function executeAgentCommand(
         )
       );
     case 'agent-executions start': {
+      const providerKind = arguments_.providerKind;
+      validateAgentProviderKind(providerKind);
       const idempotencyKey = requireMutationCommand(
         arguments_,
         5,
-        'agent-executions start <conversation-id> <agent-asset-id> <agent-release-id>'
+        'agent-executions start <conversation-id> <agent-asset-id> <agent-release-id>',
+        true
       );
       return agentExecutionMutationResult(
         await cloudApi().startAgentExecution(
@@ -110,6 +117,7 @@ export async function executeAgentCommand(
           {
             agentAssetId: positionalUuid(positionals, 3, 'Agent Asset ID'),
             agentAssetReleaseId: positionalUuid(positionals, 4, 'Agent Asset release ID'),
+            ...(providerKind === undefined ? {} : { providerKind }),
           },
           idempotencyKey
         )

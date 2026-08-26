@@ -11,7 +11,16 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.68.0`.
+The current semantic contract version is `1.69.0`.
+
+Contract `1.69.0` adds the optional closed `providerKind` selector to Agent
+execution creation. Cloud resolves that kind through its admitted provider
+registry and persists the exact immutable profile before scheduling. Every
+existing Agent conversation, execution, mutation, event-page, and Code change
+set response now references a closed operation-specific schema. Execution
+responses include the selected provider kind, revision, common and native
+protocols, profile digest, and capability digest; no canonical ACL, provider
+configuration, environment value, or Secret material is returned.
 
 Contract `1.68.0` extends the existing closed Workflow response enums with
 Plan schema/compiler v12, `cloud.workflow.step-failure.v9`, and

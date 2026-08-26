@@ -95,6 +95,7 @@ pub struct AgentExecutionResponse {
     pub id: Uuid,
     pub operation_id: Uuid,
     pub agent: AgentReleaseBindingResponse,
+    pub provider: AgentProviderProfileResponse,
     pub status: AgentExecutionStatus,
     pub failure: Option<String>,
     pub aggregate_version: u64,
@@ -121,6 +122,14 @@ impl From<AgentExecution> for AgentExecutionResponse {
                 artifact_media_type: execution.agent.artifact_media_type().to_owned(),
                 artifact_size_bytes: execution.agent.artifact_size_bytes(),
             },
+            provider: AgentProviderProfileResponse {
+                kind: execution.provider.kind().to_owned(),
+                revision: execution.provider.revision().to_owned(),
+                protocol: execution.provider.protocol().to_owned(),
+                native_protocol: execution.provider.native_protocol().to_owned(),
+                profile_digest: execution.provider.profile_digest().to_owned(),
+                capability_digest: execution.provider.capability_digest().to_owned(),
+            },
             status: execution.status,
             failure: execution.failure,
             aggregate_version: execution.aggregate_version,
@@ -131,6 +140,17 @@ impl From<AgentExecution> for AgentExecutionResponse {
             finished_at: execution.finished_at,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentProviderProfileResponse {
+    pub kind: String,
+    pub revision: String,
+    pub protocol: String,
+    pub native_protocol: String,
+    pub profile_digest: String,
+    pub capability_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

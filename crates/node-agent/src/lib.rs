@@ -1,6 +1,8 @@
 //! Outbound node control and Runtime provider boundary.
 
 mod agent;
+mod agent_provider_event_shipper;
+mod agent_provider_harness;
 mod artifact;
 mod box_build;
 #[cfg(target_os = "linux")]
@@ -23,6 +25,7 @@ mod resource_inventory;
 mod secret;
 mod state_file;
 
+pub use agent_provider_event_shipper::AgentProviderEventShippingError;
 pub use artifact::{
     DownloadedNodeArtifact, LocalArtifactReader, NodeArtifactError, NodeArtifactManager,
     NodeArtifactTransport,

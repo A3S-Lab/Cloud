@@ -1,3 +1,5 @@
 mod agent_execution_provider;
+mod agent_execution_provider_registry;
 
 pub use agent_execution_provider::AgentExecutionProvider;
+pub use agent_execution_provider_registry::AgentExecutionProviderRegistry;

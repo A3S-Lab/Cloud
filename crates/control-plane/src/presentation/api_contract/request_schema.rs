@@ -316,6 +316,12 @@ fn agent_execution_schema() -> Value {
         json!({
             "agentAssetId": uuid_schema(),
             "agentAssetReleaseId": uuid_schema(),
+            "providerKind": {
+                "type": "string",
+                "enum": ["a3s.code", "reference.echo"],
+                "default": "a3s.code",
+                "description": "Closed provider kind. Cloud resolves and persists the exact immutable provider profile before scheduling."
+            },
             "input": {
                 "nullable": true,
                 "description": "Canonical JSON input passed to the selected Agent release."

@@ -5,5 +5,5 @@ pub use request::StartAgentExecutionRequest;
 pub use response::{
     AgentConversationMutationResponse, AgentConversationResponse, AgentExecutionChangeSetResponse,
     AgentExecutionEventPageResponse, AgentExecutionEventResponse, AgentExecutionMutationResponse,
-    AgentExecutionResponse, AgentReleaseBindingResponse,
+    AgentExecutionResponse, AgentProviderProfileResponse, AgentReleaseBindingResponse,
 };

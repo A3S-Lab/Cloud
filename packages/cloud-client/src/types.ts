@@ -553,12 +553,24 @@ export type AgentExecutionStatus =
   | 'failed'
   | 'cancelled';
 
+export type AgentProviderKind = 'a3s.code' | 'reference.echo';
+
+export interface AgentProviderProfile {
+  kind: AgentProviderKind;
+  revision: string;
+  protocol: 'a3s.cloud.agent-provider.v1';
+  nativeProtocol: string;
+  profileDigest: string;
+  capabilityDigest: string;
+}
+
 export interface AgentExecution {
   organizationId: string;
   conversationId: string;
   id: string;
   operationId: string;
   agent: AgentReleaseBinding;
+  provider: AgentProviderProfile;
   status: AgentExecutionStatus;
   failure: string | null;
   aggregateVersion: number;
@@ -572,6 +584,7 @@ export interface AgentExecution {
 export interface StartAgentExecutionInput {
   agentAssetId: string;
   agentAssetReleaseId: string;
+  providerKind?: AgentProviderKind;
   input?: unknown;
 }
 

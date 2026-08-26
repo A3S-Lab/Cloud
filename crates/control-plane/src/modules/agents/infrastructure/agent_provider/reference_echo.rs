@@ -1,5 +1,8 @@
 use crate::modules::agents::domain::{AgentExecutionProvider, AgentProviderProfileBinding};
-use a3s_cloud_contracts::AgentProviderProfile;
+use a3s_cloud_contracts::{
+    AgentProviderProfile, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
+    REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
+};
 
 const REFERENCE_ECHO_PROVIDER_PROFILE_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -16,8 +19,10 @@ pub struct ReferenceEchoAgentExecutionProvider {
 impl ReferenceEchoAgentExecutionProvider {
     pub fn new() -> Result<Self, String> {
         let profile = AgentProviderProfile::parse_acl(REFERENCE_ECHO_PROVIDER_PROFILE_ACL)?;
-        if profile.kind() != "reference.echo" {
-            return Err("reference Echo provider profile kind changed".into());
+        if profile.kind() != REFERENCE_ECHO_AGENT_PROVIDER_KIND
+            || profile.native_protocol() != REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1
+        {
+            return Err("reference Echo provider profile identity changed".into());
         }
         Ok(Self {
             profile: AgentProviderProfileBinding::from_profile(&profile)?,

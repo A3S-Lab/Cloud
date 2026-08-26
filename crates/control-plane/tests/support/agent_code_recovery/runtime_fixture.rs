@@ -270,7 +270,7 @@ fn flow_runtime(
     Ok(AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents,
-            provider: Arc::new(NativeCodeAgentExecutionProvider::new().map_err(invalid)?),
+            providers: Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
             workload_targets: workloads,
             node_control: nodes,
         },

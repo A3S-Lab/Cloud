@@ -1238,9 +1238,13 @@ execution progress, and the idempotent receipt share one repository transaction.
 Durable legacy Code history and its native event endpoint remain replayable. A
 deterministic non-Code reference Harness shares the same conformance suite for
 process restart, exact replay, cancellation, idempotent cleanup, redaction,
-unsupported capabilities, retention gaps, and schema failures. Runtime
-selection of additional providers, a production non-Code node adapter, and
-retained real-provider evidence remain open.
+unsupported capabilities, retention gaps, and schema failures. Closed
+REST/client/CLI selection resolves that reference through the built-in registry;
+migration `164` makes the selected canonical profile creation-time state. Flow
+recovers by that exact profile, while the Node admits only the checked-in
+reference revision, reuses its command journal, and ships common event pages
+through the shared durable outbound-batch primitive. Additional providers and
+retained PostgreSQL/real-Box non-Code evidence remain open.
 
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 

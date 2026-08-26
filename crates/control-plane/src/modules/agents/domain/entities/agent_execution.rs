@@ -1,5 +1,6 @@
 use super::{
-    AgentCodeRunBinding, AgentExecutionEventDraft, AgentExecutionEventKind, AgentReleaseBinding,
+    AgentCodeRunBinding, AgentExecutionEventDraft, AgentExecutionEventKind,
+    AgentProviderProfileBinding, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentConversationId, AgentExecutionId, OperationId, OrganizationId,
@@ -54,6 +55,7 @@ pub struct AgentExecution {
     pub id: AgentExecutionId,
     pub operation_id: OperationId,
     pub agent: AgentReleaseBinding,
+    pub provider: AgentProviderProfileBinding,
     pub code: Option<AgentCodeRunBinding>,
     pub status: AgentExecutionStatus,
     pub failure: Option<String>,
@@ -74,6 +76,26 @@ impl AgentExecution {
         agent: AgentReleaseBinding,
         requested_at: DateTime<Utc>,
     ) -> Result<Self, String> {
+        Self::create_with_provider(
+            organization_id,
+            conversation_id,
+            id,
+            operation_id,
+            agent,
+            AgentProviderProfileBinding::native_code()?,
+            requested_at,
+        )
+    }
+
+    pub fn create_with_provider(
+        organization_id: OrganizationId,
+        conversation_id: AgentConversationId,
+        id: AgentExecutionId,
+        operation_id: OperationId,
+        agent: AgentReleaseBinding,
+        provider: AgentProviderProfileBinding,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
         let requested_at = canonical_timestamp(requested_at);
         let execution = Self {
             organization_id,
@@ -81,6 +103,7 @@ impl AgentExecution {
             id,
             operation_id,
             agent,
+            provider,
             code: None,
             status: AgentExecutionStatus::Pending,
             failure: None,
@@ -123,6 +146,7 @@ impl AgentExecution {
     pub fn bind_code_run(&mut self, binding: AgentCodeRunBinding) -> Result<bool, String> {
         binding.validate()?;
         if !binding.is_initial()
+            || binding.provider()? != &self.provider
             || binding.identity().agent_release_identity.as_str()
                 != self.agent.artifact_digest().as_str()
         {
@@ -378,10 +402,12 @@ impl AgentExecution {
 
     pub fn validate(&self) -> Result<(), String> {
         self.agent.validate()?;
+        self.provider.validate()?;
         if let Some(code) = &self.code {
             code.validate()?;
-            if code.identity().agent_release_identity.as_str()
-                != self.agent.artifact_digest().as_str()
+            if code.provider()? != &self.provider
+                || code.identity().agent_release_identity.as_str()
+                    != self.agent.artifact_digest().as_str()
                 || code.bound_at() < self.requested_at
             {
                 return Err("Agent Code run binding falls outside its execution".into());

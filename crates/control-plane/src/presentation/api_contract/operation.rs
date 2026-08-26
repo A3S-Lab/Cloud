@@ -1193,6 +1193,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             notification_outbound_subscription_success_component(method, path, status)
         {
             component
+        } else if let Some(component) = agent_success_component(method, path, status) {
+            component
         } else if let Some(component) = workflow_success_component(method, path, status) {
             component
         } else if let Some(component) = connector_success_component(method, path, status) {
@@ -1733,6 +1735,39 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_release_collection_path(path)
         || is_application_session_collection_path(path)
         || is_application_invocation_collection_path(path)
+}
+
+fn agent_success_component(method: &str, path: &str, status: u16) -> Option<String> {
+    let conversation_collection =
+        path.ends_with("/projects/{project_id}/environments/{environment_id}/agent-conversations");
+    let conversation_item = path.ends_with("/agent-conversations/{conversation_id}");
+    let execution_collection = path.ends_with("/agent-conversations/{conversation_id}/executions");
+    let execution_item = path.ends_with("/agent-executions/{execution_id}");
+    let execution_cancel = path.ends_with("/agent-executions/{execution_id}/cancel");
+    let execution_change_set = path.ends_with("/agent-executions/{execution_id}/changes");
+    let event_page = path.ends_with("/agent-conversations/{conversation_id}/events");
+
+    if method == "get" && conversation_collection {
+        Some("AgentConversationListSuccess200".into())
+    } else if method == "post" && conversation_collection {
+        Some(format!("AgentConversationMutationSuccess{status}"))
+    } else if method == "get" && conversation_item {
+        Some("AgentConversationSuccess200".into())
+    } else if method == "get" && execution_collection {
+        Some("AgentExecutionListSuccess200".into())
+    } else if method == "post" && execution_collection {
+        Some(format!("AgentExecutionMutationSuccess{status}"))
+    } else if method == "get" && execution_item {
+        Some("AgentExecutionSuccess200".into())
+    } else if method == "post" && execution_cancel {
+        Some(format!("AgentExecutionMutationSuccess{status}"))
+    } else if method == "get" && execution_change_set {
+        Some("AgentExecutionChangeSetSuccess200".into())
+    } else if method == "get" && event_page {
+        Some("AgentExecutionEventPageSuccess200".into())
+    } else {
+        None
+    }
 }
 
 fn is_application_request_body_path(path: &str) -> bool {

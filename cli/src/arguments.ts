@@ -32,6 +32,7 @@ export interface ParsedArguments {
   expiresAt?: string;
   agentReleaseUrl?: string;
   agentReleaseSha256?: string;
+  providerKind?: string;
   nodeConfig?: string;
   workflowRunTimeoutSeconds?: string;
   workflowRunWaitSeconds?: string;
@@ -98,6 +99,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--expires-at': 'expiresAt',
   '--agent-release-url': 'agentReleaseUrl',
   '--agent-release-sha256': 'agentReleaseSha256',
+  '--provider-kind': 'providerKind',
   '--node-config': 'nodeConfig',
   '--run-timeout-seconds': 'workflowRunTimeoutSeconds',
   '--wait-seconds': 'workflowRunWaitSeconds',

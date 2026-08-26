@@ -2,8 +2,10 @@ use super::*;
 use a3s_cloud_contracts::{
     AgentProtocolCommandReceiptV1, AgentProtocolCommandV1, AgentProtocolRunCancelV1,
     AgentProtocolRunIdentityV1, AgentProtocolRunRecoverV1, AgentProtocolRunStartV1,
-    AgentProtocolRunStateV1, CloudSecretReference, NodeCodeAgentRuntimeBindingV1,
-    NodeCommandMetadata, NodeCommandResult, AGENT_PROTOCOL_V1,
+    AgentProtocolRunStateV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
+    AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunStartV1,
+    AgentProviderRunStateV1, CloudSecretReference, NodeAgentProviderRuntimeBindingV1,
+    NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata, NodeCommandResult, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -251,6 +253,83 @@ fn code_outcome(command: &AgentProtocolCommandV1, observed_at_ms: u64) -> NodeCo
                 observed_at_ms,
                 replayed: false,
             }),
+        }),
+    }
+}
+
+fn provider_binding(execution_id: Uuid) -> NodeAgentProviderRuntimeBindingV1 {
+    let profile = AgentProviderProfile::parse_acl(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/a1.3/reference-echo-provider-profile.acl"
+    )))
+    .expect("reference provider profile");
+    NodeAgentProviderRuntimeBindingV1 {
+        schema: NodeAgentProviderRuntimeBindingV1::SCHEMA.into(),
+        execution_id,
+        workload_id: Uuid::now_v7(),
+        workload_revision_id: Uuid::now_v7(),
+        deployment_id: Uuid::now_v7(),
+        replica_id: Uuid::now_v7(),
+        runtime_unit_id: "service-1".into(),
+        runtime_generation: 1,
+        runtime_spec_digest: format!("sha256:{}", "b".repeat(64)),
+        service_port_name: "agent".into(),
+        provider_profile_acl: profile.canonical_acl().into(),
+        provider_profile_digest: profile.digest().into(),
+        provider_run_identity: AgentProviderRunIdentityV1::new(
+            profile.digest().into(),
+            profile.capability_digest().into(),
+            format!("sha256:{}", "a".repeat(64)),
+            "conversation-reference".into(),
+            "execution-reference-attempt-1".into(),
+        )
+        .expect("provider identity"),
+    }
+}
+
+fn provider_envelope(
+    node_id: Uuid,
+    sequence: u64,
+    binding: NodeAgentProviderRuntimeBindingV1,
+    command: AgentProviderCommandV1,
+) -> NodeCommandEnvelope {
+    let issued_at = Utc::now();
+    NodeCommandEnvelope::new(
+        NodeCommandMetadata {
+            command_id: Uuid::now_v7(),
+            lease_id: Uuid::now_v7(),
+            node_id,
+            sequence,
+            aggregate_id: binding.execution_id,
+            issued_at,
+            not_after: issued_at + Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        },
+        NodeCommandPayload::AgentProviderCommand {
+            binding: Box::new(binding),
+            command: Box::new(command),
+        },
+    )
+    .expect("provider command envelope")
+}
+
+fn provider_outcome(
+    binding: &NodeAgentProviderRuntimeBindingV1,
+    command: &AgentProviderCommandV1,
+    observed_at_ms: u64,
+) -> NodeCommandOutcome {
+    NodeCommandOutcome::Succeeded {
+        result: Box::new(NodeCommandResult::AgentProviderCommandAccepted {
+            receipt: Box::new(
+                AgentProviderCommandReceiptV1::accepted(
+                    &binding.profile().expect("provider profile"),
+                    command,
+                    AgentProviderRunStateV1::Created,
+                    observed_at_ms,
+                    false,
+                )
+                .expect("provider receipt"),
+            ),
         }),
     }
 }
@@ -670,5 +749,85 @@ async fn successful_code_commands_project_only_the_current_exact_run_binding() {
         .code_run_bindings()
         .await
         .expect("project removed Code bindings")
+        .is_empty());
+}
+
+#[tokio::test]
+async fn successful_non_code_commands_survive_restart_until_the_runtime_is_removed() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let execution_id = Uuid::now_v7();
+    let binding = provider_binding(execution_id);
+    let command = AgentProviderCommandV1::Start {
+        request: AgentProviderRunStartV1::new(
+            "reference:start".into(),
+            binding.provider_run_identity.clone(),
+            "Echo this input.".into(),
+        )
+        .expect("provider start"),
+    };
+    let start = provider_envelope(node_id, 1, binding.clone(), command.clone());
+    let journal = FileCommandJournal::new(directory.path(), node_id).expect("journal");
+    journal
+        .begin(start.clone())
+        .await
+        .expect("begin provider start");
+    let completed_at = Utc::now();
+    journal
+        .complete(
+            start.command_id,
+            completed_at,
+            provider_outcome(
+                &binding,
+                &command,
+                completed_at
+                    .timestamp_millis()
+                    .try_into()
+                    .expect("provider observation time"),
+            ),
+        )
+        .await
+        .expect("complete provider start");
+
+    let reopened = FileCommandJournal::new(directory.path(), node_id).expect("reopen journal");
+    assert_eq!(
+        reopened
+            .provider_run_bindings()
+            .await
+            .expect("project provider binding"),
+        vec![binding.clone()]
+    );
+    assert!(reopened
+        .code_run_bindings()
+        .await
+        .expect("project Code bindings")
+        .is_empty());
+
+    let remove = remove_envelope(node_id, Uuid::now_v7(), 2, execution_id);
+    let remove_id = remove.command_id;
+    reopened.begin(remove).await.expect("begin Runtime removal");
+    reopened
+        .complete(
+            remove_id,
+            Utc::now(),
+            NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeRemoved {
+                    removal: RuntimeRemoval {
+                        schema: RuntimeRemoval::SCHEMA.into(),
+                        request_id: "remove-service-1".into(),
+                        unit_id: "service-1".into(),
+                        generation: 1,
+                        removed_at_ms: 2,
+                        already_absent: false,
+                    },
+                }),
+            },
+        )
+        .await
+        .expect("complete Runtime removal");
+    assert!(reopened
+        .provider_run_bindings()
+        .await
+        .expect("project removed provider bindings")
         .is_empty());
 }

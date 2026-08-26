@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.68.0" src="https://img.shields.io/badge/REST_contract-1.68.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.69.0" src="https://img.shields.io/badge/REST_contract-1.69.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -457,8 +457,10 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.68.0` is the current contract. It
-    enumerates Plan v12/compiler v12, `cloud.workflow.step-failure.v9`, and the
+    copied evidence bodies. REST/OpenAPI `1.69.0` is the current contract. It
+    adds closed Agent provider selection and complete typed Agent response
+    schemas with immutable provider identity evidence. It retains `1.68.0`'s
+    Plan v12/compiler v12, `cloud.workflow.step-failure.v9`, and the
     three closed Agent failure classifications through OpenAPI and the maintained
     TypeScript client without adding a route or response field. It retains
     `1.67.0`'s exact `cloud.workflow.policy.v4` cancellation-compensation policy,
@@ -532,10 +534,13 @@ creating their own control planes:
     in-memory/PostgreSQL receipts. It migrates new Code runs onto the common
     contract while retaining the native event endpoint and durable legacy
     history replay, and exercises Code plus a deterministic non-Code reference
-    Harness through one restart/cancellation/cleanup conformance suite. Runtime
-    selection of additional providers, a production non-Code node adapter, and
-    retained real-provider evidence remain open; `A1.4` through `A1.6` are not
-    claimed.
+    Harness through one restart/cancellation/cleanup conformance suite. The
+    current backend adds closed REST/client/CLI selection, migration `164`'s
+    creation-time immutable profile persistence, exact Flow registry recovery,
+    fail-closed Node protocol routing, and durable provider-neutral event-page
+    delivery through the shared outbound-batch primitive. Additional admitted
+    providers and retained PostgreSQL/real-Box non-Code recovery evidence remain
+    open; `A1.4` through `A1.6` are not claimed.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

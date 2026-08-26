@@ -178,8 +178,14 @@ pub(super) fn command(
             "Agent execution recovery run does not match its checkpoint".into(),
         ));
     }
-    runtime
-        .provider
+    let profile = binding
+        .provider()
+        .map_err(|error| flow_error("could not restore Agent recovery provider", error))?;
+    let provider = runtime
+        .providers
+        .provider_for_profile(profile)
+        .map_err(|error| flow_error("could not resolve Agent recovery provider", error))?;
+    provider
         .recover_command(
             format!(
                 "agent-recover-{}",

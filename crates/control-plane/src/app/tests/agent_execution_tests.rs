@@ -140,6 +140,21 @@ async fn agent_conversation_api_is_tenant_scoped_idempotent_and_stream_ready() -
         ))
         .await?;
     assert_eq!(unavailable_release.status(), 404);
+
+    let unsupported_provider = app
+        .call(post_json_as(
+            &start_path,
+            "agent-execution-unsupported-provider",
+            json!({
+                "agentAssetId": Uuid::now_v7(),
+                "agentAssetReleaseId": Uuid::now_v7(),
+                "providerKind": "unknown.provider",
+                "input": {"prompt": "hello"}
+            }),
+            AGENT_WRITER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(unsupported_provider.status(), 422);
     Ok(())
 }
 
@@ -384,8 +399,20 @@ async fn restricted_agent_execution_boundaries_resolve_environment_before_reads_
     };
     let started = app.call(start()).await?;
     assert_eq!(started.status(), 202);
+    let started_body = response_json(&started)?;
+    assert_eq!(
+        started_body["data"]["execution"]["provider"]["kind"],
+        "a3s.code"
+    );
+    assert_eq!(
+        started_body["data"]["execution"]["provider"]["protocol"],
+        "a3s.cloud.agent-provider.v1"
+    );
+    assert!(started_body["data"]["execution"]["provider"]
+        .get("profileAcl")
+        .is_none());
     let execution_id = required_agent_string(
-        &response_json(&started)?["data"]["execution"]["id"],
+        &started_body["data"]["execution"]["id"],
         "granted Agent execution ID",
     )?;
     let start_replay = app.call(start()).await?;

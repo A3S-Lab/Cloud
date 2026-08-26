@@ -18,5 +18,7 @@ pub use agent_execution_event::{
     AgentExecutionEvent, AgentExecutionEventDraft, AgentExecutionEventKind,
     MAX_AGENT_EVENTS_PER_APPEND,
 };
-pub use agent_provider_profile_binding::AgentProviderProfileBinding;
+pub use agent_provider_profile_binding::{
+    AgentProviderProfileBinding, NATIVE_CODE_AGENT_PROVIDER_KIND,
+};
 pub use agent_release_binding::AgentReleaseBinding;

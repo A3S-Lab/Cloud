@@ -35,6 +35,7 @@ export {
   MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
+  validateAgentProviderKind,
   validateExecutionTemplateAcl,
   validateFormDraftInput,
   validateFormVersionControl,

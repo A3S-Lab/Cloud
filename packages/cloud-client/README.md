@@ -130,7 +130,10 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.68.0`. It adds Plan schema/compiler v12,
+The client targets REST contract `1.69.0`. Agent execution creation accepts an
+optional closed `providerKind` and defaults to `a3s.code`; returned executions
+carry the immutable selected provider revision, protocol, profile digest, and
+capability digest. Contract `1.68.0` added Plan schema/compiler v12,
 `cloud.workflow.step-failure.v9`, and the three closed Agent failure
 classifications to returned Workflow payload types for descriptor-bound Agent
 failure routing. Contract `1.67.0` added `cloud.workflow.policy.v4` for exact
@@ -423,12 +426,18 @@ bodies, delivery evidence, receipts, or retry state.
 `createAgentConversation` expose the `A1.1` conversation lifecycle.
 `listAgentExecutions`, `getAgentExecution`, and `startAgentExecution` bind one
 logical execution to an exact published Agent AssetRelease and its immutable
-BuildRun/OCI identity. `getAgentExecutionEvents` reads the authoritative
-contiguous semantic sequence with a bounded opaque cursor, while
+BuildRun/OCI identity. Start accepts the optional closed `providerKind`
+selection `a3s.code` or `reference.echo`; Cloud resolves and persists the exact
+immutable provider profile before scheduling, and every returned execution
+includes its revision, common/native protocols, profile digest, and capability
+digest. `getAgentExecutionChangeSet` returns the bounded Git-compatible output
+only for the native Code provider. `getAgentExecutionEvents` reads the
+provider-neutral authoritative contiguous semantic sequence with a bounded opaque cursor, while
 `agentExecutionEventStreamUrl` builds the credential-free shared SSE URL used
 by streaming consumers. Conversation creation and execution start require caller-owned
-idempotency keys. This contract reserves an Operation identity but does not
-claim Harness, Fleet, Workload, or Runtime dispatch; those are `A1.2` work.
+idempotency keys. Provider commands and event pages reuse the existing
+Operation, Flow, Fleet, Workload, Runtime, and Node journal paths; arbitrary
+provider configuration and mutable request-local recovery state are rejected.
 
 `issueEnrollmentToken` validates the fixed `a3sn_` plus 64-lowercase-hex
 credential format and RFC 3339 expiry before transport, then calls the existing

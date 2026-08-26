@@ -10,6 +10,7 @@ export function requireListCommand(arguments_: ParsedArguments): void {
   rejectFileOption(arguments_);
   rejectExpectedVersionOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
 }
 
 export function requireReadCommand(arguments_: ParsedArguments, usage: string, arity = 3): void {
@@ -19,15 +20,24 @@ export function requireReadCommand(arguments_: ParsedArguments, usage: string, a
   rejectFileOption(arguments_);
   rejectExpectedVersionOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
 }
 
-export function requireMutationCommand(arguments_: ParsedArguments, arity: number, usage: string): string {
+export function requireMutationCommand(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string,
+  allowAgentProviderKind = false
+): string {
   requireArity(arguments_.positionals, arity, usage);
   rejectLogOptions(arguments_);
   const key = requireIdempotencyKey(arguments_);
   rejectFileOption(arguments_);
   rejectExpectedVersionOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
+  if (!allowAgentProviderKind) {
+    rejectAgentProviderKindOption(arguments_);
+  }
   return key;
 }
 
@@ -41,6 +51,7 @@ export function requireVersionedMutationCommand(
   rejectLogOptions(arguments_);
   rejectFileOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
   const expectedVersion = requireExpectedVersion(arguments_, label);
   return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
 }
@@ -120,5 +131,11 @@ export function rejectExpectedVersionOption(arguments_: ParsedArguments): void {
 export function rejectGatewayRolloutOptions(arguments_: ParsedArguments): void {
   if (arguments_.minReady !== undefined || arguments_.maxUnavailable !== undefined) {
     throw usageError('--min-ready and --max-unavailable are valid only for gateway-scopes create');
+  }
+}
+
+export function rejectAgentProviderKindOption(arguments_: ParsedArguments): void {
+  if (arguments_.providerKind !== undefined) {
+    throw usageError('--provider-kind is valid only for agent-executions start');
   }
 }

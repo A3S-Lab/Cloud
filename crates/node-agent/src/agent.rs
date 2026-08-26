@@ -1,3 +1,7 @@
+use crate::agent_provider_event_shipper::AgentProviderEventShipper;
+use crate::agent_provider_harness::{
+    HttpAgentProviderHarnessTransport, SharedAgentProviderHarnessTransport,
+};
 use crate::artifact::CloudBoxArtifactPort;
 #[cfg(target_os = "linux")]
 use crate::box_build::BoxBuildCommandExecutor;
@@ -11,12 +15,13 @@ use crate::log_shipper::LogShipper;
 use crate::resource_inventory::ResourceInventoryManager;
 use crate::state_file::{self, StateLock};
 use crate::{
-    CodeEventShippingError, CommandExecutionError, CommandExecutor, CommandJournalError,
-    DurableGatewaySnapshotInstaller, EnrolledNodeIdentity, FileCommandJournal,
-    FileNodeIdentityStore, GatewaySnapshotInstallError, GatewaySnapshotInstaller,
-    IdentityStoreError, LogShippingConfig, LogShippingError, NodeAgentConfig, NodeArtifactManager,
-    NodeArtifactTransport, NodeControlClient, NodeControlClientError, NodeControlTransport,
-    NodeIdentityState, NodeSecretTransport, ResourceInventoryError,
+    AgentProviderEventShippingError, CodeEventShippingError, CommandExecutionError,
+    CommandExecutor, CommandJournalError, DurableGatewaySnapshotInstaller, EnrolledNodeIdentity,
+    FileCommandJournal, FileNodeIdentityStore, GatewaySnapshotInstallError,
+    GatewaySnapshotInstaller, IdentityStoreError, LogShippingConfig, LogShippingError,
+    NodeAgentConfig, NodeArtifactManager, NodeArtifactTransport, NodeControlClient,
+    NodeControlClientError, NodeControlTransport, NodeIdentityState, NodeSecretTransport,
+    ResourceInventoryError,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandOutcome, NodeCommandResult, NodeGatewayAck,
@@ -169,6 +174,7 @@ pub struct NodeAgentSession {
     executor: CommandExecutor,
     log_shipper: LogShipper,
     code_event_shipper: CodeEventShipper,
+    agent_provider_event_shipper: AgentProviderEventShipper,
     identity: EnrolledNodeIdentity,
     capabilities: RuntimeCapabilities,
     agent_version: String,
@@ -227,6 +233,10 @@ impl NodeAgentSession {
             HttpCodeHarnessTransport::new()
                 .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
         );
+        let agent_provider_harness: SharedAgentProviderHarnessTransport = Arc::new(
+            HttpAgentProviderHarnessTransport::new()
+                .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
+        );
         let durable_cell_operator: SharedDurableCellOperatorTransport = Arc::new(
             HttpDurableCellOperatorTransport::new()
                 .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
@@ -236,6 +246,14 @@ impl NodeAgentSession {
             Arc::clone(&runtime),
             Arc::clone(&code_harness),
             Arc::clone(&transport),
+            state_dir.clone(),
+            code_event_request_timeout,
+        )?;
+        let agent_provider_event_shipper = AgentProviderEventShipper::new(
+            identity.response.node_id,
+            Arc::clone(&runtime),
+            Arc::clone(&agent_provider_harness),
+            Arc::clone(&transport),
             state_dir,
             code_event_request_timeout,
         )?;
@@ -244,9 +262,11 @@ impl NodeAgentSession {
             executor: CommandExecutor::new(journal, runtime, gateway)
                 .with_resource_inventory(resource_inventory.clone())
                 .with_code_harness(code_harness)
+                .with_agent_provider_harness(agent_provider_harness)
                 .with_durable_cell_operator(durable_cell_operator),
             log_shipper,
             code_event_shipper,
+            agent_provider_event_shipper,
             identity,
             capabilities,
             agent_version,
@@ -273,12 +293,14 @@ impl NodeAgentSession {
         let heartbeat_loop = self.heartbeat_loop();
         let log_loop = self.log_loop();
         let code_event_projection_loop = self.code_event_projection_loop();
+        let agent_provider_event_projection_loop = self.agent_provider_event_projection_loop();
         let shutdown = wait_for_shutdown(shutdown);
         tokio::pin!(
             command_loop,
             heartbeat_loop,
             log_loop,
             code_event_projection_loop,
+            agent_provider_event_projection_loop,
             shutdown
         );
         tokio::select! {
@@ -286,6 +308,7 @@ impl NodeAgentSession {
             result = &mut heartbeat_loop => result,
             result = &mut log_loop => result,
             result = &mut code_event_projection_loop => result,
+            result = &mut agent_provider_event_projection_loop => result,
             () = &mut shutdown => Ok(()),
         }
     }
@@ -435,6 +458,37 @@ impl NodeAgentSession {
                 Err(error) if error.retryable() => {
                     let delay = backoff.next_delay();
                     tracing::warn!(error = %error, ?delay, "Code event projection will retry");
+                    tokio::time::sleep(delay).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn agent_provider_event_projection_loop(&self) -> Result<(), NodeAgentError> {
+        let mut backoff = ExponentialBackoff::new(self.retry_initial, self.retry_maximum);
+        loop {
+            let result = async {
+                let bindings = self.executor.journal().provider_run_bindings().await?;
+                self.agent_provider_event_shipper
+                    .ship_once(&bindings)
+                    .await
+                    .map_err(NodeAgentError::from)
+            }
+            .await;
+            match result {
+                Ok(true) => backoff.reset(),
+                Ok(false) => {
+                    backoff.reset();
+                    tokio::time::sleep(self.log_poll_interval).await;
+                }
+                Err(error) if error.retryable() => {
+                    let delay = backoff.next_delay();
+                    tracing::warn!(
+                        error = %error,
+                        ?delay,
+                        "Agent provider event projection will retry"
+                    );
                     tokio::time::sleep(delay).await;
                 }
                 Err(error) => return Err(error),
@@ -841,6 +895,8 @@ pub enum NodeAgentError {
     #[error(transparent)]
     CodeEventShipping(#[from] CodeEventShippingError),
     #[error(transparent)]
+    AgentProviderEventShipping(#[from] AgentProviderEventShippingError),
+    #[error(transparent)]
     ResourceInventory(#[from] ResourceInventoryError),
     #[error(transparent)]
     Execution(#[from] CommandExecutionError),
@@ -862,6 +918,7 @@ impl NodeAgentError {
             Self::Gateway(error) => error.retryable(),
             Self::LogShipping(error) => error.retryable(),
             Self::CodeEventShipping(error) => error.retryable(),
+            Self::AgentProviderEventShipping(error) => error.retryable(),
             Self::ResourceInventory(error) => error.retryable(),
             Self::Invalid(_)
             | Self::State(_)

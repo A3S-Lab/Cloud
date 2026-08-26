@@ -5,6 +5,40 @@ use sha2::{Digest, Sha256};
 pub const AGENT_PROVIDER_MAX_EVENTS_PER_PAGE: usize = 64;
 pub const AGENT_PROVIDER_MAX_EVENT_TEXT_BYTES: usize = 64 * 1024;
 pub const AGENT_PROVIDER_MAX_FAILURE_BYTES: usize = 16 * 1024;
+pub const AGENT_PROVIDER_EVENT_PAGE_HTTP_PATH_V1: &str = "/v1/agent-provider/events/page";
+pub const AGENT_PROVIDER_MAX_EVENT_PAGE_BYTES: usize = 5 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentProviderEventPageRequestV1 {
+    pub schema: String,
+    pub identity: AgentProviderRunIdentityV1,
+    pub after_event_sequence: Option<u64>,
+    pub limit: u16,
+}
+
+impl AgentProviderEventPageRequestV1 {
+    pub const SCHEMA: &'static str = "a3s.cloud.agent-provider-event-page-request.v1";
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported Agent provider event-page request schema {:?}",
+                self.schema
+            ));
+        }
+        self.identity.validate()?;
+        if self.limit == 0 || usize::from(self.limit) > AGENT_PROVIDER_MAX_EVENTS_PER_PAGE {
+            return Err("Agent provider event-page request limit is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn validate_for(&self, profile: &AgentProviderProfile) -> Result<(), String> {
+        self.validate()?;
+        self.identity.validate_for(profile)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

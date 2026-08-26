@@ -274,7 +274,8 @@ impl ConversationRow {
 
 impl ExecutionRow {
     pub(super) fn aggregate(self) -> Result<AgentExecution, RepositoryError> {
-        let code = self.code_binding()?;
+        let provider = self.provider_binding()?;
+        let code = self.code_binding(&provider)?;
         let digest = Sha256Digest::parse(self.agent_artifact_digest)
             .map_err(|error| corrupt(format!("Agent artifact digest is invalid: {error}")))?;
         let agent = AgentReleaseBinding::new(
@@ -294,6 +295,7 @@ impl ExecutionRow {
             id: AgentExecutionId::from_uuid(self.id),
             operation_id: OperationId::from_uuid(self.operation_id),
             agent,
+            provider,
             code,
             status: AgentExecutionStatus::parse(&self.status)
                 .map_err(|error| corrupt(format!("Agent execution status is invalid: {error}")))?,
@@ -309,15 +311,45 @@ impl ExecutionRow {
         .map_err(|error| corrupt(format!("Agent execution is invalid: {error}")))
     }
 
-    fn code_binding(&self) -> Result<Option<AgentCodeRunBinding>, RepositoryError> {
-        let all_absent = self.provider_kind.is_none()
-            && self.provider_revision.is_none()
-            && self.provider_protocol.is_none()
-            && self.provider_native_protocol.is_none()
-            && self.provider_profile_acl.is_none()
-            && self.provider_profile_digest.is_none()
-            && self.provider_capability_digest.is_none()
-            && self.provider_node_id.is_none()
+    fn provider_binding(&self) -> Result<AgentProviderProfileBinding, RepositoryError> {
+        let required = (
+            self.provider_kind.as_deref(),
+            self.provider_revision.as_deref(),
+            self.provider_protocol.as_deref(),
+            self.provider_native_protocol.as_deref(),
+            self.provider_profile_acl.as_deref(),
+            self.provider_profile_digest.as_deref(),
+            self.provider_capability_digest.as_deref(),
+        );
+        let (
+            Some(kind),
+            Some(revision),
+            Some(protocol),
+            Some(native_protocol),
+            Some(profile_acl),
+            Some(profile_digest),
+            Some(capability_digest),
+        ) = required
+        else {
+            return Err(corrupt("Agent execution has no immutable provider profile"));
+        };
+        AgentProviderProfileBinding::restore(
+            kind.into(),
+            revision.into(),
+            protocol.into(),
+            native_protocol.into(),
+            profile_acl.into(),
+            profile_digest.into(),
+            capability_digest.into(),
+        )
+        .map_err(|error| corrupt(format!("Agent provider profile is invalid: {error}")))
+    }
+
+    fn code_binding(
+        &self,
+        provider: &AgentProviderProfileBinding,
+    ) -> Result<Option<AgentCodeRunBinding>, RepositoryError> {
+        let all_absent = self.provider_node_id.is_none()
             && self.provider_workload_id.is_none()
             && self.provider_workload_revision_id.is_none()
             && self.provider_deployment_id.is_none()
@@ -334,13 +366,6 @@ impl ExecutionRow {
             && self.provider_bound_at.is_none()
             && self.provider_observed_at.is_none();
         let required = (
-            self.provider_kind.as_deref(),
-            self.provider_revision.as_deref(),
-            self.provider_protocol.as_deref(),
-            self.provider_native_protocol.as_deref(),
-            self.provider_profile_acl.as_deref(),
-            self.provider_profile_digest.as_deref(),
-            self.provider_capability_digest.as_deref(),
             self.provider_node_id,
             self.provider_workload_id,
             self.provider_workload_revision_id,
@@ -357,13 +382,6 @@ impl ExecutionRow {
             self.provider_bound_at,
         );
         let (
-            Some(kind),
-            Some(revision),
-            Some(provider_protocol),
-            Some(native_protocol),
-            Some(profile_acl),
-            Some(profile_digest),
-            Some(capability_digest),
             Some(node_id),
             Some(workload_id),
             Some(workload_revision_id),
@@ -389,18 +407,8 @@ impl ExecutionRow {
             corrupt(format!("provider Runtime spec digest is invalid: {error}"))
         })?;
         let state = parse_code_state(state)?;
-        let provider = AgentProviderProfileBinding::restore(
-            kind.into(),
-            revision.into(),
-            provider_protocol.into(),
-            native_protocol.into(),
-            profile_acl.into(),
-            profile_digest.into(),
-            capability_digest.into(),
-        )
-        .map_err(|error| corrupt(format!("Agent provider profile is invalid: {error}")))?;
         AgentCodeRunBinding::restore_with_provider(
-            provider,
+            provider.clone(),
             NodeId::from_uuid(node_id),
             WorkloadId::from_uuid(workload_id),
             WorkloadRevisionId::from_uuid(workload_revision_id),
@@ -412,7 +420,7 @@ impl ExecutionRow {
             service_port_name,
             AgentProtocolRunIdentityV1 {
                 schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
-                protocol: native_protocol.into(),
+                protocol: provider.native_protocol().into(),
                 agent_release_identity: release_identity.into(),
                 session_id: session_id.into(),
                 run_id: run_id.into(),

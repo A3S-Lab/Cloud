@@ -274,6 +274,7 @@ import {
   validateRecipientContactProof,
 } from './identity';
 import {
+  validateAgentProviderKind,
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExecutionTemplateAcl,
@@ -316,7 +317,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.68.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.69.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -356,6 +357,7 @@ export {
   MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
+  validateAgentProviderKind,
   validateExecutionTemplateAcl,
   validateFormDraftInput,
   validateFormVersionControl,
@@ -2843,6 +2845,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<AgentExecutionMutationResult> {
+    validateAgentProviderKind(input.providerKind);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/agent-conversations/${encodeURIComponent(conversationId)}/executions`,

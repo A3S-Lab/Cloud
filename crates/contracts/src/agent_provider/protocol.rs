@@ -4,6 +4,9 @@ use sha2::{Digest, Sha256};
 
 const MAX_PROVIDER_PROMPT_BYTES: usize = 1024 * 1024;
 
+pub const AGENT_PROVIDER_COMMAND_HTTP_PATH_V1: &str = "/v1/agent-provider/commands";
+pub const AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES: usize = 64 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentProviderRunStateV1 {
@@ -81,6 +84,13 @@ impl AgentProviderRunIdentityV1 {
             return Err("Agent provider run identity does not match its immutable profile".into());
         }
         Ok(())
+    }
+
+    pub fn digest(&self) -> Result<String, String> {
+        self.validate()?;
+        let encoded = serde_json::to_vec(self)
+            .map_err(|error| format!("could not encode Agent provider run identity: {error}"))?;
+        Ok(format!("sha256:{:x}", Sha256::digest(encoded)))
     }
 }
 

@@ -3,12 +3,13 @@ use crate::infrastructure::{
     SmtpCredentials, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
 };
 use crate::modules::agents::{
-    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
-    AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
-    CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionChangeSetHandler,
-    GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository, IWorkflowAgentPort,
-    ListAgentConversationsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
-    WorkflowAgentApplicationService,
+    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
+    AgentExecutionProviderRegistry, AgentExecutionReconciler, AgentsModule,
+    AppendAgentExecutionEventsHandler, BuiltInAgentExecutionProviderRegistry,
+    CancelAgentExecutionHandler, CreateAgentConversationHandler, GetAgentConversationHandler,
+    GetAgentExecutionChangeSetHandler, GetAgentExecutionEventsHandler, GetAgentExecutionHandler,
+    IAgentRepository, IWorkflowAgentPort, ListAgentConversationsHandler,
+    ListAgentExecutionsHandler, StartAgentExecutionHandler, WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
@@ -561,6 +562,10 @@ async fn build_api_worker_application(
     let executions = adapters.executions;
     let execution_templates = adapters.execution_templates;
     let agents = adapters.agents;
+    let agent_execution_providers: Arc<dyn AgentExecutionProviderRegistry> = Arc::new(
+        BuiltInAgentExecutionProviderRegistry::new()
+            .map_err(ControlPlaneStartupError::AgentExecution)?,
+    );
     let log_retention_repository = adapters.fleet.log_retention;
     let workload_runtime_control = adapters.fleet.workload_runtime_control;
     let workloads = adapters.workloads.workloads;
@@ -981,10 +986,7 @@ async fn build_api_worker_application(
         let agent_execution_runtime = AgentExecutionFlowRuntime::new(
             AgentExecutionFlowRuntimeDependencies {
                 agents: Arc::clone(&agents),
-                provider: Arc::new(
-                    crate::modules::agents::NativeCodeAgentExecutionProvider::new()
-                        .map_err(ControlPlaneStartupError::AgentExecution)?,
-                ),
+                providers: Arc::clone(&agent_execution_providers),
                 workload_targets: Arc::clone(&workload_targets),
                 node_control: Arc::clone(&node_control),
             },
@@ -1696,6 +1698,7 @@ async fn build_api_worker_application(
                 executions,
                 execution_templates,
                 agents,
+                agent_execution_providers,
                 routes,
                 mcp_credentials,
                 secrets,
@@ -1923,6 +1926,7 @@ struct ManagementApplicationDependencies {
     executions: Arc<dyn IExecutionRepository>,
     execution_templates: Arc<dyn IExecutionTemplateRepository>,
     agents: Arc<dyn IAgentRepository>,
+    agent_execution_providers: Arc<dyn AgentExecutionProviderRegistry>,
     routes: Arc<dyn IEdgeRepository>,
     mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     secrets: Arc<dyn ISecretRepository>,
@@ -2006,6 +2010,7 @@ fn build_management_application_with_health(
         executions,
         execution_templates,
         agents,
+        agent_execution_providers,
         routes,
         mcp_credentials,
         secrets,
@@ -2990,6 +2995,7 @@ fn build_management_application_with_health(
                         start_agent_executions,
                         agent_execution_assets,
                         agent_execution_artifacts,
+                        Arc::clone(&agent_execution_providers),
                     ),
                 )
                 .command_handler::<crate::modules::agents::CancelAgentExecution, _>(

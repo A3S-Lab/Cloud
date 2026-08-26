@@ -5,12 +5,12 @@ use super::*;
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationCreated, AgentEventContent,
     AgentExecution, AgentExecutionCancellationRequested, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentExecutionStarted, AgentReleaseBinding, BindAgentCodeRunWrite,
-    CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
-    StartAgentExecutionWrite,
+    AgentExecutionEventKind, AgentExecutionStarted, AgentProviderProfileBinding,
+    AgentReleaseBinding, BindAgentCodeRunWrite, CreateAgentConversationWrite, IAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
-use crate::modules::agents::NativeCodeAgentExecutionProvider;
+use crate::modules::agents::BuiltInAgentExecutionProviderRegistry;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft,
@@ -28,9 +28,10 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
     AgentProtocolRunIdentityV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
-    AgentProviderRunStateV1, DomainEventEnvelope, NodeCommandAck, NodeCommandEnvelope,
-    NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
-    NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport, AGENT_PROTOCOL_V1,
+    AgentProviderProfile, AgentProviderRunStateV1, DomainEventEnvelope, NodeCommandAck,
+    NodeCommandEnvelope, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
@@ -96,6 +97,81 @@ fn agent_flow_configuration_is_bounded() {
 }
 
 #[tokio::test]
+async fn reference_provider_dispatch_preserves_the_common_profile_and_protocol() {
+    let now = canonical_timestamp(Utc::now() - Duration::seconds(5));
+    let organization_id = OrganizationId::new();
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id) =
+        enroll_command_node(nodes.as_ref(), organization_id, now).await;
+    let profile = AgentProviderProfile::parse_acl(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/a1.3/reference-echo-provider-profile.acl"
+    )))
+    .expect("reference provider profile");
+    let provider =
+        AgentProviderProfileBinding::from_profile(&profile).expect("reference provider binding");
+    let agents = Arc::new(InMemoryAgentRepository::new());
+    let (execution, _) = prepare_bound_execution_with_provider(
+        agents.as_ref(),
+        organization_id,
+        node_id,
+        now,
+        provider,
+    )
+    .await;
+    let runtime = AgentExecutionFlowRuntime::new(
+        AgentExecutionFlowRuntimeDependencies {
+            agents,
+            providers: Arc::new(
+                BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
+            ),
+            workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
+            node_control: nodes.clone(),
+        },
+        AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
+            heartbeat_timeout_ms: 60_000,
+            command_ttl_ms: 60_000,
+            observation_poll_ms: 1,
+            convergence_timeout_ms: 60_000,
+        })
+        .expect("Agent Flow configuration"),
+    );
+    let prepared = PreparedAgentExecution {
+        organization_id,
+        execution_id: execution.id,
+        binding: execution.code.clone().expect("provider Runtime binding"),
+        runtime_started_at_ms: None,
+    };
+    let output = super::runtime::dispatch(
+        &runtime,
+        &execution.operation_id.to_string(),
+        DispatchInput {
+            prepared: Box::new(prepared),
+        },
+    )
+    .await
+    .expect("dispatch reference provider");
+    assert!(matches!(output, DispatchOutput::Ready { .. }));
+
+    let envelope = lease_code_command(nodes.as_ref(), node_id, agent_instance_id, 0).await;
+    let NodeCommandPayload::AgentProviderCommand { binding, command } = envelope.payload else {
+        panic!("reference provider must use the common provider command path");
+    };
+    let bound_profile = binding.profile().expect("bound provider profile");
+    assert_eq!(bound_profile, profile);
+    assert_eq!(bound_profile.kind(), REFERENCE_ECHO_AGENT_PROVIDER_KIND);
+    assert_eq!(
+        bound_profile.native_protocol(),
+        REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1
+    );
+    assert!(matches!(
+        command.as_ref(),
+        AgentProviderCommandV1::Start { .. }
+    ));
+    assert!(binding.code_binding().is_err());
+}
+
+#[tokio::test]
 async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
     let now = canonical_timestamp(Utc::now() - Duration::seconds(5));
     let organization_id = OrganizationId::new();
@@ -108,8 +184,8 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
     let flow_runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents: agents.clone(),
-            provider: Arc::new(
-                NativeCodeAgentExecutionProvider::new().expect("native Code provider"),
+            providers: Arc::new(
+                BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
             node_control: nodes.clone(),
@@ -291,6 +367,23 @@ async fn prepare_bound_execution(
     node_id: NodeId,
     requested_at: chrono::DateTime<Utc>,
 ) -> (AgentExecution, AgentCodeRunBinding) {
+    prepare_bound_execution_with_provider(
+        agents,
+        organization_id,
+        node_id,
+        requested_at,
+        AgentProviderProfileBinding::native_code().expect("native Code provider"),
+    )
+    .await
+}
+
+async fn prepare_bound_execution_with_provider(
+    agents: &InMemoryAgentRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    requested_at: chrono::DateTime<Utc>,
+    provider: AgentProviderProfileBinding,
+) -> (AgentExecution, AgentCodeRunBinding) {
     let conversation = AgentConversation::create(
         organization_id,
         ProjectId::new(),
@@ -321,12 +414,13 @@ async fn prepare_bound_execution(
         1,
     )
     .expect("Agent release binding");
-    let execution = AgentExecution::create(
+    let execution = AgentExecution::create_with_provider(
         organization_id,
         conversation.id,
         AgentExecutionId::new(),
         OperationId::new(),
         release,
+        provider.clone(),
         requested_at,
     )
     .expect("Agent execution");
@@ -346,7 +440,8 @@ async fn prepare_bound_execution(
         })
         .await
         .expect("start execution");
-    let binding = AgentCodeRunBinding::new(
+    let binding = AgentCodeRunBinding::new_with_provider(
+        provider.clone(),
         node_id,
         WorkloadId::new(),
         WorkloadRevisionId::new(),
@@ -358,7 +453,7 @@ async fn prepare_bound_execution(
         "agent",
         AgentProtocolRunIdentityV1 {
             schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
-            protocol: AGENT_PROTOCOL_V1.into(),
+            protocol: provider.native_protocol().into(),
             agent_release_identity: execution.agent.artifact_digest().as_str().into(),
             session_id: format!("agent-conversation-{}", conversation.id),
             run_id: format!("agent-execution-{}", execution.id),
@@ -366,7 +461,7 @@ async fn prepare_bound_execution(
         requested_at + Duration::seconds(1),
     )
     .expect("Code run binding");
-    agents
+    let write = agents
         .bind_code_run(BindAgentCodeRunWrite {
             organization_id,
             execution_id: execution.id,
@@ -374,7 +469,7 @@ async fn prepare_bound_execution(
         })
         .await
         .expect("bind Code run");
-    (execution, binding)
+    (write.execution, binding)
 }
 
 async fn enroll_command_node(
