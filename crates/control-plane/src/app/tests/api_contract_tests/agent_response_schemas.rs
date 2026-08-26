@@ -11,6 +11,27 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         "AgentConversationMutation",
         "AgentReleaseBinding",
         "AgentProviderProfile",
+        "HarnessAgentReleaseBinding",
+        "HarnessProviderBinding",
+        "HarnessWorkspaceBinding",
+        "HarnessSkillBinding",
+        "HarnessMcpBinding",
+        "HarnessModelBinding",
+        "HarnessSecretReference",
+        "HarnessToolBinding",
+        "HarnessInvocationProfile",
+        "AgentToolPayloadIdentity",
+        "AgentModelOutputEventContent",
+        "AgentToolRequestEventContent",
+        "AgentToolResultEventContent",
+        "AgentExecutionFailureEventContent",
+        "AgentExecutionRequestedEvent",
+        "AgentModelOutputEvent",
+        "AgentToolRequestEvent",
+        "AgentToolResultEvent",
+        "AgentExecutionFailedEvent",
+        "AgentExecutionCompletedEvent",
+        "AgentExecutionCancelledEvent",
         "AgentExecution",
         "AgentExecutionMutation",
         "AgentCodeRunIdentity",
@@ -36,6 +57,109 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         schemas["AgentExecution"]["properties"]["provider"]["$ref"],
         "#/components/schemas/AgentProviderProfile"
     );
+    assert_eq!(
+        schemas["AgentExecution"]["properties"]["invocationProfile"]["allOf"][0]["$ref"],
+        "#/components/schemas/HarnessInvocationProfile"
+    );
+    assert_eq!(
+        schemas["HarnessInvocationProfile"]["properties"]["schema"]["enum"],
+        json!(["a3s.cloud.harness-invocation-profile.v1"])
+    );
+    assert_eq!(
+        schemas["HarnessProviderBinding"]["properties"]["kind"]["enum"],
+        json!(["a3s.code", "reference.echo"])
+    );
+    assert_eq!(
+        schemas["HarnessInvocationProfile"]["x-a3s-max-canonical-bytes"],
+        a3s_cloud_contracts::HARNESS_INVOCATION_PROFILE_MAX_BYTES
+    );
+    for binding in ["skills", "mcpServers", "models", "secrets", "tools"] {
+        assert_eq!(
+            schemas["HarnessInvocationProfile"]["properties"][binding]["uniqueItems"], true,
+            "{binding} must document immutable unique bindings"
+        );
+    }
+    for (binding, order) in [
+        ("skills", json!(["assetId", "assetReleaseId"])),
+        ("mcpServers", json!(["assetId", "assetReleaseId"])),
+        ("models", json!(["modelId", "modelRevisionId"])),
+        ("secrets", json!(["name"])),
+        ("tools", json!(["name", "revision"])),
+    ] {
+        assert_eq!(
+            schemas["HarnessInvocationProfile"]["properties"][binding]["x-a3s-canonical-order"],
+            order,
+            "{binding} must document its canonical digest order"
+        );
+    }
+    assert_eq!(
+        schemas["HarnessInvocationProfile"]["properties"]["requiredCapabilities"]
+            ["x-a3s-canonical-order"],
+        "lexical-wire-value"
+    );
+    assert_eq!(
+        schemas["AgentExecutionEvent"]["discriminator"]["propertyName"],
+        "kind"
+    );
+    assert_eq!(
+        schemas["AgentExecutionEvent"]["oneOf"]
+            .as_array()
+            .map(Vec::len),
+        Some(7),
+        "AgentExecutionEvent must expose exactly the documented event variants"
+    );
+    for (kind, variant) in [
+        ("execution_requested", "AgentExecutionRequestedEvent"),
+        ("model_output", "AgentModelOutputEvent"),
+        ("tool_request", "AgentToolRequestEvent"),
+        ("tool_result", "AgentToolResultEvent"),
+        ("execution_failed", "AgentExecutionFailedEvent"),
+        ("execution_completed", "AgentExecutionCompletedEvent"),
+        ("execution_cancelled", "AgentExecutionCancelledEvent"),
+    ] {
+        let expected_reference = format!("#/components/schemas/{variant}");
+        assert_eq!(
+            schemas["AgentExecutionEvent"]["discriminator"]["mapping"][kind].as_str(),
+            Some(expected_reference.as_str())
+        );
+        assert!(
+            schemas["AgentExecutionEvent"]["oneOf"]
+                .as_array()
+                .expect("AgentExecutionEvent oneOf variants")
+                .iter()
+                .any(|schema| schema["$ref"] == expected_reference),
+            "AgentExecutionEvent must include the {kind} variant"
+        );
+        assert_eq!(schemas[variant]["additionalProperties"], false);
+        assert_eq!(
+            schemas[variant]["properties"]["kind"]["enum"],
+            json!([kind])
+        );
+    }
+    assert_eq!(
+        schemas["AgentToolRequestEvent"]["properties"]["content"]["$ref"],
+        "#/components/schemas/AgentToolRequestEventContent"
+    );
+    assert_eq!(
+        schemas["AgentToolResultEvent"]["properties"]["content"]["$ref"],
+        "#/components/schemas/AgentToolResultEventContent"
+    );
+    assert_eq!(
+        schemas["AgentToolRequestEventContent"]["properties"]["request"]["$ref"],
+        "#/components/schemas/AgentToolPayloadIdentity"
+    );
+    assert_eq!(
+        schemas["AgentToolResultEventContent"]["properties"]["result"]["$ref"],
+        "#/components/schemas/AgentToolPayloadIdentity"
+    );
+    for forbidden in ["payload", "value", "body", "secretMaterial"] {
+        assert!(
+            schemas["AgentToolPayloadIdentity"]["properties"]
+                .get(forbidden)
+                .is_none(),
+            "Tool payload identity exposed {forbidden}"
+        );
+    }
     assert_eq!(
         schemas["AgentCodeChangeSet"]["properties"]["identity"]["$ref"],
         "#/components/schemas/AgentCodeRunIdentity"

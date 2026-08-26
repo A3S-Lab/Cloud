@@ -1209,7 +1209,7 @@ host evidence, and AnySentry/OpenTelemetry references only after those owners
 provide durable typed facts. Investigation and notification cannot enforce
 policy or mutate an owning aggregate.
 
-### 3.13 Agent execution (`A1.1` foundation; native `A1.2` verified)
+### 3.13 Agent execution (`A1.1` foundation; native `A1.2` verified; `A1.4-C1` component)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
@@ -1224,15 +1224,21 @@ Primary aggregates:
 
 Current supporting records:
 
-- one immutable Agent-release binding and one current exact Code/
-  Workload/Runtime delivery binding embedded in `AgentExecution`; and
-- `AgentExecutionEvent`.
+- one immutable Agent-release binding, one immutable provider profile, and one
+  current exact Workload/Runtime delivery binding embedded in
+  `AgentExecution`;
+- one closed immutable `HarnessInvocationProfile` persisted atomically with
+  every newly dispatched provider run, containing exact identities and policy
+  digests plus Secret references but no Secret material; and
+- `AgentExecutionEvent`, including provider-neutral digest-only Tool
+  request/result records, with each accepted Tool record correlated to the
+  shared audit store as `a3s.cloud.agent-tool-audit.v1` in the same PostgreSQL
+  receipt transaction.
 
 Planned supporting records:
 
-- immutable Harness invocation profiles and execution-provider bindings;
-- exact instructions, environment/security policy, Skill, MCP, model,
-  workspace, Secret-reference, and Tool bindings;
+- production binding producers for exact model and Tool identities and any MCP
+  identity not already supplied by the selected Agent Workload revision;
 - `AgentApprovalCheckpoint`; and
 - `AgentExecutionCheckpoint`.
 
@@ -3515,6 +3521,11 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - Appending one or more semantic events and advancing the conversation head is
   one transaction. A committed sequence is immutable, contiguous, and unique
   within the conversation.
+- Provider Tool requests/results carry only the exact pinned Tool identity plus
+  request/result digest, byte length, media type, and closed outcome. The same
+  provider-batch transaction writes one shared audit correlation keyed by the
+  batch, provider source sequence, and Agent semantic sequence; payload bodies
+  and Secret material never enter either record.
 - `AgentExecution` owns logical state and the correlated Operation identity.
   `A1.2` binds exact Code run and existing Workload/Runtime delivery identity,
   then reuses Operations/Flow and Fleet to reach the native `a3s code harness`.

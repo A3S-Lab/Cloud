@@ -5,7 +5,8 @@ use crate::modules::shared_kernel::domain::{
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
     AgentProviderEventPageV1, AgentProviderRunIdentityV1, AgentProviderRunStateV1,
-    NodeAgentProviderRuntimeBindingV1, NodeCodeAgentRuntimeBindingV1, AGENT_PROTOCOL_V1,
+    AgentProviderSemanticEventV1, HarnessInvocationProfileV1, NodeAgentProviderRuntimeBindingV1,
+    NodeCodeAgentRuntimeBindingV1, AGENT_PROTOCOL_V1,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,8 @@ use serde::{Deserialize, Serialize};
 pub struct AgentCodeRunBinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     provider: Option<super::AgentProviderProfileBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    invocation_profile: Option<HarnessInvocationProfileV1>,
     node_id: NodeId,
     workload_id: WorkloadId,
     workload_revision_id: WorkloadRevisionId,
@@ -151,6 +154,7 @@ impl AgentCodeRunBinding {
     ) -> Result<Self, String> {
         let binding = Self {
             provider: Some(provider),
+            invocation_profile: None,
             node_id,
             workload_id,
             workload_revision_id,
@@ -170,6 +174,32 @@ impl AgentCodeRunBinding {
         Ok(binding)
     }
 
+    pub(crate) fn with_invocation_profile(
+        mut self,
+        invocation_profile: HarnessInvocationProfileV1,
+    ) -> Result<Self, String> {
+        if !self.is_initial() || self.invocation_profile.is_some() {
+            return Err(
+                "Agent run Harness invocation profile must be bound before observation".into(),
+            );
+        }
+        self.invocation_profile = Some(invocation_profile);
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub(crate) fn restore_invocation_profile(
+        mut self,
+        invocation_profile: HarnessInvocationProfileV1,
+    ) -> Result<Self, String> {
+        if self.invocation_profile.is_some() {
+            return Err("Agent run Harness invocation profile is immutable".into());
+        }
+        self.invocation_profile = Some(invocation_profile);
+        self.validate()?;
+        Ok(self)
+    }
+
     pub fn restore_legacy_provider(&mut self) -> Result<bool, String> {
         if self.provider.is_some() {
             return Ok(false);
@@ -187,13 +217,30 @@ impl AgentCodeRunBinding {
 
     pub fn provider_identity(&self) -> Result<AgentProviderRunIdentityV1, String> {
         let provider = self.provider()?;
-        AgentProviderRunIdentityV1::new(
+        let mut identity = AgentProviderRunIdentityV1::new(
             provider.profile_digest().into(),
             provider.capability_digest().into(),
             self.identity.agent_release_identity.clone(),
             self.identity.session_id.clone(),
             self.identity.run_id.clone(),
-        )
+        )?;
+        identity.invocation_profile_digest = self
+            .invocation_profile
+            .as_ref()
+            .map(HarnessInvocationProfileV1::digest)
+            .transpose()?;
+        identity.validate()?;
+        Ok(identity)
+    }
+
+    pub const fn invocation_profile(&self) -> Option<&HarnessInvocationProfileV1> {
+        self.invocation_profile.as_ref()
+    }
+
+    pub fn require_invocation_profile(&self) -> Result<&HarnessInvocationProfileV1, String> {
+        self.invocation_profile
+            .as_ref()
+            .ok_or_else(|| "Agent run has no immutable Harness invocation profile".into())
     }
 
     pub const fn node_id(&self) -> NodeId {
@@ -266,6 +313,7 @@ impl AgentCodeRunBinding {
 
     pub fn has_same_runtime_binding(&self, other: &Self) -> bool {
         self.provider == other.provider
+            && self.invocation_profile == other.invocation_profile
             && self.node_id == other.node_id
             && self.workload_id == other.workload_id
             && self.workload_revision_id == other.workload_revision_id
@@ -292,7 +340,7 @@ impl AgentCodeRunBinding {
     ) -> Result<Self, String> {
         let mut identity = self.identity.clone();
         identity.run_id = Self::recovery_run_id(execution_id, &self.identity.run_id);
-        Self::new_with_provider(
+        let successor = Self::new_with_provider(
             self.provider()?.clone(),
             self.node_id,
             self.workload_id,
@@ -305,7 +353,11 @@ impl AgentCodeRunBinding {
             self.service_port_name.clone(),
             identity,
             recovered_at,
-        )
+        )?;
+        match &self.invocation_profile {
+            Some(profile) => successor.with_invocation_profile(profile.clone()),
+            None => Ok(successor),
+        }
     }
 
     pub fn is_recovery_successor_of(
@@ -465,6 +517,7 @@ impl AgentCodeRunBinding {
         page: &AgentProviderEventPageV1,
     ) -> Result<(), String> {
         page.validate_for(&self.provider()?.profile()?)?;
+        self.validate_provider_tool_events(page)?;
         let page_observed_at = provider_page_observed_at(page)?;
         if page.identity != self.provider_identity()?
             || page.after_event_sequence != self.accepted_after_event_sequence
@@ -483,9 +536,47 @@ impl AgentCodeRunBinding {
         self.validate()
     }
 
+    fn validate_provider_tool_events(&self, page: &AgentProviderEventPageV1) -> Result<(), String> {
+        let tool_events = page.events.iter().filter_map(|record| match &record.event {
+            AgentProviderSemanticEventV1::ToolRequest { tool, .. }
+            | AgentProviderSemanticEventV1::ToolResult { tool, .. } => Some(tool),
+            AgentProviderSemanticEventV1::ModelOutput { .. } => None,
+        });
+        let mut invocation = None;
+        for tool in tool_events {
+            let profile = match invocation {
+                Some(profile) => profile,
+                None => {
+                    let profile = self.require_invocation_profile()?;
+                    invocation = Some(profile);
+                    profile
+                }
+            };
+            if !profile.tools.contains(tool) {
+                return Err(
+                    "Agent provider Tool event is outside its immutable invocation profile".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         let provider = self.provider()?;
         provider.validate()?;
+        if let Some(invocation) = &self.invocation_profile {
+            invocation.validate_for(&provider.profile()?)?;
+            if invocation.provider.kind != provider.kind()
+                || invocation.workspace.workload_id != self.workload_id.as_uuid()
+                || invocation.workspace.workload_revision_id != self.workload_revision_id.as_uuid()
+                || invocation.workspace.runtime_unit_id != self.runtime_unit_id
+                || invocation.workspace.runtime_generation != self.runtime_generation
+                || invocation.workspace.runtime_spec_digest != self.runtime_spec_digest.as_str()
+                || invocation.agent.artifact_digest != self.identity.agent_release_identity
+            {
+                return Err("Harness invocation profile changed its Agent Runtime binding".into());
+            }
+        }
         let native_code = provider.kind() == super::NATIVE_CODE_AGENT_PROVIDER_KIND;
         if self.identity.schema != AgentProtocolRunIdentityV1::SCHEMA
             || self.identity.protocol != provider.native_protocol()
@@ -582,6 +673,21 @@ fn is_recovery_run_id(run_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use a3s_cloud_contracts::{
+        AgentProviderCapabilityV1, AgentProviderEventRecordV1, AgentProviderProfile,
+        AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1,
+        HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
+        HarnessToolBindingV1, HarnessWorkspaceBindingV1,
+    };
+
+    const TOOL_PROVIDER_PROFILE: &str = r#"agent_provider "test.tools" {
+  capabilities = ["cancellation", "cleanup", "event_pages", "tool_calls"]
+  native_protocol = "test.tools.v1"
+  protocol = "a3s.cloud.agent-provider.v1"
+  revision = "1.0.0"
+  schema = "a3s.cloud.agent-provider-profile.v1"
+}
+"#;
 
     fn binding(bound_at: DateTime<Utc>) -> AgentCodeRunBinding {
         AgentCodeRunBinding::new(
@@ -682,5 +788,150 @@ mod tests {
             .expect("advance recovered run");
         assert!(!successor.is_initial());
         assert!(successor.is_recovery_successor_of(&checkpoint, execution_id));
+    }
+
+    #[test]
+    fn provider_tool_events_must_match_the_immutable_invocation_profile() {
+        let bound_at = canonical_timestamp(Utc::now());
+        let provider =
+            AgentProviderProfile::parse_acl(TOOL_PROVIDER_PROFILE).expect("Tool provider profile");
+        let provider_binding = super::super::AgentProviderProfileBinding::from_profile(&provider)
+            .expect("Tool provider binding");
+        let workload_id = WorkloadId::new();
+        let workload_revision_id = WorkloadRevisionId::new();
+        let runtime_spec_digest =
+            Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest");
+        let tool = HarnessToolBindingV1 {
+            name: "workspace.search".into(),
+            revision: "1.0.0".into(),
+            contract_digest: format!("sha256:{}", "c".repeat(64)),
+            approval_required: false,
+        };
+        let invocation = HarnessInvocationProfileV1 {
+            schema: HarnessInvocationProfileV1::SCHEMA.into(),
+            agent: HarnessAgentReleaseBindingV1 {
+                organization_id: uuid::Uuid::from_u128(1),
+                asset_id: uuid::Uuid::from_u128(2),
+                asset_release_id: uuid::Uuid::from_u128(3),
+                build_run_id: uuid::Uuid::from_u128(4),
+                artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            },
+            provider: HarnessProviderBindingV1 {
+                kind: provider.kind().into(),
+                revision: provider.revision().into(),
+                profile_digest: provider.digest().into(),
+                capability_digest: provider.capability_digest().into(),
+            },
+            instructions_digest: format!("sha256:{}", "a".repeat(64)),
+            environment_policy_digest: format!("sha256:{}", "d".repeat(64)),
+            security_policy_digest: format!("sha256:{}", "e".repeat(64)),
+            workspace: HarnessWorkspaceBindingV1 {
+                workload_id: workload_id.as_uuid(),
+                workload_revision_id: workload_revision_id.as_uuid(),
+                runtime_unit_id: "agent-runtime:revision:1".into(),
+                runtime_generation: 1,
+                runtime_spec_digest: runtime_spec_digest.as_str().into(),
+                working_directory: Some("/workspace".into()),
+            },
+            skills: Vec::new(),
+            mcp_servers: Vec::new(),
+            models: Vec::new(),
+            secrets: Vec::new(),
+            tools: vec![tool.clone()],
+            required_capabilities: vec![
+                AgentProviderCapabilityV1::Cancellation,
+                AgentProviderCapabilityV1::Cleanup,
+                AgentProviderCapabilityV1::EventPages,
+                AgentProviderCapabilityV1::ToolCalls,
+            ],
+        };
+        let unprofiled = AgentCodeRunBinding::new_with_provider(
+            provider_binding,
+            NodeId::new(),
+            workload_id,
+            workload_revision_id,
+            DeploymentId::new(),
+            WorkloadReplicaId::new(),
+            "agent-runtime:revision:1",
+            1,
+            runtime_spec_digest,
+            "agent",
+            AgentProtocolRunIdentityV1 {
+                schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
+                protocol: provider.native_protocol().into(),
+                agent_release_identity: format!("sha256:{}", "a".repeat(64)),
+                session_id: "agent-conversation-1".into(),
+                run_id: "agent-execution-1".into(),
+            },
+            bound_at,
+        )
+        .expect("provider binding");
+        let mut observed = unprofiled.clone();
+        let observed_identity = observed.provider_identity().expect("provider identity");
+        observed
+            .accept_provider_event_page(&AgentProviderEventPageV1 {
+                schema: AgentProviderEventPageV1::SCHEMA.into(),
+                identity: observed_identity,
+                after_event_sequence: None,
+                first_available_sequence: None,
+                source_first_sequence: None,
+                source_last_sequence: None,
+                source_event_count: 0,
+                latest_sequence_exclusive: 0,
+                next_after_event_sequence: None,
+                state: AgentProviderRunStateV1::Planning,
+                observed_at_ms: u64::try_from(bound_at.timestamp_millis()).expect("event time") + 1,
+                retention_gap: false,
+                has_more: false,
+                terminal_failure: None,
+                events: Vec::new(),
+            })
+            .expect("provider observation");
+        assert!(observed
+            .with_invocation_profile(invocation.clone())
+            .is_err());
+        let binding = unprofiled
+            .with_invocation_profile(invocation)
+            .expect("invocation profile");
+        let event = |tool: HarnessToolBindingV1| AgentProviderEventPageV1 {
+            schema: AgentProviderEventPageV1::SCHEMA.into(),
+            identity: binding.provider_identity().expect("provider identity"),
+            after_event_sequence: None,
+            first_available_sequence: Some(0),
+            source_first_sequence: Some(0),
+            source_last_sequence: Some(0),
+            source_event_count: 1,
+            latest_sequence_exclusive: 1,
+            next_after_event_sequence: Some(0),
+            state: AgentProviderRunStateV1::Executing,
+            observed_at_ms: u64::try_from(bound_at.timestamp_millis()).expect("event time") + 1,
+            retention_gap: false,
+            has_more: false,
+            terminal_failure: None,
+            events: vec![AgentProviderEventRecordV1 {
+                sequence: 0,
+                occurred_at_ms: u64::try_from(bound_at.timestamp_millis()).expect("event time") + 1,
+                event: AgentProviderSemanticEventV1::ToolRequest {
+                    call_id: "call-1".into(),
+                    tool,
+                    request: AgentProviderToolPayloadIdentityV1 {
+                        digest: format!("sha256:{}", "f".repeat(64)),
+                        size_bytes: 128,
+                        media_type: "application/json".into(),
+                    },
+                },
+            }],
+        };
+
+        let mut accepted = binding.clone();
+        accepted
+            .accept_provider_event_page(&event(tool.clone()))
+            .expect("pinned Tool event");
+        let mut changed = tool;
+        changed.revision = "2.0.0".into();
+        assert!(binding
+            .clone()
+            .accept_provider_event_page(&event(changed))
+            .is_err());
     }
 }

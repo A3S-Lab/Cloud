@@ -104,6 +104,48 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
     let agents = Arc::new(PostgresAgentRepository::new(executor.clone()));
     let nodes = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let workloads = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+    let restored = agents
+        .find_execution(state.organization_id, state.execution_id)
+        .await?
+        .ok_or_else(|| invalid("Agent execution disappeared across PostgreSQL reconnect"))?;
+    let restored_binding = restored
+        .code
+        .as_ref()
+        .ok_or_else(|| invalid("Agent provider binding disappeared across PostgreSQL reconnect"))?;
+    let restored_invocation = restored_binding
+        .require_invocation_profile()
+        .map_err(invalid)?;
+    let restored_invocation_digest = restored_invocation.digest().map_err(invalid)?;
+    assert_eq!(
+        restored_invocation.workspace.runtime_spec_digest,
+        state.runtime_spec.digest()?
+    );
+    assert_eq!(
+        restored_binding
+            .provider_identity()?
+            .invocation_profile_digest
+            .as_deref(),
+        Some(restored_invocation_digest.as_str())
+    );
+    let invariant_probe = Database::new(PostgresDialect, executor.clone());
+    let changed_digest = format!("sha256:{}", "f".repeat(64));
+    let mutation_error = invariant_probe
+        .execute(
+            sql_query::<()>("update agent_executions set invocation_profile_digest = ")
+                .bind(changed_digest)
+                .append(" where organization_id = ")
+                .bind(state.organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(state.execution_id.as_uuid()),
+        )
+        .await
+        .expect_err("PostgreSQL must reject invocation-profile mutation");
+    assert!(
+        mutation_error
+            .to_string()
+            .contains("Agent Harness invocation profile is immutable"),
+        "unexpected invocation-profile mutation error: {mutation_error}"
+    );
     let runtime = flow_runtime(agents.clone(), workloads, nodes.clone())?;
 
     let retention_recovery = run_step(
@@ -282,7 +324,7 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
     );
 
     println!(
-        "A3S_CLOUD_A1_POSTGRES_RECOVERY_CERTIFIED store=postgresql commands=4 acknowledgements=4 semantic_events=3 run_rotations=2 control_plane_restarts=1 runtime_generation={} cancellation_order=recover_then_cancel",
+        "A3S_CLOUD_A1_POSTGRES_RECOVERY_CERTIFIED store=postgresql commands=4 acknowledgements=4 semantic_events=3 run_rotations=2 control_plane_restarts=1 invocation_profile=immutable runtime_generation={} cancellation_order=recover_then_cancel",
         state.runtime_spec.generation
     );
     Ok(())

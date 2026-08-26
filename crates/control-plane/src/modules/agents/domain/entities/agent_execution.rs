@@ -145,6 +145,18 @@ impl AgentExecution {
 
     pub fn bind_code_run(&mut self, binding: AgentCodeRunBinding) -> Result<bool, String> {
         binding.validate()?;
+        if let Some(invocation) = binding.invocation_profile() {
+            if invocation.agent.organization_id != self.organization_id.as_uuid()
+                || invocation.agent.asset_id != self.agent.asset_id().as_uuid()
+                || invocation.agent.asset_release_id != self.agent.asset_release_id().as_uuid()
+                || invocation.agent.build_run_id != self.agent.build_run_id().as_uuid()
+                || invocation.agent.artifact_digest != self.agent.artifact_digest().as_str()
+            {
+                return Err(
+                    "Agent execution Harness invocation profile changed its release binding".into(),
+                );
+            }
+        }
         if !binding.is_initial()
             || binding.provider()? != &self.provider
             || binding.identity().agent_release_identity.as_str()
@@ -367,7 +379,9 @@ impl AgentExecution {
             AgentExecutionEventKind::ExecutionRequested => {
                 Err("execution_requested is reserved for execution creation".into())
             }
-            AgentExecutionEventKind::ModelOutput => {
+            AgentExecutionEventKind::ModelOutput
+            | AgentExecutionEventKind::ToolRequest
+            | AgentExecutionEventKind::ToolResult => {
                 if self.status == AgentExecutionStatus::Pending {
                     self.start(event.occurred_at)
                 } else if matches!(
@@ -376,7 +390,7 @@ impl AgentExecution {
                 ) {
                     self.record_observation(event.occurred_at)
                 } else {
-                    Err("terminal Agent execution cannot emit model output".into())
+                    Err("terminal Agent execution cannot emit semantic observations".into())
                 }
             }
             AgentExecutionEventKind::ExecutionCompleted => {
@@ -405,6 +419,18 @@ impl AgentExecution {
         self.provider.validate()?;
         if let Some(code) = &self.code {
             code.validate()?;
+            if let Some(invocation) = code.invocation_profile() {
+                if invocation.agent.organization_id != self.organization_id.as_uuid()
+                    || invocation.agent.asset_id != self.agent.asset_id().as_uuid()
+                    || invocation.agent.asset_release_id != self.agent.asset_release_id().as_uuid()
+                    || invocation.agent.build_run_id != self.agent.build_run_id().as_uuid()
+                    || invocation.agent.artifact_digest != self.agent.artifact_digest().as_str()
+                {
+                    return Err(
+                        "Harness invocation profile falls outside its Agent execution".into(),
+                    );
+                }
+            }
             if code.provider()? != &self.provider
                 || code.identity().agent_release_identity.as_str()
                     != self.agent.artifact_digest().as_str()

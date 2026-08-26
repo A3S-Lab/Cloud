@@ -61,6 +61,8 @@ orm_table! {
         provider_state: Option<String> => "provider_state",
         provider_bound_at: Option<DateTime<Utc>> => "provider_bound_at",
         provider_observed_at: Option<DateTime<Utc>> => "provider_observed_at",
+        invocation_profile: Option<serde_json::Value> => "invocation_profile",
+        invocation_profile_digest: Option<String> => "invocation_profile_digest",
     }
 }
 

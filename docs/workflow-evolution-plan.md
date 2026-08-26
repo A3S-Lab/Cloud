@@ -753,7 +753,7 @@ binds an immutable provider kind, provider revision, capability digest,
 Workload/Runtime identity, and protocol version before dispatch. `A1.4` then
 freezes one closed `HarnessInvocationProfile` containing the exact instructions
 digest, environment/security policy, Agent, Skill, MCP, model, workspace,
-Secret references, Tools, and capability expectations. Mutable provider JSON
+Secret references, Tools, and capability expectations. Mutable provider state
 or process environment never becomes recovery authority.
 
 A3S Code is the first-party native provider and preserves its existing Core

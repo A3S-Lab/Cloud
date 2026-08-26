@@ -12,12 +12,16 @@ use crate::modules::agents::domain::{
 use crate::modules::agents::infrastructure::{accept_code_receipt, encode_code_command};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, NodeCommandId, OperationId, Sha256Digest,
+    canonical_json_bounded, sha256_digest, IdempotencyRequest, NodeCommandId, OperationId,
+    Sha256Digest,
 };
-use crate::modules::workloads::{project_runtime_spec, ActiveRuntimeTarget};
+use crate::modules::workloads::{project_runtime_spec, ActiveRuntimeTarget, SecretBindingTarget};
 use a3s_cloud_contracts::{
-    AgentProtocolRunIdentityV1, AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, RuntimeServiceEndpoint,
+    AgentProtocolRunIdentityV1, AgentProviderCapabilityV1, AgentProviderCommandV1,
+    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessMcpBindingV1,
+    HarnessProviderBindingV1, HarnessSecretReferenceV1, HarnessSecretTargetV1,
+    HarnessSkillBindingV1, HarnessWorkspaceBindingV1, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
 };
 use a3s_flow::FlowError;
 use a3s_runtime::contract::TransportProtocol;
@@ -512,6 +516,8 @@ async fn ready_binding(
         .started_at_ms
         .ok_or_else(|| "A3S Code Harness Runtime has no process start time".to_owned())?;
     let spec_digest = Sha256Digest::parse(spec.digest()?)?;
+    let invocation_profile =
+        harness_invocation_profile(execution, target, &spec, provider.profile())?;
     let binding = AgentCodeRunBinding::new_with_provider(
         provider.profile().clone(),
         node_id,
@@ -531,11 +537,128 @@ async fn ready_binding(
             run_id: format!("agent-execution-{}", execution.id),
         },
         now,
-    )?;
+    )?
+    .with_invocation_profile(invocation_profile)?;
     Ok((binding, runtime_started_at_ms))
 }
 
-async fn start_command(
+fn harness_invocation_profile(
+    execution: &AgentExecution,
+    target: &ActiveRuntimeTarget,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+    provider: &crate::modules::agents::domain::AgentProviderProfileBinding,
+) -> Result<HarnessInvocationProfileV1, String> {
+    let environment_policy = serde_json::json!({
+        "process": &spec.process,
+        "secretReferences": &spec.secrets,
+    });
+    let security_policy = serde_json::json!({
+        "isolation": &spec.isolation,
+        "mounts": &spec.mounts,
+        "network": &spec.network,
+        "resources": &spec.resources,
+        "restart": &spec.restart,
+    });
+    let environment_policy_digest = sha256_digest(&canonical_json_bounded(
+        &environment_policy,
+        HARNESS_INVOCATION_PROFILE_MAX_BYTES,
+        "Harness environment policy",
+    )?);
+    let security_policy_digest = sha256_digest(&canonical_json_bounded(
+        &security_policy,
+        HARNESS_INVOCATION_PROFILE_MAX_BYTES,
+        "Harness security policy",
+    )?);
+    let skills = target
+        .revision
+        .skill_bindings()
+        .iter()
+        .map(|binding| HarnessSkillBindingV1 {
+            asset_id: binding.asset_id().as_uuid(),
+            asset_release_id: binding.asset_release_id().as_uuid(),
+            artifact_digest: binding.artifact_digest().as_str().into(),
+        })
+        .collect();
+    let mcp_servers = target
+        .revision
+        .mcp_binding()
+        .map(|binding| HarnessMcpBindingV1 {
+            asset_id: binding.asset_id().as_uuid(),
+            asset_release_id: binding.asset_release_id().as_uuid(),
+            profile_digest: binding.profile_digest().as_str().into(),
+        })
+        .into_iter()
+        .collect();
+    let mut secrets = target
+        .revision
+        .resolved_template()?
+        .secrets
+        .iter()
+        .map(|binding| HarnessSecretReferenceV1 {
+            name: binding.name.clone(),
+            secret_id: binding.secret_id.as_uuid(),
+            version: binding.version,
+            target: match &binding.target {
+                SecretBindingTarget::Environment { variable } => {
+                    HarnessSecretTargetV1::Environment {
+                        variable: variable.clone(),
+                    }
+                }
+                SecretBindingTarget::File { path, mode } => HarnessSecretTargetV1::File {
+                    path: path.clone(),
+                    mode: *mode,
+                },
+                SecretBindingTarget::RegistryCredential => {
+                    HarnessSecretTargetV1::RegistryCredential
+                }
+            },
+        })
+        .collect::<Vec<_>>();
+    secrets.sort_by(|left, right| left.name.cmp(&right.name));
+    let profile = HarnessInvocationProfileV1 {
+        schema: HarnessInvocationProfileV1::SCHEMA.into(),
+        agent: HarnessAgentReleaseBindingV1 {
+            organization_id: execution.organization_id.as_uuid(),
+            asset_id: execution.agent.asset_id().as_uuid(),
+            asset_release_id: execution.agent.asset_release_id().as_uuid(),
+            build_run_id: execution.agent.build_run_id().as_uuid(),
+            artifact_digest: execution.agent.artifact_digest().as_str().into(),
+        },
+        provider: HarnessProviderBindingV1 {
+            kind: provider.kind().into(),
+            revision: provider.revision().into(),
+            profile_digest: provider.profile_digest().into(),
+            capability_digest: provider.capability_digest().into(),
+        },
+        // The immutable OCI digest covers the instructions shipped by this
+        // exact Agent release; no mutable manifest is copied into the run.
+        instructions_digest: execution.agent.artifact_digest().as_str().into(),
+        environment_policy_digest,
+        security_policy_digest,
+        workspace: HarnessWorkspaceBindingV1 {
+            workload_id: target.workload.id.as_uuid(),
+            workload_revision_id: target.revision.id.as_uuid(),
+            runtime_unit_id: spec.unit_id.clone(),
+            runtime_generation: spec.generation,
+            runtime_spec_digest: spec.digest()?,
+            working_directory: spec.process.working_directory.clone(),
+        },
+        skills,
+        mcp_servers,
+        models: Vec::new(),
+        secrets,
+        tools: Vec::new(),
+        required_capabilities: vec![
+            AgentProviderCapabilityV1::Cancellation,
+            AgentProviderCapabilityV1::Cleanup,
+            AgentProviderCapabilityV1::EventPages,
+        ],
+    };
+    profile.validate_for(&provider.profile()?)?;
+    Ok(profile)
+}
+
+pub(super) async fn start_command(
     runtime: &AgentExecutionFlowRuntime,
     execution: &AgentExecution,
 ) -> a3s_flow::Result<AgentProviderCommandV1> {
@@ -569,11 +692,15 @@ async fn start_command(
         .provider_for_profile(profile)
         .map_err(|error| flow_error("could not resolve Agent execution provider", error))?;
     provider
-        .start_command(
+        .start_command_with_invocation_profile(
             format!("agent-execution-{}-start", execution.id),
             binding
                 .provider_identity()
                 .map_err(|error| flow_error("could not bind Agent provider identity", error))?,
+            binding
+                .require_invocation_profile()
+                .map_err(|error| flow_error("could not restore Harness invocation profile", error))?
+                .clone(),
             prompt,
         )
         .map_err(|error| flow_error("Agent execution input is not a valid provider start", error))

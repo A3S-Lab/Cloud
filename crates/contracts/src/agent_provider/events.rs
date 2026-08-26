@@ -1,4 +1,7 @@
-use super::{AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunStateV1};
+use super::{
+    AgentProviderCapabilityV1, AgentProviderProfile, AgentProviderRunIdentityV1,
+    AgentProviderRunStateV1, HarnessToolBindingV1,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -7,6 +10,7 @@ pub const AGENT_PROVIDER_MAX_EVENT_TEXT_BYTES: usize = 64 * 1024;
 pub const AGENT_PROVIDER_MAX_FAILURE_BYTES: usize = 16 * 1024;
 pub const AGENT_PROVIDER_EVENT_PAGE_HTTP_PATH_V1: &str = "/v1/agent-provider/events/page";
 pub const AGENT_PROVIDER_MAX_EVENT_PAGE_BYTES: usize = 5 * 1024 * 1024;
+pub const AGENT_PROVIDER_MAX_TOOL_PAYLOAD_BYTES: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,7 +47,21 @@ impl AgentProviderEventPageRequestV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentProviderSemanticEventV1 {
-    ModelOutput { text: String },
+    ModelOutput {
+        text: String,
+    },
+    ToolRequest {
+        call_id: String,
+        tool: HarnessToolBindingV1,
+        request: AgentProviderToolPayloadIdentityV1,
+    },
+    ToolResult {
+        call_id: String,
+        tool: HarnessToolBindingV1,
+        request_digest: String,
+        outcome: AgentProviderToolResultOutcomeV1,
+        result: AgentProviderToolPayloadIdentityV1,
+    },
 }
 
 impl AgentProviderSemanticEventV1 {
@@ -54,7 +72,61 @@ impl AgentProviderSemanticEventV1 {
                 text,
                 AGENT_PROVIDER_MAX_EVENT_TEXT_BYTES,
             ),
+            Self::ToolRequest {
+                call_id,
+                tool,
+                request,
+            } => {
+                validate_single_line("Agent provider Tool call ID", call_id, 256)?;
+                tool.validate()?;
+                request.validate()
+            }
+            Self::ToolResult {
+                call_id,
+                tool,
+                request_digest,
+                result,
+                ..
+            } => {
+                validate_single_line("Agent provider Tool call ID", call_id, 256)?;
+                tool.validate()?;
+                validate_digest("Agent provider Tool request digest", request_digest)?;
+                result.validate()
+            }
         }
+    }
+
+    pub const fn is_tool_event(&self) -> bool {
+        matches!(self, Self::ToolRequest { .. } | Self::ToolResult { .. })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProviderToolResultOutcomeV1 {
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentProviderToolPayloadIdentityV1 {
+    pub digest: String,
+    pub size_bytes: u64,
+    pub media_type: String,
+}
+
+impl AgentProviderToolPayloadIdentityV1 {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_digest("Agent provider Tool payload digest", &self.digest)?;
+        if self.size_bytes > AGENT_PROVIDER_MAX_TOOL_PAYLOAD_BYTES {
+            return Err("Agent provider Tool payload size is invalid".into());
+        }
+        validate_single_line(
+            "Agent provider Tool payload media type",
+            &self.media_type,
+            255,
+        )
     }
 }
 
@@ -122,7 +194,18 @@ impl AgentProviderEventPageV1 {
 
     pub fn validate_for(&self, profile: &AgentProviderProfile) -> Result<(), String> {
         self.validate()?;
-        self.identity.validate_for(profile)
+        self.identity.validate_for(profile)?;
+        if self
+            .events
+            .iter()
+            .any(|record| record.event.is_tool_event())
+            && !profile.supports(AgentProviderCapabilityV1::ToolCalls)
+        {
+            return Err(
+                "Agent provider emitted Tool events without the tool_calls capability".into(),
+            );
+        }
+        Ok(())
     }
 
     pub fn digest(&self) -> Result<String, String> {
@@ -329,5 +412,31 @@ fn validate_bounded_content(label: &str, value: &str, max: usize) -> Result<(), 
         Err(format!("{label} bounds are invalid"))
     } else {
         Ok(())
+    }
+}
+
+fn validate_single_line(label: &str, value: &str, max: usize) -> Result<(), String> {
+    if value.trim().is_empty() || value.len() > max || value.contains(['\0', '\r', '\n']) {
+        Err(format!(
+            "{label} must be a bounded nonempty single-line value"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_digest(label: &str, value: &str) -> Result<(), String> {
+    let valid = value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} must use canonical lowercase SHA-256 syntax"
+        ))
     }
 }

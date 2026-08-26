@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 164;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "164";
+pub const CLOUD_MIGRATION_COUNT: i64 = 166;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "166";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1521,6 +1521,22 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/164_agent_provider_selection.sql"
+            )),
+        ),
+        Migration::new(
+            "165",
+            "immutable Agent Harness invocation profiles",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/165_agent_harness_invocation_profiles.sql"
+            )),
+        ),
+        Migration::new(
+            "166",
+            "auditable Agent Tool events",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/166_agent_tool_events.sql"
             )),
         ),
     ]
@@ -3519,6 +3535,73 @@ mod agent_provider_selection_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 164 added another authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_harness_invocation_profile_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/165_agent_harness_invocation_profiles.sql"
+    ));
+
+    #[test]
+    fn migration_165_adds_only_the_named_immutable_execution_binding() {
+        for expected in [
+            "add column invocation_profile jsonb",
+            "add column invocation_profile_digest text",
+            "agent_executions_invocation_profile_complete",
+            "a3s.cloud.harness-invocation-profile.v1",
+            "agent_executions_invocation_profile_immutable",
+            "Agent Harness invocation profile must be bound before dispatch",
+            "Agent Harness invocation profile is immutable",
+            "never Secret material",
+            "legacy unbound executions fail closed at redispatch",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "create table",
+            "create queue",
+            "secret_material",
+            "provider_config",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 165 added another authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_tool_event_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/166_agent_tool_events.sql"
+    ));
+
+    #[test]
+    fn migration_166_extends_only_the_existing_semantic_sequence() {
+        for expected in [
+            "alter table agent_execution_events",
+            "'tool_request'",
+            "'tool_result'",
+            "never Tool payload or Secret material",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "create table",
+            "create queue",
+            "tool_payload jsonb",
+            "secret_material",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 166 added another authority: {forbidden}"
             );
         }
     }

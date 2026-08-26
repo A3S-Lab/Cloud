@@ -11,7 +11,28 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.69.0`.
+The current semantic contract version is `1.70.0`.
+
+Contract `1.70.0` adds the nullable closed immutable
+`HarnessInvocationProfile` to Agent execution responses after dispatch binds
+the exact Runtime. It documents exact Agent, provider, instructions and policy
+digests, workspace, Skill, MCP, model, Secret-reference, Tool, and required
+capability fields without returning mutable configuration or Secret material.
+All binding arrays are duplicate-free and sorted by `(assetId,
+assetReleaseId)`, `(modelId, modelRevisionId)`, Secret `name`, or Tool `(name,
+revision)` as applicable; required capabilities use lexical wire-value order.
+Secret environment, file, and registry targets are collision-free. The
+profile's canonical JSON encoding is bounded to 256 KiB.
+The existing Agent semantic sequence also admits typed `tool_request` and
+`tool_result` records containing only the exact Tool binding and payload
+digest, byte length, and media type. Larger Tool content remains outside the
+event log under the shared immutable-object authority. PostgreSQL correlates
+each accepted Tool record to the versioned `a3s.cloud.agent-tool-audit.v1`
+shared audit detail in the same provider-receipt transaction; replay creates
+neither duplicate semantics nor duplicate audit. `AgentExecutionEvent` is a
+closed discriminator union keyed by `kind`, so standard OpenAPI tooling can
+validate each event's exact content schema without treating Tool events as
+untyped JSON.
 
 Contract `1.69.0` adds the optional closed `providerKind` selector to Agent
 execution creation. Cloud resolves that kind through its admitted provider

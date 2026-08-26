@@ -96,6 +96,7 @@ pub struct AgentExecutionResponse {
     pub operation_id: Uuid,
     pub agent: AgentReleaseBindingResponse,
     pub provider: AgentProviderProfileResponse,
+    pub invocation_profile: Option<a3s_cloud_contracts::HarnessInvocationProfileV1>,
     pub status: AgentExecutionStatus,
     pub failure: Option<String>,
     pub aggregate_version: u64,
@@ -108,6 +109,11 @@ pub struct AgentExecutionResponse {
 
 impl From<AgentExecution> for AgentExecutionResponse {
     fn from(execution: AgentExecution) -> Self {
+        let invocation_profile = execution
+            .code
+            .as_ref()
+            .and_then(|binding| binding.invocation_profile())
+            .cloned();
         Self {
             organization_id: execution.organization_id.as_uuid(),
             conversation_id: execution.conversation_id.as_uuid(),
@@ -130,6 +136,7 @@ impl From<AgentExecution> for AgentExecutionResponse {
                 profile_digest: execution.provider.profile_digest().to_owned(),
                 capability_digest: execution.provider.capability_digest().to_owned(),
             },
+            invocation_profile,
             status: execution.status,
             failure: execution.failure,
             aggregate_version: execution.aggregate_version,

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.69.0" src="https://img.shields.io/badge/REST_contract-1.69.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.70.0" src="https://img.shields.io/badge/REST_contract-1.70.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -462,9 +462,12 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.69.0` is the current contract. It
-    adds closed Agent provider selection and complete typed Agent response
-    schemas with immutable provider identity evidence. It retains `1.68.0`'s
+    copied evidence bodies. REST/OpenAPI `1.70.0` is the current contract. It
+    adds the closed immutable Harness invocation profile to Agent execution
+    responses and adds typed digest-only Tool request/result event content with
+    same-transaction shared audit correlation. It never exposes Secret or Tool
+    payload material. It retains `1.69.0`'s closed
+    Agent provider selection and immutable provider evidence, plus `1.68.0`'s
     Plan v12/compiler v12, `cloud.workflow.step-failure.v9`, and the
     three closed Agent failure classifications through OpenAPI and the maintained
     TypeScript client without adding a route or response field. It retains
@@ -543,9 +546,13 @@ creating their own control planes:
     current backend adds closed REST/client/CLI selection, migration `164`'s
     creation-time immutable profile persistence, exact Flow registry recovery,
     fail-closed Node protocol routing, and durable provider-neutral event-page
-    delivery through the shared outbound-batch primitive. Additional admitted
-    providers and retained PostgreSQL/real-Box non-Code recovery evidence remain
-    open; `A1.4` through `A1.6` are not claimed.
+    delivery through the shared outbound-batch primitive. Component-level
+    `A1.4` adds one fail-closed immutable invocation profile before dispatch,
+    binds its digest into provider run identity, and records digest-only Tool
+    request/result semantics with shared audit correlation. Production model
+    and Tool binding producers, any additional independent MCP binding,
+    retained PostgreSQL/real-provider recovery and audit evidence, and
+    `A1.5`/`A1.6` remain open.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

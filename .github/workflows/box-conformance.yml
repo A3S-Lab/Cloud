@@ -519,6 +519,8 @@ jobs:
                 staleBatchSettlement: true,
                 receiptReplay: true,
                 controlPlaneReconnect: true,
+                invocationProfileRestored: true,
+                invocationProfileImmutable: true,
                 nativeCodeRecovery: true,
                 recoverBeforeCancel: true,
                 noDuplicateSemanticProjection: true

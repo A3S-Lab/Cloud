@@ -13,6 +13,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{
     AgentProtocolChangeSetV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
+    HarnessInvocationProfileV1,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -91,6 +92,8 @@ impl Selection for ExecutionSelection {
             AgentExecutions::provider_state().expression(),
             AgentExecutions::provider_bound_at().expression(),
             AgentExecutions::provider_observed_at().expression(),
+            AgentExecutions::invocation_profile().expression(),
+            AgentExecutions::invocation_profile_digest().expression(),
         ]
     }
 }
@@ -184,6 +187,8 @@ pub(super) struct ExecutionRow {
     provider_state: Option<String>,
     provider_bound_at: Option<DateTime<Utc>>,
     provider_observed_at: Option<DateTime<Utc>>,
+    invocation_profile: Option<Value>,
+    invocation_profile_digest: Option<String>,
 }
 
 pub(super) struct EventRow {
@@ -239,6 +244,7 @@ from_row!(ExecutionRow, {
     provider_service_port_name: 34, provider_release_identity: 35,
     provider_session_id: 36, provider_run_id: 37, provider_event_cursor: 38,
     provider_state: 39, provider_bound_at: 40, provider_observed_at: 41,
+    invocation_profile: 42, invocation_profile_digest: 43,
 });
 
 from_row!(EventRow, {
@@ -399,6 +405,11 @@ impl ExecutionRow {
         ) = required
         else {
             if all_absent {
+                if self.invocation_profile.is_some() || self.invocation_profile_digest.is_some() {
+                    return Err(corrupt(
+                        "Agent invocation profile has no provider Runtime binding",
+                    ));
+                }
                 return Ok(None);
             }
             return Err(corrupt("Agent provider run binding is incomplete"));
@@ -407,7 +418,7 @@ impl ExecutionRow {
             corrupt(format!("provider Runtime spec digest is invalid: {error}"))
         })?;
         let state = parse_code_state(state)?;
-        AgentCodeRunBinding::restore_with_provider(
+        let mut binding = AgentCodeRunBinding::restore_with_provider(
             provider.clone(),
             NodeId::from_uuid(node_id),
             WorkloadId::from_uuid(workload_id),
@@ -430,8 +441,34 @@ impl ExecutionRow {
             bound_at,
             self.provider_observed_at,
         )
-        .map(Some)
-        .map_err(|error| corrupt(format!("Agent Code run binding is invalid: {error}")))
+        .map_err(|error| corrupt(format!("Agent Code run binding is invalid: {error}")))?;
+        match (
+            self.invocation_profile.clone(),
+            self.invocation_profile_digest.as_deref(),
+        ) {
+            (None, None) => {}
+            (Some(value), Some(stored_digest)) => {
+                let profile: HarnessInvocationProfileV1 =
+                    serde_json::from_value(value).map_err(|error| {
+                        corrupt(format!("Harness invocation profile is invalid: {error}"))
+                    })?;
+                if profile.digest().map_err(|error| {
+                    corrupt(format!("Harness invocation profile is invalid: {error}"))
+                })? != stored_digest
+                {
+                    return Err(corrupt(
+                        "Harness invocation profile changed its canonical digest",
+                    ));
+                }
+                binding = binding
+                    .restore_invocation_profile(profile)
+                    .map_err(|error| {
+                        corrupt(format!("Harness invocation profile is invalid: {error}"))
+                    })?;
+            }
+            _ => return Err(corrupt("Harness invocation profile binding is incomplete")),
+        }
+        Ok(Some(binding))
     }
 }
 

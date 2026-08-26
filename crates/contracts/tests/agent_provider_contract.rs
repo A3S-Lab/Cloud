@@ -3,8 +3,11 @@ use a3s_cloud_contracts::{
     AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageRequestV1,
     AgentProviderEventPageV1, AgentProviderEventReceiptV1, AgentProviderEventRecordV1,
     AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunStartV1,
-    AgentProviderRunStateV1, AgentProviderSemanticEventV1, AGENT_PROVIDER_MAX_EVENTS_PER_PAGE,
-    AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProviderRunStateV1, AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1,
+    AgentProviderToolResultOutcomeV1, HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1,
+    HarnessProviderBindingV1, HarnessSecretReferenceV1, HarnessSecretTargetV1,
+    HarnessSkillBindingV1, HarnessToolBindingV1, HarnessWorkspaceBindingV1,
+    AGENT_PROVIDER_MAX_EVENTS_PER_PAGE, AGENT_PROVIDER_PROTOCOL_V1,
 };
 
 const CODE_PROFILE: &str = include_str!(concat!(
@@ -15,6 +18,65 @@ const REFERENCE_PROFILE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/a1.3/reference-echo-provider-profile.acl"
 ));
+const TOOL_PROFILE: &str = r#"agent_provider "test.tools" {
+  capabilities = ["cancellation", "cleanup", "event_pages", "tool_calls"]
+  native_protocol = "test.tools.v1"
+  protocol = "a3s.cloud.agent-provider.v1"
+  revision = "1.0.0"
+  schema = "a3s.cloud.agent-provider-profile.v1"
+}
+"#;
+
+fn invocation_profile(provider: &AgentProviderProfile) -> HarnessInvocationProfileV1 {
+    HarnessInvocationProfileV1 {
+        schema: HarnessInvocationProfileV1::SCHEMA.into(),
+        agent: HarnessAgentReleaseBindingV1 {
+            organization_id: uuid::Uuid::from_u128(1),
+            asset_id: uuid::Uuid::from_u128(2),
+            asset_release_id: uuid::Uuid::from_u128(3),
+            build_run_id: uuid::Uuid::from_u128(4),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+        },
+        provider: HarnessProviderBindingV1 {
+            kind: provider.kind().into(),
+            revision: provider.revision().into(),
+            profile_digest: provider.digest().into(),
+            capability_digest: provider.capability_digest().into(),
+        },
+        instructions_digest: format!("sha256:{}", "a".repeat(64)),
+        environment_policy_digest: format!("sha256:{}", "b".repeat(64)),
+        security_policy_digest: format!("sha256:{}", "c".repeat(64)),
+        workspace: HarnessWorkspaceBindingV1 {
+            workload_id: uuid::Uuid::from_u128(5),
+            workload_revision_id: uuid::Uuid::from_u128(6),
+            runtime_unit_id: "workload:5:revision:6".into(),
+            runtime_generation: 1,
+            runtime_spec_digest: format!("sha256:{}", "d".repeat(64)),
+            working_directory: Some("/workspace".into()),
+        },
+        skills: vec![HarnessSkillBindingV1 {
+            asset_id: uuid::Uuid::from_u128(7),
+            asset_release_id: uuid::Uuid::from_u128(8),
+            artifact_digest: format!("sha256:{}", "e".repeat(64)),
+        }],
+        mcp_servers: Vec::new(),
+        models: Vec::new(),
+        secrets: vec![HarnessSecretReferenceV1 {
+            name: "api-token".into(),
+            secret_id: uuid::Uuid::from_u128(9),
+            version: 3,
+            target: HarnessSecretTargetV1::Environment {
+                variable: "API_TOKEN".into(),
+            },
+        }],
+        tools: Vec::new(),
+        required_capabilities: vec![
+            AgentProviderCapabilityV1::Cancellation,
+            AgentProviderCapabilityV1::Cleanup,
+            AgentProviderCapabilityV1::EventPages,
+        ],
+    }
+}
 
 #[test]
 fn immutable_profiles_bind_canonical_acl_and_capabilities() {
@@ -103,6 +165,84 @@ fn versioned_commands_and_receipts_are_profile_bound() {
 
     let other = AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("other profile");
     assert!(receipt.validate_for(&other, &command).is_err());
+}
+
+#[test]
+fn invocation_profiles_are_closed_digest_bound_and_carried_by_profile_starts() {
+    let provider = AgentProviderProfile::parse_acl(CODE_PROFILE).expect("provider profile");
+    let invocation = invocation_profile(&provider);
+    invocation
+        .validate_for(&provider)
+        .expect("Harness invocation profile");
+    let digest = invocation.digest().expect("invocation digest");
+    assert_eq!(digest, invocation.digest().expect("stable digest"));
+
+    let identity = AgentProviderRunIdentityV1::new(
+        provider.digest().into(),
+        provider.capability_digest().into(),
+        invocation.agent.artifact_digest.clone(),
+        "conversation-1".into(),
+        "execution-1".into(),
+    )
+    .expect("run identity");
+    let command = AgentProviderCommandV1::Start {
+        request: AgentProviderRunStartV1::new_with_invocation_profile(
+            "execution-1-start".into(),
+            identity,
+            invocation.clone(),
+            "Run the exact profile".into(),
+        )
+        .expect("profile-bound start"),
+    };
+    command
+        .validate_for(&provider)
+        .expect("profile-bound provider command");
+    assert_eq!(
+        command.identity().invocation_profile_digest.as_deref(),
+        Some(digest.as_str())
+    );
+
+    let mismatched_identity = AgentProviderRunIdentityV1::new(
+        provider.digest().into(),
+        provider.capability_digest().into(),
+        format!("sha256:{}", "f".repeat(64)),
+        "conversation-1".into(),
+        "execution-2".into(),
+    )
+    .expect("mismatched run identity");
+    assert!(AgentProviderRunStartV1::new_with_invocation_profile(
+        "execution-2-start".into(),
+        mismatched_identity,
+        invocation.clone(),
+        "Run the exact profile".into(),
+    )
+    .is_err());
+
+    let mut unsafe_number = invocation.clone();
+    unsafe_number.workspace.runtime_generation = 9_007_199_254_740_992;
+    assert!(unsafe_number.validate().is_err());
+
+    let mut duplicate_secret_target = invocation.clone();
+    duplicate_secret_target
+        .secrets
+        .push(HarnessSecretReferenceV1 {
+            name: "other-token".into(),
+            secret_id: uuid::Uuid::from_u128(10),
+            version: 1,
+            target: HarnessSecretTargetV1::Environment {
+                variable: "API_TOKEN".into(),
+            },
+        });
+    assert!(duplicate_secret_target.validate().is_err());
+
+    let mut changed = invocation;
+    changed.workspace.runtime_generation = 2;
+    let mut encoded = serde_json::to_value(&changed).expect("profile JSON");
+    encoded
+        .as_object_mut()
+        .expect("profile object")
+        .insert("mutableProviderConfig".into(), serde_json::json!({}));
+    assert!(serde_json::from_value::<HarnessInvocationProfileV1>(encoded).is_err());
 }
 
 #[test]
@@ -234,4 +374,85 @@ fn event_pages_reject_sequence_gaps_and_mixed_profile_versions() {
     };
     assert!(page.validate_for(&profile).is_err());
     assert!(page.validate_for(&other).is_err());
+}
+
+#[test]
+fn tool_events_are_capability_bound_and_carry_only_content_identity() {
+    let profile = AgentProviderProfile::parse_acl(TOOL_PROFILE).expect("Tool provider profile");
+    let tool = HarnessToolBindingV1 {
+        name: "workspace.search".into(),
+        revision: "1.0.0".into(),
+        contract_digest: format!("sha256:{}", "b".repeat(64)),
+        approval_required: false,
+    };
+    let request = AgentProviderToolPayloadIdentityV1 {
+        digest: format!("sha256:{}", "c".repeat(64)),
+        size_bytes: 128,
+        media_type: "application/json".into(),
+    };
+    let result = AgentProviderToolPayloadIdentityV1 {
+        digest: format!("sha256:{}", "d".repeat(64)),
+        size_bytes: 0,
+        media_type: "application/json".into(),
+    };
+    let identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        format!("sha256:{}", "a".repeat(64)),
+        "conversation-1".into(),
+        "execution-1".into(),
+    )
+    .expect("run identity");
+    let page = AgentProviderEventPageV1 {
+        schema: AgentProviderEventPageV1::SCHEMA.into(),
+        identity,
+        after_event_sequence: None,
+        first_available_sequence: Some(0),
+        source_first_sequence: Some(0),
+        source_last_sequence: Some(1),
+        source_event_count: 2,
+        latest_sequence_exclusive: 2,
+        next_after_event_sequence: Some(1),
+        state: AgentProviderRunStateV1::Executing,
+        observed_at_ms: 3,
+        retention_gap: false,
+        has_more: false,
+        terminal_failure: None,
+        events: vec![
+            AgentProviderEventRecordV1 {
+                sequence: 0,
+                occurred_at_ms: 1,
+                event: AgentProviderSemanticEventV1::ToolRequest {
+                    call_id: "call-1".into(),
+                    tool: tool.clone(),
+                    request: request.clone(),
+                },
+            },
+            AgentProviderEventRecordV1 {
+                sequence: 1,
+                occurred_at_ms: 2,
+                event: AgentProviderSemanticEventV1::ToolResult {
+                    call_id: "call-1".into(),
+                    tool,
+                    request_digest: request.digest,
+                    outcome: AgentProviderToolResultOutcomeV1::Succeeded,
+                    result,
+                },
+            },
+        ],
+    };
+    page.validate_for(&profile).expect("Tool event page");
+
+    let reference =
+        AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("reference provider profile");
+    let mut unsupported = page;
+    unsupported.identity = AgentProviderRunIdentityV1::new(
+        reference.digest().into(),
+        reference.capability_digest().into(),
+        format!("sha256:{}", "a".repeat(64)),
+        "conversation-1".into(),
+        "execution-1".into(),
+    )
+    .expect("reference run identity");
+    assert!(unsupported.validate_for(&reference).is_err());
 }

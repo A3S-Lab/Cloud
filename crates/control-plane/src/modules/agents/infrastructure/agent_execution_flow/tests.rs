@@ -27,11 +27,13 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
-    AgentProtocolRunIdentityV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
-    AgentProviderProfile, AgentProviderRunStateV1, DomainEventEnvelope, NodeCommandAck,
-    NodeCommandEnvelope, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
-    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProtocolRunIdentityV1, AgentProviderCapabilityV1, AgentProviderCommandReceiptV1,
+    AgentProviderCommandV1, AgentProviderProfile, AgentProviderRunStateV1, DomainEventEnvelope,
+    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
+    HarnessWorkspaceBindingV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
+    RuntimeObservationReport, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
+    REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
@@ -136,6 +138,25 @@ async fn reference_provider_dispatch_preserves_the_common_profile_and_protocol()
         })
         .expect("Agent Flow configuration"),
     );
+    let mut legacy_binding =
+        serde_json::to_value(execution.code.as_ref().expect("provider Runtime binding"))
+            .expect("legacy binding JSON");
+    legacy_binding
+        .as_object_mut()
+        .expect("provider binding object")
+        .remove("invocation_profile");
+    let mut legacy_execution = execution.clone();
+    legacy_execution.code =
+        Some(serde_json::from_value(legacy_binding).expect("legacy profile-less provider binding"));
+    legacy_execution
+        .validate()
+        .expect("legacy provider execution remains readable");
+    let legacy_error = super::runtime::start_command(&runtime, &legacy_execution)
+        .await
+        .expect_err("legacy profile-less provider start must fail closed");
+    assert!(legacy_error
+        .to_string()
+        .contains("no immutable Harness invocation profile"));
     let prepared = PreparedAgentExecution {
         organization_id,
         execution_id: execution.id,
@@ -164,10 +185,21 @@ async fn reference_provider_dispatch_preserves_the_common_profile_and_protocol()
         bound_profile.native_protocol(),
         REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1
     );
-    assert!(matches!(
-        command.as_ref(),
-        AgentProviderCommandV1::Start { .. }
-    ));
+    let AgentProviderCommandV1::Start { request } = command.as_ref() else {
+        panic!("reference provider must receive a start command");
+    };
+    let invocation = request
+        .invocation_profile
+        .as_ref()
+        .expect("new provider run must carry its immutable invocation profile");
+    let invocation_digest = invocation
+        .digest()
+        .expect("Harness invocation profile digest");
+    assert_eq!(
+        request.identity.invocation_profile_digest.as_deref(),
+        Some(invocation_digest.as_str())
+    );
+    assert_eq!(invocation.provider.profile_digest, profile.digest());
     assert!(binding.code_binding().is_err());
 }
 
@@ -440,16 +472,57 @@ async fn prepare_bound_execution_with_provider(
         })
         .await
         .expect("start execution");
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let runtime_spec_digest =
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest");
+    let invocation = HarnessInvocationProfileV1 {
+        schema: HarnessInvocationProfileV1::SCHEMA.into(),
+        agent: HarnessAgentReleaseBindingV1 {
+            organization_id: execution.organization_id.as_uuid(),
+            asset_id: execution.agent.asset_id().as_uuid(),
+            asset_release_id: execution.agent.asset_release_id().as_uuid(),
+            build_run_id: execution.agent.build_run_id().as_uuid(),
+            artifact_digest: execution.agent.artifact_digest().as_str().into(),
+        },
+        provider: HarnessProviderBindingV1 {
+            kind: provider.kind().into(),
+            revision: provider.revision().into(),
+            profile_digest: provider.profile_digest().into(),
+            capability_digest: provider.capability_digest().into(),
+        },
+        instructions_digest: execution.agent.artifact_digest().as_str().into(),
+        environment_policy_digest: format!("sha256:{}", "c".repeat(64)),
+        security_policy_digest: format!("sha256:{}", "d".repeat(64)),
+        workspace: HarnessWorkspaceBindingV1 {
+            workload_id: workload_id.as_uuid(),
+            workload_revision_id: workload_revision_id.as_uuid(),
+            runtime_unit_id: "agent-runtime:revision:1".into(),
+            runtime_generation: 1,
+            runtime_spec_digest: runtime_spec_digest.as_str().into(),
+            working_directory: Some("/workspace".into()),
+        },
+        skills: Vec::new(),
+        mcp_servers: Vec::new(),
+        models: Vec::new(),
+        secrets: Vec::new(),
+        tools: Vec::new(),
+        required_capabilities: vec![
+            AgentProviderCapabilityV1::Cancellation,
+            AgentProviderCapabilityV1::Cleanup,
+            AgentProviderCapabilityV1::EventPages,
+        ],
+    };
     let binding = AgentCodeRunBinding::new_with_provider(
         provider.clone(),
         node_id,
-        WorkloadId::new(),
-        WorkloadRevisionId::new(),
+        workload_id,
+        workload_revision_id,
         DeploymentId::new(),
         WorkloadReplicaId::new(),
         "agent-runtime:revision:1",
         1,
-        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest"),
+        runtime_spec_digest,
         "agent",
         AgentProtocolRunIdentityV1 {
             schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
@@ -460,7 +533,9 @@ async fn prepare_bound_execution_with_provider(
         },
         requested_at + Duration::seconds(1),
     )
-    .expect("Code run binding");
+    .expect("Code run binding")
+    .with_invocation_profile(invocation)
+    .expect("Harness invocation profile");
     let write = agents
         .bind_code_run(BindAgentCodeRunWrite {
             organization_id,

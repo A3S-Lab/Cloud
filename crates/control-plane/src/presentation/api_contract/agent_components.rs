@@ -1,4 +1,5 @@
 use super::workflow_components::{digest_schema, timestamp_schema, uuid_schema};
+use a3s_cloud_contracts::HARNESS_INVOCATION_PROFILE_MAX_BYTES;
 use serde_json::{json, Map, Value};
 
 const MAXIMUM_JSON_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -24,6 +25,95 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
         "AgentProviderProfile".into(),
         agent_provider_profile_schema(),
     );
+    schemas.insert(
+        "HarnessAgentReleaseBinding".into(),
+        harness_agent_release_binding_schema(),
+    );
+    schemas.insert(
+        "HarnessProviderBinding".into(),
+        harness_provider_binding_schema(),
+    );
+    schemas.insert(
+        "HarnessWorkspaceBinding".into(),
+        harness_workspace_binding_schema(),
+    );
+    schemas.insert("HarnessSkillBinding".into(), harness_skill_binding_schema());
+    schemas.insert("HarnessMcpBinding".into(), harness_mcp_binding_schema());
+    schemas.insert("HarnessModelBinding".into(), harness_model_binding_schema());
+    schemas.insert(
+        "HarnessSecretReference".into(),
+        harness_secret_reference_schema(),
+    );
+    schemas.insert("HarnessToolBinding".into(), harness_tool_binding_schema());
+    schemas.insert(
+        "HarnessInvocationProfile".into(),
+        harness_invocation_profile_schema(),
+    );
+    schemas.insert(
+        "AgentToolPayloadIdentity".into(),
+        agent_tool_payload_identity_schema(),
+    );
+    schemas.insert(
+        "AgentModelOutputEventContent".into(),
+        agent_model_output_event_content_schema(),
+    );
+    schemas.insert(
+        "AgentToolRequestEventContent".into(),
+        agent_tool_request_event_content_schema(),
+    );
+    schemas.insert(
+        "AgentToolResultEventContent".into(),
+        agent_tool_result_event_content_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionFailureEventContent".into(),
+        agent_execution_failure_event_content_schema(),
+    );
+    for (name, kind, content) in [
+        (
+            "AgentExecutionRequestedEvent",
+            "execution_requested",
+            json!({
+                "description": "Caller-owned execution input represented as bounded canonical JSON.",
+                "x-a3s-max-canonical-bytes": 65536
+            }),
+        ),
+        (
+            "AgentModelOutputEvent",
+            "model_output",
+            schema_ref("AgentModelOutputEventContent"),
+        ),
+        (
+            "AgentToolRequestEvent",
+            "tool_request",
+            schema_ref("AgentToolRequestEventContent"),
+        ),
+        (
+            "AgentToolResultEvent",
+            "tool_result",
+            schema_ref("AgentToolResultEventContent"),
+        ),
+        (
+            "AgentExecutionFailedEvent",
+            "execution_failed",
+            schema_ref("AgentExecutionFailureEventContent"),
+        ),
+        (
+            "AgentExecutionCompletedEvent",
+            "execution_completed",
+            empty_event_content_schema(),
+        ),
+        (
+            "AgentExecutionCancelledEvent",
+            "execution_cancelled",
+            empty_event_content_schema(),
+        ),
+    ] {
+        schemas.insert(
+            name.into(),
+            agent_execution_event_variant_schema(kind, content),
+        );
+    }
     schemas.insert("AgentExecution".into(), agent_execution_schema());
     schemas.insert("AgentExecutionList".into(), array_schema("AgentExecution"));
     schemas.insert(
@@ -152,6 +242,285 @@ fn agent_provider_profile_schema() -> Value {
     )
 }
 
+fn harness_agent_release_binding_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "assetId",
+            "assetReleaseId",
+            "buildRunId",
+            "artifactDigest",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "assetId": uuid_schema(),
+            "assetReleaseId": uuid_schema(),
+            "buildRunId": uuid_schema(),
+            "artifactDigest": digest_schema()
+        }),
+    )
+}
+
+fn harness_provider_binding_schema() -> Value {
+    object_schema(
+        &["kind", "revision", "profileDigest", "capabilityDigest"],
+        json!({
+            "kind": {
+                "type": "string",
+                "enum": ["a3s.code", "reference.echo"]
+            },
+            "revision": bounded_line_schema(128),
+            "profileDigest": digest_schema(),
+            "capabilityDigest": digest_schema()
+        }),
+    )
+}
+
+fn harness_workspace_binding_schema() -> Value {
+    object_schema(
+        &[
+            "workloadId",
+            "workloadRevisionId",
+            "runtimeUnitId",
+            "runtimeGeneration",
+            "runtimeSpecDigest",
+            "workingDirectory",
+        ],
+        json!({
+            "workloadId": uuid_schema(),
+            "workloadRevisionId": uuid_schema(),
+            "runtimeUnitId": bounded_line_schema(512),
+            "runtimeGeneration": positive_sequence_schema(),
+            "runtimeSpecDigest": digest_schema(),
+            "workingDirectory": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\u0000\\r\\n]+$",
+                "nullable": true
+            }
+        }),
+    )
+}
+
+fn harness_skill_binding_schema() -> Value {
+    object_schema(
+        &["assetId", "assetReleaseId", "artifactDigest"],
+        json!({
+            "assetId": uuid_schema(),
+            "assetReleaseId": uuid_schema(),
+            "artifactDigest": digest_schema()
+        }),
+    )
+}
+
+fn harness_mcp_binding_schema() -> Value {
+    object_schema(
+        &["assetId", "assetReleaseId", "profileDigest"],
+        json!({
+            "assetId": uuid_schema(),
+            "assetReleaseId": uuid_schema(),
+            "profileDigest": digest_schema()
+        }),
+    )
+}
+
+fn harness_model_binding_schema() -> Value {
+    object_schema(
+        &["modelId", "modelRevisionId", "profileDigest"],
+        json!({
+            "modelId": uuid_schema(),
+            "modelRevisionId": uuid_schema(),
+            "profileDigest": digest_schema()
+        }),
+    )
+}
+
+fn harness_secret_reference_schema() -> Value {
+    object_schema(
+        &["name", "secretId", "version", "target"],
+        json!({
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[A-Za-z0-9._-]+$"
+            },
+            "secretId": uuid_schema(),
+            "version": positive_sequence_schema(),
+            "target": {
+                "oneOf": [
+                    object_schema(
+                        &["kind", "variable"],
+                        json!({
+                            "kind": { "type": "string", "enum": ["environment"] },
+                            "variable": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 255,
+                                "pattern": "^[A-Z_][A-Z0-9_]*$"
+                            }
+                        })
+                    ),
+                    object_schema(
+                        &["kind", "path", "mode"],
+                        json!({
+                            "kind": { "type": "string", "enum": ["file"] },
+                            "path": bounded_line_schema(4096),
+                            "mode": { "type": "integer", "minimum": 1, "maximum": 511 }
+                        })
+                    ),
+                    object_schema(
+                        &["kind"],
+                        json!({
+                            "kind": { "type": "string", "enum": ["registry_credential"] }
+                        })
+                    )
+                ]
+            }
+        }),
+    )
+}
+
+fn harness_tool_binding_schema() -> Value {
+    object_schema(
+        &["name", "revision", "contractDigest", "approvalRequired"],
+        json!({
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+            },
+            "revision": bounded_line_schema(128),
+            "contractDigest": digest_schema(),
+            "approvalRequired": { "type": "boolean" }
+        }),
+    )
+}
+
+fn harness_invocation_profile_schema() -> Value {
+    let mut schema = object_schema(
+        &[
+            "schema",
+            "agent",
+            "provider",
+            "instructionsDigest",
+            "environmentPolicyDigest",
+            "securityPolicyDigest",
+            "workspace",
+            "skills",
+            "mcpServers",
+            "models",
+            "secrets",
+            "tools",
+            "requiredCapabilities",
+        ],
+        json!({
+            "schema": {
+                "type": "string",
+                "enum": ["a3s.cloud.harness-invocation-profile.v1"]
+            },
+            "agent": schema_ref("HarnessAgentReleaseBinding"),
+            "provider": schema_ref("HarnessProviderBinding"),
+            "instructionsDigest": digest_schema(),
+            "environmentPolicyDigest": digest_schema(),
+            "securityPolicyDigest": digest_schema(),
+            "workspace": schema_ref("HarnessWorkspaceBinding"),
+            "skills": bounded_binding_array("HarnessSkillBinding"),
+            "mcpServers": bounded_binding_array("HarnessMcpBinding"),
+            "models": bounded_binding_array("HarnessModelBinding"),
+            "secrets": bounded_binding_array("HarnessSecretReference"),
+            "tools": bounded_binding_array("HarnessToolBinding"),
+            "requiredCapabilities": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 32,
+                "uniqueItems": true,
+                "x-a3s-canonical-order": "lexical-wire-value",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "cancellation", "change_set", "checkpoints", "cleanup",
+                        "event_pages", "pause_resume", "recovery",
+                        "streaming_output", "tool_calls"
+                    ]
+                }
+            }
+        }),
+    );
+    schema["x-a3s-max-canonical-bytes"] = json!(HARNESS_INVOCATION_PROFILE_MAX_BYTES);
+    schema
+}
+
+fn agent_tool_payload_identity_schema() -> Value {
+    object_schema(
+        &["digest", "sizeBytes", "mediaType"],
+        json!({
+            "digest": digest_schema(),
+            "sizeBytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "maximum": MAXIMUM_JSON_SAFE_INTEGER
+            },
+            "mediaType": bounded_line_schema(255)
+        }),
+    )
+}
+
+fn agent_model_output_event_content_schema() -> Value {
+    object_schema(
+        &["text"],
+        json!({
+            "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "x-a3s-max-utf8-bytes": 65536
+            }
+        }),
+    )
+}
+
+fn agent_tool_request_event_content_schema() -> Value {
+    object_schema(
+        &["callId", "tool", "request"],
+        json!({
+            "callId": bounded_line_schema(256),
+            "tool": schema_ref("HarnessToolBinding"),
+            "request": schema_ref("AgentToolPayloadIdentity")
+        }),
+    )
+}
+
+fn agent_tool_result_event_content_schema() -> Value {
+    object_schema(
+        &["callId", "tool", "requestDigest", "outcome", "result"],
+        json!({
+            "callId": bounded_line_schema(256),
+            "tool": schema_ref("HarnessToolBinding"),
+            "requestDigest": digest_schema(),
+            "outcome": { "type": "string", "enum": ["succeeded", "failed"] },
+            "result": schema_ref("AgentToolPayloadIdentity")
+        }),
+    )
+}
+
+fn agent_execution_failure_event_content_schema() -> Value {
+    object_schema(
+        &["reason"],
+        json!({
+            "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16384,
+                "x-a3s-max-utf8-bytes": 16384
+            }
+        }),
+    )
+}
+
 fn agent_execution_schema() -> Value {
     object_schema(
         &[
@@ -161,6 +530,7 @@ fn agent_execution_schema() -> Value {
             "operationId",
             "agent",
             "provider",
+            "invocationProfile",
             "status",
             "failure",
             "aggregateVersion",
@@ -177,6 +547,10 @@ fn agent_execution_schema() -> Value {
             "operationId": uuid_schema(),
             "agent": schema_ref("AgentReleaseBinding"),
             "provider": schema_ref("AgentProviderProfile"),
+            "invocationProfile": {
+                "allOf": [schema_ref("HarnessInvocationProfile")],
+                "nullable": true
+            },
             "status": {
                 "type": "string",
                 "enum": ["pending", "running", "cancelling", "succeeded", "failed", "cancelled"]
@@ -280,7 +654,7 @@ fn agent_execution_change_set_schema() -> Value {
 }
 
 fn agent_execution_event_schema() -> Value {
-    object_schema(
+    let mut schema = object_schema(
         &[
             "organizationId",
             "conversationId",
@@ -302,13 +676,15 @@ fn agent_execution_event_schema() -> Value {
                 "enum": [
                     "execution_requested",
                     "model_output",
+                    "tool_request",
+                    "tool_result",
                     "execution_failed",
                     "execution_completed",
                     "execution_cancelled"
                 ]
             },
             "content": {
-                "description": "Bounded semantic JSON content whose SHA-256 identity and encoded byte length are carried alongside it."
+                "description": "Bounded semantic JSON content validated by the selected event variant."
             },
             "contentDigest": digest_schema(),
             "contentSizeBytes": {
@@ -319,7 +695,69 @@ fn agent_execution_event_schema() -> Value {
             },
             "occurredAt": timestamp_schema()
         }),
+    );
+    schema["oneOf"] = json!([
+        schema_ref("AgentExecutionRequestedEvent"),
+        schema_ref("AgentModelOutputEvent"),
+        schema_ref("AgentToolRequestEvent"),
+        schema_ref("AgentToolResultEvent"),
+        schema_ref("AgentExecutionFailedEvent"),
+        schema_ref("AgentExecutionCompletedEvent"),
+        schema_ref("AgentExecutionCancelledEvent")
+    ]);
+    schema["discriminator"] = json!({
+        "propertyName": "kind",
+        "mapping": {
+            "execution_requested": "#/components/schemas/AgentExecutionRequestedEvent",
+            "model_output": "#/components/schemas/AgentModelOutputEvent",
+            "tool_request": "#/components/schemas/AgentToolRequestEvent",
+            "tool_result": "#/components/schemas/AgentToolResultEvent",
+            "execution_failed": "#/components/schemas/AgentExecutionFailedEvent",
+            "execution_completed": "#/components/schemas/AgentExecutionCompletedEvent",
+            "execution_cancelled": "#/components/schemas/AgentExecutionCancelledEvent"
+        }
+    });
+    schema
+}
+
+fn agent_execution_event_variant_schema(kind: &str, content: Value) -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "conversationId",
+            "executionId",
+            "sequence",
+            "kind",
+            "content",
+            "contentDigest",
+            "contentSizeBytes",
+            "occurredAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "conversationId": uuid_schema(),
+            "executionId": uuid_schema(),
+            "sequence": positive_sequence_schema(),
+            "kind": { "type": "string", "enum": [kind] },
+            "content": content,
+            "contentDigest": digest_schema(),
+            "contentSizeBytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 65536
+            },
+            "occurredAt": timestamp_schema()
+        }),
     )
+}
+
+fn empty_event_content_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Empty terminal event content."
+    })
 }
 
 fn agent_execution_event_page_schema() -> Value {
@@ -356,6 +794,23 @@ fn array_schema(item: &str) -> Value {
     json!({
         "type": "array",
         "maxItems": 200,
+        "items": schema_ref(item)
+    })
+}
+
+fn bounded_binding_array(item: &str) -> Value {
+    let canonical_order = match item {
+        "HarnessSkillBinding" | "HarnessMcpBinding" => &["assetId", "assetReleaseId"] as &[&str],
+        "HarnessModelBinding" => &["modelId", "modelRevisionId"],
+        "HarnessSecretReference" => &["name"],
+        "HarnessToolBinding" => &["name", "revision"],
+        _ => &[],
+    };
+    json!({
+        "type": "array",
+        "maxItems": 128,
+        "uniqueItems": true,
+        "x-a3s-canonical-order": canonical_order,
         "items": schema_ref(item)
     })
 }

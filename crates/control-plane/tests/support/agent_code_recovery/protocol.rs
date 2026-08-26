@@ -109,6 +109,26 @@ async fn lease_and_ack_code_command(
         ))
         .into());
     }
+    if let AgentProviderCommandV1::Start { request } = command.as_ref() {
+        let invocation = request
+            .invocation_profile
+            .as_ref()
+            .ok_or_else(|| invalid("new Agent provider start omitted its invocation profile"))?;
+        let invocation_digest = invocation.digest().map_err(invalid)?;
+        if request.identity.invocation_profile_digest.as_deref()
+            != Some(invocation_digest.as_str())
+            || binding
+                .provider_run_identity
+                .invocation_profile_digest
+                .as_deref()
+                != Some(invocation_digest.as_str())
+        {
+            return Err(invalid(
+                "Agent provider start changed its immutable invocation profile identity",
+            )
+            .into());
+        }
+    }
     let completed_at = canonical_timestamp(Utc::now()).max(
         envelope
             .issued_at

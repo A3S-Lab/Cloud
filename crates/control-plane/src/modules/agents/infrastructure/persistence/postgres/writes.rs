@@ -10,7 +10,7 @@ use crate::infrastructure::{
     store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::agents::domain::{
-    AgentCodeRunWrite, AgentConversationStatus, AgentConversationWrite,
+    AgentCodeRunBinding, AgentCodeRunWrite, AgentConversationStatus, AgentConversationWrite,
     AgentConversationWriteReference, AgentExecutionChangeSet, AgentExecutionEvent,
     AgentExecutionEventDraft, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
     AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
@@ -584,6 +584,23 @@ pub(super) async fn persist_execution(
     expected_version: u64,
 ) -> Result<(), PostgresPersistenceError> {
     let code = execution.code.as_ref();
+    let invocation = code.and_then(AgentCodeRunBinding::invocation_profile);
+    let invocation_profile = invocation
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| {
+            PostgresPersistenceError::Invariant(format!(
+                "Harness invocation profile could not be encoded: {error}"
+            ))
+        })?;
+    let invocation_profile_digest = invocation
+        .map(|profile| profile.digest())
+        .transpose()
+        .map_err(|error| {
+            PostgresPersistenceError::Invariant(format!(
+                "Harness invocation profile is invalid: {error}"
+            ))
+        })?;
     execution.provider.validate().map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
             "Agent provider profile binding is invalid: {error}"
@@ -697,6 +714,11 @@ pub(super) async fn persist_execution(
             .set(
                 AgentExecutions::provider_observed_at(),
                 code.and_then(|binding| binding.observed_at()),
+            )
+            .set(AgentExecutions::invocation_profile(), invocation_profile)
+            .set(
+                AgentExecutions::invocation_profile_digest(),
+                invocation_profile_digest,
             )
             .filter(AgentExecutions::organization_id().eq(execution.organization_id.as_uuid()))
             .filter(AgentExecutions::id().eq(execution.id.as_uuid()))

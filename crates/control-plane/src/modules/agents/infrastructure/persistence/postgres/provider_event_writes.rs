@@ -3,14 +3,19 @@ use super::writes::{
     insert_event, materialize_event_drafts, persist_conversation, persist_execution,
 };
 use crate::infrastructure::{
-    idempotency_replay, store_idempotency, transaction_error, PostgresPersistenceError,
+    idempotency_replay, store_audit, store_idempotency, transaction_error, AuditWrite,
+    PostgresPersistenceError,
 };
 use crate::modules::agents::domain::{
-    AcceptAgentProviderEventBatchWrite, AgentExecutionEventDraft,
+    AcceptAgentProviderEventBatchWrite, AgentConversation, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventKind,
 };
 use crate::modules::shared_kernel::domain::{AgentExecutionId, RepositoryError};
-use a3s_cloud_contracts::NodeAgentProviderEventReceiptV1;
+use a3s_cloud_contracts::{AgentProviderSemanticEventV1, NodeAgentProviderEventReceiptV1};
 use a3s_orm::{PostgresExecutor, PostgresTransaction};
+use uuid::Uuid;
+
+const AGENT_TOOL_AUDIT_SCHEMA_V1: &str = "a3s.cloud.agent-tool-audit.v1";
 
 pub(super) async fn accept_provider_event_batch(
     executor: &PostgresExecutor,
@@ -118,6 +123,7 @@ pub(super) async fn accept_provider_event_batch(
                 for event in &events {
                     insert_event(transaction, event).await?;
                 }
+                store_tool_event_audits(transaction, &write, &conversation, &events).await?;
 
                 let receipt = write
                     .receipt(false)
@@ -152,4 +158,191 @@ async fn replay_provider_event_batch(
 
 fn invalid_repository_write(error: String) -> RepositoryError {
     RepositoryError::Conflict(format!("invalid Agent repository write: {error}"))
+}
+
+async fn store_tool_event_audits(
+    transaction: &PostgresTransaction,
+    write: &AcceptAgentProviderEventBatchWrite,
+    conversation: &AgentConversation,
+    events: &[AgentExecutionEvent],
+) -> Result<(), PostgresPersistenceError> {
+    if events.len() < write.batch.page.events.len() {
+        return Err(PostgresPersistenceError::Invariant(
+            "Agent provider semantic projection omitted a source event".into(),
+        ));
+    }
+    for (source, event) in write.batch.page.events.iter().zip(events) {
+        let Some(audit) = tool_event_audit_projection(&source.event) else {
+            continue;
+        };
+        if event.kind != audit.expected_kind {
+            return Err(PostgresPersistenceError::Invariant(
+                "Agent provider Tool audit mapping changed its semantic event kind".into(),
+            ));
+        }
+        store_audit(
+            transaction,
+            &AuditWrite {
+                audit_id: Uuid::now_v7(),
+                organization_id: write.organization_id.as_uuid(),
+                actor_id: None,
+                action: audit.action,
+                aggregate_id: event.execution_id.as_uuid(),
+                occurred_at: event.occurred_at,
+                request_id: write.batch.batch_id,
+                attribution_scope: AuditWrite::project_attribution(
+                    conversation.project_id,
+                    Some(conversation.environment_id),
+                ),
+                details: serde_json::json!({
+                    "schema": AGENT_TOOL_AUDIT_SCHEMA_V1,
+                    "projectId": conversation.project_id,
+                    "environmentId": conversation.environment_id,
+                    "conversationId": event.conversation_id,
+                    "executionId": event.execution_id,
+                    "eventSequence": event.sequence,
+                    "providerSourceSequence": source.sequence,
+                    "providerOccurredAtMs": source.occurred_at_ms,
+                    "providerObservedAtMs": write.batch.page.observed_at_ms,
+                    "nodeId": write.authenticated_node_id,
+                    "workloadId": write.batch.binding.workload_id,
+                    "workloadRevisionId": write.batch.binding.workload_revision_id,
+                    "deploymentId": write.batch.binding.deployment_id,
+                    "replicaId": write.batch.binding.replica_id,
+                    "runtimeUnitId": write.batch.binding.runtime_unit_id.as_str(),
+                    "runtimeGeneration": write.batch.binding.runtime_generation,
+                    "runtimeSpecDigest": write.batch.binding.runtime_spec_digest.as_str(),
+                    "providerRunId": write
+                        .batch
+                        .binding
+                        .provider_run_identity
+                        .run_id
+                        .as_str(),
+                    "providerProfileDigest": write.batch.binding.provider_profile_digest.as_str(),
+                    "invocationProfileDigest": write
+                        .batch
+                        .binding
+                        .provider_run_identity
+                        .invocation_profile_digest
+                        .as_deref(),
+                    "contentDigest": event.content.digest().as_str(),
+                    "contentSizeBytes": event.content.size_bytes(),
+                    "event": audit.details,
+                }),
+            },
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+struct ToolEventAuditProjection {
+    action: &'static str,
+    expected_kind: AgentExecutionEventKind,
+    details: serde_json::Value,
+}
+
+fn tool_event_audit_projection(
+    event: &AgentProviderSemanticEventV1,
+) -> Option<ToolEventAuditProjection> {
+    match event {
+        AgentProviderSemanticEventV1::ModelOutput { .. } => None,
+        AgentProviderSemanticEventV1::ToolRequest {
+            call_id,
+            tool,
+            request,
+        } => Some(ToolEventAuditProjection {
+            action: "agent.execution.tool-requested",
+            expected_kind: AgentExecutionEventKind::ToolRequest,
+            details: serde_json::json!({
+                "callId": call_id,
+                "tool": tool,
+                "request": request,
+            }),
+        }),
+        AgentProviderSemanticEventV1::ToolResult {
+            call_id,
+            tool,
+            request_digest,
+            outcome,
+            result,
+        } => Some(ToolEventAuditProjection {
+            action: "agent.execution.tool-result-recorded",
+            expected_kind: AgentExecutionEventKind::ToolResult,
+            details: serde_json::json!({
+                "callId": call_id,
+                "tool": tool,
+                "requestDigest": request_digest,
+                "outcome": outcome,
+                "result": result,
+            }),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use a3s_cloud_contracts::{
+        AgentProviderToolPayloadIdentityV1, AgentProviderToolResultOutcomeV1, HarnessToolBindingV1,
+    };
+
+    fn tool() -> HarnessToolBindingV1 {
+        HarnessToolBindingV1 {
+            name: "workspace.search".into(),
+            revision: "1.0.0".into(),
+            contract_digest: format!("sha256:{}", "a".repeat(64)),
+            approval_required: false,
+        }
+    }
+
+    fn payload(digest: char, size_bytes: u64) -> AgentProviderToolPayloadIdentityV1 {
+        AgentProviderToolPayloadIdentityV1 {
+            digest: format!("sha256:{}", digest.to_string().repeat(64)),
+            size_bytes,
+            media_type: "application/json".into(),
+        }
+    }
+
+    #[test]
+    fn tool_audit_projection_is_typed_and_body_free() {
+        let request = payload('b', 128);
+        let requested = tool_event_audit_projection(&AgentProviderSemanticEventV1::ToolRequest {
+            call_id: "call-1".into(),
+            tool: tool(),
+            request: request.clone(),
+        })
+        .expect("Tool request audit");
+        assert_eq!(requested.action, "agent.execution.tool-requested");
+        assert_eq!(
+            requested.expected_kind,
+            AgentExecutionEventKind::ToolRequest
+        );
+        assert_eq!(
+            requested.details,
+            serde_json::json!({
+                "callId": "call-1",
+                "tool": tool(),
+                "request": request,
+            })
+        );
+
+        let recorded = tool_event_audit_projection(&AgentProviderSemanticEventV1::ToolResult {
+            call_id: "call-1".into(),
+            tool: tool(),
+            request_digest: format!("sha256:{}", "b".repeat(64)),
+            outcome: AgentProviderToolResultOutcomeV1::Succeeded,
+            result: payload('c', 256),
+        })
+        .expect("Tool result audit");
+        assert_eq!(recorded.action, "agent.execution.tool-result-recorded");
+        assert_eq!(recorded.expected_kind, AgentExecutionEventKind::ToolResult);
+        let encoded = serde_json::to_string(&recorded.details).expect("Tool audit JSON");
+        for forbidden in ["secretMaterial", "payload", "body", "value"] {
+            assert!(
+                !encoded.contains(forbidden),
+                "Tool audit exposed forbidden field {forbidden}"
+            );
+        }
+    }
 }

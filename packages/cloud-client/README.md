@@ -130,7 +130,10 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.69.0`. Agent execution creation accepts an
+The client targets REST contract `1.70.0`. Returned Agent executions now carry
+their nullable closed immutable Harness invocation profile, and Tool
+request/result events expose only typed binding plus payload digest, byte
+length, and media type evidence. Agent execution creation retains `1.69.0`'s
 optional closed `providerKind` and defaults to `a3s.code`; returned executions
 carry the immutable selected provider revision, protocol, profile digest, and
 capability digest. Contract `1.68.0` added Plan schema/compiler v12,
@@ -430,7 +433,12 @@ BuildRun/OCI identity. Start accepts the optional closed `providerKind`
 selection `a3s.code` or `reference.echo`; Cloud resolves and persists the exact
 immutable provider profile before scheduling, and every returned execution
 includes its revision, common/native protocols, profile digest, and capability
-digest. `getAgentExecutionChangeSet` returns the bounded Git-compatible output
+digest. Once dispatch binds the exact Runtime, returned executions also include
+the immutable invocation profile with exact release, provider, policy,
+workspace, Skill, MCP, model, Secret-reference, and Tool identity fields;
+unavailable binding categories remain empty rather than inferred. Tool
+request/result events carry exact Tool binding and content identity evidence,
+never Tool bytes or Secret material. `getAgentExecutionChangeSet` returns the bounded Git-compatible output
 only for the native Code provider. `getAgentExecutionEvents` reads the
 provider-neutral authoritative contiguous semantic sequence with a bounded opaque cursor, while
 `agentExecutionEventStreamUrl` builds the credential-free shared SSE URL used

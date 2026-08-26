@@ -564,6 +564,94 @@ export interface AgentProviderProfile {
   capabilityDigest: string;
 }
 
+export type AgentProviderCapability =
+  | 'cancellation'
+  | 'change_set'
+  | 'checkpoints'
+  | 'cleanup'
+  | 'event_pages'
+  | 'pause_resume'
+  | 'recovery'
+  | 'streaming_output'
+  | 'tool_calls';
+
+export interface HarnessAgentReleaseBinding {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  buildRunId: string;
+  artifactDigest: string;
+}
+
+export interface HarnessProviderBinding {
+  kind: AgentProviderKind;
+  revision: string;
+  profileDigest: string;
+  capabilityDigest: string;
+}
+
+export interface HarnessWorkspaceBinding {
+  workloadId: string;
+  workloadRevisionId: string;
+  runtimeUnitId: string;
+  runtimeGeneration: number;
+  runtimeSpecDigest: string;
+  workingDirectory: string | null;
+}
+
+export interface HarnessSkillBinding {
+  assetId: string;
+  assetReleaseId: string;
+  artifactDigest: string;
+}
+
+export interface HarnessMcpBinding {
+  assetId: string;
+  assetReleaseId: string;
+  profileDigest: string;
+}
+
+export interface HarnessModelBinding {
+  modelId: string;
+  modelRevisionId: string;
+  profileDigest: string;
+}
+
+export type HarnessSecretTarget =
+  | { kind: 'environment'; variable: string }
+  | { kind: 'file'; path: string; mode: number }
+  | { kind: 'registry_credential' };
+
+export interface HarnessSecretReference {
+  name: string;
+  secretId: string;
+  version: number;
+  target: HarnessSecretTarget;
+}
+
+export interface HarnessToolBinding {
+  name: string;
+  revision: string;
+  contractDigest: string;
+  approvalRequired: boolean;
+}
+
+export interface HarnessInvocationProfile {
+  schema: 'a3s.cloud.harness-invocation-profile.v1';
+  agent: HarnessAgentReleaseBinding;
+  provider: HarnessProviderBinding;
+  instructionsDigest: string;
+  environmentPolicyDigest: string;
+  securityPolicyDigest: string;
+  workspace: HarnessWorkspaceBinding;
+  skills: HarnessSkillBinding[];
+  mcpServers: HarnessMcpBinding[];
+  models: HarnessModelBinding[];
+  secrets: HarnessSecretReference[];
+  tools: HarnessToolBinding[];
+  requiredCapabilities: AgentProviderCapability[];
+}
+
 export interface AgentExecution {
   organizationId: string;
   conversationId: string;
@@ -571,6 +659,7 @@ export interface AgentExecution {
   operationId: string;
   agent: AgentReleaseBinding;
   provider: AgentProviderProfile;
+  invocationProfile: HarnessInvocationProfile | null;
   status: AgentExecutionStatus;
   failure: string | null;
   aggregateVersion: number;
@@ -630,21 +719,51 @@ export interface AgentExecutionChangeSet {
 export type AgentExecutionEventKind =
   | 'execution_requested'
   | 'model_output'
+  | 'tool_request'
+  | 'tool_result'
   | 'execution_failed'
   | 'execution_completed'
   | 'execution_cancelled';
 
-export interface AgentExecutionEvent {
+export interface AgentToolPayloadIdentity {
+  digest: string;
+  sizeBytes: number;
+  mediaType: string;
+}
+
+export interface AgentToolRequestEventContent {
+  callId: string;
+  tool: HarnessToolBinding;
+  request: AgentToolPayloadIdentity;
+}
+
+export interface AgentToolResultEventContent {
+  callId: string;
+  tool: HarnessToolBinding;
+  requestDigest: string;
+  outcome: 'succeeded' | 'failed';
+  result: AgentToolPayloadIdentity;
+}
+
+interface AgentExecutionEventBase {
   organizationId: string;
   conversationId: string;
   executionId: string;
   sequence: number;
-  kind: AgentExecutionEventKind;
-  content: unknown;
   contentDigest: string;
   contentSizeBytes: number;
   occurredAt: string;
 }
+
+export type AgentExecutionEvent = AgentExecutionEventBase &
+  (
+    | { kind: 'execution_requested'; content: unknown }
+    | { kind: 'model_output'; content: { text: string } }
+    | { kind: 'tool_request'; content: AgentToolRequestEventContent }
+    | { kind: 'tool_result'; content: AgentToolResultEventContent }
+    | { kind: 'execution_failed'; content: { reason: string } }
+    | { kind: 'execution_completed' | 'execution_cancelled'; content: Record<string, never> }
+  );
 
 export interface AgentExecutionEventsPage {
   conversationId: string;

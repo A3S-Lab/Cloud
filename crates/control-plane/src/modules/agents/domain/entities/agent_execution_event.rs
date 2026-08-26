@@ -12,6 +12,8 @@ pub const MAX_AGENT_EVENTS_PER_APPEND: usize = 64;
 pub enum AgentExecutionEventKind {
     ExecutionRequested,
     ModelOutput,
+    ToolRequest,
+    ToolResult,
     ExecutionFailed,
     ExecutionCompleted,
     ExecutionCancelled,
@@ -22,6 +24,8 @@ impl AgentExecutionEventKind {
         match self {
             Self::ExecutionRequested => "execution_requested",
             Self::ModelOutput => "model_output",
+            Self::ToolRequest => "tool_request",
+            Self::ToolResult => "tool_result",
             Self::ExecutionFailed => "execution_failed",
             Self::ExecutionCompleted => "execution_completed",
             Self::ExecutionCancelled => "execution_cancelled",
@@ -32,6 +36,8 @@ impl AgentExecutionEventKind {
         match value {
             "execution_requested" => Ok(Self::ExecutionRequested),
             "model_output" => Ok(Self::ModelOutput),
+            "tool_request" => Ok(Self::ToolRequest),
+            "tool_result" => Ok(Self::ToolResult),
             "execution_failed" => Ok(Self::ExecutionFailed),
             "execution_completed" => Ok(Self::ExecutionCompleted),
             "execution_cancelled" => Ok(Self::ExecutionCancelled),
@@ -147,6 +153,36 @@ impl AgentExecutionEventDraft {
                     AgentEventContent::inline_json(serde_json::json!({"text": text}))?,
                     projected_at,
                 ),
+                AgentProviderSemanticEventV1::ToolRequest {
+                    call_id,
+                    tool,
+                    request,
+                } => Self::new(
+                    AgentExecutionEventKind::ToolRequest,
+                    AgentEventContent::inline_json(serde_json::json!({
+                        "callId": call_id,
+                        "tool": tool,
+                        "request": request,
+                    }))?,
+                    projected_at,
+                ),
+                AgentProviderSemanticEventV1::ToolResult {
+                    call_id,
+                    tool,
+                    request_digest,
+                    outcome,
+                    result,
+                } => Self::new(
+                    AgentExecutionEventKind::ToolResult,
+                    AgentEventContent::inline_json(serde_json::json!({
+                        "callId": call_id,
+                        "tool": tool,
+                        "requestDigest": request_digest,
+                        "outcome": outcome,
+                        "result": result,
+                    }))?,
+                    projected_at,
+                ),
             })
             .collect::<Result<Vec<_>, _>>()?;
         if !page.state.is_terminal() || page.has_more {
@@ -258,7 +294,9 @@ mod tests {
     use super::*;
     use a3s_cloud_contracts::{
         AgentProtocolEventPageV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
-        AGENT_PROTOCOL_V1,
+        AgentProviderEventPageV1, AgentProviderEventRecordV1, AgentProviderRunIdentityV1,
+        AgentProviderRunStateV1, AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1,
+        AgentProviderToolResultOutcomeV1, HarnessToolBindingV1, AGENT_PROTOCOL_V1,
     };
 
     #[test]
@@ -374,6 +412,96 @@ mod tests {
         );
         assert_eq!(drafts[1].kind, AgentExecutionEventKind::ExecutionCompleted);
         assert_eq!(drafts[1].content.value(), &serde_json::json!({}));
+    }
+
+    #[test]
+    fn provider_tool_projection_keeps_only_binding_and_payload_identity() {
+        let projected_at = Utc::now();
+        let tool = HarnessToolBindingV1 {
+            name: "workspace.search".into(),
+            revision: "1.0.0".into(),
+            contract_digest: format!("sha256:{}", "b".repeat(64)),
+            approval_required: false,
+        };
+        let request = AgentProviderToolPayloadIdentityV1 {
+            digest: format!("sha256:{}", "c".repeat(64)),
+            size_bytes: 128,
+            media_type: "application/json".into(),
+        };
+        let result = AgentProviderToolPayloadIdentityV1 {
+            digest: format!("sha256:{}", "d".repeat(64)),
+            size_bytes: 256,
+            media_type: "application/json".into(),
+        };
+        let page = AgentProviderEventPageV1 {
+            schema: AgentProviderEventPageV1::SCHEMA.into(),
+            identity: AgentProviderRunIdentityV1::new(
+                format!("sha256:{}", "e".repeat(64)),
+                format!("sha256:{}", "f".repeat(64)),
+                format!("sha256:{}", "a".repeat(64)),
+                "session-1".into(),
+                "run-1".into(),
+            )
+            .expect("provider identity"),
+            after_event_sequence: None,
+            first_available_sequence: Some(0),
+            source_first_sequence: Some(0),
+            source_last_sequence: Some(1),
+            source_event_count: 2,
+            latest_sequence_exclusive: 2,
+            next_after_event_sequence: Some(1),
+            state: AgentProviderRunStateV1::Executing,
+            observed_at_ms: 3,
+            retention_gap: false,
+            has_more: false,
+            terminal_failure: None,
+            events: vec![
+                AgentProviderEventRecordV1 {
+                    sequence: 0,
+                    occurred_at_ms: 1,
+                    event: AgentProviderSemanticEventV1::ToolRequest {
+                        call_id: "call-1".into(),
+                        tool: tool.clone(),
+                        request: request.clone(),
+                    },
+                },
+                AgentProviderEventRecordV1 {
+                    sequence: 1,
+                    occurred_at_ms: 2,
+                    event: AgentProviderSemanticEventV1::ToolResult {
+                        call_id: "call-1".into(),
+                        tool: tool.clone(),
+                        request_digest: request.digest.clone(),
+                        outcome: AgentProviderToolResultOutcomeV1::Succeeded,
+                        result: result.clone(),
+                    },
+                },
+            ],
+        };
+
+        let drafts = AgentExecutionEventDraft::semantic_from_provider_page(&page, projected_at)
+            .expect("Tool semantic projection");
+        assert_eq!(drafts.len(), 2);
+        assert_eq!(drafts[0].kind, AgentExecutionEventKind::ToolRequest);
+        assert_eq!(
+            drafts[0].content.value(),
+            &serde_json::json!({
+                "callId": "call-1",
+                "tool": tool,
+                "request": request,
+            })
+        );
+        assert_eq!(drafts[1].kind, AgentExecutionEventKind::ToolResult);
+        assert_eq!(
+            drafts[1].content.value(),
+            &serde_json::json!({
+                "callId": "call-1",
+                "tool": tool,
+                "requestDigest": format!("sha256:{}", "c".repeat(64)),
+                "outcome": "succeeded",
+                "result": result,
+            })
+        );
     }
 
     fn empty_page(state: AgentProtocolRunStateV1) -> AgentProtocolEventPageV1 {
