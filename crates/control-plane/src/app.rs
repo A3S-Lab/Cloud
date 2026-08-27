@@ -75,17 +75,17 @@ use crate::modules::data::{
     ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
 };
 use crate::modules::developer_workflows::{
-    AcceptBuildPlanHandler, AcceptWorkloadProfileHandler, ArtifactsWorkloadBuildOutcomeAdapter,
-    AssetAclBuildPlanDetector, BuildPlanDetectionService, CompileAcceptedWorkloadProfileHandler,
-    DetectBuildPlanProposalsHandler, DockerfileBuildPlanDetector,
-    ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
+    AcceptBuildPlanHandler, AcceptPullRequestPreviewPolicyHandler, AcceptWorkloadProfileHandler,
+    ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
+    CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
+    DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
     IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
     IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
     IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ProjectsPreviewEnvironmentAdapter,
     PullRequestPreviewProjectionService, PullRequestPreviewProjector,
-    RepositoryBuildPlanSourceRevisionPort, WorkloadProfileCompilationService,
-    WorkloadsServiceProfileAdapter,
+    RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
+    WorkloadProfileCompilationService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -599,6 +599,7 @@ async fn build_api_worker_application(
     let application_sessions = adapters.application_sessions;
     let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
     let developer_workload_profiles = adapters.developer_workflows.workload_profiles;
+    let developer_preview_policies = adapters.developer_workflows.preview_policies;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
@@ -1690,6 +1691,7 @@ async fn build_api_worker_application(
                 application_sessions,
                 developer_workflow_build_plans,
                 developer_workload_profiles,
+                developer_preview_policies,
                 durable_cell_applications,
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
@@ -1918,6 +1920,7 @@ struct ManagementApplicationDependencies {
     application_sessions: Arc<dyn IApplicationSessionRepository>,
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
     developer_workload_profiles: Arc<dyn IWorkloadProfileRepository>,
+    developer_preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
@@ -2002,6 +2005,7 @@ fn build_management_application_with_health(
         application_sessions,
         developer_workflow_build_plans,
         developer_workload_profiles,
+        developer_preview_policies,
         durable_cell_applications,
         durable_cell_deployments,
         oci_artifacts,
@@ -2073,6 +2077,13 @@ fn build_management_application_with_health(
     let accept_developer_workload_profiles = AcceptWorkloadProfileHandler::new(
         Arc::clone(&developer_workload_profiles),
         Arc::clone(&developer_workflow_build_plans),
+        Arc::clone(&developer_workflow_authorization),
+    );
+    let accept_developer_preview_policies = AcceptPullRequestPreviewPolicyHandler::new(
+        developer_preview_policies,
+        Arc::new(RepositoryPreviewSourceSubscriptionQueryPort::new(
+            Arc::clone(&source_subscriptions),
+        )),
         Arc::clone(&developer_workflow_authorization),
     );
     let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(Arc::new(
@@ -2929,6 +2940,10 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::developer_workflows::AcceptWorkloadProfile, _>(
                     accept_developer_workload_profiles,
                 )
+                .command_handler::<
+                    crate::modules::developer_workflows::AcceptPullRequestPreviewPolicy,
+                    _,
+                >(accept_developer_preview_policies)
                 .command_handler::<crate::modules::workloads::CreateWorkloadDeployment, _>(
                     CreateWorkloadDeploymentHandler::new(
                         workload_environments,

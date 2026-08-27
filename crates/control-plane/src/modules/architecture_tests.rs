@@ -725,6 +725,61 @@ fn developer_workflows_application_uses_only_local_models_ports_or_published_lan
 }
 
 #[test]
+fn developer_workflows_sources_owner_models_are_confined_to_two_query_adapters() {
+    let preview_adapter_path = "developer_workflows/infrastructure/preview_source_subscription.rs";
+    let mut source_owner_imports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("developer_workflows")
+            && source.contains("crate::modules::sources::domain")
+        {
+            source_owner_imports.insert(display(relative));
+        }
+    });
+
+    assert_eq!(
+        source_owner_imports,
+        lines(
+            "developer_workflows/infrastructure/preview_source_subscription.rs\n\
+             developer_workflows/infrastructure/source_revision.rs",
+        ),
+        "Developer Workflows must translate Sources owner models only in its two read-only Infrastructure adapters"
+    );
+
+    let adapter = std::fs::read_to_string(module_root().join(preview_adapter_path))
+        .expect("read Preview source-subscription adapter");
+    let production = production_source(&adapter);
+    let compact = production.split_whitespace().collect::<String>();
+    for required in [
+        "Arc<dynISourceSubscriptionRepository>",
+        "implIPreviewSourceSubscriptionQueryPort",
+        "GithubRepositorySubscription::restore",
+        ".find(",
+    ] {
+        assert!(
+            compact.contains(required),
+            "Preview source-subscription adapter lost its read-only owner boundary {required}"
+        );
+    }
+    for forbidden in [
+        "CreateGithubRepositorySubscription",
+        "DeactivateGithubRepositorySubscription",
+        ".create(",
+        ".list(",
+        ".deactivate(",
+        "Postgres",
+        "IOutboxRepository",
+        "IEventPublisher",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "Preview source-subscription adapter acquired a write, persistence, or delivery mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn developer_workflows_preview_projection_reuses_the_single_outbox_relay() {
     let mut projector_sites = BTreeSet::new();
     let mut duplicate_mechanisms = BTreeSet::new();
@@ -1104,6 +1159,10 @@ fn developer_workflows_acceptance_reuses_owner_authorization_interfaces() {
         (
             "workload profile",
             "developer_workflows/application/workload_profile_acceptance.rs",
+        ),
+        (
+            "Preview Policy",
+            "developer_workflows/application/preview_policy_acceptance.rs",
         ),
     ] {
         let acceptance = std::fs::read_to_string(module_root().join(relative))

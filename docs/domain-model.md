@@ -562,6 +562,18 @@ mutation. Equal desired state is a semantic no-op even when another authorized
 actor submits it. This is policy persistence, not individual Preview
 persistence, and it creates none of the owner resources excluded by C1.
 
+`P0.3-C6` supplies the production boundary for that authority. The composition
+root shares one `IDeveloperWorkflowAuthorizationPort` instance across
+BuildPlan, workload-profile, and Preview Policy acceptance, then registers the
+policy command once on the existing CQRS bus. A single Infrastructure
+anti-corruption adapter queries Sources' existing subscription repository by
+exact Organization and subscription identity, delegates validation to the
+Sources aggregate, rejects owner identity drift, and translates only the C2
+binding. Developer Workflows Application therefore continues to see neither a
+Sources aggregate nor repository. Management and Relay select separate
+role-scoped instances of the same migration `153` repository through one
+constructor rule; revision and event authority are not duplicated.
+
 `P0.3-C3` production-composes the Sources producer, not the Preview consumer.
 `SourceWebhookPayload` is a closed sum type: Push retains the existing
 SourceRevision fanout, while PullRequest produces

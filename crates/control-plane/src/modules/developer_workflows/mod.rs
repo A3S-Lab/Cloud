@@ -30,6 +30,7 @@ pub use infrastructure::{
     PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
     PostgresPullRequestPreviewProjectionRepository, PostgresWorkloadProfileRepository,
     ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjector,
-    RepositoryBuildPlanSourceRevisionPort, WorkloadsServiceProfileAdapter,
+    RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
+    WorkloadsServiceProfileAdapter,
 };
 pub use published::*;

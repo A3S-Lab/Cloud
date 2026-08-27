@@ -5,6 +5,7 @@ mod dockerfile_detector;
 mod in_memory;
 mod preview_environment;
 mod preview_policy_in_memory;
+mod preview_source_subscription;
 mod pull_request_preview_in_memory;
 mod pull_request_preview_projector;
 mod scheduled_task_profile;
@@ -28,6 +29,7 @@ pub use persistence::{
 };
 pub use preview_environment::ProjectsPreviewEnvironmentAdapter;
 pub use preview_policy_in_memory::InMemoryPullRequestPreviewPolicyRepository;
+pub use preview_source_subscription::RepositoryPreviewSourceSubscriptionQueryPort;
 pub use pull_request_preview_in_memory::InMemoryPullRequestPreviewProjectionRepository;
 pub use pull_request_preview_projector::PullRequestPreviewProjector;
 pub use scheduled_task_profile::ExecutionsScheduledTaskProfileAdapter;

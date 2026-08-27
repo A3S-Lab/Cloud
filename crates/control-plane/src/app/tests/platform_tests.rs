@@ -554,29 +554,44 @@ fn build_plan_acceptance_has_one_owner_authorized_production_composition_path() 
 }
 
 #[test]
-fn workload_profile_acceptance_has_one_shared_owner_authorized_production_composition_path() {
+fn profile_acceptance_handlers_share_one_owner_authorized_production_composition_path() {
     let composition = include_str!("../../app.rs");
+    let adapters = include_str!("../postgres_adapters.rs");
 
-    assert_eq!(
-        composition
-            .matches("AcceptWorkloadProfileHandler::new(")
-            .count(),
-        1,
-        "Developer Workflows workload-profile acceptance must be composed exactly once"
-    );
+    for constructor in [
+        "AcceptWorkloadProfileHandler::new(",
+        "RepositoryPreviewSourceSubscriptionQueryPort::new(",
+        "AcceptPullRequestPreviewPolicyHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Developer Workflows profile acceptance must compose {constructor} exactly once"
+        );
+    }
     assert_eq!(
         composition
             .matches("Arc::clone(&developer_workflow_authorization)")
             .count(),
-        2,
-        "BuildPlan and workload-profile acceptance must share the one authorization port instance"
+        3,
+        "BuildPlan, workload-profile, and Preview Policy acceptance must share one authorization port instance"
     );
+    for command in [
+        "crate::modules::developer_workflows::AcceptWorkloadProfile, _",
+        "crate::modules::developer_workflows::AcceptPullRequestPreviewPolicy,",
+    ] {
+        assert_eq!(
+            composition.matches(command).count(),
+            1,
+            "the canonical profile acceptance command {command} must be registered once on the existing CQRS bus"
+        );
+    }
     assert_eq!(
-        composition
-            .matches("crate::modules::developer_workflows::AcceptWorkloadProfile, _")
+        adapters
+            .matches("pull_request_preview_policy_repository(&executor)")
             .count(),
-        1,
-        "the canonical workload-profile acceptance command must be registered once on the existing CQRS bus"
+        2,
+        "management and Relay must select independent Preview Policy repository instances through one constructor rule"
     );
 }
 

@@ -256,13 +256,15 @@ pub(super) struct RelayPostgresAdapters {
 pub(super) struct DeveloperWorkflowManagementPostgresAdapters {
     pub(super) build_plans: Arc<dyn IBuildPlanRepository>,
     pub(super) workload_profiles: Arc<dyn IWorkloadProfileRepository>,
+    pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
 }
 
 impl DeveloperWorkflowManagementPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         Self {
             build_plans: Arc::new(PostgresBuildPlanRepository::new(executor.clone())),
-            workload_profiles: Arc::new(PostgresWorkloadProfileRepository::new(executor)),
+            workload_profiles: Arc::new(PostgresWorkloadProfileRepository::new(executor.clone())),
+            preview_policies: pull_request_preview_policy_repository(&executor),
         }
     }
 }
@@ -275,14 +277,22 @@ pub(super) struct DeveloperWorkflowProjectionPostgresAdapters {
 impl DeveloperWorkflowProjectionPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         Self {
-            preview_policies: Arc::new(PostgresPullRequestPreviewPolicyRepository::new(
-                executor.clone(),
-            )),
+            preview_policies: pull_request_preview_policy_repository(&executor),
             preview_projections: Arc::new(PostgresPullRequestPreviewProjectionRepository::new(
                 executor,
             )),
         }
     }
+}
+
+/// One concrete-constructor rule selected independently by management and
+/// Relay role families, so neither process acquires the other's capabilities.
+fn pull_request_preview_policy_repository(
+    executor: &PostgresExecutor,
+) -> Arc<dyn IPullRequestPreviewPolicyRepository> {
+    Arc::new(PostgresPullRequestPreviewPolicyRepository::new(
+        executor.clone(),
+    ))
 }
 
 struct ArtifactPostgresAdapters {
