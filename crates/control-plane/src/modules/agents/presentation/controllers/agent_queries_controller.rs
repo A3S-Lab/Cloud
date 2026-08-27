@@ -1,18 +1,21 @@
 use super::request::request_id;
 use crate::modules::agents::application::{
-    GetAgentConversation, GetAgentExecution, GetAgentExecutionChangeSet, GetAgentExecutionEvents,
+    GetAgentApprovalCheckpoint, GetAgentConversation, GetAgentExecution,
+    GetAgentExecutionChangeSet, GetAgentExecutionEvents, ListAgentApprovalCheckpoints,
     ListAgentConversations, ListAgentExecutions,
 };
+use crate::modules::agents::domain::AgentApprovalCheckpointStatus;
 use crate::modules::agents::presentation::dto::{
-    AgentConversationResponse, AgentExecutionChangeSetResponse, AgentExecutionEventPageResponse,
-    AgentExecutionResponse,
+    AgentApprovalCheckpointResponse, AgentConversationResponse, AgentExecutionChangeSetResponse,
+    AgentExecutionEventPageResponse, AgentExecutionResponse,
 };
 use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, EnvironmentId, OrganizationId, ProjectId,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, EnvironmentId,
+    OrganizationId, ProjectId,
 };
 use crate::presentation::{
     application_error_response, decode_sequence_cursor, default_live_sequence_limit,
@@ -31,6 +34,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
     let get_conversation_bus = Arc::clone(&bus);
     let list_executions_bus = Arc::clone(&bus);
     let get_execution_bus = Arc::clone(&bus);
+    let list_approvals_bus = Arc::clone(&bus);
+    let get_approval_bus = Arc::clone(&bus);
     let get_change_set_bus = Arc::clone(&bus);
     let get_events_bus = Arc::clone(&bus);
     let stream_events_bus = Arc::clone(&bus);
@@ -204,6 +209,83 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
         )?)?
         .route(with_deferred_resource_scope(
             RouteDefinition::get(
+                "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&list_approvals_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let parameters: AgentApprovalCheckpointsQuery = request.query()?;
+                        let status = parameters
+                            .status
+                            .as_deref()
+                            .map(AgentApprovalCheckpointStatus::parse)
+                            .transpose()
+                            .map_err(BootError::BadRequest)?;
+                        match bus
+                            .execute(ListAgentApprovalCheckpoints {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                execution_id: AgentExecutionId::from_uuid(
+                                    request.param_as::<Uuid>("execution_id")?,
+                                ),
+                                resource_access: resource_access_evaluator(
+                                    &request.require_auth_principal()?,
+                                )?,
+                                status,
+                                limit: parameters.limit,
+                            })
+                            .await?
+                        {
+                            Ok(checkpoints) => BootResponse::json(
+                                &checkpoints
+                                    .into_iter()
+                                    .map(AgentApprovalCheckpointResponse::from)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Err(error) => application_error_response(error, request_id),
+                        }
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_approval_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetAgentApprovalCheckpoint {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                execution_id: AgentExecutionId::from_uuid(
+                                    request.param_as::<Uuid>("execution_id")?,
+                                ),
+                                checkpoint_id: AgentApprovalCheckpointId::from_uuid(
+                                    request.param_as::<Uuid>("checkpoint_id")?,
+                                ),
+                                resource_access: resource_access_evaluator(
+                                    &request.require_auth_principal()?,
+                                )?,
+                            })
+                            .await?
+                        {
+                            Ok(checkpoint) => BootResponse::json(
+                                &AgentApprovalCheckpointResponse::from(checkpoint),
+                            ),
+                            Err(error) => application_error_response(error, request_id),
+                        }
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
                 "/{organization_id}/agent-conversations/{conversation_id}/events",
                 move |request: BootRequest| {
                 let bus = Arc::clone(&get_events_bus);
@@ -290,6 +372,14 @@ struct AgentEventsQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AgentApprovalCheckpointsQuery {
+    status: Option<String>,
+    #[serde(default = "default_approval_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AgentLiveEventsQuery {
     cursor: Option<String>,
     #[serde(default = "default_live_sequence_limit")]
@@ -298,6 +388,10 @@ struct AgentLiveEventsQuery {
 
 const fn default_event_limit() -> usize {
     100
+}
+
+const fn default_approval_limit() -> usize {
+    50
 }
 
 async fn agent_event_stream(

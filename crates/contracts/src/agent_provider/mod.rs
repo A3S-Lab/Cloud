@@ -23,8 +23,9 @@ pub use profile::{
     REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 pub use protocol::{
-    AgentProviderCommandActionV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
-    AgentProviderRunCancelV1, AgentProviderRunIdentityV1, AgentProviderRunRecoverV1,
+    AgentProviderApprovalDecisionV1, AgentProviderApprovalOutcomeV1, AgentProviderCommandActionV1,
+    AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderRunCancelV1,
+    AgentProviderRunIdentityV1, AgentProviderRunRecoverV1, AgentProviderRunResumeV1,
     AgentProviderRunStartV1, AgentProviderRunStateV1, AGENT_PROVIDER_COMMAND_HTTP_PATH_V1,
-    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES,
+    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES, AGENT_PROVIDER_TOOL_APPROVAL_TTL_MS_V1,
 };

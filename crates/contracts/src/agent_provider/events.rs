@@ -205,6 +205,44 @@ impl AgentProviderEventPageV1 {
                 "Agent provider emitted Tool events without the tool_calls capability".into(),
             );
         }
+        let approval_requests = self
+            .events
+            .iter()
+            .filter(|record| {
+                matches!(
+                    &record.event,
+                    AgentProviderSemanticEventV1::ToolRequest { tool, .. }
+                        if tool.approval_required
+                )
+            })
+            .collect::<Vec<_>>();
+        if self.state == AgentProviderRunStateV1::AwaitingApproval
+            && !profile.supports(AgentProviderCapabilityV1::PauseResume)
+        {
+            return Err(
+                "Agent provider paused for approval without the pause_resume capability".into(),
+            );
+        }
+        if let [request] = approval_requests.as_slice() {
+            if !profile.supports(AgentProviderCapabilityV1::PauseResume)
+                || self.state != AgentProviderRunStateV1::AwaitingApproval
+                || self.has_more
+                || self.retention_gap
+                || self.source_last_sequence != Some(request.sequence)
+            {
+                return Err(
+                    "approval-required Tool request did not close one paused provider page".into(),
+                );
+            }
+        } else if !approval_requests.is_empty() {
+            return Err("Agent provider page opened multiple approval checkpoints".into());
+        } else if self.state == AgentProviderRunStateV1::AwaitingApproval
+            && (self.source_event_count != 0 || !self.events.is_empty())
+        {
+            return Err(
+                "paused Agent provider emitted events without its approval checkpoint".into(),
+            );
+        }
         Ok(())
     }
 

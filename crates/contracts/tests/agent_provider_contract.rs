@@ -1,13 +1,14 @@
 use a3s_cloud_contracts::{
+    AgentProviderApprovalDecisionV1, AgentProviderApprovalOutcomeV1,
     AgentProviderCapabilityRequirementsV1, AgentProviderCapabilityV1,
     AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageRequestV1,
     AgentProviderEventPageV1, AgentProviderEventReceiptV1, AgentProviderEventRecordV1,
-    AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunStartV1,
-    AgentProviderRunStateV1, AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1,
-    AgentProviderToolResultOutcomeV1, HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1,
-    HarnessProviderBindingV1, HarnessSecretReferenceV1, HarnessSecretTargetV1,
-    HarnessSkillBindingV1, HarnessToolBindingV1, HarnessWorkspaceBindingV1,
-    AGENT_PROVIDER_MAX_EVENTS_PER_PAGE, AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunResumeV1,
+    AgentProviderRunStartV1, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
+    AgentProviderToolPayloadIdentityV1, AgentProviderToolResultOutcomeV1,
+    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
+    HarnessSecretReferenceV1, HarnessSecretTargetV1, HarnessSkillBindingV1, HarnessToolBindingV1,
+    HarnessWorkspaceBindingV1, AGENT_PROVIDER_MAX_EVENTS_PER_PAGE, AGENT_PROVIDER_PROTOCOL_V1,
 };
 
 const CODE_PROFILE: &str = include_str!(concat!(
@@ -19,8 +20,16 @@ const REFERENCE_PROFILE: &str = include_str!(concat!(
     "/../../contracts/a1.3/reference-echo-provider-profile.acl"
 ));
 const TOOL_PROFILE: &str = r#"agent_provider "test.tools" {
-  capabilities = ["cancellation", "cleanup", "event_pages", "tool_calls"]
+  capabilities = ["cancellation", "cleanup", "event_pages", "pause_resume", "tool_calls"]
   native_protocol = "test.tools.v1"
+  protocol = "a3s.cloud.agent-provider.v1"
+  revision = "1.0.0"
+  schema = "a3s.cloud.agent-provider-profile.v1"
+}
+"#;
+const TOOL_ONLY_PROFILE: &str = r#"agent_provider "test.tools-only" {
+  capabilities = ["cancellation", "cleanup", "event_pages", "tool_calls"]
+  native_protocol = "test.tools-only.v1"
   protocol = "a3s.cloud.agent-provider.v1"
   revision = "1.0.0"
   schema = "a3s.cloud.agent-provider-profile.v1"
@@ -443,16 +452,195 @@ fn tool_events_are_capability_bound_and_carry_only_content_identity() {
     };
     page.validate_for(&profile).expect("Tool event page");
 
-    let reference =
-        AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("reference provider profile");
+    let code = AgentProviderProfile::parse_acl(CODE_PROFILE).expect("Code provider profile");
     let mut unsupported = page;
     unsupported.identity = AgentProviderRunIdentityV1::new(
-        reference.digest().into(),
-        reference.capability_digest().into(),
+        code.digest().into(),
+        code.capability_digest().into(),
         format!("sha256:{}", "a".repeat(64)),
         "conversation-1".into(),
         "execution-1".into(),
     )
-    .expect("reference run identity");
-    assert!(unsupported.validate_for(&reference).is_err());
+    .expect("Code run identity");
+    assert!(unsupported.validate_for(&code).is_err());
+}
+
+#[test]
+fn approval_required_tool_requests_pause_at_one_closed_checkpoint() {
+    let profile = AgentProviderProfile::parse_acl(TOOL_PROFILE).expect("Tool provider profile");
+    let tool = HarnessToolBindingV1 {
+        name: "workspace.publish".into(),
+        revision: "1.0.0".into(),
+        contract_digest: format!("sha256:{}", "b".repeat(64)),
+        approval_required: true,
+    };
+    let request = AgentProviderToolPayloadIdentityV1 {
+        digest: format!("sha256:{}", "c".repeat(64)),
+        size_bytes: 128,
+        media_type: "application/json".into(),
+    };
+    let identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        format!("sha256:{}", "a".repeat(64)),
+        "conversation-1".into(),
+        "execution-approval".into(),
+    )
+    .expect("run identity");
+    let page = AgentProviderEventPageV1 {
+        schema: AgentProviderEventPageV1::SCHEMA.into(),
+        identity,
+        after_event_sequence: None,
+        first_available_sequence: Some(0),
+        source_first_sequence: Some(0),
+        source_last_sequence: Some(0),
+        source_event_count: 1,
+        latest_sequence_exclusive: 1,
+        next_after_event_sequence: Some(0),
+        state: AgentProviderRunStateV1::AwaitingApproval,
+        observed_at_ms: 2,
+        retention_gap: false,
+        has_more: false,
+        terminal_failure: None,
+        events: vec![AgentProviderEventRecordV1 {
+            sequence: 0,
+            occurred_at_ms: 1,
+            event: AgentProviderSemanticEventV1::ToolRequest {
+                call_id: "call-approval-1".into(),
+                tool: tool.clone(),
+                request,
+            },
+        }],
+    };
+    page.validate_for(&profile)
+        .expect("one closed approval checkpoint page");
+
+    let tool_only =
+        AgentProviderProfile::parse_acl(TOOL_ONLY_PROFILE).expect("Tool-only provider profile");
+    let mut unsupported = page.clone();
+    unsupported.identity = AgentProviderRunIdentityV1::new(
+        tool_only.digest().into(),
+        tool_only.capability_digest().into(),
+        format!("sha256:{}", "a".repeat(64)),
+        "conversation-1".into(),
+        "execution-approval".into(),
+    )
+    .expect("Tool-only run identity");
+    assert!(unsupported.validate_for(&tool_only).is_err());
+
+    let mut not_paused = page.clone();
+    not_paused.state = AgentProviderRunStateV1::Executing;
+    assert!(not_paused.validate_for(&profile).is_err());
+
+    let mut hidden_progress = page;
+    hidden_progress.source_last_sequence = Some(1);
+    hidden_progress.source_event_count = 2;
+    hidden_progress.latest_sequence_exclusive = 2;
+    hidden_progress.next_after_event_sequence = Some(1);
+    assert!(hidden_progress.validate_for(&profile).is_err());
+}
+
+#[test]
+fn approval_resume_commands_are_identity_bound_and_exactly_replayable() {
+    let profile = AgentProviderProfile::parse_acl(TOOL_PROFILE).expect("Tool provider profile");
+    let tool = HarnessToolBindingV1 {
+        name: "workspace.publish".into(),
+        revision: "1.0.0".into(),
+        contract_digest: format!("sha256:{}", "b".repeat(64)),
+        approval_required: true,
+    };
+    let mut invocation = invocation_profile(&profile);
+    invocation.tools = vec![tool.clone()];
+    invocation.required_capabilities = vec![
+        AgentProviderCapabilityV1::Cancellation,
+        AgentProviderCapabilityV1::Cleanup,
+        AgentProviderCapabilityV1::EventPages,
+        AgentProviderCapabilityV1::PauseResume,
+        AgentProviderCapabilityV1::ToolCalls,
+    ];
+    invocation
+        .validate_for(&profile)
+        .expect("approval-capable invocation profile");
+    let mut missing_pause_resume = invocation.clone();
+    missing_pause_resume
+        .required_capabilities
+        .retain(|capability| *capability != AgentProviderCapabilityV1::PauseResume);
+    assert!(missing_pause_resume.validate().is_err());
+
+    let identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        invocation.agent.artifact_digest.clone(),
+        "conversation-1".into(),
+        "execution-approval".into(),
+    )
+    .expect("run identity");
+    let decision = AgentProviderApprovalDecisionV1::new(
+        "decision-1".into(),
+        "checkpoint-1".into(),
+        &identity,
+        "call-approval-1".into(),
+        tool,
+        format!("sha256:{}", "c".repeat(64)),
+        AgentProviderApprovalOutcomeV1::Approved,
+        10,
+    )
+    .expect("approval decision");
+    let command = AgentProviderCommandV1::Resume {
+        request: AgentProviderRunResumeV1::new(
+            "execution-approval-resume-checkpoint-1".into(),
+            identity.clone(),
+            decision,
+        )
+        .expect("resume request"),
+    };
+    command
+        .validate_for(&profile)
+        .expect("profile-bound resume command");
+    let receipt = AgentProviderCommandReceiptV1::accepted(
+        &profile,
+        &command,
+        AgentProviderRunStateV1::Executing,
+        11,
+        false,
+    )
+    .expect("resume receipt");
+    let replay = AgentProviderCommandReceiptV1::accepted(
+        &profile,
+        &command,
+        AgentProviderRunStateV1::Executing,
+        11,
+        true,
+    )
+    .expect("resume replay receipt");
+    assert_eq!(receipt.command_digest, replay.command_digest);
+    assert!(!receipt.replayed);
+    assert!(replay.replayed);
+
+    let mut changed = command.clone();
+    let AgentProviderCommandV1::Resume { request } = &mut changed else {
+        unreachable!("resume command")
+    };
+    request.decision.request_digest = format!("sha256:{}", "d".repeat(64));
+    assert!(receipt.validate_for(&profile, &changed).is_err());
+
+    let other_identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        invocation.agent.artifact_digest,
+        "conversation-1".into(),
+        "execution-other".into(),
+    )
+    .expect("other run identity");
+    let AgentProviderCommandV1::Resume { request } = command else {
+        unreachable!("resume command")
+    };
+    assert!(AgentProviderRunResumeV1 {
+        schema: AgentProviderRunResumeV1::SCHEMA.into(),
+        request_id: "mismatched-resume".into(),
+        identity: other_identity,
+        decision: request.decision,
+    }
+    .validate()
+    .is_err());
 }

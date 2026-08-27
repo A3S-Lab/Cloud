@@ -28,7 +28,7 @@ pub struct AgentCodeRunBinding {
     service_port_name: String,
     identity: AgentProtocolRunIdentityV1,
     accepted_after_event_sequence: Option<u64>,
-    observed_state: AgentProtocolRunStateV1,
+    observed_state: AgentProviderRunStateV1,
     bound_at: DateTime<Utc>,
     observed_at: Option<DateTime<Utc>>,
 }
@@ -92,7 +92,7 @@ impl AgentCodeRunBinding {
             service_port_name,
             identity,
             None,
-            AgentProtocolRunStateV1::Created,
+            AgentProviderRunStateV1::Created,
             bound_at,
             None,
         )
@@ -128,7 +128,7 @@ impl AgentCodeRunBinding {
             service_port_name,
             identity,
             accepted_after_event_sequence,
-            observed_state,
+            provider_state(observed_state),
             bound_at,
             observed_at,
         )
@@ -148,7 +148,7 @@ impl AgentCodeRunBinding {
         service_port_name: impl Into<String>,
         identity: AgentProtocolRunIdentityV1,
         accepted_after_event_sequence: Option<u64>,
-        observed_state: AgentProtocolRunStateV1,
+        observed_state: AgentProviderRunStateV1,
         bound_at: DateTime<Utc>,
         observed_at: Option<DateTime<Utc>>,
     ) -> Result<Self, String> {
@@ -287,7 +287,7 @@ impl AgentCodeRunBinding {
         self.accepted_after_event_sequence
     }
 
-    pub const fn observed_state(&self) -> AgentProtocolRunStateV1 {
+    pub const fn observed_state(&self) -> AgentProviderRunStateV1 {
         self.observed_state
     }
 
@@ -301,7 +301,7 @@ impl AgentCodeRunBinding {
 
     pub fn is_initial(&self) -> bool {
         self.accepted_after_event_sequence.is_none()
-            && self.observed_state == AgentProtocolRunStateV1::Created
+            && self.observed_state == AgentProviderRunStateV1::Created
             && self.observed_at.is_none()
     }
 
@@ -502,12 +502,13 @@ impl AgentCodeRunBinding {
             || self
                 .observed_at
                 .is_some_and(|observed_at| page_observed_at < observed_at)
-            || self.observed_state.is_terminal() && page.state != self.observed_state
+            || self.observed_state.is_terminal()
+                && provider_state(page.state) != self.observed_state
         {
             return Err("A3S Code event page does not continue its exact bound run".into());
         }
         self.accepted_after_event_sequence = page.next_after_event_sequence;
-        self.observed_state = page.state;
+        self.observed_state = provider_state(page.state);
         self.observed_at = Some(canonical_timestamp(page_observed_at));
         self.validate()
     }
@@ -525,13 +526,12 @@ impl AgentCodeRunBinding {
             || self
                 .observed_at
                 .is_some_and(|observed_at| page_observed_at < observed_at)
-            || self.observed_state.is_terminal()
-                && provider_state(self.observed_state) != page.state
+            || self.observed_state.is_terminal() && self.observed_state != page.state
         {
             return Err("Agent provider event page does not continue its exact bound run".into());
         }
         self.accepted_after_event_sequence = page.next_after_event_sequence;
-        self.observed_state = code_state(page.state);
+        self.observed_state = page.state;
         self.observed_at = Some(canonical_timestamp(page_observed_at));
         self.validate()
     }
@@ -612,7 +612,7 @@ impl AgentCodeRunBinding {
                 .is_some_and(|value| value != canonical_timestamp(value))
             || (self.observed_at.is_none()
                 && (self.accepted_after_event_sequence.is_some()
-                    || self.observed_state != AgentProtocolRunStateV1::Created))
+                    || self.observed_state != AgentProviderRunStateV1::Created))
         {
             return Err("Agent Code run binding is invalid".into());
         }
@@ -649,18 +649,6 @@ fn provider_state(state: AgentProtocolRunStateV1) -> AgentProviderRunStateV1 {
         AgentProtocolRunStateV1::Completed => AgentProviderRunStateV1::Completed,
         AgentProtocolRunStateV1::Failed => AgentProviderRunStateV1::Failed,
         AgentProtocolRunStateV1::Cancelled => AgentProviderRunStateV1::Cancelled,
-    }
-}
-
-fn code_state(state: AgentProviderRunStateV1) -> AgentProtocolRunStateV1 {
-    match state {
-        AgentProviderRunStateV1::Created => AgentProtocolRunStateV1::Created,
-        AgentProviderRunStateV1::Planning => AgentProtocolRunStateV1::Planning,
-        AgentProviderRunStateV1::Executing => AgentProtocolRunStateV1::Executing,
-        AgentProviderRunStateV1::Verifying => AgentProtocolRunStateV1::Verifying,
-        AgentProviderRunStateV1::Completed => AgentProtocolRunStateV1::Completed,
-        AgentProviderRunStateV1::Failed => AgentProtocolRunStateV1::Failed,
-        AgentProviderRunStateV1::Cancelled => AgentProtocolRunStateV1::Cancelled,
     }
 }
 

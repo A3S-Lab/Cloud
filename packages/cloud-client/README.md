@@ -130,10 +130,15 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.70.0`. Returned Agent executions now carry
-their nullable closed immutable Harness invocation profile, and Tool
-request/result events expose only typed binding plus payload digest, byte
-length, and media type evidence. Agent execution creation retains `1.69.0`'s
+The client targets REST contract `1.71.0`. It lists and reads closed Agent
+approval checkpoints and submits one idempotent, optimistic-concurrency guarded
+`approved` or `denied` decision. Checkpoint and `approval_resolved` event types
+expose only immutable Tool/request digests, authority, decision, resume, and
+timing evidence; Tool payload and Secret material are never returned. Agent
+executions admit `awaiting_approval` and retain `1.70.0`'s nullable closed
+immutable Harness invocation profile. Tool request/result events expose only
+typed binding plus payload digest, byte length, and media type evidence. Agent
+execution creation retains `1.69.0`'s
 optional closed `providerKind` and defaults to `a3s.code`; returned executions
 carry the immutable selected provider revision, protocol, profile digest, and
 capability digest. Contract `1.68.0` added Plan schema/compiler v12,

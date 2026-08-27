@@ -1,10 +1,13 @@
 use super::{
-    AgentCodeRunBinding, AgentExecutionEventDraft, AgentExecutionEventKind,
-    AgentProviderProfileBinding, AgentReleaseBinding,
+    validate_agent_approval_reason, AgentCodeRunBinding, AgentExecutionEventDraft,
+    AgentExecutionEventKind, AgentProviderProfileBinding, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AgentConversationId, AgentExecutionId, OperationId, OrganizationId,
+    canonical_timestamp, AgentApprovalCheckpointId, AgentApprovalDecisionId, AgentConversationId,
+    AgentExecutionId, AuthorizationDecisionRef, OperationId, OrganizationId, PrincipalId,
+    Sha256Digest,
 };
+use a3s_cloud_contracts::AgentProviderApprovalOutcomeV1;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub enum AgentExecutionStatus {
     Pending,
     Running,
+    AwaitingApproval,
     Cancelling,
     Succeeded,
     Failed,
@@ -24,6 +28,7 @@ impl AgentExecutionStatus {
         match self {
             Self::Pending => "pending",
             Self::Running => "running",
+            Self::AwaitingApproval => "awaiting_approval",
             Self::Cancelling => "cancelling",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
@@ -35,6 +40,7 @@ impl AgentExecutionStatus {
         match value {
             "pending" => Ok(Self::Pending),
             "running" => Ok(Self::Running),
+            "awaiting_approval" => Ok(Self::AwaitingApproval),
             "cancelling" => Ok(Self::Cancelling),
             "succeeded" => Ok(Self::Succeeded),
             "failed" => Ok(Self::Failed),
@@ -222,7 +228,9 @@ impl AgentExecution {
         }
         if !matches!(
             self.status,
-            AgentExecutionStatus::Pending | AgentExecutionStatus::Running
+            AgentExecutionStatus::Pending
+                | AgentExecutionStatus::Running
+                | AgentExecutionStatus::AwaitingApproval
         ) {
             return Err("Agent execution cannot be cancelled from its current state".into());
         }
@@ -250,7 +258,7 @@ impl AgentExecution {
         if next.status.is_terminal() {
             return Err("terminal Agent execution cannot accept A3S Code events".into());
         }
-        if state == a3s_cloud_contracts::AgentProtocolRunStateV1::Created {
+        if state == a3s_cloud_contracts::AgentProviderRunStateV1::Created {
             next.record_observation(accepted_at)?;
         } else if next.status == AgentExecutionStatus::Pending {
             next.start(accepted_at)?;
@@ -268,13 +276,13 @@ impl AgentExecution {
         let expected_terminal = state.is_terminal() && !page.has_more;
         let terminal_matches = if expected_terminal {
             match state {
-                a3s_cloud_contracts::AgentProtocolRunStateV1::Completed => {
+                a3s_cloud_contracts::AgentProviderRunStateV1::Completed => {
                     next.status == AgentExecutionStatus::Succeeded
                 }
-                a3s_cloud_contracts::AgentProtocolRunStateV1::Failed => {
+                a3s_cloud_contracts::AgentProviderRunStateV1::Failed => {
                     next.status == AgentExecutionStatus::Failed
                 }
-                a3s_cloud_contracts::AgentProtocolRunStateV1::Cancelled => {
+                a3s_cloud_contracts::AgentProviderRunStateV1::Cancelled => {
                     next.status == AgentExecutionStatus::Cancelled
                 }
                 _ => false,
@@ -313,6 +321,10 @@ impl AgentExecution {
             next.record_observation(accepted_at)?;
         } else if next.status == AgentExecutionStatus::Pending {
             next.start(accepted_at)?;
+        } else if next.status == AgentExecutionStatus::AwaitingApproval
+            && state != a3s_cloud_contracts::AgentProviderRunStateV1::AwaitingApproval
+        {
+            next.resume_after_approval(accepted_at)?;
         } else {
             next.record_observation(accepted_at)?;
         }
@@ -323,6 +335,11 @@ impl AgentExecution {
                 return Err("Agent provider semantic projection is invalid".into());
             }
             next.apply_event_inner(event)?;
+        }
+        if state == a3s_cloud_contracts::AgentProviderRunStateV1::AwaitingApproval
+            && next.status == AgentExecutionStatus::Running
+        {
+            next.await_approval(accepted_at)?;
         }
         let expected_terminal = state.is_terminal() && !page.has_more;
         let terminal_matches = if expected_terminal {
@@ -393,6 +410,13 @@ impl AgentExecution {
                     Err("terminal Agent execution cannot emit semantic observations".into())
                 }
             }
+            AgentExecutionEventKind::ApprovalResolved => {
+                validate_approval_resolution(event.content.value())?;
+                if self.status != AgentExecutionStatus::AwaitingApproval {
+                    return Err("approval resolution requires an awaiting Agent execution".into());
+                }
+                self.record_observation(event.occurred_at)
+            }
             AgentExecutionEventKind::ExecutionCompleted => {
                 if self.status == AgentExecutionStatus::Pending {
                     self.start(event.occurred_at)?;
@@ -459,13 +483,18 @@ impl AgentExecution {
             || self.finished_at.is_some_and(|value| {
                 value != canonical_timestamp(value) || value < self.requested_at
             })
-            || (self.status == AgentExecutionStatus::Running && self.started_at.is_none())
+            || (matches!(
+                self.status,
+                AgentExecutionStatus::Running | AgentExecutionStatus::AwaitingApproval
+            ) && self.started_at.is_none())
             || (self.status == AgentExecutionStatus::Cancelling
                 && self.cancellation_requested_at.is_none())
             || self.cancellation_requested_at.is_some()
                 && matches!(
                     self.status,
-                    AgentExecutionStatus::Pending | AgentExecutionStatus::Running
+                    AgentExecutionStatus::Pending
+                        | AgentExecutionStatus::Running
+                        | AgentExecutionStatus::AwaitingApproval
                 )
             || self.status.is_terminal() != self.finished_at.is_some()
             || (self.status == AgentExecutionStatus::Failed) != self.failure.is_some()
@@ -491,6 +520,7 @@ impl AgentExecution {
             self.status,
             AgentExecutionStatus::Pending
                 | AgentExecutionStatus::Running
+                | AgentExecutionStatus::AwaitingApproval
                 | AgentExecutionStatus::Cancelling
         ) {
             return Err("Agent execution cannot finish from its current state".into());
@@ -518,6 +548,23 @@ impl AgentExecution {
         self.status = status;
         self.aggregate_version = aggregate_version;
         Ok(())
+    }
+
+    fn await_approval(&mut self, occurred_at: DateTime<Utc>) -> Result<(), String> {
+        if self.status != AgentExecutionStatus::Running {
+            return Err("Agent execution cannot await approval from its current state".into());
+        }
+        self.transition(AgentExecutionStatus::AwaitingApproval, occurred_at)
+    }
+
+    pub(crate) fn resume_after_approval(
+        &mut self,
+        occurred_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        if self.status != AgentExecutionStatus::AwaitingApproval {
+            return Err("Agent execution has no approval checkpoint to resume".into());
+        }
+        self.transition(AgentExecutionStatus::Running, occurred_at)
     }
 
     fn observe_time(&mut self, occurred_at: DateTime<Utc>) -> Result<(), String> {
@@ -553,13 +600,57 @@ fn validate_failure(reason: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_approval_resolution(content: &serde_json::Value) -> Result<(), String> {
+    let resolution = serde_json::from_value::<AgentApprovalResolutionContent>(content.clone())
+        .map_err(|error| format!("approval_resolved content is invalid: {error}"))?;
+    if resolution.checkpoint_id.as_uuid().is_nil() || resolution.decision_id.as_uuid().is_nil() {
+        return Err("approval_resolved content has a nil identity".into());
+    }
+    Sha256Digest::parse(resolution.decision_digest)?;
+    validate_agent_approval_reason(resolution.reason.as_deref())?;
+    if let Some(principal_id) = resolution.decided_by {
+        if principal_id.as_uuid().is_nil() {
+            return Err("approval_resolved content has a nil decision principal".into());
+        }
+    }
+    if let Some(authorization) = &resolution.authorization_decision {
+        authorization.validate()?;
+        Sha256Digest::parse(authorization.digest.as_str())?;
+    }
+    match resolution.outcome {
+        AgentProviderApprovalOutcomeV1::Approved | AgentProviderApprovalOutcomeV1::Denied
+            if resolution.decided_by.is_some() && resolution.authorization_decision.is_some() => {}
+        AgentProviderApprovalOutcomeV1::Expired
+            if resolution.decided_by.is_none()
+                && resolution.authorization_decision.is_none()
+                && resolution.reason.is_none() => {}
+        _ => {
+            return Err("approval_resolved content has inconsistent decision authority".into());
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AgentApprovalResolutionContent {
+    checkpoint_id: AgentApprovalCheckpointId,
+    decision_id: AgentApprovalDecisionId,
+    outcome: AgentProviderApprovalOutcomeV1,
+    decision_digest: String,
+    decided_by: Option<PrincipalId>,
+    authorization_decision: Option<AuthorizationDecisionRef>,
+    reason: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::AgentEventContent;
     use super::*;
     use crate::modules::shared_kernel::domain::{
-        AssetId, AssetReleaseId, BuildRunId, DeploymentId, NodeId, Sha256Digest, WorkloadId,
-        WorkloadReplicaId, WorkloadRevisionId,
+        AgentApprovalCheckpointId, AgentApprovalDecisionId, AssetId, AssetReleaseId, BuildRunId,
+        DeploymentId, NodeId, PrincipalId, Sha256Digest, WorkloadId, WorkloadReplicaId,
+        WorkloadRevisionId,
     };
 
     fn binding(organization_id: OrganizationId) -> AgentReleaseBinding {
@@ -651,6 +742,80 @@ mod tests {
         execution.apply_event(&completed).expect("apply completion");
         assert_eq!(execution.status, AgentExecutionStatus::Succeeded);
         assert!(execution.apply_event(&output).is_err());
+    }
+
+    #[test]
+    fn approval_resolution_is_durable_but_provider_resume_is_explicit() {
+        let organization_id = OrganizationId::new();
+        let at = canonical_timestamp(Utc::now());
+        let mut execution = AgentExecution::create(
+            organization_id,
+            AgentConversationId::new(),
+            AgentExecutionId::new(),
+            OperationId::new(),
+            binding(organization_id),
+            at,
+        )
+        .expect("execution");
+        execution.start(at).expect("start");
+        execution
+            .await_approval(at + chrono::Duration::seconds(1))
+            .expect("await approval");
+
+        let resolved_at = at + chrono::Duration::seconds(2);
+        let resolved = AgentExecutionEventDraft::new(
+            AgentExecutionEventKind::ApprovalResolved,
+            AgentEventContent::inline_json(serde_json::json!({
+                "checkpointId": AgentApprovalCheckpointId::new(),
+                "decisionId": AgentApprovalDecisionId::new(),
+                "outcome": "approved",
+                "decisionDigest": format!("sha256:{}", "c".repeat(64)),
+                "decidedBy": PrincipalId::new(),
+                "authorizationDecision": {
+                    "id": "authorization-1",
+                    "digest": format!("sha256:{}", "d".repeat(64)),
+                },
+                "reason": null,
+            }))
+            .expect("content"),
+            resolved_at,
+        )
+        .expect("approval resolution");
+        execution
+            .apply_event(&resolved)
+            .expect("record approval resolution");
+        assert_eq!(execution.status, AgentExecutionStatus::AwaitingApproval);
+
+        execution
+            .resume_after_approval(at + chrono::Duration::seconds(3))
+            .expect("provider resumed");
+        assert_eq!(execution.status, AgentExecutionStatus::Running);
+        assert!(execution.apply_event(&resolved).is_err());
+    }
+
+    #[test]
+    fn approval_resolution_rejects_inconsistent_authority_and_digest() {
+        let base = serde_json::json!({
+            "checkpointId": AgentApprovalCheckpointId::new(),
+            "decisionId": AgentApprovalDecisionId::new(),
+            "outcome": "approved",
+            "decisionDigest": format!("sha256:{}", "c".repeat(64)),
+            "decidedBy": PrincipalId::new(),
+            "authorizationDecision": {
+                "id": "authorization-1",
+                "digest": format!("sha256:{}", "d".repeat(64)),
+            },
+            "reason": null,
+        });
+        validate_approval_resolution(&base).expect("valid approval resolution");
+
+        let mut missing_authority = base.clone();
+        missing_authority["authorizationDecision"] = serde_json::Value::Null;
+        assert!(validate_approval_resolution(&missing_authority).is_err());
+
+        let mut invalid_digest = base;
+        invalid_digest["decisionDigest"] = serde_json::json!("not-a-digest");
+        assert!(validate_approval_resolution(&invalid_digest).is_err());
     }
 
     #[test]

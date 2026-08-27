@@ -78,6 +78,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         _ if path.ends_with("/agent-conversations/{conversation_id}/executions") => {
             agent_execution_schema()
         }
+        _ if path.ends_with(
+            "/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
+        ) => agent_approval_decision_schema(),
         _ if path.ends_with("/nodes/{node_id}/actions/drain")
             || path.ends_with("/nodes/{node_id}/actions/ready")
             || path.ends_with("/nodes/{node_id}/actions/revoke") =>
@@ -325,6 +328,26 @@ fn agent_execution_schema() -> Value {
             "input": {
                 "nullable": true,
                 "description": "Canonical JSON input passed to the selected Agent release."
+            }
+        }),
+    )
+}
+
+fn agent_approval_decision_schema() -> Value {
+    object(
+        &["outcome"],
+        json!({
+            "outcome": {
+                "type": "string",
+                "enum": ["approved", "denied"]
+            },
+            "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024,
+                "x-a3s-max-utf8-bytes": 1024,
+                "pattern": "^(?:\\S|\\S[^\\u0000\\r\\n]*\\S)$",
+                "nullable": true
             }
         }),
     )

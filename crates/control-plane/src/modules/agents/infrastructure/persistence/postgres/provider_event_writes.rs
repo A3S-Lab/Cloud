@@ -1,3 +1,5 @@
+use super::approval_queries::{lock_active_checkpoint, lock_latest_checkpoint};
+use super::approval_writes::insert_checkpoint;
 use super::queries::{load_execution_by_id, lock_conversation, lock_execution};
 use super::writes::{
     insert_event, materialize_event_drafts, persist_conversation, persist_execution,
@@ -7,8 +9,9 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::agents::domain::{
-    AcceptAgentProviderEventBatchWrite, AgentConversation, AgentExecutionEvent,
-    AgentExecutionEventDraft, AgentExecutionEventKind,
+    project_agent_approval_checkpoint, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
+    AgentApprovalCheckpointStatus, AgentConversation, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
 };
 use crate::modules::shared_kernel::domain::{AgentExecutionId, RepositoryError};
 use a3s_cloud_contracts::{AgentProviderSemanticEventV1, NodeAgentProviderEventReceiptV1};
@@ -16,6 +19,7 @@ use a3s_orm::{PostgresExecutor, PostgresTransaction};
 use uuid::Uuid;
 
 const AGENT_TOOL_AUDIT_SCHEMA_V1: &str = "a3s.cloud.agent-tool-audit.v1";
+const AGENT_APPROVAL_AUDIT_SCHEMA_V1: &str = "a3s.cloud.agent-approval-audit.v1";
 
 pub(super) async fn accept_provider_event_batch(
     executor: &PostgresExecutor,
@@ -70,6 +74,60 @@ pub(super) async fn accept_provider_event_batch(
                     )
                     .into());
                 }
+                let active_checkpoint =
+                    lock_active_checkpoint(transaction, write.organization_id, execution.id)
+                        .await?;
+                if execution.status == AgentExecutionStatus::AwaitingApproval
+                    && active_checkpoint.is_none()
+                {
+                    let latest_checkpoint =
+                        lock_latest_checkpoint(transaction, write.organization_id, execution.id)
+                            .await?;
+                    let page_identity_digest = write
+                        .batch
+                        .page
+                        .identity
+                        .digest()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    if !latest_checkpoint.as_ref().is_some_and(|checkpoint| {
+                        checkpoint.status == AgentApprovalCheckpointStatus::Resumed
+                            && checkpoint.provider_run_identity_digest.as_str()
+                                == page_identity_digest.as_str()
+                            && checkpoint.invocation_profile_digest.as_str()
+                                == write
+                                    .batch
+                                    .page
+                                    .identity
+                                    .invocation_profile_digest
+                                    .as_deref()
+                                    .unwrap_or_default()
+                            && write.batch.page.after_event_sequence
+                                == Some(checkpoint.source_event_sequence)
+                    }) {
+                        return Err(RepositoryError::Conflict(
+                            "awaiting Agent provider advanced without an exact approval resume"
+                                .into(),
+                        )
+                        .into());
+                    }
+                }
+                if active_checkpoint.is_some()
+                    && (write.batch.page.retention_gap
+                        || write.batch.page.state
+                            != a3s_cloud_contracts::AgentProviderRunStateV1::AwaitingApproval
+                        || write.batch.page.events.iter().any(|record| {
+                            matches!(
+                                &record.event,
+                                AgentProviderSemanticEventV1::ToolRequest { .. }
+                                    | AgentProviderSemanticEventV1::ToolResult { .. }
+                            )
+                        }))
+                {
+                    return Err(RepositoryError::Conflict(
+                        "paused Agent provider advanced before exact resume".into(),
+                    )
+                    .into());
+                }
 
                 let projected_at = write.accepted_at.max(execution.updated_at);
                 let drafts = if write.batch.page.retention_gap {
@@ -91,6 +149,32 @@ pub(super) async fn accept_provider_event_batch(
                         .map_err(RepositoryError::Conflict)?;
                     drafts
                 };
+                let checkpoint = if write.batch.page.retention_gap {
+                    None
+                } else {
+                    project_agent_approval_checkpoint(
+                        &conversation,
+                        &execution,
+                        &write.batch.page,
+                        projected_at,
+                    )
+                    .map_err(invalid_repository_write)?
+                };
+                if execution.status == AgentExecutionStatus::AwaitingApproval
+                    && active_checkpoint.is_none()
+                    && checkpoint.is_none()
+                {
+                    return Err(RepositoryError::Conflict(
+                        "Agent provider entered approval without an exact checkpoint".into(),
+                    )
+                    .into());
+                }
+                if active_checkpoint.is_some() && checkpoint.is_some() {
+                    return Err(RepositoryError::Conflict(
+                        "Agent execution already has an active approval checkpoint".into(),
+                    )
+                    .into());
+                }
 
                 let events = if drafts.is_empty() {
                     Vec::new()
@@ -123,6 +207,10 @@ pub(super) async fn accept_provider_event_batch(
                 for event in &events {
                     insert_event(transaction, event).await?;
                 }
+                if let Some(checkpoint) = &checkpoint {
+                    insert_checkpoint(transaction, checkpoint).await?;
+                    store_approval_requested_audit(transaction, &write, checkpoint).await?;
+                }
                 store_tool_event_audits(transaction, &write, &conversation, &events).await?;
 
                 let receipt = write
@@ -134,6 +222,47 @@ pub(super) async fn accept_provider_event_batch(
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn store_approval_requested_audit(
+    transaction: &PostgresTransaction,
+    write: &AcceptAgentProviderEventBatchWrite,
+    checkpoint: &AgentApprovalCheckpoint,
+) -> Result<(), PostgresPersistenceError> {
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            organization_id: checkpoint.organization_id.as_uuid(),
+            actor_id: None,
+            action: "agent.execution.approval-requested",
+            aggregate_id: checkpoint.execution_id.as_uuid(),
+            occurred_at: checkpoint.requested_at,
+            request_id: write.batch.batch_id,
+            attribution_scope: AuditWrite::project_attribution(
+                checkpoint.project_id,
+                Some(checkpoint.environment_id),
+            ),
+            details: serde_json::json!({
+                "schema": AGENT_APPROVAL_AUDIT_SCHEMA_V1,
+                "projectId": checkpoint.project_id,
+                "environmentId": checkpoint.environment_id,
+                "conversationId": checkpoint.conversation_id,
+                "executionId": checkpoint.execution_id,
+                "checkpointId": checkpoint.id,
+                "checkpointVersion": checkpoint.aggregate_version,
+                "providerRunIdentityDigest": checkpoint.provider_run_identity_digest,
+                "invocationProfileDigest": checkpoint.invocation_profile_digest,
+                "providerSourceSequence": checkpoint.source_event_sequence,
+                "callId": checkpoint.call_id,
+                "tool": checkpoint.tool,
+                "request": checkpoint.request,
+                "expiresAt": checkpoint.expires_at,
+                "nodeId": write.authenticated_node_id,
+            }),
+        },
+    )
+    .await
 }
 
 async fn replay_provider_event_batch(

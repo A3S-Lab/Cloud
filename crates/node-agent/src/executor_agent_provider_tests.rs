@@ -4,10 +4,11 @@ use crate::agent_provider_harness::{AgentProviderHarnessError, AgentProviderHarn
 use crate::code_harness::CodeHarnessTransport;
 use crate::FileCommandJournal;
 use a3s_cloud_contracts::{
-    AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageRequestV1,
-    AgentProviderEventPageV1, AgentProviderProfile, AgentProviderRunIdentityV1,
-    AgentProviderRunStartV1, AgentProviderRunStateV1, NodeAgentProviderRuntimeBindingV1,
-    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    AgentProviderApprovalDecisionV1, AgentProviderApprovalOutcomeV1, AgentProviderCommandReceiptV1,
+    AgentProviderCommandV1, AgentProviderEventPageRequestV1, AgentProviderEventPageV1,
+    AgentProviderProfile, AgentProviderRunIdentityV1, AgentProviderRunResumeV1,
+    AgentProviderRunStartV1, AgentProviderRunStateV1, HarnessToolBindingV1,
+    NodeAgentProviderRuntimeBindingV1, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
 };
 use a3s_runtime::contract::{
     RuntimeEvidence, RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
@@ -39,10 +40,15 @@ impl AgentProviderHarnessTransport for RecordingAgentProviderHarness {
         let profile = binding
             .profile()
             .map_err(AgentProviderHarnessError::Protocol)?;
+        let state = if matches!(command, AgentProviderCommandV1::Resume { .. }) {
+            AgentProviderRunStateV1::Executing
+        } else {
+            AgentProviderRunStateV1::Created
+        };
         AgentProviderCommandReceiptV1::accepted(
             &profile,
             command,
-            AgentProviderRunStateV1::Created,
+            state,
             u64::try_from(Utc::now().timestamp_millis())
                 .map_err(|error| AgentProviderHarnessError::Protocol(error.to_string()))?,
             false,
@@ -98,7 +104,7 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
     let command = AgentProviderCommandV1::Start {
         request: AgentProviderRunStartV1::new(
             "execution-reference:start".into(),
-            identity,
+            identity.clone(),
             "Echo this input.".into(),
         )
         .expect("reference start command"),
@@ -186,6 +192,61 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
     assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 1);
     assert_eq!(code_harness.calls.load(Ordering::SeqCst), 0);
 
+    let decision = AgentProviderApprovalDecisionV1::new(
+        Uuid::now_v7().to_string(),
+        Uuid::now_v7().to_string(),
+        &identity,
+        "publish-1".into(),
+        HarnessToolBindingV1 {
+            name: "workspace.publish".into(),
+            revision: "1.0.0".into(),
+            contract_digest: format!("sha256:{}", "d".repeat(64)),
+            approval_required: true,
+        },
+        format!("sha256:{}", "e".repeat(64)),
+        AgentProviderApprovalOutcomeV1::Approved,
+        now_ms,
+    )
+    .expect("approval decision");
+    let resume_command = AgentProviderCommandV1::Resume {
+        request: AgentProviderRunResumeV1::new(
+            "execution-reference:resume:publish-1".into(),
+            identity.clone(),
+            decision,
+        )
+        .expect("reference resume command"),
+    };
+    let resume_envelope = claim_command(
+        node_id,
+        binding.execution_id,
+        2,
+        binding.runtime_generation,
+        NodeCommandPayload::AgentProviderCommand {
+            binding: Box::new(binding.clone()),
+            command: Box::new(resume_command.clone()),
+        },
+    );
+    let resumed = executor
+        .execute(resume_envelope.clone())
+        .await
+        .expect("dispatch reference provider resume");
+    resumed
+        .validate_against(&resume_envelope)
+        .expect("exact resume acknowledgement");
+    let NodeCommandOutcome::Succeeded { result } = &resumed.outcome else {
+        panic!("reference provider resume must succeed");
+    };
+    let NodeCommandResult::AgentProviderCommandAccepted { receipt } = result.as_ref() else {
+        panic!("reference provider resume returned another result kind");
+    };
+    receipt
+        .validate_for(&profile, &resume_command)
+        .expect("exact common provider resume receipt");
+    assert_eq!(receipt.state, AgentProviderRunStateV1::Executing);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(code_harness.calls.load(Ordering::SeqCst), 0);
+
     let mut redelivery = envelope;
     redelivery.lease_id = Uuid::now_v7();
     let replay = executor
@@ -230,7 +291,7 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
     let unknown_envelope = claim_command(
         node_id,
         unknown_binding.execution_id,
-        2,
+        3,
         unknown_binding.runtime_generation,
         NodeCommandPayload::AgentProviderCommand {
             binding: Box::new(unknown_binding),
@@ -246,7 +307,7 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
     };
     assert_eq!(failure.code, "invalid_agent_provider_harness_binding");
     assert!(!failure.retryable);
-    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 2);
     assert_eq!(code_harness.calls.load(Ordering::SeqCst), 0);
 }

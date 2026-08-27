@@ -4,6 +4,7 @@ mod append_agent_execution_events;
 mod bind_agent_code_run;
 mod cancel_agent_execution;
 mod create_agent_conversation;
+mod decide_agent_approval_checkpoint;
 mod start_agent_execution;
 
 pub use accept_agent_code_event_batch::{
@@ -21,6 +22,10 @@ pub use cancel_agent_execution::{
 };
 pub use create_agent_conversation::{
     CreateAgentConversation, CreateAgentConversationHandler, CreateAgentConversationResult,
+};
+pub use decide_agent_approval_checkpoint::{
+    DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
+    DecideAgentApprovalCheckpointResult,
 };
 pub use start_agent_execution::{
     StartAgentExecution, StartAgentExecutionHandler, StartAgentExecutionResult,

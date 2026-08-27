@@ -6,10 +6,12 @@ use crate::modules::agents::{
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
     AgentExecutionProviderRegistry, AgentExecutionReconciler, AgentsModule,
     AppendAgentExecutionEventsHandler, BuiltInAgentExecutionProviderRegistry,
-    CancelAgentExecutionHandler, CreateAgentConversationHandler, GetAgentConversationHandler,
-    GetAgentExecutionChangeSetHandler, GetAgentExecutionEventsHandler, GetAgentExecutionHandler,
-    IAgentRepository, IWorkflowAgentPort, ListAgentConversationsHandler,
-    ListAgentExecutionsHandler, StartAgentExecutionHandler, WorkflowAgentApplicationService,
+    CancelAgentExecutionHandler, CreateAgentConversationHandler,
+    DecideAgentApprovalCheckpointHandler, GetAgentApprovalCheckpointHandler,
+    GetAgentConversationHandler, GetAgentExecutionChangeSetHandler, GetAgentExecutionEventsHandler,
+    GetAgentExecutionHandler, IAgentRepository, IWorkflowAgentPort,
+    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler, ListAgentExecutionsHandler,
+    StartAgentExecutionHandler, WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
@@ -2463,6 +2465,9 @@ fn build_management_application_with_health(
     let start_agent_executions = Arc::clone(&agents);
     let cancel_agent_executions = Arc::clone(&agents);
     let append_agent_execution_events = Arc::clone(&agents);
+    let decide_agent_approval_checkpoints = Arc::clone(&agents);
+    let get_agent_approval_checkpoints = Arc::clone(&agents);
+    let list_agent_approval_checkpoints = Arc::clone(&agents);
     let get_agent_conversations = Arc::clone(&agents);
     let list_agent_conversations = Arc::clone(&agents);
     let get_agent_executions = Arc::clone(&agents);
@@ -2853,7 +2858,7 @@ fn build_management_application_with_health(
                         submit_human_tasks,
                         submit_human_task_forms,
                         submit_human_task_semantic_core,
-                        resource_authorization_decisions,
+                        Arc::clone(&resource_authorization_decisions),
                     ),
                 )
                 .command_handler::<crate::modules::forms::CreateFormDraft, _>(
@@ -3063,6 +3068,12 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::agents::CancelAgentExecution, _>(
                     CancelAgentExecutionHandler::new(cancel_agent_executions),
+                )
+                .command_handler::<crate::modules::agents::DecideAgentApprovalCheckpoint, _>(
+                    DecideAgentApprovalCheckpointHandler::new(
+                        decide_agent_approval_checkpoints,
+                        resource_authorization_decisions,
+                    ),
                 )
                 .command_handler::<crate::modules::agents::AppendAgentExecutionEvents, _>(
                     AppendAgentExecutionEventsHandler::new(append_agent_execution_events),
@@ -3512,6 +3523,12 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::agents::GetAgentExecution, _>(
                     GetAgentExecutionHandler::new(get_agent_executions),
+                )
+                .query_handler::<crate::modules::agents::ListAgentApprovalCheckpoints, _>(
+                    ListAgentApprovalCheckpointsHandler::new(list_agent_approval_checkpoints),
+                )
+                .query_handler::<crate::modules::agents::GetAgentApprovalCheckpoint, _>(
+                    GetAgentApprovalCheckpointHandler::new(get_agent_approval_checkpoints),
                 )
                 .query_handler::<crate::modules::agents::GetAgentExecutionChangeSet, _>(
                     GetAgentExecutionChangeSetHandler::new(get_agent_execution_change_sets),

@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 166;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "166";
+pub const CLOUD_MIGRATION_COUNT: i64 = 167;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "167";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1537,6 +1537,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/166_agent_tool_events.sql"
+            )),
+        ),
+        Migration::new(
+            "167",
+            "Agent approval checkpoints",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/167_agent_approval_checkpoints.sql"
             )),
         ),
     ]
@@ -3602,6 +3610,44 @@ mod agent_tool_event_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 166 added another authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_approval_checkpoint_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/167_agent_approval_checkpoints.sql"
+    ));
+
+    #[test]
+    fn migration_167_adds_one_exact_durable_approval_authority() {
+        for expected in [
+            "'awaiting_approval'",
+            "'approval_resolved'",
+            "create table agent_approval_checkpoints",
+            "provider_run_identity_digest",
+            "invocation_profile_digest",
+            "agent_approval_checkpoints_one_active_per_execution_idx",
+            "agent_approval_checkpoints_decision_idx",
+            "references node_commands(id)",
+            "interval '1 day'",
+            "never Tool payload or Secret material",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "tool_payload jsonb",
+            "request_payload",
+            "secret_material",
+            "create queue",
+            "provider_config",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 167 duplicated payload, Secret, or queue authority: {forbidden}"
             );
         }
     }

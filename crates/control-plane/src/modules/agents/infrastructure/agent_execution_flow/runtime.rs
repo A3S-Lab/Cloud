@@ -1,30 +1,23 @@
-use super::recovery;
 use super::types::{
     AgentExecutionFlowInput, CompletedAgentExecution, DispatchInput, DispatchOutput,
     DispatchedAgentExecution, ObserveInput, ObserveOutput, PrepareOutput, PreparedAgentExecution,
 };
+use super::{approval, binding, recovery};
 use super::{flow_error, AgentExecutionFlowRuntime};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
-    RecoverAgentCodeRunWrite,
+    AgentExecutionEventKind, AgentExecutionStatus, AppendAgentExecutionEventsWrite,
+    BindAgentCodeRunWrite, CancelActiveAgentApprovalCheckpointWrite, RecoverAgentCodeRunWrite,
 };
 use crate::modules::agents::infrastructure::{accept_code_receipt, encode_code_command};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, sha256_digest, IdempotencyRequest, NodeCommandId, OperationId,
-    Sha256Digest,
+    canonical_timestamp, IdempotencyRequest, NodeCommandId, OperationId,
 };
-use crate::modules::workloads::{project_runtime_spec, ActiveRuntimeTarget, SecretBindingTarget};
 use a3s_cloud_contracts::{
-    AgentProtocolRunIdentityV1, AgentProviderCapabilityV1, AgentProviderCommandV1,
-    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessMcpBindingV1,
-    HarnessProviderBindingV1, HarnessSecretReferenceV1, HarnessSecretTargetV1,
-    HarnessSkillBindingV1, HarnessWorkspaceBindingV1, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
+    AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
 };
 use a3s_flow::FlowError;
-use a3s_runtime::contract::TransportProtocol;
 use chrono::{DateTime, Utc};
 
 const ACTIVE_RUNTIME_TARGET_LIMIT: usize = 10_000;
@@ -114,7 +107,7 @@ pub(super) async fn prepare(
     }
 
     let (readiness, runtime_started_at_ms) =
-        match ready_binding(runtime, &execution, &target, now).await {
+        match binding::ready(runtime, &execution, &target, now).await {
             Ok(readiness) => readiness,
             Err(reason) => {
                 return pending_or_fail(runtime, execution, &reason, now, deadline_at).await;
@@ -212,6 +205,7 @@ pub(super) async fn dispatch(
             command_id,
             acknowledgement_deadline: command.not_after,
             recovery_checkpoint_run_id: None,
+            approval: None,
         }),
     })
 }
@@ -232,8 +226,51 @@ pub(super) async fn observe(
         .code
         .as_ref()
         .ok_or_else(|| FlowError::Runtime("Agent execution lost its A3S Code binding".into()))?;
+    if execution.status == AgentExecutionStatus::Cancelling {
+        runtime
+            .agents
+            .cancel_active_checkpoint(CancelActiveAgentApprovalCheckpointWrite {
+                organization_id: execution.organization_id,
+                execution_id: execution.id,
+                cancelled_at: canonical_timestamp(Utc::now()).max(execution.updated_at),
+            })
+            .await
+            .map_err(|error| {
+                flow_error(
+                    "could not cancel the active Agent approval checkpoint",
+                    error,
+                )
+            })?;
+        let prepared = if current.has_same_run_binding(&input.dispatched.prepared.binding) {
+            (*input.dispatched.prepared).clone()
+        } else if current.is_recovery_successor_of(&input.dispatched.prepared.binding, execution.id)
+        {
+            PreparedAgentExecution {
+                organization_id: execution.organization_id,
+                execution_id: execution.id,
+                binding: current.clone(),
+                runtime_started_at_ms: None,
+            }
+        } else {
+            return Err(FlowError::Runtime(
+                "cancelling Agent execution changed its durable provider identity".into(),
+            ));
+        };
+        return observe_cancellation(runtime, execution, &prepared).await;
+    }
     if !current.has_same_run_binding(&input.dispatched.prepared.binding) {
         if current.is_recovery_successor_of(&input.dispatched.prepared.binding, execution.id) {
+            if let Some(failed_at) =
+                approval::close_for_provider_restart(runtime, &execution).await?
+            {
+                return fail_observation(
+                    runtime,
+                    execution,
+                    "Agent provider restarted while a Tool approval was unresolved",
+                    failed_at,
+                )
+                .await;
+            }
             return recovery::begin(runtime, execution, *input.dispatched).await;
         }
         return Err(FlowError::Runtime(
@@ -255,8 +292,6 @@ pub(super) async fn observe(
             "A3S Code command acknowledgement deadline changed".into(),
         ));
     }
-    let cancelling =
-        execution.status == crate::modules::agents::domain::AgentExecutionStatus::Cancelling;
     let acknowledged = if let Some(acknowledgement) = runtime
         .node_control
         .command_acknowledgement(node_id, input.dispatched.command_id)
@@ -300,14 +335,14 @@ pub(super) async fn observe(
         false
     };
 
-    if acknowledged || cancelling {
+    if acknowledged {
         let process = recovery::active_runtime_process(
             runtime,
             &input.dispatched.prepared.binding,
             Utc::now().max(execution.updated_at),
         )
         .await?;
-        if process.is_none() && acknowledged && !cancelling {
+        if process.is_none() {
             return observe_pending(
                 runtime,
                 "waiting for the bound A3S Code Harness process to become ready",
@@ -315,7 +350,7 @@ pub(super) async fn observe(
             );
         }
         match (input.dispatched.prepared.runtime_started_at_ms, process) {
-            (None, Some(process)) if !cancelling => {
+            (None, Some(process)) => {
                 let mut dispatched = *input.dispatched;
                 dispatched.prepared.runtime_started_at_ms = Some(process.started_at_ms);
                 return observe_pending(
@@ -325,6 +360,17 @@ pub(super) async fn observe(
                 );
             }
             (Some(started_at_ms), Some(process)) if started_at_ms != process.started_at_ms => {
+                if let Some(failed_at) =
+                    approval::close_for_provider_restart(runtime, &execution).await?
+                {
+                    return fail_observation(
+                        runtime,
+                        execution,
+                        "Agent provider restarted while a Tool approval was unresolved",
+                        failed_at,
+                    )
+                    .await;
+                }
                 let write = runtime
                     .agents
                     .recover_code_run(RecoverAgentCodeRunWrite {
@@ -342,8 +388,11 @@ pub(super) async fn observe(
             _ => {}
         }
     }
-    if cancelling {
-        return observe_cancellation(runtime, execution, &input.dispatched.prepared).await;
+    if acknowledged
+        && (execution.status == AgentExecutionStatus::AwaitingApproval
+            || input.dispatched.approval.is_some())
+    {
+        return approval::observe(runtime, execution, *input.dispatched).await;
     }
     observe_pending(
         runtime,
@@ -459,203 +508,6 @@ async fn observe_cancellation(
             .ok_or_else(|| FlowError::Runtime("Agent cancellation poll time overflowed".into()))?,
         dispatched: None,
     })
-}
-
-async fn ready_binding(
-    runtime: &AgentExecutionFlowRuntime,
-    execution: &AgentExecution,
-    target: &ActiveRuntimeTarget,
-    now: DateTime<Utc>,
-) -> Result<(AgentCodeRunBinding, u64), String> {
-    let provider = runtime
-        .providers
-        .provider_for_profile(&execution.provider)?;
-    let node_id = target
-        .replica_binding
-        .node_id
-        .filter(|node_id| Some(*node_id) == target.deployment.node_id)
-        .ok_or_else(|| "Agent Workload has no exact placed Runtime replica".to_owned())?;
-    if target.replica_binding.workload_id != target.workload.id
-        || target.replica_binding.revision_id != target.revision.id
-        || target.replica_binding.deployment_id != target.deployment.id
-    {
-        return Err("Agent Workload Runtime binding changed its durable identity".into());
-    }
-    let template = target.revision.resolved_template()?;
-    if template.artifact.digest != execution.agent.artifact_digest().as_str() {
-        return Err("Agent Workload artifact does not match the execution release".into());
-    }
-    let service_port_name = template
-        .health
-        .as_ref()
-        .map(|health| health.port_name.clone())
-        .ok_or_else(|| "Agent Workload does not declare the Code Harness health port".to_owned())?;
-    let spec = project_runtime_spec(&target.revision)?;
-    let observation = runtime
-        .node_control
-        .latest_runtime_observation(node_id, &spec.unit_id, spec.generation)
-        .await
-        .map_err(|error| format!("could not load Agent Runtime observation: {error}"))?
-        .ok_or_else(|| "Agent Runtime has no observation yet".to_owned())?;
-    observation.observation.validate_against(&spec)?;
-    if observation
-        .received_at
-        .checked_add_signed(runtime.config.heartbeat_timeout)
-        .is_none_or(|fresh_until| fresh_until < now)
-        || !observation.observation.converges(&spec)
-    {
-        return Err("Agent Runtime is not recently observed ready".into());
-    }
-    let endpoint =
-        RuntimeServiceEndpoint::from_observation(&observation.observation, &service_port_name)?;
-    if endpoint.protocol != TransportProtocol::Tcp {
-        return Err("A3S Code Harness Runtime endpoint is not TCP".into());
-    }
-    let runtime_started_at_ms = observation
-        .observation
-        .started_at_ms
-        .ok_or_else(|| "A3S Code Harness Runtime has no process start time".to_owned())?;
-    let spec_digest = Sha256Digest::parse(spec.digest()?)?;
-    let invocation_profile =
-        harness_invocation_profile(execution, target, &spec, provider.profile())?;
-    let binding = AgentCodeRunBinding::new_with_provider(
-        provider.profile().clone(),
-        node_id,
-        target.workload.id,
-        target.revision.id,
-        target.deployment.id,
-        target.replica_binding.replica_id,
-        spec.unit_id,
-        spec.generation,
-        spec_digest,
-        service_port_name,
-        AgentProtocolRunIdentityV1 {
-            schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
-            protocol: provider.profile().native_protocol().into(),
-            agent_release_identity: execution.agent.artifact_digest().as_str().into(),
-            session_id: format!("agent-conversation-{}", execution.conversation_id),
-            run_id: format!("agent-execution-{}", execution.id),
-        },
-        now,
-    )?
-    .with_invocation_profile(invocation_profile)?;
-    Ok((binding, runtime_started_at_ms))
-}
-
-fn harness_invocation_profile(
-    execution: &AgentExecution,
-    target: &ActiveRuntimeTarget,
-    spec: &a3s_runtime::contract::RuntimeUnitSpec,
-    provider: &crate::modules::agents::domain::AgentProviderProfileBinding,
-) -> Result<HarnessInvocationProfileV1, String> {
-    let environment_policy = serde_json::json!({
-        "process": &spec.process,
-        "secretReferences": &spec.secrets,
-    });
-    let security_policy = serde_json::json!({
-        "isolation": &spec.isolation,
-        "mounts": &spec.mounts,
-        "network": &spec.network,
-        "resources": &spec.resources,
-        "restart": &spec.restart,
-    });
-    let environment_policy_digest = sha256_digest(&canonical_json_bounded(
-        &environment_policy,
-        HARNESS_INVOCATION_PROFILE_MAX_BYTES,
-        "Harness environment policy",
-    )?);
-    let security_policy_digest = sha256_digest(&canonical_json_bounded(
-        &security_policy,
-        HARNESS_INVOCATION_PROFILE_MAX_BYTES,
-        "Harness security policy",
-    )?);
-    let skills = target
-        .revision
-        .skill_bindings()
-        .iter()
-        .map(|binding| HarnessSkillBindingV1 {
-            asset_id: binding.asset_id().as_uuid(),
-            asset_release_id: binding.asset_release_id().as_uuid(),
-            artifact_digest: binding.artifact_digest().as_str().into(),
-        })
-        .collect();
-    let mcp_servers = target
-        .revision
-        .mcp_binding()
-        .map(|binding| HarnessMcpBindingV1 {
-            asset_id: binding.asset_id().as_uuid(),
-            asset_release_id: binding.asset_release_id().as_uuid(),
-            profile_digest: binding.profile_digest().as_str().into(),
-        })
-        .into_iter()
-        .collect();
-    let mut secrets = target
-        .revision
-        .resolved_template()?
-        .secrets
-        .iter()
-        .map(|binding| HarnessSecretReferenceV1 {
-            name: binding.name.clone(),
-            secret_id: binding.secret_id.as_uuid(),
-            version: binding.version,
-            target: match &binding.target {
-                SecretBindingTarget::Environment { variable } => {
-                    HarnessSecretTargetV1::Environment {
-                        variable: variable.clone(),
-                    }
-                }
-                SecretBindingTarget::File { path, mode } => HarnessSecretTargetV1::File {
-                    path: path.clone(),
-                    mode: *mode,
-                },
-                SecretBindingTarget::RegistryCredential => {
-                    HarnessSecretTargetV1::RegistryCredential
-                }
-            },
-        })
-        .collect::<Vec<_>>();
-    secrets.sort_by(|left, right| left.name.cmp(&right.name));
-    let profile = HarnessInvocationProfileV1 {
-        schema: HarnessInvocationProfileV1::SCHEMA.into(),
-        agent: HarnessAgentReleaseBindingV1 {
-            organization_id: execution.organization_id.as_uuid(),
-            asset_id: execution.agent.asset_id().as_uuid(),
-            asset_release_id: execution.agent.asset_release_id().as_uuid(),
-            build_run_id: execution.agent.build_run_id().as_uuid(),
-            artifact_digest: execution.agent.artifact_digest().as_str().into(),
-        },
-        provider: HarnessProviderBindingV1 {
-            kind: provider.kind().into(),
-            revision: provider.revision().into(),
-            profile_digest: provider.profile_digest().into(),
-            capability_digest: provider.capability_digest().into(),
-        },
-        // The immutable OCI digest covers the instructions shipped by this
-        // exact Agent release; no mutable manifest is copied into the run.
-        instructions_digest: execution.agent.artifact_digest().as_str().into(),
-        environment_policy_digest,
-        security_policy_digest,
-        workspace: HarnessWorkspaceBindingV1 {
-            workload_id: target.workload.id.as_uuid(),
-            workload_revision_id: target.revision.id.as_uuid(),
-            runtime_unit_id: spec.unit_id.clone(),
-            runtime_generation: spec.generation,
-            runtime_spec_digest: spec.digest()?,
-            working_directory: spec.process.working_directory.clone(),
-        },
-        skills,
-        mcp_servers,
-        models: Vec::new(),
-        secrets,
-        tools: Vec::new(),
-        required_capabilities: vec![
-            AgentProviderCapabilityV1::Cancellation,
-            AgentProviderCapabilityV1::Cleanup,
-            AgentProviderCapabilityV1::EventPages,
-        ],
-    };
-    profile.validate_for(&provider.profile()?)?;
-    Ok(profile)
 }
 
 pub(super) async fn start_command(
@@ -847,7 +699,7 @@ pub(super) fn provider_command_payload_matches(
     }
 }
 
-fn accept_provider_result(
+pub(super) fn accept_provider_result(
     binding: &AgentCodeRunBinding,
     command: &AgentProviderCommandV1,
     result: &NodeCommandResult,
@@ -915,7 +767,7 @@ async fn pending_or_fail(
     })
 }
 
-async fn fail_observation(
+pub(super) async fn fail_observation(
     runtime: &AgentExecutionFlowRuntime,
     execution: AgentExecution,
     reason: &str,

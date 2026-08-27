@@ -1,10 +1,11 @@
 use super::{
     AgentExecutionReconciler, AppendAgentExecutionEvents, AppendAgentExecutionEventsHandler,
     CancelAgentExecution, CancelAgentExecutionHandler, CreateAgentConversation,
-    CreateAgentConversationHandler, GetAgentExecutionEvents, GetAgentExecutionEventsHandler,
-    IWorkflowAgentPort, StartAgentExecution, StartAgentExecutionHandler,
-    WorkflowAgentApplicationService, WorkflowAgentRequest, AGENT_EXECUTION_WORKFLOW_NAME,
-    AGENT_EXECUTION_WORKFLOW_VERSION,
+    CreateAgentConversationHandler, DecideAgentApprovalCheckpoint,
+    DecideAgentApprovalCheckpointHandler, GetAgentExecutionEvents, GetAgentExecutionEventsHandler,
+    IWorkflowAgentPort, ListAgentApprovalCheckpoints, ListAgentApprovalCheckpointsHandler,
+    StartAgentExecution, StartAgentExecutionHandler, WorkflowAgentApplicationService,
+    WorkflowAgentRequest, AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
@@ -19,14 +20,16 @@ use crate::modules::assets::domain::{
     TransitionAssetWrite,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::{IOperationRepository, InMemoryOperationRepository};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    IdempotentWrite, OrganizationId, PlanRevisionId, ProjectId, RepositoryError, ResourceName,
+    canonical_timestamp, AgentApprovalCheckpointId, AgentExecutionId, ApiTokenId, AssetId,
+    AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest, IdempotentWrite,
+    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, RepositoryError, ResourceName,
     Sha256Digest, WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
@@ -38,6 +41,68 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[tokio::test]
+async fn approval_checkpoint_list_rejects_limits_outside_the_api_contract() {
+    let handler =
+        ListAgentApprovalCheckpointsHandler::new(Arc::new(InMemoryAgentRepository::new()));
+
+    for limit in [0, 1_001] {
+        let result = handler
+            .execute(
+                ListAgentApprovalCheckpoints {
+                    organization_id: OrganizationId::new(),
+                    execution_id: AgentExecutionId::new(),
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    status: None,
+                    limit,
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("list Agent approval checkpoints handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::Invalid(message))
+                if message == "Agent approval checkpoint limit must be between 1 and 1000"
+        ));
+    }
+}
+
+#[tokio::test]
+async fn approval_checkpoint_decision_rejects_an_invalid_reason_before_authorization() {
+    let handler = DecideAgentApprovalCheckpointHandler::new(
+        Arc::new(InMemoryAgentRepository::new()),
+        Arc::new(InMemoryIdentityRepository::new()),
+    );
+    let result = handler
+        .execute(
+            DecideAgentApprovalCheckpoint {
+                organization_id: OrganizationId::new(),
+                execution_id: AgentExecutionId::new(),
+                checkpoint_id: AgentApprovalCheckpointId::new(),
+                expected_version: 1,
+                outcome: a3s_cloud_contracts::AgentProviderApprovalOutcomeV1::Denied,
+                reason: Some("\u{754c}".repeat(342)),
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                actor_principal_id: PrincipalId::new(),
+                credential_id: ApiTokenId::new(),
+                actor_is_platform_admin: false,
+                idempotency_key: "agent-approval:invalid-reason".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: canonical_timestamp(Utc::now()),
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await
+        .expect("decide Agent approval checkpoint handler");
+    assert_eq!(
+        result,
+        Err(ApplicationError::Invalid(
+            "Agent approval decision reason is invalid".into()
+        ))
+    );
+}
 
 #[tokio::test]
 async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() {

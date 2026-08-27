@@ -69,6 +69,10 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
         "AgentExecutionFailureEventContent".into(),
         agent_execution_failure_event_content_schema(),
     );
+    schemas.insert(
+        "AgentApprovalResolutionEventContent".into(),
+        agent_approval_resolution_event_content_schema(),
+    );
     for (name, kind, content) in [
         (
             "AgentExecutionRequestedEvent",
@@ -92,6 +96,11 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
             "AgentToolResultEvent",
             "tool_result",
             schema_ref("AgentToolResultEventContent"),
+        ),
+        (
+            "AgentApprovalResolvedEvent",
+            "approval_resolved",
+            schema_ref("AgentApprovalResolutionEventContent"),
         ),
         (
             "AgentExecutionFailedEvent",
@@ -140,6 +149,24 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
     schemas.insert(
         "AgentExecutionEventPage".into(),
         agent_execution_event_page_schema(),
+    );
+    schemas.insert(
+        "AgentApprovalCheckpoint".into(),
+        agent_approval_checkpoint_schema(),
+    );
+    schemas.insert(
+        "AgentApprovalCheckpointList".into(),
+        bounded_array_schema("AgentApprovalCheckpoint", 1_000),
+    );
+    schemas.insert(
+        "AgentApprovalCheckpointMutation".into(),
+        object_schema(
+            &["checkpoint", "replayed"],
+            json!({
+                "checkpoint": schema_ref("AgentApprovalCheckpoint"),
+                "replayed": { "type": "boolean" }
+            }),
+        ),
     );
 }
 
@@ -521,6 +548,41 @@ fn agent_execution_failure_event_content_schema() -> Value {
     )
 }
 
+fn agent_approval_resolution_event_content_schema() -> Value {
+    object_schema(
+        &[
+            "checkpointId",
+            "decisionId",
+            "outcome",
+            "decisionDigest",
+            "decidedBy",
+            "authorizationDecision",
+            "reason",
+        ],
+        json!({
+            "checkpointId": uuid_schema(),
+            "decisionId": uuid_schema(),
+            "outcome": {
+                "type": "string",
+                "enum": ["approved", "denied", "expired"]
+            },
+            "decisionDigest": digest_schema(),
+            "decidedBy": nullable_uuid_schema(),
+            "authorizationDecision": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "digest"],
+                "nullable": true,
+                "properties": {
+                    "id": bounded_utf8_line_schema(512),
+                    "digest": digest_schema()
+                }
+            },
+            "reason": nullable_bounded_utf8_line_schema(1024)
+        }),
+    )
+}
+
 fn agent_execution_schema() -> Value {
     object_schema(
         &[
@@ -553,7 +615,10 @@ fn agent_execution_schema() -> Value {
             },
             "status": {
                 "type": "string",
-                "enum": ["pending", "running", "cancelling", "succeeded", "failed", "cancelled"]
+                "enum": [
+                    "pending", "running", "awaiting_approval", "cancelling",
+                    "succeeded", "failed", "cancelled"
+                ]
             },
             "failure": {
                 "type": "string",
@@ -678,6 +743,7 @@ fn agent_execution_event_schema() -> Value {
                     "model_output",
                     "tool_request",
                     "tool_result",
+                    "approval_resolved",
                     "execution_failed",
                     "execution_completed",
                     "execution_cancelled"
@@ -701,6 +767,7 @@ fn agent_execution_event_schema() -> Value {
         schema_ref("AgentModelOutputEvent"),
         schema_ref("AgentToolRequestEvent"),
         schema_ref("AgentToolResultEvent"),
+        schema_ref("AgentApprovalResolvedEvent"),
         schema_ref("AgentExecutionFailedEvent"),
         schema_ref("AgentExecutionCompletedEvent"),
         schema_ref("AgentExecutionCancelledEvent")
@@ -712,6 +779,7 @@ fn agent_execution_event_schema() -> Value {
             "model_output": "#/components/schemas/AgentModelOutputEvent",
             "tool_request": "#/components/schemas/AgentToolRequestEvent",
             "tool_result": "#/components/schemas/AgentToolResultEvent",
+            "approval_resolved": "#/components/schemas/AgentApprovalResolvedEvent",
             "execution_failed": "#/components/schemas/AgentExecutionFailedEvent",
             "execution_completed": "#/components/schemas/AgentExecutionCompletedEvent",
             "execution_cancelled": "#/components/schemas/AgentExecutionCancelledEvent"
@@ -781,6 +849,80 @@ fn agent_execution_event_page_schema() -> Value {
     )
 }
 
+fn agent_approval_checkpoint_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "environmentId",
+            "conversationId",
+            "executionId",
+            "id",
+            "providerRunIdentityDigest",
+            "invocationProfileDigest",
+            "sourceEventSequence",
+            "callId",
+            "tool",
+            "request",
+            "status",
+            "decisionId",
+            "outcome",
+            "decidedBy",
+            "authorizationDecisionId",
+            "authorizationDecisionDigest",
+            "reason",
+            "decisionDigest",
+            "resumeCommandId",
+            "resumeCommandDigest",
+            "aggregateVersion",
+            "requestedAt",
+            "expiresAt",
+            "updatedAt",
+            "decidedAt",
+            "resumedAt",
+            "cancelledAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "environmentId": uuid_schema(),
+            "conversationId": uuid_schema(),
+            "executionId": uuid_schema(),
+            "id": uuid_schema(),
+            "providerRunIdentityDigest": digest_schema(),
+            "invocationProfileDigest": digest_schema(),
+            "sourceEventSequence": nonnegative_sequence_schema(),
+            "callId": bounded_utf8_line_schema(256),
+            "tool": schema_ref("HarnessToolBinding"),
+            "request": schema_ref("AgentToolPayloadIdentity"),
+            "status": {
+                "type": "string",
+                "enum": ["pending", "approved", "denied", "expired", "resumed", "cancelled"]
+            },
+            "decisionId": nullable_uuid_schema(),
+            "outcome": {
+                "type": "string",
+                "enum": ["approved", "denied", "expired"],
+                "nullable": true
+            },
+            "decidedBy": nullable_uuid_schema(),
+            "authorizationDecisionId": nullable_bounded_utf8_line_schema(512),
+            "authorizationDecisionDigest": nullable_digest_schema(),
+            "reason": nullable_bounded_utf8_line_schema(1024),
+            "decisionDigest": nullable_digest_schema(),
+            "resumeCommandId": nullable_uuid_schema(),
+            "resumeCommandDigest": nullable_digest_schema(),
+            "aggregateVersion": positive_sequence_schema(),
+            "requestedAt": timestamp_schema(),
+            "expiresAt": timestamp_schema(),
+            "updatedAt": timestamp_schema(),
+            "decidedAt": nullable_timestamp_schema(),
+            "resumedAt": nullable_timestamp_schema(),
+            "cancelledAt": nullable_timestamp_schema()
+        }),
+    )
+}
+
 fn object_schema(required: &[&str], properties: Value) -> Value {
     json!({
         "type": "object",
@@ -791,9 +933,13 @@ fn object_schema(required: &[&str], properties: Value) -> Value {
 }
 
 fn array_schema(item: &str) -> Value {
+    bounded_array_schema(item, 200)
+}
+
+fn bounded_array_schema(item: &str, max_items: usize) -> Value {
     json!({
         "type": "array",
-        "maxItems": 200,
+        "maxItems": max_items,
         "items": schema_ref(item)
     })
 }
@@ -839,6 +985,31 @@ fn positive_sequence_schema() -> Value {
 
 fn nullable_timestamp_schema() -> Value {
     json!({ "type": "string", "format": "date-time", "nullable": true })
+}
+
+fn nullable_uuid_schema() -> Value {
+    let mut schema = uuid_schema();
+    schema["nullable"] = json!(true);
+    schema
+}
+
+fn nullable_digest_schema() -> Value {
+    let mut schema = digest_schema();
+    schema["nullable"] = json!(true);
+    schema
+}
+
+fn nullable_bounded_utf8_line_schema(max_bytes: usize) -> Value {
+    let mut schema = bounded_utf8_line_schema(max_bytes);
+    schema["nullable"] = json!(true);
+    schema
+}
+
+fn bounded_utf8_line_schema(max_bytes: usize) -> Value {
+    let mut schema = bounded_line_schema(max_bytes);
+    schema["x-a3s-max-utf8-bytes"] = json!(max_bytes);
+    schema["pattern"] = json!("^(?:\\S|\\S[^\\u0000\\r\\n]*\\S)$");
+    schema
 }
 
 fn bounded_line_schema(max_length: usize) -> Value {

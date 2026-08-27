@@ -8,7 +8,13 @@ import type {
   ResourceGrantScope,
 } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
-import type { AgentProviderKind, UpdateProjectAttributionInput } from './types';
+import type {
+  AgentApprovalCheckpointStatus,
+  DecideAgentApprovalCheckpointInput,
+  ListAgentApprovalCheckpointsOptions,
+  AgentProviderKind,
+  UpdateProjectAttributionInput,
+} from './types';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
 export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
@@ -31,6 +37,15 @@ export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 export const MAX_PROJECT_ATTRIBUTION_LABELS = 32;
 
 const AGENT_PROVIDER_KINDS: ReadonlySet<AgentProviderKind> = new Set(['a3s.code', 'reference.echo']);
+const AGENT_APPROVAL_CHECKPOINT_STATUSES: ReadonlySet<AgentApprovalCheckpointStatus> = new Set([
+  'pending',
+  'approved',
+  'denied',
+  'expired',
+  'resumed',
+  'cancelled',
+]);
+export const MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT = 1_000;
 
 export function validateAgentProviderKind(kind: unknown): asserts kind is AgentProviderKind | undefined {
   if (
@@ -39,6 +54,46 @@ export function validateAgentProviderKind(kind: unknown): asserts kind is AgentP
   ) {
     throw new TypeError('Agent provider kind must be a3s.code or reference.echo');
   }
+}
+
+export function validateAgentApprovalCheckpointList(options: ListAgentApprovalCheckpointsOptions): void {
+  if (options.status !== undefined && !AGENT_APPROVAL_CHECKPOINT_STATUSES.has(options.status)) {
+    throw new TypeError('Agent approval checkpoint status is invalid');
+  }
+  if (
+    options.limit !== undefined &&
+    (!Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT)
+  ) {
+    throw new RangeError(
+      `Agent approval checkpoint limit must be between 1 and ${MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT}`
+    );
+  }
+}
+
+export function validateAgentApprovalDecision(input: DecideAgentApprovalCheckpointInput): void {
+  if (input?.outcome !== 'approved' && input?.outcome !== 'denied') {
+    throw new TypeError('Agent approval decision outcome must be approved or denied');
+  }
+  if (input.reason !== undefined && input.reason !== null) {
+    if (typeof input.reason !== 'string') {
+      throw new TypeError('Agent approval decision reason is invalid');
+    }
+    const bytes = new TextEncoder().encode(input.reason).byteLength;
+    if (
+      input.reason.length === 0 ||
+      input.reason.trim() !== input.reason ||
+      bytes > 1_024 ||
+      /[\0\r\n]/.test(input.reason)
+    ) {
+      throw new TypeError('Agent approval decision reason is invalid');
+    }
+  }
+}
+
+export function validateExpectedAgentApprovalCheckpointVersion(value: number): void {
+  validateExpectedVersion(value, 'Agent approval checkpoint');
 }
 
 export function validateProjectAttributionInput(input: UpdateProjectAttributionInput): void {

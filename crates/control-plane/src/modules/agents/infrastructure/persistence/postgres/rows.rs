@@ -12,7 +12,7 @@ use crate::modules::shared_kernel::domain::{
     WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
-    AgentProtocolChangeSetV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
+    AgentProtocolChangeSetV1, AgentProtocolRunIdentityV1, AgentProviderRunStateV1,
     HarnessInvocationProfileV1,
 };
 use a3s_orm::expression::Selection;
@@ -417,7 +417,7 @@ impl ExecutionRow {
         let digest = Sha256Digest::parse(runtime_spec_digest).map_err(|error| {
             corrupt(format!("provider Runtime spec digest is invalid: {error}"))
         })?;
-        let state = parse_code_state(state)?;
+        let state = parse_provider_state(state)?;
         let mut binding = AgentCodeRunBinding::restore_with_provider(
             provider.clone(),
             NodeId::from_uuid(node_id),
@@ -472,9 +472,9 @@ impl ExecutionRow {
     }
 }
 
-fn parse_code_state(value: &str) -> Result<AgentProtocolRunStateV1, RepositoryError> {
-    serde_json::from_value(serde_json::Value::String(value.to_owned()))
-        .map_err(|error| corrupt(format!("A3S Code run state is invalid: {error}")))
+fn parse_provider_state(value: &str) -> Result<AgentProviderRunStateV1, RepositoryError> {
+    AgentProviderRunStateV1::parse(value)
+        .map_err(|error| corrupt(format!("Agent provider run state is invalid: {error}")))
 }
 
 impl EventRow {

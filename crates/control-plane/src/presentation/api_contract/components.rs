@@ -428,6 +428,18 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "AgentExecutionEventPageSuccessResponse",
             "AgentExecutionEventPage",
         ),
+        (
+            "AgentApprovalCheckpointSuccessResponse",
+            "AgentApprovalCheckpoint",
+        ),
+        (
+            "AgentApprovalCheckpointListSuccessResponse",
+            "AgentApprovalCheckpointList",
+        ),
+        (
+            "AgentApprovalCheckpointMutationSuccessResponse",
+            "AgentApprovalCheckpointMutation",
+        ),
     ] {
         schema_components.insert(
             name.into(),
@@ -705,6 +717,14 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "AgentExecutionEventPageSuccess200",
             "AgentExecutionEventPageSuccessResponse",
         ),
+        (
+            "AgentApprovalCheckpointSuccess200",
+            "AgentApprovalCheckpointSuccessResponse",
+        ),
+        (
+            "AgentApprovalCheckpointListSuccess200",
+            "AgentApprovalCheckpointListSuccessResponse",
+        ),
     ] {
         response_components.insert(
             name.into(),
@@ -753,6 +773,15 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/AgentExecutionMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 202] {
+        response_components.insert(
+            format!("AgentApprovalCheckpointMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/AgentApprovalCheckpointMutationSuccessResponse",
             ),
         );
     }

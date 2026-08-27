@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.70.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.71.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1981,6 +1981,19 @@ describe('CloudApi', () => {
     await api.listAgentExecutions('organization / one', 'conversation');
     await api.getAgentExecution('organization / one', 'execution');
     await api.getAgentExecutionChangeSet('organization / one', 'execution');
+    await api.listAgentApprovalCheckpoints('organization / one', 'execution', {
+      status: 'pending',
+      limit: 25,
+    });
+    await api.getAgentApprovalCheckpoint('organization / one', 'execution', 'checkpoint / one');
+    await api.decideAgentApprovalCheckpoint(
+      'organization / one',
+      'execution',
+      'checkpoint / one',
+      { outcome: 'approved', reason: 'Reviewed' },
+      3,
+      'agent-approval:decide'
+    );
     await api.startAgentExecution('organization / one', 'conversation', input, 'agent-execution:start');
     await api.cancelAgentExecution('organization / one', 'execution', 'agent-execution:cancel');
     await api.getAgentExecutionEvents('organization / one', 'conversation', {
@@ -2008,6 +2021,21 @@ describe('CloudApi', () => {
       ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution', 'GET', undefined],
       ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/changes', 'GET', undefined],
       [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/approval-checkpoints?status=pending&limit=25',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/approval-checkpoints/checkpoint%20%2F%20one',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/approval-checkpoints/checkpoint%20%2F%20one/decision',
+        'POST',
+        JSON.stringify({ outcome: 'approved', reason: 'Reviewed' }),
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/executions',
         'POST',
         JSON.stringify(input),
@@ -2021,13 +2049,17 @@ describe('CloudApi', () => {
     ]);
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('conversation:create');
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-    expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+    expect((calls[8]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-approval:decide'
+    );
+    expect((calls[8]?.[1]?.headers as Record<string, string>)['x-a3s-expected-version']).toBe('3');
+    expect((calls[9]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:start'
     );
-    expect((calls[7]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+    expect((calls[10]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:cancel'
     );
-    expect((calls[7]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((calls[10]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(api.agentExecutionEventStreamUrl('organization / one', 'conversation')).toBe(
       '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events/stream?limit=16'
     );
@@ -2066,6 +2098,42 @@ describe('CloudApi', () => {
         'agent:start'
       )
     ).toThrow('Agent provider kind must be a3s.code or reference.echo');
+    expect(() =>
+      api.listAgentApprovalCheckpoints('organization', 'execution', { status: 'unknown' as never })
+    ).toThrow('Agent approval checkpoint status is invalid');
+    expect(() => api.listAgentApprovalCheckpoints('organization', 'execution', { limit: 1_001 })).toThrow(
+      'Agent approval checkpoint limit must be between 1 and 1000'
+    );
+    expect(() =>
+      api.decideAgentApprovalCheckpoint(
+        'organization',
+        'execution',
+        'checkpoint',
+        { outcome: 'expired' as never },
+        1,
+        'agent-approval:invalid'
+      )
+    ).toThrow('Agent approval decision outcome must be approved or denied');
+    expect(() =>
+      api.decideAgentApprovalCheckpoint(
+        'organization',
+        'execution',
+        'checkpoint',
+        { outcome: 'denied' },
+        0,
+        'agent-approval:invalid-version'
+      )
+    ).toThrow('expected Agent approval checkpoint version must be a positive safe integer');
+    expect(() =>
+      api.decideAgentApprovalCheckpoint(
+        'organization',
+        'execution',
+        'checkpoint',
+        { outcome: 'denied', reason: '\u754c'.repeat(342) },
+        1,
+        'agent-approval:invalid-reason'
+      )
+    ).toThrow('Agent approval decision reason is invalid');
     expect(called).toBe(false);
   });
 

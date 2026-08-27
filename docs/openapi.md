@@ -11,7 +11,18 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.70.0`.
+The current semantic contract version is `1.71.0`.
+
+Contract `1.71.0` adds the closed Agent approval-checkpoint API. Authorized
+execution readers can list or get checkpoints, while an `execution:write`
+caller can submit one `approved` or `denied` decision with a caller-owned
+idempotency key and the exact `x-a3s-expected-version`. A new decision returns
+`202`; an exact replay returns `200`. Checkpoints expose immutable provider-run,
+invocation-profile, Tool, request-digest, authorization, decision, resume-command,
+version, and expiry evidence, but never Tool payload or Secret material. Agent
+execution responses admit `awaiting_approval`, and the closed semantic event
+union admits `approval_resolved`. Denial, one-day expiry, cancellation, provider
+restart, retention gaps, and mismatched resume evidence fail closed.
 
 Contract `1.70.0` adds the nullable closed immutable
 `HarnessInvocationProfile` to Agent execution responses after dispatch binds

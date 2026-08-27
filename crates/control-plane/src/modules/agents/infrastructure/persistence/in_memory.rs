@@ -1,6 +1,6 @@
 use crate::modules::agents::domain::{
-    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunWrite,
-    AgentConversation, AgentConversationStatus, AgentConversationWrite,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
+    AgentCodeRunWrite, AgentConversation, AgentConversationStatus, AgentConversationWrite,
     AgentConversationWriteReference, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
     AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionEventsWrite,
     AgentExecutionEventsWriteReference, AgentExecutionWrite, AgentExecutionWriteReference,
@@ -9,14 +9,15 @@ use crate::modules::agents::domain::{
     StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
-    ProjectId, RepositoryError,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, EnvironmentId,
+    IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
+mod approval_writes;
 mod provider_event_writes;
 
 #[derive(Default)]
@@ -28,6 +29,7 @@ pub struct InMemoryAgentRepository {
 struct State {
     conversations: BTreeMap<(OrganizationId, AgentConversationId), AgentConversation>,
     executions: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecution>,
+    checkpoints: BTreeMap<(OrganizationId, AgentApprovalCheckpointId), AgentApprovalCheckpoint>,
     change_sets: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecutionChangeSet>,
     events: BTreeMap<(OrganizationId, AgentConversationId, u64), AgentExecutionEvent>,
     idempotency: BTreeMap<(String, String), IdempotencyEntry>,
@@ -47,6 +49,7 @@ enum IdempotencyResponse {
     Events(AgentExecutionEventsWriteReference),
     CodeEvents(NodeCodeAgentEventReceiptV1),
     ProviderEvents(NodeAgentProviderEventReceiptV1),
+    Approval(OrganizationId, AgentApprovalCheckpointId),
 }
 
 impl InMemoryAgentRepository {

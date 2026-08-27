@@ -3,11 +3,12 @@ use super::types::{
 };
 use super::*;
 use crate::modules::agents::domain::{
-    AgentCodeRunBinding, AgentConversation, AgentConversationCreated, AgentEventContent,
-    AgentExecution, AgentExecutionCancellationRequested, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentExecutionStarted, AgentProviderProfileBinding,
-    AgentReleaseBinding, BindAgentCodeRunWrite, CreateAgentConversationWrite, IAgentRepository,
-    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpointStatus, AgentCodeRunBinding,
+    AgentConversation, AgentConversationCreated, AgentEventContent, AgentExecution,
+    AgentExecutionCancellationRequested, AgentExecutionEventDraft, AgentExecutionEventKind,
+    AgentExecutionStarted, AgentProviderProfileBinding, AgentReleaseBinding, BindAgentCodeRunWrite,
+    CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
+    StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::agents::BuiltInAgentExecutionProviderRegistry;
@@ -22,31 +23,41 @@ use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId,
     BuildRunId, DeploymentId, EnrollmentTokenId, EnvironmentId, IdempotencyRequest, NodeId,
-    OperationId, OrganizationId, ProjectId, Sha256Digest, WorkloadId, WorkloadReplicaId,
-    WorkloadRevisionId,
+    OperationId, OrganizationId, PrincipalId, ProjectId, Sha256Digest, WorkloadId,
+    WorkloadReplicaId, WorkloadRevisionId,
 };
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
     AgentProtocolRunIdentityV1, AgentProviderCapabilityV1, AgentProviderCommandReceiptV1,
-    AgentProviderCommandV1, AgentProviderProfile, AgentProviderRunStateV1, DomainEventEnvelope,
-    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
-    HarnessWorkspaceBindingV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
-    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
-    RuntimeObservationReport, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
-    REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
+    AgentProviderCommandV1, AgentProviderEventPageV1, AgentProviderEventRecordV1,
+    AgentProviderProfile, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
+    AgentProviderToolPayloadIdentityV1, DomainEventEnvelope, HarnessAgentReleaseBindingV1,
+    HarnessInvocationProfileV1, HarnessProviderBindingV1, HarnessToolBindingV1,
+    HarnessWorkspaceBindingV1, NodeAgentProviderEventBatchV1, NodeCommandAck, NodeCommandEnvelope,
+    NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
     RuntimeFeature, RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod approval_tests;
+
 #[test]
 fn agent_flow_uses_the_provider_contract_without_owning_a_run_lifecycle() {
-    let source = [include_str!("runtime.rs"), include_str!("recovery.rs")].join("\n");
+    let source = [
+        include_str!("approval.rs"),
+        include_str!("binding.rs"),
+        include_str!("recovery.rs"),
+        include_str!("runtime.rs"),
+    ]
+    .join("\n");
     assert!(source.contains("NodeCommandPayload::AgentProviderCommand"));
     assert!(source.contains("NodeCommandPayload::CodeAgentCommand"));
     assert!(source.contains("AgentProviderCommandV1"));
@@ -391,6 +402,7 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
 enum AgentCommandKind {
     Start,
     Recover,
+    Resume,
 }
 
 async fn prepare_bound_execution(
@@ -415,6 +427,25 @@ async fn prepare_bound_execution_with_provider(
     node_id: NodeId,
     requested_at: chrono::DateTime<Utc>,
     provider: AgentProviderProfileBinding,
+) -> (AgentExecution, AgentCodeRunBinding) {
+    prepare_bound_execution_with_provider_and_tools(
+        agents,
+        organization_id,
+        node_id,
+        requested_at,
+        provider,
+        Vec::new(),
+    )
+    .await
+}
+
+async fn prepare_bound_execution_with_provider_and_tools(
+    agents: &InMemoryAgentRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    requested_at: chrono::DateTime<Utc>,
+    provider: AgentProviderProfileBinding,
+    tools: Vec<HarnessToolBindingV1>,
 ) -> (AgentExecution, AgentCodeRunBinding) {
     let conversation = AgentConversation::create(
         organization_id,
@@ -476,6 +507,18 @@ async fn prepare_bound_execution_with_provider(
     let workload_revision_id = WorkloadRevisionId::new();
     let runtime_spec_digest =
         Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Runtime digest");
+    let mut required_capabilities = vec![
+        AgentProviderCapabilityV1::Cancellation,
+        AgentProviderCapabilityV1::Cleanup,
+        AgentProviderCapabilityV1::EventPages,
+    ];
+    if !tools.is_empty() {
+        required_capabilities.push(AgentProviderCapabilityV1::ToolCalls);
+    }
+    if tools.iter().any(|tool| tool.approval_required) {
+        required_capabilities.push(AgentProviderCapabilityV1::PauseResume);
+    }
+    required_capabilities.sort_by_key(|capability| capability.as_str());
     let invocation = HarnessInvocationProfileV1 {
         schema: HarnessInvocationProfileV1::SCHEMA.into(),
         agent: HarnessAgentReleaseBindingV1 {
@@ -506,12 +549,8 @@ async fn prepare_bound_execution_with_provider(
         mcp_servers: Vec::new(),
         models: Vec::new(),
         secrets: Vec::new(),
-        tools: Vec::new(),
-        required_capabilities: vec![
-            AgentProviderCapabilityV1::Cancellation,
-            AgentProviderCapabilityV1::Cleanup,
-            AgentProviderCapabilityV1::EventPages,
-        ],
+        tools,
+        required_capabilities,
     };
     let binding = AgentCodeRunBinding::new_with_provider(
         provider.clone(),
@@ -717,6 +756,9 @@ async fn lease_and_ack_code_command(
         ) | (
             AgentCommandKind::Recover,
             AgentProviderCommandV1::Recover { .. }
+        ) | (
+            AgentCommandKind::Resume,
+            AgentProviderCommandV1::Resume { .. }
         )
     ));
     let earliest_evidence_at = envelope
@@ -724,10 +766,14 @@ async fn lease_and_ack_code_command(
         .checked_add_signed(Duration::milliseconds(1))
         .expect("command evidence timestamp");
     let completed_at = canonical_timestamp(Utc::now().max(earliest_evidence_at));
+    let receipt_state = match expected_kind {
+        AgentCommandKind::Start | AgentCommandKind::Recover => AgentProviderRunStateV1::Created,
+        AgentCommandKind::Resume => AgentProviderRunStateV1::Executing,
+    };
     let receipt = AgentProviderCommandReceiptV1::accepted(
         &binding.profile().expect("provider profile"),
         command,
-        AgentProviderRunStateV1::Created,
+        receipt_state,
         u64::try_from(completed_at.timestamp_millis()).expect("command completion timestamp"),
         false,
     )

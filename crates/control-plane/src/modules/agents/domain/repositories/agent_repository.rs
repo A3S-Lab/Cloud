@@ -1,7 +1,7 @@
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentExecution, AgentExecutionChangeSet,
     AgentExecutionEvent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
-    MAX_AGENT_EVENTS_PER_APPEND,
+    IAgentApprovalCheckpointRepository, MAX_AGENT_EVENTS_PER_APPEND,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest,
@@ -412,7 +412,7 @@ pub struct AgentExecutionEventsWriteReference {
 }
 
 #[async_trait]
-pub trait IAgentRepository: Send + Sync {
+pub trait IAgentRepository: IAgentApprovalCheckpointRepository + Send + Sync {
     async fn create_conversation(
         &self,
         write: CreateAgentConversationWrite,

@@ -67,6 +67,44 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct AgentApprovalCheckpoints => "agent_approval_checkpoints" {
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        conversation_id: Uuid => "conversation_id",
+        execution_id: Uuid => "execution_id",
+        id: Uuid => "id",
+        provider_run_identity_digest: String => "provider_run_identity_digest",
+        invocation_profile_digest: String => "invocation_profile_digest",
+        source_event_sequence: u64 => "source_event_sequence",
+        call_id: String => "call_id",
+        tool_name: String => "tool_name",
+        tool_revision: String => "tool_revision",
+        tool_contract_digest: String => "tool_contract_digest",
+        request_digest: String => "request_digest",
+        request_size_bytes: u64 => "request_size_bytes",
+        request_media_type: String => "request_media_type",
+        status: String => "status",
+        decision_id: Option<Uuid> => "decision_id",
+        outcome: Option<String> => "outcome",
+        decided_by: Option<Uuid> => "decided_by",
+        authorization_decision_id: Option<String> => "authorization_decision_id",
+        authorization_decision_digest: Option<String> => "authorization_decision_digest",
+        reason: Option<String> => "reason",
+        decision_digest: Option<String> => "decision_digest",
+        resume_command_id: Option<Uuid> => "resume_command_id",
+        resume_command_digest: Option<String> => "resume_command_digest",
+        aggregate_version: u64 => "aggregate_version",
+        requested_at: DateTime<Utc> => "requested_at",
+        expires_at: DateTime<Utc> => "expires_at",
+        updated_at: DateTime<Utc> => "updated_at",
+        decided_at: Option<DateTime<Utc>> => "decided_at",
+        resumed_at: Option<DateTime<Utc>> => "resumed_at",
+        cancelled_at: Option<DateTime<Utc>> => "cancelled_at",
+    }
+}
+
+orm_table! {
     pub(super) struct AgentExecutionEvents => "agent_execution_events" {
         organization_id: Uuid => "organization_id",
         conversation_id: Uuid => "conversation_id",

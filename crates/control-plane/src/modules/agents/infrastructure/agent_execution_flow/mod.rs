@@ -1,3 +1,5 @@
+mod approval;
+mod binding;
 mod recovery;
 mod runtime;
 mod types;

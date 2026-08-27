@@ -6,6 +6,8 @@ const MAX_PROVIDER_PROMPT_BYTES: usize = 1024 * 1024;
 
 pub const AGENT_PROVIDER_COMMAND_HTTP_PATH_V1: &str = "/v1/agent-provider/commands";
 pub const AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES: usize = 64 * 1024;
+/// Fixed v1 expiry policy for approval-required Tool requests.
+pub const AGENT_PROVIDER_TOOL_APPROVAL_TTL_MS_V1: u64 = 86_400_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,13 +15,159 @@ pub enum AgentProviderRunStateV1 {
     Created,
     Planning,
     Executing,
+    AwaitingApproval,
     Verifying,
     Completed,
     Failed,
     Cancelled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProviderApprovalOutcomeV1 {
+    Approved,
+    Denied,
+    Expired,
+}
+
+impl AgentProviderApprovalOutcomeV1 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Denied => "denied",
+            Self::Expired => "expired",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "approved" => Ok(Self::Approved),
+            "denied" => Ok(Self::Denied),
+            "expired" => Ok(Self::Expired),
+            _ => Err(format!(
+                "unsupported Agent provider approval outcome {value:?}"
+            )),
+        }
+    }
+}
+
+/// One immutable Cloud decision for one approval-required provider Tool call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentProviderApprovalDecisionV1 {
+    pub schema: String,
+    pub decision_id: String,
+    pub checkpoint_id: String,
+    pub run_identity_digest: String,
+    pub call_id: String,
+    pub tool: super::HarnessToolBindingV1,
+    pub request_digest: String,
+    pub outcome: AgentProviderApprovalOutcomeV1,
+    pub decided_at_ms: u64,
+}
+
+impl AgentProviderApprovalDecisionV1 {
+    pub const SCHEMA: &'static str = "a3s.cloud.agent-provider-approval-decision.v1";
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        decision_id: String,
+        checkpoint_id: String,
+        identity: &AgentProviderRunIdentityV1,
+        call_id: String,
+        tool: super::HarnessToolBindingV1,
+        request_digest: String,
+        outcome: AgentProviderApprovalOutcomeV1,
+        decided_at_ms: u64,
+    ) -> Result<Self, String> {
+        let decision = Self {
+            schema: Self::SCHEMA.into(),
+            decision_id,
+            checkpoint_id,
+            run_identity_digest: identity.digest()?,
+            call_id,
+            tool,
+            request_digest,
+            outcome,
+            decided_at_ms,
+        };
+        decision.validate()?;
+        Ok(decision)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported Agent provider approval decision schema {:?}",
+                self.schema
+            ));
+        }
+        validate_line(
+            "Agent provider approval decision ID",
+            &self.decision_id,
+            256,
+        )?;
+        validate_line(
+            "Agent provider approval checkpoint ID",
+            &self.checkpoint_id,
+            256,
+        )?;
+        validate_digest(
+            "Agent provider approval run identity digest",
+            &self.run_identity_digest,
+        )?;
+        validate_line("Agent provider approval Tool call ID", &self.call_id, 256)?;
+        self.tool.validate()?;
+        if !self.tool.approval_required {
+            return Err("Agent provider approval decision targets a Tool without approval".into());
+        }
+        validate_digest(
+            "Agent provider approval Tool request digest",
+            &self.request_digest,
+        )?;
+        if self.decided_at_ms == 0 {
+            return Err("Agent provider approval decision time must be positive".into());
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<String, String> {
+        self.validate()?;
+        let encoded = serde_json::to_vec(self).map_err(|error| {
+            format!("could not encode Agent provider approval decision: {error}")
+        })?;
+        Ok(format!("sha256:{:x}", Sha256::digest(encoded)))
+    }
+}
+
 impl AgentProviderRunStateV1 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Planning => "planning",
+            Self::Executing => "executing",
+            Self::AwaitingApproval => "awaiting_approval",
+            Self::Verifying => "verifying",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "created" => Ok(Self::Created),
+            "planning" => Ok(Self::Planning),
+            "executing" => Ok(Self::Executing),
+            "awaiting_approval" => Ok(Self::AwaitingApproval),
+            "verifying" => Ok(Self::Verifying),
+            "completed" => Ok(Self::Completed),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(format!("unsupported Agent provider run state {value:?}")),
+        }
+    }
+
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
     }
@@ -283,12 +431,57 @@ impl AgentProviderRunRecoverV1 {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentProviderRunResumeV1 {
+    pub schema: String,
+    pub request_id: String,
+    pub identity: AgentProviderRunIdentityV1,
+    pub decision: AgentProviderApprovalDecisionV1,
+}
+
+impl AgentProviderRunResumeV1 {
+    pub const SCHEMA: &'static str = "a3s.cloud.agent-provider-run-resume.v1";
+
+    pub fn new(
+        request_id: String,
+        identity: AgentProviderRunIdentityV1,
+        decision: AgentProviderApprovalDecisionV1,
+    ) -> Result<Self, String> {
+        let request = Self {
+            schema: Self::SCHEMA.into(),
+            request_id,
+            identity,
+            decision,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != Self::SCHEMA {
+            return Err(format!(
+                "unsupported Agent provider resume schema {:?}",
+                self.schema
+            ));
+        }
+        validate_line("Agent provider request ID", &self.request_id, 256)?;
+        self.identity.validate()?;
+        self.decision.validate()?;
+        if self.decision.run_identity_digest != self.identity.digest()? {
+            return Err("Agent provider approval decision targets another run identity".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentProviderCommandActionV1 {
     Start,
     Cancel,
     Recover,
+    Resume,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -297,6 +490,7 @@ pub enum AgentProviderCommandV1 {
     Start { request: AgentProviderRunStartV1 },
     Cancel { request: AgentProviderRunCancelV1 },
     Recover { request: AgentProviderRunRecoverV1 },
+    Resume { request: AgentProviderRunResumeV1 },
 }
 
 impl AgentProviderCommandV1 {
@@ -307,6 +501,7 @@ impl AgentProviderCommandV1 {
             Self::Start { .. } => AgentProviderCommandActionV1::Start,
             Self::Cancel { .. } => AgentProviderCommandActionV1::Cancel,
             Self::Recover { .. } => AgentProviderCommandActionV1::Recover,
+            Self::Resume { .. } => AgentProviderCommandActionV1::Resume,
         }
     }
 
@@ -315,6 +510,7 @@ impl AgentProviderCommandV1 {
             Self::Start { request } => &request.identity,
             Self::Cancel { request } => &request.identity,
             Self::Recover { request } => &request.identity,
+            Self::Resume { request } => &request.identity,
         }
     }
 
@@ -323,6 +519,7 @@ impl AgentProviderCommandV1 {
             Self::Start { request } => &request.request_id,
             Self::Cancel { request } => &request.request_id,
             Self::Recover { request } => &request.request_id,
+            Self::Resume { request } => &request.request_id,
         }
     }
 
@@ -331,6 +528,7 @@ impl AgentProviderCommandV1 {
             Self::Start { request } => request.validate(),
             Self::Cancel { request } => request.validate(),
             Self::Recover { request } => request.validate(),
+            Self::Resume { request } => request.validate(),
         }
     }
 
@@ -351,6 +549,7 @@ impl AgentProviderCommandV1 {
             Self::Start { .. } => AgentProviderCapabilityV1::EventPages,
             Self::Cancel { .. } => AgentProviderCapabilityV1::Cancellation,
             Self::Recover { .. } => AgentProviderCapabilityV1::Recovery,
+            Self::Resume { .. } => AgentProviderCapabilityV1::PauseResume,
         };
         if !profile.supports(required) {
             return Err(format!(
@@ -436,6 +635,18 @@ impl AgentProviderCommandReceiptV1 {
             || self.action != command.action()
         {
             return Err("Agent provider receipt changed its accepted command identity".into());
+        }
+        if matches!(command, AgentProviderCommandV1::Resume { .. })
+            && matches!(
+                self.state,
+                AgentProviderRunStateV1::Created
+                    | AgentProviderRunStateV1::Planning
+                    | AgentProviderRunStateV1::AwaitingApproval
+            )
+        {
+            return Err(
+                "Agent provider resume receipt did not leave the approval checkpoint".into(),
+            );
         }
         Ok(())
     }

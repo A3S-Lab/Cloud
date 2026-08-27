@@ -548,6 +548,7 @@ export interface AgentReleaseBinding {
 export type AgentExecutionStatus =
   | 'pending'
   | 'running'
+  | 'awaiting_approval'
   | 'cancelling'
   | 'succeeded'
   | 'failed'
@@ -683,6 +684,63 @@ export interface AgentExecutionMutationResult {
   replayed: boolean;
 }
 
+export type AgentApprovalCheckpointStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'resumed'
+  | 'cancelled';
+
+export type AgentApprovalOutcome = 'approved' | 'denied' | 'expired';
+
+export interface AgentApprovalCheckpoint {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  conversationId: string;
+  executionId: string;
+  id: string;
+  providerRunIdentityDigest: string;
+  invocationProfileDigest: string;
+  sourceEventSequence: number;
+  callId: string;
+  tool: HarnessToolBinding;
+  request: AgentToolPayloadIdentity;
+  status: AgentApprovalCheckpointStatus;
+  decisionId: string | null;
+  outcome: AgentApprovalOutcome | null;
+  decidedBy: string | null;
+  authorizationDecisionId: string | null;
+  authorizationDecisionDigest: string | null;
+  reason: string | null;
+  decisionDigest: string | null;
+  resumeCommandId: string | null;
+  resumeCommandDigest: string | null;
+  aggregateVersion: number;
+  requestedAt: string;
+  expiresAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+  resumedAt: string | null;
+  cancelledAt: string | null;
+}
+
+export interface ListAgentApprovalCheckpointsOptions {
+  status?: AgentApprovalCheckpointStatus;
+  limit?: number;
+}
+
+export interface DecideAgentApprovalCheckpointInput {
+  outcome: Exclude<AgentApprovalOutcome, 'expired'>;
+  reason?: string | null;
+}
+
+export interface AgentApprovalCheckpointMutationResult {
+  checkpoint: AgentApprovalCheckpoint;
+  replayed: boolean;
+}
+
 export type AgentProtocolTerminalRunState = 'completed' | 'failed' | 'cancelled';
 
 export interface AgentProtocolRunIdentityV1 {
@@ -721,6 +779,7 @@ export type AgentExecutionEventKind =
   | 'model_output'
   | 'tool_request'
   | 'tool_result'
+  | 'approval_resolved'
   | 'execution_failed'
   | 'execution_completed'
   | 'execution_cancelled';
@@ -745,6 +804,28 @@ export interface AgentToolResultEventContent {
   result: AgentToolPayloadIdentity;
 }
 
+interface AgentApprovalResolutionEventContentBase {
+  checkpointId: string;
+  decisionId: string;
+  decisionDigest: string;
+}
+
+export type AgentApprovalResolutionEventContent = AgentApprovalResolutionEventContentBase &
+  (
+    | {
+        outcome: 'approved' | 'denied';
+        decidedBy: string;
+        authorizationDecision: { id: string; digest: string };
+        reason: string | null;
+      }
+    | {
+        outcome: 'expired';
+        decidedBy: null;
+        authorizationDecision: null;
+        reason: null;
+      }
+  );
+
 interface AgentExecutionEventBase {
   organizationId: string;
   conversationId: string;
@@ -761,6 +842,7 @@ export type AgentExecutionEvent = AgentExecutionEventBase &
     | { kind: 'model_output'; content: { text: string } }
     | { kind: 'tool_request'; content: AgentToolRequestEventContent }
     | { kind: 'tool_result'; content: AgentToolResultEventContent }
+    | { kind: 'approval_resolved'; content: AgentApprovalResolutionEventContent }
     | { kind: 'execution_failed'; content: { reason: string } }
     | { kind: 'execution_completed' | 'execution_cancelled'; content: Record<string, never> }
   );

@@ -3,8 +3,9 @@ use crate::modules::agents::application::{
     StartAgentExecutionResult,
 };
 use crate::modules::agents::domain::{
-    AgentConversation, AgentConversationStatus, AgentExecution, AgentExecutionChangeSet,
-    AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus,
+    AgentApprovalCheckpoint, AgentApprovalCheckpointStatus, AgentConversation,
+    AgentConversationStatus, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
+    AgentExecutionEventKind, AgentExecutionStatus,
 };
 use crate::presentation::{format_sequence_cursor, SequencePage, SequenceRecord};
 use chrono::{DateTime, Utc};
@@ -170,6 +171,107 @@ pub struct AgentReleaseBindingResponse {
     pub artifact_digest: String,
     pub artifact_media_type: String,
     pub artifact_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentApprovalCheckpointMutationResponse {
+    pub checkpoint: AgentApprovalCheckpointResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::agents::application::DecideAgentApprovalCheckpointResult>
+    for AgentApprovalCheckpointMutationResponse
+{
+    fn from(
+        result: crate::modules::agents::application::DecideAgentApprovalCheckpointResult,
+    ) -> Self {
+        Self {
+            checkpoint: result.checkpoint.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentApprovalCheckpointResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub conversation_id: Uuid,
+    pub execution_id: Uuid,
+    pub id: Uuid,
+    pub provider_run_identity_digest: String,
+    pub invocation_profile_digest: String,
+    pub source_event_sequence: u64,
+    pub call_id: String,
+    pub tool: a3s_cloud_contracts::HarnessToolBindingV1,
+    pub request: a3s_cloud_contracts::AgentProviderToolPayloadIdentityV1,
+    pub status: AgentApprovalCheckpointStatus,
+    pub decision_id: Option<Uuid>,
+    pub outcome: Option<a3s_cloud_contracts::AgentProviderApprovalOutcomeV1>,
+    pub decided_by: Option<Uuid>,
+    pub authorization_decision_id: Option<String>,
+    pub authorization_decision_digest: Option<String>,
+    pub reason: Option<String>,
+    pub decision_digest: Option<String>,
+    pub resume_command_id: Option<Uuid>,
+    pub resume_command_digest: Option<String>,
+    pub aggregate_version: u64,
+    pub requested_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub decided_at: Option<DateTime<Utc>>,
+    pub resumed_at: Option<DateTime<Utc>>,
+    pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+impl From<AgentApprovalCheckpoint> for AgentApprovalCheckpointResponse {
+    fn from(checkpoint: AgentApprovalCheckpoint) -> Self {
+        let (authorization_decision_id, authorization_decision_digest) = checkpoint
+            .authorization_decision
+            .map(|decision| (Some(decision.id), Some(decision.digest.as_str().to_owned())))
+            .unwrap_or((None, None));
+        Self {
+            organization_id: checkpoint.organization_id.as_uuid(),
+            project_id: checkpoint.project_id.as_uuid(),
+            environment_id: checkpoint.environment_id.as_uuid(),
+            conversation_id: checkpoint.conversation_id.as_uuid(),
+            execution_id: checkpoint.execution_id.as_uuid(),
+            id: checkpoint.id.as_uuid(),
+            provider_run_identity_digest: checkpoint
+                .provider_run_identity_digest
+                .as_str()
+                .to_owned(),
+            invocation_profile_digest: checkpoint.invocation_profile_digest.as_str().to_owned(),
+            source_event_sequence: checkpoint.source_event_sequence,
+            call_id: checkpoint.call_id,
+            tool: checkpoint.tool,
+            request: checkpoint.request,
+            status: checkpoint.status,
+            decision_id: checkpoint.decision_id.map(|value| value.as_uuid()),
+            outcome: checkpoint.outcome,
+            decided_by: checkpoint.decided_by.map(|value| value.as_uuid()),
+            authorization_decision_id,
+            authorization_decision_digest,
+            reason: checkpoint.reason,
+            decision_digest: checkpoint
+                .decision_digest
+                .map(|value| value.as_str().to_owned()),
+            resume_command_id: checkpoint.resume_command_id.map(|value| value.as_uuid()),
+            resume_command_digest: checkpoint
+                .resume_command_digest
+                .map(|value| value.as_str().to_owned()),
+            aggregate_version: checkpoint.aggregate_version,
+            requested_at: checkpoint.requested_at,
+            expires_at: checkpoint.expires_at,
+            updated_at: checkpoint.updated_at,
+            decided_at: checkpoint.decided_at,
+            resumed_at: checkpoint.resumed_at,
+            cancelled_at: checkpoint.cancelled_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

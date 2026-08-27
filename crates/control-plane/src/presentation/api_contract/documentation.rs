@@ -676,6 +676,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Cancel an agent execution",
         ),
         (
+            "/approval-checkpoints/{checkpoint_id}/decision",
+            "Decide an agent Tool approval checkpoint",
+        ),
+        (
             "/sessions/{session_id}/close",
             "Close an application session",
         ),
@@ -821,6 +825,7 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "environments" => ("environment", "environments"),
         "agent-conversations" => ("agent conversation", "agent conversations"),
         "agent-executions" => ("agent execution", "agent executions"),
+        "approval-checkpoints" => ("agent approval checkpoint", "agent approval checkpoints"),
         "executions" => ("execution", "executions"),
         "events" => ("event", "events"),
         "api-tokens" => ("API token", "API tokens"),

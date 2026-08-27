@@ -94,6 +94,7 @@ pub(super) async fn begin(
         command_id,
         acknowledgement_deadline: node_command.not_after,
         recovery_checkpoint_run_id: Some(checkpoint_run_id),
+        approval: None,
     };
     observe_pending(
         runtime,

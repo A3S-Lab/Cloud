@@ -25,10 +25,12 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         "AgentToolRequestEventContent",
         "AgentToolResultEventContent",
         "AgentExecutionFailureEventContent",
+        "AgentApprovalResolutionEventContent",
         "AgentExecutionRequestedEvent",
         "AgentModelOutputEvent",
         "AgentToolRequestEvent",
         "AgentToolResultEvent",
+        "AgentApprovalResolvedEvent",
         "AgentExecutionFailedEvent",
         "AgentExecutionCompletedEvent",
         "AgentExecutionCancelledEvent",
@@ -39,6 +41,8 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         "AgentExecutionChangeSet",
         "AgentExecutionEvent",
         "AgentExecutionEventPage",
+        "AgentApprovalCheckpoint",
+        "AgentApprovalCheckpointMutation",
     ] {
         assert_eq!(
             schemas[name]["additionalProperties"], false,
@@ -105,7 +109,7 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         schemas["AgentExecutionEvent"]["oneOf"]
             .as_array()
             .map(Vec::len),
-        Some(7),
+        Some(8),
         "AgentExecutionEvent must expose exactly the documented event variants"
     );
     for (kind, variant) in [
@@ -113,6 +117,7 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         ("model_output", "AgentModelOutputEvent"),
         ("tool_request", "AgentToolRequestEvent"),
         ("tool_result", "AgentToolResultEvent"),
+        ("approval_resolved", "AgentApprovalResolvedEvent"),
         ("execution_failed", "AgentExecutionFailedEvent"),
         ("execution_completed", "AgentExecutionCompletedEvent"),
         ("execution_cancelled", "AgentExecutionCancelledEvent"),
@@ -168,6 +173,26 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         schemas["AgentExecutionEventPage"]["properties"]["records"]["items"]["$ref"],
         "#/components/schemas/AgentExecutionEvent"
     );
+    assert!(schemas["AgentExecution"]["properties"]["status"]["enum"]
+        .as_array()
+        .expect("Agent execution status values")
+        .contains(&json!("awaiting_approval")));
+    assert_eq!(
+        schemas["AgentApprovalCheckpoint"]["properties"]["tool"]["$ref"],
+        "#/components/schemas/HarnessToolBinding"
+    );
+    assert_eq!(
+        schemas["AgentApprovalCheckpoint"]["properties"]["request"]["$ref"],
+        "#/components/schemas/AgentToolPayloadIdentity"
+    );
+    for forbidden in ["payload", "body", "secretMaterial"] {
+        assert!(
+            schemas["AgentApprovalCheckpoint"]["properties"]
+                .get(forbidden)
+                .is_none(),
+            "Agent approval checkpoint exposed {forbidden}"
+        );
+    }
 
     let conversation_collection = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"];
@@ -225,6 +250,58 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
     assert_eq!(
         change_set["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionChangeSetSuccess200"
+    );
+    let approvals = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints"]
+        ["get"];
+    assert_eq!(
+        approvals["responses"]["200"]["$ref"],
+        "#/components/responses/AgentApprovalCheckpointListSuccess200"
+    );
+    assert_eq!(
+        document["components"]["schemas"]["AgentApprovalCheckpointList"]["maxItems"],
+        1_000
+    );
+    assert_eq!(
+        document["components"]["schemas"]["AgentApprovalCheckpoint"]["properties"]["reason"]
+            ["x-a3s-max-utf8-bytes"],
+        1_024
+    );
+    let approval = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}"]
+        ["get"];
+    assert_eq!(
+        approval["responses"]["200"]["$ref"],
+        "#/components/responses/AgentApprovalCheckpointSuccess200"
+    );
+    let decision = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision"]
+        ["post"];
+    for status in ["200", "202"] {
+        assert_eq!(
+            decision["responses"][status]["$ref"],
+            format!("#/components/responses/AgentApprovalCheckpointMutationSuccess{status}")
+        );
+    }
+    let decision_parameters = decision["parameters"]
+        .as_array()
+        .expect("Agent approval decision parameters");
+    for header in ["idempotency-key", "x-a3s-expected-version"] {
+        assert!(decision_parameters.iter().any(|parameter| {
+            parameter["in"] == "header"
+                && parameter["name"] == header
+                && parameter["required"] == true
+        }));
+    }
+    assert_eq!(
+        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["outcome"]
+            ["enum"],
+        json!(["approved", "denied"])
+    );
+    assert_eq!(
+        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]
+            ["x-a3s-max-utf8-bytes"],
+        1_024
     );
     let events = &document["paths"]
         ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]["get"];

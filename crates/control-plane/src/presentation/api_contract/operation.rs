@@ -229,6 +229,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             }),
         );
     }
+    if method == "post" && is_agent_approval_decision_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Agent approval checkpoint version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
     if path == "/webhooks/github" {
         for name in ["x-github-event", "x-github-delivery", "x-hub-signature-256"] {
             upsert_parameter(
@@ -251,6 +263,25 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
     let is_audit_record_query =
         path.ends_with("/audit-records") || path.ends_with("/audit-records/export");
     let has_audit_filters = is_audit_record_query || is_audit_export_manifest;
+    if method == "get" && is_agent_approval_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "status", "in": "query", "required": false,
+                "schema": {
+                    "type": "string",
+                    "enum": ["pending", "approved", "denied", "expired", "resumed", "cancelled"]
+                }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 50 }
+            }),
+        );
+    }
     if is_asset_git_advertisement(path) {
         upsert_parameter(
             parameters,
@@ -1224,7 +1255,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_connector_profile_mutation_path(path)
                 || is_recipient_contact_mutation_path(path)
                 || is_notification_alert_policy_collection_path(path)
-                || is_notification_outbound_subscription_collection_path(path)))
+                || is_notification_outbound_subscription_collection_path(path)
+                || is_agent_approval_decision_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1478,6 +1510,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || path.ends_with("/verify")
         || is_recipient_contact_collection_path(path)
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
+        || is_agent_approval_decision_path(path)
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
@@ -1745,6 +1778,9 @@ fn agent_success_component(method: &str, path: &str, status: u16) -> Option<Stri
     let execution_item = path.ends_with("/agent-executions/{execution_id}");
     let execution_cancel = path.ends_with("/agent-executions/{execution_id}/cancel");
     let execution_change_set = path.ends_with("/agent-executions/{execution_id}/changes");
+    let approval_collection = is_agent_approval_collection_path(path);
+    let approval_item = is_agent_approval_item_path(path);
+    let approval_decision = is_agent_approval_decision_path(path);
     let event_page = path.ends_with("/agent-conversations/{conversation_id}/events");
 
     if method == "get" && conversation_collection {
@@ -1763,11 +1799,29 @@ fn agent_success_component(method: &str, path: &str, status: u16) -> Option<Stri
         Some(format!("AgentExecutionMutationSuccess{status}"))
     } else if method == "get" && execution_change_set {
         Some("AgentExecutionChangeSetSuccess200".into())
+    } else if method == "get" && approval_collection {
+        Some("AgentApprovalCheckpointListSuccess200".into())
+    } else if method == "get" && approval_item {
+        Some("AgentApprovalCheckpointSuccess200".into())
+    } else if method == "post" && approval_decision {
+        Some(format!("AgentApprovalCheckpointMutationSuccess{status}"))
     } else if method == "get" && event_page {
         Some("AgentExecutionEventPageSuccess200".into())
     } else {
         None
     }
+}
+
+fn is_agent_approval_collection_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/approval-checkpoints")
+}
+
+fn is_agent_approval_item_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}")
+}
+
+fn is_agent_approval_decision_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision")
 }
 
 fn is_application_request_body_path(path: &str) -> bool {

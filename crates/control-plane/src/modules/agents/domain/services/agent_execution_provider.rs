@@ -1,8 +1,9 @@
 use crate::modules::agents::domain::AgentProviderProfileBinding;
 use a3s_cloud_contracts::{
-    AgentProviderCapabilityNegotiationV1, AgentProviderCapabilityRequirementsV1,
-    AgentProviderCommandV1, AgentProviderRunCancelV1, AgentProviderRunIdentityV1,
-    AgentProviderRunRecoverV1, AgentProviderRunStartV1, HarnessInvocationProfileV1,
+    AgentProviderApprovalDecisionV1, AgentProviderCapabilityNegotiationV1,
+    AgentProviderCapabilityRequirementsV1, AgentProviderCommandV1, AgentProviderRunCancelV1,
+    AgentProviderRunIdentityV1, AgentProviderRunRecoverV1, AgentProviderRunResumeV1,
+    AgentProviderRunStartV1, HarnessInvocationProfileV1,
 };
 
 /// Sole provider-neutral admission port for an Agent execution lifecycle.
@@ -75,6 +76,19 @@ pub trait AgentExecutionProvider: Send + Sync {
     ) -> Result<AgentProviderCommandV1, String> {
         let command = AgentProviderCommandV1::Recover {
             request: AgentProviderRunRecoverV1::new(request_id, identity, checkpoint_run_id)?,
+        };
+        command.validate_for(&self.profile().profile()?)?;
+        Ok(command)
+    }
+
+    fn resume_command(
+        &self,
+        request_id: String,
+        identity: AgentProviderRunIdentityV1,
+        decision: AgentProviderApprovalDecisionV1,
+    ) -> Result<AgentProviderCommandV1, String> {
+        let command = AgentProviderCommandV1::Resume {
+            request: AgentProviderRunResumeV1::new(request_id, identity, decision)?,
         };
         command.validate_for(&self.profile().profile()?)?;
         Ok(command)

@@ -1,8 +1,10 @@
-use super::request::request_identity;
+use super::request::{credential_actor, expected_version, request_identity};
 use crate::modules::agents::application::{
-    CancelAgentExecution, CreateAgentConversation, StartAgentExecution,
+    CancelAgentExecution, CreateAgentConversation, DecideAgentApprovalCheckpoint,
+    StartAgentExecution,
 };
 use crate::modules::agents::presentation::dto::{
+    AgentApprovalCheckpointMutationResponse, AgentApprovalDecisionRequest,
     AgentConversationMutationResponse, AgentExecutionMutationResponse, StartAgentExecutionRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -11,8 +13,8 @@ use crate::modules::identity::presentation::{
     OrganizationTenantGuard,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, EnvironmentId, OrganizationId,
-    ProjectId,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId,
+    EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -26,6 +28,7 @@ use uuid::Uuid;
 pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let start_bus = Arc::clone(&bus);
     let cancel_bus = Arc::clone(&bus);
+    let decide_approval_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::EXECUTION_WRITE])?
@@ -138,6 +141,56 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 BootResponse::json_with_status(
                                     status,
                                     &AgentExecutionMutationResponse::from(result),
+                                )
+                            }
+                            Err(error) => application_error_response(error, request_id),
+                        }
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&decide_approval_bus);
+                    async move {
+                        let body: AgentApprovalDecisionRequest =
+                            request.json_with_content_type()?;
+                        let (idempotency_key, request_id) = request_identity(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let actor = credential_actor(&request)?;
+                        match bus
+                            .execute(DecideAgentApprovalCheckpoint {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                execution_id: AgentExecutionId::from_uuid(
+                                    request.param_as::<Uuid>("execution_id")?,
+                                ),
+                                checkpoint_id: AgentApprovalCheckpointId::from_uuid(
+                                    request.param_as::<Uuid>("checkpoint_id")?,
+                                ),
+                                expected_version: expected_version(&request)?,
+                                outcome: body.outcome.into(),
+                                reason: body.reason,
+                                resource_access,
+                                actor_principal_id: actor.principal_id,
+                                credential_id: actor.credential_id,
+                                actor_is_platform_admin: actor.is_platform_admin,
+                                idempotency_key,
+                                request_id,
+                                requested_at: Utc::now(),
+                            })
+                            .await?
+                        {
+                            Ok(result) => {
+                                let status = if result.replayed { 200 } else { 202 };
+                                BootResponse::json_with_status(
+                                    status,
+                                    &AgentApprovalCheckpointMutationResponse::from(result),
                                 )
                             }
                             Err(error) => application_error_response(error, request_id),

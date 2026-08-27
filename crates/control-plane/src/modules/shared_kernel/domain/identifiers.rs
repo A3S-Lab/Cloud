@@ -115,6 +115,8 @@ identifier!(AssetId);
 identifier!(AssetReleaseId);
 identifier!(AgentConversationId);
 identifier!(AgentExecutionId);
+identifier!(AgentApprovalCheckpointId);
+identifier!(AgentApprovalDecisionId);
 identifier!(OntologyId);
 identifier!(OntologyRevisionId);
 identifier!(WorkflowDefinitionId);

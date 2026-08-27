@@ -1,3 +1,6 @@
+mod approval_queries;
+mod approval_rows;
+mod approval_writes;
 mod code_agent_writes;
 mod provider_event_writes;
 mod queries;
@@ -7,16 +10,20 @@ mod writes;
 
 use crate::infrastructure::{idempotency_replay, transaction_error};
 use crate::modules::agents::domain::{
-    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunWrite,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
+    AgentApprovalCheckpointStatus, AgentApprovalCheckpointWrite, AgentCodeRunWrite,
     AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
     AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
     AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
-    CreateAgentConversationWrite, IAgentRepository, RecoverAgentCodeRunWrite,
-    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    CancelActiveAgentApprovalCheckpointWrite, CreateAgentConversationWrite,
+    DecideAgentApprovalCheckpointWrite, ExpireAgentApprovalCheckpointWrite,
+    IAgentApprovalCheckpointRepository, IAgentRepository, RecoverAgentCodeRunWrite,
+    RequestAgentExecutionCancellationWrite, ResumeAgentApprovalCheckpointWrite,
+    StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
-    ProjectId, RepositoryError,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, EnvironmentId,
+    IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use a3s_orm::PostgresExecutor;
@@ -25,6 +32,78 @@ use async_trait::async_trait;
 #[derive(Clone)]
 pub struct PostgresAgentRepository {
     executor: PostgresExecutor,
+}
+
+#[async_trait]
+impl IAgentApprovalCheckpointRepository for PostgresAgentRepository {
+    async fn replay_checkpoint_decision(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AgentApprovalCheckpoint>, RepositoryError> {
+        approval_writes::replay_checkpoint_decision(&self.executor, idempotency).await
+    }
+
+    async fn decide_checkpoint(
+        &self,
+        write: DecideAgentApprovalCheckpointWrite,
+    ) -> Result<AgentApprovalCheckpointWrite, RepositoryError> {
+        approval_writes::decide_checkpoint(&self.executor, write).await
+    }
+
+    async fn expire_checkpoint(
+        &self,
+        write: ExpireAgentApprovalCheckpointWrite,
+    ) -> Result<AgentApprovalCheckpointWrite, RepositoryError> {
+        approval_writes::expire_checkpoint(&self.executor, write).await
+    }
+
+    async fn mark_checkpoint_resumed(
+        &self,
+        write: ResumeAgentApprovalCheckpointWrite,
+    ) -> Result<AgentApprovalCheckpointWrite, RepositoryError> {
+        approval_writes::mark_checkpoint_resumed(&self.executor, write).await
+    }
+
+    async fn cancel_active_checkpoint(
+        &self,
+        write: CancelActiveAgentApprovalCheckpointWrite,
+    ) -> Result<Option<AgentApprovalCheckpointWrite>, RepositoryError> {
+        approval_writes::cancel_active_checkpoint(&self.executor, write).await
+    }
+
+    async fn find_checkpoint(
+        &self,
+        organization_id: OrganizationId,
+        checkpoint_id: AgentApprovalCheckpointId,
+    ) -> Result<Option<AgentApprovalCheckpoint>, RepositoryError> {
+        approval_queries::find_checkpoint(&self.executor, organization_id, checkpoint_id).await
+    }
+
+    async fn find_active_checkpoint(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentApprovalCheckpoint>, RepositoryError> {
+        approval_queries::find_active_checkpoint(&self.executor, organization_id, execution_id)
+            .await
+    }
+
+    async fn list_checkpoints(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+        status: Option<AgentApprovalCheckpointStatus>,
+        limit: usize,
+    ) -> Result<Vec<AgentApprovalCheckpoint>, RepositoryError> {
+        approval_queries::list_checkpoints(
+            &self.executor,
+            organization_id,
+            execution_id,
+            status,
+            limit,
+        )
+        .await
+    }
 }
 
 impl PostgresAgentRepository {
@@ -236,6 +315,15 @@ mod tests {
     fn agent_persistence_uses_only_typed_a3s_orm_queries() {
         for (name, source) in [
             ("repository", include_str!("postgres.rs")),
+            (
+                "approval queries",
+                include_str!("postgres/approval_queries.rs"),
+            ),
+            ("approval rows", include_str!("postgres/approval_rows.rs")),
+            (
+                "approval writes",
+                include_str!("postgres/approval_writes.rs"),
+            ),
             ("queries", include_str!("postgres/queries.rs")),
             ("rows", include_str!("postgres/rows.rs")),
             ("schema", include_str!("postgres/schema.rs")),

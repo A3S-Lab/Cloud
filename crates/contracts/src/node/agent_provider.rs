@@ -131,6 +131,12 @@ impl NodeAgentProviderRuntimeBindingV1 {
                     checkpoint_run_id: request.checkpoint_run_id.clone(),
                 },
             },
+            AgentProviderCommandV1::Resume { .. } => {
+                return Err(
+                    "native A3S Code adapter does not support Agent provider resume commands"
+                        .into(),
+                )
+            }
         };
         native
             .validate()

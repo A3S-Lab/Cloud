@@ -11,8 +11,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{
     AgentProtocolChangeSetV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
-    AgentProtocolRunIdentityV1, AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1,
-    AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1, AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
+    AgentProtocolRunIdentityV1, AgentProtocolRunStateV1, AgentProviderRunStateV1,
+    NodeCodeAgentEventBatchV1, AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1,
+    AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
 };
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
@@ -715,7 +716,7 @@ async fn retention_gap_rotates_the_run_and_settles_an_in_flight_checkpoint_batch
         .expect("current execution");
     assert_eq!(
         current.code.expect("current binding").observed_state(),
-        AgentProtocolRunStateV1::Planning
+        AgentProviderRunStateV1::Planning
     );
 }
 

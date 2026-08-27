@@ -69,6 +69,16 @@ impl HarnessInvocationProfileV1 {
         {
             return Err("Harness Tool bindings require the tool_calls capability".into());
         }
+        if self.tools.iter().any(|tool| tool.approval_required)
+            && !self
+                .required_capabilities
+                .contains(&AgentProviderCapabilityV1::PauseResume)
+        {
+            return Err(
+                "approval-required Harness Tool bindings require the pause_resume capability"
+                    .into(),
+            );
+        }
         canonical_json(self)?;
         Ok(())
     }

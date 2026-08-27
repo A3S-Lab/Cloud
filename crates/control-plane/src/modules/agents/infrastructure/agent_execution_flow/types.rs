@@ -1,5 +1,7 @@
 use crate::modules::agents::domain::{AgentCodeRunBinding, AgentExecutionStatus};
-use crate::modules::shared_kernel::domain::{AgentExecutionId, NodeCommandId, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    AgentApprovalCheckpointId, AgentExecutionId, NodeCommandId, OrganizationId,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +52,16 @@ pub(super) struct DispatchedAgentExecution {
     pub acknowledgement_deadline: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_checkpoint_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<DispatchedAgentApproval>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct DispatchedAgentApproval {
+    pub checkpoint_id: AgentApprovalCheckpointId,
+    pub command_id: NodeCommandId,
+    pub acknowledgement_deadline: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -121,6 +121,8 @@ import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import type {
   AddNodePoolMembersInput,
+  AgentApprovalCheckpoint,
+  AgentApprovalCheckpointMutationResult,
   AgentConversation,
   AgentConversationMutationResult,
   AgentExecution,
@@ -153,6 +155,7 @@ import type {
   CreateMembershipInvitationInput,
   CreateNodePoolInput,
   CreateResourceGrantInput,
+  DecideAgentApprovalCheckpointInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
@@ -182,6 +185,7 @@ import type {
   HumanTaskSummary,
   IssueEnrollmentTokenInput,
   ListHumanTasksOptions,
+  ListAgentApprovalCheckpointsOptions,
   ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
@@ -275,10 +279,13 @@ import {
 } from './identity';
 import {
   validateAgentProviderKind,
+  validateAgentApprovalCheckpointList,
+  validateAgentApprovalDecision,
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExecutionTemplateAcl,
   validateExpectedHumanTaskVersion,
+  validateExpectedAgentApprovalCheckpointVersion,
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipInvitationVersion,
   validateExpectedMembershipVersion,
@@ -317,7 +324,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.70.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.71.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -326,6 +333,7 @@ export const MAX_WORKFLOW_RUN_HISTORY_LIMIT = 100;
 export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
 export const MAX_HUMAN_TASK_LIST_LIMIT = 200;
 export const MAX_EXECUTION_TEMPLATE_LIST_LIMIT = 200;
+export const DEFAULT_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT = 50;
 export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
 const HUMAN_TASK_STATUSES: ReadonlySet<HumanTaskStatus> = new Set([
   'pending_activation',
@@ -340,6 +348,7 @@ export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
+  MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT,
   MAX_EXECUTION_TEMPLATE_ACL_BYTES,
   MAX_FORM_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
@@ -358,6 +367,9 @@ export {
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
   validateAgentProviderKind,
+  validateAgentApprovalCheckpointList,
+  validateAgentApprovalDecision,
+  validateExpectedAgentApprovalCheckpointVersion,
   validateExecutionTemplateAcl,
   validateFormDraftInput,
   validateFormVersionControl,
@@ -2835,6 +2847,61 @@ export class CloudApi {
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/agent-executions/${encodeURIComponent(executionId)}/changes`,
       signal
+    );
+  }
+
+  listAgentApprovalCheckpoints(
+    organizationId: string,
+    executionId: string,
+    options: ListAgentApprovalCheckpointsOptions = {},
+    signal?: AbortSignal
+  ): Promise<AgentApprovalCheckpoint[]> {
+    validateAgentApprovalCheckpointList(options);
+    const parameters = new URLSearchParams();
+    if (options.status !== undefined) {
+      parameters.set('status', options.status);
+    }
+    parameters.set('limit', String(options.limit ?? DEFAULT_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT));
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/approval-checkpoints?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  getAgentApprovalCheckpoint(
+    organizationId: string,
+    executionId: string,
+    checkpointId: string,
+    signal?: AbortSignal
+  ): Promise<AgentApprovalCheckpoint> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}` +
+        `/approval-checkpoints/${encodeURIComponent(checkpointId)}`,
+      signal
+    );
+  }
+
+  decideAgentApprovalCheckpoint(
+    organizationId: string,
+    executionId: string,
+    checkpointId: string,
+    input: DecideAgentApprovalCheckpointInput,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentApprovalCheckpointMutationResult> {
+    validateAgentApprovalDecision(input);
+    validateExpectedAgentApprovalCheckpointVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}` +
+        `/approval-checkpoints/${encodeURIComponent(checkpointId)}/decision`,
+      idempotencyKey,
+      input,
+      signal,
+      { 'x-a3s-expected-version': String(expectedVersion) }
     );
   }
 
