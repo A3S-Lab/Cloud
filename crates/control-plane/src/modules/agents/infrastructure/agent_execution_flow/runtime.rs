@@ -241,6 +241,30 @@ pub(super) async fn observe(
                     error,
                 )
             })?;
+        if current.has_same_run_binding(&input.dispatched.prepared.binding) {
+            let process = recovery::active_runtime_process(
+                runtime,
+                &input.dispatched.prepared.binding,
+                Utc::now().max(execution.updated_at),
+            )
+            .await?;
+            let restarted = process.filter(|process| {
+                input
+                    .dispatched
+                    .prepared
+                    .runtime_started_at_ms
+                    .is_some_and(|started_at_ms| started_at_ms != process.started_at_ms)
+            });
+            if let Some(process) = restarted {
+                return begin_provider_recovery(
+                    runtime,
+                    execution,
+                    *input.dispatched,
+                    process.received_at,
+                )
+                .await;
+            }
+        }
         let prepared = if current.has_same_run_binding(&input.dispatched.prepared.binding) {
             (*input.dispatched.prepared).clone()
         } else if current.is_recovery_successor_of(&input.dispatched.prepared.binding, execution.id)
@@ -371,19 +395,13 @@ pub(super) async fn observe(
                     )
                     .await;
                 }
-                let write = runtime
-                    .agents
-                    .recover_code_run(RecoverAgentCodeRunWrite {
-                        organization_id: execution.organization_id,
-                        execution_id: execution.id,
-                        expected_binding: input.dispatched.prepared.binding.clone(),
-                        recovered_at: process.received_at.max(execution.updated_at),
-                    })
-                    .await
-                    .map_err(|error| {
-                        flow_error("could not recover the restarted A3S Code provider", error)
-                    })?;
-                return recovery::begin(runtime, write.execution, *input.dispatched).await;
+                return begin_provider_recovery(
+                    runtime,
+                    execution,
+                    *input.dispatched,
+                    process.received_at,
+                )
+                .await;
             }
             _ => {}
         }
@@ -399,6 +417,25 @@ pub(super) async fn observe(
         "waiting for the Code-owned run to reach a terminal state",
         None,
     )
+}
+
+async fn begin_provider_recovery(
+    runtime: &AgentExecutionFlowRuntime,
+    execution: AgentExecution,
+    dispatched: DispatchedAgentExecution,
+    observed_at: DateTime<Utc>,
+) -> a3s_flow::Result<ObserveOutput> {
+    let write = runtime
+        .agents
+        .recover_code_run(RecoverAgentCodeRunWrite {
+            organization_id: execution.organization_id,
+            execution_id: execution.id,
+            expected_binding: dispatched.prepared.binding.clone(),
+            recovered_at: observed_at.max(execution.updated_at),
+        })
+        .await
+        .map_err(|error| flow_error("could not recover the restarted A3S Code provider", error))?;
+    recovery::begin(runtime, write.execution, dispatched).await
 }
 
 pub(super) fn observe_pending(
