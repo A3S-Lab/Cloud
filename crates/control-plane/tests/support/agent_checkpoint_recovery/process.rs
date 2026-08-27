@@ -109,9 +109,22 @@ pub(super) async fn crash_at(
 }
 
 pub(super) fn publish_marker(path: &Path, marker: &Value) -> TestResult {
-    let file = OpenOptions::new().create_new(true).write(true).open(path)?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Agent checkpoint crash marker path has no UTF-8 file name")?;
+    let pending = path.with_file_name(format!(".{file_name}.{}.pending", std::process::id()));
+    let file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&pending)?;
     serde_json::to_writer(&file, marker)?;
     file.sync_all()?;
+    drop(file);
+    if let Err(error) = std::fs::rename(&pending, path) {
+        let _ = std::fs::remove_file(&pending);
+        return Err(error.into());
+    }
     Ok(())
 }
 
