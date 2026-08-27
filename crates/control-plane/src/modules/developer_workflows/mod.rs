@@ -14,17 +14,22 @@ pub use application::{
     CompiledScheduledTaskProfile, CompiledServiceProfile, CompiledWorkloadProfile,
     DetectBuildPlanProposals, DetectBuildPlanProposalsHandler, DeveloperWorkflowAction,
     DeveloperWorkflowEnvironmentAccess, EnsurePreviewEnvironment, GetAcceptedBuildPlan,
-    GetAcceptedBuildPlanHandler, IBuildPlanSourceLayoutPort, IBuildPlanSourceRevisionPort,
-    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    GetAcceptedBuildPlanHandler, GetAcceptedWorkloadProfileRevision,
+    GetAcceptedWorkloadProfileRevisionHandler, GetCurrentAcceptedWorkloadProfileRevision,
+    GetCurrentAcceptedWorkloadProfileRevisionHandler, IBuildPlanSourceLayoutPort,
+    IBuildPlanSourceRevisionPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPreviewSourceSubscriptionQueryPort, IPullRequestPreviewProjectionPort,
     IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort,
-    ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler, PreviewEnvironmentBinding,
+    ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler, ListAcceptedWorkloadProfileRevisions,
+    ListAcceptedWorkloadProfileRevisionsHandler, PreviewEnvironmentBinding,
     PreviewEnvironmentReceipt, PreviewSourceSubscriptionBinding, ProjectCommittedPullRequestChange,
     PullRequestPreviewProjectionService, ScheduledTaskProfileAdmissionRequest,
     ServiceProfileAdmissionRequest, VerifiedOciArtifact, VerifiedWorkloadBuildOutcome,
     WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget,
-    WorkloadProfileCompilationService, WorkloadProfileTargetContext, DEFAULT_BUILD_PLAN_LIST_LIMIT,
-    MAXIMUM_BUILD_PLAN_LIST_LIMIT, WORKLOAD_BUILD_OUTCOME_SCHEMA,
+    WorkloadProfileCompilationService, WorkloadProfileQueryService, WorkloadProfileTargetContext,
+    DEFAULT_BUILD_PLAN_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use domain::*;
 pub use infrastructure::{
@@ -40,8 +45,10 @@ pub use infrastructure::{
 };
 pub use presentation::DeveloperWorkflowsModule;
 pub(crate) use presentation::{
-    AcceptedBuildPlanResponse, BuildPlanDetectionResponse, BuildPlanMutationResponse,
-    BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
-    DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
+    AcceptedBuildPlanResponse, AcceptedWorkloadProfileRevisionResponse, BuildPlanDetectionResponse,
+    BuildPlanMutationResponse, WorkloadProfileMutationResponse, BUILD_PLAN_COLLECTION_ROUTE,
+    BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE, DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
+    WORKLOAD_PROFILE_COLLECTION_ROUTE, WORKLOAD_PROFILE_ITEM_ROUTE,
+    WORKLOAD_PROFILE_REVISION_COLLECTION_ROUTE, WORKLOAD_PROFILE_REVISION_ITEM_ROUTE,
 };
 pub use published::*;

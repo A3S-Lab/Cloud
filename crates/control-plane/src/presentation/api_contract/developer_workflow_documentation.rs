@@ -1,8 +1,17 @@
 use super::developer_workflow_operation::{
     is_build_plan_collection_path, is_build_plan_detection_path, is_build_plan_item_path,
 };
+use super::workload_profile_documentation::{
+    component_description as workload_profile_component_description,
+    operation_description as workload_profile_operation_description,
+    operation_summary as workload_profile_operation_summary,
+    response_data_description as workload_profile_response_data_description,
+};
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
+    if let Some(description) = workload_profile_component_description(name) {
+        return Some(description);
+    }
     match name {
         "BuildPlanSource" => Some(
             "Immutable source identity evidence acquired from the canonical Sources boundary.",
@@ -45,6 +54,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
 }
 
 pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(summary) = workload_profile_operation_summary(method, path) {
+        return Some(summary);
+    }
     if method == "post" && is_build_plan_detection_path(path) {
         Some("Detect BuildPlan proposals")
     } else if method == "post" && is_build_plan_collection_path(path) {
@@ -59,6 +71,9 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
 }
 
 pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(description) = workload_profile_operation_description(method, path) {
+        return Some(description);
+    }
     if method == "post" && is_build_plan_detection_path(path) {
         Some(
             "Runs the built-in bounded deterministic detector set over the trusted layout of one immutable SourceRevision. The query returns canonical proposal ACL plus typed evidence and does not accept a plan or start a build.",
@@ -81,6 +96,9 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
 }
 
 pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(description) = workload_profile_response_data_description(method, path) {
+        return Some(description);
+    }
     if method == "post" && is_build_plan_detection_path(path) {
         Some("Canonical bounded proposals and diagnostics for the exact immutable source identity.")
     } else if method == "post" && is_build_plan_collection_path(path) {

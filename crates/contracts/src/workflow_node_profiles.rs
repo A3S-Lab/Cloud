@@ -192,7 +192,11 @@ impl WorkflowNodeProfiles {
 
     pub fn validate_manifest(&self, manifest: &AppPlatformParityManifest) -> Result<(), String> {
         if self.parity_manifest_digest != manifest.digest() {
-            return Err("Workflow node profiles reference a different parity manifest".into());
+            return Err(format!(
+                "Workflow node profiles reference parity manifest {} but the current manifest is {}",
+                self.parity_manifest_digest,
+                manifest.digest()
+            ));
         }
         let capabilities = manifest
             .capabilities()

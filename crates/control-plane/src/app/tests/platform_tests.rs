@@ -611,8 +611,8 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
         composition
             .matches("Arc::clone(&developer_workflow_authorization)")
             .count(),
-        5,
-        "BuildPlan detection, reads, acceptance, workload-profile, and Preview Policy acceptance must share one authorization port instance"
+        6,
+        "BuildPlan detection, reads, acceptance, WorkloadProfile reads and acceptance, and Preview Policy acceptance must share one authorization port instance"
     );
     for command in [
         "crate::modules::developer_workflows::AcceptWorkloadProfile, _",
@@ -631,6 +631,35 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
         2,
         "management and Relay must select independent Preview Policy repository instances through one constructor rule"
     );
+}
+
+#[test]
+fn workload_profile_public_reads_have_one_application_authority() {
+    let composition = include_str!("../../app.rs");
+
+    for constructor in [
+        "WorkloadProfileQueryService::new(",
+        "GetCurrentAcceptedWorkloadProfileRevisionHandler::new(",
+        "GetAcceptedWorkloadProfileRevisionHandler::new(",
+        "ListAcceptedWorkloadProfileRevisionsHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Developer Workflows WorkloadProfile reads must compose {constructor} exactly once"
+        );
+    }
+    for query in [
+        "crate::modules::developer_workflows::GetCurrentAcceptedWorkloadProfileRevision,",
+        "crate::modules::developer_workflows::GetAcceptedWorkloadProfileRevision,",
+        "crate::modules::developer_workflows::ListAcceptedWorkloadProfileRevisions,",
+    ] {
+        assert_eq!(
+            composition.matches(query).count(),
+            1,
+            "the canonical WorkloadProfile read query {query} must be registered once"
+        );
+    }
 }
 
 #[test]

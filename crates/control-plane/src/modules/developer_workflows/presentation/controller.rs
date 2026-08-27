@@ -2,6 +2,7 @@ use super::dto::{
     AcceptBuildPlanRequest, AcceptedBuildPlanResponse, BuildPlanDetectionResponse,
     BuildPlanMutationResponse, DetectBuildPlansRequest,
 };
+use super::request::{environment_id, organization_id, project_id};
 use super::routes::{
     BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
     DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
@@ -12,9 +13,7 @@ use crate::modules::developer_workflows::{
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::OrganizationTenantGuard;
-use crate::modules::shared_kernel::domain::{
-    BuildPlanId, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
-};
+use crate::modules::shared_kernel::domain::{BuildPlanId, SourceRevisionId};
 use crate::presentation::{
     actor_principal_id, application_error_response, request_id, request_identity,
 };
@@ -136,24 +135,6 @@ pub fn build_plan_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDef
                 }
             }
         })
-}
-
-fn organization_id(request: &BootRequest) -> Result<OrganizationId> {
-    Ok(OrganizationId::from_uuid(
-        request.param_as::<Uuid>("organization_id")?,
-    ))
-}
-
-fn project_id(request: &BootRequest) -> Result<ProjectId> {
-    Ok(ProjectId::from_uuid(
-        request.param_as::<Uuid>("project_id")?,
-    ))
-}
-
-fn environment_id(request: &BootRequest) -> Result<EnvironmentId> {
-    Ok(EnvironmentId::from_uuid(
-        request.param_as::<Uuid>("environment_id")?,
-    ))
 }
 
 fn required_source_revision_id(request: &BootRequest) -> Result<SourceRevisionId> {

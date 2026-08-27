@@ -112,6 +112,46 @@ fn profile_kinds_enforce_service_task_and_route_ownership() {
 }
 
 #[test]
+fn public_numeric_profile_values_stay_within_the_portable_json_integer_bound() {
+    let build_plan = accepted_build_plan();
+
+    let mut invalid_secret = web_profile();
+    invalid_secret.secrets.push(WorkloadSecretBinding {
+        name: "api-token".into(),
+        secret_id: SecretId::new(),
+        version: MAX_WORKLOAD_PROFILE_SAFE_INTEGER + 1,
+        target: WorkloadSecretTarget::Environment {
+            variable: "API_TOKEN".into(),
+        },
+    });
+    assert!(WorkloadProfileContract::bind(&build_plan, invalid_secret).is_err());
+
+    let mut invalid_health = web_profile();
+    invalid_health
+        .health
+        .as_mut()
+        .expect("web health check")
+        .interval_ms = MAX_WORKLOAD_PROFILE_SAFE_INTEGER + 1;
+    assert!(WorkloadProfileContract::bind(&build_plan, invalid_health).is_err());
+
+    let mut boundary = web_profile();
+    boundary.secrets.push(WorkloadSecretBinding {
+        name: "api-token".into(),
+        secret_id: SecretId::new(),
+        version: MAX_WORKLOAD_PROFILE_SAFE_INTEGER,
+        target: WorkloadSecretTarget::Environment {
+            variable: "API_TOKEN".into(),
+        },
+    });
+    boundary
+        .health
+        .as_mut()
+        .expect("web health check")
+        .stabilization_window_ms = MAX_WORKLOAD_PROFILE_SAFE_INTEGER;
+    WorkloadProfileContract::bind(&build_plan, boundary).expect("portable integer boundary");
+}
+
+#[test]
 fn scheduled_task_policy_requires_canonical_cron_timezone_and_closed_bounds() {
     let schedule = schedule();
     schedule.validate().expect("canonical schedule");
@@ -178,6 +218,12 @@ fn accepted_revision_identity_restore_and_event_are_exact() {
     assert_eq!(same_identity.id, revision.id);
     assert_eq!(next.profile_id, revision.profile_id);
     assert_ne!(next.id, revision.id);
+    assert!(AcceptedWorkloadProfileRevision::revision_id_for(
+        revision.profile_id,
+        MAX_WORKLOAD_PROFILE_SAFE_INTEGER + 1,
+        &contract,
+    )
+    .is_err());
     assert_eq!(
         AcceptedWorkloadProfileRevision::restore(
             revision.organization_id,

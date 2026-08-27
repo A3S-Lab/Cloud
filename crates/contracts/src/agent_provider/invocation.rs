@@ -511,8 +511,7 @@ fn canonical_json(value: &impl Serialize) -> Result<Vec<u8>, String> {
         .map_err(|error| format!("could not encode Harness invocation profile: {error}"))?;
     if encoded.len() > HARNESS_INVOCATION_PROFILE_MAX_BYTES {
         return Err(format!(
-            "Harness invocation profile exceeds {} bytes",
-            HARNESS_INVOCATION_PROFILE_MAX_BYTES
+            "Harness invocation profile exceeds {HARNESS_INVOCATION_PROFILE_MAX_BYTES} bytes"
         ));
     }
     Ok(encoded)

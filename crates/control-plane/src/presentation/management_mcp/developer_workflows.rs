@@ -1,14 +1,20 @@
-use super::arguments::{deserialize_idempotency_key, deserialize_list_limit};
+use super::arguments::{
+    deserialize_bounded_list_limit, deserialize_idempotency_key, deserialize_list_limit,
+};
 use super::tool_result;
 use crate::modules::developer_workflows::{
-    AcceptBuildPlan, DetectBuildPlanProposals, GetAcceptedBuildPlan, ListAcceptedBuildPlans,
-    DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    AcceptBuildPlan, AcceptWorkloadProfile, DetectBuildPlanProposals, GetAcceptedBuildPlan,
+    GetAcceptedWorkloadProfileRevision, GetCurrentAcceptedWorkloadProfileRevision,
+    ListAcceptedBuildPlans, ListAcceptedWorkloadProfileRevisions, DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
 };
 use crate::modules::developer_workflows::{
-    AcceptedBuildPlanResponse, BuildPlanDetectionResponse, BuildPlanMutationResponse,
+    AcceptedBuildPlanResponse, AcceptedWorkloadProfileRevisionResponse, BuildPlanDetectionResponse,
+    BuildPlanMutationResponse, WorkloadProfileMutationResponse,
 };
 use crate::modules::shared_kernel::domain::{
     BuildPlanId, EnvironmentId, OrganizationId, PrincipalId, ProjectId, SourceRevisionId,
+    WorkloadProfileId, WorkloadProfileRevisionId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde::Deserialize;
@@ -56,8 +62,66 @@ pub struct GetAcceptedBuildPlanArguments {
     pub build_plan_id: Uuid,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptWorkloadProfileArguments {
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub build_plan_id: Uuid,
+    pub profile_acl: String,
+    #[serde(deserialize_with = "deserialize_idempotency_key")]
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetCurrentAcceptedWorkloadProfileRevisionArguments {
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub workload_profile_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListAcceptedWorkloadProfileRevisionsArguments {
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub workload_profile_id: Uuid,
+    #[serde(
+        default = "default_workload_profile_revision_list_limit",
+        deserialize_with = "deserialize_workload_profile_revision_list_limit"
+    )]
+    pub limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetAcceptedWorkloadProfileRevisionArguments {
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub workload_profile_id: Uuid,
+    pub workload_profile_revision_id: Uuid,
+}
+
 const fn default_build_plan_list_limit() -> usize {
     DEFAULT_BUILD_PLAN_LIST_LIMIT
+}
+
+const fn default_workload_profile_revision_list_limit() -> usize {
+    DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT
+}
+
+fn deserialize_workload_profile_revision_list_limit<'de, D>(
+    deserializer: D,
+) -> std::result::Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_bounded_list_limit(
+        deserializer,
+        crate::modules::developer_workflows::MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+        "WorkloadProfile revision list limit",
+    )
 }
 
 pub async fn detect_build_plans(
@@ -164,10 +228,129 @@ pub async fn get_build_plan(
     }
 }
 
+pub async fn accept_workload_profile(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: AcceptWorkloadProfileArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(AcceptWorkloadProfile {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            build_plan_id: BuildPlanId::from_uuid(arguments.build_plan_id),
+            profile_acl: arguments.profile_acl,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                WorkloadProfileMutationResponse::from(result),
+                request_id,
+            )
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_current_workload_profile_revision(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: GetCurrentAcceptedWorkloadProfileRevisionArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetCurrentAcceptedWorkloadProfileRevision {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            workload_profile_id: WorkloadProfileId::from_uuid(arguments.workload_profile_id),
+            principal_id: actor_principal_id,
+        })
+        .await?
+    {
+        Ok(revision) => tool_result::success(
+            200,
+            AcceptedWorkloadProfileRevisionResponse::from(revision),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_workload_profile_revisions(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ListAcceptedWorkloadProfileRevisionsArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListAcceptedWorkloadProfileRevisions {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            workload_profile_id: WorkloadProfileId::from_uuid(arguments.workload_profile_id),
+            limit: arguments.limit,
+            principal_id: actor_principal_id,
+        })
+        .await?
+    {
+        Ok(revisions) => tool_result::success(
+            200,
+            revisions
+                .into_iter()
+                .map(AcceptedWorkloadProfileRevisionResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_workload_profile_revision(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: GetAcceptedWorkloadProfileRevisionArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetAcceptedWorkloadProfileRevision {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            workload_profile_id: WorkloadProfileId::from_uuid(arguments.workload_profile_id),
+            workload_profile_revision_id: WorkloadProfileRevisionId::from_uuid(
+                arguments.workload_profile_revision_id,
+            ),
+            principal_id: actor_principal_id,
+        })
+        .await?
+    {
+        Ok(revision) => tool_result::success(
+            200,
+            AcceptedWorkloadProfileRevisionResponse::from(revision),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::developer_workflows::MAXIMUM_BUILD_PLAN_LIST_LIMIT;
+    use crate::modules::developer_workflows::{
+        MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    };
     use serde_json::json;
 
     fn scope() -> (Uuid, Uuid, Uuid) {
@@ -222,6 +405,54 @@ mod tests {
                     "projectId": project_id,
                     "environmentId": environment_id,
                     "sourceRevisionId": source_revision_id,
+                    "limit": limit
+                }))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn workload_profile_arguments_are_closed_acl_only_and_application_bounded() {
+        let (project_id, environment_id, build_plan_id) = scope();
+        let acceptance = serde_json::from_value::<AcceptWorkloadProfileArguments>(json!({
+            "projectId": project_id,
+            "environmentId": environment_id,
+            "buildPlanId": build_plan_id,
+            "profileAcl": "workload_profile {}\n",
+            "idempotencyKey": "accept-workload-profile"
+        }))
+        .expect("closed ACL-only WorkloadProfile acceptance arguments");
+        assert_eq!(acceptance.profile_acl, "workload_profile {}\n");
+        assert!(
+            serde_json::from_value::<AcceptWorkloadProfileArguments>(json!({
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "buildPlanId": build_plan_id,
+                "profileAcl": "workload_profile {}\n",
+                "profile": {},
+                "idempotencyKey": "accept-workload-profile"
+            }))
+            .is_err()
+        );
+
+        let defaulted =
+            serde_json::from_value::<ListAcceptedWorkloadProfileRevisionsArguments>(json!({
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "workloadProfileId": Uuid::now_v7()
+            }))
+            .expect("default WorkloadProfile revision list limit");
+        assert_eq!(
+            defaulted.limit,
+            DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT
+        );
+        for limit in [0, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT + 1] {
+            assert!(
+                serde_json::from_value::<ListAcceptedWorkloadProfileRevisionsArguments>(json!({
+                    "projectId": project_id,
+                    "environmentId": environment_id,
+                    "workloadProfileId": Uuid::now_v7(),
                     "limit": limit
                 }))
                 .is_err()

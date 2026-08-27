@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.73.0" src="https://img.shields.io/badge/REST_contract-1.73.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.74.0" src="https://img.shields.io/badge/REST_contract-1.74.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -121,7 +121,7 @@ not imply availability.
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
 | Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
-| Supply | Developer Workflows | Public authorization-first BuildPlan detection, acceptance, and immutable reads over one CQRS/application authority; trusted SourceLayout acquisition, workload-profile/Preview Policy acceptance, exact accepted-profile compilation, durable PR projection, and owner-facing handoff intent |
+| Supply | Developer Workflows | Public authorization-first BuildPlan detection/acceptance/reads and WorkloadProfile acceptance/immutable revision reads over one CQRS/application authority; trusted SourceLayout acquisition, Preview Policy acceptance, exact accepted-profile compilation, durable PR projection, and owner-facing handoff intent |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildCandidate, sole BuildRun lifecycle, Preview build-admission/retirement fence, admitted output, successful external-source outcome Published Language, provenance, evidence, retention, node artifact transport |
 | Execution | Operations | User-visible long-running operation identity and progress projection |
@@ -233,16 +233,17 @@ already enforce that current debt can shrink but cannot spread:
   checkout share Sources' one repository-credential authority; detection then
   composes the authoritative Asset ACL and heuristic Dockerfile adapters
   through the sole bounded detector service after a strict credential-free
-  replay, without persistence. That query, the public BuildPlan acceptance
-  command, and the two internal workload-profile and Preview Policy commands
+  replay, without persistence. That query, the public BuildPlan and
+  WorkloadProfile acceptance commands, and the internal Preview Policy command
   share one action-scoped authorization port backed by Identity's sole grant
   evaluator and exact Projects Environment lookup. BuildPlan acceptance
   additionally uses the Sources evidence port; each acceptance command
   delegates to its existing immutable repository transaction. REST, the
   maintained client and CLI, and Management MCP dispatch those exact CQRS
-  handlers; accepted-plan get/list go through one Application query service
-  that performs the same authorization and rejects repository scope/order
-  drift. They add no authorization, persistence, delivery, or lifecycle
+  handlers; accepted-plan and accepted-profile reads each go through one
+  Application query service that performs the same authorization and rejects
+  repository scope/order drift. They add no authorization, persistence,
+  delivery, or lifecycle
   mechanism. Hosted-Asset
   staging and public Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
@@ -263,7 +264,7 @@ capability.
 | --- | --- |
 | `F0` foundation | Verified PostgreSQL tenancy, identity, ORM-backed Flow operations, Outbox/projections, API, and migration authority |
 | Box/Runtime/node/deployment baseline | Historical evidence; current Box re-certification remains in progress |
-| Sources, builds, artifacts, developer workflows | In progress; the BuildPlan REST/OpenAPI, client, CLI, and Management MCP surface is production-composed over authorization-first exact accepted-revision SourceLayout acquisition, canonical detection, immutable acceptance, and one accepted-plan read authority. Workload-profile and Preview public interfaces, pre-acceptance source discovery, Workload/route/operation and Environment cleanup handoffs, monorepos, and import completion remain unavailable |
+| Sources, builds, artifacts, developer workflows | In progress; BuildPlan and WorkloadProfile REST/OpenAPI, client, CLI, and Management MCP surfaces are production-composed over authorization-first canonical acceptance and their sole immutable read authorities. Preview public interfaces, pre-acceptance source discovery, Workload/Execution/route/operation/schedule and Environment cleanup handoffs, monorepos, and import completion remain unavailable; remote WorkloadProfile certification is pending |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
@@ -471,24 +472,26 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.73.0` is the current contract. It
-    adds authorization-first logical Agent execution checkpoint capture,
-    list/read/snapshot, paged trajectory, and immutable fork APIs. Migration
-    `168` stores only bounded object projections, exact execution/provider/
-    invocation bindings, telemetry correlation, and parent lineage; canonical
-    snapshots remain in the shared `agent-checkpoints` immutable-object
-    namespace and materialize verified inherited trajectories for nested forks.
-    Every new fork revalidates the published Agent artifact and selected
-    provider profile, creates a new execution, verifies its parent object again
-    before provider dispatch, and fails closed on missing or drifted evidence.
-    The API does not claim provider-private or Box suspend/resume support. It
-    retains `1.72.0`'s closed Developer Workflows BuildPlan detection,
-    idempotent acceptance, and exact accepted-plan list/get operations with
-    canonical A3S ACL and typed immutable evidence. The maintained client, CLI,
-    and four Management MCP tools dispatch that same CQRS/application authority
-    without exposing source bytes, credentials, checkout paths, BuildRun,
-    Workload, Route, or scheduler lifecycle. It also retains `1.71.0`'s bounded,
-    authorization-first Agent approval-checkpoint list, read, and
+    copied evidence bodies. REST/OpenAPI `1.74.0` is the current contract. It
+    adds closed Developer Workflows WorkloadProfile acceptance plus current,
+    bounded-history, and exact immutable revision reads with canonical A3S ACL
+    and typed Secret-material-free intent. The maintained client, CLI, and four
+    additional Management MCP tools dispatch the same CQRS/application
+    authority without adding a parser, repository, evaluator, or downstream
+    lifecycle. It retains `1.73.0`'s authorization-first logical Agent
+    execution checkpoint capture, list/read/snapshot, paged trajectory, and
+    immutable fork APIs. Migration `168` stores only bounded object projections,
+    exact execution/provider/invocation bindings, telemetry correlation, and
+    parent lineage; canonical snapshots remain in the shared
+    `agent-checkpoints` immutable-object namespace and materialize verified
+    inherited trajectories for nested forks. Every new fork revalidates the
+    published Agent artifact and selected provider profile, creates a new
+    execution, verifies its parent object again before provider dispatch, and
+    fails closed on missing or drifted evidence. The API does not claim
+    provider-private or Box suspend/resume support. It also retains `1.72.0`'s
+    closed BuildPlan detection, idempotent acceptance, and exact accepted-plan
+    reads plus `1.71.0`'s bounded, authorization-first Agent
+    approval-checkpoint list, read, and
     optimistic decision APIs; the closed `awaiting_approval` execution state;
     and digest-only approval-resolution evidence. Exact replay, expiry, denial,
     cancellation, and resume state never expose Secret or Tool payload

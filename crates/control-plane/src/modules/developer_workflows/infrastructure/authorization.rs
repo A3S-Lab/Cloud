@@ -46,6 +46,7 @@ impl IDeveloperWorkflowAuthorizationPort for IdentityProjectsDeveloperWorkflowAu
             DeveloperWorkflowAction::DetectBuildPlan
             | DeveloperWorkflowAction::ReadBuildPlan
             | DeveloperWorkflowAction::AcceptBuildPlan
+            | DeveloperWorkflowAction::ReadWorkloadProfile
             | DeveloperWorkflowAction::AcceptWorkloadProfile
             | DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy => {}
         }

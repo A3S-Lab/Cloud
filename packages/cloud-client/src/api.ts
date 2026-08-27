@@ -66,13 +66,19 @@ import {
 } from './connectors';
 import {
   type AcceptBuildPlanInput,
+  type AcceptWorkloadProfileInput,
   type AcceptedBuildPlan,
+  type AcceptedWorkloadProfileRevision,
   type BuildPlanDetection,
   type BuildPlanMutationResult,
   DEFAULT_BUILD_PLAN_LIST_LIMIT,
+  DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
   type DetectBuildPlansInput,
   validateBuildPlanListLimit,
   validateBuildPlanProposalAcl,
+  validateWorkloadProfileAcl,
+  validateWorkloadProfileRevisionListLimit,
+  type WorkloadProfileMutationResult,
 } from './developer-workflows';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import {
@@ -346,7 +352,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.73.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.74.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -3585,6 +3591,70 @@ export class CloudApi {
     return this.get(
       `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
         `/build-plans/${encodeURIComponent(buildPlanId)}`,
+      signal
+    );
+  }
+
+  acceptWorkloadProfile(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: AcceptWorkloadProfileInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadProfileMutationResult> {
+    validateWorkloadProfileAcl(input.profileAcl);
+    return this.postJson(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}/workload-profiles`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getCurrentAcceptedWorkloadProfileRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    workloadProfileId: string,
+    signal?: AbortSignal
+  ): Promise<AcceptedWorkloadProfileRevision> {
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        `/workload-profiles/${encodeURIComponent(workloadProfileId)}`,
+      signal
+    );
+  }
+
+  listAcceptedWorkloadProfileRevisions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    workloadProfileId: string,
+    limit = DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<AcceptedWorkloadProfileRevision[]> {
+    validateWorkloadProfileRevisionListLimit(limit);
+    const query = new URLSearchParams({ limit: String(limit) }).toString();
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        `/workload-profiles/${encodeURIComponent(workloadProfileId)}/revisions?${query}`,
+      signal
+    );
+  }
+
+  getAcceptedWorkloadProfileRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    workloadProfileId: string,
+    workloadProfileRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<AcceptedWorkloadProfileRevision> {
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        `/workload-profiles/${encodeURIComponent(workloadProfileId)}` +
+        `/revisions/${encodeURIComponent(workloadProfileRevisionId)}`,
       signal
     );
   }

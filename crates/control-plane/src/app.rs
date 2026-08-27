@@ -86,15 +86,16 @@ use crate::modules::developer_workflows::{
     ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
     BuildPlanQueryService, CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
     DeveloperWorkflowsModule, DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter,
-    GetAcceptedBuildPlanHandler, IBuildPlanRepository, IBuildPlanSourceLayoutPort,
-    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    GetAcceptedBuildPlanHandler, GetAcceptedWorkloadProfileRevisionHandler,
+    GetCurrentAcceptedWorkloadProfileRevisionHandler, IBuildPlanRepository,
+    IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
     IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
     IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ListAcceptedBuildPlansHandler,
-    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
-    PullRequestPreviewProjector, RepositoryBuildPlanSourceRevisionPort,
-    RepositoryPreviewSourceSubscriptionQueryPort, WorkloadProfileCompilationService,
-    WorkloadsServiceProfileAdapter,
+    ListAcceptedWorkloadProfileRevisionsHandler, ProjectsPreviewEnvironmentAdapter,
+    PullRequestPreviewProjectionService, PullRequestPreviewProjector,
+    RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
+    WorkloadProfileCompilationService, WorkloadProfileQueryService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -2125,6 +2126,19 @@ fn build_management_application_with_health(
         Arc::clone(&developer_workflow_build_plans),
         Arc::clone(&developer_workflow_authorization),
     );
+    let developer_workload_profile_queries = Arc::new(WorkloadProfileQueryService::new(
+        Arc::clone(&developer_workload_profiles),
+        Arc::clone(&developer_workflow_authorization),
+    ));
+    let get_current_developer_workload_profiles =
+        GetCurrentAcceptedWorkloadProfileRevisionHandler::new(Arc::clone(
+            &developer_workload_profile_queries,
+        ));
+    let get_developer_workload_profile_revisions = GetAcceptedWorkloadProfileRevisionHandler::new(
+        Arc::clone(&developer_workload_profile_queries),
+    );
+    let list_developer_workload_profile_revisions =
+        ListAcceptedWorkloadProfileRevisionsHandler::new(developer_workload_profile_queries);
     let accept_developer_preview_policies = AcceptPullRequestPreviewPolicyHandler::new(
         developer_preview_policies,
         Arc::new(RepositoryPreviewSourceSubscriptionQueryPort::new(
@@ -3547,6 +3561,18 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::developer_workflows::ListAcceptedBuildPlans, _>(
                     list_developer_build_plans,
                 )
+                .query_handler::<
+                    crate::modules::developer_workflows::GetCurrentAcceptedWorkloadProfileRevision,
+                    _,
+                >(get_current_developer_workload_profiles)
+                .query_handler::<
+                    crate::modules::developer_workflows::GetAcceptedWorkloadProfileRevision,
+                    _,
+                >(get_developer_workload_profile_revisions)
+                .query_handler::<
+                    crate::modules::developer_workflows::ListAcceptedWorkloadProfileRevisions,
+                    _,
+                >(list_developer_workload_profile_revisions)
                 .query_handler::<
                     crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,
                     _,

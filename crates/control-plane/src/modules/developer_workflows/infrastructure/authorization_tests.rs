@@ -37,6 +37,7 @@ async fn organization_wide_membership_requires_the_exact_existing_environment() 
         DeveloperWorkflowAction::DetectBuildPlan,
         DeveloperWorkflowAction::ReadBuildPlan,
         DeveloperWorkflowAction::AcceptBuildPlan,
+        DeveloperWorkflowAction::ReadWorkloadProfile,
         DeveloperWorkflowAction::AcceptWorkloadProfile,
         DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy,
     ] {
@@ -45,9 +46,9 @@ async fn organization_wide_membership_requires_the_exact_existing_environment() 
             .await
             .expect("owner authorization"));
     }
-    assert_eq!(owners.membership_calls(), 5);
+    assert_eq!(owners.membership_calls(), 6);
     assert_eq!(owners.grant_calls(), 0);
-    assert_eq!(owners.environment_calls(), 5);
+    assert_eq!(owners.environment_calls(), 6);
 
     let missing_owners = Arc::new(StubOwnerRepositories::new(
         Some(fixture.membership(MembershipRole::Member)),

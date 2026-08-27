@@ -1,4 +1,4 @@
-use super::{AcceptedBuildPlan, WorkloadProfileContract};
+use super::{AcceptedBuildPlan, WorkloadProfileContract, MAX_WORKLOAD_PROFILE_SAFE_INTEGER};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildPlanId, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
     SourceRevisionId, WorkloadProfileId, WorkloadProfileRevisionId,
@@ -58,8 +58,10 @@ impl AcceptedWorkloadProfileRevision {
         contract: &WorkloadProfileContract,
     ) -> Result<WorkloadProfileRevisionId, String> {
         contract.validate()?;
-        if revision_number == 0 || revision_number > i64::MAX as u64 {
-            return Err("workload profile revision number is outside the persistence bound".into());
+        if revision_number == 0 || revision_number > MAX_WORKLOAD_PROFILE_SAFE_INTEGER {
+            return Err(
+                "workload profile revision number is outside the portable persistence bound".into(),
+            );
         }
         let mut identity = Vec::with_capacity(24 + contract.digest().as_str().len());
         identity.extend_from_slice(profile_id.as_uuid().as_bytes());
@@ -146,7 +148,7 @@ impl AcceptedWorkloadProfileRevision {
             || self.source_revision_id.as_uuid().is_nil()
             || self.accepted_by.as_uuid().is_nil()
             || self.revision_number == 0
-            || self.revision_number > i64::MAX as u64
+            || self.revision_number > MAX_WORKLOAD_PROFILE_SAFE_INTEGER
             || self.accepted_at != canonical_timestamp(self.accepted_at)
             || self.build_plan_id != self.contract.spec().build_plan_id
             || self.source_revision_id != self.contract.spec().source_revision_id

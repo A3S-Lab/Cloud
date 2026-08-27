@@ -9,6 +9,7 @@ pub enum DeveloperWorkflowAction {
     DetectBuildPlan,
     ReadBuildPlan,
     AcceptBuildPlan,
+    ReadWorkloadProfile,
     AcceptWorkloadProfile,
     AcceptPullRequestPreviewPolicy,
 }

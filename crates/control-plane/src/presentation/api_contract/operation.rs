@@ -1,7 +1,8 @@
 use super::components::response_ref;
 use super::developer_workflow_operation::{
-    is_build_plan_collection_path, is_build_plan_detection_path, is_build_plan_path,
-    is_build_plan_request_body_path, query_parameters as developer_workflow_query_parameters,
+    is_build_plan_detection_path, is_developer_workflow_creation_path, is_developer_workflow_path,
+    is_developer_workflow_request_body_path,
+    query_parameters as developer_workflow_query_parameters,
     success_component as developer_workflow_success_component,
 };
 use super::documentation::describe_operation_documentation;
@@ -1302,7 +1303,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_agent_approval_decision_path(path)
                 || is_agent_execution_checkpoint_collection_path(path)
                 || is_agent_execution_fork_path(path)
-                || is_build_plan_request_body_path(path)))
+                || is_developer_workflow_request_body_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1424,7 +1425,7 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
-    } else if is_build_plan_path(path) {
+    } else if is_developer_workflow_path(path) {
         "Developer Workflows"
     } else if path.contains("agent-conversations") || path.contains("agent-executions") {
         "Agents"
@@ -1609,7 +1610,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/releases")
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
-        || is_build_plan_collection_path(path)
+        || is_developer_workflow_creation_path(path)
         || is_agent_execution_checkpoint_collection_path(path)
 }
 

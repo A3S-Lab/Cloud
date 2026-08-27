@@ -14,12 +14,12 @@ use crate::modules::developer_workflows::infrastructure::{
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    SourceRevisionId,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId,
+    RepositoryError, SourceRevisionId, WorkloadProfileId, WorkloadProfileRevisionId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::{Duration, TimeZone, Utc};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -138,6 +138,36 @@ async fn authorization_precedes_acl_parsing_plan_lookup_and_replay() {
 }
 
 #[tokio::test]
+async fn replay_revalidates_repository_state_before_public_projection() {
+    let fixture = Fixture::new();
+    let contract = fixture.contract(250);
+    let mut revision = AcceptedWorkloadProfileRevision::accept(
+        &fixture.plan,
+        contract.clone(),
+        1,
+        fixture.actor,
+        fixture.plan.accepted_at + Duration::seconds(1),
+    )
+    .expect("valid accepted revision");
+    revision.id = WorkloadProfileRevisionId::new();
+
+    let profiles: Arc<dyn IWorkloadProfileRepository> =
+        Arc::new(CorruptReplayRepository { revision });
+    let plans: Arc<dyn IBuildPlanRepository> = Arc::new(InMemoryBuildPlanRepository::new());
+    let authorization = Arc::new(FakeAuthorizationPort::new());
+    let handler = AcceptWorkloadProfileHandler::new(profiles, plans, authorization);
+
+    let error = handler
+        .execute(
+            fixture.command(&contract, fixture.actor, "corrupt-replay"),
+            context(),
+        )
+        .await
+        .expect_err("corrupt replay must fail before projection");
+    assert!(matches!(error, a3s_boot::BootError::Internal(_)));
+}
+
+#[tokio::test]
 async fn embedded_plan_drift_and_idempotency_reuse_are_rejected() {
     let (fixture, _profiles, handler, _authorization) = setup().await;
     let initial = fixture.contract(250);
@@ -221,6 +251,59 @@ async fn stale_competing_revision_write_conflicts() {
 
 struct FakeAuthorizationPort {
     allowed: AtomicBool,
+}
+
+struct CorruptReplayRepository {
+    revision: AcceptedWorkloadProfileRevision,
+}
+
+#[async_trait]
+impl IWorkloadProfileRepository for CorruptReplayRepository {
+    async fn replay_acceptance(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AcceptedWorkloadProfileRevision>, RepositoryError> {
+        Ok(Some(self.revision.clone()))
+    }
+
+    async fn accept(
+        &self,
+        _write: AcceptWorkloadProfileRevisionWrite,
+    ) -> Result<IdempotentWrite<AcceptedWorkloadProfileRevision>, RepositoryError> {
+        unreachable!("corrupt replay must stop before acceptance")
+    }
+
+    async fn find_revision(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _workload_profile_id: WorkloadProfileId,
+        _workload_profile_revision_id: WorkloadProfileRevisionId,
+    ) -> Result<Option<AcceptedWorkloadProfileRevision>, RepositoryError> {
+        unreachable!("corrupt replay must stop before revision lookup")
+    }
+
+    async fn find_current(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _workload_profile_id: WorkloadProfileId,
+    ) -> Result<Option<AcceptedWorkloadProfileRevision>, RepositoryError> {
+        unreachable!("corrupt replay must stop before current lookup")
+    }
+
+    async fn list_revisions(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _workload_profile_id: WorkloadProfileId,
+        _limit: usize,
+    ) -> Result<Vec<AcceptedWorkloadProfileRevision>, RepositoryError> {
+        unreachable!("corrupt replay must stop before revision listing")
+    }
 }
 
 impl FakeAuthorizationPort {

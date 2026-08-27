@@ -154,10 +154,21 @@ pub(super) fn deserialize_list_limit<'de, D>(deserializer: D) -> Result<usize, D
 where
     D: Deserializer<'de>,
 {
+    deserialize_bounded_list_limit(deserializer, MAXIMUM_LIST_LIMIT, "limit")
+}
+
+pub(super) fn deserialize_bounded_list_limit<'de, D>(
+    deserializer: D,
+    maximum: usize,
+    label: &str,
+) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
     let limit = usize::deserialize(deserializer)?;
-    if !(1..=MAXIMUM_LIST_LIMIT).contains(&limit) {
+    if !(1..=maximum).contains(&limit) {
         return Err(D::Error::custom(format!(
-            "limit must be between 1 and {MAXIMUM_LIST_LIMIT}"
+            "{label} must be between 1 and {maximum}"
         )));
     }
     Ok(limit)

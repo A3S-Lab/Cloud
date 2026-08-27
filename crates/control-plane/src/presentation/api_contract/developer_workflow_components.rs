@@ -245,7 +245,7 @@ fn build_plan_mutation_schema() -> Value {
     )
 }
 
-fn canonical_acl_schema(max_length: usize, example: &str) -> Value {
+pub(super) fn canonical_acl_schema(max_length: usize, example: &str) -> Value {
     json!({
         "type": "string",
         "minLength": 1,
@@ -256,7 +256,7 @@ fn canonical_acl_schema(max_length: usize, example: &str) -> Value {
     })
 }
 
-fn repository_path_schema(max_length: usize) -> Value {
+pub(super) fn repository_path_schema(max_length: usize) -> Value {
     json!({
         "type": "string",
         "minLength": 1,
@@ -266,7 +266,7 @@ fn repository_path_schema(max_length: usize) -> Value {
     })
 }
 
-fn object_schema(required: &[&str], properties: Value) -> Value {
+pub(super) fn object_schema(required: &[&str], properties: Value) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
@@ -275,7 +275,7 @@ fn object_schema(required: &[&str], properties: Value) -> Value {
     })
 }
 
-fn schema_ref(name: &str) -> Value {
+pub(super) fn schema_ref(name: &str) -> Value {
     json!({ "$ref": format!("#/components/schemas/{name}") })
 }
 

@@ -187,6 +187,10 @@ Commands:
   build-plans accept SOURCE Accept one canonical BuildPlan proposal ACL idempotently
   build-plans list SOURCE List accepted BuildPlans for one source revision
   build-plans get ID      Get one accepted BuildPlan
+  workload-profiles accept BUILD-PLAN Accept one canonical WorkloadProfile ACL revision idempotently
+  workload-profiles get PROFILE Get the current accepted WorkloadProfile revision
+  workload-profile-revisions list PROFILE List accepted WorkloadProfile revision history
+  workload-profile-revisions get PROFILE REV Get one exact WorkloadProfile revision
   source-connections get  Show the organization GitHub connection
   source-connections begin Start the no-store GitHub installation flow
   source-subscriptions list List GitHub repository subscriptions

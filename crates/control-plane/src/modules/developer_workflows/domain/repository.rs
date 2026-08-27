@@ -111,7 +111,7 @@ pub trait IBuildPlanRepository: Send + Sync {
         project_root: &str,
     ) -> Result<Option<AcceptedBuildPlan>, RepositoryError>;
 
-    /// Returns at most `limit` plans in [`AcceptedBuildPlan::canonical_cmp`] order.
+    /// Returns at most `limit` plans in the aggregate's canonical order.
     ///
     /// Callers own the public page bound; adapters must preserve the requested
     /// scope and must never substitute a different Source revision.

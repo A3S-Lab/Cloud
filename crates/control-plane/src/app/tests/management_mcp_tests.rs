@@ -437,6 +437,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_plan_detections_create",
             "a3s_cloud_build_plans_list",
             "a3s_cloud_build_plans_get",
+            "a3s_cloud_workload_profiles_get",
+            "a3s_cloud_workload_profile_revisions_list",
+            "a3s_cloud_workload_profile_revisions_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
@@ -496,6 +499,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
 
     let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 5).await?;
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_plans_accept"));
+    assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_workload_profiles_accept"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
     for name in [
@@ -656,6 +660,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_plans_accept",
             "a3s_cloud_build_plans_list",
             "a3s_cloud_build_plans_get",
+            "a3s_cloud_workload_profiles_accept",
+            "a3s_cloud_workload_profiles_get",
+            "a3s_cloud_workload_profile_revisions_list",
+            "a3s_cloud_workload_profile_revisions_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",

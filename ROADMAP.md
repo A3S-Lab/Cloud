@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C5` establish canonical BuildPlan detection, immutable acceptance, authorization, and trusted exact-revision layout acquisition; `P0.1-C6` production-composes their REST/OpenAPI `1.72.0`, maintained client/CLI, four Management MCP tools, and one authorized accepted-plan read authority without another parser, repository, policy evaluator, or lifecycle. P0.2 accepted-profile and P0.3 Preview foundations remain component/production-composed as detailed below. Workload-profile and Preview public surfaces, pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C6` production-compose canonical BuildPlan detection, immutable acceptance/reads, authorization, trusted exact-revision layout acquisition, and their REST/OpenAPI `1.72.0`, maintained client/CLI, and four Management MCP tools. `P0.2-C1` through `C6` production-compose canonical WorkloadProfile intent, immutable acceptance/reads, exact compilation, owner anti-corruption adapters, and their REST/OpenAPI `1.74.0`, maintained client/CLI, and four additional Management MCP tools over the same parser, repository, policy evaluator, and lifecycle authorities. P0.3 Preview foundations remain component/production-composed as detailed below. Preview public surfaces, pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, imports, and retained WorkloadProfile cross-surface certification remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -572,12 +572,14 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.73.0`
-  adds closed Agent execution checkpoint capture/list/read/snapshot, semantic
-  trajectory, and immutable fork APIs with exact object and telemetry evidence.
-  It retains `1.72.0`'s closed BuildPlan detection, acceptance, and exact
-  accepted-plan reads over the sole Developer Workflows application authority,
-  plus `1.71.0`'s Agent approval-checkpoint list/read/decision APIs, the
+  responses, envelopes, and compatibility metadata; current contract `1.74.0`
+  adds closed WorkloadProfile acceptance plus current, bounded-history, and
+  exact immutable revision reads over the sole Developer Workflows application
+  authority. It retains `1.73.0`'s closed Agent execution checkpoint
+  capture/list/read/snapshot, semantic trajectory, and immutable fork APIs with
+  exact object and telemetry evidence, `1.72.0`'s closed BuildPlan detection,
+  acceptance, and exact accepted-plan reads, and `1.71.0`'s Agent
+  approval-checkpoint list/read/decision APIs, the
   `awaiting_approval` execution state, and digest-only approval-resolution
   evidence without Tool payload or Secret material, plus `1.70.0`'s
   immutable Harness invocation profile and typed digest-only Agent Tool
@@ -1121,6 +1123,21 @@ source-layout acquisition, table, migration, evaluator, repository, event rail,
 relay, queue, worker, BuildRun, Workload/Execution, Route, Operation, retry,
 timer, scheduler, or owner lifecycle handoff.
 
+`P0.2-C6` exposes that existing WorkloadProfile authority without adding a
+second mechanism. One `WorkloadProfileQueryService` owns authorization-first
+current, exact-revision, and bounded continuous ascending history reads over
+the sole repository interface. REST/OpenAPI `1.74.0`, the maintained
+TypeScript client, CLI commands, and four additional Management MCP tools
+dispatch the existing acceptance command and those exact queries. Inputs carry
+only exact identities, canonical profile ACL, caller-owned idempotency, and one
+`1..=100` history limit; outputs retain immutable revision, canonical ACL,
+digest, accepted BuildPlan/SourceRevision, typed profile intent, actor, and
+time while excluding Secret material and downstream state. Presentation owns
+no parser, repository, authorization evaluator, compiler, build, deployment,
+route, operation, schedule, or cleanup lifecycle. The slice is implemented and
+production-composed; retained PostgreSQL and cross-surface certification is
+still pending.
+
 Component-only `P0.3-C1` adds the first pull-request Preview boundary. The
 existing HMAC-first GitHub verifier now parses only `opened`, `synchronize`,
 `reopened`, and `closed` pull-request actions, retaining delivery and
@@ -1410,7 +1427,7 @@ pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog, Workflow node-catalog, invitation lifecycle,
 notification, Connector lifecycle, Durable Cell lifecycle, and
 variable-inspection tests pass the
-current `141/80` source
+current `145/83` source
 catalog, and the
 dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology

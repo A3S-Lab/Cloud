@@ -552,6 +552,18 @@ only revision/idempotency/audit/Outbox write to migration `147`'s existing
 repository transaction. No second authorization, persistence, event-delivery,
 or orchestration mechanism exists.
 
+`P0.2-C6` exposes that same authority without changing the model. One
+Application `WorkloadProfileQueryService` owns current, exact-revision, and
+bounded history reads through `IWorkloadProfileRepository` and the shared
+authorization port. It revalidates restored canonical ACL and exact scope,
+then requires a continuous ascending revision page within the single
+`1..=100` bound. REST and Management MCP dispatch the existing acceptance
+command and these queries; OpenAPI `1.74.0`, the maintained TypeScript client,
+and CLI project the same closed ACL-only request and typed immutable revision
+DTO. No adapter parses ACL, evaluates grants, loads a repository directly, or
+creates compilation or downstream lifecycle state. Secret references remain
+typed, while Secret material and owner-private state never cross the boundary.
+
 Developer Workflows does not create BuildRuns, Workloads, Routes, Executions,
 or Automations, or evaluate timers.
 

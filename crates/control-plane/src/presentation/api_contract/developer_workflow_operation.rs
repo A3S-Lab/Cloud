@@ -1,9 +1,15 @@
 use super::developer_workflow_components::{
     accept_build_plan_request_schema, detect_build_plans_request_schema,
 };
+use super::developer_workflow_route::is_developer_workflow_route;
+use super::workload_profile_operation::{
+    is_workload_profile_collection_path, is_workload_profile_path,
+    is_workload_profile_request_body_path, query_parameters as workload_profile_query_parameters,
+    request_schema as workload_profile_request_schema,
+    success_component as workload_profile_success_component,
+};
 use crate::modules::developer_workflows::{
     BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
-    DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
 };
 use crate::modules::developer_workflows::{
     DEFAULT_BUILD_PLAN_LIST_LIMIT, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
@@ -16,16 +22,28 @@ pub(super) fn is_build_plan_path(path: &str) -> bool {
         || is_build_plan_item_path(path)
 }
 
+pub(super) fn is_developer_workflow_path(path: &str) -> bool {
+    is_build_plan_path(path) || is_workload_profile_path(path)
+}
+
 pub(super) fn is_build_plan_detection_path(path: &str) -> bool {
-    is_route(path, BUILD_PLAN_DETECTION_ROUTE)
+    is_developer_workflow_route(path, BUILD_PLAN_DETECTION_ROUTE)
 }
 
 pub(super) fn is_build_plan_collection_path(path: &str) -> bool {
-    is_route(path, BUILD_PLAN_COLLECTION_ROUTE)
+    is_developer_workflow_route(path, BUILD_PLAN_COLLECTION_ROUTE)
 }
 
 pub(super) fn is_build_plan_request_body_path(path: &str) -> bool {
     is_build_plan_detection_path(path) || is_build_plan_collection_path(path)
+}
+
+pub(super) fn is_developer_workflow_request_body_path(path: &str) -> bool {
+    is_build_plan_request_body_path(path) || is_workload_profile_request_body_path(path)
+}
+
+pub(super) fn is_developer_workflow_creation_path(path: &str) -> bool {
+    is_build_plan_collection_path(path) || is_workload_profile_collection_path(path)
 }
 
 pub(super) fn request_schema(path: &str) -> Option<Value> {
@@ -34,11 +52,14 @@ pub(super) fn request_schema(path: &str) -> Option<Value> {
     } else if is_build_plan_collection_path(path) {
         Some(accept_build_plan_request_schema())
     } else {
-        None
+        workload_profile_request_schema(path)
     }
 }
 
 pub(super) fn query_parameters(method: &str, path: &str) -> Vec<Value> {
+    if is_workload_profile_path(path) {
+        return workload_profile_query_parameters(method, path);
+    }
     if method != "get" || !is_build_plan_collection_path(path) {
         return Vec::new();
     }
@@ -75,21 +96,18 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
     } else if method == "get" && is_build_plan_item_path(path) && status == 200 {
         Some("AcceptedBuildPlanSuccess200".into())
     } else {
-        None
+        workload_profile_success_component(method, path, status)
     }
 }
 
-fn is_route(path: &str, route: &str) -> bool {
-    path.strip_prefix(DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX) == Some(route)
-}
-
 pub(super) fn is_build_plan_item_path(path: &str) -> bool {
-    is_route(path, BUILD_PLAN_ITEM_ROUTE)
+    is_developer_workflow_route(path, BUILD_PLAN_ITEM_ROUTE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::developer_workflows::DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX;
 
     fn full_route(route: &str) -> String {
         format!("{DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX}{route}")
@@ -145,6 +163,19 @@ mod tests {
             json!(["sourceRevisionId", "proposalAcl"])
         );
         assert!(request_schema(&full_route(BUILD_PLAN_ITEM_ROUTE)).is_none());
+    }
+
+    #[test]
+    fn creation_classification_is_shared_without_treating_detection_as_a_resource() {
+        assert!(is_developer_workflow_creation_path(&full_route(
+            BUILD_PLAN_COLLECTION_ROUTE
+        )));
+        assert!(is_developer_workflow_creation_path(&full_route(
+            crate::modules::developer_workflows::WORKLOAD_PROFILE_COLLECTION_ROUTE
+        )));
+        assert!(!is_developer_workflow_creation_path(&full_route(
+            BUILD_PLAN_DETECTION_ROUTE
+        )));
     }
 
     #[test]

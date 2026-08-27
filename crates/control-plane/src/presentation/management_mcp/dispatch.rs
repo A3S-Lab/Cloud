@@ -21,8 +21,10 @@ use super::connectors::{
     ReviseConnectorProfileArguments,
 };
 use super::developer_workflows::{
-    AcceptBuildPlanArguments, DetectBuildPlansArguments, GetAcceptedBuildPlanArguments,
-    ListAcceptedBuildPlansArguments,
+    AcceptBuildPlanArguments, AcceptWorkloadProfileArguments, DetectBuildPlansArguments,
+    GetAcceptedBuildPlanArguments, GetAcceptedWorkloadProfileRevisionArguments,
+    GetCurrentAcceptedWorkloadProfileRevisionArguments, ListAcceptedBuildPlansArguments,
+    ListAcceptedWorkloadProfileRevisionsArguments,
 };
 use super::durable_cells::{
     CreateDurableCellApplicationArguments, DeployDurableCellApplicationArguments,
@@ -1497,6 +1499,55 @@ pub async fn execute(
         ManagementTool::BuildPlansGet => {
             let arguments = arguments::parse::<GetAcceptedBuildPlanArguments>(arguments).ok()?;
             developer_workflows::get_build_plan(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadProfilesAccept => {
+            let arguments = arguments::parse::<AcceptWorkloadProfileArguments>(arguments).ok()?;
+            developer_workflows::accept_workload_profile(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadProfilesGet => {
+            let arguments =
+                arguments::parse::<GetCurrentAcceptedWorkloadProfileRevisionArguments>(arguments)
+                    .ok()?;
+            developer_workflows::get_current_workload_profile_revision(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadProfileRevisionsList => {
+            let arguments =
+                arguments::parse::<ListAcceptedWorkloadProfileRevisionsArguments>(arguments)
+                    .ok()?;
+            developer_workflows::list_workload_profile_revisions(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadProfileRevisionsGet => {
+            let arguments =
+                arguments::parse::<GetAcceptedWorkloadProfileRevisionArguments>(arguments).ok()?;
+            developer_workflows::get_workload_profile_revision(
                 query_bus,
                 organization_id,
                 actor_principal_id,

@@ -1,19 +1,24 @@
+use super::workload_profile::MAX_WORKLOAD_PROFILE_SAFE_INTEGER;
 use crate::modules::shared_kernel::domain::SecretId;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-const MAX_PROCESS_COMMANDS: usize = 64;
-const MAX_PROCESS_ARGUMENTS: usize = 256;
-const MAX_PROCESS_VALUE_BYTES: usize = 4 * 1024;
-const MAX_ENVIRONMENT_VARIABLES: usize = 256;
-const MAX_SERVICE_ENVIRONMENT_VALUE_BYTES: usize = 64 * 1024;
-const MAX_EXECUTION_ENVIRONMENT_VALUE_BYTES: usize = 32 * 1024;
-const MAX_SECRET_BINDINGS: usize = 128;
-const MAX_SERVICE_PORTS: usize = 64;
-const MAX_RESOURCE_CPU_MILLIS: u64 = 1_000_000;
-const MAX_RESOURCE_MEMORY_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
-const MAX_RESOURCE_PIDS: u32 = 1_000_000;
-const MAX_RESOURCE_EPHEMERAL_STORAGE_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
+pub const MAX_WORKLOAD_PROCESS_COMMANDS: usize = 64;
+pub const MAX_WORKLOAD_PROCESS_ARGUMENTS: usize = 256;
+pub const MAX_WORKLOAD_PROCESS_VALUE_BYTES: usize = 4 * 1024;
+pub const MAX_WORKLOAD_ENVIRONMENT_VARIABLES: usize = 256;
+pub const MAX_WORKLOAD_ENVIRONMENT_VARIABLE_NAME_BYTES: usize = 255;
+pub const MAX_WORKLOAD_SERVICE_ENVIRONMENT_VALUE_BYTES: usize = 64 * 1024;
+pub const MAX_WORKLOAD_EXECUTION_ENVIRONMENT_VALUE_BYTES: usize = 32 * 1024;
+pub const MAX_WORKLOAD_SECRET_BINDINGS: usize = 128;
+pub const MAX_WORKLOAD_SECRET_NAME_BYTES: usize = 63;
+pub const MAX_WORKLOAD_SERVICE_PORTS: usize = 64;
+pub const MAX_WORKLOAD_SERVICE_PORT_NAME_BYTES: usize = 63;
+pub const MAX_WORKLOAD_HEALTH_PATH_BYTES: usize = 2_048;
+pub const MAX_WORKLOAD_RESOURCE_CPU_MILLIS: u64 = 1_000_000;
+pub const MAX_WORKLOAD_RESOURCE_MEMORY_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
+pub const MAX_WORKLOAD_RESOURCE_PIDS: u32 = 1_000_000;
+pub const MAX_WORKLOAD_RESOURCE_EPHEMERAL_STORAGE_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
 pub const MAX_WORKLOAD_PROFILE_EXECUTION_TIMEOUT_MS: u64 = 900_000;
 
 /// Developer Workflows-owned process intent.
@@ -33,11 +38,11 @@ pub struct WorkloadProcess {
 
 impl WorkloadProcess {
     pub(super) fn validate_for_service(&self) -> Result<(), String> {
-        self.validate_common(MAX_SERVICE_ENVIRONMENT_VALUE_BYTES)?;
+        self.validate_common(MAX_WORKLOAD_SERVICE_ENVIRONMENT_VALUE_BYTES)?;
         if self
             .working_directory
             .as_ref()
-            .is_some_and(|value| !valid_single_line(value, MAX_PROCESS_VALUE_BYTES))
+            .is_some_and(|value| !valid_single_line(value, MAX_WORKLOAD_PROCESS_VALUE_BYTES))
         {
             return Err("workload profile Service working directory is invalid".into());
         }
@@ -45,7 +50,7 @@ impl WorkloadProcess {
     }
 
     pub(super) fn validate_for_execution(&self) -> Result<(), String> {
-        self.validate_common(MAX_EXECUTION_ENVIRONMENT_VALUE_BYTES)?;
+        self.validate_common(MAX_WORKLOAD_EXECUTION_ENVIRONMENT_VALUE_BYTES)?;
         if self
             .working_directory
             .as_ref()
@@ -64,16 +69,16 @@ impl WorkloadProcess {
         validate_string_list(
             "workload profile process command",
             &self.command,
-            MAX_PROCESS_COMMANDS,
-            MAX_PROCESS_VALUE_BYTES,
+            MAX_WORKLOAD_PROCESS_COMMANDS,
+            MAX_WORKLOAD_PROCESS_VALUE_BYTES,
         )?;
         validate_string_list(
             "workload profile process argument",
             &self.args,
-            MAX_PROCESS_ARGUMENTS,
-            MAX_PROCESS_VALUE_BYTES,
+            MAX_WORKLOAD_PROCESS_ARGUMENTS,
+            MAX_WORKLOAD_PROCESS_VALUE_BYTES,
         )?;
-        if self.environment.len() > MAX_ENVIRONMENT_VARIABLES
+        if self.environment.len() > MAX_WORKLOAD_ENVIRONMENT_VARIABLES
             || self.environment.iter().any(|(name, value)| {
                 !valid_environment_key(name)
                     || value.len() > maximum_environment_value_bytes
@@ -105,7 +110,10 @@ pub struct WorkloadSecretBinding {
 
 impl WorkloadSecretBinding {
     fn validate(&self) -> Result<(), String> {
-        if !valid_secret_name(&self.name) || self.secret_id.as_uuid().is_nil() || self.version == 0
+        if !valid_secret_name(&self.name)
+            || self.secret_id.as_uuid().is_nil()
+            || self.version == 0
+            || self.version > MAX_WORKLOAD_PROFILE_SAFE_INTEGER
         {
             return Err("workload profile Secret binding identity is invalid".into());
         }
@@ -147,15 +155,15 @@ pub struct WorkloadProfileResources {
 impl WorkloadProfileResources {
     pub(super) fn validate_common(&self) -> Result<(), String> {
         if self.cpu_millis == 0
-            || self.cpu_millis > MAX_RESOURCE_CPU_MILLIS
+            || self.cpu_millis > MAX_WORKLOAD_RESOURCE_CPU_MILLIS
             || self.memory_bytes == 0
-            || self.memory_bytes > MAX_RESOURCE_MEMORY_BYTES
+            || self.memory_bytes > MAX_WORKLOAD_RESOURCE_MEMORY_BYTES
             || self.pids == 0
-            || self.pids > MAX_RESOURCE_PIDS
+            || self.pids > MAX_WORKLOAD_RESOURCE_PIDS
             || self.ephemeral_storage_bytes == Some(0)
             || self
                 .ephemeral_storage_bytes
-                .is_some_and(|value| value > MAX_RESOURCE_EPHEMERAL_STORAGE_BYTES)
+                .is_some_and(|value| value > MAX_WORKLOAD_RESOURCE_EPHEMERAL_STORAGE_BYTES)
         {
             return Err("workload profile resources are outside the closed bounds".into());
         }
@@ -200,7 +208,7 @@ pub(super) fn validate_service_intent(
 ) -> Result<(), String> {
     process.validate_for_service()?;
     resources.validate_common()?;
-    if secrets.len() > MAX_SECRET_BINDINGS || ports.len() > MAX_SERVICE_PORTS {
+    if secrets.len() > MAX_WORKLOAD_SECRET_BINDINGS || ports.len() > MAX_WORKLOAD_SERVICE_PORTS {
         return Err("workload profile Service shape exceeds its closed bounds".into());
     }
 
@@ -232,14 +240,17 @@ pub(super) fn validate_service_intent(
     if let Some(health) = health {
         if !port_names.contains(&health.port_name)
             || !health.path.starts_with('/')
-            || health.path.len() > 2048
+            || health.path.len() > MAX_WORKLOAD_HEALTH_PATH_BYTES
             || health.path.contains(['\0', '\r', '\n'])
             || health.interval_ms == 0
+            || health.interval_ms > MAX_WORKLOAD_PROFILE_SAFE_INTEGER
             || health.timeout_ms == 0
+            || health.timeout_ms > MAX_WORKLOAD_PROFILE_SAFE_INTEGER
             || health.timeout_ms > health.interval_ms
             || health.healthy_threshold == 0
             || health.unhealthy_threshold == 0
             || health.stabilization_window_ms == 0
+            || health.stabilization_window_ms > MAX_WORKLOAD_PROFILE_SAFE_INTEGER
         {
             return Err("workload profile HTTP health check is invalid".into());
         }
@@ -278,7 +289,7 @@ fn valid_single_line(value: &str, maximum_bytes: usize) -> bool {
 
 fn valid_environment_key(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 255
+        && value.len() <= MAX_WORKLOAD_ENVIRONMENT_VARIABLE_NAME_BYTES
         && value.bytes().enumerate().all(|(index, byte)| {
             byte == b'_' || byte.is_ascii_uppercase() || index > 0 && byte.is_ascii_digit()
         })
@@ -286,7 +297,7 @@ fn valid_environment_key(value: &str) -> bool {
 
 fn valid_secret_name(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 63
+        && value.len() <= MAX_WORKLOAD_SECRET_NAME_BYTES
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
@@ -294,7 +305,7 @@ fn valid_secret_name(value: &str) -> bool {
 
 fn valid_port_name(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 63
+        && value.len() <= MAX_WORKLOAD_SERVICE_PORT_NAME_BYTES
         && value.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
@@ -302,7 +313,7 @@ fn valid_port_name(value: &str) -> bool {
 
 fn valid_absolute_path(value: &str) -> bool {
     value.starts_with('/')
-        && value.len() <= MAX_PROCESS_VALUE_BYTES
+        && value.len() <= MAX_WORKLOAD_PROCESS_VALUE_BYTES
         && !value.contains(['\0', '\r', '\n'])
         && !value.contains("//")
         && value

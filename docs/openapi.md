@@ -17,7 +17,19 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.73.0`.
+The current semantic contract version is `1.74.0`.
+
+Contract `1.74.0` adds the closed Developer Workflows WorkloadProfile API. An
+authorized caller can accept one canonical `a3s.cloud.workload-profile.v1` ACL
+bound to an accepted BuildPlan, get the logical profile's current immutable
+revision, list its first 1 through 100 continuous revisions in ascending order,
+or get one exact revision. Responses preserve canonical ACL, digests, exact
+BuildPlan and SourceRevision evidence, typed process/resource/Secret-reference/
+port/health/schedule intent, actor, and acceptance time. They expose no Secret
+material, source bytes, credentials, checkout state, or downstream
+BuildRun/Workload/Execution/Route/Operation/scheduler lifecycle. REST, the
+maintained client and CLI, and four Management MCP tools dispatch the same
+command and Application query service.
 
 Contract `1.73.0` adds the closed logical Agent execution checkpoint and fork
 API. Authorized execution readers can list or get immutable checkpoint

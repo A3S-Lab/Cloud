@@ -6,6 +6,7 @@ use super::{
 use crate::modules::developer_workflows::domain::{
     AcceptWorkloadProfileRevisionWrite, AcceptedWorkloadProfileRevision, IBuildPlanRepository,
     IWorkloadProfileRepository, WorkloadProfileContract, WorkloadProfileRevisionAccepted,
+    MAX_WORKLOAD_PROFILE_SAFE_INTEGER,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -174,7 +175,7 @@ impl CommandHandler<AcceptWorkloadProfile> for AcceptWorkloadProfileHandler {
             };
             let revision_number = match previous.as_ref() {
                 Some(value) => match value.revision_number.checked_add(1) {
-                    Some(value) if value <= i64::MAX as u64 => value,
+                    Some(value) if value <= MAX_WORKLOAD_PROFILE_SAFE_INTEGER => value,
                     _ => {
                         return Ok(Err(ApplicationError::Conflict(
                             "workload profile revision number exhausted".into(),
@@ -222,7 +223,8 @@ fn replay_matches(
     command: &AcceptWorkloadProfile,
     contract: &WorkloadProfileContract,
 ) -> bool {
-    revision.organization_id == command.organization_id
+    revision.validate().is_ok()
+        && revision.organization_id == command.organization_id
         && revision.project_id == command.project_id
         && revision.environment_id == command.environment_id
         && revision.build_plan_id == command.build_plan_id

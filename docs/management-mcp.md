@@ -22,6 +22,14 @@ REST. Detection/list/get require `cloud:read`; acceptance requires
 acceptance receives only canonical `proposalAcl`, and responses reuse the REST
 DTOs with canonical ACL and typed evidence. MCP owns no detector, ACL parser,
 authorization evaluator, repository, checkout, provider, or build lifecycle.
+The `P0.2-C6` slice adds four WorkloadProfile tools over the existing
+acceptance command and sole accepted-revision query service. Current,
+history-list, and exact-revision reads require `cloud:read`; acceptance requires
+`build:write`. Arguments contain only exact scope/identity, bounded canonical
+`profileAcl`, caller-owned idempotency, and an optional `1..=100` list limit.
+Responses reuse the REST DTOs and expose typed Secret references but never
+Secret material or downstream lifecycle. MCP adds no parser, repository,
+authorization evaluator, compiler, scheduler, or owner state machine.
 The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
 tools over the same Workflow command/query handlers. It does not introduce an
 MCP-specific Ontology store, migration policy, ACL parser, or graph database.
@@ -844,6 +852,28 @@ private identity validation and fails closed on repository scope, canonical ACL,
 page-bound, duplicate, or ordering drift. No MCP adapter reads a repository or
 reimplements Membership, Resource Grant, Environment, or detector policy.
 
+## WorkloadProfile acceptance and revision history
+
+`a3s_cloud_workload_profiles_accept` accepts exact `projectId`,
+`environmentId`, and `buildPlanId`, bounded canonical `profileAcl`, and
+`idempotencyKey`, then dispatches the existing authorization-first acceptance
+command. A new immutable revision returns `201`; exact replay returns `200`
+with `replayed: true`.
+
+`a3s_cloud_workload_profiles_get` gets the current accepted revision for one
+exact `workloadProfileId`. `a3s_cloud_workload_profile_revisions_list` returns
+an ascending continuous history with an optional limit from 1 through 100
+(default 50), and `a3s_cloud_workload_profile_revisions_get` gets one exact
+`workloadProfileRevisionId` under that logical profile.
+
+All three reads use one Application `WorkloadProfileQueryService`. It
+authorizes before semantic identity validation and rejects invalid restored
+ACL, foreign scope, page overflow, or revision-order gaps. The adapter dispatches
+only CommandBus/QueryBus contracts and shares the REST response projection; it
+does not parse ACL, load a repository, evaluate grants, compile a target owner
+template, or create BuildRun, Workload, Execution, Route, Operation, or
+scheduler state.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -895,7 +925,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 141-tool administrator and 80-tool
+current focused source runner requires exact 145-tool administrator and 83-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -934,8 +964,9 @@ definition/Goal/Plan lifecycle, built-in node-catalog cross-surface equality,
 native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
 immutable Application release lifecycle, immutable Connector profile/revision lifecycle, Durable Cell application and
-deployment lifecycle with Secret-free responses, BuildPlan ACL-only review and
-acceptance, strict-boundary, and replay
+deployment lifecycle with Secret-free responses, BuildPlan ACL-only review,
+WorkloadProfile ACL-only acceptance and immutable revision reads,
+strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.

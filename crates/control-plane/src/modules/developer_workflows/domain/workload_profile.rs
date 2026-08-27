@@ -17,15 +17,16 @@ use uuid::Uuid;
 pub const WORKLOAD_PROFILE_SCHEMA: &str = "a3s.cloud.workload-profile.v1";
 pub const WORKLOAD_PROFILE_MAX_ACL_BYTES: usize = 128 * 1024;
 const WORKLOAD_PROFILE_BLOCK: &str = "workload_profile";
-const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
-const MAX_SCHEDULE_EXPRESSION_BYTES: usize = 256;
-const MAX_TIMEZONE_NAME_BYTES: usize = 255;
-const MAX_SCHEDULE_CONCURRENCY: u16 = 64;
-const MAX_SCHEDULE_MISFIRE_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-const MAX_SCHEDULE_ATTEMPTS: u16 = 8;
-const MAX_SCHEDULE_BACKOFF_MS: u64 = 24 * 60 * 60 * 1_000;
-const MAX_SCHEDULE_HISTORY_COUNT: u16 = 10_000;
-const MAX_SCHEDULE_HISTORY_DAYS: u16 = 3_650;
+pub const MAX_WORKLOAD_PROFILE_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+pub const MAX_WORKLOAD_PROFILE_NAME_BYTES: usize = 63;
+pub const MAX_WORKLOAD_SCHEDULE_EXPRESSION_BYTES: usize = 256;
+pub const MAX_WORKLOAD_SCHEDULE_TIMEZONE_NAME_BYTES: usize = 255;
+pub const MAX_WORKLOAD_SCHEDULE_CONCURRENCY: u16 = 64;
+pub const MAX_WORKLOAD_SCHEDULE_MISFIRE_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+pub const MAX_WORKLOAD_SCHEDULE_ATTEMPTS: u16 = 8;
+pub const MAX_WORKLOAD_SCHEDULE_BACKOFF_MS: u64 = 24 * 60 * 60 * 1_000;
+pub const MAX_WORKLOAD_SCHEDULE_HISTORY_COUNT: u16 = 10_000;
+pub const MAX_WORKLOAD_SCHEDULE_HISTORY_DAYS: u16 = 3_650;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,7 +115,7 @@ impl ScheduledTaskSchedule {
             .collect::<Vec<_>>()
             .join(" ");
         if self.expression.is_empty()
-            || self.expression.len() > MAX_SCHEDULE_EXPRESSION_BYTES
+            || self.expression.len() > MAX_WORKLOAD_SCHEDULE_EXPRESSION_BYTES
             || self.expression != normalized
             || self.expression.split_ascii_whitespace().count() != 7
             || Schedule::from_str(&self.expression).is_err()
@@ -125,7 +126,7 @@ impl ScheduledTaskSchedule {
             );
         }
         if self.timezone.is_empty()
-            || self.timezone.len() > MAX_TIMEZONE_NAME_BYTES
+            || self.timezone.len() > MAX_WORKLOAD_SCHEDULE_TIMEZONE_NAME_BYTES
             || self.timezone.contains(['\0', '\r', '\n', '\t', ' '])
         {
             return Err("scheduled Task timezone name is invalid".into());
@@ -136,19 +137,19 @@ impl ScheduledTaskSchedule {
             return Err("scheduled Task timezone name is not canonical".into());
         }
         if self.maximum_concurrency == 0
-            || self.maximum_concurrency > MAX_SCHEDULE_CONCURRENCY
+            || self.maximum_concurrency > MAX_WORKLOAD_SCHEDULE_CONCURRENCY
             || self.misfire_grace_ms == 0
-            || self.misfire_grace_ms > MAX_SCHEDULE_MISFIRE_GRACE_MS
+            || self.misfire_grace_ms > MAX_WORKLOAD_SCHEDULE_MISFIRE_GRACE_MS
             || self.retry.maximum_attempts == 0
-            || self.retry.maximum_attempts > MAX_SCHEDULE_ATTEMPTS
+            || self.retry.maximum_attempts > MAX_WORKLOAD_SCHEDULE_ATTEMPTS
             || self.retry.initial_backoff_ms == 0
             || self.retry.initial_backoff_ms > self.retry.maximum_backoff_ms
-            || self.retry.maximum_backoff_ms > MAX_SCHEDULE_BACKOFF_MS
-            || self.history.successful_limit > MAX_SCHEDULE_HISTORY_COUNT
-            || self.history.failed_limit > MAX_SCHEDULE_HISTORY_COUNT
+            || self.retry.maximum_backoff_ms > MAX_WORKLOAD_SCHEDULE_BACKOFF_MS
+            || self.history.successful_limit > MAX_WORKLOAD_SCHEDULE_HISTORY_COUNT
+            || self.history.failed_limit > MAX_WORKLOAD_SCHEDULE_HISTORY_COUNT
             || self.history.successful_limit == 0 && self.history.failed_limit == 0
             || self.history.maximum_age_days == 0
-            || self.history.maximum_age_days > MAX_SCHEDULE_HISTORY_DAYS
+            || self.history.maximum_age_days > MAX_WORKLOAD_SCHEDULE_HISTORY_DAYS
         {
             return Err("scheduled Task policy is outside the closed P0 bounds".into());
         }
@@ -370,7 +371,7 @@ fn validate_contract_binding(spec: &WorkloadProfileContractSpec) -> Result<(), S
 fn validate_profile_name(name: &str) -> Result<(), String> {
     let bytes = name.as_bytes();
     if bytes.is_empty()
-        || bytes.len() > 63
+        || bytes.len() > MAX_WORKLOAD_PROFILE_NAME_BYTES
         || !bytes[0].is_ascii_lowercase()
         || !bytes[bytes.len() - 1].is_ascii_alphanumeric()
         || !bytes
@@ -983,7 +984,7 @@ fn number(block: &Block, name: &str, allow_zero: bool) -> Result<u64, String> {
         || value.fract() != 0.0
         || value < 0.0
         || !allow_zero && value == 0.0
-        || value > MAX_SAFE_ACL_INTEGER as f64
+        || value > MAX_WORKLOAD_PROFILE_SAFE_INTEGER as f64
     {
         return Err(format!(
             "workload profile field {name:?} must be an exactly representable bounded integer"
@@ -1020,7 +1021,7 @@ fn optional_u64(block: &Block, name: &str) -> Result<Option<u64>, String> {
 }
 
 fn acl_integer(name: &str, value: u64) -> Result<Value, String> {
-    if value == 0 || value > MAX_SAFE_ACL_INTEGER {
+    if value == 0 || value > MAX_WORKLOAD_PROFILE_SAFE_INTEGER {
         return Err(format!(
             "workload profile field {name:?} is not representable by ACL"
         ));
@@ -1029,7 +1030,7 @@ fn acl_integer(name: &str, value: u64) -> Result<Value, String> {
 }
 
 fn acl_integer_allow_zero(name: &str, value: u64) -> Result<Value, String> {
-    if value > MAX_SAFE_ACL_INTEGER {
+    if value > MAX_WORKLOAD_PROFILE_SAFE_INTEGER {
         return Err(format!(
             "workload profile field {name:?} is not representable by ACL"
         ));

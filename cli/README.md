@@ -417,6 +417,10 @@ build-plan-detections create <source-revision-id>
 build-plans accept <source-revision-id> --file=<proposal.acl>
 build-plans list <source-revision-id> [--limit=<1..200>]
 build-plans get <build-plan-id>
+workload-profiles accept <build-plan-id> --file=<profile.acl>
+workload-profiles get <workload-profile-id>
+workload-profile-revisions list <workload-profile-id> [--limit=<1..100>]
+workload-profile-revisions get <workload-profile-id> <revision-id>
 source-connections get
 source-connections begin
 source-subscriptions list
@@ -650,6 +654,14 @@ typed evidence. Cloud alone acquires the trusted source layout, parses and
 canonicalizes ACL through `a3s-acl`, authorizes the environment, and persists
 the aggregate. The CLI never reads a checkout, runs a detector, parses ACL, or
 creates a second BuildPlan repository or authorization path.
+
+`workload-profiles accept` sends one bounded canonical `.acl` contract bound to
+an accepted BuildPlan. `workload-profiles get` reads its current immutable
+revision, while `workload-profile-revisions list|get` expose bounded ascending
+history and exact revisions. The CLI performs only byte-bound transport checks;
+Cloud remains the sole `a3s-acl` parser, acceptance authority, repository owner,
+and environment authorization path, and these commands do not start a Workload,
+Execution, Route, Operation, or scheduler lifecycle.
 
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box

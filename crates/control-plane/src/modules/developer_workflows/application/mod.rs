@@ -14,6 +14,7 @@ mod source_layout_acquisition;
 mod source_revision;
 mod target_admission;
 mod workload_profile_acceptance;
+mod workload_profile_queries;
 
 pub use acceptance::{AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult};
 pub use accepted_profile_compilation::{
@@ -66,6 +67,13 @@ pub use target_admission::{
 pub use workload_profile_acceptance::{
     AcceptWorkloadProfile, AcceptWorkloadProfileHandler, AcceptWorkloadProfileResult,
 };
+pub use workload_profile_queries::{
+    GetAcceptedWorkloadProfileRevision, GetAcceptedWorkloadProfileRevisionHandler,
+    GetCurrentAcceptedWorkloadProfileRevision, GetCurrentAcceptedWorkloadProfileRevisionHandler,
+    ListAcceptedWorkloadProfileRevisions, ListAcceptedWorkloadProfileRevisionsHandler,
+    WorkloadProfileQueryService, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+};
 
 #[cfg(test)]
 mod tests;
@@ -81,6 +89,9 @@ mod build_plan_detection_query_tests;
 
 #[cfg(test)]
 mod workload_profile_acceptance_tests;
+
+#[cfg(test)]
+mod workload_profile_queries_tests;
 
 #[cfg(test)]
 mod preview_policy_acceptance_tests;

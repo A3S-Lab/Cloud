@@ -1233,6 +1233,126 @@ fn developer_workflows_build_plan_reads_have_one_application_authority() {
 }
 
 #[test]
+fn developer_workflows_workload_profile_public_surface_has_one_application_authority() {
+    let query = std::fs::read_to_string(
+        module_root().join("developer_workflows/application/workload_profile_queries.rs"),
+    )
+    .expect("read accepted WorkloadProfile queries");
+    let production_query = production_source(&query);
+    let compact_query = production_query.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructWorkloadProfileQueryService",
+        "profiles:Arc<dynIWorkloadProfileRepository>",
+        "authorization:Arc<dynIDeveloperWorkflowAuthorizationPort>",
+        "DeveloperWorkflowAction::ReadWorkloadProfile",
+        "implQueryHandler<GetCurrentAcceptedWorkloadProfileRevision>",
+        "implQueryHandler<GetAcceptedWorkloadProfileRevision>",
+        "implQueryHandler<ListAcceptedWorkloadProfileRevisions>",
+    ] {
+        assert!(
+            compact_query.contains(required),
+            "accepted WorkloadProfile reads lost their single Application authority {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "crate::modules::projects",
+        "crate::modules::workloads",
+        "crate::modules::executions",
+        "ResourceAccessEvaluator",
+        "Postgres",
+        "InMemory",
+        "CommandBus",
+        "CommandHandler",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_query.contains(forbidden),
+            "accepted WorkloadProfile read authority imported foreign policy, a concrete adapter, or lifecycle mechanism {forbidden}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        module_root().join("developer_workflows/presentation/workload_profile_controller.rs"),
+    )
+    .expect("read WorkloadProfile controller");
+    let production_controller = production_source(&controller);
+    for required in [
+        "AcceptWorkloadProfile",
+        "GetCurrentAcceptedWorkloadProfileRevision",
+        "GetAcceptedWorkloadProfileRevision",
+        "ListAcceptedWorkloadProfileRevisions",
+        ".execute(",
+    ] {
+        assert!(
+            production_controller.contains(required),
+            "WorkloadProfile presentation stopped dispatching the Application boundary {required}"
+        );
+    }
+    for forbidden in [
+        "IWorkloadProfileRepository",
+        "developer_workflows::infrastructure",
+        "authorize_environment_action",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
+        "WorkloadProfileContract::parse_acl",
+        "a3s_acl",
+        ".find_current(",
+        ".find_revision(",
+        ".list_revisions(",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_controller.contains(forbidden),
+            "WorkloadProfile presentation bypassed its Application boundary with {forbidden}"
+        );
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("control-plane source root")
+            .join("presentation/management_mcp/developer_workflows.rs"),
+    )
+    .expect("read Developer Workflows Management MCP adapter");
+    let production_management_mcp = production_source(&management_mcp);
+    for required in [
+        "AcceptWorkloadProfile",
+        "GetCurrentAcceptedWorkloadProfileRevision",
+        "GetAcceptedWorkloadProfileRevision",
+        "ListAcceptedWorkloadProfileRevisions",
+        ".execute(",
+    ] {
+        assert!(
+            production_management_mcp.contains(required),
+            "WorkloadProfile Management MCP stopped dispatching the Application boundary {required}"
+        );
+    }
+    for forbidden in [
+        "IWorkloadProfileRepository",
+        "developer_workflows::infrastructure",
+        "authorize_environment_action",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
+        "WorkloadProfileContract::parse_acl",
+        "a3s_acl",
+        ".find_current(",
+        ".find_revision(",
+        ".list_revisions(",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_management_mcp.contains(forbidden),
+            "WorkloadProfile Management MCP bypassed its Application boundary with {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

@@ -14,7 +14,9 @@ use crate::modules::connectors::{
 };
 use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
-    BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+    BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
     DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
@@ -47,12 +49,16 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
 pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
 pub const BUILD_PLANS_GET: &str = "a3s_cloud_build_plans_get";
 pub const BUILD_PLANS_LIST: &str = "a3s_cloud_build_plans_list";
+pub const WORKLOAD_PROFILES_ACCEPT: &str = "a3s_cloud_workload_profiles_accept";
+pub const WORKLOAD_PROFILES_GET: &str = "a3s_cloud_workload_profiles_get";
+pub const WORKLOAD_PROFILE_REVISIONS_LIST: &str = "a3s_cloud_workload_profile_revisions_list";
+pub const WORKLOAD_PROFILE_REVISIONS_GET: &str = "a3s_cloud_workload_profile_revisions_get";
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
 pub const BUILD_RUNS_LIST: &str = "a3s_cloud_build_runs_list";
 pub const BUILD_RUNS_CANCEL: &str = "a3s_cloud_build_runs_cancel";
@@ -333,6 +339,10 @@ pub enum ManagementTool {
     BuildPlansAccept,
     BuildPlansList,
     BuildPlansGet,
+    WorkloadProfilesAccept,
+    WorkloadProfilesGet,
+    WorkloadProfileRevisionsList,
+    WorkloadProfileRevisionsGet,
     BuildRunsList,
     BuildRunsGet,
     BuildRunLogsGet,
@@ -356,7 +366,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 141] = [
+    const ALL: [Self; 145] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -492,6 +502,10 @@ impl ManagementTool {
         Self::BuildPlansAccept,
         Self::BuildPlansList,
         Self::BuildPlansGet,
+        Self::WorkloadProfilesAccept,
+        Self::WorkloadProfilesGet,
+        Self::WorkloadProfileRevisionsList,
+        Self::WorkloadProfileRevisionsGet,
         Self::BuildRunsList,
         Self::BuildRunsGet,
         Self::BuildRunLogsGet,
@@ -667,6 +681,10 @@ impl ManagementTool {
             Self::BuildPlansAccept => BUILD_PLANS_ACCEPT,
             Self::BuildPlansList => BUILD_PLANS_LIST,
             Self::BuildPlansGet => BUILD_PLANS_GET,
+            Self::WorkloadProfilesAccept => WORKLOAD_PROFILES_ACCEPT,
+            Self::WorkloadProfilesGet => WORKLOAD_PROFILES_GET,
+            Self::WorkloadProfileRevisionsList => WORKLOAD_PROFILE_REVISIONS_LIST,
+            Self::WorkloadProfileRevisionsGet => WORKLOAD_PROFILE_REVISIONS_GET,
             Self::BuildRunsList => BUILD_RUNS_LIST,
             Self::BuildRunsGet => BUILD_RUNS_GET,
             Self::BuildRunLogsGet => BUILD_RUN_LOGS_GET,
@@ -731,9 +749,10 @@ impl ManagementTool {
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
-            Self::BuildPlansAccept | Self::BuildRunsCancel | Self::BuildRunsRetry => {
-                Some(ApiTokenScope::BUILD_WRITE)
-            }
+            Self::BuildPlansAccept
+            | Self::WorkloadProfilesAccept
+            | Self::BuildRunsCancel
+            | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::MyMembershipInvitationsList
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
@@ -762,7 +781,10 @@ impl ManagementTool {
             | Self::DurableCellRevisionsGet
             | Self::BuildPlanDetectionsCreate
             | Self::BuildPlansList
-            | Self::BuildPlansGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::BuildPlansGet
+            | Self::WorkloadProfilesGet
+            | Self::WorkloadProfileRevisionsList
+            | Self::WorkloadProfileRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -893,6 +915,10 @@ impl ManagementTool {
             | Self::BuildPlansAccept
             | Self::BuildPlansList
             | Self::BuildPlansGet
+            | Self::WorkloadProfilesAccept
+            | Self::WorkloadProfilesGet
+            | Self::WorkloadProfileRevisionsList
+            | Self::WorkloadProfileRevisionsGet
             | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
@@ -1815,6 +1841,30 @@ impl ManagementTool {
                 get_build_plan_schema(),
                 true,
             ),
+            Self::WorkloadProfilesAccept => (
+                "Accept WorkloadProfile revision",
+                "Accept one canonical WorkloadProfile ACL as an immutable revision with explicit idempotency.",
+                accept_workload_profile_schema(),
+                false,
+            ),
+            Self::WorkloadProfilesGet => (
+                "Get current WorkloadProfile revision",
+                "Get the current immutable revision of one WorkloadProfile in an exact tenant-authorized environment.",
+                get_workload_profile_schema(),
+                true,
+            ),
+            Self::WorkloadProfileRevisionsList => (
+                "List WorkloadProfile revisions",
+                "List one bounded canonical ascending history of immutable WorkloadProfile revisions.",
+                list_workload_profile_revisions_schema(),
+                true,
+            ),
+            Self::WorkloadProfileRevisionsGet => (
+                "Get WorkloadProfile revision",
+                "Get one exact immutable WorkloadProfile revision in a tenant-authorized environment.",
+                get_workload_profile_revision_schema(),
+                true,
+            ),
             Self::BuildRunsList => (
                 "List build runs",
                 "List a bounded set of BuildRuns in one tenant-authorized environment.",
@@ -2255,7 +2305,7 @@ fn revoke_notification_outbound_subscription_schema() -> Value {
     })
 }
 
-fn build_plan_environment_properties() -> serde_json::Map<String, Value> {
+fn developer_workflow_environment_properties() -> serde_json::Map<String, Value> {
     serde_json::Map::from_iter([
         (
             "projectId".into(),
@@ -2269,7 +2319,7 @@ fn build_plan_environment_properties() -> serde_json::Map<String, Value> {
 }
 
 fn build_plan_source_properties() -> serde_json::Map<String, Value> {
-    let mut properties = build_plan_environment_properties();
+    let mut properties = developer_workflow_environment_properties();
     properties.insert(
         "sourceRevisionId".into(),
         json!({"type": "string", "format": "uuid"}),
@@ -2290,14 +2340,10 @@ fn accept_build_plan_schema() -> Value {
     let mut properties = build_plan_source_properties();
     properties.insert(
         "proposalAcl".into(),
-        json!({
-            "type": "string",
-            "minLength": 1,
-            "maxLength": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
-            "x-a3s-max-utf8-bytes": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
-            "description": "Canonical A3S ACL parsed and generated only through a3s-acl.",
-            "example": include_str!("../../../../../contracts/p0.1/build-plan.acl")
-        }),
+        canonical_acl_input_schema(
+            BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
+            include_str!("../../../../../contracts/p0.1/build-plan.acl"),
+        ),
     );
     properties.insert("idempotencyKey".into(), idempotency_key_schema());
     json!({
@@ -2334,7 +2380,7 @@ fn list_build_plans_schema() -> Value {
 }
 
 fn get_build_plan_schema() -> Value {
-    let mut properties = build_plan_environment_properties();
+    let mut properties = developer_workflow_environment_properties();
     properties.insert(
         "buildPlanId".into(),
         json!({"type": "string", "format": "uuid"}),
@@ -2344,6 +2390,102 @@ fn get_build_plan_schema() -> Value {
         "properties": properties,
         "required": ["projectId", "environmentId", "buildPlanId"],
         "additionalProperties": false
+    })
+}
+
+fn accept_workload_profile_schema() -> Value {
+    let mut properties = developer_workflow_environment_properties();
+    properties.insert(
+        "buildPlanId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties.insert(
+        "profileAcl".into(),
+        canonical_acl_input_schema(
+            WORKLOAD_PROFILE_MAX_ACL_BYTES,
+            include_str!("../../../../../contracts/p0.2/workload-profile.acl"),
+        ),
+    );
+    properties.insert("idempotencyKey".into(), idempotency_key_schema());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "buildPlanId",
+            "profileAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn get_workload_profile_schema() -> Value {
+    let properties = workload_profile_identity_properties();
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["projectId", "environmentId", "workloadProfileId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_workload_profile_revisions_schema() -> Value {
+    let mut properties = workload_profile_identity_properties();
+    properties.insert(
+        "limit".into(),
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+            "default": DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT
+        }),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["projectId", "environmentId", "workloadProfileId"],
+        "additionalProperties": false
+    })
+}
+
+fn get_workload_profile_revision_schema() -> Value {
+    let mut properties = workload_profile_identity_properties();
+    properties.insert(
+        "workloadProfileRevisionId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "workloadProfileId",
+            "workloadProfileRevisionId"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn workload_profile_identity_properties() -> Map<String, Value> {
+    let mut properties = developer_workflow_environment_properties();
+    properties.insert(
+        "workloadProfileId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties
+}
+
+fn canonical_acl_input_schema(maximum_bytes: usize, example: &str) -> Value {
+    json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": maximum_bytes,
+        "x-a3s-max-utf8-bytes": maximum_bytes,
+        "description": "Canonical A3S ACL parsed and generated only through a3s-acl.",
+        "example": example
     })
 }
 
@@ -3680,6 +3822,78 @@ mod tests {
     }
 
     #[test]
+    fn workload_profile_catalog_is_acl_only_revision_aware_and_scope_explicit() {
+        for tool in [
+            ManagementTool::WorkloadProfilesGet,
+            ManagementTool::WorkloadProfileRevisionsList,
+            ManagementTool::WorkloadProfileRevisionsGet,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::EnvironmentArguments)
+            );
+            assert_eq!(
+                tool.definition()["annotations"]["readOnlyHint"].as_bool(),
+                Some(true)
+            );
+        }
+        assert_eq!(
+            ManagementTool::WorkloadProfilesAccept.required_scope(),
+            Some(ApiTokenScope::BUILD_WRITE)
+        );
+        assert_eq!(
+            ManagementTool::WorkloadProfilesAccept.resource_binding(),
+            Some(ManagementResourceBinding::EnvironmentArguments)
+        );
+
+        let acceptance = ManagementTool::WorkloadProfilesAccept.definition();
+        let properties = &acceptance["inputSchema"]["properties"];
+        assert_eq!(
+            properties["profileAcl"]["maxLength"].as_u64(),
+            Some(WORKLOAD_PROFILE_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["profileAcl"]["x-a3s-max-utf8-bytes"].as_u64(),
+            Some(WORKLOAD_PROFILE_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["profileAcl"]["example"].as_str(),
+            Some(include_str!(
+                "../../../../../contracts/p0.2/workload-profile.acl"
+            ))
+        );
+        assert!(properties.get("profile").is_none());
+        assert_eq!(acceptance["inputSchema"]["additionalProperties"], false);
+
+        let list = ManagementTool::WorkloadProfileRevisionsList.definition();
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["maximum"],
+            MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT
+        );
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["default"],
+            DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT
+        );
+        assert_eq!(
+            ManagementTool::WorkloadProfilesAccept.name(),
+            WORKLOAD_PROFILES_ACCEPT
+        );
+        assert_eq!(
+            ManagementTool::WorkloadProfilesGet.name(),
+            WORKLOAD_PROFILES_GET
+        );
+        assert_eq!(
+            ManagementTool::WorkloadProfileRevisionsList.name(),
+            WORKLOAD_PROFILE_REVISIONS_LIST
+        );
+        assert_eq!(
+            ManagementTool::WorkloadProfileRevisionsGet.name(),
+            WORKLOAD_PROFILE_REVISIONS_GET
+        );
+    }
+
+    #[test]
     fn restricted_catalog_exposes_direct_and_filtered_collection_tools() {
         let principal = restricted_principal(ResourceGrantScope::Project {
             project_id: ProjectId::new(),
@@ -3720,6 +3934,10 @@ mod tests {
         assert!(ManagementTool::BuildPlansAccept.visible_to(&principal));
         assert!(ManagementTool::BuildPlansList.visible_to(&principal));
         assert!(ManagementTool::BuildPlansGet.visible_to(&principal));
+        assert!(ManagementTool::WorkloadProfilesAccept.visible_to(&principal));
+        assert!(ManagementTool::WorkloadProfilesGet.visible_to(&principal));
+        assert!(ManagementTool::WorkloadProfileRevisionsList.visible_to(&principal));
+        assert!(ManagementTool::WorkloadProfileRevisionsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunLogsGet.visible_to(&principal));
         assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));
