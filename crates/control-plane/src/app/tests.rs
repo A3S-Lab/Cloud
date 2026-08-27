@@ -211,6 +211,7 @@ mod asset_git_tests;
 mod audit_tests;
 mod build_tests;
 mod connector_tests;
+mod developer_workflow_tests;
 mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
@@ -2118,6 +2119,12 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
 
 fn response_json(response: &BootResponse) -> Result<Value> {
     response.body_json()
+}
+
+fn assert_no_store(response: &BootResponse) {
+    assert_eq!(response.header("cache-control"), Some("no-store"));
+    assert_eq!(response.header("pragma"), Some("no-cache"));
+    assert_eq!(response.header("referrer-policy"), Some("no-referrer"));
 }
 
 fn response_id(response: &BootResponse) -> Result<String> {

@@ -8,8 +8,8 @@ export {
   type CloudFetch,
   type CloudLogQuery,
   type CloudSequenceQuery,
-  DEFAULT_CLOUD_API_BASE_PATH,
   DEFAULT_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT,
+  DEFAULT_CLOUD_API_BASE_PATH,
   DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
   isValidIdempotencyKey,
   MAX_ACL_DOCUMENT_BYTES,
@@ -37,17 +37,18 @@ export {
   MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
-  validateAgentProviderKind,
   validateAgentApprovalCheckpointList,
   validateAgentApprovalDecision,
-  validateExpectedAgentApprovalCheckpointVersion,
+  validateAgentProviderKind,
   validateExecutionTemplateAcl,
+  validateExpectedAgentApprovalCheckpointVersion,
   validateFormDraftInput,
   validateFormVersionControl,
 } from './api';
 export * from './applications';
 export * from './audit';
 export * from './connectors';
+export * from './developer-workflows';
 export * from './diagnostics';
 export * from './durable-cells';
 export {

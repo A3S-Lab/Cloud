@@ -40,11 +40,6 @@ import {
   encodeAuditRecordQuery,
 } from './audit';
 import {
-  encodeSecurityTimelineQuery,
-  type GatewayRoutePolicyTimelinePage,
-  type SecurityTimelineQuery,
-} from './security';
-import {
   type ConnectorExecutionAttempt,
   type ConnectorExecutionAttemptPage,
   type ConnectorExecutionAttemptQuery,
@@ -58,17 +53,27 @@ import {
   type ConnectorRevisionRevocationMutationResult,
   type CreateConnectorProfileInput,
   DEFAULT_CONNECTOR_LIST_LIMIT,
+  encodeConnectorExecutionAttemptQuery,
+  type ResolveConnectorExecutionAttemptInput,
   type ReviseConnectorProfileInput,
   type RevokeConnectorRevisionInput,
-  type ResolveConnectorExecutionAttemptInput,
-  encodeConnectorExecutionAttemptQuery,
   validateConnectorDefinitionAcl,
-  validateConnectorExpectedVersion,
   validateConnectorExecutionAttemptResolutionReason,
+  validateConnectorExpectedVersion,
   validateConnectorListLimit,
   validateConnectorProfileName,
   validateConnectorRevisionRevocationReason,
 } from './connectors';
+import {
+  type AcceptBuildPlanInput,
+  type AcceptedBuildPlan,
+  type BuildPlanDetection,
+  type BuildPlanMutationResult,
+  DEFAULT_BUILD_PLAN_LIST_LIMIT,
+  type DetectBuildPlansInput,
+  validateBuildPlanListLimit,
+  validateBuildPlanProposalAcl,
+} from './developer-workflows';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import {
   type CreateDurableCellApplicationInput,
@@ -90,6 +95,11 @@ import {
   validatePublishDurableCellApplicationRouteInput,
 } from './durable-cells';
 import { CloudApiError } from './error';
+import {
+  validateExpectedRecipientContactVersion,
+  validateRecipientContactAddress,
+  validateRecipientContactProof,
+} from './identity';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import {
   encodeNotificationAlertPolicyQuery,
@@ -118,6 +128,11 @@ import {
 } from './notifications';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
+import {
+  encodeSecurityTimelineQuery,
+  type GatewayRoutePolicyTimelinePage,
+  type SecurityTimelineQuery,
+} from './security';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import type {
   AddNodePoolMembersInput,
@@ -184,8 +199,8 @@ import type {
   HumanTaskStatus,
   HumanTaskSummary,
   IssueEnrollmentTokenInput,
-  ListHumanTasksOptions,
   ListAgentApprovalCheckpointsOptions,
+  ListHumanTasksOptions,
   ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
@@ -273,19 +288,14 @@ import type {
   WorkloadLogsPage,
 } from './types';
 import {
-  validateExpectedRecipientContactVersion,
-  validateRecipientContactAddress,
-  validateRecipientContactProof,
-} from './identity';
-import {
-  validateAgentProviderKind,
   validateAgentApprovalCheckpointList,
   validateAgentApprovalDecision,
+  validateAgentProviderKind,
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExecutionTemplateAcl,
-  validateExpectedHumanTaskVersion,
   validateExpectedAgentApprovalCheckpointVersion,
+  validateExpectedHumanTaskVersion,
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipInvitationVersion,
   validateExpectedMembershipVersion,
@@ -324,7 +334,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.71.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.72.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -366,17 +376,29 @@ export {
   MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
-  validateAgentProviderKind,
   validateAgentApprovalCheckpointList,
   validateAgentApprovalDecision,
-  validateExpectedAgentApprovalCheckpointVersion,
+  validateAgentProviderKind,
   validateExecutionTemplateAcl,
+  validateExpectedAgentApprovalCheckpointVersion,
   validateFormDraftInput,
   validateFormVersionControl,
 } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
+}
+
+function developerWorkflowEnvironmentPath(
+  organizationId: string,
+  projectId: string,
+  environmentId: string
+): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}` +
+    `/environments/${encodeURIComponent(environmentId)}`
+  );
 }
 
 export class CloudApi {
@@ -3378,6 +3400,72 @@ export class CloudApi {
         `/environments/${encodeURIComponent(environmentId)}/source-revisions`,
       idempotencyKey,
       input,
+      signal
+    );
+  }
+
+  detectBuildPlans(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: DetectBuildPlansInput,
+    signal?: AbortSignal
+  ): Promise<BuildPlanDetection> {
+    return this.postQueryJson(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        '/build-plan-detections',
+      input,
+      signal
+    );
+  }
+
+  acceptBuildPlan(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: AcceptBuildPlanInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<BuildPlanMutationResult> {
+    validateBuildPlanProposalAcl(input.proposalAcl);
+    return this.postJson(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}/build-plans`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  listAcceptedBuildPlans(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    sourceRevisionId: string,
+    limit = DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<AcceptedBuildPlan[]> {
+    validateBuildPlanListLimit(limit);
+    const query = new URLSearchParams({
+      sourceRevisionId,
+      limit: String(limit),
+    }).toString();
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        `/build-plans?${query}`,
+      signal
+    );
+  }
+
+  getAcceptedBuildPlan(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    buildPlanId: string,
+    signal?: AbortSignal
+  ): Promise<AcceptedBuildPlan> {
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
+        `/build-plans/${encodeURIComponent(buildPlanId)}`,
       signal
     );
   }

@@ -10,9 +10,10 @@ pub struct BuildPlatform(String);
 impl BuildPlatform {
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
-        match value.as_str() {
-            "linux/amd64" | "linux/arm64" => Ok(Self(value)),
-            _ => Err("build platform must be linux/amd64 or linux/arm64".into()),
+        if BuildRecipe::SUPPORTED_PLATFORMS.contains(&value.as_str()) {
+            Ok(Self(value))
+        } else {
+            Err("build platform must be linux/amd64 or linux/arm64".into())
         }
     }
 
@@ -36,6 +37,11 @@ pub struct BuildRecipe {
 impl BuildRecipe {
     pub const SCHEMA: &'static str = "a3s.cloud.build-recipe.v1";
     pub const DOCKERFILE_KIND: &'static str = "dockerfile";
+    pub const MAX_REPOSITORY_PATH_BYTES: usize = 255;
+    pub const MAX_TARGET_BYTES: usize = 128;
+    pub const MAX_PLATFORMS: usize = 8;
+    pub const SUPPORTED_PLATFORMS: [&'static str; 2] = ["linux/amd64", "linux/arm64"];
+    pub const TARGET_PATTERN: &'static str = "^[A-Za-z0-9_.-]+$";
 
     pub fn dockerfile(
         schema: &str,
@@ -54,7 +60,7 @@ impl BuildRecipe {
         let context_path = normalize_repository_path(context_path, true)?;
         let dockerfile_path = normalize_repository_path(dockerfile_path, false)?;
         let target = target.map(parse_target).transpose()?;
-        if platforms.is_empty() || platforms.len() > 8 {
+        if platforms.is_empty() || platforms.len() > Self::MAX_PLATFORMS {
             return Err("build recipe must contain between 1 and 8 platforms".into());
         }
         let platform_count = platforms.len();
@@ -122,7 +128,7 @@ impl BuildRecipe {
 
 fn normalize_repository_path(value: &str, allow_root: bool) -> Result<String, String> {
     if value.is_empty()
-        || value.len() > 255
+        || value.len() > BuildRecipe::MAX_REPOSITORY_PATH_BYTES
         || value.starts_with('/')
         || value.contains(['\0', '\\', '%'])
     {
@@ -149,7 +155,7 @@ fn normalize_repository_path(value: &str, allow_root: bool) -> Result<String, St
 
 fn parse_target(value: &str) -> Result<String, String> {
     if value.is_empty()
-        || value.len() > 128
+        || value.len() > BuildRecipe::MAX_TARGET_BYTES
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))

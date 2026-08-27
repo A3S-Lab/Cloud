@@ -1,4 +1,9 @@
 use super::components::response_ref;
+use super::developer_workflow_operation::{
+    is_build_plan_collection_path, is_build_plan_detection_path, is_build_plan_path,
+    is_build_plan_request_body_path, query_parameters as developer_workflow_query_parameters,
+    success_component as developer_workflow_success_component,
+};
 use super::documentation::describe_operation_documentation;
 use super::request_schema::closed_json_request_schema;
 use super::OPENAPI_CONTRACT_VERSION;
@@ -259,6 +264,9 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
+    for parameter in developer_workflow_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
     let is_audit_export_manifest = path.ends_with("/audit-records/export/manifest");
     let is_audit_record_query =
         path.ends_with("/audit-records") || path.ends_with("/audit-records/export");
@@ -1214,6 +1222,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     for status in success_statuses(method, path) {
         let component = if is_security_gateway_route_policy_timeline_path(path) {
             "SecurityGatewayRoutePolicyTimelinePageSuccess200".to_owned()
+        } else if let Some(component) = developer_workflow_success_component(method, path, status) {
+            component
         } else if let Some(component) = recipient_contact_success_component(method, path, status) {
             component
         } else if let Some(component) =
@@ -1256,7 +1266,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_recipient_contact_mutation_path(path)
                 || is_notification_alert_policy_collection_path(path)
                 || is_notification_outbound_subscription_collection_path(path)
-                || is_agent_approval_decision_path(path)))
+                || is_agent_approval_decision_path(path)
+                || is_build_plan_request_body_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1378,6 +1389,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
+    } else if is_build_plan_path(path) {
+        "Developer Workflows"
     } else if path.contains("agent-conversations") || path.contains("agent-executions") {
         "Agents"
     } else if path.contains("/assets")
@@ -1443,6 +1456,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
         && !is_human_task_submission_path(path)
         && !is_plugin_catalog_read_path(path)
         && !is_asset_git_path(path)
+        && !is_build_plan_detection_path(path)
 }
 
 fn is_plugin_catalog_read_path(path: &str) -> bool {
@@ -1559,6 +1573,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/releases")
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+        || is_build_plan_collection_path(path)
 }
 
 fn is_recipient_contact_collection_path(path: &str) -> bool {

@@ -19,6 +19,7 @@ impl Interceptor for ApiResponseInterceptor {
     ) -> BoxFuture<'static, Result<BootResponse>> {
         Box::pin(async move {
             let request_id = request_id(&context);
+            response = with_default_private_cache(response);
             if response.is_streaming() || response.is_event_stream() {
                 return Ok(response
                     .with_header("x-request-id", request_id.to_string())
@@ -41,10 +42,12 @@ pub fn application_error_response(
 ) -> Result<BootResponse> {
     let envelope = application_error_envelope(error, request_id);
     let status = envelope.code;
-    Ok(BootResponse::json_with_status(status, &envelope)?
-        .with_header("x-request-id", request_id.to_string())
-        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
-        .with_header("x-a3s-api-envelope", "1"))
+    Ok(private_no_store(
+        BootResponse::json_with_status(status, &envelope)?
+            .with_header("x-request-id", request_id.to_string())
+            .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION)
+            .with_header("x-a3s-api-envelope", "1"),
+    ))
 }
 
 pub(crate) fn application_error_envelope(
@@ -144,9 +147,26 @@ pub(crate) fn boot_error_response(error: BootError, request_id: Uuid) -> Result<
         request_id,
         timestamp: Utc::now(),
     };
-    Ok(BootResponse::json_with_status(status, &envelope)?
-        .with_header("x-request-id", request_id.to_string())
-        .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION))
+    Ok(private_no_store(
+        BootResponse::json_with_status(status, &envelope)?
+            .with_header("x-request-id", request_id.to_string())
+            .with_header(API_CONTRACT_VERSION_HEADER, OPENAPI_CONTRACT_VERSION),
+    ))
+}
+
+pub(crate) fn private_no_store(response: BootResponse) -> BootResponse {
+    response
+        .with_header("cache-control", "no-store")
+        .with_header("pragma", "no-cache")
+        .with_header("referrer-policy", "no-referrer")
+}
+
+fn with_default_private_cache(response: BootResponse) -> BootResponse {
+    if response.header("cache-control").is_some() {
+        response
+    } else {
+        private_no_store(response)
+    }
 }
 
 fn copy_headers(
@@ -197,5 +217,29 @@ fn status_code(error: &BootError) -> &'static str {
         503 => "SERVICE_UNAVAILABLE",
         504 => "GATEWAY_TIMEOUT",
         _ => "INTERNAL_SERVER_ERROR",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_responses_are_private_by_default_without_overriding_explicit_cache_policy() {
+        let private = with_default_private_cache(
+            BootResponse::json(&json!({})).expect("private response fixture"),
+        );
+        assert_eq!(private.header("cache-control"), Some("no-store"));
+        assert_eq!(private.header("pragma"), Some("no-cache"));
+        assert_eq!(private.header("referrer-policy"), Some("no-referrer"));
+
+        let public = with_default_private_cache(
+            BootResponse::json(&json!({}))
+                .expect("public response fixture")
+                .with_header("cache-control", "public, max-age=300"),
+        );
+        assert_eq!(public.header("cache-control"), Some("public, max-age=300"));
+        assert_eq!(public.header("pragma"), None);
+        assert_eq!(public.header("referrer-policy"), None);
     }
 }

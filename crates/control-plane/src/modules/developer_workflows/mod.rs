@@ -1,7 +1,7 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
-pub mod presentation;
+mod presentation;
 pub mod published;
 
 pub use application::{
@@ -39,4 +39,9 @@ pub use infrastructure::{
     WorkloadsServiceProfileAdapter,
 };
 pub use presentation::DeveloperWorkflowsModule;
+pub(crate) use presentation::{
+    AcceptedBuildPlanResponse, BuildPlanDetectionResponse, BuildPlanMutationResponse,
+    BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
+    DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
+};
 pub use published::*;

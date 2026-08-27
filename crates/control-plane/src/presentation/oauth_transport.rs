@@ -1,4 +1,4 @@
-use super::boot_error_response;
+use super::api_response_interceptor::{boot_error_response, private_no_store};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, BoxFuture, ExceptionFilter, ExecutionContext, Result,
 };
@@ -36,10 +36,7 @@ impl ExceptionFilter for OAuthNoStoreErrorFilter {
 }
 
 pub(crate) fn oauth_no_store(response: BootResponse) -> BootResponse {
-    response
-        .with_header("cache-control", "no-store")
-        .with_header("pragma", "no-cache")
-        .with_header("referrer-policy", "no-referrer")
+    private_no_store(response)
 }
 
 pub(crate) fn oauth_callback_query(

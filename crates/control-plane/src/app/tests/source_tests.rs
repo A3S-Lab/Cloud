@@ -354,12 +354,6 @@ fn response_cookie(response: &BootResponse, name: &str) -> Result<String> {
         .ok_or_else(|| BootError::Internal(format!("response has no {name} cookie")))
 }
 
-fn assert_no_store(response: &BootResponse) {
-    assert_eq!(response.header("cache-control"), Some("no-store"));
-    assert_eq!(response.header("pragma"), Some("no-cache"));
-    assert_eq!(response.header("referrer-policy"), Some("no-referrer"));
-}
-
 #[tokio::test]
 async fn signed_github_push_is_public_bounded_and_durably_deduplicated() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());

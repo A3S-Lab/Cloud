@@ -183,6 +183,10 @@ Commands:
   source-revisions list   List pinned source revisions in the selected environment
   source-revisions resolve URL KIND REF Resolve one GitHub reference idempotently
   source-revisions deploy ID Deploy one built source revision from A3S ACL
+  build-plan-detections create SOURCE Detect deterministic BuildPlan proposals for one source revision
+  build-plans accept SOURCE Accept one canonical BuildPlan proposal ACL idempotently
+  build-plans list SOURCE List accepted BuildPlans for one source revision
+  build-plans get ID      Get one accepted BuildPlan
   source-connections get  Show the organization GitHub connection
   source-connections begin Start the no-store GitHub installation flow
   source-subscriptions list List GitHub repository subscriptions
@@ -229,7 +233,7 @@ Global options:
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
   --cursor <cursor>       Cursor for a log, message, Agent event, audit, security, notification, policy, or subscription command
-  --limit <n>             Search, log, message, Agent event, audit, security, notification, policy, or subscription page limit
+  --limit <n>             Search, log, message, Agent event, BuildPlan, audit, security, notification, policy, or subscription page limit
   --unread-only           Filter notifications list to unread records
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation

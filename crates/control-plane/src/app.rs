@@ -79,15 +79,17 @@ use crate::modules::data::{
 use crate::modules::developer_workflows::{
     AcceptBuildPlanHandler, AcceptPullRequestPreviewPolicyHandler, AcceptWorkloadProfileHandler,
     ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
-    CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
-    DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
-    IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    BuildPlanQueryService, CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
+    DeveloperWorkflowsModule, DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter,
+    GetAcceptedBuildPlanHandler, IBuildPlanRepository, IBuildPlanSourceLayoutPort,
+    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
     IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
-    IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ProjectsPreviewEnvironmentAdapter,
-    PullRequestPreviewProjectionService, PullRequestPreviewProjector,
-    RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
-    WorkloadProfileCompilationService, WorkloadsServiceProfileAdapter,
+    IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ListAcceptedBuildPlansHandler,
+    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
+    PullRequestPreviewProjector, RepositoryBuildPlanSourceRevisionPort,
+    RepositoryPreviewSourceSubscriptionQueryPort, WorkloadProfileCompilationService,
+    WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -2088,6 +2090,14 @@ fn build_management_application_with_health(
             Arc::clone(&resource_grants),
             Arc::clone(&environments),
         ));
+    let developer_build_plan_queries = Arc::new(BuildPlanQueryService::new(
+        Arc::clone(&developer_workflow_build_plans),
+        Arc::clone(&developer_workflow_authorization),
+    ));
+    let get_developer_build_plans =
+        GetAcceptedBuildPlanHandler::new(Arc::clone(&developer_build_plan_queries));
+    let list_developer_build_plans =
+        ListAcceptedBuildPlansHandler::new(developer_build_plan_queries);
     let accept_developer_build_plans = AcceptBuildPlanHandler::new(
         Arc::clone(&developer_workflow_build_plans),
         Arc::new(RepositoryBuildPlanSourceRevisionPort::new(Arc::clone(
@@ -3493,6 +3503,12 @@ fn build_management_application_with_health(
                     crate::modules::developer_workflows::DetectBuildPlanProposals,
                     _,
                 >(detect_developer_build_plans)
+                .query_handler::<crate::modules::developer_workflows::GetAcceptedBuildPlan, _>(
+                    get_developer_build_plans,
+                )
+                .query_handler::<crate::modules::developer_workflows::ListAcceptedBuildPlans, _>(
+                    list_developer_build_plans,
+                )
                 .query_handler::<
                     crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,
                     _,
@@ -3649,6 +3665,7 @@ fn build_management_application_with_health(
         .import(DurableCellsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
+        .import(DeveloperWorkflowsModule)
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)
         .import(ArtifactsModule)
         .import(ExecutionsModule)

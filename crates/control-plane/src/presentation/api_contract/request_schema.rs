@@ -1,6 +1,11 @@
+use super::developer_workflow_operation::request_schema as developer_workflow_request_schema;
+use super::source_components::build_recipe_request_schema;
 use serde_json::{json, Value};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
+    if let Some(schema) = developer_workflow_request_schema(path) {
+        return Some(schema);
+    }
     let schema = match path {
         "/bootstrap" => bootstrap_schema(),
         "/node-control/enroll" => node_enrollment_schema(),
@@ -658,7 +663,7 @@ fn source_revision_schema() -> Value {
                     "value": { "type": "string", "minLength": 1, "maxLength": 255 }
                 })
             ),
-            "recipe": build_recipe_schema(),
+            "recipe": build_recipe_request_schema(),
             "webhookDeliveryId": { "type": "string", "minLength": 1, "maxLength": 255 }
         }),
     )
@@ -670,7 +675,7 @@ fn github_subscription_schema() -> Value {
         json!({
             "repository": git_repository_schema(),
             "branch": { "type": "string", "minLength": 1, "maxLength": 255 },
-            "recipe": build_recipe_schema()
+            "recipe": build_recipe_request_schema()
         }),
     )
 }
@@ -681,29 +686,6 @@ fn git_repository_schema() -> Value {
         json!({
             "provider": { "type": "string", "enum": ["github"] },
             "url": { "type": "string", "format": "uri", "maxLength": 2048 }
-        }),
-    )
-}
-
-fn build_recipe_schema() -> Value {
-    object(
-        &[
-            "schema",
-            "kind",
-            "contextPath",
-            "dockerfilePath",
-            "platforms",
-        ],
-        json!({
-            "schema": { "type": "string", "enum": ["a3s.cloud.build-recipe.v1"] },
-            "kind": { "type": "string", "enum": ["dockerfile"] },
-            "contextPath": { "type": "string", "minLength": 1, "maxLength": 4096 },
-            "dockerfilePath": { "type": "string", "minLength": 1, "maxLength": 4096 },
-            "target": { "type": "string", "minLength": 1, "maxLength": 255, "nullable": true },
-            "platforms": {
-                "type": "array", "minItems": 1, "uniqueItems": true,
-                "items": { "type": "string", "enum": ["linux/amd64", "linux/arm64"] }
-            }
         }),
     )
 }

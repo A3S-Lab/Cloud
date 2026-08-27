@@ -558,6 +558,40 @@ fn build_plan_acceptance_has_one_owner_authorized_production_composition_path() 
 }
 
 #[test]
+fn build_plan_public_reads_have_one_application_authority_and_route_module() {
+    let composition = include_str!("../../app.rs");
+
+    for constructor in [
+        "BuildPlanQueryService::new(",
+        "GetAcceptedBuildPlanHandler::new(",
+        "ListAcceptedBuildPlansHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Developer Workflows BuildPlan reads must compose {constructor} exactly once"
+        );
+    }
+    for query in [
+        "crate::modules::developer_workflows::GetAcceptedBuildPlan, _",
+        "crate::modules::developer_workflows::ListAcceptedBuildPlans, _",
+    ] {
+        assert_eq!(
+            composition.matches(query).count(),
+            1,
+            "the canonical BuildPlan read query {query} must be registered once"
+        );
+    }
+    assert_eq!(
+        composition
+            .matches(".import(DeveloperWorkflowsModule)")
+            .count(),
+        1,
+        "Developer Workflows REST controllers must have one module import"
+    );
+}
+
+#[test]
 fn profile_acceptance_handlers_share_one_owner_authorized_production_composition_path() {
     let composition = include_str!("../../app.rs");
     let adapters = include_str!("../postgres_adapters.rs");
@@ -577,8 +611,8 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
         composition
             .matches("Arc::clone(&developer_workflow_authorization)")
             .count(),
-        4,
-        "BuildPlan detection plus BuildPlan, workload-profile, and Preview Policy acceptance must share one authorization port instance"
+        5,
+        "BuildPlan detection, reads, acceptance, workload-profile, and Preview Policy acceptance must share one authorization port instance"
     );
     for command in [
         "crate::modules::developer_workflows::AcceptWorkloadProfile, _",

@@ -66,7 +66,7 @@ pub use repository::{AcceptBuildPlanWrite, IBuildPlanRepository};
 pub use source_layout::{
     SourceLayoutEntry, SourceLayoutEntryKind, SourceLayoutIdentity, SourceLayoutSnapshot,
     MAX_SOURCE_LAYOUT_CONTENT_BYTES, MAX_SOURCE_LAYOUT_ENTRIES,
-    MAX_SOURCE_LAYOUT_INSPECTED_FILE_BYTES,
+    MAX_SOURCE_LAYOUT_INSPECTED_FILE_BYTES, MAX_SOURCE_LAYOUT_PATH_BYTES,
 };
 pub use workload_profile::{
     ScheduledTaskCatchUpPolicy, ScheduledTaskHistoryPolicy, ScheduledTaskRetryPolicy,

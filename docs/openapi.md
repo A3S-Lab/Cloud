@@ -11,7 +11,23 @@ The contract is generated from the resolved production route table. A snapshot
 test rejects drift between routes and the committed document, and the
 compatibility checker rejects undocumented or incompatible changes.
 
-The current semantic contract version is `1.71.0`.
+Ordinary API success, error, and streaming responses default to
+`Cache-Control: no-store`, `Pragma: no-cache`, and
+`Referrer-Policy: no-referrer` through the shared response boundary. Routes
+with an explicit transport cache policy retain it; in particular, the public
+OpenAPI document remains `public, max-age=300`.
+
+The current semantic contract version is `1.72.0`.
+
+Contract `1.72.0` adds the closed Developer Workflows BuildPlan API. An
+authorized caller can detect bounded deterministic proposals for one exact
+immutable SourceRevision, accept one canonical proposal ACL idempotently, list
+accepted plans for that exact revision, or get one accepted plan. Responses
+preserve canonical proposal/contract ACL, typed recipe and detector evidence,
+digests, immutable acceptance facts, and replay state; they never expose source
+bytes, credentials, checkout receipts, local paths, or a BuildRun/Workload/Route
+lifecycle. REST, the maintained client and CLI, and four Management MCP tools
+dispatch the same CQRS/application boundary.
 
 Contract `1.71.0` adds the closed Agent approval-checkpoint API. Authorized
 execution readers can list or get checkpoints, while an `execution:write`

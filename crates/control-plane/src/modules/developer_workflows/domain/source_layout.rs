@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const MAX_SOURCE_LAYOUT_ENTRIES: usize = 16_384;
 pub const MAX_SOURCE_LAYOUT_INSPECTED_FILE_BYTES: usize = 64 * 1024;
 pub const MAX_SOURCE_LAYOUT_CONTENT_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+pub const MAX_SOURCE_LAYOUT_PATH_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -215,7 +216,7 @@ fn validate_repository_path(value: &str, allow_root: bool) -> Result<(), String>
             .ok_or_else(|| "repository file path cannot be the source root".into());
     }
     if value.is_empty()
-        || value.len() > 4096
+        || value.len() > MAX_SOURCE_LAYOUT_PATH_BYTES
         || value.starts_with('/')
         || value.starts_with("./")
         || value.contains(['\\', '\0'])

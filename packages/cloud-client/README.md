@@ -130,8 +130,13 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.71.0`. It lists and reads closed Agent
-approval checkpoints and submits one idempotent, optimistic-concurrency guarded
+The client targets REST contract `1.72.0`. It exposes closed BuildPlan
+detection, idempotent acceptance, and exact accepted-plan list/get operations
+through the Developer Workflows application boundary. Canonical ACL is
+transported without client-side parsing; typed responses exclude source bytes,
+credentials, checkout paths, and downstream lifecycle state. It retains
+`1.71.0`'s closed Agent approval checkpoint reads and one idempotent,
+optimistic-concurrency guarded
 `approved` or `denied` decision. Checkpoint and `approval_resolved` event types
 expose only immutable Tool/request digests, authority, decision, resume, and
 timing evidence; Tool payload and Secret material are never returned. Agent
@@ -557,6 +562,14 @@ authoritative provider status and the short-lived installation flow.
 subscription commands. Resolution and subscription mutation results include
 the API's durable `replayed` state; the client never resolves Git references
 or contacts GitHub itself.
+
+`detectBuildPlans` runs the bounded deterministic detector query for one exact
+SourceRevision without an idempotency header. `acceptBuildPlan` transports one
+bounded canonical proposal ACL with caller-owned idempotency;
+`listAcceptedBuildPlans` and `getAcceptedBuildPlan` expose immutable accepted
+contracts through the sole Developer Workflows read authority. The client
+performs only superficial UTF-8 byte/page-bound validation and never parses
+ACL, reads a checkout, evaluates authorization, or owns persistence.
 
 `listSecrets` and `getSecret` expose the tenant-scoped metadata and version
 projections. `createSecret`, `addSecretVersion`, and `revokeSecretVersion`

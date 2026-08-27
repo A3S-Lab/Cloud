@@ -324,12 +324,6 @@ fn url_query(url: &str, name: &str) -> Result<String> {
         .ok_or_else(|| BootError::Internal(format!("test URL has no {name} parameter")))
 }
 
-fn assert_no_store(response: &BootResponse) {
-    assert_eq!(response.header("cache-control"), Some("no-store"));
-    assert_eq!(response.header("pragma"), Some("no-cache"));
-    assert_eq!(response.header("referrer-policy"), Some("no-referrer"));
-}
-
 fn issuer() -> OidcIssuer {
     OidcIssuer::parse("https://identity.example.test").expect("issuer")
 }

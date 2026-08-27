@@ -35,8 +35,12 @@ service. The service:
    canonical `(project_root, BuildPlanId)` comparator.
 
 The repository contract names that ordering, and both in-memory and PostgreSQL
-adapters implement it. Presentation never reads the repository and never
-imports Identity, Projects, Sources, or a concrete Developer Workflows adapter.
+adapters implement it. Presentation never reads the repository or imports a
+Projects, Sources, or concrete Developer Workflows adapter. It consumes only
+Identity's root-published tenant Guard for coarse route admission; exact policy
+remains behind the Application authorization port. The bounded-context root
+keeps its `presentation` module private and re-exports only the module, response
+DTO, and route contracts required by production composition adapters.
 
 The public interface is a projection over the existing CQRS only:
 
@@ -61,6 +65,14 @@ canonical `proposalAcl` and accepted `contractAcl`, their typed digests and
 evidence, and immutable acceptance facts. They expose no credential or local
 checkout state. A3S ACL remains the sole product configuration language and is
 parsed only by the existing domain objects through `a3s-acl`.
+
+The embedded Dockerfile recipe remains the Sources-published `BuildRecipe`;
+Developer Workflows does not define another recipe DTO, client type, platform
+enumeration, or OpenAPI property contract. One schema builder preserves the
+single directional difference: Sources mutation input may omit nullable
+`target`, while an accepted-plan response always serializes it. Ordinary API
+successes and failures use the shared private/no-store response policy; the
+explicitly public OpenAPI document keeps its own cache policy.
 
 C6 adds no table, migration, aggregate, parser, evaluator, checkout, provider,
 cache, queue, worker, Relay, scheduler, BuildRun, Workload, Route, or Operation

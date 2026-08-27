@@ -29,6 +29,7 @@ import {
   requireProject,
   requireToken,
 } from './context';
+import { executeDeveloperWorkflowCommand } from './developer-workflow-commands';
 import { executeDurableCellCommand, rejectMisplacedDurableCellOptions } from './durable-cell-commands';
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
@@ -73,8 +74,8 @@ import {
   workloadsResult,
 } from './results';
 import { executeSearchCommand } from './search-commands';
-import { executeSecurityCommand } from './security-commands';
 import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
+import { executeSecurityCommand } from './security-commands';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import type { ReadStdin } from './standard-input';
 import { executeWorkflowCommand } from './workflow-commands';
@@ -211,6 +212,16 @@ export async function executeCommand(
   const sourceResult = await executeSourceCommand(command, arguments_, context, cloudApi);
   if (sourceResult !== undefined) {
     return sourceResult;
+  }
+  const developerWorkflowResult = await executeDeveloperWorkflowCommand(
+    command,
+    arguments_,
+    context,
+    cloudApi,
+    { readFile: dependencies.readFile }
+  );
+  if (developerWorkflowResult !== undefined) {
+    return developerWorkflowResult;
   }
   const recipientContactResult = await executeRecipientContactCommand(
     command,

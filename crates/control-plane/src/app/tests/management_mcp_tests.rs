@@ -434,6 +434,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_deployments_get",
             "a3s_cloud_routes_list",
             "a3s_cloud_routes_get",
+            "a3s_cloud_build_plan_detections_create",
+            "a3s_cloud_build_plans_list",
+            "a3s_cloud_build_plans_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
@@ -492,8 +495,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     assert!(!tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_deployments_create"));
 
     let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 5).await?;
+    assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_plans_accept"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
+    for name in [
+        "a3s_cloud_build_plan_detections_create",
+        "a3s_cloud_build_plans_list",
+        "a3s_cloud_build_plans_get",
+    ] {
+        assert!(!tool_names(&build_writer_tools).contains(&name), "{name}");
+    }
     assert!(!tool_names(&build_writer_tools).contains(&"a3s_cloud_workloads_stop"));
 
     let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 6).await?;
@@ -641,6 +652,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_deployments_cancel",
             "a3s_cloud_routes_list",
             "a3s_cloud_routes_get",
+            "a3s_cloud_build_plan_detections_create",
+            "a3s_cloud_build_plans_accept",
+            "a3s_cloud_build_plans_list",
+            "a3s_cloud_build_plans_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
@@ -2122,6 +2137,104 @@ async fn management_mcp_reuses_project_commands_queries_and_idempotency() -> Res
             missing_error["result"]["structuredContent"][field]
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_build_plan_tools_reuse_one_acl_native_cqrs_boundary() -> Result<()> {
+    let app = build_test_application(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "mcp-build-plans", "Developer Workflows").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "mcp-build-plans-project",
+        "Developer Workflows",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "mcp-build-plans-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    let source_revision_id = Uuid::now_v7();
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_build_plans_list",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "sourceRevisionId": source_revision_id,
+                    "limit": 1
+                }),
+            ),
+        ))
+        .await?;
+    let listed = response_json(&listed)?;
+    assert_eq!(listed["result"]["isError"], false);
+    assert_eq!(listed["result"]["structuredContent"]["data"], json!([]));
+
+    for (id, name, arguments) in [
+        (
+            2,
+            "a3s_cloud_build_plan_detections_create",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceRevisionId": source_revision_id
+            }),
+        ),
+        (
+            3,
+            "a3s_cloud_build_plans_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "buildPlanId": Uuid::now_v7()
+            }),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        let body = response_json(&response)?;
+        assert_eq!(body["result"]["isError"], true, "{name}");
+        assert_eq!(body["result"]["structuredContent"]["code"], 404, "{name}");
+    }
+
+    let rejected = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_build_plans_accept",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "sourceRevisionId": source_revision_id,
+                    "proposalAcl": "build_plan {}\n",
+                    "idempotencyKey": "mcp-build-plan-invalid-acl"
+                }),
+            ),
+        ))
+        .await?;
+    let rejected = response_json(&rejected)?;
+    assert_eq!(rejected["result"]["isError"], true);
+    assert_eq!(rejected["result"]["structuredContent"]["code"], 422);
     Ok(())
 }
 

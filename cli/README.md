@@ -413,6 +413,10 @@ workloads rollback <workload-id> <revision-id>
 source-revisions list
 source-revisions resolve <repository-url> <branch|tag|commit> <reference> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
 source-revisions deploy <source-revision-id> --file=<path>
+build-plan-detections create <source-revision-id>
+build-plans accept <source-revision-id> --file=<proposal.acl>
+build-plans list <source-revision-id> [--limit=<1..200>]
+build-plans get <build-plan-id>
 source-connections get
 source-connections begin
 source-subscriptions list
@@ -638,6 +642,15 @@ history. This `A1.1` surface reserves an Operation identity but does not yet
 dispatch a Harness, Fleet command, Workload, or Runtime unit; `A1.2` owns that
 lifecycle.
 
+`build-plan-detections create` asks the canonical Developer Workflows query
+handler to detect bounded deterministic proposals for one immutable SourceRevision.
+`build-plans accept` sends one bounded `.acl` proposal with a caller-owned
+idempotency key; list and get expose only accepted immutable contracts and
+typed evidence. Cloud alone acquires the trusted source layout, parses and
+canonicalizes ACL through `a3s-acl`, authorizes the environment, and persists
+the aggregate. The CLI never reads a checkout, runs a detector, parses ACL, or
+creates a second BuildPlan repository or authorization path.
+
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box
 exposes the authoritative durable build-log contract; the CLI does not fall
@@ -709,7 +722,9 @@ also implemented. Public platform and health diagnostics are implemented with
 a stable unhealthy exit contract. DomainClaim, logical Gateway-scope, and route
 publication parity is implemented through the same typed client. Source
 revision, GitHub connection, and repository-subscription parity is also
-implemented without bypassing the public API. Secret metadata and version
+implemented without bypassing the public API. BuildPlan detection, acceptance,
+and immutable read parity use the same Developer Workflows application
+authority. Secret metadata and version
 lifecycle parity is implemented with standard-input-only material handling.
 Identity API-token metadata and lifecycle parity is implemented with
 standard-input-only credential creation and digest-only persistence. Node

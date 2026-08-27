@@ -2,6 +2,7 @@ use crate::modules::developer_workflows::{
     AcceptBuildPlanResult, AcceptedBuildPlan, BuildPlanDetection, BuildPlanDetectionDiagnostic,
     BuildPlanProposal, BUILD_PLAN_PROPOSAL_SCHEMA,
 };
+use crate::modules::sources::published::BuildRecipe;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -29,17 +30,6 @@ pub struct BuildPlanSourceResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BuildPlanRecipeResponse {
-    pub schema: String,
-    pub kind: String,
-    pub context_path: String,
-    pub dockerfile_path: String,
-    pub target: Option<String>,
-    pub platforms: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct BuildPlanProposalResponse {
     pub schema: String,
     pub proposal_acl: String,
@@ -49,7 +39,7 @@ pub struct BuildPlanProposalResponse {
     pub project_root: String,
     pub evidence_path: String,
     pub evidence_digest: String,
-    pub recipe: BuildPlanRecipeResponse,
+    pub recipe: BuildRecipe,
 }
 
 impl From<BuildPlanProposal> for BuildPlanProposalResponse {
@@ -64,19 +54,7 @@ impl From<BuildPlanProposal> for BuildPlanProposalResponse {
             project_root: spec.project_root.clone(),
             evidence_path: spec.evidence_path.clone(),
             evidence_digest: spec.evidence_digest.as_str().into(),
-            recipe: BuildPlanRecipeResponse {
-                schema: spec.recipe.schema().into(),
-                kind: spec.recipe.kind().into(),
-                context_path: spec.recipe.context_path().into(),
-                dockerfile_path: spec.recipe.dockerfile_path().into(),
-                target: spec.recipe.target().map(str::to_owned),
-                platforms: spec
-                    .recipe
-                    .platforms()
-                    .iter()
-                    .map(|platform| platform.as_str().to_owned())
-                    .collect(),
-            },
+            recipe: spec.recipe.clone(),
         }
     }
 }
@@ -241,10 +219,16 @@ mod tests {
         assert_eq!(response.contract_digest, expected_contract_digest);
         assert_eq!(response.proposal.proposal_acl, BUILD_PLAN_FIXTURE);
         assert_eq!(response.proposal.proposal_digest, expected_proposal_digest);
-        assert_eq!(response.proposal.recipe.kind, "dockerfile");
+        assert_eq!(response.proposal.recipe.kind(), "dockerfile");
         assert_eq!(
-            response.proposal.recipe.platforms,
-            vec!["linux/amd64".to_owned()]
+            response
+                .proposal
+                .recipe
+                .platforms()
+                .iter()
+                .map(|platform| platform.as_str())
+                .collect::<Vec<_>>(),
+            vec!["linux/amd64"]
         );
 
         let json = serde_json::to_value(response).expect("response JSON");

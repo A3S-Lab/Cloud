@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable. Component-only `P0.1-C1/C2` implement bounded canonical source-layout proposals plus exact SourceRevision-bound immutable BuildPlan acceptance; `P0.1-C3` production-composes one internal closed detection query with the fixed Asset ACL/Dockerfile detector set and no source or lifecycle authority. `P0.1-C4` production-composes one internal authorization-first acceptance command through Identity's sole membership/grant evaluator, the exact Projects Environment, Sources revision evidence, and the migration `146` repository/Outbox transaction. `P0.1-C5` makes detection authorization-first and acquires one exact accepted-revision layout through the existing Sources build-input query, one shared public/private checkout service, and the sole Git source-inventory/digest plus replay/cleanup authority without exposing credentials or local paths. `P0.2-C1/C2` implement closed web/worker/scheduled profile compilation and authorization-first immutable revision persistence through migration `147`; component-only `P0.2-C3a/C3b/C3c` add the concrete Workloads and Executions anti-corruption adapters plus the Artifacts-owned successful external-source BuildRun Published Language/query and sole Developer Workflows build-outcome adapter. They validate exact local BuildPlan and owner template contracts without creating owner lifecycle state. `P0.2-C4` production-composes one internal exact accepted-revision compilation query through those existing repositories and ACLs while retaining revision causation and creating no owner lifecycle state. `P0.2-C5` registers one authorization-first workload-profile acceptance command that shares the exact production authorization port with BuildPlan acceptance and delegates to the existing migration `147` repository transaction. `P0.3-C1` verifies typed GitHub pull-request lifecycle facts and deterministically reduces duplicate/reordered events to one bounded Preview identity and cleanup decision. `P0.3-C2` implements canonical, authorization-first, active-Subscription-bound Preview Policy revisions through migration `153`; `P0.3-C6` production-composes that command through one Sources subscription anti-corruption adapter, the shared authorization port, and role-scoped instances of the existing repository. `P0.3-C3` production-composes the Sources producer for exact active-Subscription-bound committed PR facts through migration `156` and the existing Inbox/Outbox. Component-only `P0.3-C4` production-composes one event-time-policy-bound, CAS-safe Developer Workflows Preview projection plus immutable fact receipts through migration `157` and the existing Outbox Relay. `P0.3-C5a` atomically publishes each committed Preview mutation and idempotently hands active lifecycle to the existing Projects Environment authority through that same Relay/projector. `P0.3-C5b` projects every applied lifecycle version into one ordinary Sources SourceRevision or cleanup/suppression receipt through migration `159`, then publishes one exact bounded specialized fact through the same transaction and Relay. Component-only `P0.3-C5c` consumes only that fact through the existing Artifacts projector and migration `162`; only the latest active Preview version can reserve the immutable candidate, retirement atomically requests cancellation on the sole BuildRun lifecycle, and an exact receipt-bound same-SourceRevision reopen authorizes at most one retry. P0.1/P0.2 public surfaces, pre-acceptance source discovery, Workload/Execution lifecycle, route, operation, and schedule handoffs, Environment and Preview cleanup/expiry execution, monorepos, and imports remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C5` establish canonical BuildPlan detection, immutable acceptance, authorization, and trusted exact-revision layout acquisition; `P0.1-C6` production-composes their REST/OpenAPI `1.72.0`, maintained client/CLI, four Management MCP tools, and one authorized accepted-plan read authority without another parser, repository, policy evaluator, or lifecycle. P0.2 accepted-profile and P0.3 Preview foundations remain component/production-composed as detailed below. Workload-profile and Preview public surfaces, pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, and imports remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -572,8 +572,10 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.71.0`
-  adds closed Agent approval-checkpoint list/read/decision APIs, the
+  responses, envelopes, and compatibility metadata; current contract `1.72.0`
+  adds closed BuildPlan detection, acceptance, and exact accepted-plan reads
+  over the sole Developer Workflows application authority. It retains `1.71.0`'s
+  closed Agent approval-checkpoint list/read/decision APIs, the
   `awaiting_approval` execution state, and digest-only approval-resolution
   evidence without Tool payload or Secret material. It retains `1.70.0`'s
   immutable Harness invocation profile and typed digest-only Agent Tool
@@ -1022,6 +1024,18 @@ Sources boundary. C5 adds no public surface, pre-acceptance source discovery,
 persistence, event rail, worker, lifecycle, build, deployment, route, operation,
 or scheduler.
 
+`P0.1-C6` exposes the existing BuildPlan authority without adding another
+mechanism. One `DeveloperWorkflowsModule` maps detection, acceptance, and exact
+accepted-plan list/get routes to the existing CQRS bus. One Application query
+service owns read authorization, scope/validity checks, finite bounds, and
+canonical ordering over the existing repository interface. REST/OpenAPI
+`1.72.0`, the maintained TypeScript client, CLI commands, and four Management
+MCP tools dispatch those same handlers; request and response contracts retain
+only exact identities, canonical A3S ACL, typed digests/evidence, immutable
+acceptance facts, and caller-owned idempotency state. C6 exposes no source
+bytes, credentials, checkout receipts or paths, and creates no SourceRevision,
+BuildRun, Workload, Route, Operation, queue, worker, timer, or scheduler.
+
 Component-only `P0.2-C1` defines canonical
 `a3s.cloud.workload-profile.v1` intent for explicit `web`, `worker`, and
 `scheduled_task` profiles. It closes process, resource, Secret-reference,
@@ -1394,7 +1408,7 @@ pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog, Workflow node-catalog, invitation lifecycle,
 notification, Connector lifecycle, Durable Cell lifecycle, and
 variable-inspection tests pass the
-current `137/77` source
+current `141/80` source
 catalog, and the
 dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology

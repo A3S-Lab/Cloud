@@ -1,4 +1,8 @@
 use super::agent_components::install_agent_component_schemas;
+use super::developer_workflow_components::{
+    install_developer_workflow_component_schemas, BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS,
+    BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
+};
 use super::workflow_components::install_workflow_component_schemas;
 use super::workflow_goal_components::install_workflow_goal_component_schemas;
 use super::workflow_human_task_components::install_workflow_human_task_component_schemas;
@@ -339,12 +343,19 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
     install_connector_component_schemas(&mut schema_components)?;
     install_agent_component_schemas(&mut schema_components);
+    install_developer_workflow_component_schemas(&mut schema_components);
     install_workflow_component_schemas(&mut schema_components);
     install_workflow_goal_component_schemas(&mut schema_components);
     install_workflow_human_task_component_schemas(&mut schema_components);
     install_workflow_ontology_component_schemas(&mut schema_components);
     install_workflow_run_component_schemas(&mut schema_components);
     install_workflow_run_observation_component_schemas(&mut schema_components);
+    for &(name, data_schema) in BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS {
+        schema_components.insert(
+            name.into(),
+            typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
+        );
+    }
     schema_components.insert(
         "WorkflowDefinitionSuccessResponse".into(),
         workflow_definition_success,
@@ -459,6 +470,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         response_components.insert(
             format!("RawSuccess{status}"),
             response_component(status, ""),
+        );
+    }
+    for &(name, status, schema) in BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS {
+        response_components.insert(
+            name.into(),
+            response_component(status, &format!("#/components/schemas/{schema}")),
         );
     }
     response_components.insert(

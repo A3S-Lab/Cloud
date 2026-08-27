@@ -2293,7 +2293,10 @@ fn accept_build_plan_schema() -> Value {
         json!({
             "type": "string",
             "minLength": 1,
-            "maxLength": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES
+            "maxLength": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
+            "x-a3s-max-utf8-bytes": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
+            "description": "Canonical A3S ACL parsed and generated only through a3s-acl.",
+            "example": include_str!("../../../../../contracts/p0.1/build-plan.acl")
         }),
     );
     properties.insert("idempotencyKey".into(), idempotency_key_schema());
@@ -3652,6 +3655,14 @@ mod tests {
         assert_eq!(
             properties["proposalAcl"]["maxLength"].as_u64(),
             Some(BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["proposalAcl"]["x-a3s-max-utf8-bytes"].as_u64(),
+            Some(BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["proposalAcl"]["example"].as_str(),
+            Some(include_str!("../../../../../contracts/p0.1/build-plan.acl"))
         );
         assert!(properties.get("proposal").is_none());
         assert!(properties.get("sourceBytes").is_none());

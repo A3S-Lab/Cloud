@@ -1,6 +1,4 @@
-use crate::modules::identity::presentation::{
-    authenticated_credential_actor, AuthenticatedCredentialActor,
-};
+use crate::modules::identity::{authenticated_credential_actor, AuthenticatedCredentialActor};
 pub(super) use crate::presentation::{request_id, request_identity};
 use a3s_boot::{BootError, BootRequest, Result};
 

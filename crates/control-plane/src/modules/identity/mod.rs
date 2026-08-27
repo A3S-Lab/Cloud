@@ -96,4 +96,5 @@ pub use infrastructure::{
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
-pub use presentation::IdentityModule;
+pub(crate) use presentation::{authenticated_credential_actor, AuthenticatedCredentialActor};
+pub use presentation::{IdentityModule, OrganizationTenantGuard};
