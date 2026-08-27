@@ -53,7 +53,9 @@ use a3s_cloud_control_plane::modules::workloads::{
     SourceWorkloadTemplate,
 };
 use a3s_flow::{FlowRuntime, StepInvocation};
-use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_orm::{
+    sql_query, Database, DatabaseError, PostgresDialect, PostgresError, PostgresExecutor,
+};
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeApplyRequest,
     RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation,
@@ -174,10 +176,15 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         )
         .await
         .expect_err("PostgreSQL must reject invocation-profile mutation");
+    let mutation_message = match &mutation_error {
+        DatabaseError::Execute(PostgresError::Database(source)) => source
+            .as_db_error()
+            .map(|error| error.message())
+            .unwrap_or_default(),
+        _ => "",
+    };
     assert!(
-        mutation_error
-            .to_string()
-            .contains("Agent Harness invocation profile is immutable"),
+        mutation_message.contains("Agent Harness invocation profile is immutable"),
         "unexpected invocation-profile mutation error: {mutation_error}"
     );
     let runtime = flow_runtime(agents.clone(), workloads, nodes.clone())?;
