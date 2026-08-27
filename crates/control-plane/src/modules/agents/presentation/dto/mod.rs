@@ -1,10 +1,16 @@
 mod request;
 mod response;
 
-pub use request::{AgentApprovalDecisionRequest, StartAgentExecutionRequest};
+pub use request::{
+    AgentApprovalDecisionRequest, CaptureAgentExecutionCheckpointRequest,
+    ForkAgentExecutionRequest, StartAgentExecutionRequest,
+};
 pub use response::{
     AgentApprovalCheckpointMutationResponse, AgentApprovalCheckpointResponse,
     AgentConversationMutationResponse, AgentConversationResponse, AgentExecutionChangeSetResponse,
-    AgentExecutionEventPageResponse, AgentExecutionEventResponse, AgentExecutionMutationResponse,
-    AgentExecutionResponse, AgentProviderProfileResponse, AgentReleaseBindingResponse,
+    AgentExecutionCheckpointMutationResponse, AgentExecutionCheckpointResponse,
+    AgentExecutionCheckpointSnapshotResponse, AgentExecutionEventPageResponse,
+    AgentExecutionEventResponse, AgentExecutionMutationResponse, AgentExecutionResponse,
+    AgentExecutionTrajectoryPageResponse, AgentProviderProfileResponse,
+    AgentReleaseBindingResponse,
 };

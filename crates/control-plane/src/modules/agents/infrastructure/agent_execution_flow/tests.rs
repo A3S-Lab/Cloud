@@ -5,10 +5,12 @@ use super::*;
 use crate::modules::agents::domain::{
     AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpointStatus, AgentCodeRunBinding,
     AgentConversation, AgentConversationCreated, AgentEventContent, AgentExecution,
-    AgentExecutionCancellationRequested, AgentExecutionEventDraft, AgentExecutionEventKind,
-    AgentExecutionStarted, AgentProviderProfileBinding, AgentReleaseBinding, BindAgentCodeRunWrite,
-    CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
-    StartAgentExecutionWrite,
+    AgentExecutionCancellationRequested, AgentExecutionCheckpointObjectError,
+    AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointObjectWrite,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStarted,
+    AgentProviderProfileBinding, AgentReleaseBinding, BindAgentCodeRunWrite,
+    CreateAgentConversationWrite, IAgentExecutionCheckpointObjectStore, IAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::agents::BuiltInAgentExecutionProviderRegistry;
@@ -45,9 +47,55 @@ use a3s_runtime::contract::{
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 mod approval_tests;
+mod checkpoint_tests;
+
+#[derive(Default)]
+struct TestCheckpointObjects {
+    bodies: RwLock<BTreeMap<String, Vec<u8>>>,
+}
+
+#[async_trait::async_trait]
+impl IAgentExecutionCheckpointObjectStore for TestCheckpointObjects {
+    async fn put(
+        &self,
+        reference: &AgentExecutionCheckpointObjectReference,
+        body: Vec<u8>,
+    ) -> Result<AgentExecutionCheckpointObjectWrite, AgentExecutionCheckpointObjectError> {
+        let mut bodies = self.bodies.write().await;
+        match bodies.get(&reference.object_ref) {
+            Some(existing) if existing == &body => {
+                Ok(AgentExecutionCheckpointObjectWrite { replayed: true })
+            }
+            Some(_) => Err(AgentExecutionCheckpointObjectError::Conflict(
+                reference.object_ref.clone(),
+            )),
+            None => {
+                bodies.insert(reference.object_ref.clone(), body);
+                Ok(AgentExecutionCheckpointObjectWrite { replayed: false })
+            }
+        }
+    }
+
+    async fn get(
+        &self,
+        reference: &AgentExecutionCheckpointObjectReference,
+    ) -> Result<Vec<u8>, AgentExecutionCheckpointObjectError> {
+        self.bodies
+            .read()
+            .await
+            .get(&reference.object_ref)
+            .cloned()
+            .ok_or(AgentExecutionCheckpointObjectError::NotFound)
+    }
+}
+
+fn checkpoint_objects() -> Arc<dyn IAgentExecutionCheckpointObjectStore> {
+    Arc::new(TestCheckpointObjects::default())
+}
 
 #[test]
 fn agent_flow_uses_the_provider_contract_without_owning_a_run_lifecycle() {
@@ -135,6 +183,7 @@ async fn reference_provider_dispatch_preserves_the_common_profile_and_protocol()
     let runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents,
+            checkpoint_objects: checkpoint_objects(),
             providers: Arc::new(
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
@@ -227,6 +276,7 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
     let flow_runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents: agents.clone(),
+            checkpoint_objects: checkpoint_objects(),
             providers: Arc::new(
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),

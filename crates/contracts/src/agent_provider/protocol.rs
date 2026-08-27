@@ -2,7 +2,7 @@ use super::{AgentProviderCapabilityV1, AgentProviderProfile, HarnessInvocationPr
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const MAX_PROVIDER_PROMPT_BYTES: usize = 1024 * 1024;
+pub const AGENT_PROVIDER_MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
 pub const AGENT_PROVIDER_COMMAND_HTTP_PATH_V1: &str = "/v1/agent-provider/commands";
 pub const AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES: usize = 64 * 1024;
@@ -334,7 +334,7 @@ impl AgentProviderRunStartV1 {
             }
         }
         if self.prompt.trim().is_empty()
-            || self.prompt.len() > MAX_PROVIDER_PROMPT_BYTES
+            || self.prompt.len() > AGENT_PROVIDER_MAX_PROMPT_BYTES
             || self.prompt.contains('\0')
         {
             return Err("Agent provider prompt bounds are invalid".into());

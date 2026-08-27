@@ -1,15 +1,17 @@
 use super::{StartAgentExecution, StartAgentExecutionResult};
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
-use crate::modules::agents::application::support::{idempotency, validate_request_id};
+use crate::modules::agents::application::support::{
+    bind_deployable_agent_release, idempotency, validate_request_id,
+};
 use crate::modules::agents::domain::{
     AgentConversationStatus, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
     AgentExecutionEventKind, AgentExecutionProviderRegistry, AgentExecutionStarted,
-    AgentReleaseBinding, IAgentRepository, StartAgentExecutionWrite,
+    IAgentRepository, StartAgentExecutionWrite,
 };
 use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{AgentExecutionId, OperationId, Sha256Digest};
+use crate::modules::shared_kernel::domain::{AgentExecutionId, OperationId};
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -123,21 +125,9 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                 Ok(deployable) => deployable,
                 Err(error) => return Ok(Err(error)),
             };
-            let binding = match AgentReleaseBinding::new(
-                command.organization_id,
-                deployable.asset_id(),
-                deployable.asset_release_id(),
-                deployable.build_run_id(),
-                deployable.artifact_uri(),
-                match Sha256Digest::parse(deployable.artifact_digest()) {
-                    Ok(digest) => digest,
-                    Err(error) => return Ok(Err(ApplicationError::Internal(error))),
-                },
-                deployable.artifact_media_type(),
-                deployable.artifact_size_bytes(),
-            ) {
+            let binding = match bind_deployable_agent_release(&deployable) {
                 Ok(binding) => binding,
-                Err(error) => return Ok(Err(ApplicationError::Internal(error))),
+                Err(error) => return Ok(Err(error)),
             };
             let execution = match AgentExecution::create_with_provider(
                 command.organization_id,

@@ -63,6 +63,43 @@ orm_table! {
         provider_observed_at: Option<DateTime<Utc>> => "provider_observed_at",
         invocation_profile: Option<serde_json::Value> => "invocation_profile",
         invocation_profile_digest: Option<String> => "invocation_profile_digest",
+        parent_execution_id: Option<Uuid> => "parent_execution_id",
+        parent_checkpoint_id: Option<Uuid> => "parent_checkpoint_id",
+        parent_checkpoint_digest: Option<String> => "parent_checkpoint_digest",
+        fork_depth: Option<u16> => "fork_depth",
+    }
+}
+
+orm_table! {
+    pub(super) struct AgentExecutionCheckpoints => "agent_execution_checkpoints" {
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        conversation_id: Uuid => "conversation_id",
+        execution_id: Uuid => "execution_id",
+        id: Uuid => "id",
+        through_event_sequence: u64 => "through_event_sequence",
+        event_count: u16 => "event_count",
+        agent_artifact_digest: String => "agent_artifact_digest",
+        provider_profile_digest: String => "provider_profile_digest",
+        invocation_profile_digest: String => "invocation_profile_digest",
+        object_schema: String => "object_schema",
+        object_namespace: String => "object_namespace",
+        object_ref: String => "object_ref",
+        object_digest: String => "object_digest",
+        object_size_bytes: u64 => "object_size_bytes",
+        object_media_type: String => "object_media_type",
+        operation_id: Uuid => "operation_id",
+        provider_run_identity_digest: String => "provider_run_identity_digest",
+        node_id: Uuid => "node_id",
+        workload_id: Uuid => "workload_id",
+        workload_revision_id: Uuid => "workload_revision_id",
+        deployment_id: Uuid => "deployment_id",
+        replica_id: Uuid => "replica_id",
+        runtime_unit_id: String => "runtime_unit_id",
+        runtime_generation: u64 => "runtime_generation",
+        aggregate_version: u64 => "aggregate_version",
+        captured_at: DateTime<Utc> => "captured_at",
     }
 }
 

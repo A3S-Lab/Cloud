@@ -11,11 +11,14 @@ use a3s_cloud_contracts::{
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
     AcceptAgentCodeEventBatchWrite, AgentCodeRunBinding, AgentExecutionCancellationRequested,
-    AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
-    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
+    AgentExecutionCheckpointObjectError, AgentExecutionCheckpointObjectReference,
+    AgentExecutionCheckpointObjectWrite, AgentExecutionEventKind, AgentExecutionFlowConfig,
+    AgentExecutionFlowConfigOptions, AgentExecutionFlowRuntime,
+    AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
     BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
-    IAgentRepository, PostgresAgentRepository, RequestAgentExecutionCancellationWrite,
-    StartAgentExecution, StartAgentExecutionHandler, NATIVE_CODE_AGENT_PROVIDER_KIND,
+    IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
+    NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, PostgresBuildRunRepository,
@@ -93,6 +96,30 @@ enum ExpectedCommand {
     Start,
     Recover,
     Cancel,
+}
+
+struct UnavailableCheckpointObjects;
+
+#[async_trait::async_trait]
+impl IAgentExecutionCheckpointObjectStore for UnavailableCheckpointObjects {
+    async fn put(
+        &self,
+        _reference: &AgentExecutionCheckpointObjectReference,
+        _body: Vec<u8>,
+    ) -> Result<AgentExecutionCheckpointObjectWrite, AgentExecutionCheckpointObjectError> {
+        Err(AgentExecutionCheckpointObjectError::Unavailable(
+            "checkpoint objects are outside the Agent Code recovery fixture".into(),
+        ))
+    }
+
+    async fn get(
+        &self,
+        _reference: &AgentExecutionCheckpointObjectReference,
+    ) -> Result<Vec<u8>, AgentExecutionCheckpointObjectError> {
+        Err(AgentExecutionCheckpointObjectError::Unavailable(
+            "checkpoint objects are outside the Agent Code recovery fixture".into(),
+        ))
+    }
 }
 
 pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {

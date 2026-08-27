@@ -1,6 +1,8 @@
 mod approval_queries;
 mod approval_rows;
 mod approval_writes;
+mod checkpoint_queries;
+mod checkpoint_writes;
 mod code_agent_writes;
 mod provider_event_writes;
 mod queries;
@@ -13,17 +15,19 @@ use crate::modules::agents::domain::{
     AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
     AgentApprovalCheckpointStatus, AgentApprovalCheckpointWrite, AgentCodeRunWrite,
     AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
-    AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
+    AgentExecutionChangeSet, AgentExecutionCheckpoint, AgentExecutionCheckpointWrite,
+    AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
     AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
-    CancelActiveAgentApprovalCheckpointWrite, CreateAgentConversationWrite,
-    DecideAgentApprovalCheckpointWrite, ExpireAgentApprovalCheckpointWrite,
-    IAgentApprovalCheckpointRepository, IAgentRepository, RecoverAgentCodeRunWrite,
-    RequestAgentExecutionCancellationWrite, ResumeAgentApprovalCheckpointWrite,
-    StartAgentExecutionWrite,
+    CancelActiveAgentApprovalCheckpointWrite, CommitAgentExecutionCheckpointWrite,
+    CreateAgentConversationWrite, DecideAgentApprovalCheckpointWrite,
+    ExpireAgentApprovalCheckpointWrite, ForkAgentExecutionWrite,
+    IAgentApprovalCheckpointRepository, IAgentExecutionCheckpointRepository, IAgentRepository,
+    RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite,
+    ResumeAgentApprovalCheckpointWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, EnvironmentId,
-    IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
+    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use a3s_orm::PostgresExecutor;
@@ -100,6 +104,67 @@ impl IAgentApprovalCheckpointRepository for PostgresAgentRepository {
             organization_id,
             execution_id,
             status,
+            limit,
+        )
+        .await
+    }
+}
+
+#[async_trait]
+impl IAgentExecutionCheckpointRepository for PostgresAgentRepository {
+    async fn commit_execution_checkpoint(
+        &self,
+        write: CommitAgentExecutionCheckpointWrite,
+    ) -> Result<AgentExecutionCheckpointWrite, RepositoryError> {
+        checkpoint_writes::commit_checkpoint(&self.executor, write).await
+    }
+
+    async fn fork_execution(
+        &self,
+        write: ForkAgentExecutionWrite,
+    ) -> Result<AgentExecutionWrite, RepositoryError> {
+        checkpoint_writes::fork_execution(&self.executor, write).await
+    }
+
+    async fn replay_execution_checkpoint(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AgentExecutionCheckpoint>, RepositoryError> {
+        checkpoint_writes::replay_checkpoint(&self.executor, idempotency).await
+    }
+
+    async fn find_execution_checkpoint(
+        &self,
+        organization_id: OrganizationId,
+        checkpoint_id: AgentExecutionCheckpointId,
+    ) -> Result<Option<AgentExecutionCheckpoint>, RepositoryError> {
+        checkpoint_queries::find_checkpoint(&self.executor, organization_id, checkpoint_id).await
+    }
+
+    async fn list_execution_checkpoints(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+        limit: usize,
+    ) -> Result<Vec<AgentExecutionCheckpoint>, RepositoryError> {
+        checkpoint_queries::list_checkpoints(&self.executor, organization_id, execution_id, limit)
+            .await
+    }
+
+    async fn list_execution_trajectory_events(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+        after_sequence: Option<u64>,
+        through_sequence: Option<u64>,
+        limit: usize,
+    ) -> Result<Vec<AgentExecutionEvent>, RepositoryError> {
+        checkpoint_queries::list_trajectory_events(
+            &self.executor,
+            organization_id,
+            execution_id,
+            after_sequence,
+            through_sequence,
             limit,
         )
         .await
@@ -323,6 +388,14 @@ mod tests {
             (
                 "approval writes",
                 include_str!("postgres/approval_writes.rs"),
+            ),
+            (
+                "checkpoint queries",
+                include_str!("postgres/checkpoint_queries.rs"),
+            ),
+            (
+                "checkpoint writes",
+                include_str!("postgres/checkpoint_writes.rs"),
             ),
             ("queries", include_str!("postgres/queries.rs")),
             ("rows", include_str!("postgres/rows.rs")),

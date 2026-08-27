@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.72.0" src="https://img.shields.io/badge/REST_contract-1.72.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.73.0" src="https://img.shields.io/badge/REST_contract-1.73.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -471,18 +471,28 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.72.0` is the current contract. It
-    adds closed Developer Workflows BuildPlan detection, idempotent acceptance,
-    and exact accepted-plan list/get operations with canonical A3S ACL and typed
-    immutable evidence. The maintained client, CLI, and four Management MCP
-    tools dispatch the same CQRS/application authority and expose no source
-    bytes, credentials, checkout paths, BuildRun, Workload, Route, or scheduler
-    lifecycle. It retains `1.71.0`'s bounded, authorization-first Agent
-    approval-checkpoint list, read, and
+    copied evidence bodies. REST/OpenAPI `1.73.0` is the current contract. It
+    adds authorization-first logical Agent execution checkpoint capture,
+    list/read/snapshot, paged trajectory, and immutable fork APIs. Migration
+    `168` stores only bounded object projections, exact execution/provider/
+    invocation bindings, telemetry correlation, and parent lineage; canonical
+    snapshots remain in the shared `agent-checkpoints` immutable-object
+    namespace and materialize verified inherited trajectories for nested forks.
+    Every new fork revalidates the published Agent artifact and selected
+    provider profile, creates a new execution, verifies its parent object again
+    before provider dispatch, and fails closed on missing or drifted evidence.
+    The API does not claim provider-private or Box suspend/resume support. It
+    retains `1.72.0`'s closed Developer Workflows BuildPlan detection,
+    idempotent acceptance, and exact accepted-plan list/get operations with
+    canonical A3S ACL and typed immutable evidence. The maintained client, CLI,
+    and four Management MCP tools dispatch that same CQRS/application authority
+    without exposing source bytes, credentials, checkout paths, BuildRun,
+    Workload, Route, or scheduler lifecycle. It also retains `1.71.0`'s bounded,
+    authorization-first Agent approval-checkpoint list, read, and
     optimistic decision APIs; the closed `awaiting_approval` execution state;
     and digest-only approval-resolution evidence. Exact replay, expiry, denial,
     cancellation, and resume state never expose Secret or Tool payload
-    material. It retains `1.70.0`'s immutable Harness invocation profile,
+    material. It also retains `1.70.0`'s immutable Harness invocation profile,
     typed digest-only Tool request/result event content, and same-transaction
     shared audit correlation, plus `1.69.0`'s closed
     Agent provider selection and immutable provider evidence, plus `1.68.0`'s
@@ -567,10 +577,15 @@ creating their own control planes:
     delivery through the shared outbound-batch primitive. Component-level
     `A1.4` adds one fail-closed immutable invocation profile before dispatch,
     binds its digest into provider run identity, and records digest-only Tool
-    request/result semantics with shared audit correlation. Production model
-    and Tool binding producers, any additional independent MCP binding,
-    retained PostgreSQL/real-provider recovery and audit evidence, and
-    `A1.5`/`A1.6` remain open.
+    request/result semantics with shared audit correlation. Component-level
+    `A1.5` adds durable approval checkpoints and exact provider-neutral resume.
+    Component-level `A1.6` adds bounded immutable logical execution
+    checkpoints, explicit fork lineage, trajectory reads, exact Runtime
+    telemetry correlation, migration `168`, REST/OpenAPI `1.73.0`, and the
+    maintained TypeScript client. Production model and Tool binding producers,
+    any additional independent MCP binding, retained PostgreSQL/real-provider
+    recovery and audit evidence, and provider/Box private checkpoint
+    certification remain open.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

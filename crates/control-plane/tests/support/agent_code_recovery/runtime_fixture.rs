@@ -270,6 +270,7 @@ fn flow_runtime(
     Ok(AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents,
+            checkpoint_objects: Arc::new(UnavailableCheckpointObjects),
             providers: Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
             workload_targets: workloads,
             node_control: nodes,

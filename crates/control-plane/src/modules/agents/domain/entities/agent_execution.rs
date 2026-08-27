@@ -1,6 +1,7 @@
 use super::{
-    validate_agent_approval_reason, AgentCodeRunBinding, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentProviderProfileBinding, AgentReleaseBinding,
+    validate_agent_approval_reason, AgentCodeRunBinding, AgentExecutionCheckpoint,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionLineage,
+    AgentProviderProfileBinding, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentApprovalCheckpointId, AgentApprovalDecisionId, AgentConversationId,
@@ -63,6 +64,8 @@ pub struct AgentExecution {
     pub agent: AgentReleaseBinding,
     pub provider: AgentProviderProfileBinding,
     pub code: Option<AgentCodeRunBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lineage: Option<AgentExecutionLineage>,
     pub status: AgentExecutionStatus,
     pub failure: Option<String>,
     pub aggregate_version: u64,
@@ -111,6 +114,7 @@ impl AgentExecution {
             agent,
             provider,
             code: None,
+            lineage: None,
             status: AgentExecutionStatus::Pending,
             failure: None,
             aggregate_version: 1,
@@ -120,6 +124,60 @@ impl AgentExecution {
             cancellation_requested_at: None,
             finished_at: None,
         };
+        execution.validate()?;
+        Ok(execution)
+    }
+
+    pub fn fork_from(
+        parent: &Self,
+        checkpoint: &AgentExecutionCheckpoint,
+        id: AgentExecutionId,
+        operation_id: OperationId,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        parent.validate()?;
+        checkpoint.validate()?;
+        let requested_at = canonical_timestamp(requested_at);
+        let parent_invocation_digest = parent
+            .code
+            .as_ref()
+            .ok_or_else(|| "Agent fork parent has no provider Runtime binding".to_owned())?
+            .require_invocation_profile()?
+            .digest()?;
+        if id == parent.id
+            || checkpoint.organization_id != parent.organization_id
+            || checkpoint.conversation_id != parent.conversation_id
+            || checkpoint.execution_id != parent.id
+            || &checkpoint.agent_artifact_digest != parent.agent.artifact_digest()
+            || checkpoint.provider_profile_digest.as_str() != parent.provider.profile_digest()
+            || checkpoint.invocation_profile_digest.as_str() != parent_invocation_digest
+            || checkpoint.telemetry_correlation.operation_id != parent.operation_id
+            || requested_at < checkpoint.captured_at
+        {
+            return Err("Agent fork checkpoint does not match its parent execution".into());
+        }
+        let depth = parent
+            .lineage
+            .as_ref()
+            .map(|lineage| lineage.depth)
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| "Agent execution fork depth overflowed".to_owned())?;
+        let mut execution = Self::create_with_provider(
+            parent.organization_id,
+            parent.conversation_id,
+            id,
+            operation_id,
+            parent.agent.clone(),
+            parent.provider.clone(),
+            requested_at,
+        )?;
+        execution.lineage = Some(AgentExecutionLineage::new(
+            parent.id,
+            checkpoint.id,
+            checkpoint.object.digest.clone(),
+            depth,
+        )?);
         execution.validate()?;
         Ok(execution)
     }
@@ -441,6 +499,12 @@ impl AgentExecution {
     pub fn validate(&self) -> Result<(), String> {
         self.agent.validate()?;
         self.provider.validate()?;
+        if let Some(lineage) = &self.lineage {
+            lineage.validate()?;
+            if lineage.parent_execution_id == self.id {
+                return Err("Agent execution cannot fork from itself".into());
+            }
+        }
         if let Some(code) = &self.code {
             code.validate()?;
             if let Some(invocation) = code.invocation_profile() {

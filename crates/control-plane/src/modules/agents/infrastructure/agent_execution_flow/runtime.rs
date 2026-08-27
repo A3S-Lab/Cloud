@@ -2,7 +2,7 @@ use super::types::{
     AgentExecutionFlowInput, CompletedAgentExecution, DispatchInput, DispatchOutput,
     DispatchedAgentExecution, ObserveInput, ObserveOutput, PrepareOutput, PreparedAgentExecution,
 };
-use super::{approval, binding, recovery};
+use super::{approval, binding, fork, recovery};
 use super::{flow_error, AgentExecutionFlowRuntime};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
@@ -565,10 +565,7 @@ pub(super) async fn start_command(
             "Agent execution input changed its durable identity".into(),
         ));
     }
-    let prompt = match event.content.value() {
-        serde_json::Value::String(prompt) => prompt.clone(),
-        input => serde_json::to_string(input)?,
-    };
+    let prompt = fork::execution_prompt(runtime, execution, event.content.value()).await?;
     let binding = execution
         .code
         .as_ref()

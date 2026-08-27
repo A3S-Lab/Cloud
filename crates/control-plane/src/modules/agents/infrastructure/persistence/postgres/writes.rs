@@ -358,7 +358,7 @@ pub(super) fn materialize_event_drafts(
         .collect()
 }
 
-async fn insert_execution(
+pub(super) async fn insert_execution(
     transaction: &PostgresTransaction,
     execution: &crate::modules::agents::domain::AgentExecution,
 ) -> Result<(), PostgresPersistenceError> {
@@ -447,6 +447,31 @@ async fn insert_execution(
             .value(
                 AgentExecutions::provider_capability_digest(),
                 Some(execution.provider.capability_digest().to_owned()),
+            )
+            .value(
+                AgentExecutions::parent_execution_id(),
+                execution
+                    .lineage
+                    .as_ref()
+                    .map(|lineage| lineage.parent_execution_id.as_uuid()),
+            )
+            .value(
+                AgentExecutions::parent_checkpoint_id(),
+                execution
+                    .lineage
+                    .as_ref()
+                    .map(|lineage| lineage.parent_checkpoint_id.as_uuid()),
+            )
+            .value(
+                AgentExecutions::parent_checkpoint_digest(),
+                execution
+                    .lineage
+                    .as_ref()
+                    .map(|lineage| lineage.parent_checkpoint_digest.as_str().to_owned()),
+            )
+            .value(
+                AgentExecutions::fork_depth(),
+                execution.lineage.as_ref().map(|lineage| lineage.depth),
             ),
     )
     .await;

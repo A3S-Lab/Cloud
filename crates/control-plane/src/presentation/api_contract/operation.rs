@@ -290,6 +290,39 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             }),
         );
     }
+    if method == "get" && is_agent_execution_checkpoint_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "description": "Maximum immutable checkpoint projections to return in reverse trajectory order.",
+                "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 50 }
+            }),
+        );
+    }
+    if method == "get" && is_agent_execution_trajectory_path(path) {
+        for parameter in [
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "description": "Opaque cursor for the last semantic event already consumed.",
+                "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+            }),
+            json!({
+                "name": "throughSequence", "in": "query", "required": false,
+                "description": "Inclusive upper semantic event sequence boundary.",
+                "schema": {
+                    "type": "integer", "format": "int64", "minimum": 1,
+                    "maximum": 9007199254740991_i64
+                }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
+        }
+    }
     if is_asset_git_advertisement(path) {
         upsert_parameter(
             parameters,
@@ -1267,6 +1300,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_notification_alert_policy_collection_path(path)
                 || is_notification_outbound_subscription_collection_path(path)
                 || is_agent_approval_decision_path(path)
+                || is_agent_execution_checkpoint_collection_path(path)
+                || is_agent_execution_fork_path(path)
                 || is_build_plan_request_body_path(path)))
     {
         error_statuses.extend([413, 415]);
@@ -1525,6 +1560,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || is_recipient_contact_collection_path(path)
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || is_agent_approval_decision_path(path)
+        || is_agent_execution_fork_path(path)
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
@@ -1574,6 +1610,7 @@ fn creates_resource(path: &str) -> bool {
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
         || is_build_plan_collection_path(path)
+        || is_agent_execution_checkpoint_collection_path(path)
 }
 
 fn is_recipient_contact_collection_path(path: &str) -> bool {
@@ -1796,6 +1833,11 @@ fn agent_success_component(method: &str, path: &str, status: u16) -> Option<Stri
     let approval_collection = is_agent_approval_collection_path(path);
     let approval_item = is_agent_approval_item_path(path);
     let approval_decision = is_agent_approval_decision_path(path);
+    let checkpoint_collection = is_agent_execution_checkpoint_collection_path(path);
+    let checkpoint_item = is_agent_execution_checkpoint_item_path(path);
+    let checkpoint_snapshot = is_agent_execution_checkpoint_snapshot_path(path);
+    let execution_fork = is_agent_execution_fork_path(path);
+    let execution_trajectory = is_agent_execution_trajectory_path(path);
     let event_page = path.ends_with("/agent-conversations/{conversation_id}/events");
 
     if method == "get" && conversation_collection {
@@ -1814,6 +1856,18 @@ fn agent_success_component(method: &str, path: &str, status: u16) -> Option<Stri
         Some(format!("AgentExecutionMutationSuccess{status}"))
     } else if method == "get" && execution_change_set {
         Some("AgentExecutionChangeSetSuccess200".into())
+    } else if method == "get" && checkpoint_collection {
+        Some("AgentExecutionCheckpointListSuccess200".into())
+    } else if method == "post" && checkpoint_collection {
+        Some(format!("AgentExecutionCheckpointMutationSuccess{status}"))
+    } else if method == "get" && checkpoint_item {
+        Some("AgentExecutionCheckpointSuccess200".into())
+    } else if method == "get" && checkpoint_snapshot {
+        Some("AgentExecutionCheckpointSnapshotSuccess200".into())
+    } else if method == "post" && execution_fork {
+        Some(format!("AgentExecutionMutationSuccess{status}"))
+    } else if method == "get" && execution_trajectory {
+        Some("AgentExecutionTrajectoryPageSuccess200".into())
     } else if method == "get" && approval_collection {
         Some("AgentApprovalCheckpointListSuccess200".into())
     } else if method == "get" && approval_item {
@@ -1837,6 +1891,26 @@ fn is_agent_approval_item_path(path: &str) -> bool {
 
 fn is_agent_approval_decision_path(path: &str) -> bool {
     path.ends_with("/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision")
+}
+
+fn is_agent_execution_checkpoint_collection_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/checkpoints")
+}
+
+fn is_agent_execution_checkpoint_item_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/checkpoints/{checkpoint_id}")
+}
+
+fn is_agent_execution_checkpoint_snapshot_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/snapshot")
+}
+
+fn is_agent_execution_fork_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork")
+}
+
+fn is_agent_execution_trajectory_path(path: &str) -> bool {
+    path.ends_with("/agent-executions/{execution_id}/trajectory")
 }
 
 fn is_application_request_body_path(path: &str) -> bool {

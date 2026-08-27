@@ -661,6 +661,7 @@ export interface AgentExecution {
   agent: AgentReleaseBinding;
   provider: AgentProviderProfile;
   invocationProfile: HarnessInvocationProfile | null;
+  lineage: AgentExecutionLineage | null;
   status: AgentExecutionStatus;
   failure: string | null;
   aggregateVersion: number;
@@ -669,6 +670,13 @@ export interface AgentExecution {
   startedAt: string | null;
   cancellationRequestedAt: string | null;
   finishedAt: string | null;
+}
+
+export interface AgentExecutionLineage {
+  parentExecutionId: string;
+  parentCheckpointId: string;
+  parentCheckpointDigest: string;
+  depth: number;
 }
 
 export interface StartAgentExecutionInput {
@@ -682,6 +690,62 @@ export interface AgentExecutionMutationResult {
   conversation: AgentConversation;
   execution: AgentExecution;
   replayed: boolean;
+}
+
+export interface AgentExecutionCheckpointObject {
+  schema: 'a3s.cloud.agent-execution-checkpoint-object.v1';
+  namespace: 'agent-checkpoints';
+  objectRef: string;
+  digest: string;
+  sizeBytes: number;
+  mediaType: 'application/vnd.a3s.agent-execution-checkpoint+json;version=1';
+}
+
+export interface AgentExecutionTelemetryCorrelation {
+  operationId: string;
+  providerRunIdentityDigest: string;
+  nodeId: string;
+  workloadId: string;
+  workloadRevisionId: string;
+  deploymentId: string;
+  replicaId: string;
+  runtimeUnitId: string;
+  runtimeGeneration: number;
+}
+
+export interface AgentExecutionCheckpoint {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  conversationId: string;
+  executionId: string;
+  id: string;
+  throughEventSequence: number;
+  eventCount: number;
+  agentArtifactDigest: string;
+  providerProfileDigest: string;
+  invocationProfileDigest: string;
+  object: AgentExecutionCheckpointObject;
+  telemetryCorrelation: AgentExecutionTelemetryCorrelation;
+  aggregateVersion: number;
+  capturedAt: string;
+}
+
+export interface CaptureAgentExecutionCheckpointInput {
+  throughEventSequence?: number | null;
+}
+
+export interface AgentExecutionCheckpointMutationResult {
+  checkpoint: AgentExecutionCheckpoint;
+  replayed: boolean;
+}
+
+export interface ForkAgentExecutionInput {
+  input?: unknown;
+}
+
+export interface ListAgentExecutionCheckpointsOptions {
+  limit?: number;
 }
 
 export type AgentApprovalCheckpointStatus =
@@ -846,6 +910,52 @@ export type AgentExecutionEvent = AgentExecutionEventBase &
     | { kind: 'execution_failed'; content: { reason: string } }
     | { kind: 'execution_completed' | 'execution_cancelled'; content: Record<string, never> }
   );
+
+interface AgentExecutionCheckpointEventBase {
+  sequence: number;
+  contentDigest: string;
+  contentSizeBytes: number;
+  occurredAt: string;
+}
+
+export type AgentExecutionCheckpointEvent = AgentExecutionCheckpointEventBase &
+  (
+    | { kind: 'execution_requested'; content: unknown }
+    | { kind: 'model_output'; content: { text: string } }
+    | { kind: 'tool_request'; content: AgentToolRequestEventContent }
+    | { kind: 'tool_result'; content: AgentToolResultEventContent }
+    | { kind: 'approval_resolved'; content: AgentApprovalResolutionEventContent }
+    | { kind: 'execution_failed'; content: { reason: string } }
+    | { kind: 'execution_completed' | 'execution_cancelled'; content: Record<string, never> }
+  );
+
+export interface AgentExecutionCheckpointSnapshot {
+  schema: 'a3s.cloud.agent-execution-checkpoint.v1';
+  organizationId: string;
+  conversationId: string;
+  executionId: string;
+  operationId: string;
+  agentArtifactDigest: string;
+  providerProfileDigest: string;
+  invocationProfileDigest: string;
+  throughEventSequence: number;
+  eventCount: number;
+  telemetryCorrelation: AgentExecutionTelemetryCorrelation;
+  events: AgentExecutionCheckpointEvent[];
+  capturedAt: string;
+}
+
+export interface AgentExecutionTrajectoryOptions {
+  cursor?: string;
+  throughSequence?: number;
+  limit?: number;
+}
+
+export interface AgentExecutionTrajectoryPage {
+  executionId: string;
+  records: AgentExecutionEvent[];
+  nextCursor: string | null;
+}
 
 export interface AgentExecutionEventsPage {
   conversationId: string;

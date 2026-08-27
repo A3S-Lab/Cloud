@@ -68,6 +68,7 @@ async fn approval_checkpoint_resumes_only_after_one_exact_durable_decision() {
     let flow_runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents: agents.clone(),
+            checkpoint_objects: checkpoint_objects(),
             providers: Arc::new(
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
@@ -535,6 +536,7 @@ async fn provider_restart_closes_pending_approval_without_dispatching_recovery()
     let flow_runtime = AgentExecutionFlowRuntime::new(
         AgentExecutionFlowRuntimeDependencies {
             agents: agents.clone(),
+            checkpoint_objects: checkpoint_objects(),
             providers: Arc::new(
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),

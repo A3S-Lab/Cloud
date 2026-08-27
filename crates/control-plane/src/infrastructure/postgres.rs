@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 167;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "167";
+pub const CLOUD_MIGRATION_COUNT: i64 = 168;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "168";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1545,6 +1545,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/167_agent_approval_checkpoints.sql"
+            )),
+        ),
+        Migration::new(
+            "168",
+            "immutable Agent execution checkpoints and fork lineage",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/168_agent_execution_checkpoints.sql"
             )),
         ),
     ]
@@ -3648,6 +3656,47 @@ mod agent_approval_checkpoint_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 167 duplicated payload, Secret, or queue authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_execution_checkpoint_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/168_agent_execution_checkpoints.sql"
+    ));
+
+    #[test]
+    fn migration_168_adds_only_checkpoint_descriptors_and_immutable_fork_lineage() {
+        for expected in [
+            "create table agent_execution_checkpoints",
+            "object_namespace text not null check (object_namespace = 'agent-checkpoints')",
+            "object_digest",
+            "provider_run_identity_digest",
+            "parent_execution_id",
+            "parent_checkpoint_id",
+            "parent_checkpoint_digest",
+            "parent_checkpoint_digest is not null",
+            "fork_depth is not null",
+            "agent_executions_parent_checkpoint_fk",
+            "shared immutable-object authority",
+            "never mutates its parent trajectory",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "checkpoint_payload",
+            "checkpoint_content",
+            "secret_material",
+            "create queue",
+            "create table agent_execution_heads",
+            "provider_config",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 168 duplicated content or lifecycle authority: {forbidden}"
             );
         }
     }

@@ -17,7 +17,30 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.72.0`.
+The current semantic contract version is `1.73.0`.
+
+Contract `1.73.0` adds the closed logical Agent execution checkpoint and fork
+API. Authorized execution readers can list or get immutable checkpoint
+projections, read one digest-verified snapshot, and page the execution's own
+semantic event records. An `execution:write` caller can capture a checkpoint at
+the latest event or one exact inclusive sequence and can fork it into a new
+execution with a caller-owned idempotency key. A new capture returns `201`, a
+new fork returns `202`, and exact replay returns `200`.
+
+Checkpoint snapshots contain at most 1,000 events and 896 KiB of canonical
+JSON. A checkpoint captured on a fork prepends its already verified inherited
+trajectory, so later forks remain self-contained without recursively reading
+their ancestry. Cloud writes snapshots through the shared immutable-object
+client under the `agent-checkpoints` namespace, while PostgreSQL migration `168`
+stores only the digest/size/path projection, exact Agent/provider/invocation
+bindings, Runtime telemetry correlation, and immutable parent lineage. A fork
+never mutates its parent. A new fork revalidates the published Agent artifact
+and the exact selected provider profile. Before provider dispatch, Cloud
+reloads and verifies the object and materializes one bounded provider-neutral
+trajectory prompt. Missing, corrupt, revoked, or drifted evidence fails closed.
+This contract does
+not claim provider-private or Box suspend/resume support where the selected
+provider exposes no such capability.
 
 Contract `1.72.0` adds the closed Developer Workflows BuildPlan API. An
 authorized caller can detect bounded deterministic proposals for one exact

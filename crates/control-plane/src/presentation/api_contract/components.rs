@@ -440,6 +440,26 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "AgentExecutionEventPage",
         ),
         (
+            "AgentExecutionCheckpointSuccessResponse",
+            "AgentExecutionCheckpoint",
+        ),
+        (
+            "AgentExecutionCheckpointListSuccessResponse",
+            "AgentExecutionCheckpointList",
+        ),
+        (
+            "AgentExecutionCheckpointMutationSuccessResponse",
+            "AgentExecutionCheckpointMutation",
+        ),
+        (
+            "AgentExecutionCheckpointSnapshotSuccessResponse",
+            "AgentExecutionCheckpointSnapshot",
+        ),
+        (
+            "AgentExecutionTrajectoryPageSuccessResponse",
+            "AgentExecutionTrajectoryPage",
+        ),
+        (
             "AgentApprovalCheckpointSuccessResponse",
             "AgentApprovalCheckpoint",
         ),
@@ -735,6 +755,22 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "AgentExecutionEventPageSuccessResponse",
         ),
         (
+            "AgentExecutionCheckpointSuccess200",
+            "AgentExecutionCheckpointSuccessResponse",
+        ),
+        (
+            "AgentExecutionCheckpointListSuccess200",
+            "AgentExecutionCheckpointListSuccessResponse",
+        ),
+        (
+            "AgentExecutionCheckpointSnapshotSuccess200",
+            "AgentExecutionCheckpointSnapshotSuccessResponse",
+        ),
+        (
+            "AgentExecutionTrajectoryPageSuccess200",
+            "AgentExecutionTrajectoryPageSuccessResponse",
+        ),
+        (
             "AgentApprovalCheckpointSuccess200",
             "AgentApprovalCheckpointSuccessResponse",
         ),
@@ -772,6 +808,15 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(
                 status,
                 "#/components/schemas/WorkflowRunMutationSuccessResponse",
+            ),
+        );
+    }
+    for status in [200, 201] {
+        response_components.insert(
+            format!("AgentExecutionCheckpointMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/AgentExecutionCheckpointMutationSuccessResponse",
             ),
         );
     }

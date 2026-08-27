@@ -11,7 +11,7 @@ Planned I0 adds models and inference deployments as a separate product profile
 that compiles into the same Workloads path; it does not broaden the Asset kind
 set or create a second deployment engine.
 
-Planned A1 adds durable Agent conversations, executions, semantic events,
+In-progress A1 adds durable Agent conversations, executions, semantic events,
 approvals, checkpoints, forks, trajectories, and one provider-neutral Harness
 contract. It binds published Asset releases and immutable provider profiles to
 Flow, Workloads, Fleet, Runtime, and Box; it does not add another execution
@@ -1240,13 +1240,14 @@ host evidence, and AnySentry/OpenTelemetry references only after those owners
 provide durable typed facts. Investigation and notification cannot enforce
 policy or mutate an owning aggregate.
 
-### 3.13 Agent execution (`A1.1` foundation; native `A1.2` verified; `A1.4-C1` component)
+### 3.13 Agent execution (`A1.1` foundation; native `A1.2` verified; `A1.3`-`A1.6` components)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
-correlated Operation identity. Later sub-gates add the remaining immutable
-bindings, approval checkpoints, logical execution checkpoints, fork lineage,
-and trajectory projections. The Cloud API is its client control boundary.
+correlated Operation identity. Component-level `A1.4`-`A1.6` add the remaining
+immutable invocation bindings, approval checkpoints, logical execution
+checkpoints, fork lineage, and trajectory projections. The Cloud API is its
+client control boundary.
 
 Primary aggregates:
 
@@ -1260,18 +1261,26 @@ Current supporting records:
   `AgentExecution`;
 - one closed immutable `HarnessInvocationProfile` persisted atomically with
   every newly dispatched provider run, containing exact identities and policy
-  digests plus Secret references but no Secret material; and
+  digests plus Secret references but no Secret material;
+- one durable `AgentApprovalCheckpoint` for each admitted approval-required
+  Tool request, with an exact grant-backed decision and provider-neutral resume
+  identity;
+- one immutable `AgentExecutionCheckpoint` projection for each bounded
+  canonical snapshot stored through the shared `agent-checkpoints` object
+  namespace, plus immutable execution lineage for forks. A checkpoint on a fork
+  materializes its verified inherited trajectory so nested forks are
+  self-contained; and
 - `AgentExecutionEvent`, including provider-neutral digest-only Tool
   request/result records, with each accepted Tool record correlated to the
   shared audit store as `a3s.cloud.agent-tool-audit.v1` in the same PostgreSQL
   receipt transaction.
 
-Planned supporting records:
+Planned supporting work:
 
 - production binding producers for exact model and Tool identities and any MCP
-  identity not already supplied by the selected Agent Workload revision;
-- `AgentApprovalCheckpoint`; and
-- `AgentExecutionCheckpoint`.
+  identity not already supplied by the selected Agent Workload revision; and
+- retained PostgreSQL/real-provider approval and fork recovery evidence plus
+  provider/Box private checkpoint capability and cleanup certification.
 
 The context owns semantic Agent state but delegates long-running coordination
 to Flow and Operations, placement and rollout to Workloads, node delivery to
@@ -3573,12 +3582,13 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   decide/resume commands replay; denial, expiry, cancellation, and process
   death cannot emit a hidden resume.
 - `A1.1` stores only canonical inline JSON of at most 64 KiB and verifies its
-  SHA-256 digest. Later large event content and checkpoints reference one
-  verified immutable object by namespace, digest, length, and media type. No
-  Agent-specific object backend or mutable execution-head store is permitted.
+  SHA-256 digest. `A1.6` stores bounded logical checkpoint snapshots through one
+  verified immutable object reference with an exact namespace, digest, length,
+  and media type. No Agent-specific object backend or mutable execution-head
+  store is permitted.
 - In `A1.6`, forking creates a new execution with immutable parent and
   checkpoint lineage; it never mutates the parent trajectory.
-- Provider suspend/resume remains unavailable until `A1.6` and the selected
+- Provider-private suspend/resume remains unavailable until the selected
   Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
   integrity, compatibility, adoption, and cleanup certification.
 

@@ -83,6 +83,12 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         _ if path.ends_with("/agent-conversations/{conversation_id}/executions") => {
             agent_execution_schema()
         }
+        _ if path.ends_with("/agent-executions/{execution_id}/checkpoints") => {
+            agent_execution_checkpoint_capture_schema()
+        }
+        _ if path.ends_with(
+            "/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork",
+        ) => agent_execution_fork_schema(),
         _ if path.ends_with(
             "/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
         ) => agent_approval_decision_schema(),
@@ -353,6 +359,35 @@ fn agent_approval_decision_schema() -> Value {
                 "x-a3s-max-utf8-bytes": 1024,
                 "pattern": "^(?:\\S|\\S[^\\u0000\\r\\n]*\\S)$",
                 "nullable": true
+            }
+        }),
+    )
+}
+
+fn agent_execution_checkpoint_capture_schema() -> Value {
+    object(
+        &[],
+        json!({
+            "throughEventSequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1,
+                "maximum": 9007199254740991_i64,
+                "nullable": true,
+                "description": "Inclusive semantic trajectory boundary. Omit to capture the latest committed event for this execution."
+            }
+        }),
+    )
+}
+
+fn agent_execution_fork_schema() -> Value {
+    object(
+        &[],
+        json!({
+            "input": {
+                "nullable": true,
+                "description": "Bounded canonical JSON input appended after the immutable parent checkpoint trajectory.",
+                "x-a3s-max-canonical-bytes": 65536
             }
         }),
     )

@@ -1,7 +1,9 @@
+mod agent_execution_checkpoint_object_store;
 mod agent_execution_flow;
 mod agent_provider;
 mod persistence;
 
+pub use agent_execution_checkpoint_object_store::AgentExecutionCheckpointObjectStore;
 pub(crate) use agent_execution_flow::flow_step_names as agent_execution_flow_step_names;
 pub(crate) use agent_execution_flow::flow_workflow_identities as agent_execution_flow_workflow_identities;
 pub use agent_execution_flow::{

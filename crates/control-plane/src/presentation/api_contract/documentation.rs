@@ -659,6 +659,8 @@ fn operation_summary(method: &str, path: &str) -> String {
             ("/history", "List workflow run history"),
             ("/replay", "Replay an application session"),
             ("/changes", "Get agent execution changes"),
+            ("/snapshot", "Export an agent execution checkpoint snapshot"),
+            ("/trajectory", "List an agent execution trajectory"),
             ("/evidence", "Get signed build evidence"),
             ("/logs", "List workload logs"),
             ("/mcp-service-profile", "Get the MCP service profile"),
@@ -716,6 +718,14 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
         (
             "/approval-checkpoints/{checkpoint_id}/decision",
             "Decide an agent Tool approval checkpoint",
+        ),
+        (
+            "/agent-executions/{execution_id}/checkpoints",
+            "Capture an agent execution checkpoint",
+        ),
+        (
+            "/checkpoints/{checkpoint_id}/fork",
+            "Fork an agent execution from a checkpoint",
         ),
         (
             "/sessions/{session_id}/close",
@@ -864,6 +874,11 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "agent-conversations" => ("agent conversation", "agent conversations"),
         "agent-executions" => ("agent execution", "agent executions"),
         "approval-checkpoints" => ("agent approval checkpoint", "agent approval checkpoints"),
+        "checkpoints" => ("agent execution checkpoint", "agent execution checkpoints"),
+        "trajectory" => (
+            "agent execution trajectory",
+            "agent execution trajectory events",
+        ),
         "executions" => ("execution", "executions"),
         "events" => ("event", "events"),
         "api-tokens" => ("API token", "API tokens"),

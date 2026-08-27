@@ -348,6 +348,28 @@ fn connector_response_adapter_cannot_reimplement_low_level_object_storage() {
 }
 
 #[test]
+fn agent_checkpoint_adapter_cannot_reimplement_low_level_object_storage() {
+    let source = include_str!(
+        "../../modules/agents/infrastructure/agent_execution_checkpoint_object_store.rs"
+    );
+    let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+    assert!(production.contains("ImmutableObjectClient"));
+    for forbidden in [
+        "object_store::",
+        "std::fs::",
+        "tokio::fs::",
+        "spawn_blocking",
+        "AmazonS3Builder",
+        "PutMode::Create",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "the typed Agent checkpoint adapter must reuse ImmutableObjectClient; found {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn user_file_adapter_reuses_verified_streams_without_owning_storage_or_cleanup() {
     let source = include_str!("../../modules/files/infrastructure/user_file_object_store.rs");
     let production = source
@@ -415,6 +437,7 @@ fn production_composition_builds_one_provider_and_derives_every_consumer_namespa
         "logs",
         "artifacts",
         "asset-git-backups",
+        "agent-checkpoints",
         "connector-responses",
         "plugin-trust-roots",
     ] {

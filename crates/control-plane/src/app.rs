@@ -3,15 +3,20 @@ use crate::infrastructure::{
     SmtpCredentials, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
 };
 use crate::modules::agents::{
-    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
-    AgentExecutionProviderRegistry, AgentExecutionReconciler, AgentsModule,
-    AppendAgentExecutionEventsHandler, BuiltInAgentExecutionProviderRegistry,
-    CancelAgentExecutionHandler, CreateAgentConversationHandler,
-    DecideAgentApprovalCheckpointHandler, GetAgentApprovalCheckpointHandler,
-    GetAgentConversationHandler, GetAgentExecutionChangeSetHandler, GetAgentExecutionEventsHandler,
-    GetAgentExecutionHandler, IAgentRepository, IWorkflowAgentPort,
-    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler, ListAgentExecutionsHandler,
-    StartAgentExecutionHandler, WorkflowAgentApplicationService,
+    AgentExecutionCheckpointObjectStore, AgentExecutionFlowRuntime,
+    AgentExecutionFlowRuntimeDependencies, AgentExecutionProviderRegistry,
+    AgentExecutionReconciler, AgentsModule, AppendAgentExecutionEventsHandler,
+    BuiltInAgentExecutionProviderRegistry, CancelAgentExecutionHandler,
+    CaptureAgentExecutionCheckpointHandler, CreateAgentConversationHandler,
+    DecideAgentApprovalCheckpointHandler, ForkAgentExecutionHandler,
+    GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
+    GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
+    GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
+    GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
+    IAgentExecutionCheckpointObjectStore, IAgentRepository, IWorkflowAgentPort,
+    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
+    ListAgentExecutionCheckpointsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
+    WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
@@ -475,6 +480,12 @@ async fn build_api_worker_application(
     let asset_backup_objects = object_storage
         .subnamespace("asset-git-backups")
         .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
+    let agent_checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore> =
+        Arc::new(AgentExecutionCheckpointObjectStore::from_client(
+            object_storage
+                .subnamespace("agent-checkpoints")
+                .map_err(|error| ControlPlaneStartupError::AgentExecution(error.to_string()))?,
+        ));
     let asset_git_repository = LocalAssetGitRepository::new(
         &config.assets.repository_dir,
         Duration::from_millis(config.assets.git_command_timeout_ms),
@@ -1005,6 +1016,7 @@ async fn build_api_worker_application(
         let agent_execution_runtime = AgentExecutionFlowRuntime::new(
             AgentExecutionFlowRuntimeDependencies {
                 agents: Arc::clone(&agents),
+                checkpoint_objects: Arc::clone(&agent_checkpoint_objects),
                 providers: Arc::clone(&agent_execution_providers),
                 workload_targets: Arc::clone(&workload_targets),
                 node_control: Arc::clone(&node_control),
@@ -1725,6 +1737,7 @@ async fn build_api_worker_application(
                 executions,
                 execution_templates,
                 agents,
+                agent_checkpoint_objects,
                 agent_execution_providers,
                 routes,
                 mcp_credentials,
@@ -1955,6 +1968,7 @@ struct ManagementApplicationDependencies {
     executions: Arc<dyn IExecutionRepository>,
     execution_templates: Arc<dyn IExecutionTemplateRepository>,
     agents: Arc<dyn IAgentRepository>,
+    agent_checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     agent_execution_providers: Arc<dyn AgentExecutionProviderRegistry>,
     routes: Arc<dyn IEdgeRepository>,
     mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
@@ -2039,6 +2053,7 @@ fn build_management_application_with_health(
         executions,
         execution_templates,
         agents,
+        agent_checkpoint_objects,
         agent_execution_providers,
         routes,
         mcp_credentials,
@@ -2405,6 +2420,7 @@ fn build_management_application_with_health(
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
     let agent_execution_assets = Arc::clone(&assets);
+    let fork_agent_execution_assets = Arc::clone(&assets);
     let bind_skill_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
@@ -2459,7 +2475,8 @@ fn build_management_application_with_health(
         Arc::new(HostedArtifactQueryService::new(Arc::clone(&builds)));
     let agent_create_artifacts = Arc::clone(&hosted_artifacts);
     let agent_update_artifacts = Arc::clone(&hosted_artifacts);
-    let agent_execution_artifacts = hosted_artifacts;
+    let agent_execution_artifacts = Arc::clone(&hosted_artifacts);
+    let fork_agent_execution_artifacts = hosted_artifacts;
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_execution_template_projects = Arc::clone(&projects);
@@ -2473,11 +2490,17 @@ fn build_management_application_with_health(
     let get_executions = executions;
     let create_agent_conversations = Arc::clone(&agents);
     let start_agent_executions = Arc::clone(&agents);
+    let capture_agent_execution_checkpoints = Arc::clone(&agents);
+    let fork_agent_executions = Arc::clone(&agents);
     let cancel_agent_executions = Arc::clone(&agents);
     let append_agent_execution_events = Arc::clone(&agents);
     let decide_agent_approval_checkpoints = Arc::clone(&agents);
     let get_agent_approval_checkpoints = Arc::clone(&agents);
     let list_agent_approval_checkpoints = Arc::clone(&agents);
+    let get_agent_execution_checkpoints = Arc::clone(&agents);
+    let list_agent_execution_checkpoints = Arc::clone(&agents);
+    let get_agent_execution_checkpoint_snapshots = Arc::clone(&agents);
+    let get_agent_execution_trajectories = Arc::clone(&agents);
     let get_agent_conversations = Arc::clone(&agents);
     let list_agent_conversations = Arc::clone(&agents);
     let get_agent_executions = Arc::clone(&agents);
@@ -3076,6 +3099,21 @@ fn build_management_application_with_health(
                         Arc::clone(&agent_execution_providers),
                     ),
                 )
+                .command_handler::<crate::modules::agents::CaptureAgentExecutionCheckpoint, _>(
+                    CaptureAgentExecutionCheckpointHandler::new(
+                        capture_agent_execution_checkpoints,
+                        Arc::clone(&agent_checkpoint_objects),
+                    ),
+                )
+                .command_handler::<crate::modules::agents::ForkAgentExecution, _>(
+                    ForkAgentExecutionHandler::new(
+                        fork_agent_executions,
+                        Arc::clone(&agent_checkpoint_objects),
+                        fork_agent_execution_assets,
+                        fork_agent_execution_artifacts,
+                        Arc::clone(&agent_execution_providers),
+                    ),
+                )
                 .command_handler::<crate::modules::agents::CancelAgentExecution, _>(
                     CancelAgentExecutionHandler::new(cancel_agent_executions),
                 )
@@ -3539,6 +3577,21 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::agents::GetAgentExecution, _>(
                     GetAgentExecutionHandler::new(get_agent_executions),
+                )
+                .query_handler::<crate::modules::agents::ListAgentExecutionCheckpoints, _>(
+                    ListAgentExecutionCheckpointsHandler::new(list_agent_execution_checkpoints),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecutionCheckpoint, _>(
+                    GetAgentExecutionCheckpointHandler::new(get_agent_execution_checkpoints),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecutionCheckpointSnapshot, _>(
+                    GetAgentExecutionCheckpointSnapshotHandler::new(
+                        get_agent_execution_checkpoint_snapshots,
+                        agent_checkpoint_objects,
+                    ),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecutionTrajectory, _>(
+                    GetAgentExecutionTrajectoryHandler::new(get_agent_execution_trajectories),
                 )
                 .query_handler::<crate::modules::agents::ListAgentApprovalCheckpoints, _>(
                     ListAgentApprovalCheckpointsHandler::new(list_agent_approval_checkpoints),

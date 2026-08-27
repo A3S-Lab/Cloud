@@ -1,15 +1,18 @@
 use super::schema::{
-    AgentConversations, AgentExecutionChangeSets, AgentExecutionEvents, AgentExecutions,
+    AgentConversations, AgentExecutionChangeSets, AgentExecutionCheckpoints, AgentExecutionEvents,
+    AgentExecutions,
 };
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationStatus, AgentEventContent,
-    AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventKind,
-    AgentExecutionStatus, AgentProviderProfileBinding, AgentReleaseBinding,
+    AgentExecution, AgentExecutionChangeSet, AgentExecutionCheckpoint,
+    AgentExecutionCheckpointObjectReference, AgentExecutionEvent, AgentExecutionEventKind,
+    AgentExecutionLineage, AgentExecutionStatus, AgentExecutionTelemetryCorrelation,
+    AgentProviderProfileBinding, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, DeploymentId,
-    EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
-    WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
+    AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId, AssetId, AssetReleaseId,
+    BuildRunId, DeploymentId, EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId,
+    RepositoryError, Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     AgentProtocolChangeSetV1, AgentProtocolRunIdentityV1, AgentProviderRunStateV1,
@@ -25,6 +28,7 @@ pub(super) struct ConversationSelection;
 pub(super) struct ExecutionSelection;
 pub(super) struct EventSelection;
 pub(super) struct ChangeSetSelection;
+pub(super) struct CheckpointSelection;
 
 impl Selection for ConversationSelection {
     type Output = ConversationRow;
@@ -94,6 +98,10 @@ impl Selection for ExecutionSelection {
             AgentExecutions::provider_observed_at().expression(),
             AgentExecutions::invocation_profile().expression(),
             AgentExecutions::invocation_profile_digest().expression(),
+            AgentExecutions::parent_execution_id().expression(),
+            AgentExecutions::parent_checkpoint_id().expression(),
+            AgentExecutions::parent_checkpoint_digest().expression(),
+            AgentExecutions::fork_depth().expression(),
         ]
     }
 }
@@ -127,6 +135,43 @@ impl Selection for ChangeSetSelection {
             AgentExecutionChangeSets::node_id().expression(),
             AgentExecutionChangeSets::change_set().expression(),
             AgentExecutionChangeSets::recorded_at().expression(),
+        ]
+    }
+}
+
+impl Selection for CheckpointSelection {
+    type Output = CheckpointRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            AgentExecutionCheckpoints::organization_id().expression(),
+            AgentExecutionCheckpoints::project_id().expression(),
+            AgentExecutionCheckpoints::environment_id().expression(),
+            AgentExecutionCheckpoints::conversation_id().expression(),
+            AgentExecutionCheckpoints::execution_id().expression(),
+            AgentExecutionCheckpoints::id().expression(),
+            AgentExecutionCheckpoints::through_event_sequence().expression(),
+            AgentExecutionCheckpoints::event_count().expression(),
+            AgentExecutionCheckpoints::agent_artifact_digest().expression(),
+            AgentExecutionCheckpoints::provider_profile_digest().expression(),
+            AgentExecutionCheckpoints::invocation_profile_digest().expression(),
+            AgentExecutionCheckpoints::object_schema().expression(),
+            AgentExecutionCheckpoints::object_namespace().expression(),
+            AgentExecutionCheckpoints::object_ref().expression(),
+            AgentExecutionCheckpoints::object_digest().expression(),
+            AgentExecutionCheckpoints::object_size_bytes().expression(),
+            AgentExecutionCheckpoints::object_media_type().expression(),
+            AgentExecutionCheckpoints::operation_id().expression(),
+            AgentExecutionCheckpoints::provider_run_identity_digest().expression(),
+            AgentExecutionCheckpoints::node_id().expression(),
+            AgentExecutionCheckpoints::workload_id().expression(),
+            AgentExecutionCheckpoints::workload_revision_id().expression(),
+            AgentExecutionCheckpoints::deployment_id().expression(),
+            AgentExecutionCheckpoints::replica_id().expression(),
+            AgentExecutionCheckpoints::runtime_unit_id().expression(),
+            AgentExecutionCheckpoints::runtime_generation().expression(),
+            AgentExecutionCheckpoints::aggregate_version().expression(),
+            AgentExecutionCheckpoints::captured_at().expression(),
         ]
     }
 }
@@ -189,6 +234,10 @@ pub(super) struct ExecutionRow {
     provider_observed_at: Option<DateTime<Utc>>,
     invocation_profile: Option<Value>,
     invocation_profile_digest: Option<String>,
+    parent_execution_id: Option<Uuid>,
+    parent_checkpoint_id: Option<Uuid>,
+    parent_checkpoint_digest: Option<String>,
+    fork_depth: Option<u16>,
 }
 
 pub(super) struct EventRow {
@@ -210,6 +259,37 @@ pub(super) struct ChangeSetRow {
     node_id: Uuid,
     change_set: Value,
     recorded_at: DateTime<Utc>,
+}
+
+pub(super) struct CheckpointRow {
+    organization_id: Uuid,
+    project_id: Uuid,
+    environment_id: Uuid,
+    conversation_id: Uuid,
+    execution_id: Uuid,
+    id: Uuid,
+    through_event_sequence: u64,
+    event_count: u16,
+    agent_artifact_digest: String,
+    provider_profile_digest: String,
+    invocation_profile_digest: String,
+    object_schema: String,
+    object_namespace: String,
+    object_ref: String,
+    object_digest: String,
+    object_size_bytes: u64,
+    object_media_type: String,
+    operation_id: Uuid,
+    provider_run_identity_digest: String,
+    node_id: Uuid,
+    workload_id: Uuid,
+    workload_revision_id: Uuid,
+    deployment_id: Uuid,
+    replica_id: Uuid,
+    runtime_unit_id: String,
+    runtime_generation: u64,
+    aggregate_version: u64,
+    captured_at: DateTime<Utc>,
 }
 
 macro_rules! from_row {
@@ -244,7 +324,8 @@ from_row!(ExecutionRow, {
     provider_service_port_name: 34, provider_release_identity: 35,
     provider_session_id: 36, provider_run_id: 37, provider_event_cursor: 38,
     provider_state: 39, provider_bound_at: 40, provider_observed_at: 41,
-    invocation_profile: 42, invocation_profile_digest: 43,
+    invocation_profile: 42, invocation_profile_digest: 43, parent_execution_id: 44,
+    parent_checkpoint_id: 45, parent_checkpoint_digest: 46, fork_depth: 47,
 });
 
 from_row!(EventRow, {
@@ -255,6 +336,17 @@ from_row!(EventRow, {
 from_row!(ChangeSetRow, {
     organization_id: 0, execution_id: 1, batch_id: 2, node_id: 3,
     change_set: 4, recorded_at: 5,
+});
+
+from_row!(CheckpointRow, {
+    organization_id: 0, project_id: 1, environment_id: 2, conversation_id: 3,
+    execution_id: 4, id: 5, through_event_sequence: 6, event_count: 7,
+    agent_artifact_digest: 8, provider_profile_digest: 9, invocation_profile_digest: 10,
+    object_schema: 11, object_namespace: 12, object_ref: 13, object_digest: 14,
+    object_size_bytes: 15, object_media_type: 16, operation_id: 17,
+    provider_run_identity_digest: 18, node_id: 19, workload_id: 20,
+    workload_revision_id: 21, deployment_id: 22, replica_id: 23, runtime_unit_id: 24,
+    runtime_generation: 25, aggregate_version: 26, captured_at: 27,
 });
 
 impl ConversationRow {
@@ -282,6 +374,7 @@ impl ExecutionRow {
     pub(super) fn aggregate(self) -> Result<AgentExecution, RepositoryError> {
         let provider = self.provider_binding()?;
         let code = self.code_binding(&provider)?;
+        let lineage = self.lineage()?;
         let digest = Sha256Digest::parse(self.agent_artifact_digest)
             .map_err(|error| corrupt(format!("Agent artifact digest is invalid: {error}")))?;
         let agent = AgentReleaseBinding::new(
@@ -303,6 +396,7 @@ impl ExecutionRow {
             agent,
             provider,
             code,
+            lineage,
             status: AgentExecutionStatus::parse(&self.status)
                 .map_err(|error| corrupt(format!("Agent execution status is invalid: {error}")))?,
             failure: self.failure,
@@ -315,6 +409,32 @@ impl ExecutionRow {
         }
         .restore()
         .map_err(|error| corrupt(format!("Agent execution is invalid: {error}")))
+    }
+
+    fn lineage(&self) -> Result<Option<AgentExecutionLineage>, RepositoryError> {
+        match (
+            self.parent_execution_id,
+            self.parent_checkpoint_id,
+            self.parent_checkpoint_digest.as_deref(),
+            self.fork_depth,
+        ) {
+            (None, None, None, None) => Ok(None),
+            (Some(parent_execution_id), Some(parent_checkpoint_id), Some(digest), Some(depth)) => {
+                AgentExecutionLineage::new(
+                    AgentExecutionId::from_uuid(parent_execution_id),
+                    AgentExecutionCheckpointId::from_uuid(parent_checkpoint_id),
+                    Sha256Digest::parse(digest).map_err(|error| {
+                        corrupt(format!(
+                            "Agent parent checkpoint digest is invalid: {error}"
+                        ))
+                    })?,
+                    depth,
+                )
+                .map(Some)
+                .map_err(|error| corrupt(format!("Agent execution lineage is invalid: {error}")))
+            }
+            _ => Err(corrupt("Agent execution lineage is incomplete")),
+        }
     }
 
     fn provider_binding(&self) -> Result<AgentProviderProfileBinding, RepositoryError> {
@@ -515,6 +635,66 @@ impl ChangeSetRow {
         .restore()
         .map_err(|error| corrupt(format!("Agent execution change set is invalid: {error}")))
     }
+}
+
+impl CheckpointRow {
+    pub(super) fn checkpoint(self) -> Result<AgentExecutionCheckpoint, RepositoryError> {
+        let checkpoint = AgentExecutionCheckpoint {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            project_id: ProjectId::from_uuid(self.project_id),
+            environment_id: EnvironmentId::from_uuid(self.environment_id),
+            conversation_id: AgentConversationId::from_uuid(self.conversation_id),
+            execution_id: AgentExecutionId::from_uuid(self.execution_id),
+            id: AgentExecutionCheckpointId::from_uuid(self.id),
+            through_event_sequence: self.through_event_sequence,
+            event_count: self.event_count,
+            agent_artifact_digest: parse_digest(
+                "Agent checkpoint artifact",
+                self.agent_artifact_digest,
+            )?,
+            provider_profile_digest: parse_digest(
+                "Agent checkpoint provider profile",
+                self.provider_profile_digest,
+            )?,
+            invocation_profile_digest: parse_digest(
+                "Agent checkpoint invocation profile",
+                self.invocation_profile_digest,
+            )?,
+            object: AgentExecutionCheckpointObjectReference {
+                schema: self.object_schema,
+                namespace: self.object_namespace,
+                object_ref: self.object_ref,
+                digest: parse_digest("Agent checkpoint object", self.object_digest)?,
+                size_bytes: self.object_size_bytes,
+                media_type: self.object_media_type,
+            },
+            telemetry_correlation: AgentExecutionTelemetryCorrelation {
+                operation_id: OperationId::from_uuid(self.operation_id),
+                provider_run_identity_digest: parse_digest(
+                    "Agent checkpoint provider run identity",
+                    self.provider_run_identity_digest,
+                )?,
+                node_id: NodeId::from_uuid(self.node_id),
+                workload_id: WorkloadId::from_uuid(self.workload_id),
+                workload_revision_id: WorkloadRevisionId::from_uuid(self.workload_revision_id),
+                deployment_id: DeploymentId::from_uuid(self.deployment_id),
+                replica_id: WorkloadReplicaId::from_uuid(self.replica_id),
+                runtime_unit_id: self.runtime_unit_id,
+                runtime_generation: self.runtime_generation,
+            },
+            aggregate_version: self.aggregate_version,
+            captured_at: self.captured_at,
+        };
+        checkpoint
+            .validate()
+            .map_err(|error| corrupt(format!("Agent execution checkpoint is invalid: {error}")))?;
+        Ok(checkpoint)
+    }
+}
+
+fn parse_digest(label: &str, value: String) -> Result<Sha256Digest, RepositoryError> {
+    Sha256Digest::parse(value)
+        .map_err(|error| corrupt(format!("{label} digest is invalid: {error}")))
 }
 
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {

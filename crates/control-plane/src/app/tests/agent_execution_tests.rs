@@ -1,9 +1,12 @@
+use super::agent_checkpoint_support::{checkpoint_test_binding, checkpoint_test_fork_binding};
 use super::*;
+use crate::modules::agents::{BindAgentCodeRunWrite, IAgentRepository};
 use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::assets::domain::{Asset, AssetKind, AssetRelease, AssetReleaseVersion};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, GitCommitSha, ResourceName, Sha256Digest,
+    canonical_timestamp, AgentExecutionId, AssetId, AssetReleaseId, GitCommitSha, ResourceName,
+    Sha256Digest,
 };
 
 const AGENT_WRITER_TOKEN: &str =
@@ -553,6 +556,266 @@ async fn restricted_agent_execution_boundaries_resolve_environment_before_reads_
         ),
     )
     .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn agent_checkpoint_and_fork_api_is_immutable_replayable_and_trajectory_bound() -> Result<()>
+{
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let assets = Arc::new(UnavailableAssetStore::default());
+    let builds = Arc::new(InMemoryBuildRunRepository::new());
+    let agents = Arc::new(InMemoryAgentRepository::new());
+    let app = build_test_application_with_agent_repositories(
+        identity,
+        projects,
+        Arc::clone(&assets),
+        Arc::clone(&builds),
+        agents.clone(),
+    )?;
+    let organization = bootstrap_organization(
+        &app,
+        "agent-checkpoint-bootstrap",
+        "Agent checkpoint tenant",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "agent-checkpoint-project",
+        "Agent checkpoints",
+    )
+    .await?;
+    let environment = create_agent_environment(
+        &app,
+        &organization,
+        &project,
+        "agent-checkpoint-environment",
+        "Production",
+    )
+    .await?;
+    let organization_id =
+        OrganizationId::from_uuid(parse_agent_uuid(&organization, "Agent organization")?);
+    let (asset, release, build) = published_agent_release(organization_id);
+    assets.seed_asset(asset.clone());
+    assets.seed_release(release.clone());
+    builds.seed_build(build).await;
+    let conversations = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/agent-conversations"
+    );
+    let conversation = create_agent_conversation(
+        &app,
+        &conversations,
+        "agent-checkpoint-conversation",
+        ADMIN_TOKEN,
+    )
+    .await?;
+    let execution = start_agent_execution(
+        &app,
+        &organization,
+        &conversation,
+        "agent-checkpoint-execution",
+        asset.id,
+        release.id,
+        ADMIN_TOKEN,
+    )
+    .await?;
+    let execution_id =
+        AgentExecutionId::from_uuid(parse_agent_uuid(&execution, "Agent execution")?);
+    let execution_aggregate = agents
+        .find_execution(organization_id, execution_id)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .ok_or_else(|| BootError::Internal("Agent execution is missing".into()))?;
+    agents
+        .bind_code_run(BindAgentCodeRunWrite {
+            organization_id,
+            execution_id,
+            binding: checkpoint_test_binding(&execution_aggregate)?,
+        })
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let checkpoint_collection =
+        format!("/api/v1/organizations/{organization}/agent-executions/{execution}/checkpoints");
+    let captured = app
+        .call(post_json_as(
+            &checkpoint_collection,
+            "agent-checkpoint-capture",
+            json!({}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(captured.status(), 201);
+    let captured = response_json(&captured)?;
+    assert_eq!(captured["data"]["replayed"], false);
+    assert_eq!(
+        captured["data"]["checkpoint"]["object"]["namespace"],
+        "agent-checkpoints"
+    );
+    assert_eq!(captured["data"]["checkpoint"]["throughEventSequence"], 1);
+    let checkpoint_id =
+        required_agent_string(&captured["data"]["checkpoint"]["id"], "Agent checkpoint ID")?;
+    let checkpoint_digest = captured["data"]["checkpoint"]["object"]["digest"].clone();
+
+    let replay = app
+        .call(post_json_as(
+            &checkpoint_collection,
+            "agent-checkpoint-capture",
+            json!({}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(response_json(&replay)?["data"]["replayed"], true);
+
+    let listed = app
+        .call(get_as(
+            format!("{checkpoint_collection}?limit=10"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    assert_eq!(response_json(&listed)?["data"][0]["id"], checkpoint_id);
+    let checkpoint_path = format!("{checkpoint_collection}/{checkpoint_id}");
+    assert_eq!(
+        app.call(get_as(&checkpoint_path, ADMIN_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    let snapshot = app
+        .call(get_as(format!("{checkpoint_path}/snapshot"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(snapshot.status(), 200);
+    let snapshot = response_json(&snapshot)?;
+    assert_eq!(snapshot["data"]["events"].as_array().map(Vec::len), Some(1));
+    assert_eq!(snapshot["data"]["events"][0]["kind"], "execution_requested");
+    let trajectory = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/agent-executions/{execution}/trajectory?limit=10&throughSequence=1"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(trajectory.status(), 200);
+    let trajectory = response_json(&trajectory)?;
+    assert_eq!(trajectory["data"]["records"][0]["sequence"], 1);
+    assert_eq!(trajectory["data"]["nextCursor"], Value::Null);
+
+    let fork_path = format!("{checkpoint_path}/fork");
+    let fork_input = json!({"input": {"prompt": "continue differently"}});
+    let forked = app
+        .call(post_json_as(
+            &fork_path,
+            "agent-checkpoint-fork",
+            fork_input.clone(),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(forked.status(), 202);
+    let forked = response_json(&forked)?;
+    assert_eq!(forked["data"]["replayed"], false);
+    assert_eq!(
+        forked["data"]["execution"]["lineage"]["parentExecutionId"],
+        execution
+    );
+    assert_eq!(
+        forked["data"]["execution"]["lineage"]["parentCheckpointId"],
+        checkpoint_id
+    );
+    assert_eq!(
+        forked["data"]["execution"]["lineage"]["parentCheckpointDigest"],
+        checkpoint_digest
+    );
+    let fork_execution_id = required_agent_string(
+        &forked["data"]["execution"]["id"],
+        "Forked Agent execution ID",
+    )?;
+    let replay = app
+        .call(post_json_as(
+            &fork_path,
+            "agent-checkpoint-fork",
+            fork_input,
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(
+        response_json(&replay)?["data"]["execution"]["id"],
+        fork_execution_id
+    );
+
+    let parent_execution = agents
+        .find_execution(organization_id, execution_id)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .ok_or_else(|| BootError::Internal("Parent Agent execution is missing".into()))?;
+    let parent_binding = parent_execution
+        .code
+        .as_ref()
+        .ok_or_else(|| BootError::Internal("Parent Agent Runtime binding is missing".into()))?
+        .clone();
+    let fork_execution_uuid = Uuid::parse_str(&fork_execution_id).map_err(|error| {
+        BootError::Internal(format!("Forked Agent execution ID is invalid: {error}"))
+    })?;
+    let fork_execution = agents
+        .find_execution(
+            organization_id,
+            AgentExecutionId::from_uuid(fork_execution_uuid),
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .ok_or_else(|| BootError::Internal("Forked Agent execution is missing".into()))?;
+    agents
+        .bind_code_run(BindAgentCodeRunWrite {
+            organization_id,
+            execution_id: fork_execution.id,
+            binding: checkpoint_test_fork_binding(&fork_execution, &parent_binding)?,
+        })
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let fork_checkpoint_collection = format!(
+        "/api/v1/organizations/{organization}/agent-executions/{fork_execution_id}/checkpoints"
+    );
+    let fork_checkpoint = app
+        .call(post_json_as(
+            &fork_checkpoint_collection,
+            "agent-nested-checkpoint-capture",
+            json!({}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fork_checkpoint.status(), 201);
+    let fork_checkpoint = response_json(&fork_checkpoint)?;
+    assert_eq!(fork_checkpoint["data"]["checkpoint"]["eventCount"], 2);
+    let nested_checkpoint_id = required_agent_string(
+        &fork_checkpoint["data"]["checkpoint"]["id"],
+        "Nested Agent checkpoint ID",
+    )?;
+    let nested_snapshot = app
+        .call(get_as(
+            format!("{fork_checkpoint_collection}/{nested_checkpoint_id}/snapshot"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(nested_snapshot.status(), 200);
+    let nested_snapshot = response_json(&nested_snapshot)?;
+    assert_eq!(
+        nested_snapshot["data"]["events"].as_array().map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(nested_snapshot["data"]["events"][0]["sequence"], 1);
+    assert_eq!(nested_snapshot["data"]["events"][1]["sequence"], 2);
+    let parent = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/agent-executions/{execution}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response_json(&parent)?["data"]["lineage"], Value::Null);
     Ok(())
 }
 

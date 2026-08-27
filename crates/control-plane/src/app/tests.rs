@@ -202,6 +202,7 @@ async fn audit_export_composition_reloads_one_purpose_separated_local_key() {
     .expect("reloaded audit export signature");
 }
 
+mod agent_checkpoint_support;
 mod agent_execution_tests;
 mod api_contract_tests;
 mod application_tests;
@@ -2090,6 +2091,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             executions: executions.unwrap_or_else(|| Arc::new(InMemoryExecutionRepository::new())),
             execution_templates: Arc::new(InMemoryExecutionTemplateRepository::new()),
             agents: test_agents.unwrap_or_else(|| Arc::new(InMemoryAgentRepository::new())),
+            agent_checkpoint_objects: Arc::new(
+                agent_checkpoint_support::TestAgentExecutionCheckpointObjectStore::default(),
+            ),
             agent_execution_providers: Arc::new(
                 BuiltInAgentExecutionProviderRegistry::new().map_err(BootError::Internal)?,
             ),

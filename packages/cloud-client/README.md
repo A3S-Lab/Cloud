@@ -130,17 +130,29 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.72.0`. It exposes closed BuildPlan
-detection, idempotent acceptance, and exact accepted-plan list/get operations
-through the Developer Workflows application boundary. Canonical ACL is
-transported without client-side parsing; typed responses exclude source bytes,
-credentials, checkout paths, and downstream lifecycle state. It retains
-`1.71.0`'s closed Agent approval checkpoint reads and one idempotent,
-optimistic-concurrency guarded
-`approved` or `denied` decision. Checkpoint and `approval_resolved` event types
-expose only immutable Tool/request digests, authority, decision, resume, and
-timing evidence; Tool payload and Secret material are never returned. Agent
-executions admit `awaiting_approval` and retain `1.70.0`'s nullable closed
+The client targets REST contract `1.73.0`. It captures and lists immutable
+logical Agent execution checkpoints, reads exact projections and verified
+snapshots, pages semantic trajectories, and forks one checkpoint into a new
+execution with immutable parent lineage. Fork-descendant snapshots contain the
+already verified inherited trajectory, so nested forks remain self-contained.
+Mutation methods require caller-owned idempotency keys and validate portable
+sequence, page, and 64 KiB fork-input bounds before transport. Cloud revalidates
+the published Agent artifact and selected provider for each new fork and
+remains authoritative for canonical snapshot bytes, object integrity,
+telemetry correlation, and provider dispatch.
+
+It retains `1.72.0`'s closed BuildPlan detection, idempotent acceptance, and
+exact accepted-plan list/get operations through the Developer Workflows
+application boundary. Canonical ACL is transported without client-side parsing;
+typed responses exclude source bytes, credentials, checkout paths, and
+downstream lifecycle state.
+
+The client also retains `1.71.0`'s closed Agent approval-checkpoint reads and
+idempotent, optimistic-concurrency guarded `approved` or `denied` decision.
+Approval checkpoint and `approval_resolved` event types expose only immutable
+Tool/request digests, authority, decision, resume, and timing evidence; Tool
+payload and Secret material are never returned. Agent executions admit
+`awaiting_approval` and retain `1.70.0`'s nullable closed
 immutable Harness invocation profile. Tool request/result events expose only
 typed binding plus payload digest, byte length, and media type evidence. Agent
 execution creation retains `1.69.0`'s

@@ -3,8 +3,10 @@ mod accept_agent_provider_event_batch;
 mod append_agent_execution_events;
 mod bind_agent_code_run;
 mod cancel_agent_execution;
+mod capture_agent_execution_checkpoint;
 mod create_agent_conversation;
 mod decide_agent_approval_checkpoint;
+mod fork_agent_execution;
 mod start_agent_execution;
 
 pub use accept_agent_code_event_batch::{
@@ -20,12 +22,19 @@ pub use bind_agent_code_run::{BindAgentCodeRun, BindAgentCodeRunHandler};
 pub use cancel_agent_execution::{
     CancelAgentExecution, CancelAgentExecutionHandler, CancelAgentExecutionResult,
 };
+pub use capture_agent_execution_checkpoint::{
+    CaptureAgentExecutionCheckpoint, CaptureAgentExecutionCheckpointHandler,
+    CaptureAgentExecutionCheckpointResult,
+};
 pub use create_agent_conversation::{
     CreateAgentConversation, CreateAgentConversationHandler, CreateAgentConversationResult,
 };
 pub use decide_agent_approval_checkpoint::{
     DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
     DecideAgentApprovalCheckpointResult,
+};
+pub use fork_agent_execution::{
+    ForkAgentExecution, ForkAgentExecutionHandler, ForkAgentExecutionResult,
 };
 pub use start_agent_execution::{
     StartAgentExecution, StartAgentExecutionHandler, StartAgentExecutionResult,

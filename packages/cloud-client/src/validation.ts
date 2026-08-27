@@ -9,8 +9,12 @@ import type {
 } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 import type {
+  AgentExecutionTrajectoryOptions,
   AgentApprovalCheckpointStatus,
+  CaptureAgentExecutionCheckpointInput,
   DecideAgentApprovalCheckpointInput,
+  ForkAgentExecutionInput,
+  ListAgentExecutionCheckpointsOptions,
   ListAgentApprovalCheckpointsOptions,
   AgentProviderKind,
   UpdateProjectAttributionInput,
@@ -46,6 +50,9 @@ const AGENT_APPROVAL_CHECKPOINT_STATUSES: ReadonlySet<AgentApprovalCheckpointSta
   'cancelled',
 ]);
 export const MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT = 1_000;
+export const MAX_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT = 1_000;
+export const MAX_AGENT_EXECUTION_TRAJECTORY_PAGE_LIMIT = 200;
+export const MAX_AGENT_EXECUTION_FORK_INPUT_BYTES = 64 * 1024;
 
 export function validateAgentProviderKind(kind: unknown): asserts kind is AgentProviderKind | undefined {
   if (
@@ -68,6 +75,64 @@ export function validateAgentApprovalCheckpointList(options: ListAgentApprovalCh
   ) {
     throw new RangeError(
       `Agent approval checkpoint limit must be between 1 and ${MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT}`
+    );
+  }
+}
+
+export function validateAgentExecutionCheckpointList(options: ListAgentExecutionCheckpointsOptions): void {
+  if (
+    options.limit !== undefined &&
+    (!Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > MAX_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT)
+  ) {
+    throw new RangeError(
+      `Agent execution checkpoint limit must be between 1 and ${MAX_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT}`
+    );
+  }
+}
+
+export function validateCaptureAgentExecutionCheckpoint(input: CaptureAgentExecutionCheckpointInput): void {
+  if (
+    input.throughEventSequence != null &&
+    (!Number.isSafeInteger(input.throughEventSequence) || input.throughEventSequence < 1)
+  ) {
+    throw new RangeError('Agent checkpoint event sequence must be a positive safe integer');
+  }
+}
+
+export function validateForkAgentExecution(input: ForkAgentExecutionInput): void {
+  let encoded: string | undefined;
+  try {
+    encoded = JSON.stringify(input.input ?? null);
+  } catch {
+    throw new TypeError('Agent fork input must be JSON serializable');
+  }
+  if (encoded === undefined) {
+    throw new TypeError('Agent fork input must be JSON serializable');
+  }
+  if (new TextEncoder().encode(encoded).byteLength > MAX_AGENT_EXECUTION_FORK_INPUT_BYTES) {
+    throw new RangeError(
+      `Agent fork input must contain at most ${MAX_AGENT_EXECUTION_FORK_INPUT_BYTES} UTF-8 bytes`
+    );
+  }
+}
+
+export function validateAgentExecutionTrajectory(options: AgentExecutionTrajectoryOptions): void {
+  if (
+    options.throughSequence !== undefined &&
+    (!Number.isSafeInteger(options.throughSequence) || options.throughSequence < 1)
+  ) {
+    throw new RangeError('Agent trajectory through sequence must be a positive safe integer');
+  }
+  if (
+    options.limit !== undefined &&
+    (!Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > MAX_AGENT_EXECUTION_TRAJECTORY_PAGE_LIMIT)
+  ) {
+    throw new RangeError(
+      `Agent execution trajectory limit must be between 1 and ${MAX_AGENT_EXECUTION_TRAJECTORY_PAGE_LIMIT}`
     );
   }
 }

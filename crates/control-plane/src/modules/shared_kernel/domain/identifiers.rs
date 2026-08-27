@@ -115,6 +115,7 @@ identifier!(AssetId);
 identifier!(AssetReleaseId);
 identifier!(AgentConversationId);
 identifier!(AgentExecutionId);
+identifier!(AgentExecutionCheckpointId);
 identifier!(AgentApprovalCheckpointId);
 identifier!(AgentApprovalDecisionId);
 identifier!(OntologyId);

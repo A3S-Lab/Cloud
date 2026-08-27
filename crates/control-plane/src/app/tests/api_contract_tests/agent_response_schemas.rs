@@ -34,6 +34,15 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         "AgentExecutionFailedEvent",
         "AgentExecutionCompletedEvent",
         "AgentExecutionCancelledEvent",
+        "AgentCheckpointExecutionRequestedEvent",
+        "AgentCheckpointModelOutputEvent",
+        "AgentCheckpointToolRequestEvent",
+        "AgentCheckpointToolResultEvent",
+        "AgentCheckpointApprovalResolvedEvent",
+        "AgentCheckpointExecutionFailedEvent",
+        "AgentCheckpointExecutionCompletedEvent",
+        "AgentCheckpointExecutionCancelledEvent",
+        "AgentExecutionLineage",
         "AgentExecution",
         "AgentExecutionMutation",
         "AgentCodeRunIdentity",
@@ -41,6 +50,13 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         "AgentExecutionChangeSet",
         "AgentExecutionEvent",
         "AgentExecutionEventPage",
+        "AgentExecutionCheckpointEvent",
+        "AgentExecutionTelemetryCorrelation",
+        "AgentExecutionCheckpointObject",
+        "AgentExecutionCheckpoint",
+        "AgentExecutionCheckpointMutation",
+        "AgentExecutionCheckpointSnapshot",
+        "AgentExecutionTrajectoryPage",
         "AgentApprovalCheckpoint",
         "AgentApprovalCheckpointMutation",
     ] {
@@ -64,6 +80,14 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
     assert_eq!(
         schemas["AgentExecution"]["properties"]["invocationProfile"]["allOf"][0]["$ref"],
         "#/components/schemas/HarnessInvocationProfile"
+    );
+    assert_eq!(
+        schemas["AgentExecution"]["properties"]["lineage"]["allOf"][0]["$ref"],
+        "#/components/schemas/AgentExecutionLineage"
+    );
+    assert_eq!(
+        schemas["AgentExecutionLineage"]["properties"]["depth"]["maximum"],
+        64
     );
     assert_eq!(
         schemas["HarnessInvocationProfile"]["properties"]["schema"]["enum"],
@@ -141,6 +165,32 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
             json!([kind])
         );
     }
+    assert_eq!(
+        schemas["AgentExecutionCheckpointEvent"]["discriminator"]["propertyName"],
+        "kind"
+    );
+    assert_eq!(
+        schemas["AgentExecutionCheckpointEvent"]["oneOf"]
+            .as_array()
+            .map(Vec::len),
+        Some(8)
+    );
+    assert_eq!(
+        schemas["AgentExecutionCheckpointObject"]["properties"]["namespace"]["enum"],
+        json!(["agent-checkpoints"])
+    );
+    assert_eq!(
+        schemas["AgentExecutionCheckpointObject"]["properties"]["sizeBytes"]["maximum"],
+        917_504
+    );
+    assert_eq!(
+        schemas["AgentExecutionCheckpointSnapshot"]["properties"]["events"]["items"]["$ref"],
+        "#/components/schemas/AgentExecutionCheckpointEvent"
+    );
+    assert_eq!(
+        schemas["AgentExecutionCheckpointSnapshot"]["x-a3s-max-canonical-bytes"],
+        917_504
+    );
     assert_eq!(
         schemas["AgentToolRequestEvent"]["properties"]["content"]["$ref"],
         "#/components/schemas/AgentToolRequestEventContent"
@@ -251,6 +301,76 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         change_set["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionChangeSetSuccess200"
     );
+    let checkpoints = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints"];
+    assert_eq!(
+        checkpoints["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/AgentExecutionCheckpointListSuccess200"
+    );
+    for status in ["200", "201"] {
+        assert_eq!(
+            checkpoints["post"]["responses"][status]["$ref"],
+            format!("#/components/responses/AgentExecutionCheckpointMutationSuccess{status}")
+        );
+    }
+    assert_eq!(
+        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["throughEventSequence"]["maximum"],
+        9_007_199_254_740_991_i64
+    );
+    assert_eq!(
+        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["throughEventSequence"]["nullable"],
+        true
+    );
+    assert!(checkpoints["post"]["parameters"]
+        .as_array()
+        .expect("checkpoint capture parameters")
+        .iter()
+        .any(|parameter| {
+            parameter["in"] == "header"
+                && parameter["name"] == "idempotency-key"
+                && parameter["required"] == true
+        }));
+    let checkpoint = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}"]
+        ["get"];
+    assert_eq!(
+        checkpoint["responses"]["200"]["$ref"],
+        "#/components/responses/AgentExecutionCheckpointSuccess200"
+    );
+    let snapshot = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/snapshot"]
+        ["get"];
+    assert_eq!(
+        snapshot["responses"]["200"]["$ref"],
+        "#/components/responses/AgentExecutionCheckpointSnapshotSuccess200"
+    );
+    let fork = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork"]
+        ["post"];
+    for status in ["200", "202"] {
+        assert_eq!(
+            fork["responses"][status]["$ref"],
+            format!("#/components/responses/AgentExecutionMutationSuccess{status}")
+        );
+    }
+    assert_eq!(
+        fork["requestBody"]["content"]["application/json"]["schema"]["properties"]["input"]
+            ["x-a3s-max-canonical-bytes"],
+        65_536
+    );
+    let trajectory = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/trajectory"]["get"];
+    assert_eq!(
+        trajectory["responses"]["200"]["$ref"],
+        "#/components/responses/AgentExecutionTrajectoryPageSuccess200"
+    );
+    assert!(trajectory["parameters"]
+        .as_array()
+        .expect("Agent trajectory parameters")
+        .iter()
+        .any(|parameter| parameter["name"] == "throughSequence"));
     let approvals = &document["paths"]
         ["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints"]
         ["get"];

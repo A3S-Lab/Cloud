@@ -142,8 +142,13 @@ import type {
   AgentConversationMutationResult,
   AgentExecution,
   AgentExecutionChangeSet,
+  AgentExecutionCheckpoint,
+  AgentExecutionCheckpointMutationResult,
+  AgentExecutionCheckpointSnapshot,
   AgentExecutionEventsPage,
   AgentExecutionMutationResult,
+  AgentExecutionTrajectoryOptions,
+  AgentExecutionTrajectoryPage,
   ApiToken,
   ApiTokenMutationResult,
   Asset,
@@ -157,6 +162,7 @@ import type {
   CancelDeploymentResult,
   CancelNodePoolMaintenanceInput,
   CancelWorkflowRunInput,
+  CaptureAgentExecutionCheckpointInput,
   CompleteRecipientContactVerificationInput,
   CreateApiTokenInput,
   CreateAssetInput,
@@ -186,6 +192,7 @@ import type {
   FormDraftMutationResult,
   FormPublicationMutationResult,
   FormRelease,
+  ForkAgentExecutionInput,
   GatewayCertificate,
   GatewayScope,
   GatewayScopeMutationResult,
@@ -200,6 +207,7 @@ import type {
   HumanTaskSummary,
   IssueEnrollmentTokenInput,
   ListAgentApprovalCheckpointsOptions,
+  ListAgentExecutionCheckpointsOptions,
   ListHumanTasksOptions,
   ListWorkflowRunsOptions,
   McpCredential,
@@ -290,6 +298,9 @@ import type {
 import {
   validateAgentApprovalCheckpointList,
   validateAgentApprovalDecision,
+  validateAgentExecutionCheckpointList,
+  validateAgentExecutionTrajectory,
+  validateCaptureAgentExecutionCheckpoint,
   validateAgentProviderKind,
   validateApiTokenInput,
   validateEnrollmentTokenInput,
@@ -302,6 +313,7 @@ import {
   validateExpectedNodeVersion,
   validateExpectedProjectVersion,
   validateExpectedResourceGrantVersion,
+  validateForkAgentExecution,
   validateFormDraftInput,
   validateFormVersionControl,
   validateMcpCredentialExpiry,
@@ -334,7 +346,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.72.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.73.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -344,6 +356,7 @@ export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
 export const MAX_HUMAN_TASK_LIST_LIMIT = 200;
 export const MAX_EXECUTION_TEMPLATE_LIST_LIMIT = 200;
 export const DEFAULT_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT = 50;
+export const DEFAULT_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT = 50;
 export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
 const HUMAN_TASK_STATUSES: ReadonlySet<HumanTaskStatus> = new Set([
   'pending_activation',
@@ -359,6 +372,9 @@ export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
   MAX_AGENT_APPROVAL_CHECKPOINT_LIST_LIMIT,
+  MAX_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT,
+  MAX_AGENT_EXECUTION_FORK_INPUT_BYTES,
+  MAX_AGENT_EXECUTION_TRAJECTORY_PAGE_LIMIT,
   MAX_EXECUTION_TEMPLATE_ACL_BYTES,
   MAX_FORM_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
@@ -378,6 +394,10 @@ export {
   MAX_WORKLOAD_ACL_BYTES,
   validateAgentApprovalCheckpointList,
   validateAgentApprovalDecision,
+  validateAgentExecutionCheckpointList,
+  validateAgentExecutionTrajectory,
+  validateCaptureAgentExecutionCheckpoint,
+  validateForkAgentExecution,
   validateAgentProviderKind,
   validateExecutionTemplateAcl,
   validateExpectedAgentApprovalCheckpointVersion,
@@ -2868,6 +2888,105 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/agent-executions/${encodeURIComponent(executionId)}/changes`,
+      signal
+    );
+  }
+
+  listAgentExecutionCheckpoints(
+    organizationId: string,
+    executionId: string,
+    options: ListAgentExecutionCheckpointsOptions = {},
+    signal?: AbortSignal
+  ): Promise<AgentExecutionCheckpoint[]> {
+    validateAgentExecutionCheckpointList(options);
+    const parameters = new URLSearchParams();
+    parameters.set('limit', String(options.limit ?? DEFAULT_AGENT_EXECUTION_CHECKPOINT_LIST_LIMIT));
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/checkpoints?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  getAgentExecutionCheckpoint(
+    organizationId: string,
+    executionId: string,
+    checkpointId: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionCheckpoint> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}` +
+        `/checkpoints/${encodeURIComponent(checkpointId)}`,
+      signal
+    );
+  }
+
+  getAgentExecutionCheckpointSnapshot(
+    organizationId: string,
+    executionId: string,
+    checkpointId: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionCheckpointSnapshot> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}` +
+        `/checkpoints/${encodeURIComponent(checkpointId)}/snapshot`,
+      signal
+    );
+  }
+
+  captureAgentExecutionCheckpoint(
+    organizationId: string,
+    executionId: string,
+    input: CaptureAgentExecutionCheckpointInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionCheckpointMutationResult> {
+    validateCaptureAgentExecutionCheckpoint(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/checkpoints`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  forkAgentExecution(
+    organizationId: string,
+    executionId: string,
+    checkpointId: string,
+    input: ForkAgentExecutionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionMutationResult> {
+    validateForkAgentExecution(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}` +
+        `/checkpoints/${encodeURIComponent(checkpointId)}/fork`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getAgentExecutionTrajectory(
+    organizationId: string,
+    executionId: string,
+    options: AgentExecutionTrajectoryOptions = {},
+    signal?: AbortSignal
+  ): Promise<AgentExecutionTrajectoryPage> {
+    validateAgentExecutionTrajectory(options);
+    const parameters = encodeSequenceQuery(options, 'Agent execution trajectory', 200);
+    if (options.throughSequence !== undefined) {
+      parameters.set('throughSequence', String(options.throughSequence));
+    }
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/trajectory` +
+        encodeQueryParameters(parameters),
       signal
     );
   }

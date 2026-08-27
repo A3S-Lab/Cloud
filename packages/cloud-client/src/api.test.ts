@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.72.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.73.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1981,6 +1981,27 @@ describe('CloudApi', () => {
     await api.listAgentExecutions('organization / one', 'conversation');
     await api.getAgentExecution('organization / one', 'execution');
     await api.getAgentExecutionChangeSet('organization / one', 'execution');
+    await api.listAgentExecutionCheckpoints('organization / one', 'execution', { limit: 20 });
+    await api.getAgentExecutionCheckpoint('organization / one', 'execution', 'checkpoint / one');
+    await api.getAgentExecutionCheckpointSnapshot('organization / one', 'execution', 'checkpoint / one');
+    await api.captureAgentExecutionCheckpoint(
+      'organization / one',
+      'execution',
+      { throughEventSequence: 42 },
+      'agent-checkpoint:capture'
+    );
+    await api.forkAgentExecution(
+      'organization / one',
+      'execution',
+      'checkpoint / one',
+      { input: { message: 'continue differently' } },
+      'agent-execution:fork'
+    );
+    await api.getAgentExecutionTrajectory('organization / one', 'execution', {
+      cursor: '7',
+      throughSequence: 42,
+      limit: 25,
+    });
     await api.listAgentApprovalCheckpoints('organization / one', 'execution', {
       status: 'pending',
       limit: 25,
@@ -2021,6 +2042,36 @@ describe('CloudApi', () => {
       ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution', 'GET', undefined],
       ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/changes', 'GET', undefined],
       [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/checkpoints?limit=20',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/checkpoints/checkpoint%20%2F%20one',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/checkpoints/checkpoint%20%2F%20one/snapshot',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/checkpoints',
+        'POST',
+        JSON.stringify({ throughEventSequence: 42 }),
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/checkpoints/checkpoint%20%2F%20one/fork',
+        'POST',
+        JSON.stringify({ input: { message: 'continue differently' } }),
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/trajectory?cursor=7&limit=25&throughSequence=42',
+        'GET',
+        undefined,
+      ],
+      [
         '/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/approval-checkpoints?status=pending&limit=25',
         'GET',
         undefined,
@@ -2049,17 +2100,23 @@ describe('CloudApi', () => {
     ]);
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('conversation:create');
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-    expect((calls[8]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
-      'agent-approval:decide'
-    );
-    expect((calls[8]?.[1]?.headers as Record<string, string>)['x-a3s-expected-version']).toBe('3');
     expect((calls[9]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
-      'agent-execution:start'
+      'agent-checkpoint:capture'
     );
     expect((calls[10]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-execution:fork'
+    );
+    expect((calls[14]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-approval:decide'
+    );
+    expect((calls[14]?.[1]?.headers as Record<string, string>)['x-a3s-expected-version']).toBe('3');
+    expect((calls[15]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-execution:start'
+    );
+    expect((calls[16]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:cancel'
     );
-    expect((calls[10]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((calls[16]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(api.agentExecutionEventStreamUrl('organization / one', 'conversation')).toBe(
       '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events/stream?limit=16'
     );
@@ -2103,6 +2160,32 @@ describe('CloudApi', () => {
     ).toThrow('Agent approval checkpoint status is invalid');
     expect(() => api.listAgentApprovalCheckpoints('organization', 'execution', { limit: 1_001 })).toThrow(
       'Agent approval checkpoint limit must be between 1 and 1000'
+    );
+    expect(() => api.listAgentExecutionCheckpoints('organization', 'execution', { limit: 1_001 })).toThrow(
+      'Agent execution checkpoint limit must be between 1 and 1000'
+    );
+    expect(() =>
+      api.captureAgentExecutionCheckpoint(
+        'organization',
+        'execution',
+        { throughEventSequence: 0 },
+        'agent-checkpoint:invalid'
+      )
+    ).toThrow('Agent checkpoint event sequence must be a positive safe integer');
+    expect(() =>
+      api.forkAgentExecution(
+        'organization',
+        'execution',
+        'checkpoint',
+        { input: { value: BigInt(1) } },
+        'agent-fork:invalid'
+      )
+    ).toThrow('Agent fork input must be JSON serializable');
+    expect(() =>
+      api.getAgentExecutionTrajectory('organization', 'execution', { throughSequence: 0 })
+    ).toThrow('Agent trajectory through sequence must be a positive safe integer');
+    expect(() => api.getAgentExecutionTrajectory('organization', 'execution', { limit: 201 })).toThrow(
+      'Agent execution trajectory limit must be between 1 and 200'
     );
     expect(() =>
       api.decideAgentApprovalCheckpoint(

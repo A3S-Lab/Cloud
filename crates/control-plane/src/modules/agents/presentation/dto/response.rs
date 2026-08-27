@@ -1,11 +1,14 @@
 use crate::modules::agents::application::{
-    AgentExecutionEventPage, CancelAgentExecutionResult, CreateAgentConversationResult,
+    AgentExecutionEventPage, AgentExecutionTrajectoryPage, CancelAgentExecutionResult,
+    CaptureAgentExecutionCheckpointResult, CreateAgentConversationResult, ForkAgentExecutionResult,
     StartAgentExecutionResult,
 };
 use crate::modules::agents::domain::{
     AgentApprovalCheckpoint, AgentApprovalCheckpointStatus, AgentConversation,
-    AgentConversationStatus, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
-    AgentExecutionEventKind, AgentExecutionStatus,
+    AgentConversationStatus, AgentExecution, AgentExecutionChangeSet, AgentExecutionCheckpoint,
+    AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointSnapshot, AgentExecutionEvent,
+    AgentExecutionEventKind, AgentExecutionLineage, AgentExecutionStatus,
+    AgentExecutionTelemetryCorrelation,
 };
 use crate::presentation::{format_sequence_cursor, SequencePage, SequenceRecord};
 use chrono::{DateTime, Utc};
@@ -56,6 +59,16 @@ impl From<CancelAgentExecutionResult> for AgentExecutionMutationResponse {
     }
 }
 
+impl From<ForkAgentExecutionResult> for AgentExecutionMutationResponse {
+    fn from(result: ForkAgentExecutionResult) -> Self {
+        Self {
+            conversation: result.conversation.into(),
+            execution: result.execution.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentConversationResponse {
@@ -98,6 +111,7 @@ pub struct AgentExecutionResponse {
     pub agent: AgentReleaseBindingResponse,
     pub provider: AgentProviderProfileResponse,
     pub invocation_profile: Option<a3s_cloud_contracts::HarnessInvocationProfileV1>,
+    pub lineage: Option<AgentExecutionLineageResponse>,
     pub status: AgentExecutionStatus,
     pub failure: Option<String>,
     pub aggregate_version: u64,
@@ -115,6 +129,7 @@ impl From<AgentExecution> for AgentExecutionResponse {
             .as_ref()
             .and_then(|binding| binding.invocation_profile())
             .cloned();
+        let lineage = execution.lineage.clone().map(Into::into);
         Self {
             organization_id: execution.organization_id.as_uuid(),
             conversation_id: execution.conversation_id.as_uuid(),
@@ -138,6 +153,7 @@ impl From<AgentExecution> for AgentExecutionResponse {
                 capability_digest: execution.provider.capability_digest().to_owned(),
             },
             invocation_profile,
+            lineage,
             status: execution.status,
             failure: execution.failure,
             aggregate_version: execution.aggregate_version,
@@ -146,6 +162,26 @@ impl From<AgentExecution> for AgentExecutionResponse {
             started_at: execution.started_at,
             cancellation_requested_at: execution.cancellation_requested_at,
             finished_at: execution.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionLineageResponse {
+    pub parent_execution_id: Uuid,
+    pub parent_checkpoint_id: Uuid,
+    pub parent_checkpoint_digest: String,
+    pub depth: u16,
+}
+
+impl From<AgentExecutionLineage> for AgentExecutionLineageResponse {
+    fn from(lineage: AgentExecutionLineage) -> Self {
+        Self {
+            parent_execution_id: lineage.parent_execution_id.as_uuid(),
+            parent_checkpoint_id: lineage.parent_checkpoint_id.as_uuid(),
+            parent_checkpoint_digest: lineage.parent_checkpoint_digest.as_str().to_owned(),
+            depth: lineage.depth,
         }
     }
 }
@@ -276,6 +312,181 @@ impl From<AgentApprovalCheckpoint> for AgentApprovalCheckpointResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCheckpointMutationResponse {
+    pub checkpoint: AgentExecutionCheckpointResponse,
+    pub replayed: bool,
+}
+
+impl From<CaptureAgentExecutionCheckpointResult> for AgentExecutionCheckpointMutationResponse {
+    fn from(result: CaptureAgentExecutionCheckpointResult) -> Self {
+        Self {
+            checkpoint: result.checkpoint.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCheckpointResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub conversation_id: Uuid,
+    pub execution_id: Uuid,
+    pub id: Uuid,
+    pub through_event_sequence: u64,
+    pub event_count: u16,
+    pub agent_artifact_digest: String,
+    pub provider_profile_digest: String,
+    pub invocation_profile_digest: String,
+    pub object: AgentExecutionCheckpointObjectResponse,
+    pub telemetry_correlation: AgentExecutionTelemetryCorrelationResponse,
+    pub aggregate_version: u64,
+    pub captured_at: DateTime<Utc>,
+}
+
+impl From<AgentExecutionCheckpoint> for AgentExecutionCheckpointResponse {
+    fn from(checkpoint: AgentExecutionCheckpoint) -> Self {
+        Self {
+            organization_id: checkpoint.organization_id.as_uuid(),
+            project_id: checkpoint.project_id.as_uuid(),
+            environment_id: checkpoint.environment_id.as_uuid(),
+            conversation_id: checkpoint.conversation_id.as_uuid(),
+            execution_id: checkpoint.execution_id.as_uuid(),
+            id: checkpoint.id.as_uuid(),
+            through_event_sequence: checkpoint.through_event_sequence,
+            event_count: checkpoint.event_count,
+            agent_artifact_digest: checkpoint.agent_artifact_digest.as_str().to_owned(),
+            provider_profile_digest: checkpoint.provider_profile_digest.as_str().to_owned(),
+            invocation_profile_digest: checkpoint.invocation_profile_digest.as_str().to_owned(),
+            object: checkpoint.object.into(),
+            telemetry_correlation: checkpoint.telemetry_correlation.into(),
+            aggregate_version: checkpoint.aggregate_version,
+            captured_at: checkpoint.captured_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCheckpointObjectResponse {
+    pub schema: String,
+    pub namespace: String,
+    pub object_ref: String,
+    pub digest: String,
+    pub size_bytes: u64,
+    pub media_type: String,
+}
+
+impl From<AgentExecutionCheckpointObjectReference> for AgentExecutionCheckpointObjectResponse {
+    fn from(reference: AgentExecutionCheckpointObjectReference) -> Self {
+        Self {
+            schema: reference.schema,
+            namespace: reference.namespace,
+            object_ref: reference.object_ref,
+            digest: reference.digest.as_str().to_owned(),
+            size_bytes: reference.size_bytes,
+            media_type: reference.media_type,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionTelemetryCorrelationResponse {
+    pub operation_id: Uuid,
+    pub provider_run_identity_digest: String,
+    pub node_id: Uuid,
+    pub workload_id: Uuid,
+    pub workload_revision_id: Uuid,
+    pub deployment_id: Uuid,
+    pub replica_id: Uuid,
+    pub runtime_unit_id: String,
+    pub runtime_generation: u64,
+}
+
+impl From<AgentExecutionTelemetryCorrelation> for AgentExecutionTelemetryCorrelationResponse {
+    fn from(correlation: AgentExecutionTelemetryCorrelation) -> Self {
+        Self {
+            operation_id: correlation.operation_id.as_uuid(),
+            provider_run_identity_digest: correlation
+                .provider_run_identity_digest
+                .as_str()
+                .to_owned(),
+            node_id: correlation.node_id.as_uuid(),
+            workload_id: correlation.workload_id.as_uuid(),
+            workload_revision_id: correlation.workload_revision_id.as_uuid(),
+            deployment_id: correlation.deployment_id.as_uuid(),
+            replica_id: correlation.replica_id.as_uuid(),
+            runtime_unit_id: correlation.runtime_unit_id,
+            runtime_generation: correlation.runtime_generation,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCheckpointSnapshotResponse {
+    pub schema: String,
+    pub organization_id: Uuid,
+    pub conversation_id: Uuid,
+    pub execution_id: Uuid,
+    pub operation_id: Uuid,
+    pub agent_artifact_digest: String,
+    pub provider_profile_digest: String,
+    pub invocation_profile_digest: String,
+    pub through_event_sequence: u64,
+    pub event_count: u16,
+    pub telemetry_correlation: AgentExecutionTelemetryCorrelationResponse,
+    pub events: Vec<AgentExecutionCheckpointEventResponse>,
+    pub captured_at: DateTime<Utc>,
+}
+
+impl From<AgentExecutionCheckpointSnapshot> for AgentExecutionCheckpointSnapshotResponse {
+    fn from(snapshot: AgentExecutionCheckpointSnapshot) -> Self {
+        Self {
+            schema: snapshot.schema,
+            organization_id: snapshot.organization_id.as_uuid(),
+            conversation_id: snapshot.conversation_id.as_uuid(),
+            execution_id: snapshot.execution_id.as_uuid(),
+            operation_id: snapshot.operation_id.as_uuid(),
+            agent_artifact_digest: snapshot.agent_artifact_digest.as_str().to_owned(),
+            provider_profile_digest: snapshot.provider_profile_digest.as_str().to_owned(),
+            invocation_profile_digest: snapshot.invocation_profile_digest.as_str().to_owned(),
+            through_event_sequence: snapshot.through_event_sequence,
+            event_count: snapshot.event_count,
+            telemetry_correlation: snapshot.telemetry_correlation.into(),
+            events: snapshot
+                .events
+                .into_iter()
+                .map(|event| AgentExecutionCheckpointEventResponse {
+                    sequence: event.sequence,
+                    kind: event.kind,
+                    content: event.content,
+                    content_digest: event.content_digest.as_str().to_owned(),
+                    content_size_bytes: event.content_size_bytes,
+                    occurred_at: event.occurred_at,
+                })
+                .collect(),
+            captured_at: snapshot.captured_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCheckpointEventResponse {
+    pub sequence: u64,
+    pub kind: AgentExecutionEventKind,
+    pub content: serde_json::Value,
+    pub content_digest: String,
+    pub content_size_bytes: u64,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentExecutionChangeSetResponse {
     pub organization_id: Uuid,
     pub execution_id: Uuid,
@@ -372,6 +583,24 @@ impl SequencePage for AgentExecutionEventPageResponse {
 
     fn set_next_cursor(&mut self, cursor: Option<String>) {
         self.next_cursor = cursor;
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionTrajectoryPageResponse {
+    pub execution_id: Uuid,
+    pub records: Vec<AgentExecutionEventResponse>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<AgentExecutionTrajectoryPage> for AgentExecutionTrajectoryPageResponse {
+    fn from(page: AgentExecutionTrajectoryPage) -> Self {
+        Self {
+            execution_id: page.execution_id.as_uuid(),
+            records: page.records.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_after_sequence.map(format_sequence_cursor),
+        }
     }
 }
 

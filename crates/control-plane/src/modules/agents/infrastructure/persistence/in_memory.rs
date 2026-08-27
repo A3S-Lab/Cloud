@@ -9,8 +9,8 @@ use crate::modules::agents::domain::{
     StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionId, EnvironmentId,
-    IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
+    AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
+    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::{NodeAgentProviderEventReceiptV1, NodeCodeAgentEventReceiptV1};
 use async_trait::async_trait;
@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
 mod approval_writes;
+mod checkpoint_writes;
 mod provider_event_writes;
 
 #[derive(Default)]
@@ -30,6 +31,10 @@ struct State {
     conversations: BTreeMap<(OrganizationId, AgentConversationId), AgentConversation>,
     executions: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecution>,
     checkpoints: BTreeMap<(OrganizationId, AgentApprovalCheckpointId), AgentApprovalCheckpoint>,
+    execution_checkpoints: BTreeMap<
+        (OrganizationId, AgentExecutionCheckpointId),
+        crate::modules::agents::domain::AgentExecutionCheckpoint,
+    >,
     change_sets: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecutionChangeSet>,
     events: BTreeMap<(OrganizationId, AgentConversationId, u64), AgentExecutionEvent>,
     idempotency: BTreeMap<(String, String), IdempotencyEntry>,
@@ -50,6 +55,7 @@ enum IdempotencyResponse {
     CodeEvents(NodeCodeAgentEventReceiptV1),
     ProviderEvents(NodeAgentProviderEventReceiptV1),
     Approval(OrganizationId, AgentApprovalCheckpointId),
+    ExecutionCheckpoint(OrganizationId, AgentExecutionCheckpointId),
 }
 
 impl InMemoryAgentRepository {
@@ -912,3 +918,7 @@ mod tests;
 #[cfg(test)]
 #[path = "in_memory/provider_event_tests.rs"]
 mod provider_event_tests;
+
+#[cfg(test)]
+#[path = "in_memory/checkpoint_tests.rs"]
+mod checkpoint_tests;

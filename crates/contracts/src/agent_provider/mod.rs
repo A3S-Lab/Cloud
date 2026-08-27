@@ -27,5 +27,6 @@ pub use protocol::{
     AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderRunCancelV1,
     AgentProviderRunIdentityV1, AgentProviderRunRecoverV1, AgentProviderRunResumeV1,
     AgentProviderRunStartV1, AgentProviderRunStateV1, AGENT_PROVIDER_COMMAND_HTTP_PATH_V1,
-    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES, AGENT_PROVIDER_TOOL_APPROVAL_TTL_MS_V1,
+    AGENT_PROVIDER_MAX_COMMAND_RECEIPT_BYTES, AGENT_PROVIDER_MAX_PROMPT_BYTES,
+    AGENT_PROVIDER_TOOL_APPROVAL_TTL_MS_V1,
 };

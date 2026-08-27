@@ -1,5 +1,6 @@
 mod approval;
 mod binding;
+mod fork;
 mod recovery;
 mod runtime;
 mod types;
@@ -9,7 +10,9 @@ mod workflow;
 mod tests;
 
 use crate::infrastructure::flow_step_retry_policy;
-use crate::modules::agents::domain::{AgentExecutionProviderRegistry, IAgentRepository};
+use crate::modules::agents::domain::{
+    AgentExecutionProviderRegistry, IAgentExecutionCheckpointObjectStore, IAgentRepository,
+};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use a3s_flow::{
@@ -81,6 +84,7 @@ fn duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 #[derive(Clone)]
 pub struct AgentExecutionFlowRuntimeDependencies {
     pub agents: Arc<dyn IAgentRepository>,
+    pub checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     pub providers: Arc<dyn AgentExecutionProviderRegistry>,
     pub workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
     pub node_control: Arc<dyn INodeControlRepository>,
@@ -89,6 +93,7 @@ pub struct AgentExecutionFlowRuntimeDependencies {
 #[derive(Clone)]
 pub struct AgentExecutionFlowRuntime {
     agents: Arc<dyn IAgentRepository>,
+    checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     providers: Arc<dyn AgentExecutionProviderRegistry>,
     workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
     node_control: Arc<dyn INodeControlRepository>,
@@ -102,6 +107,7 @@ impl AgentExecutionFlowRuntime {
     ) -> Self {
         Self {
             agents: dependencies.agents,
+            checkpoint_objects: dependencies.checkpoint_objects,
             providers: dependencies.providers,
             workload_targets: dependencies.workload_targets,
             node_control: dependencies.node_control,

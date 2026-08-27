@@ -123,6 +123,60 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
             agent_execution_event_variant_schema(kind, content),
         );
     }
+    for (name, kind, content) in [
+        (
+            "AgentCheckpointExecutionRequestedEvent",
+            "execution_requested",
+            json!({
+                "description": "Caller-owned execution input represented as bounded canonical JSON.",
+                "x-a3s-max-canonical-bytes": 65536
+            }),
+        ),
+        (
+            "AgentCheckpointModelOutputEvent",
+            "model_output",
+            schema_ref("AgentModelOutputEventContent"),
+        ),
+        (
+            "AgentCheckpointToolRequestEvent",
+            "tool_request",
+            schema_ref("AgentToolRequestEventContent"),
+        ),
+        (
+            "AgentCheckpointToolResultEvent",
+            "tool_result",
+            schema_ref("AgentToolResultEventContent"),
+        ),
+        (
+            "AgentCheckpointApprovalResolvedEvent",
+            "approval_resolved",
+            schema_ref("AgentApprovalResolutionEventContent"),
+        ),
+        (
+            "AgentCheckpointExecutionFailedEvent",
+            "execution_failed",
+            schema_ref("AgentExecutionFailureEventContent"),
+        ),
+        (
+            "AgentCheckpointExecutionCompletedEvent",
+            "execution_completed",
+            empty_event_content_schema(),
+        ),
+        (
+            "AgentCheckpointExecutionCancelledEvent",
+            "execution_cancelled",
+            empty_event_content_schema(),
+        ),
+    ] {
+        schemas.insert(
+            name.into(),
+            agent_checkpoint_event_variant_schema(kind, content),
+        );
+    }
+    schemas.insert(
+        "AgentExecutionLineage".into(),
+        agent_execution_lineage_schema(),
+    );
     schemas.insert("AgentExecution".into(), agent_execution_schema());
     schemas.insert("AgentExecutionList".into(), array_schema("AgentExecution"));
     schemas.insert(
@@ -149,6 +203,44 @@ pub(super) fn install_agent_component_schemas(schemas: &mut Map<String, Value>) 
     schemas.insert(
         "AgentExecutionEventPage".into(),
         agent_execution_event_page_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpointEvent".into(),
+        agent_execution_checkpoint_event_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionTelemetryCorrelation".into(),
+        agent_execution_telemetry_correlation_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpointObject".into(),
+        agent_execution_checkpoint_object_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpoint".into(),
+        agent_execution_checkpoint_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpointList".into(),
+        bounded_array_schema("AgentExecutionCheckpoint", 1_000),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpointMutation".into(),
+        object_schema(
+            &["checkpoint", "replayed"],
+            json!({
+                "checkpoint": schema_ref("AgentExecutionCheckpoint"),
+                "replayed": { "type": "boolean" }
+            }),
+        ),
+    );
+    schemas.insert(
+        "AgentExecutionCheckpointSnapshot".into(),
+        agent_execution_checkpoint_snapshot_schema(),
+    );
+    schemas.insert(
+        "AgentExecutionTrajectoryPage".into(),
+        agent_execution_trajectory_page_schema(),
     );
     schemas.insert(
         "AgentApprovalCheckpoint".into(),
@@ -593,6 +685,7 @@ fn agent_execution_schema() -> Value {
             "agent",
             "provider",
             "invocationProfile",
+            "lineage",
             "status",
             "failure",
             "aggregateVersion",
@@ -611,6 +704,10 @@ fn agent_execution_schema() -> Value {
             "provider": schema_ref("AgentProviderProfile"),
             "invocationProfile": {
                 "allOf": [schema_ref("HarnessInvocationProfile")],
+                "nullable": true
+            },
+            "lineage": {
+                "allOf": [schema_ref("AgentExecutionLineage")],
                 "nullable": true
             },
             "status": {
@@ -633,6 +730,23 @@ fn agent_execution_schema() -> Value {
             "startedAt": nullable_timestamp_schema(),
             "cancellationRequestedAt": nullable_timestamp_schema(),
             "finishedAt": nullable_timestamp_schema()
+        }),
+    )
+}
+
+fn agent_execution_lineage_schema() -> Value {
+    object_schema(
+        &[
+            "parentExecutionId",
+            "parentCheckpointId",
+            "parentCheckpointDigest",
+            "depth",
+        ],
+        json!({
+            "parentExecutionId": uuid_schema(),
+            "parentCheckpointId": uuid_schema(),
+            "parentCheckpointDigest": digest_schema(),
+            "depth": { "type": "integer", "minimum": 1, "maximum": 64 }
         }),
     )
 }
@@ -820,6 +934,85 @@ fn agent_execution_event_variant_schema(kind: &str, content: Value) -> Value {
     )
 }
 
+fn agent_execution_checkpoint_event_schema() -> Value {
+    let mut schema = object_schema(
+        &[
+            "sequence",
+            "kind",
+            "content",
+            "contentDigest",
+            "contentSizeBytes",
+            "occurredAt",
+        ],
+        json!({
+            "sequence": positive_sequence_schema(),
+            "kind": {
+                "type": "string",
+                "enum": [
+                    "execution_requested", "model_output", "tool_request", "tool_result",
+                    "approval_resolved", "execution_failed", "execution_completed",
+                    "execution_cancelled"
+                ]
+            },
+            "content": {
+                "description": "Bounded semantic JSON content validated by the selected event variant."
+            },
+            "contentDigest": digest_schema(),
+            "contentSizeBytes": {
+                "type": "integer", "format": "int64", "minimum": 1, "maximum": 65536
+            },
+            "occurredAt": timestamp_schema()
+        }),
+    );
+    schema["oneOf"] = json!([
+        schema_ref("AgentCheckpointExecutionRequestedEvent"),
+        schema_ref("AgentCheckpointModelOutputEvent"),
+        schema_ref("AgentCheckpointToolRequestEvent"),
+        schema_ref("AgentCheckpointToolResultEvent"),
+        schema_ref("AgentCheckpointApprovalResolvedEvent"),
+        schema_ref("AgentCheckpointExecutionFailedEvent"),
+        schema_ref("AgentCheckpointExecutionCompletedEvent"),
+        schema_ref("AgentCheckpointExecutionCancelledEvent")
+    ]);
+    schema["discriminator"] = json!({
+        "propertyName": "kind",
+        "mapping": {
+            "execution_requested": "#/components/schemas/AgentCheckpointExecutionRequestedEvent",
+            "model_output": "#/components/schemas/AgentCheckpointModelOutputEvent",
+            "tool_request": "#/components/schemas/AgentCheckpointToolRequestEvent",
+            "tool_result": "#/components/schemas/AgentCheckpointToolResultEvent",
+            "approval_resolved": "#/components/schemas/AgentCheckpointApprovalResolvedEvent",
+            "execution_failed": "#/components/schemas/AgentCheckpointExecutionFailedEvent",
+            "execution_completed": "#/components/schemas/AgentCheckpointExecutionCompletedEvent",
+            "execution_cancelled": "#/components/schemas/AgentCheckpointExecutionCancelledEvent"
+        }
+    });
+    schema
+}
+
+fn agent_checkpoint_event_variant_schema(kind: &str, content: Value) -> Value {
+    object_schema(
+        &[
+            "sequence",
+            "kind",
+            "content",
+            "contentDigest",
+            "contentSizeBytes",
+            "occurredAt",
+        ],
+        json!({
+            "sequence": positive_sequence_schema(),
+            "kind": { "type": "string", "enum": [kind] },
+            "content": content,
+            "contentDigest": digest_schema(),
+            "contentSizeBytes": {
+                "type": "integer", "format": "int64", "minimum": 1, "maximum": 65536
+            },
+            "occurredAt": timestamp_schema()
+        }),
+    )
+}
+
 fn empty_event_content_schema() -> Value {
     json!({
         "type": "object",
@@ -844,6 +1037,175 @@ fn agent_execution_event_page_schema() -> Value {
                 "minLength": 1,
                 "maxLength": 128,
                 "nullable": true
+            }
+        }),
+    )
+}
+
+fn agent_execution_telemetry_correlation_schema() -> Value {
+    object_schema(
+        &[
+            "operationId",
+            "providerRunIdentityDigest",
+            "nodeId",
+            "workloadId",
+            "workloadRevisionId",
+            "deploymentId",
+            "replicaId",
+            "runtimeUnitId",
+            "runtimeGeneration",
+        ],
+        json!({
+            "operationId": uuid_schema(),
+            "providerRunIdentityDigest": digest_schema(),
+            "nodeId": uuid_schema(),
+            "workloadId": uuid_schema(),
+            "workloadRevisionId": uuid_schema(),
+            "deploymentId": uuid_schema(),
+            "replicaId": uuid_schema(),
+            "runtimeUnitId": bounded_line_schema(512),
+            "runtimeGeneration": positive_sequence_schema()
+        }),
+    )
+}
+
+fn agent_execution_checkpoint_object_schema() -> Value {
+    object_schema(
+        &[
+            "schema",
+            "namespace",
+            "objectRef",
+            "digest",
+            "sizeBytes",
+            "mediaType",
+        ],
+        json!({
+            "schema": {
+                "type": "string",
+                "enum": ["a3s.cloud.agent-execution-checkpoint-object.v1"]
+            },
+            "namespace": { "type": "string", "enum": ["agent-checkpoints"] },
+            "objectRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\\\\\u0000\\r\\n]+$"
+            },
+            "digest": digest_schema(),
+            "sizeBytes": {
+                "type": "integer", "format": "int64", "minimum": 1, "maximum": 917504
+            },
+            "mediaType": {
+                "type": "string",
+                "enum": ["application/vnd.a3s.agent-execution-checkpoint+json;version=1"]
+            }
+        }),
+    )
+}
+
+fn agent_execution_checkpoint_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "environmentId",
+            "conversationId",
+            "executionId",
+            "id",
+            "throughEventSequence",
+            "eventCount",
+            "agentArtifactDigest",
+            "providerProfileDigest",
+            "invocationProfileDigest",
+            "object",
+            "telemetryCorrelation",
+            "aggregateVersion",
+            "capturedAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "environmentId": uuid_schema(),
+            "conversationId": uuid_schema(),
+            "executionId": uuid_schema(),
+            "id": uuid_schema(),
+            "throughEventSequence": positive_sequence_schema(),
+            "eventCount": {
+                "type": "integer", "minimum": 1, "maximum": 1000,
+                "description": "Total events in the self-contained materialized trajectory, including inherited fork events."
+            },
+            "agentArtifactDigest": digest_schema(),
+            "providerProfileDigest": digest_schema(),
+            "invocationProfileDigest": digest_schema(),
+            "object": schema_ref("AgentExecutionCheckpointObject"),
+            "telemetryCorrelation": schema_ref("AgentExecutionTelemetryCorrelation"),
+            "aggregateVersion": { "type": "integer", "minimum": 1, "maximum": 1 },
+            "capturedAt": timestamp_schema()
+        }),
+    )
+}
+
+fn agent_execution_checkpoint_snapshot_schema() -> Value {
+    let mut schema = object_schema(
+        &[
+            "schema",
+            "organizationId",
+            "conversationId",
+            "executionId",
+            "operationId",
+            "agentArtifactDigest",
+            "providerProfileDigest",
+            "invocationProfileDigest",
+            "throughEventSequence",
+            "eventCount",
+            "telemetryCorrelation",
+            "events",
+            "capturedAt",
+        ],
+        json!({
+            "schema": {
+                "type": "string",
+                "enum": ["a3s.cloud.agent-execution-checkpoint.v1"]
+            },
+            "organizationId": uuid_schema(),
+            "conversationId": uuid_schema(),
+            "executionId": uuid_schema(),
+            "operationId": uuid_schema(),
+            "agentArtifactDigest": digest_schema(),
+            "providerProfileDigest": digest_schema(),
+            "invocationProfileDigest": digest_schema(),
+            "throughEventSequence": positive_sequence_schema(),
+            "eventCount": {
+                "type": "integer", "minimum": 1, "maximum": 1000,
+                "description": "Total events in the self-contained materialized trajectory, including inherited fork events."
+            },
+            "telemetryCorrelation": schema_ref("AgentExecutionTelemetryCorrelation"),
+            "events": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1000,
+                "description": "Self-contained semantic trajectory through this checkpoint, including verified inherited events for fork descendants.",
+                "items": schema_ref("AgentExecutionCheckpointEvent")
+            },
+            "capturedAt": timestamp_schema()
+        }),
+    );
+    schema["x-a3s-max-canonical-bytes"] = json!(917504);
+    schema
+}
+
+fn agent_execution_trajectory_page_schema() -> Value {
+    object_schema(
+        &["executionId", "records", "nextCursor"],
+        json!({
+            "executionId": uuid_schema(),
+            "records": {
+                "type": "array", "maxItems": 200,
+                "items": schema_ref("AgentExecutionEvent")
+            },
+            "nextCursor": {
+                "type": "string", "minLength": 1, "maxLength": 128, "nullable": true,
+                "description": "Opaque cursor for the last returned record when another bounded page exists; otherwise null."
             }
         }),
     )
