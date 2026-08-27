@@ -956,6 +956,24 @@ fn generated_openapi_is_complete_human_readable_documentation() -> Result<()> {
                 !media["example"].is_null() || !media["examples"].is_null(),
                 "component response {name} media type {media_type} has no example"
             );
+            if media_type == "application/json"
+                && media["schema"]["$ref"].as_str().is_some_and(|reference| {
+                    reference.ends_with("SuccessResponse") || reference.ends_with("ErrorResponse")
+                })
+            {
+                let expected_status = name
+                    .get(name.len().saturating_sub(3)..)
+                    .and_then(|suffix| suffix.parse::<u16>().ok())
+                    .ok_or_else(|| {
+                        BootError::Internal(format!(
+                            "component envelope response {name} has no status suffix"
+                        ))
+                    })?;
+                assert_eq!(
+                    media["example"]["code"], expected_status,
+                    "component envelope response {name} example code differs from its HTTP status"
+                );
+            }
         }
     }
 

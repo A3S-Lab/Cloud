@@ -93,7 +93,7 @@ fn install_component_documentation(root: &mut Map<String, Value>) -> Result<()> 
         .get_mut("responses")
         .and_then(Value::as_object_mut)
         .ok_or_else(|| BootError::Internal("OpenAPI component responses are invalid".into()))?;
-    for response in responses.values_mut() {
+    for (name, response) in responses {
         let Some(response) = response.as_object_mut() else {
             continue;
         };
@@ -125,17 +125,40 @@ fn install_component_documentation(root: &mut Map<String, Value>) -> Result<()> 
             let Some(schema) = media.get("schema") else {
                 continue;
             };
-            let example = if media_type == "text/event-stream" {
+            let mut example = if media_type == "text/event-stream" {
                 json!("id: 100\nevent: updated\ndata: {}\n\n")
             } else if schema.get("format").and_then(Value::as_str) == Some("binary") {
                 binary_example(media_type)
             } else {
                 component_example(schema, &schemas_snapshot, None, 0)
             };
+            if media_type == "application/json"
+                && schema
+                    .get("$ref")
+                    .and_then(Value::as_str)
+                    .is_some_and(|reference| {
+                        reference.ends_with("SuccessResponse")
+                            || reference.ends_with("ErrorResponse")
+                    })
+            {
+                if let (Some(status), Some(example)) =
+                    (response_component_status(name), example.as_object_mut())
+                {
+                    if example.contains_key("code") {
+                        example.insert("code".into(), json!(status));
+                    }
+                }
+            }
             media.entry("example").or_insert(example);
         }
     }
     Ok(())
+}
+
+fn response_component_status(name: &str) -> Option<u16> {
+    let suffix = name.get(name.len().checked_sub(3)?..)?;
+    let status = suffix.parse::<u16>().ok()?;
+    (200..=599).contains(&status).then_some(status)
 }
 
 fn component_schema_description(name: &str) -> String {
