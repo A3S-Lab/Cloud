@@ -4932,12 +4932,14 @@ S3 composition supervises one bounded reconciler over the same shared object
 client; it first claims expired writes, then inventories valid keys, records an
 observation grace period, and removes an object only under its exact cleanup
 lease. Malformed keys are reported and retained rather than guessed or deleted.
-A checked-in PostgreSQL process-death gate uses a process-shared durable object
-authority, kills the writer after object persistence but before projection,
-kills the fork caller after its transaction but before response delivery, and
-proves fresh-repository exact-once adoption/replay, Outbox and idempotency
-convergence, immutable parent state, digest-bound lineage, and grace-delayed
-cleanup of an unreferenced valid object with no residual lease. Production
+A retained
+[PostgreSQL 17 checkpoint/fork evidence step](https://github.com/A3S-Lab/Cloud/actions/runs/33123629294/job/98696476393)
+uses a process-shared durable object authority, kills the writer after object
+persistence but before projection, kills the fork caller after its transaction
+but before response delivery, and proves fresh-repository exact-once
+adoption/replay, Outbox and idempotency convergence, immutable parent state,
+digest-bound lineage, and grace-delayed cleanup of an unreferenced valid object
+with no residual lease. Production
 model/Tool binding producers, any additional independent MCP binding, retained
 real-provider/Box Tool-audit, approval/fork execution and private checkpoint
 certification, and real S3 inventory/cleanup evidence remain open. Model output,
@@ -6271,7 +6273,7 @@ Later gates extend the same fault-injection discipline:
 | 16 | Semantic execution event committed before SSE visibility | `A1.1` | Reconnect queries the authoritative sequence and returns the committed suffix exactly once; loss of an in-memory notification cannot hide or duplicate an event |
 | 17 | Harness event batch sent before contiguous receipt | `A1.2` | The node agent retains and replays the identical durable batch; Cloud deduplicates its sequence range and advances the cursor only in the exact receipt |
 | 18 | Approval decision committed before resume command | `A1.5` | Reconciliation emits one deterministic resume for the approved checkpoint; denial, expiry, or cancellation emits none, and replay never repeats approved Tool work |
-| 19 | Checkpoint object stored before checkpoint projection | `A1.6` | The checked-in PostgreSQL subprocess gate kills the writer after a process-shared durable object is visible but before projection, then proves the same command retry adopts it once with one projection, Outbox fact, and idempotency record. It also kills the caller after the fork transaction but before response delivery and proves exact replay; a fork can reference only the committed digest-verified checkpoint. The same fixture inventories an unreferenced valid object, records grace, claims the exact migration-169 cleanup fence, removes the object idempotently, and clears the fence. Retained real S3 reconciliation evidence remains open. |
+| 19 | Checkpoint object stored before checkpoint projection | `A1.6` | A retained [PostgreSQL 17 checkpoint/fork evidence step](https://github.com/A3S-Lab/Cloud/actions/runs/33123629294/job/98696476393) kills the writer after a process-shared durable object is visible but before projection, then proves the same command retry adopts it once with one projection, Outbox fact, and idempotency record. It also kills the caller after the fork transaction but before response delivery and proves exact replay; a fork can reference only the committed digest-verified checkpoint. The same fixture inventories an unreferenced valid object, records grace, claims the exact migration-169 cleanup fence, removes the object idempotently, and clears the fence. Retained real S3 reconciliation evidence remains open. |
 | 20 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
 | 21 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
 | 22 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |

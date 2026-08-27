@@ -646,10 +646,12 @@ creating their own control planes:
     Component-level `A1.6` adds bounded immutable logical execution
     checkpoints, explicit fork lineage, trajectory reads, exact Runtime
     telemetry correlation, migrations `168`-`169`, REST/OpenAPI `1.73.0`, and
-    the maintained TypeScript client. Its checked-in PostgreSQL process-death
-    gate kills a child after the exact checkpoint object is durable but before
-    its projection, then again after the fork transaction but before response
-    delivery; fresh repositories adopt/replay both boundaries exactly once.
+    the maintained TypeScript client. A retained
+    [PostgreSQL 17 checkpoint/fork evidence step](https://github.com/A3S-Lab/Cloud/actions/runs/33123629294/job/98696476393)
+    in the real-Box conformance job kills a child after the exact checkpoint
+    object is durable but before its projection, then again after the fork
+    transaction but before response delivery; fresh repositories adopt/replay
+    both boundaries exactly once.
     The same gate inventories and removes an unreferenced valid object only
     after PostgreSQL observation grace and an exact cleanup fence. Production
     model and Tool binding producers, any additional independent MCP binding,

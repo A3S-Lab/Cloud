@@ -1379,9 +1379,11 @@ Planned supporting work:
 
 - production binding producers for exact model and Tool identities and any MCP
   identity not already supplied by the selected Agent Workload revision; and
-- retained PostgreSQL/real-provider approval and fork recovery evidence, real
-  S3 namespace inventory/cleanup evidence, and provider/Box private checkpoint
-  capability certification.
+- retained real-provider approval and fork execution evidence, real S3
+  namespace inventory/cleanup evidence, and provider/Box private checkpoint
+  capability certification. PostgreSQL 17 process-death evidence already
+  verifies logical checkpoint adoption, fork replay, and fenced orphan cleanup
+  through a process-shared object authority.
 
 The context owns semantic Agent state but delegates long-running coordination
 to Flow and Operations, placement and rollout to Workloads, node delivery to
