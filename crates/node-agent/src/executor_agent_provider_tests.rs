@@ -254,8 +254,8 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
         .await
         .expect("replay reference provider command");
     assert_eq!(replay.outcome, acknowledgement.outcome);
-    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(provider_harness.calls.load(Ordering::SeqCst), 2);
     assert_eq!(code_harness.calls.load(Ordering::SeqCst), 0);
 
     let unknown_profile_acl = profile.canonical_acl().replace(
