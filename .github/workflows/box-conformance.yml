@@ -467,7 +467,7 @@ jobs:
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
 
-      - name: Certify Agent Code PostgreSQL and Runtime recovery
+      - name: Certify Agent Code, checkpoint, and fork recovery
         env:
           A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
           A3S_DEPS_STUB: "1"
@@ -497,11 +497,31 @@ jobs:
             "$EVIDENCE_DIR/agent-code-postgres-recovery.log" \
             >"$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt")" -eq 1
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --test postgres_integration \
+              postgres_agent_checkpoint_and_fork_recover_across_process_death \
+              -- --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_A1_CHECKPOINT_POSTGRES_RECOVERY_CERTIFIED store=postgresql object_authority=process-shared checkpoint_crashes=1 fork_crashes=1 checkpoints=1 forks=1 checkpoint_replays=1 fork_replays=1 lineage=exact' \
+            "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log" \
+            >"$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt")" -eq 1
           jq -n \
             --arg cloud "$cloud_revision" \
             --arg box "$box_revision" \
             --rawfile runtimeCertification "$EVIDENCE_DIR/agent-runtime-process-death-certification.txt" \
             --rawfile postgresCertification "$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt" \
+            --rawfile checkpointCertification "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt" \
             '{
               schema: "a3s.cloud.a1-agent-recovery-evidence.v1",
               cloudRevision: $cloud,
@@ -510,6 +530,7 @@ jobs:
               postgresImage: "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4",
               runtimeCertification: ($runtimeCertification | rtrimstr("\n")),
               postgresCertification: ($postgresCertification | rtrimstr("\n")),
+              checkpointCertification: ($checkpointCertification | rtrimstr("\n")),
               checks: {
                 realProviderProcessDeath: true,
                 stableRuntimeGeneration: true,
@@ -523,7 +544,11 @@ jobs:
                 invocationProfileImmutable: true,
                 nativeCodeRecovery: true,
                 recoverBeforeCancel: true,
-                noDuplicateSemanticProjection: true
+                noDuplicateSemanticProjection: true,
+                checkpointObjectBeforeProjectionRecovery: true,
+                checkpointProjectionReplay: true,
+                forkCommitBeforeResponseRecovery: true,
+                forkLineageExact: true
               }
             }' >"$EVIDENCE_DIR/agent-recovery.json"
           jq -e \
@@ -542,6 +567,8 @@ jobs:
               agent-runtime-process-death-certification.txt \
               agent-code-postgres-recovery.log \
               agent-code-postgres-recovery-certification.txt \
+              agent-checkpoint-postgres-recovery.log \
+              agent-checkpoint-postgres-recovery-certification.txt \
               agent-recovery.json \
               >agent-recovery-sha256.txt
           )

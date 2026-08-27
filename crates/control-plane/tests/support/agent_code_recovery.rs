@@ -91,6 +91,13 @@ struct ScenarioState {
     start_sequence: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CheckpointRecoveryScenario {
+    pub(super) organization_id: OrganizationId,
+    pub(super) conversation_id: AgentConversationId,
+    pub(super) execution_id: AgentExecutionId,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpectedCommand {
     Start,
@@ -355,6 +362,17 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
         state.runtime_spec.generation
     );
     Ok(())
+}
+
+pub(super) async fn prepare_checkpoint_recovery_scenario(
+    postgres_url: &str,
+) -> Result<CheckpointRecoveryScenario, Box<dyn Error>> {
+    let state = prepare_persisted_scenario(postgres_url).await?;
+    Ok(CheckpointRecoveryScenario {
+        organization_id: state.organization_id,
+        conversation_id: state.conversation_id,
+        execution_id: state.execution_id,
+    })
 }
 
 include!("agent_code_recovery/scenario.rs");

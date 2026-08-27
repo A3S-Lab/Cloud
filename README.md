@@ -585,10 +585,14 @@ creating their own control planes:
     Component-level `A1.6` adds bounded immutable logical execution
     checkpoints, explicit fork lineage, trajectory reads, exact Runtime
     telemetry correlation, migration `168`, REST/OpenAPI `1.73.0`, and the
-    maintained TypeScript client. Production model and Tool binding producers,
-    any additional independent MCP binding, retained PostgreSQL/real-provider
-    recovery and audit evidence, and provider/Box private checkpoint
-    certification remain open.
+    maintained TypeScript client. Its checked-in PostgreSQL process-death gate
+    kills a child after the exact checkpoint object is durable but before its
+    projection, then again after the fork transaction but before response
+    delivery; fresh repositories adopt/replay both boundaries exactly once.
+    Production model and Tool binding producers, any additional independent MCP
+    binding, retained real-provider/Box Tool-audit, approval/fork execution and
+    cleanup evidence, and provider/Box private checkpoint certification remain
+    open.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

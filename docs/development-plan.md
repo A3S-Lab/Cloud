@@ -4900,11 +4900,16 @@ lineage for every fork. REST/OpenAPI `1.73.0` and the maintained client expose
 capture/list/read/snapshot, paged trajectory, and fork operations. Runtime
 dispatch reloads and verifies the snapshot before materializing a bounded
 provider-neutral prompt; it does not emulate provider-private or Box
-suspend/resume. Production model/Tool binding producers, any additional
-independent MCP binding, retained PostgreSQL/real-provider Tool-audit,
-approval/fork recovery evidence, and private checkpoint certification remain
-open. Model output, failures, and terminal state already use semantic execution
-events rather than Flow history or Runtime logs.
+suspend/resume. A checked-in PostgreSQL process-death gate uses a process-shared
+durable object authority, kills the writer after object persistence but before
+projection, kills the fork caller after its transaction but before response
+delivery, and proves fresh-repository exact-once adoption/replay, Outbox and
+idempotency convergence, immutable parent state, and digest-bound lineage.
+Production model/Tool binding producers, any additional independent MCP
+binding, retained real-provider/Box Tool-audit, approval/fork execution and
+cleanup evidence, and private checkpoint certification remain open. Model
+output, failures, and terminal state already use semantic execution events
+rather than Flow history or Runtime logs.
 
 Verified `A1.2` transport foundation:
 
@@ -6232,7 +6237,7 @@ Later gates extend the same fault-injection discipline:
 | 16 | Semantic execution event committed before SSE visibility | `A1.1` | Reconnect queries the authoritative sequence and returns the committed suffix exactly once; loss of an in-memory notification cannot hide or duplicate an event |
 | 17 | Harness event batch sent before contiguous receipt | `A1.2` | The node agent retains and replays the identical durable batch; Cloud deduplicates its sequence range and advances the cursor only in the exact receipt |
 | 18 | Approval decision committed before resume command | `A1.5` | Reconciliation emits one deterministic resume for the approved checkpoint; denial, expiry, or cancellation emits none, and replay never repeats approved Tool work |
-| 19 | Checkpoint object stored before checkpoint projection | `A1.6` | Reconciliation verifies and adopts the exact object or safely records/removes an orphan; a fork can reference only a committed digest-verified checkpoint |
+| 19 | Checkpoint object stored before checkpoint projection | `A1.6` | The checked-in PostgreSQL subprocess gate kills the writer after a process-shared durable object is visible but before projection, then proves the same command retry adopts it once with one projection, Outbox fact, and idempotency record. It also kills the caller after the fork transaction but before response delivery and proves exact replay; a fork can reference only the committed digest-verified checkpoint. Autonomous orphan inventory/cleanup remains part of the production object-reconciliation gate. |
 | 20 | Backup object upload before manifest commit | `S0` | Reconciliation verifies and adopts the object or records and removes an orphan; no false successful backup exists |
 | 21 | Volume detach before replacement attach | `S0`/`H0` | A replacement writer remains blocked until durable fencing evidence exists |
 | 22 | Replica provider create before placement projection | `H0` | Restart adopts one provider unit for the replica generation and does not consume an extra replica slot |

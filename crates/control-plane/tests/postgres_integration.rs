@@ -130,6 +130,8 @@ async fn migrate_for_test(
 
 #[path = "support/activation_retirement_crash.rs"]
 mod activation_retirement_crash_support;
+#[path = "support/agent_checkpoint_recovery.rs"]
+mod agent_checkpoint_recovery_support;
 #[path = "support/agent_code_recovery.rs"]
 mod agent_code_recovery_support;
 #[path = "support/application_delivery_recovery.rs"]
@@ -282,6 +284,14 @@ async fn activation_before_retirement_crash_probe() {
 }
 
 #[tokio::test]
+#[ignore = "private subprocess used only by the Agent checkpoint process-death gate"]
+async fn agent_checkpoint_postgres_process_death_probe() {
+    agent_checkpoint_recovery_support::run_probe()
+        .await
+        .expect("run Agent checkpoint process-death probe");
+}
+
+#[tokio::test]
 #[ignore = "private subprocess used only by the persistent Build Flow process-death gate"]
 async fn build_flow_postgres_process_death_probe() {
     build_flow_process_death_support::run_probe()
@@ -329,6 +339,19 @@ async fn postgres_agent_code_recovery_survives_retention_runtime_and_control_pla
     )
     .await
     .expect("PostgreSQL Agent Code recovery gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_agent_checkpoint_and_fork_recover_across_process_death() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        agent_checkpoint_recovery_support::exercise_agent_checkpoint_process_death_recovery,
+    )
+    .await
+    .expect("PostgreSQL Agent checkpoint and fork process-death gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
