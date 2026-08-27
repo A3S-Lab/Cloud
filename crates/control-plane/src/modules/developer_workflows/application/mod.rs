@@ -6,6 +6,7 @@ mod build_plan_detection_query;
 mod build_plan_queries;
 mod detection;
 mod preview_environment;
+mod preview_management_queries;
 mod preview_policy_acceptance;
 mod preview_source_subscription;
 mod profile_compilation;
@@ -39,6 +40,16 @@ pub use detection::BuildPlanDetectionService;
 pub use preview_environment::{
     EnsurePreviewEnvironment, IPreviewEnvironmentPort, PreviewEnvironmentBinding,
     PreviewEnvironmentReceipt,
+};
+pub use preview_management_queries::{
+    GetAcceptedPullRequestPreviewPolicyRevision,
+    GetAcceptedPullRequestPreviewPolicyRevisionHandler,
+    GetCurrentAcceptedPullRequestPreviewPolicyRevision,
+    GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler, GetPullRequestPreview,
+    GetPullRequestPreviewHandler, ListAcceptedPullRequestPreviewPolicyRevisions,
+    ListAcceptedPullRequestPreviewPolicyRevisionsHandler, PreviewPolicyQueryService,
+    PullRequestPreviewQueryService, DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
 };
 pub use preview_policy_acceptance::{
     AcceptPullRequestPreviewPolicy, AcceptPullRequestPreviewPolicyHandler,
@@ -95,6 +106,9 @@ mod workload_profile_queries_tests;
 
 #[cfg(test)]
 mod preview_policy_acceptance_tests;
+
+#[cfg(test)]
+mod preview_management_queries_tests;
 
 #[cfg(test)]
 mod pull_request_preview_projection_tests;

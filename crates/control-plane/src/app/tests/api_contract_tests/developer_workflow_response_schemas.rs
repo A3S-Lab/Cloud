@@ -1,7 +1,10 @@
 use super::*;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
-    DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX, WORKLOAD_PROFILE_COLLECTION_ROUTE,
+    DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX, PULL_REQUEST_PREVIEW_ITEM_ROUTE,
+    PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE, PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
+    PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE,
+    PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE, WORKLOAD_PROFILE_COLLECTION_ROUTE,
     WORKLOAD_PROFILE_ITEM_ROUTE, WORKLOAD_PROFILE_REVISION_COLLECTION_ROUTE,
     WORKLOAD_PROFILE_REVISION_ITEM_ROUTE,
 };
@@ -337,6 +340,176 @@ fn workload_profile_routes_use_one_typed_revision_contract() -> Result<()> {
         assert_eq!(
             collection["responses"][status]["$ref"],
             format!("#/components/responses/WorkloadProfileMutationSuccess{status}")
+        );
+    }
+    assert!(collection["responses"]["413"].is_object());
+    assert!(collection["responses"]["415"].is_object());
+    Ok(())
+}
+
+#[test]
+fn preview_management_schemas_are_closed_bounded_revisioned_and_acl_only() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let schemas = &document["components"]["schemas"];
+
+    for name in [
+        "PreviewGitRepository",
+        "PreviewQuota",
+        "PullRequestPreviewPolicy",
+        "AcceptedPullRequestPreviewPolicyRevision",
+        "PullRequestPreviewPolicyMutation",
+        "PullRequestPreview",
+    ] {
+        assert_eq!(
+            schemas[name]["additionalProperties"], false,
+            "{name} must reject undocumented fields"
+        );
+    }
+    assert_eq!(
+        schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractSchema"]["enum"],
+        json!([crate::modules::developer_workflows::PULL_REQUEST_PREVIEW_POLICY_SCHEMA])
+    );
+    assert_eq!(
+        schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractAcl"]
+            ["maxLength"],
+        crate::modules::developer_workflows::PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        schemas["AcceptedPullRequestPreviewPolicyRevisionList"]["maxItems"],
+        crate::modules::developer_workflows::MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT
+    );
+    assert_eq!(
+        schemas["AcceptedPullRequestPreviewPolicyRevisionList"]["x-a3s-canonical-order"],
+        json!(["revisionNumber", "pullRequestPreviewPolicyRevisionId"])
+    );
+    for field in [
+        "installationId",
+        "revisionNumber",
+        "pullRequestId",
+        "pullRequestNumber",
+        "policyRevisionNumber",
+        "aggregateVersion",
+    ] {
+        let schema = if field == "installationId" {
+            &schemas["PullRequestPreviewPolicy"]["properties"][field]
+        } else if field == "revisionNumber" {
+            &schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"][field]
+        } else {
+            &schemas["PullRequestPreview"]["properties"][field]
+        };
+        assert_eq!(
+            schema["maximum"],
+            crate::modules::developer_workflows::MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+            "{field} must remain portable"
+        );
+    }
+    for (success_schema, data_schema) in [
+        (
+            "AcceptedPullRequestPreviewPolicyRevisionSuccessResponse",
+            "AcceptedPullRequestPreviewPolicyRevision",
+        ),
+        (
+            "AcceptedPullRequestPreviewPolicyRevisionListSuccessResponse",
+            "AcceptedPullRequestPreviewPolicyRevisionList",
+        ),
+        (
+            "PullRequestPreviewPolicyMutationSuccessResponse",
+            "PullRequestPreviewPolicyMutation",
+        ),
+        ("PullRequestPreviewSuccessResponse", "PullRequestPreview"),
+    ] {
+        assert_eq!(
+            schemas[success_schema]["allOf"][0]["properties"]["data"]["$ref"],
+            format!("#/components/schemas/{data_schema}")
+        );
+    }
+
+    let encoded = serde_json::to_string(&schema_without_documentation(&json!({
+        "repository": schemas["PreviewGitRepository"],
+        "policy": schemas["PullRequestPreviewPolicy"],
+        "accepted": schemas["AcceptedPullRequestPreviewPolicyRevision"],
+        "preview": schemas["PullRequestPreview"],
+    })))
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+    for forbidden in [
+        "webhookSecret",
+        "signature",
+        "deliveryBody",
+        "credential",
+        "providerToken",
+        "checkoutPath",
+        "buildRunId",
+        "routeId",
+    ] {
+        assert!(
+            !encoded.contains(forbidden),
+            "Preview schemas must not expose {forbidden}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn preview_management_routes_use_one_typed_public_contract() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection =
+        &document["paths"][full_route(PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE)]["post"];
+    let current = &document["paths"][full_route(PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE)]["get"];
+    let revisions = &document["paths"]
+        [full_route(PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE)]["get"];
+    let revision =
+        &document["paths"][full_route(PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE)]["get"];
+    let preview = &document["paths"][full_route(PULL_REQUEST_PREVIEW_ITEM_ROUTE)]["get"];
+
+    for operation in [collection, current, revisions, revision, preview] {
+        assert_eq!(operation["tags"], json!(["Developer Workflows"]));
+    }
+    let request = &collection["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        request["required"],
+        json!(["sourceSubscriptionId", "policyAcl"])
+    );
+    assert_eq!(request["additionalProperties"], false);
+    assert_eq!(
+        request["properties"]["policyAcl"]["maxLength"],
+        crate::modules::developer_workflows::PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES
+    );
+    assert!(has_parameter(collection, "idempotency-key"));
+    let limit = parameter(revisions, "limit")?;
+    assert_eq!(
+        limit["schema"]["default"],
+        crate::modules::developer_workflows::DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT
+    );
+    assert_eq!(
+        limit["schema"]["maximum"],
+        crate::modules::developer_workflows::MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT
+    );
+    let pull_request_id = parameter(preview, "pull_request_id")?;
+    assert_eq!(pull_request_id["schema"]["type"], "integer");
+    assert_eq!(
+        pull_request_id["schema"]["maximum"],
+        crate::modules::developer_workflows::MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
+    );
+    for operation in [current, revision] {
+        assert_eq!(
+            operation["responses"]["200"]["$ref"],
+            "#/components/responses/AcceptedPullRequestPreviewPolicyRevisionSuccess200"
+        );
+    }
+    assert_eq!(
+        revisions["responses"]["200"]["$ref"],
+        "#/components/responses/AcceptedPullRequestPreviewPolicyRevisionListSuccess200"
+    );
+    assert_eq!(
+        preview["responses"]["200"]["$ref"],
+        "#/components/responses/PullRequestPreviewSuccess200"
+    );
+    for status in ["200", "201"] {
+        assert_eq!(
+            collection["responses"][status]["$ref"],
+            format!("#/components/responses/PullRequestPreviewPolicyMutationSuccess{status}")
         );
     }
     assert!(collection["responses"]["413"].is_object());

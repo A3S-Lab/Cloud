@@ -17,7 +17,22 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.74.0`.
+The current semantic contract version is `1.75.0`.
+
+Contract `1.75.0` adds the closed Developer Workflows pull-request Preview
+Management API. An authorized caller can accept one canonical
+`a3s.cloud.pull-request-preview-policy.v1` ACL for an exact source subscription,
+get its current immutable revision, list the first 1 through 100 continuous
+revisions in ascending order, get one exact revision, or read the current
+behavioral Preview for one portable positive pull-request identity. Responses
+preserve canonical policy ACL and digest, immutable revision authority, bounded
+repository/branch/quota/trust/expiry/status behavior, stable owner references,
+and deterministic Preview identity. They expose no Secret material, webhook
+delivery evidence, provider credentials, checkout state, projection receipts,
+or downstream SourceRevision/BuildRun/Workload/Execution/Route/Operation
+lifecycle. REST, the maintained client and CLI, and five Management MCP tools
+dispatch the same command and four Application queries through shared closed
+DTOs.
 
 Contract `1.74.0` adds the closed Developer Workflows WorkloadProfile API. An
 authorized caller can accept one canonical `a3s.cloud.workload-profile.v1` ACL

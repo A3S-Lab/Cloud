@@ -30,6 +30,15 @@ history-list, and exact-revision reads require `cloud:read`; acceptance requires
 Responses reuse the REST DTOs and expose typed Secret references but never
 Secret material or downstream lifecycle. MCP adds no parser, repository,
 authorization evaluator, compiler, scheduler, or owner state machine.
+The `P0.3-C7` slice adds five Preview Management tools over the existing policy
+acceptance command and four read queries. Four reads require `cloud:read`; policy
+acceptance requires `build:write`. Arguments contain only exact
+Project/Environment/subscription/revision/pull-request identity, bounded
+canonical `policyAcl`, caller-owned idempotency, and an optional `1..=100`
+history limit. Responses reuse the REST DTOs and expose behavioral policy and
+Preview state but never webhook delivery evidence, credentials, Secret material,
+projection receipts, or downstream owner lifecycle. MCP owns no parser,
+repository, evaluator, provider client, or Preview lifecycle.
 The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
 tools over the same Workflow command/query handlers. It does not introduce an
 MCP-specific Ontology store, migration policy, ACL parser, or graph database.
@@ -874,6 +883,31 @@ does not parse ACL, load a repository, evaluate grants, compile a target owner
 template, or create BuildRun, Workload, Execution, Route, Operation, or
 scheduler state.
 
+## Pull-request Preview management
+
+`a3s_cloud_pull_request_preview_policies_accept` accepts exact `projectId`,
+`environmentId`, and `sourceSubscriptionId`, bounded canonical `policyAcl`, and
+`idempotencyKey`, then dispatches the existing authorization-first acceptance
+command. A new immutable revision returns `201`; exact replay returns `200`
+with `replayed: true`.
+
+`a3s_cloud_pull_request_preview_policies_get` gets the current revision for one
+exact source subscription. `a3s_cloud_pull_request_preview_policy_revisions_list`
+returns an ascending continuous history with an optional limit from 1 through
+100 (default 50), and
+`a3s_cloud_pull_request_preview_policy_revisions_get` gets one exact revision.
+`a3s_cloud_pull_request_previews_get` gets the current behavioral projection
+for one exact subscription and portable positive pull-request ID.
+
+The three policy reads use one Application `PreviewPolicyQueryService`; the
+behavioral read uses the separate `PullRequestPreviewQueryService` because the
+policy lineage and Preview lifecycle are different aggregates and repositories.
+Both authorize before private identity validation and reject invalid restored
+state, scope drift, page overflow, or revision-order gaps. The adapter dispatches
+only CommandBus/QueryBus contracts and shares the REST response projections; it
+does not parse ACL, load a repository, evaluate grants, or create source, build,
+deployment, route, operation, scheduler, expiry, or cleanup state.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -925,7 +959,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 145-tool administrator and 83-tool
+current focused source runner requires exact 150-tool administrator and 87-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -965,7 +999,8 @@ native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
 immutable Application release lifecycle, immutable Connector profile/revision lifecycle, Durable Cell application and
 deployment lifecycle with Secret-free responses, BuildPlan ACL-only review,
-WorkloadProfile ACL-only acceptance and immutable revision reads,
+WorkloadProfile ACL-only acceptance and immutable revision reads, Preview
+Management ACL-only policy lineage and exact behavioral reads,
 strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun

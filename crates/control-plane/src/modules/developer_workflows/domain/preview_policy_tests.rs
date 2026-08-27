@@ -1,6 +1,6 @@
 use super::{
     AcceptedPullRequestPreviewPolicyRevision, PullRequestPreviewPolicyContract,
-    PULL_REQUEST_PREVIEW_POLICY_SCHEMA,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, PULL_REQUEST_PREVIEW_POLICY_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, PrincipalId};
 use chrono::Utc;
@@ -90,4 +90,29 @@ fn accepted_policy_revision_has_deterministic_identity_and_exact_context() {
         first.contract.policy().source_subscription_id
     );
     assert!(first.validate().is_ok());
+}
+
+#[test]
+fn accepted_policy_revision_rejects_non_portable_revision_numbers() {
+    let contract = PullRequestPreviewPolicyContract::parse_acl(POLICY_FIXTURE).expect("policy");
+    let error = AcceptedPullRequestPreviewPolicyRevision::accept(
+        EnvironmentId::new(),
+        contract.clone(),
+        MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1,
+        PrincipalId::new(),
+        Utc::now(),
+    )
+    .expect_err("non-portable revision number");
+    assert!(error.contains("revision"));
+
+    let mut revision = AcceptedPullRequestPreviewPolicyRevision::accept(
+        EnvironmentId::new(),
+        contract,
+        1,
+        PrincipalId::new(),
+        Utc::now(),
+    )
+    .expect("accepted policy");
+    revision.revision_number = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+    assert!(revision.validate().is_err());
 }

@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C6` production-compose canonical BuildPlan detection, immutable acceptance/reads, authorization, trusted exact-revision layout acquisition, and their REST/OpenAPI `1.72.0`, maintained client/CLI, and four Management MCP tools. `P0.2-C1` through `C6` production-compose canonical WorkloadProfile intent, immutable acceptance/reads, exact compilation, owner anti-corruption adapters, and their REST/OpenAPI `1.74.0`, maintained client/CLI, and four additional Management MCP tools over the same parser, repository, policy evaluator, and lifecycle authorities. P0.3 Preview foundations remain component/production-composed as detailed below. Preview public surfaces, pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, imports, and retained WorkloadProfile cross-surface certification remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C6` production-compose canonical BuildPlan detection, immutable acceptance/reads, authorization, trusted exact-revision layout acquisition, and their REST/OpenAPI `1.72.0`, maintained client/CLI, and four Management MCP tools. `P0.2-C1` through `C6` production-compose canonical WorkloadProfile intent, immutable acceptance/reads, exact compilation, owner anti-corruption adapters, and their REST/OpenAPI `1.74.0`, maintained client/CLI, and four additional Management MCP tools over the same parser, repository, policy evaluator, and lifecycle authorities. `P0.3-C1` through `C7` production-compose the durable Preview foundations and expose ACL-only policy acceptance/current/history/exact reads plus one exact behavioral Preview read through REST/OpenAPI `1.75.0`, maintained client/CLI, and five Management MCP tools over the same authorities. Pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, imports, retained PostgreSQL Preview cross-surface evidence, and retained WorkloadProfile certification remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -572,10 +572,11 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.74.0`
-  adds closed WorkloadProfile acceptance plus current, bounded-history, and
-  exact immutable revision reads over the sole Developer Workflows application
-  authority. It retains `1.73.0`'s closed Agent execution checkpoint
+  responses, envelopes, and compatibility metadata; current contract `1.75.0`
+  adds closed Preview Policy acceptance plus current, bounded-history, and
+  exact immutable revision reads and one exact behavioral pull-request Preview
+  read over two narrow Developer Workflows Application query authorities. It
+  retains `1.74.0`'s WorkloadProfile management boundary and `1.73.0`'s closed Agent execution checkpoint
   capture/list/read/snapshot, semantic trajectory, and immutable fork APIs with
   exact object and telemetry evidence, `1.72.0`'s closed BuildPlan detection,
   acceptance, and exact accepted-plan reads, and `1.71.0`'s Agent
@@ -1293,8 +1294,27 @@ C5c adds no Inbox, queue, worker, saga, scheduler, BuildRun table, build state
 machine, or lifecycle. Focused in-memory/projector/migration tests pass and a
 real PostgreSQL concurrency/restart/immutability gate is checked in; retained
 provider evidence is not yet claimed. Workloads, Edge, Operations, Environment
-archive/delete, Preview expiry/cleanup execution, and management remain later
-owner handoffs, so Preview availability is still false.
+archive/delete, and Preview expiry/cleanup execution remain later owner
+handoffs, so Preview availability is still false.
+
+`P0.3-C7` exposes the existing Preview authorities without adding another
+mechanism. One `PreviewPolicyQueryService` owns authorization-first current,
+exact-revision, and bounded continuous ascending history reads through the
+existing policy repository interface. One separate
+`PullRequestPreviewQueryService` owns the exact current behavioral projection
+read through the existing Preview repository interface. Both reject invalid
+restored state and exact scope drift before Presentation can serialize it.
+REST/OpenAPI `1.75.0`, the maintained TypeScript client, five CLI commands,
+and five Management MCP tools dispatch the existing acceptance command and
+four queries, reuse one closed ACL-only response projection, and share the
+single portable pull-request integer bound. The production root composes each
+service and handler once and gives no public adapter a repository, ACL parser,
+authorization evaluator, or owner model. Focused Rust, REST/OpenAPI, client,
+CLI, catalog, permission, strict-argument, and cross-surface tests pass;
+retained PostgreSQL cross-surface evidence remains pending. C7 adds no schema,
+table, migration, aggregate, parser, repository, evaluator, Inbox, Outbox,
+Relay, queue, worker, retry rail, provider client, lifecycle transition, owner
+handoff, timer, scheduler, or cleanup authority.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

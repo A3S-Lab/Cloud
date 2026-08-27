@@ -48,7 +48,9 @@ impl IDeveloperWorkflowAuthorizationPort for IdentityProjectsDeveloperWorkflowAu
             | DeveloperWorkflowAction::AcceptBuildPlan
             | DeveloperWorkflowAction::ReadWorkloadProfile
             | DeveloperWorkflowAction::AcceptWorkloadProfile
-            | DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy => {}
+            | DeveloperWorkflowAction::ReadPullRequestPreviewPolicy
+            | DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy
+            | DeveloperWorkflowAction::ReadPullRequestPreview => {}
         }
 
         let Some(membership) = self

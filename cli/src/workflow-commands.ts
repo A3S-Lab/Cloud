@@ -92,7 +92,7 @@ export async function executeWorkflowCommand(
         )
       );
     case 'workflow-definitions create': {
-      const mutation = requireAclMutationCommand(arguments_, 2, 'workflow-definitions create');
+      const mutation = requireWorkflowPublicationMutation(arguments_);
       const publication = await readWorkflowPublication(mutation.file, dependencies.readFile);
       return workflowDefinitionMutationResult(
         await cloudApi().createWorkflowDefinitionFromAcl(
@@ -458,10 +458,7 @@ function requireRevisionMutation(arguments_: ParsedArguments): {
   rejectLogOptions(arguments_);
   rejectGatewayRolloutOptions(arguments_);
   const idempotencyKey = requireIdempotencyKey(arguments_);
-  const file = arguments_.file;
-  if (file === undefined || file.length > 4_096 || /[\0\r\n]/.test(file)) {
-    throw usageError('--file with a valid Workflow publication path is required');
-  }
+  const file = requireWorkflowPublicationPath(arguments_.file);
   const rawVersion = arguments_.expectedVersion;
   if (rawVersion === undefined || !/^[0-9]+$/.test(rawVersion)) {
     throw usageError('--expected-version must be a positive safe integer for Workflow revision');
@@ -471,6 +468,27 @@ function requireRevisionMutation(arguments_: ParsedArguments): {
     throw usageError('--expected-version must be a positive safe integer for Workflow revision');
   }
   return { expectedVersion, idempotencyKey, file };
+}
+
+function requireWorkflowPublicationMutation(arguments_: ParsedArguments): {
+  idempotencyKey: string;
+  file: string;
+} {
+  requireArity(arguments_.positionals, 2, 'workflow-definitions create');
+  rejectLogOptions(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  return {
+    idempotencyKey: requireIdempotencyKey(arguments_),
+    file: requireWorkflowPublicationPath(arguments_.file),
+  };
+}
+
+function requireWorkflowPublicationPath(file: string | undefined): string {
+  if (file === undefined || file.length > 4_096 || /[\0\r\n]/.test(file)) {
+    throw usageError('--file with a valid Workflow publication path is required');
+  }
+  return file;
 }
 
 function rejectReadMutationOptions(arguments_: ParsedArguments): void {

@@ -1,4 +1,7 @@
-use super::{PullRequestPreviewPolicyAuthority, PullRequestPreviewPolicyContract};
+use super::{
+    PullRequestPreviewPolicyAuthority, PullRequestPreviewPolicyContract,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
     PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
@@ -48,9 +51,11 @@ impl AcceptedPullRequestPreviewPolicyRevision {
         contract.validate()?;
         if source_subscription_id.as_uuid().is_nil()
             || revision_number == 0
-            || revision_number > i64::MAX as u64
+            || revision_number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
         {
-            return Err("Preview policy revision identity is outside persistence bounds".into());
+            return Err(
+                "Preview policy revision identity is outside portable contract bounds".into(),
+            );
         }
         let mut identity = Vec::with_capacity(24 + contract.digest().as_str().len());
         identity.extend_from_slice(source_subscription_id.as_uuid().as_bytes());
@@ -125,7 +130,7 @@ impl AcceptedPullRequestPreviewPolicyRevision {
             || self.id.as_uuid().is_nil()
             || self.accepted_by.as_uuid().is_nil()
             || self.revision_number == 0
-            || self.revision_number > i64::MAX as u64
+            || self.revision_number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
             || self.accepted_at != canonical_timestamp(self.accepted_at)
             || self.organization_id != policy.organization_id
             || self.project_id != policy.project_id

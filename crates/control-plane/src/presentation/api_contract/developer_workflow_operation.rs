@@ -2,6 +2,12 @@ use super::developer_workflow_components::{
     accept_build_plan_request_schema, detect_build_plans_request_schema,
 };
 use super::developer_workflow_route::is_developer_workflow_route;
+use super::preview_management_operation::{
+    is_preview_management_path, is_preview_policy_collection_path,
+    path_parameter_schema as preview_path_parameter_schema,
+    query_parameters as preview_query_parameters, request_schema as preview_request_schema,
+    success_component as preview_success_component,
+};
 use super::workload_profile_operation::{
     is_workload_profile_collection_path, is_workload_profile_path,
     is_workload_profile_request_body_path, query_parameters as workload_profile_query_parameters,
@@ -23,7 +29,7 @@ pub(super) fn is_build_plan_path(path: &str) -> bool {
 }
 
 pub(super) fn is_developer_workflow_path(path: &str) -> bool {
-    is_build_plan_path(path) || is_workload_profile_path(path)
+    is_build_plan_path(path) || is_workload_profile_path(path) || is_preview_management_path(path)
 }
 
 pub(super) fn is_build_plan_detection_path(path: &str) -> bool {
@@ -39,11 +45,15 @@ pub(super) fn is_build_plan_request_body_path(path: &str) -> bool {
 }
 
 pub(super) fn is_developer_workflow_request_body_path(path: &str) -> bool {
-    is_build_plan_request_body_path(path) || is_workload_profile_request_body_path(path)
+    is_build_plan_request_body_path(path)
+        || is_workload_profile_request_body_path(path)
+        || is_preview_policy_collection_path(path)
 }
 
 pub(super) fn is_developer_workflow_creation_path(path: &str) -> bool {
-    is_build_plan_collection_path(path) || is_workload_profile_collection_path(path)
+    is_build_plan_collection_path(path)
+        || is_workload_profile_collection_path(path)
+        || is_preview_policy_collection_path(path)
 }
 
 pub(super) fn request_schema(path: &str) -> Option<Value> {
@@ -51,12 +61,17 @@ pub(super) fn request_schema(path: &str) -> Option<Value> {
         Some(detect_build_plans_request_schema())
     } else if is_build_plan_collection_path(path) {
         Some(accept_build_plan_request_schema())
+    } else if let Some(schema) = preview_request_schema(path) {
+        Some(schema)
     } else {
         workload_profile_request_schema(path)
     }
 }
 
 pub(super) fn query_parameters(method: &str, path: &str) -> Vec<Value> {
+    if is_preview_management_path(path) {
+        return preview_query_parameters(method, path);
+    }
     if is_workload_profile_path(path) {
         return workload_profile_query_parameters(method, path);
     }
@@ -95,9 +110,15 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         Some("AcceptedBuildPlanListSuccess200".into())
     } else if method == "get" && is_build_plan_item_path(path) && status == 200 {
         Some("AcceptedBuildPlanSuccess200".into())
+    } else if let Some(component) = preview_success_component(method, path, status) {
+        Some(component)
     } else {
         workload_profile_success_component(method, path, status)
     }
+}
+
+pub(super) fn path_parameter_schema(path: &str, name: &str) -> Option<Value> {
+    preview_path_parameter_schema(path, name)
 }
 
 pub(super) fn is_build_plan_item_path(path: &str) -> bool {

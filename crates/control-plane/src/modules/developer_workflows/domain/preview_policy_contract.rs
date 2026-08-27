@@ -1,5 +1,6 @@
 use super::{
     GitBranch, GithubInstallationRef, PreviewForkPolicy, PreviewQuota, PullRequestPreviewPolicy,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
 };
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PrincipalId, ProjectId, Sha256Digest, SourceSubscriptionId,
@@ -14,7 +15,6 @@ pub const PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES: usize = 16 * 1024;
 
 const POLICY_BLOCK: &str = "pull_request_preview_policy";
 const POLICY_LABEL: &str = "github";
-const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
 const POLICY_ATTRIBUTES: [&str; 12] = [
     "allow_protected_secrets_for_trusted_sources",
     "base_branch",
@@ -328,7 +328,7 @@ fn required_u64(block: &Block, name: &str) -> Result<u64, String> {
     if !value.is_finite()
         || value.fract() != 0.0
         || value <= 0.0
-        || value > MAX_SAFE_ACL_INTEGER as f64
+        || value > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER as f64
     {
         return Err(format!(
             "pull-request Preview policy field {name:?} must be an exactly representable positive integer"
@@ -348,7 +348,7 @@ fn required_u16(block: &Block, name: &str) -> Result<u16, String> {
 }
 
 fn acl_integer(name: &str, value: u64) -> Result<Value, String> {
-    if value == 0 || value > MAX_SAFE_ACL_INTEGER {
+    if value == 0 || value > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER {
         return Err(format!(
             "pull-request Preview policy field {name:?} is not representable by ACL"
         ));

@@ -191,6 +191,11 @@ Commands:
   workload-profiles get PROFILE Get the current accepted WorkloadProfile revision
   workload-profile-revisions list PROFILE List accepted WorkloadProfile revision history
   workload-profile-revisions get PROFILE REV Get one exact WorkloadProfile revision
+  preview-policies accept SOURCE-SUBSCRIPTION Accept one canonical pull-request Preview Policy ACL revision idempotently
+  preview-policies get SOURCE-SUBSCRIPTION Get the current accepted Preview Policy revision
+  preview-policy-revisions list SOURCE-SUBSCRIPTION List accepted Preview Policy revision history
+  preview-policy-revisions get SOURCE-SUBSCRIPTION REV Get one exact Preview Policy revision
+  pull-request-previews get SOURCE-SUBSCRIPTION PR-ID Get the current pull-request Preview
   source-connections get  Show the organization GitHub connection
   source-connections begin Start the no-store GitHub installation flow
   source-subscriptions list List GitHub repository subscriptions

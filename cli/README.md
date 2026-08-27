@@ -421,6 +421,11 @@ workload-profiles accept <build-plan-id> --file=<profile.acl>
 workload-profiles get <workload-profile-id>
 workload-profile-revisions list <workload-profile-id> [--limit=<1..100>]
 workload-profile-revisions get <workload-profile-id> <revision-id>
+preview-policies accept <source-subscription-id> --file=<policy.acl>
+preview-policies get <source-subscription-id>
+preview-policy-revisions list <source-subscription-id> [--limit=<1..100>]
+preview-policy-revisions get <source-subscription-id> <revision-id>
+pull-request-previews get <source-subscription-id> <pull-request-id>
 source-connections get
 source-connections begin
 source-subscriptions list
@@ -662,6 +667,16 @@ history and exact revisions. The CLI performs only byte-bound transport checks;
 Cloud remains the sole `a3s-acl` parser, acceptance authority, repository owner,
 and environment authorization path, and these commands do not start a Workload,
 Execution, Route, Operation, or scheduler lifecycle.
+
+`preview-policies accept` sends one bounded canonical `.acl` contract for an
+exact source subscription. `preview-policies get` reads its current immutable
+revision, `preview-policy-revisions list|get` expose bounded continuous history
+and one exact revision, and `pull-request-previews get` reads one exact current
+behavioral Preview. The CLI validates only file suffix, UTF-8 byte/page/integer
+bounds, and identifiers. Cloud remains the sole `a3s-acl` parser,
+authorization, revision, and Preview projection authority; no webhook evidence,
+credential, Secret material, projection receipt, or downstream owner lifecycle
+is accepted or printed.
 
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box

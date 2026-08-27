@@ -611,8 +611,8 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
         composition
             .matches("Arc::clone(&developer_workflow_authorization)")
             .count(),
-        6,
-        "BuildPlan detection, reads, acceptance, WorkloadProfile reads and acceptance, and Preview Policy acceptance must share one authorization port instance"
+        8,
+        "BuildPlan detection, reads, acceptance, WorkloadProfile reads and acceptance, and Preview Policy acceptance/reads plus Preview reads must share one authorization port instance"
     );
     for command in [
         "crate::modules::developer_workflows::AcceptWorkloadProfile, _",
@@ -659,6 +659,65 @@ fn workload_profile_public_reads_have_one_application_authority() {
             1,
             "the canonical WorkloadProfile read query {query} must be registered once"
         );
+    }
+}
+
+#[test]
+fn preview_management_public_reads_have_one_application_authority() {
+    let composition = include_str!("../../app.rs");
+    let rest = include_str!(
+        "../../modules/developer_workflows/presentation/preview_management_controller.rs"
+    );
+    let mcp = include_str!("../../presentation/management_mcp/developer_workflows.rs");
+
+    for constructor in [
+        "PreviewPolicyQueryService::new(",
+        "PullRequestPreviewQueryService::new(",
+        "GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler::new(",
+        "GetAcceptedPullRequestPreviewPolicyRevisionHandler::new(",
+        "ListAcceptedPullRequestPreviewPolicyRevisionsHandler::new(",
+        "GetPullRequestPreviewHandler::new(",
+    ] {
+        assert_eq!(
+            composition.matches(constructor).count(),
+            1,
+            "Preview Management production reads must compose {constructor} exactly once"
+        );
+    }
+    for query in [
+        "crate::modules::developer_workflows::GetCurrentAcceptedPullRequestPreviewPolicyRevision,",
+        "crate::modules::developer_workflows::GetAcceptedPullRequestPreviewPolicyRevision,",
+        "crate::modules::developer_workflows::ListAcceptedPullRequestPreviewPolicyRevisions,",
+        "crate::modules::developer_workflows::GetPullRequestPreview,",
+    ] {
+        assert_eq!(
+            composition.matches(query).count(),
+            1,
+            "the canonical Preview Management read query {query} must be registered once"
+        );
+    }
+    for (adapter, source) in [("REST", rest), ("Management MCP", mcp)] {
+        for forbidden in [
+            "IPullRequestPreviewPolicyRepository",
+            "IPullRequestPreviewProjectionRepository",
+            "::parse_acl(",
+            "IdentityProjectsDeveloperWorkflowAuthorizationAdapter",
+            "PostgresPullRequestPreview",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "{adapter} bypassed the Application boundary with {forbidden}"
+            );
+        }
+        for projection in [
+            "AcceptedPullRequestPreviewPolicyRevisionResponse",
+            "PullRequestPreviewResponse",
+        ] {
+            assert!(
+                source.contains(projection),
+                "{adapter} must reuse the shared response projection {projection}"
+            );
+        }
     }
 }
 

@@ -15,8 +15,10 @@ use crate::modules::connectors::{
 use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
-    DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
-    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, WORKLOAD_PROFILE_MAX_ACL_BYTES,
+    DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
     DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
@@ -59,6 +61,14 @@ pub const WORKLOAD_PROFILES_ACCEPT: &str = "a3s_cloud_workload_profiles_accept";
 pub const WORKLOAD_PROFILES_GET: &str = "a3s_cloud_workload_profiles_get";
 pub const WORKLOAD_PROFILE_REVISIONS_LIST: &str = "a3s_cloud_workload_profile_revisions_list";
 pub const WORKLOAD_PROFILE_REVISIONS_GET: &str = "a3s_cloud_workload_profile_revisions_get";
+pub const PULL_REQUEST_PREVIEW_POLICIES_ACCEPT: &str =
+    "a3s_cloud_pull_request_preview_policies_accept";
+pub const PULL_REQUEST_PREVIEW_POLICIES_GET: &str = "a3s_cloud_pull_request_preview_policies_get";
+pub const PULL_REQUEST_PREVIEW_POLICY_REVISIONS_LIST: &str =
+    "a3s_cloud_pull_request_preview_policy_revisions_list";
+pub const PULL_REQUEST_PREVIEW_POLICY_REVISIONS_GET: &str =
+    "a3s_cloud_pull_request_preview_policy_revisions_get";
+pub const PULL_REQUEST_PREVIEWS_GET: &str = "a3s_cloud_pull_request_previews_get";
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
 pub const BUILD_RUNS_LIST: &str = "a3s_cloud_build_runs_list";
 pub const BUILD_RUNS_CANCEL: &str = "a3s_cloud_build_runs_cancel";
@@ -343,6 +353,11 @@ pub enum ManagementTool {
     WorkloadProfilesGet,
     WorkloadProfileRevisionsList,
     WorkloadProfileRevisionsGet,
+    PullRequestPreviewPoliciesAccept,
+    PullRequestPreviewPoliciesGet,
+    PullRequestPreviewPolicyRevisionsList,
+    PullRequestPreviewPolicyRevisionsGet,
+    PullRequestPreviewsGet,
     BuildRunsList,
     BuildRunsGet,
     BuildRunLogsGet,
@@ -366,7 +381,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 145] = [
+    const ALL: [Self; 150] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -506,6 +521,11 @@ impl ManagementTool {
         Self::WorkloadProfilesGet,
         Self::WorkloadProfileRevisionsList,
         Self::WorkloadProfileRevisionsGet,
+        Self::PullRequestPreviewPoliciesAccept,
+        Self::PullRequestPreviewPoliciesGet,
+        Self::PullRequestPreviewPolicyRevisionsList,
+        Self::PullRequestPreviewPolicyRevisionsGet,
+        Self::PullRequestPreviewsGet,
         Self::BuildRunsList,
         Self::BuildRunsGet,
         Self::BuildRunLogsGet,
@@ -685,6 +705,13 @@ impl ManagementTool {
             Self::WorkloadProfilesGet => WORKLOAD_PROFILES_GET,
             Self::WorkloadProfileRevisionsList => WORKLOAD_PROFILE_REVISIONS_LIST,
             Self::WorkloadProfileRevisionsGet => WORKLOAD_PROFILE_REVISIONS_GET,
+            Self::PullRequestPreviewPoliciesAccept => PULL_REQUEST_PREVIEW_POLICIES_ACCEPT,
+            Self::PullRequestPreviewPoliciesGet => PULL_REQUEST_PREVIEW_POLICIES_GET,
+            Self::PullRequestPreviewPolicyRevisionsList => {
+                PULL_REQUEST_PREVIEW_POLICY_REVISIONS_LIST
+            }
+            Self::PullRequestPreviewPolicyRevisionsGet => PULL_REQUEST_PREVIEW_POLICY_REVISIONS_GET,
+            Self::PullRequestPreviewsGet => PULL_REQUEST_PREVIEWS_GET,
             Self::BuildRunsList => BUILD_RUNS_LIST,
             Self::BuildRunsGet => BUILD_RUNS_GET,
             Self::BuildRunLogsGet => BUILD_RUN_LOGS_GET,
@@ -751,6 +778,7 @@ impl ManagementTool {
             }
             Self::BuildPlansAccept
             | Self::WorkloadProfilesAccept
+            | Self::PullRequestPreviewPoliciesAccept
             | Self::BuildRunsCancel
             | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::MyMembershipInvitationsList
@@ -784,7 +812,11 @@ impl ManagementTool {
             | Self::BuildPlansGet
             | Self::WorkloadProfilesGet
             | Self::WorkloadProfileRevisionsList
-            | Self::WorkloadProfileRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::WorkloadProfileRevisionsGet
+            | Self::PullRequestPreviewPoliciesGet
+            | Self::PullRequestPreviewPolicyRevisionsList
+            | Self::PullRequestPreviewPolicyRevisionsGet
+            | Self::PullRequestPreviewsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -919,6 +951,11 @@ impl ManagementTool {
             | Self::WorkloadProfilesGet
             | Self::WorkloadProfileRevisionsList
             | Self::WorkloadProfileRevisionsGet
+            | Self::PullRequestPreviewPoliciesAccept
+            | Self::PullRequestPreviewPoliciesGet
+            | Self::PullRequestPreviewPolicyRevisionsList
+            | Self::PullRequestPreviewPolicyRevisionsGet
+            | Self::PullRequestPreviewsGet
             | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
@@ -1865,6 +1902,36 @@ impl ManagementTool {
                 get_workload_profile_revision_schema(),
                 true,
             ),
+            Self::PullRequestPreviewPoliciesAccept => (
+                "Accept pull-request Preview Policy revision",
+                "Accept one canonical pull-request Preview Policy ACL as an immutable revision with explicit idempotency.",
+                accept_pull_request_preview_policy_schema(),
+                false,
+            ),
+            Self::PullRequestPreviewPoliciesGet => (
+                "Get current pull-request Preview Policy revision",
+                "Get the current immutable Preview Policy revision for one source subscription in an exact tenant-authorized environment.",
+                get_pull_request_preview_policy_schema(),
+                true,
+            ),
+            Self::PullRequestPreviewPolicyRevisionsList => (
+                "List pull-request Preview Policy revisions",
+                "List one bounded canonical ascending history of immutable Preview Policy revisions.",
+                list_pull_request_preview_policy_revisions_schema(),
+                true,
+            ),
+            Self::PullRequestPreviewPolicyRevisionsGet => (
+                "Get pull-request Preview Policy revision",
+                "Get one exact immutable Preview Policy revision in a tenant-authorized environment.",
+                get_pull_request_preview_policy_revision_schema(),
+                true,
+            ),
+            Self::PullRequestPreviewsGet => (
+                "Get pull-request Preview",
+                "Get the current behavioral Preview projection for one pull request and source subscription.",
+                get_pull_request_preview_schema(),
+                true,
+            ),
             Self::BuildRunsList => (
                 "List build runs",
                 "List a bounded set of BuildRuns in one tenant-authorized environment.",
@@ -2476,6 +2543,109 @@ fn workload_profile_identity_properties() -> Map<String, Value> {
         json!({"type": "string", "format": "uuid"}),
     );
     properties
+}
+
+fn preview_policy_identity_properties() -> Map<String, Value> {
+    let mut properties = developer_workflow_environment_properties();
+    properties.insert(
+        "sourceSubscriptionId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties
+}
+
+fn accept_pull_request_preview_policy_schema() -> Value {
+    let mut properties = preview_policy_identity_properties();
+    properties.insert(
+        "policyAcl".into(),
+        canonical_acl_input_schema(
+            PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES,
+            include_str!("../../../../../contracts/p0.3/pull-request-preview-policy.acl"),
+        ),
+    );
+    properties.insert("idempotencyKey".into(), idempotency_key_schema());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "sourceSubscriptionId",
+            "policyAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn get_pull_request_preview_policy_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": preview_policy_identity_properties(),
+        "required": ["projectId", "environmentId", "sourceSubscriptionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_pull_request_preview_policy_revisions_schema() -> Value {
+    let mut properties = preview_policy_identity_properties();
+    properties.insert(
+        "limit".into(),
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+            "default": DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT
+        }),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["projectId", "environmentId", "sourceSubscriptionId"],
+        "additionalProperties": false
+    })
+}
+
+fn get_pull_request_preview_policy_revision_schema() -> Value {
+    let mut properties = preview_policy_identity_properties();
+    properties.insert(
+        "previewPolicyRevisionId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "sourceSubscriptionId",
+            "previewPolicyRevisionId"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn get_pull_request_preview_schema() -> Value {
+    let mut properties = preview_policy_identity_properties();
+    properties.insert(
+        "pullRequestId".into(),
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
+        }),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "sourceSubscriptionId",
+            "pullRequestId"
+        ],
+        "additionalProperties": false
+    })
 }
 
 fn canonical_acl_input_schema(maximum_bytes: usize, example: &str) -> Value {
@@ -3894,6 +4064,88 @@ mod tests {
     }
 
     #[test]
+    fn preview_management_catalog_is_acl_only_revision_aware_and_scope_explicit() {
+        for tool in [
+            ManagementTool::PullRequestPreviewPoliciesGet,
+            ManagementTool::PullRequestPreviewPolicyRevisionsList,
+            ManagementTool::PullRequestPreviewPolicyRevisionsGet,
+            ManagementTool::PullRequestPreviewsGet,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::EnvironmentArguments)
+            );
+            assert_eq!(
+                tool.definition()["annotations"]["readOnlyHint"].as_bool(),
+                Some(true)
+            );
+        }
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPoliciesAccept.required_scope(),
+            Some(ApiTokenScope::BUILD_WRITE)
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPoliciesAccept.resource_binding(),
+            Some(ManagementResourceBinding::EnvironmentArguments)
+        );
+
+        let acceptance = ManagementTool::PullRequestPreviewPoliciesAccept.definition();
+        let properties = &acceptance["inputSchema"]["properties"];
+        assert_eq!(
+            properties["policyAcl"]["maxLength"].as_u64(),
+            Some(PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["policyAcl"]["x-a3s-max-utf8-bytes"].as_u64(),
+            Some(PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["policyAcl"]["example"].as_str(),
+            Some(include_str!(
+                "../../../../../contracts/p0.3/pull-request-preview-policy.acl"
+            ))
+        );
+        assert!(properties.get("policy").is_none());
+        assert_eq!(acceptance["inputSchema"]["additionalProperties"], false);
+
+        let list = ManagementTool::PullRequestPreviewPolicyRevisionsList.definition();
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["maximum"],
+            MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT
+        );
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["default"],
+            DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT
+        );
+        let preview = ManagementTool::PullRequestPreviewsGet.definition();
+        assert_eq!(
+            preview["inputSchema"]["properties"]["pullRequestId"]["maximum"].as_u64(),
+            Some(MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER)
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPoliciesAccept.name(),
+            PULL_REQUEST_PREVIEW_POLICIES_ACCEPT
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPoliciesGet.name(),
+            PULL_REQUEST_PREVIEW_POLICIES_GET
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPolicyRevisionsList.name(),
+            PULL_REQUEST_PREVIEW_POLICY_REVISIONS_LIST
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewPolicyRevisionsGet.name(),
+            PULL_REQUEST_PREVIEW_POLICY_REVISIONS_GET
+        );
+        assert_eq!(
+            ManagementTool::PullRequestPreviewsGet.name(),
+            PULL_REQUEST_PREVIEWS_GET
+        );
+    }
+
+    #[test]
     fn restricted_catalog_exposes_direct_and_filtered_collection_tools() {
         let principal = restricted_principal(ResourceGrantScope::Project {
             project_id: ProjectId::new(),
@@ -3938,6 +4190,11 @@ mod tests {
         assert!(ManagementTool::WorkloadProfilesGet.visible_to(&principal));
         assert!(ManagementTool::WorkloadProfileRevisionsList.visible_to(&principal));
         assert!(ManagementTool::WorkloadProfileRevisionsGet.visible_to(&principal));
+        assert!(ManagementTool::PullRequestPreviewPoliciesAccept.visible_to(&principal));
+        assert!(ManagementTool::PullRequestPreviewPoliciesGet.visible_to(&principal));
+        assert!(ManagementTool::PullRequestPreviewPolicyRevisionsList.visible_to(&principal));
+        assert!(ManagementTool::PullRequestPreviewPolicyRevisionsGet.visible_to(&principal));
+        assert!(ManagementTool::PullRequestPreviewsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunLogsGet.visible_to(&principal));
         assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));

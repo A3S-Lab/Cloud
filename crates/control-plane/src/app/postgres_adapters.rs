@@ -257,6 +257,7 @@ pub(super) struct DeveloperWorkflowManagementPostgresAdapters {
     pub(super) build_plans: Arc<dyn IBuildPlanRepository>,
     pub(super) workload_profiles: Arc<dyn IWorkloadProfileRepository>,
     pub(super) preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    pub(super) preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
 }
 
 impl DeveloperWorkflowManagementPostgresAdapters {
@@ -265,6 +266,7 @@ impl DeveloperWorkflowManagementPostgresAdapters {
             build_plans: Arc::new(PostgresBuildPlanRepository::new(executor.clone())),
             workload_profiles: Arc::new(PostgresWorkloadProfileRepository::new(executor.clone())),
             preview_policies: pull_request_preview_policy_repository(&executor),
+            preview_projections: pull_request_preview_projection_repository(&executor),
         }
     }
 }
@@ -278,9 +280,7 @@ impl DeveloperWorkflowProjectionPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         Self {
             preview_policies: pull_request_preview_policy_repository(&executor),
-            preview_projections: Arc::new(PostgresPullRequestPreviewProjectionRepository::new(
-                executor,
-            )),
+            preview_projections: pull_request_preview_projection_repository(&executor),
         }
     }
 }
@@ -291,6 +291,14 @@ fn pull_request_preview_policy_repository(
     executor: &PostgresExecutor,
 ) -> Arc<dyn IPullRequestPreviewPolicyRepository> {
     Arc::new(PostgresPullRequestPreviewPolicyRepository::new(
+        executor.clone(),
+    ))
+}
+
+fn pull_request_preview_projection_repository(
+    executor: &PostgresExecutor,
+) -> Arc<dyn IPullRequestPreviewProjectionRepository> {
+    Arc::new(PostgresPullRequestPreviewProjectionRepository::new(
         executor.clone(),
     ))
 }

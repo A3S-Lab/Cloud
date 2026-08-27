@@ -1,4 +1,6 @@
-use super::{PullRequestPreview, PullRequestPreviewLifecycleEvent};
+use super::{
+    PullRequestPreview, PullRequestPreviewLifecycleEvent, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotentWrite, OrganizationId, ProjectId,
     PullRequestPreviewId, PullRequestPreviewPolicyRevisionId, RepositoryError, Sha256Digest,
@@ -73,9 +75,9 @@ impl PullRequestPreviewFactFingerprint {
             || self.source_environment_id.as_uuid().is_nil()
             || self.source_subscription_id.as_uuid().is_nil()
             || self.pull_request_id == 0
-            || self.pull_request_id > i64::MAX as u64
+            || self.pull_request_id > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
             || self.pull_request_number == 0
-            || self.pull_request_number > i64::MAX as u64
+            || self.pull_request_number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
             || self.fact_digest != Sha256Digest::parse(self.fact_digest.as_str())?
             || self.fact_occurred_at != canonical_timestamp(self.fact_occurred_at)
         {
@@ -121,6 +123,9 @@ impl PullRequestPreviewProjectionReceipt {
             .is_some_and(|id| id.as_uuid().is_nil())
             || self.preview_id.is_some_and(|id| id.as_uuid().is_nil())
             || self.preview_aggregate_version == Some(0)
+            || self
+                .preview_aggregate_version
+                .is_some_and(|version| version > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER)
             || self.preview_id.is_some() != self.preview_aggregate_version.is_some()
         {
             return Err("pull-request Preview projection receipt is invalid".into());
@@ -173,7 +178,10 @@ pub struct PullRequestPreviewVersion {
 
 impl PullRequestPreviewVersion {
     pub fn validate(self) -> Result<(), String> {
-        if self.id.as_uuid().is_nil() || self.aggregate_version == 0 {
+        if self.id.as_uuid().is_nil()
+            || self.aggregate_version == 0
+            || self.aggregate_version > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
+        {
             return Err("observed pull-request Preview version is invalid".into());
         }
         Ok(())
@@ -326,6 +334,29 @@ mod tests {
         }
         .validate()
         .is_ok());
+    }
+
+    #[test]
+    fn projection_evidence_rejects_non_portable_public_integers() {
+        let mut invalid_id = receipt(PullRequestPreviewProjectionOutcome::ForkDenied);
+        invalid_id.pull_request_id = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+        assert!(invalid_id.validate().is_err());
+
+        let mut invalid_number = receipt(PullRequestPreviewProjectionOutcome::ForkDenied);
+        invalid_number.pull_request_number = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+        assert!(invalid_number.validate().is_err());
+
+        let mut invalid_version = receipt(PullRequestPreviewProjectionOutcome::Created);
+        invalid_version.preview_id = Some(PullRequestPreviewId::new());
+        invalid_version.preview_aggregate_version = Some(MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1);
+        assert!(invalid_version.validate().is_err());
+
+        assert!(PullRequestPreviewVersion {
+            id: PullRequestPreviewId::new(),
+            aggregate_version: MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1,
+        }
+        .validate()
+        .is_err());
     }
 
     fn receipt(

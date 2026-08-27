@@ -66,16 +66,24 @@ import {
 } from './connectors';
 import {
   type AcceptBuildPlanInput,
+  type AcceptPullRequestPreviewPolicyInput,
   type AcceptWorkloadProfileInput,
   type AcceptedBuildPlan,
+  type AcceptedPullRequestPreviewPolicyRevision,
   type AcceptedWorkloadProfileRevision,
   type BuildPlanDetection,
   type BuildPlanMutationResult,
   DEFAULT_BUILD_PLAN_LIST_LIMIT,
+  DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
   DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
   type DetectBuildPlansInput,
+  type PullRequestPreview,
+  type PullRequestPreviewPolicyMutationResult,
   validateBuildPlanListLimit,
   validateBuildPlanProposalAcl,
+  validatePreviewPolicyRevisionListLimit,
+  validatePullRequestPreviewId,
+  validatePullRequestPreviewPolicyAcl,
   validateWorkloadProfileAcl,
   validateWorkloadProfileRevisionListLimit,
   type WorkloadProfileMutationResult,
@@ -352,7 +360,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.74.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.75.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -3655,6 +3663,89 @@ export class CloudApi {
       `${developerWorkflowEnvironmentPath(organizationId, projectId, environmentId)}` +
         `/workload-profiles/${encodeURIComponent(workloadProfileId)}` +
         `/revisions/${encodeURIComponent(workloadProfileRevisionId)}`,
+      signal
+    );
+  }
+
+  acceptPullRequestPreviewPolicy(
+    organizationId: string,
+    projectId: string,
+    sourceEnvironmentId: string,
+    input: AcceptPullRequestPreviewPolicyInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PullRequestPreviewPolicyMutationResult> {
+    validatePullRequestPreviewPolicyAcl(input.policyAcl);
+    return this.postJson(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, sourceEnvironmentId)}` +
+        '/pull-request-preview-policies',
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getCurrentAcceptedPullRequestPreviewPolicyRevision(
+    organizationId: string,
+    projectId: string,
+    sourceEnvironmentId: string,
+    sourceSubscriptionId: string,
+    signal?: AbortSignal
+  ): Promise<AcceptedPullRequestPreviewPolicyRevision> {
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, sourceEnvironmentId)}` +
+        `/pull-request-preview-policies/${encodeURIComponent(sourceSubscriptionId)}`,
+      signal
+    );
+  }
+
+  listAcceptedPullRequestPreviewPolicyRevisions(
+    organizationId: string,
+    projectId: string,
+    sourceEnvironmentId: string,
+    sourceSubscriptionId: string,
+    limit = DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<AcceptedPullRequestPreviewPolicyRevision[]> {
+    validatePreviewPolicyRevisionListLimit(limit);
+    const query = new URLSearchParams({ limit: String(limit) }).toString();
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, sourceEnvironmentId)}` +
+        `/pull-request-preview-policies/${encodeURIComponent(sourceSubscriptionId)}` +
+        `/revisions?${query}`,
+      signal
+    );
+  }
+
+  getAcceptedPullRequestPreviewPolicyRevision(
+    organizationId: string,
+    projectId: string,
+    sourceEnvironmentId: string,
+    sourceSubscriptionId: string,
+    previewPolicyRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<AcceptedPullRequestPreviewPolicyRevision> {
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, sourceEnvironmentId)}` +
+        `/pull-request-preview-policies/${encodeURIComponent(sourceSubscriptionId)}` +
+        `/revisions/${encodeURIComponent(previewPolicyRevisionId)}`,
+      signal
+    );
+  }
+
+  getPullRequestPreview(
+    organizationId: string,
+    projectId: string,
+    sourceEnvironmentId: string,
+    sourceSubscriptionId: string,
+    pullRequestId: number,
+    signal?: AbortSignal
+  ): Promise<PullRequestPreview> {
+    validatePullRequestPreviewId(pullRequestId);
+    return this.get(
+      `${developerWorkflowEnvironmentPath(organizationId, projectId, sourceEnvironmentId)}` +
+        `/pull-request-previews/${encodeURIComponent(sourceSubscriptionId)}` +
+        `/pull-requests/${pullRequestId}`,
       signal
     );
   }

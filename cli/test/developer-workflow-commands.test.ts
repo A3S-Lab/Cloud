@@ -3,6 +3,8 @@ import {
   type BuildPlanDetection,
   type CloudFetch,
   MAX_BUILD_PLAN_PROPOSAL_ACL_BYTES,
+  MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+  MAX_PULL_REQUEST_PREVIEW_POLICY_ACL_BYTES,
   MAX_WORKLOAD_PROFILE_ACL_BYTES,
 } from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
@@ -16,10 +18,15 @@ const BUILD_PLAN_ID = '019c0000-0000-7000-8000-000000000005';
 const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000006';
 const WORKLOAD_PROFILE_ID = '019c0000-0000-7000-8000-000000000007';
 const WORKLOAD_PROFILE_REVISION_ID = '019c0000-0000-7000-8000-000000000008';
+const SOURCE_SUBSCRIPTION_ID = '019c0000-0000-7000-8000-000000000009';
+const PREVIEW_POLICY_REVISION_ID = '019c0000-0000-7000-8000-00000000000a';
+const PREVIEW_ID = '019c0000-0000-7000-8000-00000000000b';
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const COMMIT = 'b'.repeat(40);
 const PROPOSAL_ACL = 'build_plan { schema = "a3s.cloud.build-plan-proposal.v1" detector = "dockerfile" }\n';
 const PROFILE_ACL = 'workload_profile { schema = "a3s.cloud.workload-profile.v1" }\n';
+const PREVIEW_POLICY_ACL =
+  'pull_request_preview_policy { schema = "a3s.cloud.pull-request-preview-policy.v1" }\n';
 
 describe('a3s-cloud BuildPlan commands', () => {
   it('detects proposals as a read-only POST without an idempotency header', async () => {
@@ -276,6 +283,169 @@ describe('a3s-cloud BuildPlan commands', () => {
     expect(output.stderr()).toContain('WorkloadProfile revision list limit must be between 1 and 100');
     expect(called).toBe(false);
   });
+
+  it('accepts one ACL-only Preview Policy revision with caller-owned idempotency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(
+      [
+        'preview-policies',
+        'accept',
+        SOURCE_SUBSCRIPTION_ID,
+        '--file=preview-policy.acl',
+        '--idempotency-key=cli:preview-policy:accept',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        readFile: async (path) => {
+          expect(path).toBe('preview-policy.acl');
+          return new TextEncoder().encode(PREVIEW_POLICY_ACL);
+        },
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ previewPolicyRevision: acceptedPreviewPolicyRevision(), replayed: false }, 201);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(previewPolicyCollection());
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          sourceSubscriptionId: SOURCE_SUBSCRIPTION_ID,
+          policyAcl: PREVIEW_POLICY_ACL,
+        }),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'cli:preview-policy:accept',
+        }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
+  it('gets current policy, bounded history, exact revision, and one PR Preview', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const request = String(args[0]);
+        if (request.includes('/pull-request-previews/')) {
+          return envelope(pullRequestPreview());
+        }
+        return envelope(
+          request.includes('/revisions?')
+            ? [acceptedPreviewPolicyRevision()]
+            : acceptedPreviewPolicyRevision()
+        );
+      },
+    };
+
+    expect(await runCli(['preview-policies', 'get', SOURCE_SUBSCRIPTION_ID, '--output=json'], runtime)).toBe(
+      ExitCode.Success
+    );
+    expect(
+      await runCli(
+        ['preview-policy-revisions', 'list', SOURCE_SUBSCRIPTION_ID, '--limit=2', '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'preview-policy-revisions',
+          'get',
+          SOURCE_SUBSCRIPTION_ID,
+          PREVIEW_POLICY_REVISION_ID,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(['pull-request-previews', 'get', SOURCE_SUBSCRIPTION_ID, '42', '--output=json'], runtime)
+    ).toBe(ExitCode.Success);
+
+    const policy = `${previewPolicyCollection()}/${SOURCE_SUBSCRIPTION_ID}`;
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [policy, 'GET'],
+      [`${policy}/revisions?limit=2`, 'GET'],
+      [`${policy}/revisions/${PREVIEW_POLICY_REVISION_ID}`, 'GET'],
+      [
+        `${developerWorkflowEnvironmentBase()}/pull-request-previews/${SOURCE_SUBSCRIPTION_ID}` +
+          '/pull-requests/42',
+        'GET',
+      ],
+    ]);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects non-ACL Preview files, oversized ACL, history bounds, and PR IDs before transport', async () => {
+    let called = false;
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async () => new Uint8Array(MAX_PULL_REQUEST_PREVIEW_POLICY_ACL_BYTES + 1),
+      fetch: async () => {
+        called = true;
+        return envelope({});
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'preview-policies',
+          'accept',
+          SOURCE_SUBSCRIPTION_ID,
+          '--file=preview-policy.json',
+          '--idempotency-key=cli:preview-policy:wrong-file',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Usage);
+    expect(output.stderr()).toContain('.acl');
+    expect(
+      await runCli(
+        [
+          'preview-policies',
+          'accept',
+          SOURCE_SUBSCRIPTION_ID,
+          '--file=preview-policy.acl',
+          '--idempotency-key=cli:preview-policy:oversized',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Usage);
+    expect(output.stderr()).toContain('Pull-request Preview Policy ACL must contain between');
+    expect(
+      await runCli(['preview-policy-revisions', 'list', SOURCE_SUBSCRIPTION_ID, '--limit=101'], runtime)
+    ).toBe(ExitCode.Usage);
+    expect(output.stderr()).toContain(
+      'Pull-request Preview Policy revision list limit must be between 1 and 100'
+    );
+    expect(
+      await runCli(
+        [
+          'pull-request-previews',
+          'get',
+          SOURCE_SUBSCRIPTION_ID,
+          String(MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1),
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Usage);
+    expect(output.stderr()).toContain('Pull-request ID must be a portable positive integer');
+    expect(called).toBe(false);
+  });
 });
 
 function detection(): BuildPlanDetection {
@@ -378,11 +548,96 @@ function acceptedProfileRevision() {
   };
 }
 
+function acceptedPreviewPolicyRevision() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    sourceEnvironmentId: ENVIRONMENT_ID,
+    sourceSubscriptionId: SOURCE_SUBSCRIPTION_ID,
+    pullRequestPreviewPolicyRevisionId: PREVIEW_POLICY_REVISION_ID,
+    revisionNumber: 1,
+    contractSchema: 'a3s.cloud.pull-request-preview-policy.v1' as const,
+    contractAcl: PREVIEW_POLICY_ACL,
+    contractDigest: DIGEST,
+    policy: previewPolicy(),
+    acceptedBy: PRINCIPAL_ID,
+    acceptedAt: '2026-08-27T00:00:00.000Z',
+  };
+}
+
+function previewPolicy() {
+  return {
+    ownerPrincipalId: PRINCIPAL_ID,
+    installationId: 42,
+    baseRepository: {
+      provider: 'github' as const,
+      canonicalUrl: 'https://github.com/a3s-lab/cloud',
+    },
+    baseBranch: 'main',
+    lifetimeSeconds: 86_400,
+    maximumActivePreviews: 8,
+    forkPolicy: 'isolated' as const,
+    allowProtectedSecretsForTrustedSources: true,
+    quota: {
+      maximumWorkloads: 4,
+      cpuMillis: 2_000,
+      memoryBytes: 1_073_741_824,
+      ephemeralStorageBytes: 1_073_741_824,
+    },
+  };
+}
+
+function pullRequestPreview() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    sourceEnvironmentId: ENVIRONMENT_ID,
+    sourceSubscriptionId: SOURCE_SUBSCRIPTION_ID,
+    previewId: PREVIEW_ID,
+    environmentId: '019c0000-0000-7000-8000-00000000000c',
+    environmentName: `pr-42-${PREVIEW_ID.replaceAll('-', '')}`,
+    pullRequestId: 42,
+    pullRequestNumber: 42,
+    policyRevisionId: PREVIEW_POLICY_REVISION_ID,
+    policyRevisionNumber: 1,
+    policyAcceptedAt: '2026-08-27T00:00:00.000Z',
+    policy: previewPolicy(),
+    headRepository: {
+      provider: 'github' as const,
+      canonicalUrl: 'https://github.com/a3s-lab/cloud',
+    },
+    headBranch: 'feature/preview',
+    headCommitSha: COMMIT,
+    providerCreatedAt: '2026-08-27T00:00:00.000Z',
+    lastProviderUpdatedAt: '2026-08-27T00:01:00.000Z',
+    lastChangeKind: 'opened' as const,
+    lastMerged: false,
+    expiresAt: '2026-08-28T00:01:00.000Z',
+    status: 'active' as const,
+    cleanupReason: null,
+    cleanupRequestedAt: null,
+    aggregateVersion: 1,
+    isFork: false,
+    protectedSecretsEligible: true,
+  };
+}
+
 function workloadProfileBase(): string {
   return (
     `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
     `/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/workload-profiles`
   );
+}
+
+function developerWorkflowEnvironmentBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}`
+  );
+}
+
+function previewPolicyCollection(): string {
+  return `${developerWorkflowEnvironmentBase()}/pull-request-preview-policies`;
 }
 
 function envelope(data: unknown, status = 200): Response {

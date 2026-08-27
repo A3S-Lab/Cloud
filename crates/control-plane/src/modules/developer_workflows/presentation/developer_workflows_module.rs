@@ -1,4 +1,7 @@
 use super::controller::{build_plan_commands_controller, build_plan_queries_controller};
+use super::preview_management_controller::{
+    preview_management_commands_controller, preview_management_queries_controller,
+};
 use super::workload_profile_controller::{
     workload_profile_commands_controller, workload_profile_queries_controller,
 };
@@ -18,6 +21,8 @@ impl Module for DeveloperWorkflowsModule {
             build_plan_queries_controller(module_ref.get::<QueryBus>()?)?,
             workload_profile_commands_controller(module_ref.get::<CommandBus>()?)?,
             workload_profile_queries_controller(module_ref.get::<QueryBus>()?)?,
+            preview_management_commands_controller(module_ref.get::<CommandBus>()?)?,
+            preview_management_queries_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }
 }

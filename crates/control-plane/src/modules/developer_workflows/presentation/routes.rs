@@ -21,6 +21,21 @@ pub(crate) const WORKLOAD_PROFILE_REVISION_COLLECTION_ROUTE: &str =
 pub(crate) const WORKLOAD_PROFILE_REVISION_ITEM_ROUTE: &str =
     "/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles/{workload_profile_id}/revisions/{workload_profile_revision_id}";
 
+pub(crate) const PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/environments/{environment_id}/pull-request-preview-policies";
+
+pub(crate) const PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/environments/{environment_id}/pull-request-preview-policies/{source_subscription_id}";
+
+pub(crate) const PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/environments/{environment_id}/pull-request-preview-policies/{source_subscription_id}/revisions";
+
+pub(crate) const PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/environments/{environment_id}/pull-request-preview-policies/{source_subscription_id}/revisions/{preview_policy_revision_id}";
+
+pub(crate) const PULL_REQUEST_PREVIEW_ITEM_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/environments/{environment_id}/pull-request-previews/{source_subscription_id}/pull-requests/{pull_request_id}";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -38,6 +53,11 @@ mod tests {
             WORKLOAD_PROFILE_ITEM_ROUTE,
             WORKLOAD_PROFILE_REVISION_COLLECTION_ROUTE,
             WORKLOAD_PROFILE_REVISION_ITEM_ROUTE,
+            PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE,
+            PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
+            PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE,
+            PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE,
+            PULL_REQUEST_PREVIEW_ITEM_ROUTE,
         ] {
             assert!(route.starts_with(expected_scope));
             assert!(!format!("{DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX}{route}").contains("//"));

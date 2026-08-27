@@ -21,7 +21,7 @@ use crate::modules::connectors::{
 use crate::modules::developer_workflows::{
     BuildPlanSourceLayoutError, BuildPlanSourceLayoutRequest, IBuildPlanSourceLayoutPort,
     InMemoryBuildPlanRepository, InMemoryPullRequestPreviewPolicyRepository,
-    InMemoryWorkloadProfileRepository,
+    InMemoryPullRequestPreviewProjectionRepository, InMemoryWorkloadProfileRepository,
 };
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
@@ -2076,6 +2076,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             developer_workflow_build_plans: Arc::new(InMemoryBuildPlanRepository::new()),
             developer_workload_profiles: Arc::new(InMemoryWorkloadProfileRepository::new()),
             developer_preview_policies: Arc::new(InMemoryPullRequestPreviewPolicyRepository::new()),
+            developer_preview_projections: Arc::new(
+                InMemoryPullRequestPreviewProjectionRepository::new(),
+            ),
             durable_cell_applications: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
             ),

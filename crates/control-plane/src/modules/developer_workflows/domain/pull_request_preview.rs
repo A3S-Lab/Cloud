@@ -12,9 +12,14 @@ use chrono::{DateTime, TimeDelta, Utc};
 use std::cmp::Ordering;
 use uuid::Uuid;
 
+use super::MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER;
+
 pub const MIN_PREVIEW_LIFETIME_SECONDS: u32 = PREVIEW_MIN_LIFETIME_SECONDS;
 pub const MAX_PREVIEW_LIFETIME_SECONDS: u32 = PREVIEW_MAX_LIFETIME_SECONDS;
 pub const MAX_ACTIVE_PREVIEWS_PER_POLICY: u16 = PREVIEW_MAX_ACTIVE_PER_POLICY;
+pub const MAX_PREVIEW_GIT_BRANCH_BYTES: usize = 255;
+pub const MAX_PREVIEW_GIT_REPOSITORY_URL_BYTES: usize = 159;
+pub const MAX_PREVIEW_ENVIRONMENT_NAME_BYTES: usize = 63;
 const PREVIEW_NAMESPACE: Uuid = Uuid::from_bytes([
     0xac, 0xf1, 0x2e, 0xb7, 0xb2, 0x20, 0x4c, 0x19, 0x85, 0x62, 0x23, 0x4a, 0x7e, 0x6d, 0x31, 0x55,
 ]);
@@ -29,7 +34,7 @@ pub struct GithubInstallationRef(u64);
 
 impl GithubInstallationRef {
     pub fn parse(value: u64) -> Result<Self, String> {
-        if value == 0 || value > i64::MAX as u64 {
+        if value == 0 || value > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER {
             return Err("preview GitHub installation reference is invalid".into());
         }
         Ok(Self(value))
@@ -49,7 +54,7 @@ impl GitBranch {
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
         if value.is_empty()
-            || value.len() > 255
+            || value.len() > MAX_PREVIEW_GIT_BRANCH_BYTES
             || value == "@"
             || value.starts_with("refs/")
             || value.starts_with('/')
@@ -250,6 +255,7 @@ impl PullRequestPreviewPolicy {
             || self.source_subscription_id.as_uuid().is_nil()
             || self.owner_principal_id.as_uuid().is_nil()
             || self.base_repository.provider() != GitProvider::Github
+            || self.base_repository.canonical_url().len() > MAX_PREVIEW_GIT_REPOSITORY_URL_BYTES
             || !(MIN_PREVIEW_LIFETIME_SECONDS..=MAX_PREVIEW_LIFETIME_SECONDS)
                 .contains(&self.lifetime_seconds)
             || self.maximum_active_previews == 0
@@ -291,7 +297,7 @@ impl PullRequestPreviewPolicyAuthority {
         if self.source_environment_id.as_uuid().is_nil()
             || self.revision_id.as_uuid().is_nil()
             || self.revision_number == 0
-            || self.revision_number > i64::MAX as u64
+            || self.revision_number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
             || self.accepted_at != canonical_timestamp(self.accepted_at)
         {
             return Err("Preview Policy authority identity or time is invalid".into());
@@ -403,14 +409,15 @@ impl PullRequestPreview {
     ) -> Result<String, String> {
         if preview_id.as_uuid().is_nil()
             || pull_request_number == 0
-            || pull_request_number > i64::MAX as u64
+            || pull_request_number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
         {
             return Err("Preview Environment identity is invalid".into());
         }
-        Ok(format!(
-            "pr-{pull_request_number}-{}",
-            preview_id.as_uuid().simple()
-        ))
+        let name = format!("pr-{pull_request_number}-{}", preview_id.as_uuid().simple());
+        if name.len() > MAX_PREVIEW_ENVIRONMENT_NAME_BYTES {
+            return Err("Preview Environment name exceeds its public bound".into());
+        }
+        Ok(name)
     }
 
     pub fn environment_name(&self) -> String {
@@ -444,6 +451,7 @@ impl PullRequestPreview {
         if self.id != expected_id
             || self.environment_id != Self::environment_id_for(expected_id)
             || self.aggregate_version == 0
+            || self.aggregate_version > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
             || self.provider_created_at != canonical_timestamp(self.provider_created_at)
             || self.last_provider_updated_at != canonical_timestamp(self.last_provider_updated_at)
             || self.expires_at != canonical_timestamp(self.expires_at)
@@ -665,8 +673,12 @@ fn validate_change_binding(
 }
 
 fn validate_pull_request_identity(id: u64, number: u64) -> Result<(), String> {
-    if id == 0 || id > i64::MAX as u64 || number == 0 || number > i64::MAX as u64 {
-        return Err("pull-request identity must use positive signed 64-bit integers".into());
+    if id == 0
+        || id > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
+        || number == 0
+        || number > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER
+    {
+        return Err("pull-request identity must use portable positive integers".into());
     }
     Ok(())
 }

@@ -617,6 +617,90 @@ Sources aggregate nor repository. Management and Relay select separate
 role-scoped instances of the same migration `153` repository through one
 constructor rule; revision and event authority are not duplicated.
 
+`P0.3-C7` exposes that model without changing its ownership. One Application
+`PreviewPolicyQueryService` owns current, exact-revision, and bounded continuous
+history reads over `IPullRequestPreviewPolicyRepository`; one separate
+`PullRequestPreviewQueryService` owns the exact current behavioral read over
+`IPullRequestPreviewProjectionRepository`. Both share the existing
+`IDeveloperWorkflowAuthorizationPort`, authorize before private identity
+validation, and revalidate restored Domain state plus exact scope. The split is
+intentional: policy lineage and the pull-request lifecycle projection are
+separate aggregates with separate repositories, while authorization and
+transport projection are shared mechanisms. REST and Management MCP dispatch
+only the existing command and four typed queries; OpenAPI `1.75.0`, the
+maintained client, and CLI preserve the same ACL-only contract and bounds.
+
+```mermaid
+flowchart TB
+  subgraph Public[Public adapters — no repository or ACL parser]
+    CLI[CLI: .acl file + exact IDs]
+    TS[TypeScript client]
+    REST[REST controllers]
+    MCP[5 Management MCP tools]
+    DTO[Closed shared response DTOs]
+    CLI --> TS --> REST
+    MCP --> DTO
+    REST --> DTO
+  end
+
+  subgraph Application[Developer Workflows Application]
+    CB[Existing CommandBus]
+    QB[Existing QueryBus]
+    AH[AcceptPullRequestPreviewPolicyHandler]
+    PQ[PreviewPolicyQueryService]
+    RQ[PullRequestPreviewQueryService]
+    AUTH[IDeveloperWorkflowAuthorizationPort]
+    SUB[IPreviewSourceSubscriptionQueryPort]
+    PRP[IPullRequestPreviewPolicyRepository]
+    PVP[IPullRequestPreviewProjectionRepository]
+    CB --> AH
+    QB --> PQ
+    QB --> RQ
+    AH --> AUTH
+    AH --> SUB
+    AH --> PRP
+    PQ --> AUTH
+    PQ --> PRP
+    RQ --> AUTH
+    RQ --> PVP
+  end
+
+  subgraph Domain[Developer Workflows Domain]
+    PC[PullRequestPreviewPolicyContract\ncanonical ACL + digest]
+    REV[AcceptedPullRequestPreviewPolicyRevision\nimmutable revision + authority]
+    PRE[PullRequestPreview\nstable identity + status + quota + expiry]
+    PC --> REV
+    REV -->|one immutable authority governs 0..n| PRE
+  end
+
+  subgraph Owners[Owner anti-corruption boundaries]
+    IDP[Identity + Projects\nmembership/grant/environment decision]
+    SRC[Sources\nexact active subscription binding]
+  end
+
+  REST --> CB
+  REST --> QB
+  MCP --> CB
+  MCP --> QB
+  AUTH --> IDP
+  SUB --> SRC
+  PRP --> REV
+  PVP --> PRE
+```
+
+The management cardinalities are:
+
+- one exact Sources subscription has zero or one logical policy head and an
+  append-only sequence of immutable revisions;
+- one policy revision belongs to exactly one Organization, Project, source
+  Environment, and subscription and may govern many pull-request Previews;
+- one logical Preview is keyed by the subscription plus portable provider
+  pull-request identity and retains exactly one immutable policy revision;
+- current/history/exact policy queries and the exact Preview query never create
+  a second head, receipt, event, owner resource, or lifecycle transition; and
+- REST, client, CLI, and MCP are replaceable adapters over the same command,
+  queries, authorization port, repositories, bounds, and response projection.
+
 `P0.3-C3` production-composes the Sources producer, not the Preview consumer.
 `SourceWebhookPayload` is a closed sum type: Push retains the existing
 SourceRevision fanout, while PullRequest produces
@@ -788,9 +872,9 @@ The cardinality and authority invariants are:
 - one exact BuildRun retirement receipt authorizes at most one later retry of
   that same SourceRevision.
 
-C5a-C5c remain component-only and expose no API. Workloads, Edge, and Operations
-handoffs, expiry/cleanup execution, Environment archive/delete, and management
-remain open; their aggregates and mechanisms cannot move into Developer
+C5a-C5c remain component-only; C7 exposes only policy and current behavioral
+reads. Workloads, Edge, and Operations handoffs, expiry/cleanup execution, and
+Environment archive/delete remain open; their aggregates and mechanisms cannot move into Developer
 Workflows, Sources, or Artifacts.
 
 ### 3.4 Asset hosting

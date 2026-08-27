@@ -2,6 +2,7 @@ use super::components::response_ref;
 use super::developer_workflow_operation::{
     is_build_plan_detection_path, is_developer_workflow_creation_path, is_developer_workflow_path,
     is_developer_workflow_request_body_path,
+    path_parameter_schema as developer_workflow_path_parameter_schema,
     query_parameters as developer_workflow_query_parameters,
     success_component as developer_workflow_success_component,
 };
@@ -108,11 +109,17 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
         let Some(parameter) = parameter.as_object_mut() else {
             continue;
         };
+        let specialized_schema = parameter
+            .get("name")
+            .and_then(Value::as_str)
+            .and_then(|name| developer_workflow_path_parameter_schema(path, name));
         let is_identifier = parameter
             .get("name")
             .and_then(Value::as_str)
             .is_some_and(|name| name.ends_with("_id") && name != "unit_id");
-        if is_identifier {
+        if let Some(schema) = specialized_schema {
+            parameter.insert("schema".into(), schema);
+        } else if is_identifier {
             parameter.insert(
                 "schema".into(),
                 json!({ "type": "string", "format": "uuid" }),

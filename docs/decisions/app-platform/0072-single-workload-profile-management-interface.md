@@ -71,6 +71,7 @@ Workload, Execution, Route, Operation, timer, scheduler, or cleanup authority.
   serialize it.
 - WorkloadProfile acceptance remains an immutable intent decision; exposing it
   does not imply compilation or downstream deployment availability.
-- Preview public management, pre-acceptance discovery, and owner lifecycle,
+- `P0.3-C7` later added Preview public management through its own narrow
+  Application services; pre-acceptance discovery and owner lifecycle,
   scheduling, route, operation, expiry, and cleanup handoffs remain later P0
   work.

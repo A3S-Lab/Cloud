@@ -1,8 +1,11 @@
 import type {
   AcceptedBuildPlan,
+  AcceptedPullRequestPreviewPolicyRevision,
   AcceptedWorkloadProfileRevision,
   BuildPlanDetection,
   BuildPlanMutationResult,
+  PullRequestPreview,
+  PullRequestPreviewPolicyMutationResult,
   WorkloadProfileMutationResult,
 } from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
@@ -28,6 +31,21 @@ const ACCEPTED_WORKLOAD_PROFILE_REVISION_COLUMNS: readonly TableColumn<AcceptedW
   { header: 'CONTRACT DIGEST', value: (row) => row.contractDigest },
   { header: 'ACCEPTED AT', value: (row) => row.acceptedAt },
 ];
+
+const ACCEPTED_PREVIEW_POLICY_REVISION_COLUMNS: readonly TableColumn<AcceptedPullRequestPreviewPolicyRevision>[] =
+  [
+    { header: 'SOURCE SUBSCRIPTION', value: (row) => row.sourceSubscriptionId },
+    {
+      header: 'REVISION ID',
+      value: (row) => row.pullRequestPreviewPolicyRevisionId,
+    },
+    { header: 'REVISION', value: (row) => row.revisionNumber },
+    { header: 'REPOSITORY', value: (row) => row.policy.baseRepository.canonicalUrl },
+    { header: 'BRANCH', value: (row) => row.policy.baseBranch },
+    { header: 'FORK POLICY', value: (row) => row.policy.forkPolicy },
+    { header: 'CONTRACT DIGEST', value: (row) => row.contractDigest },
+    { header: 'ACCEPTED AT', value: (row) => row.acceptedAt },
+  ];
 
 export function buildPlanDetectionResult(detection: BuildPlanDetection): CommandResult {
   return {
@@ -113,6 +131,63 @@ export function workloadProfileMutationResult(result: WorkloadProfileMutationRes
         { header: 'NAME', value: (row) => row.workloadProfileRevision.profile.name },
         { header: 'KIND', value: (row) => row.workloadProfileRevision.profile.kind },
         { header: 'REPLAYED', value: (row) => row.replayed },
+      ]
+    ),
+  };
+}
+
+export function acceptedPreviewPolicyRevisionsResult(
+  revisions: AcceptedPullRequestPreviewPolicyRevision[]
+): CommandResult {
+  return {
+    json: revisions,
+    table: renderTable(revisions, ACCEPTED_PREVIEW_POLICY_REVISION_COLUMNS),
+  };
+}
+
+export function acceptedPreviewPolicyRevisionResult(
+  revision: AcceptedPullRequestPreviewPolicyRevision
+): CommandResult {
+  return {
+    json: revision,
+    table: renderTable([revision], ACCEPTED_PREVIEW_POLICY_REVISION_COLUMNS),
+  };
+}
+
+export function previewPolicyMutationResult(result: PullRequestPreviewPolicyMutationResult): CommandResult {
+  return {
+    json: result,
+    table: renderTable(
+      [result],
+      [
+        {
+          header: 'SOURCE SUBSCRIPTION',
+          value: (row) => row.previewPolicyRevision.sourceSubscriptionId,
+        },
+        {
+          header: 'REVISION ID',
+          value: (row) => row.previewPolicyRevision.pullRequestPreviewPolicyRevisionId,
+        },
+        { header: 'REVISION', value: (row) => row.previewPolicyRevision.revisionNumber },
+        { header: 'REPLAYED', value: (row) => row.replayed },
+      ]
+    ),
+  };
+}
+
+export function pullRequestPreviewResult(preview: PullRequestPreview): CommandResult {
+  return {
+    json: preview,
+    table: renderTable(
+      [preview],
+      [
+        { header: 'PREVIEW ID', value: (row) => row.previewId },
+        { header: 'PR', value: (row) => row.pullRequestNumber },
+        { header: 'ENVIRONMENT', value: (row) => row.environmentName },
+        { header: 'STATUS', value: (row) => row.status },
+        { header: 'HEAD', value: (row) => row.headCommitSha },
+        { header: 'EXPIRES AT', value: (row) => row.expiresAt },
+        { header: 'VERSION', value: (row) => row.aggregateVersion },
       ]
     ),
   };

@@ -176,7 +176,7 @@ export async function proveExecutionTemplateNondisclosure(
   const missing = await callTool(
     environment,
     environment.adminToken,
-    145,
+    150,
     'a3s_cloud_execution_templates_list',
     { projectId: missingProjectId },
     credentials,

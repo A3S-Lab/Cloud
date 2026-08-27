@@ -5,6 +5,7 @@ mod accepted_workload_profile;
 mod build_plan;
 mod detection;
 mod events;
+mod portable_integer;
 mod preview_policy_contract;
 mod preview_policy_events;
 mod preview_policy_repository;
@@ -35,6 +36,7 @@ pub use detection::{
     MAX_BUILD_PLAN_DIAGNOSTICS, MAX_BUILD_PLAN_PROPOSALS,
 };
 pub use events::{BuildPlanAccepted, BUILD_PLAN_ACCEPTED_EVENT_KEY};
+pub use portable_integer::MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER;
 pub use preview_policy_contract::{
     PullRequestPreviewPolicyContract, PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES,
     PULL_REQUEST_PREVIEW_POLICY_SCHEMA,
@@ -53,7 +55,9 @@ pub use pull_request_preview::{
     PreviewForkPolicy, PreviewQuota, PreviewReconcileOutcome, PreviewReconciliation,
     PullRequestChange, PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy,
     PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus, MAX_ACTIVE_PREVIEWS_PER_POLICY,
-    MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS,
+    MAX_PREVIEW_ENVIRONMENT_NAME_BYTES, MAX_PREVIEW_GIT_BRANCH_BYTES,
+    MAX_PREVIEW_GIT_REPOSITORY_URL_BYTES, MAX_PREVIEW_LIFETIME_SECONDS,
+    MIN_PREVIEW_LIFETIME_SECONDS,
 };
 pub use pull_request_preview_events::PullRequestPreviewLifecycleEvent;
 pub use pull_request_preview_projection::{

@@ -11,7 +11,9 @@ pub enum DeveloperWorkflowAction {
     AcceptBuildPlan,
     ReadWorkloadProfile,
     AcceptWorkloadProfile,
+    ReadPullRequestPreviewPolicy,
     AcceptPullRequestPreviewPolicy,
+    ReadPullRequestPreview,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

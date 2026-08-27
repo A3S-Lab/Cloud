@@ -29,6 +29,10 @@ const MCP_ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"
 ));
+const MCP_PREVIEW_POLICY_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/p0.3/pull-request-preview-policy.acl"
+));
 
 #[tokio::test]
 async fn management_mcp_discovers_modern_stateless_json_rpc() -> Result<()> {
@@ -440,6 +444,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workload_profiles_get",
             "a3s_cloud_workload_profile_revisions_list",
             "a3s_cloud_workload_profile_revisions_get",
+            "a3s_cloud_pull_request_preview_policies_get",
+            "a3s_cloud_pull_request_preview_policy_revisions_list",
+            "a3s_cloud_pull_request_preview_policy_revisions_get",
+            "a3s_cloud_pull_request_previews_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
@@ -500,12 +508,19 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 5).await?;
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_plans_accept"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_workload_profiles_accept"));
+    assert!(
+        tool_names(&build_writer_tools).contains(&"a3s_cloud_pull_request_preview_policies_accept")
+    );
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
     for name in [
         "a3s_cloud_build_plan_detections_create",
         "a3s_cloud_build_plans_list",
         "a3s_cloud_build_plans_get",
+        "a3s_cloud_pull_request_preview_policies_get",
+        "a3s_cloud_pull_request_preview_policy_revisions_list",
+        "a3s_cloud_pull_request_preview_policy_revisions_get",
+        "a3s_cloud_pull_request_previews_get",
     ] {
         assert!(!tool_names(&build_writer_tools).contains(&name), "{name}");
     }
@@ -664,6 +679,11 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workload_profiles_get",
             "a3s_cloud_workload_profile_revisions_list",
             "a3s_cloud_workload_profile_revisions_get",
+            "a3s_cloud_pull_request_preview_policies_accept",
+            "a3s_cloud_pull_request_preview_policies_get",
+            "a3s_cloud_pull_request_preview_policy_revisions_list",
+            "a3s_cloud_pull_request_preview_policy_revisions_get",
+            "a3s_cloud_pull_request_previews_get",
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
@@ -2243,6 +2263,108 @@ async fn management_mcp_build_plan_tools_reuse_one_acl_native_cqrs_boundary() ->
     let rejected = response_json(&rejected)?;
     assert_eq!(rejected["result"]["isError"], true);
     assert_eq!(rejected["result"]["structuredContent"]["code"], 422);
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_preview_management_tools_reuse_one_acl_native_cqrs_boundary() -> Result<()>
+{
+    let app = build_test_application(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "mcp-preview-management", "Preview Management").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "mcp-preview-management-project",
+        "Preview Management",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "mcp-preview-management-environment",
+            json!({"name": "Preview Source"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    let source_subscription_id = Uuid::now_v7();
+    let policy_acl = MCP_PREVIEW_POLICY_ACL
+        .replace(
+            "018f0f70-0000-7000-8000-000000000101",
+            &organization.to_string(),
+        )
+        .replace("018f0f70-0000-7000-8000-000000000102", &project.to_string())
+        .replace(
+            "018f0f70-0000-7000-8000-000000000104",
+            &source_subscription_id.to_string(),
+        );
+
+    for (id, name, arguments) in [
+        (
+            1,
+            "a3s_cloud_pull_request_preview_policies_accept",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceSubscriptionId": source_subscription_id,
+                "policyAcl": policy_acl,
+                "idempotencyKey": "mcp-preview-policy-missing-source"
+            }),
+        ),
+        (
+            2,
+            "a3s_cloud_pull_request_preview_policies_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceSubscriptionId": source_subscription_id
+            }),
+        ),
+        (
+            3,
+            "a3s_cloud_pull_request_preview_policy_revisions_list",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceSubscriptionId": source_subscription_id,
+                "limit": 1
+            }),
+        ),
+        (
+            4,
+            "a3s_cloud_pull_request_preview_policy_revisions_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceSubscriptionId": source_subscription_id,
+                "previewPolicyRevisionId": Uuid::now_v7()
+            }),
+        ),
+        (
+            5,
+            "a3s_cloud_pull_request_previews_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "sourceSubscriptionId": source_subscription_id,
+                "pullRequestId": 42
+            }),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        let body = response_json(&response)?;
+        assert_eq!(body["result"]["isError"], true, "{name}");
+        assert_eq!(body["result"]["structuredContent"]["code"], 404, "{name}");
+    }
     Ok(())
 }
 

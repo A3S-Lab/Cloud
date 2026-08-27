@@ -130,11 +130,22 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.74.0`. It exposes WorkloadProfile
-acceptance, current revision, bounded revision history, and exact revision reads
-through the Developer Workflows application boundary. Canonical ACL is
-transported without client-side parsing; typed responses exclude source bytes,
-credentials, checkout paths, Secret values, and downstream lifecycle state.
+The client targets REST contract `1.75.0`. It exposes Preview Policy acceptance,
+current revision, bounded revision history, exact revision reads, and one exact
+behavioral pull-request Preview read through the Developer Workflows Application
+boundary. `acceptPullRequestPreviewPolicy`,
+`getCurrentAcceptedPullRequestPreviewPolicyRevision`,
+`listAcceptedPullRequestPreviewPolicyRevisions`,
+`getAcceptedPullRequestPreviewPolicyRevision`, and `getPullRequestPreview`
+validate only transport bounds and never parse ACL. Typed responses exclude
+webhook delivery evidence, credentials, checkout paths, Secret values,
+projection receipts, and downstream lifecycle state.
+
+It retains `1.74.0`'s WorkloadProfile acceptance, current revision, bounded
+revision history, and exact revision reads through the same application
+boundary. Canonical ACL is transported without client-side parsing; typed
+responses exclude source bytes, credentials, checkout paths, Secret values,
+and downstream lifecycle state.
 
 It retains `1.73.0`'s immutable logical Agent execution checkpoint capture,
 list/read/snapshot, semantic trajectory paging, and checkpoint fork methods.

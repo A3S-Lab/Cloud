@@ -77,6 +77,7 @@ AI application platform parity manifest.
 | [0070](0070-single-authorized-source-layout-acquisition.md) | Acquire one exact accepted-revision BuildPlan layout through the shared authorization and Sources checkout authorities |
 | [0071](0071-single-build-plan-management-interface.md) | Expose BuildPlan detection, acceptance, and reads through one application authority and thin public adapters |
 | [0072](0072-single-workload-profile-management-interface.md) | Expose WorkloadProfile acceptance and immutable revision reads through one application authority and thin public adapters |
+| [0073](0073-single-preview-management-interface.md) | Expose pull-request Preview Policy acceptance, immutable policy reads, and exact current Preview observation through one application authority and thin public adapters |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

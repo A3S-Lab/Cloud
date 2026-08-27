@@ -2,7 +2,8 @@ use super::{
     reconcile_pull_request_preview, GitBranch, GithubInstallationRef, PreviewCleanupReason,
     PreviewForkPolicy, PreviewQuota, PreviewReconcileOutcome, PullRequestChange,
     PullRequestChangeKind, PullRequestPreview, PullRequestPreviewPolicy,
-    PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus, MAX_PREVIEW_LIFETIME_SECONDS,
+    PullRequestPreviewPolicyAuthority, PullRequestPreviewStatus,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAX_PREVIEW_LIFETIME_SECONDS,
     MIN_PREVIEW_LIFETIME_SECONDS,
 };
 use crate::modules::shared_kernel::domain::{
@@ -349,6 +350,41 @@ fn rejects_events_outside_the_exact_subscription_repository_and_branch_binding()
     wrong_installation.base_branch = policy.policy.base_branch.clone();
     wrong_installation.installation_id = GithubInstallationRef::parse(43).expect("installation");
     assert!(reconcile_pull_request_preview(&policy, None, &wrong_installation).is_err());
+}
+
+#[test]
+fn public_preview_integers_are_bounded_to_the_portable_contract_range() {
+    assert!(GithubInstallationRef::parse(MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1).is_err());
+
+    let mut invalid_change = change(
+        PullRequestChangeKind::Opened,
+        timestamp(10),
+        'a',
+        Some(base_repository()),
+        false,
+    );
+    invalid_change.pull_request_id = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+    assert!(invalid_change.validate().is_err());
+    invalid_change.pull_request_id = 1;
+    invalid_change.pull_request_number = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+    assert!(invalid_change.validate().is_err());
+
+    let mut invalid_authority = policy(PreviewForkPolicy::Isolated);
+    invalid_authority.revision_number = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+    assert!(invalid_authority.validate().is_err());
+
+    let mut invalid_preview = apply(
+        &policy(PreviewForkPolicy::Isolated),
+        [&change(
+            PullRequestChangeKind::Opened,
+            timestamp(10),
+            'a',
+            Some(base_repository()),
+            false,
+        )],
+    );
+    invalid_preview.aggregate_version = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+    assert!(invalid_preview.validate().is_err());
 }
 
 fn apply<const N: usize>(

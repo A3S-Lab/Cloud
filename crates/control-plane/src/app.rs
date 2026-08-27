@@ -86,14 +86,18 @@ use crate::modules::developer_workflows::{
     ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
     BuildPlanQueryService, CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
     DeveloperWorkflowsModule, DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter,
-    GetAcceptedBuildPlanHandler, GetAcceptedWorkloadProfileRevisionHandler,
-    GetCurrentAcceptedWorkloadProfileRevisionHandler, IBuildPlanRepository,
-    IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
-    IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
-    IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
-    IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ListAcceptedBuildPlansHandler,
-    ListAcceptedWorkloadProfileRevisionsHandler, ProjectsPreviewEnvironmentAdapter,
-    PullRequestPreviewProjectionService, PullRequestPreviewProjector,
+    GetAcceptedBuildPlanHandler, GetAcceptedPullRequestPreviewPolicyRevisionHandler,
+    GetAcceptedWorkloadProfileRevisionHandler,
+    GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler,
+    GetCurrentAcceptedWorkloadProfileRevisionHandler, GetPullRequestPreviewHandler,
+    IBuildPlanRepository, IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort,
+    IPreviewEnvironmentPort, IPullRequestPreviewPolicyRepository,
+    IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
+    IWorkloadProfileRepository, IdentityProjectsDeveloperWorkflowAuthorizationAdapter,
+    ListAcceptedBuildPlansHandler, ListAcceptedPullRequestPreviewPolicyRevisionsHandler,
+    ListAcceptedWorkloadProfileRevisionsHandler, PreviewPolicyQueryService,
+    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
+    PullRequestPreviewProjector, PullRequestPreviewQueryService,
     RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
     WorkloadProfileCompilationService, WorkloadProfileQueryService, WorkloadsServiceProfileAdapter,
 };
@@ -619,6 +623,7 @@ async fn build_api_worker_application(
     let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
     let developer_workload_profiles = adapters.developer_workflows.workload_profiles;
     let developer_preview_policies = adapters.developer_workflows.preview_policies;
+    let developer_preview_projections = adapters.developer_workflows.preview_projections;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
     let connector_execution = if run_operations {
@@ -1727,6 +1732,7 @@ async fn build_api_worker_application(
                 developer_workflow_build_plans,
                 developer_workload_profiles,
                 developer_preview_policies,
+                developer_preview_projections,
                 durable_cell_applications,
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
@@ -1958,6 +1964,7 @@ struct ManagementApplicationDependencies {
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
     developer_workload_profiles: Arc<dyn IWorkloadProfileRepository>,
     developer_preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
+    developer_preview_projections: Arc<dyn IPullRequestPreviewProjectionRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
@@ -2043,6 +2050,7 @@ fn build_management_application_with_health(
         developer_workflow_build_plans,
         developer_workload_profiles,
         developer_preview_policies,
+        developer_preview_projections,
         durable_cell_applications,
         durable_cell_deployments,
         oci_artifacts,
@@ -2140,12 +2148,31 @@ fn build_management_application_with_health(
     let list_developer_workload_profile_revisions =
         ListAcceptedWorkloadProfileRevisionsHandler::new(developer_workload_profile_queries);
     let accept_developer_preview_policies = AcceptPullRequestPreviewPolicyHandler::new(
-        developer_preview_policies,
+        Arc::clone(&developer_preview_policies),
         Arc::new(RepositoryPreviewSourceSubscriptionQueryPort::new(
             Arc::clone(&source_subscriptions),
         )),
         Arc::clone(&developer_workflow_authorization),
     );
+    let developer_preview_policy_queries = Arc::new(PreviewPolicyQueryService::new(
+        developer_preview_policies,
+        Arc::clone(&developer_workflow_authorization),
+    ));
+    let get_current_developer_preview_policy =
+        GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler::new(Arc::clone(
+            &developer_preview_policy_queries,
+        ));
+    let get_developer_preview_policy_revision =
+        GetAcceptedPullRequestPreviewPolicyRevisionHandler::new(Arc::clone(
+            &developer_preview_policy_queries,
+        ));
+    let list_developer_preview_policy_revisions =
+        ListAcceptedPullRequestPreviewPolicyRevisionsHandler::new(developer_preview_policy_queries);
+    let get_developer_pull_request_preview =
+        GetPullRequestPreviewHandler::new(Arc::new(PullRequestPreviewQueryService::new(
+            developer_preview_projections,
+            Arc::clone(&developer_workflow_authorization),
+        )));
     let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(
         Arc::new(
             BuildPlanDetectionService::new(vec![
@@ -3573,6 +3600,22 @@ fn build_management_application_with_health(
                     crate::modules::developer_workflows::ListAcceptedWorkloadProfileRevisions,
                     _,
                 >(list_developer_workload_profile_revisions)
+                .query_handler::<
+                    crate::modules::developer_workflows::GetCurrentAcceptedPullRequestPreviewPolicyRevision,
+                    _,
+                >(get_current_developer_preview_policy)
+                .query_handler::<
+                    crate::modules::developer_workflows::GetAcceptedPullRequestPreviewPolicyRevision,
+                    _,
+                >(get_developer_preview_policy_revision)
+                .query_handler::<
+                    crate::modules::developer_workflows::ListAcceptedPullRequestPreviewPolicyRevisions,
+                    _,
+                >(list_developer_preview_policy_revisions)
+                .query_handler::<
+                    crate::modules::developer_workflows::GetPullRequestPreview,
+                    _,
+                >(get_developer_pull_request_preview)
                 .query_handler::<
                     crate::modules::developer_workflows::CompileAcceptedWorkloadProfile,
                     _,

@@ -7,7 +7,7 @@ use super::{
 use crate::modules::developer_workflows::domain::{
     AcceptPullRequestPreviewPolicyRevisionWrite, AcceptedPullRequestPreviewPolicyRevision,
     IPullRequestPreviewPolicyRepository, PullRequestPreviewPolicyContract,
-    PullRequestPreviewPolicyRevisionAccepted,
+    PullRequestPreviewPolicyRevisionAccepted, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -165,7 +165,7 @@ impl CommandHandler<AcceptPullRequestPreviewPolicy> for AcceptPullRequestPreview
             };
             let revision_number = match previous.as_ref() {
                 Some(value) => match value.revision_number.checked_add(1) {
-                    Some(value) if value <= i64::MAX as u64 => value,
+                    Some(value) if value <= MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER => value,
                     _ => {
                         return Ok(Err(ApplicationError::Conflict(
                             "Preview policy revision number exhausted".into(),
@@ -234,7 +234,8 @@ fn replay_matches(
     command: &AcceptPullRequestPreviewPolicy,
     contract: &PullRequestPreviewPolicyContract,
 ) -> bool {
-    revision.organization_id == command.organization_id
+    revision.validate().is_ok()
+        && revision.organization_id == command.organization_id
         && revision.project_id == command.project_id
         && revision.source_environment_id == command.source_environment_id
         && revision.source_subscription_id == command.source_subscription_id
@@ -250,4 +251,45 @@ struct CanonicalAcceptance<'a> {
     source_subscription_id: SourceSubscriptionId,
     policy_digest: &'a str,
     actor_principal_id: PrincipalId,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const POLICY_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/p0.3/pull-request-preview-policy.acl"
+    ));
+
+    #[test]
+    fn acceptance_replay_fails_closed_on_corrupted_restored_revision() {
+        let contract =
+            PullRequestPreviewPolicyContract::parse_acl(POLICY_FIXTURE).expect("policy fixture");
+        let policy = contract.policy();
+        let environment_id = EnvironmentId::new();
+        let actor_principal_id = PrincipalId::new();
+        let command = AcceptPullRequestPreviewPolicy {
+            organization_id: policy.organization_id,
+            project_id: policy.project_id,
+            source_environment_id: environment_id,
+            source_subscription_id: policy.source_subscription_id,
+            policy_acl: contract.canonical_acl().into(),
+            actor_principal_id,
+            idempotency_key: "corrupt-replay".into(),
+            request_id: Uuid::now_v7(),
+        };
+        let mut revision = AcceptedPullRequestPreviewPolicyRevision::accept(
+            environment_id,
+            contract.clone(),
+            1,
+            actor_principal_id,
+            Utc::now(),
+        )
+        .expect("accepted revision");
+        assert!(replay_matches(&revision, &command, &contract));
+
+        revision.revision_number = MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER + 1;
+        assert!(!replay_matches(&revision, &command, &contract));
+    }
 }

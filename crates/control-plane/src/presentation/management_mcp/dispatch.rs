@@ -21,9 +21,13 @@ use super::connectors::{
     ReviseConnectorProfileArguments,
 };
 use super::developer_workflows::{
-    AcceptBuildPlanArguments, AcceptWorkloadProfileArguments, DetectBuildPlansArguments,
-    GetAcceptedBuildPlanArguments, GetAcceptedWorkloadProfileRevisionArguments,
-    GetCurrentAcceptedWorkloadProfileRevisionArguments, ListAcceptedBuildPlansArguments,
+    AcceptBuildPlanArguments, AcceptPullRequestPreviewPolicyArguments,
+    AcceptWorkloadProfileArguments, DetectBuildPlansArguments, GetAcceptedBuildPlanArguments,
+    GetAcceptedPullRequestPreviewPolicyRevisionArguments,
+    GetAcceptedWorkloadProfileRevisionArguments,
+    GetCurrentAcceptedPullRequestPreviewPolicyRevisionArguments,
+    GetCurrentAcceptedWorkloadProfileRevisionArguments, GetPullRequestPreviewArguments,
+    ListAcceptedBuildPlansArguments, ListAcceptedPullRequestPreviewPolicyRevisionsArguments,
     ListAcceptedWorkloadProfileRevisionsArguments,
 };
 use super::durable_cells::{
@@ -1548,6 +1552,70 @@ pub async fn execute(
             let arguments =
                 arguments::parse::<GetAcceptedWorkloadProfileRevisionArguments>(arguments).ok()?;
             developer_workflows::get_workload_profile_revision(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PullRequestPreviewPoliciesAccept => {
+            let arguments =
+                arguments::parse::<AcceptPullRequestPreviewPolicyArguments>(arguments).ok()?;
+            developer_workflows::accept_pull_request_preview_policy(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PullRequestPreviewPoliciesGet => {
+            let arguments = arguments::parse::<
+                GetCurrentAcceptedPullRequestPreviewPolicyRevisionArguments,
+            >(arguments)
+            .ok()?;
+            developer_workflows::get_current_pull_request_preview_policy_revision(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PullRequestPreviewPolicyRevisionsList => {
+            let arguments = arguments::parse::<
+                ListAcceptedPullRequestPreviewPolicyRevisionsArguments,
+            >(arguments)
+            .ok()?;
+            developer_workflows::list_pull_request_preview_policy_revisions(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PullRequestPreviewPolicyRevisionsGet => {
+            let arguments =
+                arguments::parse::<GetAcceptedPullRequestPreviewPolicyRevisionArguments>(arguments)
+                    .ok()?;
+            developer_workflows::get_pull_request_preview_policy_revision(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PullRequestPreviewsGet => {
+            let arguments = arguments::parse::<GetPullRequestPreviewArguments>(arguments).ok()?;
+            developer_workflows::get_pull_request_preview(
                 query_bus,
                 organization_id,
                 actor_principal_id,

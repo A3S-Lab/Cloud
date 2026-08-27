@@ -75,6 +75,9 @@ export function requireAclFilePath(path: string | undefined, option = '--file'):
   if (path.length > 4_096 || /[\0\r\n]/.test(path)) {
     throw usageError('ACL file path is invalid');
   }
+  if (!path.endsWith('.acl')) {
+    throw usageError(`${option} must reference a .acl file`);
+  }
   return path;
 }
 

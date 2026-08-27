@@ -1,9 +1,13 @@
 import {
   type CloudApi,
   DEFAULT_BUILD_PLAN_LIST_LIMIT,
+  DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
   DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
   MAX_BUILD_PLAN_LIST_LIMIT,
   MAX_BUILD_PLAN_PROPOSAL_ACL_BYTES,
+  MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+  MAX_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+  MAX_PULL_REQUEST_PREVIEW_POLICY_ACL_BYTES,
   MAX_WORKLOAD_PROFILE_ACL_BYTES,
   MAX_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
 } from '@a3s/cloud-client';
@@ -24,10 +28,14 @@ import { requireEnvironment, requireOrganization, requireProject } from './conte
 import {
   acceptedBuildPlanResult,
   acceptedBuildPlansResult,
+  acceptedPreviewPolicyRevisionResult,
+  acceptedPreviewPolicyRevisionsResult,
   acceptedWorkloadProfileRevisionResult,
   acceptedWorkloadProfileRevisionsResult,
   buildPlanDetectionResult,
   buildPlanMutationResult,
+  previewPolicyMutationResult,
+  pullRequestPreviewResult,
   workloadProfileMutationResult,
 } from './developer-workflow-results';
 import { usageError } from './errors';
@@ -178,6 +186,104 @@ export async function executeDeveloperWorkflowCommand(
         )
       );
     }
+    case 'preview-policies accept': {
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        3,
+        'preview-policies accept <source-subscription-id>'
+      );
+      rejectAgentProviderKindOption(arguments_);
+      const policyAcl = await readAclDocument(
+        mutation.file,
+        {
+          label: 'Pull-request Preview Policy ACL',
+          maximumBytes: MAX_PULL_REQUEST_PREVIEW_POLICY_ACL_BYTES,
+        },
+        dependencies.readFile
+      );
+      const scope = requireEnvironmentScope(context);
+      return previewPolicyMutationResult(
+        await cloudApi().acceptPullRequestPreviewPolicy(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          {
+            sourceSubscriptionId: positionalUuid(positionals, 2, 'Source subscription ID'),
+            policyAcl,
+          },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'preview-policies get': {
+      requireReadCommand(arguments_, 'preview-policies get <source-subscription-id>', 3);
+      const scope = requireEnvironmentScope(context);
+      return acceptedPreviewPolicyRevisionResult(
+        await cloudApi().getCurrentAcceptedPullRequestPreviewPolicyRevision(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          positionalUuid(positionals, 2, 'Source subscription ID')
+        )
+      );
+    }
+    case 'preview-policy-revisions list': {
+      requireDeveloperWorkflowListCommand(
+        arguments_,
+        'preview-policy-revisions list <source-subscription-id>',
+        3,
+        'Pull-request Preview Policy revision reads'
+      );
+      const scope = requireEnvironmentScope(context);
+      return acceptedPreviewPolicyRevisionsResult(
+        await cloudApi().listAcceptedPullRequestPreviewPolicyRevisions(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          positionalUuid(positionals, 2, 'Source subscription ID'),
+          boundedListLimit(
+            arguments_.limit,
+            DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+            MAX_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+            'Pull-request Preview Policy revision list limit'
+          )
+        )
+      );
+    }
+    case 'preview-policy-revisions get': {
+      requireReadCommand(
+        arguments_,
+        'preview-policy-revisions get <source-subscription-id> <revision-id>',
+        4
+      );
+      const scope = requireEnvironmentScope(context);
+      return acceptedPreviewPolicyRevisionResult(
+        await cloudApi().getAcceptedPullRequestPreviewPolicyRevision(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          positionalUuid(positionals, 2, 'Source subscription ID'),
+          positionalUuid(positionals, 3, 'Preview Policy revision ID')
+        )
+      );
+    }
+    case 'pull-request-previews get': {
+      requireReadCommand(
+        arguments_,
+        'pull-request-previews get <source-subscription-id> <pull-request-id>',
+        4
+      );
+      const scope = requireEnvironmentScope(context);
+      return pullRequestPreviewResult(
+        await cloudApi().getPullRequestPreview(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          positionalUuid(positionals, 2, 'Source subscription ID'),
+          positionalPortablePositiveInteger(positionals, 3, 'Pull-request ID')
+        )
+      );
+    }
     default:
       return undefined;
   }
@@ -235,6 +341,18 @@ function boundedListLimit(
     throw usageError(`${label} must be between 1 and ${maximum}`);
   }
   return limit;
+}
+
+function positionalPortablePositiveInteger(positionals: string[], index: number, label: string): number {
+  const raw = positionals[index] ?? '';
+  if (!/^[0-9]+$/u.test(raw)) {
+    throw usageError(`${label} must be a portable positive integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER) {
+    throw usageError(`${label} must be a portable positive integer`);
+  }
+  return value;
 }
 
 function requireEnvironmentScope(context: CloudContext): {

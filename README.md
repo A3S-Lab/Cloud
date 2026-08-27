@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.74.0" src="https://img.shields.io/badge/REST_contract-1.74.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.75.0" src="https://img.shields.io/badge/REST_contract-1.75.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -121,7 +121,7 @@ not imply availability.
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
 | Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
-| Supply | Developer Workflows | Public authorization-first BuildPlan detection/acceptance/reads and WorkloadProfile acceptance/immutable revision reads over one CQRS/application authority; trusted SourceLayout acquisition, Preview Policy acceptance, exact accepted-profile compilation, durable PR projection, and owner-facing handoff intent |
+| Supply | Developer Workflows | Public authorization-first BuildPlan, WorkloadProfile, and Preview Management CQRS authorities; trusted SourceLayout acquisition, immutable policy revisions, durable PR projection, exact accepted-profile compilation, and owner-facing handoff intent |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildCandidate, sole BuildRun lifecycle, Preview build-admission/retirement fence, admitted output, successful external-source outcome Published Language, provenance, evidence, retention, node artifact transport |
 | Execution | Operations | User-visible long-running operation identity and progress projection |
@@ -162,6 +162,60 @@ Product intent
   -> owner projection
   -> Edge snapshot or committed integration fact
 ```
+
+### Pull-request Preview domain boundary
+
+Preview management is a projection over existing Developer Workflows
+authorities, not a presentation-owned lifecycle:
+
+```mermaid
+flowchart TB
+  CLI[CLI<br/>bounded .acl file] --> CLIENT[TypeScript client]
+  CLIENT --> REST[REST / OpenAPI 1.75.0]
+  MCP[5 Management MCP tools] --> BUS[Existing command/query buses]
+  REST --> BUS
+
+  subgraph APP[Developer Workflows Application]
+    ACCEPT[AcceptPullRequestPreviewPolicyHandler]
+    POLICYQ[PreviewPolicyQueryService<br/>current · history · exact]
+    PREVIEWQ[PullRequestPreviewQueryService<br/>exact current Preview]
+    AUTH[IDeveloperWorkflowAuthorizationPort]
+    SOURCE[IPreviewSourceSubscriptionQueryPort]
+    POLICYPORT[IPullRequestPreviewPolicyRepository]
+    PREVIEWPORT[IPullRequestPreviewProjectionRepository]
+    ACCEPT --> AUTH
+    ACCEPT --> SOURCE
+    ACCEPT --> POLICYPORT
+    POLICYQ --> AUTH
+    POLICYQ --> POLICYPORT
+    PREVIEWQ --> AUTH
+    PREVIEWQ --> PREVIEWPORT
+  end
+
+  BUS --> ACCEPT
+  BUS --> POLICYQ
+  BUS --> PREVIEWQ
+
+  subgraph DOMAIN[Developer Workflows Domain]
+    CONTRACT[Canonical Preview Policy ACL + digest]
+    REVISION[Immutable accepted policy revision]
+    PREVIEW[PullRequestPreview<br/>stable identity · status · quota · expiry]
+    CONTRACT --> REVISION
+    REVISION -->|one authority governs 0..n| PREVIEW
+  end
+
+  POLICYPORT --> REVISION
+  PREVIEWPORT --> PREVIEW
+  AUTH --> OWNERS[Identity + Projects owner policy]
+  SOURCE --> SOURCES[Sources exact subscription binding]
+```
+
+One source subscription has at most one logical policy head and an append-only
+revision sequence. Each Preview is keyed by that subscription plus one portable
+positive provider pull-request ID and retains exactly one immutable policy
+revision. REST, client, CLI, and MCP share the same commands, queries,
+authorization port, bounds, and closed DTOs; none receives a repository, ACL
+parser, webhook payload, or downstream owner lifecycle.
 
 ### One concern, one mechanism
 
@@ -233,16 +287,17 @@ already enforce that current debt can shrink but cannot spread:
   checkout share Sources' one repository-credential authority; detection then
   composes the authoritative Asset ACL and heuristic Dockerfile adapters
   through the sole bounded detector service after a strict credential-free
-  replay, without persistence. That query, the public BuildPlan and
-  WorkloadProfile acceptance commands, and the internal Preview Policy command
+  replay, without persistence. That query and the public BuildPlan,
+  WorkloadProfile, and Preview Policy acceptance commands
   share one action-scoped authorization port backed by Identity's sole grant
   evaluator and exact Projects Environment lookup. BuildPlan acceptance
   additionally uses the Sources evidence port; each acceptance command
   delegates to its existing immutable repository transaction. REST, the
   maintained client and CLI, and Management MCP dispatch those exact CQRS
-  handlers; accepted-plan and accepted-profile reads each go through one
-  Application query service that performs the same authorization and rejects
-  repository scope/order drift. They add no authorization, persistence,
+  handlers; accepted-plan, accepted-profile, and Preview-policy reads each go
+  through one Application query service, while current PR state uses its
+  separate Preview projection query service. All perform the same authorization
+  and reject restored repository scope/order drift. They add no authorization, persistence,
   delivery, or lifecycle
   mechanism. Hosted-Asset
   staging and public Infrastructure remain frozen debt;
@@ -264,7 +319,7 @@ capability.
 | --- | --- |
 | `F0` foundation | Verified PostgreSQL tenancy, identity, ORM-backed Flow operations, Outbox/projections, API, and migration authority |
 | Box/Runtime/node/deployment baseline | Historical evidence; current Box re-certification remains in progress |
-| Sources, builds, artifacts, developer workflows | In progress; BuildPlan and WorkloadProfile REST/OpenAPI, client, CLI, and Management MCP surfaces are production-composed over authorization-first canonical acceptance and their sole immutable read authorities. Preview public interfaces, pre-acceptance source discovery, Workload/Execution/route/operation/schedule and Environment cleanup handoffs, monorepos, and import completion remain unavailable; remote WorkloadProfile certification is pending |
+| Sources, builds, artifacts, developer workflows | In progress; BuildPlan, WorkloadProfile, and Preview Management REST/OpenAPI, client, CLI, and Management MCP surfaces are production-composed over authorization-first canonical acceptance and narrow immutable read authorities. Pre-acceptance source discovery, Workload/Execution/route/operation/schedule and Environment cleanup handoffs, monorepos, and import completion remain unavailable; retained PostgreSQL Preview cross-surface evidence and remote WorkloadProfile certification are pending |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
@@ -472,13 +527,14 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.74.0` is the current contract. It
-    adds closed Developer Workflows WorkloadProfile acceptance plus current,
-    bounded-history, and exact immutable revision reads with canonical A3S ACL
-    and typed Secret-material-free intent. The maintained client, CLI, and four
-    additional Management MCP tools dispatch the same CQRS/application
-    authority without adding a parser, repository, evaluator, or downstream
-    lifecycle. It retains `1.73.0`'s authorization-first logical Agent
+    copied evidence bodies. REST/OpenAPI `1.75.0` is the current contract. It
+    adds closed Developer Workflows Preview Policy acceptance plus current,
+    bounded-history, and exact immutable revision reads, and one exact
+    behavioral pull-request Preview read. The maintained client, CLI, and five
+    additional Management MCP tools dispatch the same command and four queries
+    through two narrow Application read authorities without adding a parser,
+    repository, evaluator, or downstream lifecycle. It retains `1.74.0`'s
+    WorkloadProfile management boundary and `1.73.0`'s authorization-first logical Agent
     execution checkpoint capture, list/read/snapshot, paged trajectory, and
     immutable fork APIs. Migration `168` stores only bounded object projections,
     exact execution/provider/invocation bindings, telemetry correlation, and

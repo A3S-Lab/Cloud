@@ -174,6 +174,23 @@ where
     Ok(limit)
 }
 
+pub(super) fn deserialize_bounded_positive_u64<'de, D>(
+    deserializer: D,
+    maximum: u64,
+    label: &str,
+) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 || value > maximum {
+        return Err(D::Error::custom(format!(
+            "{label} must be between 1 and {maximum}"
+        )));
+    }
+    Ok(value)
+}
+
 pub(super) fn deserialize_security_timeline_limit<'de, D>(
     deserializer: D,
 ) -> Result<usize, D::Error>

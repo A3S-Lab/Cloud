@@ -1,6 +1,12 @@
 use super::developer_workflow_operation::{
     is_build_plan_collection_path, is_build_plan_detection_path, is_build_plan_item_path,
 };
+use super::preview_management_documentation::{
+    component_description as preview_component_description,
+    operation_description as preview_operation_description,
+    operation_summary as preview_operation_summary,
+    response_data_description as preview_response_data_description,
+};
 use super::workload_profile_documentation::{
     component_description as workload_profile_component_description,
     operation_description as workload_profile_operation_description,
@@ -9,6 +15,9 @@ use super::workload_profile_documentation::{
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
+    if let Some(description) = preview_component_description(name) {
+        return Some(description);
+    }
     if let Some(description) = workload_profile_component_description(name) {
         return Some(description);
     }
@@ -54,6 +63,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
 }
 
 pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(summary) = preview_operation_summary(method, path) {
+        return Some(summary);
+    }
     if let Some(summary) = workload_profile_operation_summary(method, path) {
         return Some(summary);
     }
@@ -71,6 +83,9 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
 }
 
 pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(description) = preview_operation_description(method, path) {
+        return Some(description);
+    }
     if let Some(description) = workload_profile_operation_description(method, path) {
         return Some(description);
     }
@@ -96,6 +111,9 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
 }
 
 pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(description) = preview_response_data_description(method, path) {
+        return Some(description);
+    }
     if let Some(description) = workload_profile_response_data_description(method, path) {
         return Some(description);
     }
