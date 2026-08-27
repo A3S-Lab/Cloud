@@ -486,6 +486,10 @@ pub enum AgentProviderCommandActionV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+// Keep the V1 request fields inline: boxing only `Start` would break the
+// published Rust construction API even though serde would preserve the wire
+// shape. The primary Node command envelope already boxes this command.
+#[allow(clippy::large_enum_variant)]
 pub enum AgentProviderCommandV1 {
     Start { request: AgentProviderRunStartV1 },
     Cancel { request: AgentProviderRunCancelV1 },
