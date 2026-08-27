@@ -347,7 +347,7 @@ pub async fn exercise_agent_code_recovery(postgres_url: String) -> TestResult {
                 "select count(*), count(*) filter (where acknowledgement is not null) from node_commands where node_id = ",
             )
             .bind(state.node_id.as_uuid())
-            .append(" and command_kind = 'code_agent_command'"),
+            .append(" and command_kind = 'agent_provider_command'"),
         )
         .await?;
     assert_eq!(command_counts, (4, 4));
