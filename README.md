@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.70.0" src="https://img.shields.io/badge/REST_contract-1.70.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.71.0" src="https://img.shields.io/badge/REST_contract-1.71.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -467,11 +467,14 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.70.0` is the current contract. It
-    adds the closed immutable Harness invocation profile to Agent execution
-    responses and adds typed digest-only Tool request/result event content with
-    same-transaction shared audit correlation. It never exposes Secret or Tool
-    payload material. It retains `1.69.0`'s closed
+    copied evidence bodies. REST/OpenAPI `1.71.0` is the current contract. It
+    adds bounded, authorization-first Agent approval-checkpoint list, read, and
+    optimistic decision APIs; the closed `awaiting_approval` execution state;
+    and digest-only approval-resolution evidence. Exact replay, expiry, denial,
+    cancellation, and resume state never expose Secret or Tool payload
+    material. It retains `1.70.0`'s immutable Harness invocation profile,
+    typed digest-only Tool request/result event content, and same-transaction
+    shared audit correlation, plus `1.69.0`'s closed
     Agent provider selection and immutable provider evidence, plus `1.68.0`'s
     Plan v12/compiler v12, `cloud.workflow.step-failure.v9`, and the
     three closed Agent failure classifications through OpenAPI and the maintained
