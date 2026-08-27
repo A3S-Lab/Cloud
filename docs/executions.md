@@ -189,8 +189,20 @@ executions {
   observation_poll_ms = 1000
   convergence_timeout_ms = 600000
   cleanup_timeout_ms = 300000
+  checkpoint_object_reconcile_interval_ms = 60000
+  checkpoint_object_capture_lease_ms = 900000
+  checkpoint_object_orphan_grace_ms = 86400000
+  checkpoint_object_cleanup_lease_ms = 300000
+  checkpoint_object_reconcile_batch_size = 100
 }
 ```
 
 The command TTL must cover the maximum accepted execution timeout so a valid
 Task cannot outlive its leased apply command.
+
+The checkpoint-object values fence logical Agent checkpoint capture and
+orphan cleanup. Capture and cleanup leases must exceed the immutable-object
+retry window, cleanup must exceed one reconciliation interval, and orphan
+grace must be no shorter than either lease. Production namespace inventory is
+enabled only for the S3 object backend; the local backend intentionally has no
+certified paging contract.

@@ -1,6 +1,7 @@
 use crate::infrastructure::{ImmutableObjectClient, ImmutableObjectError, ImmutableObjectRead};
 use crate::modules::agents::domain::{
-    AgentExecutionCheckpointObjectError, AgentExecutionCheckpointObjectReference,
+    AgentExecutionCheckpointObjectError, AgentExecutionCheckpointObjectInventoryEntry,
+    AgentExecutionCheckpointObjectInventoryPage, AgentExecutionCheckpointObjectReference,
     AgentExecutionCheckpointObjectWrite, IAgentExecutionCheckpointObjectStore,
     MAX_AGENT_EXECUTION_CHECKPOINT_BYTES,
 };
@@ -90,6 +91,48 @@ impl IAgentExecutionCheckpointObjectStore for AgentExecutionCheckpointObjectStor
         Self::validate_body(reference, &body)?;
         Ok(body)
     }
+
+    async fn inventory_page(
+        &self,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<AgentExecutionCheckpointObjectInventoryPage, AgentExecutionCheckpointObjectError>
+    {
+        let limit = u32::try_from(limit).map_err(|_| {
+            AgentExecutionCheckpointObjectError::Invalid(
+                "checkpoint object inventory limit overflowed".into(),
+            )
+        })?;
+        let page = self
+            .objects
+            .list_page(None, after, limit)
+            .await
+            .map_err(map_object_error)?;
+        Ok(AgentExecutionCheckpointObjectInventoryPage {
+            entries: page
+                .entries
+                .into_iter()
+                .map(|entry| AgentExecutionCheckpointObjectInventoryEntry {
+                    object_ref: entry.key,
+                    size_bytes: entry.size_bytes,
+                })
+                .collect(),
+            next_after: page.next_after,
+        })
+    }
+
+    async fn remove(
+        &self,
+        reference: &AgentExecutionCheckpointObjectReference,
+    ) -> Result<(), AgentExecutionCheckpointObjectError> {
+        reference
+            .validate()
+            .map_err(AgentExecutionCheckpointObjectError::Invalid)?;
+        self.objects
+            .remove(&reference.object_ref)
+            .await
+            .map_err(map_object_error)
+    }
 }
 
 fn map_object_error(error: ImmutableObjectError) -> AgentExecutionCheckpointObjectError {
@@ -114,6 +157,8 @@ mod tests {
         AgentExecutionCheckpointObjectReference, AGENT_EXECUTION_CHECKPOINT_MEDIA_TYPE,
         AGENT_EXECUTION_CHECKPOINT_NAMESPACE, AGENT_EXECUTION_CHECKPOINT_OBJECT_SCHEMA,
     };
+    use object_store::memory::InMemory;
+    use std::sync::Arc;
 
     fn reference(bytes: &[u8]) -> AgentExecutionCheckpointObjectReference {
         let digest = Sha256Digest::from_bytes(bytes);
@@ -163,6 +208,53 @@ mod tests {
         assert!(matches!(
             store.put(&reference, b"tampered".to_vec()).await,
             Err(AgentExecutionCheckpointObjectError::Integrity(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn remote_checkpoint_inventory_is_paged_and_cleanup_is_idempotent() {
+        let client =
+            ImmutableObjectClient::from_store(Arc::new(InMemory::new()), "agent-checkpoints")
+                .expect("checkpoint object client");
+        let store = AgentExecutionCheckpointObjectStore::from_client(client);
+        let bodies = [b"checkpoint-a".as_slice(), b"checkpoint-b", b"checkpoint-c"];
+        let mut references = Vec::new();
+        for body in bodies {
+            let reference = reference(body);
+            store
+                .put(&reference, body.to_vec())
+                .await
+                .expect("checkpoint object write");
+            references.push(reference);
+        }
+        references.sort_by(|left, right| left.object_ref.cmp(&right.object_ref));
+
+        let first = store.inventory_page(None, 2).await.expect("first page");
+        assert_eq!(first.entries.len(), 2);
+        assert_eq!(
+            first
+                .entries
+                .iter()
+                .map(|entry| entry.object_ref.as_str())
+                .collect::<Vec<_>>(),
+            references[..2]
+                .iter()
+                .map(|reference| reference.object_ref.as_str())
+                .collect::<Vec<_>>()
+        );
+        let second = store
+            .inventory_page(first.next_after.as_deref(), 2)
+            .await
+            .expect("second page");
+        assert_eq!(second.entries.len(), 1);
+        assert_eq!(second.entries[0].object_ref, references[2].object_ref);
+        assert!(second.next_after.is_none());
+
+        store.remove(&references[0]).await.expect("first cleanup");
+        store.remove(&references[0]).await.expect("cleanup replay");
+        assert!(matches!(
+            store.get(&references[0]).await,
+            Err(AgentExecutionCheckpointObjectError::NotFound)
         ));
     }
 }

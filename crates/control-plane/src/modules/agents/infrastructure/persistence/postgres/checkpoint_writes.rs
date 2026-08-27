@@ -1,3 +1,4 @@
+use super::checkpoint_object_leases::{delete_lease, load_lease_for_update, lock_object};
 use super::checkpoint_queries::load_checkpoint;
 use super::queries::{
     load_conversation_by_id, load_event_range, load_execution_by_id, lock_conversation,
@@ -34,6 +35,11 @@ pub(super) async fn commit_checkpoint(
                         replayed: true,
                     });
                 }
+                // The object advisory lock serializes capture commits against
+                // inventory cleanup, including the no-row reservation case.
+                lock_object(transaction, &write.checkpoint.object.object_ref).await?;
+                let object_lease =
+                    load_lease_for_update(transaction, &write.checkpoint.object.object_ref).await?;
                 // The shared idempotency probe already serializes one key. Lock
                 // the execution afterwards so captures with different keys can
                 // deterministically adopt the same boundary descriptor instead
@@ -59,16 +65,44 @@ pub(super) async fn commit_checkpoint(
                         .into());
                     }
                     store_checkpoint_replay(transaction, &write.idempotency, &existing).await?;
+                    delete_lease(transaction, &existing.object.object_ref, None).await?;
                     return Ok(AgentExecutionCheckpointWrite {
                         checkpoint: existing,
                         replayed: true,
                     });
                 }
 
+                let lease_id = write.object_lease_id.ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "Agent checkpoint object has no active capture lease".into(),
+                    )
+                })?;
+                let lease = object_lease.ok_or_else(|| {
+                    RepositoryError::Conflict(
+                        "Agent checkpoint object capture lease is missing".into(),
+                    )
+                })?;
+                if lease.lease_id != lease_id
+                    || lease.purpose
+                        != crate::modules::agents::domain::AgentExecutionCheckpointObjectLeasePurpose::Capture
+                    || lease.reference != write.checkpoint.object
+                    || lease.lease_expires_at <= write.committed_at
+                {
+                    return Err(RepositoryError::Conflict(
+                        "Agent checkpoint object capture lease is stale".into(),
+                    )
+                    .into());
+                }
                 validate_checkpoint_authority(transaction, &write.checkpoint).await?;
                 insert_checkpoint(transaction, &write.checkpoint).await?;
                 store_outbox(transaction, &write.event).await?;
                 store_checkpoint_replay(transaction, &write.idempotency, &write.checkpoint).await?;
+                delete_lease(
+                    transaction,
+                    &write.checkpoint.object.object_ref,
+                    Some(lease_id),
+                )
+                .await?;
                 Ok(AgentExecutionCheckpointWrite {
                     checkpoint: write.checkpoint,
                     replayed: false,
@@ -175,7 +209,7 @@ pub(super) async fn fork_execution(
         .map_err(transaction_error)
 }
 
-async fn validate_checkpoint_authority(
+pub(super) async fn validate_checkpoint_authority(
     transaction: &PostgresTransaction,
     checkpoint: &AgentExecutionCheckpoint,
 ) -> Result<(), PostgresPersistenceError> {

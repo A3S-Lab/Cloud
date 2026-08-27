@@ -1,3 +1,7 @@
+use crate::modules::agents::domain::{
+    MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_LEASE_MS,
+    MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_ORPHAN_GRACE_MS,
+};
 use crate::modules::audit::{
     MAXIMUM_AUDIT_RETENTION_BATCH_SIZE, MAXIMUM_AUDIT_RETENTION_MS, MINIMUM_AUDIT_RETENTION_MS,
 };
@@ -279,6 +283,11 @@ pub struct ExecutionsConfig {
     pub observation_poll_ms: u64,
     pub convergence_timeout_ms: u64,
     pub cleanup_timeout_ms: u64,
+    pub checkpoint_object_reconcile_interval_ms: u64,
+    pub checkpoint_object_capture_lease_ms: u64,
+    pub checkpoint_object_orphan_grace_ms: u64,
+    pub checkpoint_object_cleanup_lease_ms: u64,
+    pub checkpoint_object_reconcile_batch_size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -655,6 +664,11 @@ impl CloudConfig {
                 "observation_poll_ms",
                 "convergence_timeout_ms",
                 "cleanup_timeout_ms",
+                "checkpoint_object_reconcile_interval_ms",
+                "checkpoint_object_capture_lease_ms",
+                "checkpoint_object_orphan_grace_ms",
+                "checkpoint_object_cleanup_lease_ms",
+                "checkpoint_object_reconcile_batch_size",
             ],
         )?;
         let builds = one_block(&document, "builds")?;
@@ -914,6 +928,26 @@ impl CloudConfig {
                 observation_poll_ms: integer(executions, "observation_poll_ms")?,
                 convergence_timeout_ms: integer(executions, "convergence_timeout_ms")?,
                 cleanup_timeout_ms: integer(executions, "cleanup_timeout_ms")?,
+                checkpoint_object_reconcile_interval_ms: integer(
+                    executions,
+                    "checkpoint_object_reconcile_interval_ms",
+                )?,
+                checkpoint_object_capture_lease_ms: integer(
+                    executions,
+                    "checkpoint_object_capture_lease_ms",
+                )?,
+                checkpoint_object_orphan_grace_ms: integer(
+                    executions,
+                    "checkpoint_object_orphan_grace_ms",
+                )?,
+                checkpoint_object_cleanup_lease_ms: integer(
+                    executions,
+                    "checkpoint_object_cleanup_lease_ms",
+                )?,
+                checkpoint_object_reconcile_batch_size: integer(
+                    executions,
+                    "checkpoint_object_reconcile_batch_size",
+                )?,
             },
             builds: BuildsConfig {
                 reconcile_interval_ms: integer(builds, "reconcile_interval_ms")?,
@@ -1397,6 +1431,29 @@ impl CloudConfig {
         self.agent_execution_flow_config().map_err(|error| {
             ConfigError::Invalid(format!("Agent executions are invalid: {error}"))
         })?;
+        if self.executions.checkpoint_object_reconcile_interval_ms == 0
+            || self.executions.checkpoint_object_reconcile_interval_ms > 3_600_000
+            || self.executions.checkpoint_object_capture_lease_ms <= self.objects.retry_timeout_ms
+            || self.executions.checkpoint_object_capture_lease_ms
+                > MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_LEASE_MS
+            || self.executions.checkpoint_object_capture_lease_ms
+                > self.executions.checkpoint_object_orphan_grace_ms
+            || self.executions.checkpoint_object_cleanup_lease_ms
+                <= self.executions.checkpoint_object_reconcile_interval_ms
+            || self.executions.checkpoint_object_cleanup_lease_ms <= self.objects.retry_timeout_ms
+            || self.executions.checkpoint_object_cleanup_lease_ms
+                > MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_LEASE_MS
+            || self.executions.checkpoint_object_cleanup_lease_ms
+                > self.executions.checkpoint_object_orphan_grace_ms
+            || self.executions.checkpoint_object_orphan_grace_ms
+                > MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_ORPHAN_GRACE_MS
+            || !(1..=1_000).contains(&self.executions.checkpoint_object_reconcile_batch_size)
+        {
+            return Err(ConfigError::Invalid(
+                "executions checkpoint object reconciliation requires a bounded interval/batch, capture and cleanup leases longer than one object retry window, a cleanup lease longer than one reconciliation interval, and an orphan grace no shorter than either lease"
+                    .into(),
+            ));
+        }
         if self.builds.reconcile_interval_ms == 0
             || self.builds.reconcile_interval_ms > 3_600_000
             || !valid_data_path(&self.builds.input_staging_dir)
@@ -2483,6 +2540,11 @@ executions {
   observation_poll_ms = 1000
   convergence_timeout_ms = 600000
   cleanup_timeout_ms = 300000
+  checkpoint_object_reconcile_interval_ms = 60000
+  checkpoint_object_capture_lease_ms = 900000
+  checkpoint_object_orphan_grace_ms = 86400000
+  checkpoint_object_cleanup_lease_ms = 300000
+  checkpoint_object_reconcile_batch_size = 100
 }
 builds {
   reconcile_interval_ms = 1000
@@ -2647,6 +2709,26 @@ security {
         assert_eq!(config.human_tasks.flow_operation_timeout_ms, 5_000);
         assert_eq!(config.builds.cache_max_bytes, 536_870_912);
         assert_eq!(config.builds.output_max_entries, 100_000);
+        assert_eq!(
+            config.executions.checkpoint_object_reconcile_interval_ms,
+            60_000
+        );
+        assert_eq!(
+            config.executions.checkpoint_object_capture_lease_ms,
+            900_000
+        );
+        assert_eq!(
+            config.executions.checkpoint_object_orphan_grace_ms,
+            86_400_000
+        );
+        assert_eq!(
+            config.executions.checkpoint_object_cleanup_lease_ms,
+            300_000
+        );
+        assert_eq!(
+            config.executions.checkpoint_object_reconcile_batch_size,
+            100
+        );
         assert_eq!(config.sources.allowed_repositories.len(), 1);
         assert_eq!(
             config.sources.github_webhook_secret_env,
@@ -2709,6 +2791,56 @@ security {
             config.security.vault_recipient_contact_proof_key,
             "a3s-cloud-recipient-contact-proof"
         );
+    }
+
+    #[test]
+    fn checkpoint_object_reconciliation_policy_is_closed_and_fenced() {
+        for invalid in [
+            VALID.replace(
+                "checkpoint_object_reconcile_interval_ms = 60000",
+                "checkpoint_object_reconcile_interval_ms = 0",
+            ),
+            VALID.replace(
+                "checkpoint_object_capture_lease_ms = 900000",
+                "checkpoint_object_capture_lease_ms = 60000",
+            ),
+            VALID.replace(
+                "checkpoint_object_orphan_grace_ms = 86400000",
+                "checkpoint_object_orphan_grace_ms = 1000",
+            ),
+            VALID.replace(
+                "checkpoint_object_cleanup_lease_ms = 300000",
+                "checkpoint_object_cleanup_lease_ms = 60000",
+            ),
+            VALID.replace(
+                "checkpoint_object_reconcile_batch_size = 100",
+                "checkpoint_object_reconcile_batch_size = 0",
+            ),
+            VALID
+                .replace(
+                    "checkpoint_object_capture_lease_ms = 900000",
+                    "checkpoint_object_capture_lease_ms = 604800001",
+                )
+                .replace(
+                    "checkpoint_object_orphan_grace_ms = 86400000",
+                    "checkpoint_object_orphan_grace_ms = 604800001",
+                ),
+            VALID.replace(
+                "checkpoint_object_orphan_grace_ms = 86400000",
+                "checkpoint_object_orphan_grace_ms = 31622400001",
+            ),
+        ] {
+            let error = CloudConfig::parse(&invalid)
+                .expect_err("invalid checkpoint object reconciliation policy");
+            assert!(error
+                .to_string()
+                .contains("checkpoint object reconciliation"));
+        }
+        let unknown = VALID.replace(
+            "checkpoint_object_reconcile_batch_size = 100",
+            "checkpoint_object_reconcile_batch_size = 100\n  checkpoint_object_provider = \"s3\"",
+        );
+        assert!(CloudConfig::parse(&unknown).is_err());
     }
 
     #[test]

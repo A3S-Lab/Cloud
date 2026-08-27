@@ -5,17 +5,21 @@ use crate::modules::agents::application::support::{
 };
 use crate::modules::agents::domain::{
     AgentExecutionCheckpoint, AgentExecutionCheckpointCommitted,
-    CommitAgentExecutionCheckpointWrite, IAgentExecutionCheckpointObjectStore, IAgentRepository,
-    MAX_AGENT_EXECUTION_CHECKPOINT_EVENTS,
+    AgentExecutionCheckpointObjectCaptureReservation, CommitAgentExecutionCheckpointWrite,
+    IAgentExecutionCheckpointObjectStore, IAgentRepository,
+    ReserveAgentExecutionCheckpointObjectWrite, MAX_AGENT_EXECUTION_CHECKPOINT_EVENTS,
+    MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_LEASE_MS,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_boot::{CommandHandler, CqrsContext};
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 
 pub struct CaptureAgentExecutionCheckpointHandler {
     agents: Arc<dyn IAgentRepository>,
     objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
+    object_lease_duration: Duration,
 }
 
 impl CaptureAgentExecutionCheckpointHandler {
@@ -23,7 +27,29 @@ impl CaptureAgentExecutionCheckpointHandler {
         agents: Arc<dyn IAgentRepository>,
         objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     ) -> Self {
-        Self { agents, objects }
+        Self {
+            agents,
+            objects,
+            object_lease_duration: Duration::minutes(15),
+        }
+    }
+
+    pub fn with_object_lease(
+        agents: Arc<dyn IAgentRepository>,
+        objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
+        object_lease_duration: Duration,
+    ) -> Result<Self, String> {
+        if object_lease_duration <= Duration::zero()
+            || object_lease_duration
+                > Duration::milliseconds(MAX_AGENT_EXECUTION_CHECKPOINT_OBJECT_LEASE_MS as i64)
+        {
+            return Err("Agent checkpoint object capture lease is invalid".into());
+        }
+        Ok(Self {
+            agents,
+            objects,
+            object_lease_duration,
+        })
     }
 }
 
@@ -38,6 +64,7 @@ impl CommandHandler<CaptureAgentExecutionCheckpoint> for CaptureAgentExecutionCh
     > {
         let agents = Arc::clone(&self.agents);
         let objects = Arc::clone(&self.objects);
+        let object_lease_duration = self.object_lease_duration;
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
@@ -150,11 +177,16 @@ impl CommandHandler<CaptureAgentExecutionCheckpoint> for CaptureAgentExecutionCh
                         command.request_id,
                     )
                     .map_err(|error| a3s_boot::BootError::Internal(error.to_string()))?;
+                    let committed_at = crate::modules::shared_kernel::domain::canonical_timestamp(
+                        Utc::now().max(checkpoint.captured_at),
+                    );
                     return match agents
                         .commit_execution_checkpoint(CommitAgentExecutionCheckpointWrite {
                             checkpoint,
                             event,
                             idempotency,
+                            object_lease_id: None,
+                            committed_at,
                         })
                         .await
                     {
@@ -221,6 +253,49 @@ impl CommandHandler<CaptureAgentExecutionCheckpoint> for CaptureAgentExecutionCh
                 Ok(captured) => captured,
                 Err(error) => return Ok(Err(ApplicationError::Conflict(error))),
             };
+            let reserved_at = crate::modules::shared_kernel::domain::canonical_timestamp(
+                Utc::now().max(captured.checkpoint.captured_at),
+            );
+            let object_lease = match agents
+                .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+                    checkpoint: captured.checkpoint.clone(),
+                    reserved_at,
+                    lease_duration: object_lease_duration,
+                })
+                .await
+            {
+                Ok(AgentExecutionCheckpointObjectCaptureReservation::Committed(checkpoint)) => {
+                    let checkpoint = *checkpoint;
+                    if let Err(error) =
+                        load_checkpoint_snapshot(Arc::clone(&objects), &checkpoint).await
+                    {
+                        return Ok(Err(error));
+                    }
+                    let event = AgentExecutionCheckpointCommitted::envelope(
+                        &checkpoint,
+                        command.request_id,
+                    )
+                    .map_err(|error| a3s_boot::BootError::Internal(error.to_string()))?;
+                    return match agents
+                        .commit_execution_checkpoint(CommitAgentExecutionCheckpointWrite {
+                            checkpoint,
+                            event,
+                            idempotency,
+                            object_lease_id: None,
+                            committed_at: reserved_at,
+                        })
+                        .await
+                    {
+                        Ok(write) => Ok(Ok(CaptureAgentExecutionCheckpointResult {
+                            checkpoint: write.checkpoint,
+                            replayed: write.replayed,
+                        })),
+                        Err(error) => Ok(Err(error.into())),
+                    };
+                }
+                Ok(AgentExecutionCheckpointObjectCaptureReservation::Reserved(lease)) => *lease,
+                Err(error) => return Ok(Err(error.into())),
+            };
             if let Err(error) = objects
                 .put(&captured.checkpoint.object, captured.bytes)
                 .await
@@ -237,6 +312,10 @@ impl CommandHandler<CaptureAgentExecutionCheckpoint> for CaptureAgentExecutionCh
                     checkpoint: captured.checkpoint,
                     event,
                     idempotency,
+                    object_lease_id: Some(object_lease.lease_id),
+                    committed_at: crate::modules::shared_kernel::domain::canonical_timestamp(
+                        Utc::now().max(reserved_at),
+                    ),
                 })
                 .await
             {

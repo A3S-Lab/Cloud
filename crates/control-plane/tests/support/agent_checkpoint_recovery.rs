@@ -9,12 +9,13 @@ use crate::agent_code_recovery_support::prepare_checkpoint_recovery_scenario;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
-    AgentExecutionCheckpoint, AgentExecutionCheckpointSnapshot,
-    BuiltInAgentExecutionProviderRegistry, CaptureAgentExecutionCheckpoint,
-    CaptureAgentExecutionCheckpointHandler, CaptureAgentExecutionCheckpointResult,
-    CapturedAgentExecutionCheckpoint, ForkAgentExecution, ForkAgentExecutionHandler,
-    ForkAgentExecutionResult, IAgentExecutionCheckpointObjectStore, IAgentRepository,
-    PostgresAgentRepository,
+    AgentExecutionCheckpoint, AgentExecutionCheckpointObjectCaptureReservation,
+    AgentExecutionCheckpointObjectReconciler, AgentExecutionCheckpointObjectReference,
+    AgentExecutionCheckpointSnapshot, BuiltInAgentExecutionProviderRegistry,
+    CaptureAgentExecutionCheckpoint, CaptureAgentExecutionCheckpointHandler,
+    CaptureAgentExecutionCheckpointResult, CapturedAgentExecutionCheckpoint, ForkAgentExecution,
+    ForkAgentExecutionHandler, ForkAgentExecutionResult, IAgentExecutionCheckpointObjectStore,
+    IAgentRepository, PostgresAgentRepository, ReserveAgentExecutionCheckpointObjectWrite,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, IHostedArtifactQueryPort, PostgresBuildRunRepository,
@@ -22,9 +23,9 @@ use a3s_cloud_control_plane::modules::artifacts::{
 use a3s_cloud_control_plane::modules::assets::{IAssetRepository, PostgresAssetRepository};
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, OrganizationId,
+    AgentConversationId, AgentExecutionId, OrganizationId, Sha256Digest,
 };
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use object_store::DurableCheckpointObjectStore;
 use process::ProbeMode;
 use serde_json::{json, Value};
@@ -94,6 +95,8 @@ pub async fn exercise_agent_checkpoint_process_death_recovery(postgres_url: Stri
         "throughEventSequence",
         orphan.checkpoint.through_event_sequence,
     )?;
+    let object_lease_id = parse_uuid(&object_marker, "objectLeaseId")?;
+    require_marker_value_type(&object_marker, "objectLeaseExpiresAt", Value::is_string)?;
     assert!(
         dependencies
             .agents
@@ -108,7 +111,8 @@ pub async fn exercise_agent_checkpoint_process_death_recovery(postgres_url: Stri
     assert!(object_path.is_file());
     let orphan_bytes = dependencies.objects.get(&orphan.checkpoint.object).await?;
     assert_eq!(orphan_bytes, orphan.bytes);
-    verification::assert_pre_projection_gap(&fixture, orphan.checkpoint.id).await?;
+    verification::assert_pre_projection_gap(&fixture, orphan.checkpoint.id, object_lease_id)
+        .await?;
 
     let captured = execute_capture(&dependencies, &fixture).await?;
     assert!(!captured.replayed);
@@ -223,8 +227,9 @@ pub async fn exercise_agent_checkpoint_process_death_recovery(postgres_url: Stri
         committed_child_id,
     )
     .await?;
+    exercise_orphan_inventory_cleanup(&after_fork_restart, &fixture).await?;
     println!(
-        "A3S_CLOUD_A1_CHECKPOINT_POSTGRES_RECOVERY_CERTIFIED store=postgresql object_authority=process-shared checkpoint_crashes=1 fork_crashes=1 checkpoints=1 forks=1 checkpoint_replays=1 fork_replays=1 lineage=exact"
+        "A3S_CLOUD_A1_CHECKPOINT_POSTGRES_RECOVERY_CERTIFIED store=postgresql object_authority=process-shared checkpoint_crashes=1 fork_crashes=1 checkpoints=1 forks=1 checkpoint_replays=1 fork_replays=1 orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease lineage=exact"
     );
     Ok(())
 }
@@ -246,6 +251,23 @@ pub async fn run_probe() -> TestResult {
     let marker = match environment.mode {
         ProbeMode::ObjectCommitted => {
             let captured = materialize_root_checkpoint(&dependencies, &fixture).await?;
+            let reserved_at = canonical(Utc::now().max(captured.checkpoint.captured_at));
+            let lease = match dependencies
+                .agents
+                .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+                    checkpoint: captured.checkpoint.clone(),
+                    reserved_at,
+                    lease_duration: Duration::minutes(15),
+                })
+                .await?
+            {
+                AgentExecutionCheckpointObjectCaptureReservation::Reserved(lease) => lease,
+                AgentExecutionCheckpointObjectCaptureReservation::Committed(_) => {
+                    return Err(
+                        "Agent checkpoint crash probe unexpectedly adopted a projection".into(),
+                    )
+                }
+            };
             let write = dependencies
                 .objects
                 .put(&captured.checkpoint.object, captured.bytes)
@@ -262,6 +284,8 @@ pub async fn run_probe() -> TestResult {
                 "throughEventSequence": captured.checkpoint.through_event_sequence,
                 "objectDigest": captured.checkpoint.object.digest,
                 "objectSizeBytes": captured.checkpoint.object.size_bytes,
+                "objectLeaseId": lease.lease_id,
+                "objectLeaseExpiresAt": lease.lease_expires_at,
             })
         }
         ProbeMode::ForkCommitted => {
@@ -290,6 +314,55 @@ pub async fn run_probe() -> TestResult {
     };
     process::publish_marker(&environment.marker, &marker)?;
     std::future::pending::<()>().await;
+    Ok(())
+}
+
+async fn exercise_orphan_inventory_cleanup(
+    dependencies: &Dependencies,
+    fixture: &Fixture,
+) -> TestResult {
+    let body = b"abandoned-checkpoint-object".to_vec();
+    let digest = Sha256Digest::from_bytes(&body);
+    let digest_hex = digest
+        .as_str()
+        .strip_prefix("sha256:")
+        .ok_or_else(|| invalid("orphan checkpoint digest has no prefix"))?;
+    let reference = AgentExecutionCheckpointObjectReference::from_inventory(
+        format!(
+            "organizations/{}/executions/{}/checkpoints/{}/sha256/{digest_hex}/checkpoint.json",
+            fixture.organization_id,
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+        ),
+        u64::try_from(body.len())?,
+    )
+    .map_err(invalid)?;
+    dependencies.objects.put(&reference, body).await?;
+    let object_path = dependencies.objects.object_path(&reference)?;
+    assert!(object_path.is_file());
+
+    let reconciler = AgentExecutionCheckpointObjectReconciler::new(
+        Arc::clone(&dependencies.agents),
+        dependencies.objects.clone(),
+        std::time::Duration::from_secs(1),
+        Duration::milliseconds(10),
+        Duration::seconds(5),
+        100,
+    )
+    .map_err(invalid)?;
+    let observed_at = canonical(Utc::now());
+    let observed = reconciler.run_once_at(observed_at).await?;
+    assert_eq!(observed.deferred, 1);
+    assert_eq!(observed.removed, 0);
+    assert!(observed.failures.is_empty());
+
+    let cleaned = reconciler
+        .run_once_at(observed_at + Duration::milliseconds(11))
+        .await?;
+    assert_eq!(cleaned.expired_claims, 1);
+    assert_eq!(cleaned.removed, 1);
+    assert!(cleaned.failures.is_empty());
+    assert!(!object_path.exists());
     Ok(())
 }
 
@@ -439,8 +512,38 @@ fn parse_execution_id(marker: &Value, field: &str) -> TestResult<AgentExecutionI
     Ok(AgentExecutionId::from_uuid(Uuid::parse_str(value)?))
 }
 
+fn parse_uuid(marker: &Value, field: &str) -> TestResult<Uuid> {
+    let value = marker
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(format!("Agent checkpoint crash marker omitted {field}")))?;
+    Ok(Uuid::parse_str(value)?)
+}
+
+fn require_marker_value_type(
+    marker: &Value,
+    field: &str,
+    predicate: impl FnOnce(&Value) -> bool,
+) -> TestResult {
+    let value = marker
+        .get(field)
+        .ok_or_else(|| invalid(format!("Agent checkpoint crash marker omitted {field}")))?;
+    if !predicate(value) {
+        return Err(invalid(format!(
+            "Agent checkpoint crash marker {field} has an invalid type"
+        ))
+        .into());
+    }
+    Ok(())
+}
+
 fn context() -> CqrsContext {
     CqrsContext::new(ModuleRef::new())
+}
+
+fn canonical(value: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    chrono::DateTime::from_timestamp_millis(value.timestamp_millis())
+        .expect("canonical Agent checkpoint test timestamp")
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {

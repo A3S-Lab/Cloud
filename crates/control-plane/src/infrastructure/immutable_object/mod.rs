@@ -11,6 +11,7 @@ use futures_util::TryStreamExt;
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, PutMode, PutResult, UpdateVersion};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -137,6 +138,12 @@ pub(crate) enum ImmutableObjectError {
 pub(crate) struct ImmutableObjectMetadata {
     pub(crate) key: String,
     pub(crate) size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ImmutableObjectPage {
+    pub(crate) entries: Vec<ImmutableObjectMetadata>,
+    pub(crate) next_after: Option<String>,
 }
 
 #[derive(Clone)]
@@ -517,6 +524,109 @@ impl ImmutableObjectClient {
             ));
         }
         Ok(entries)
+    }
+
+    /// Inventories one lexicographically stable, memory-bounded page from an
+    /// already-scoped remote namespace. The underlying provider stream need
+    /// not be ordered: the client retains the smallest `limit + 1` keys after
+    /// the cursor and therefore cannot skip keys when advancing the cursor.
+    pub(crate) async fn list_page(
+        &self,
+        key_prefix: Option<&str>,
+        after: Option<&str>,
+        maximum_objects: u32,
+    ) -> Result<ImmutableObjectPage, ImmutableObjectError> {
+        if maximum_objects == 0 || maximum_objects > 1_000 {
+            return Err(ImmutableObjectError::Invalid(
+                "immutable object page bound must be between 1 and 1000".into(),
+            ));
+        }
+        if let Some(prefix) = key_prefix {
+            validate_relative_path(prefix, "list prefix")?;
+        }
+        if let Some(after) = after {
+            validate_relative_path(after, "list cursor")?;
+            if let Some(prefix) = key_prefix {
+                let exact_prefix = format!("{prefix}/");
+                if after != prefix && !after.starts_with(&exact_prefix) {
+                    return Err(ImmutableObjectError::Invalid(
+                        "immutable object list cursor falls outside its prefix".into(),
+                    ));
+                }
+            }
+        }
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ImmutableObjectError::Unsupported(
+                "the local immutable-object backend is not certified for namespace paging".into(),
+            ));
+        };
+        let provider_prefix = match key_prefix {
+            Some(prefix) => format!("{}/{prefix}", self.namespace),
+            None => self.namespace.clone(),
+        };
+        let provider_prefix = remote_path(&provider_prefix)?;
+        let provider_after = after
+            .map(|after| remote_path(&format!("{}/{after}", self.namespace)))
+            .transpose()?;
+        let namespace_prefix = format!("{}/", self.namespace);
+        let exact_prefix = key_prefix.map(|prefix| format!("{prefix}/"));
+        let mut listed = match provider_after.as_ref() {
+            Some(after) => objects.list_with_offset(Some(&provider_prefix), after),
+            None => objects.list(Some(&provider_prefix)),
+        };
+        let retained_bound = maximum_objects as usize + 1;
+        let mut retained = BTreeMap::<String, u64>::new();
+        while let Some(metadata) = listed
+            .try_next()
+            .await
+            .map_err(|error| remote_error("page immutable objects", error))?
+        {
+            let Some(relative_key) = metadata.location.as_ref().strip_prefix(&namespace_prefix)
+            else {
+                continue;
+            };
+            if let Some(prefix) = key_prefix {
+                if relative_key != prefix
+                    && !exact_prefix
+                        .as_deref()
+                        .is_some_and(|expected| relative_key.starts_with(expected))
+                {
+                    continue;
+                }
+            }
+            if after.is_some_and(|after| relative_key <= after) {
+                continue;
+            }
+            validate_relative_path(relative_key, "listed key").map_err(|_| {
+                ImmutableObjectError::Integrity(
+                    "provider returned an invalid key inside the immutable-object namespace".into(),
+                )
+            })?;
+            if retained
+                .insert(relative_key.to_owned(), metadata.size)
+                .is_some()
+            {
+                return Err(ImmutableObjectError::Integrity(
+                    "immutable object page contained duplicate keys".into(),
+                ));
+            }
+            if retained.len() > retained_bound {
+                retained.pop_last();
+            }
+        }
+        let has_more = retained.len() > maximum_objects as usize;
+        let mut entries = retained
+            .into_iter()
+            .map(|(key, size_bytes)| ImmutableObjectMetadata { key, size_bytes })
+            .collect::<Vec<_>>();
+        entries.truncate(maximum_objects as usize);
+        let next_after = has_more
+            .then(|| entries.last().map(|entry| entry.key.clone()))
+            .flatten();
+        Ok(ImmutableObjectPage {
+            entries,
+            next_after,
+        })
     }
 
     /// Test-only corruption hook over the same already-built remote client.

@@ -8,6 +8,7 @@ use a3s_orm::{sql_query, Database, PostgresDialect};
 pub(super) async fn assert_pre_projection_gap(
     fixture: &Fixture,
     checkpoint_id: AgentExecutionCheckpointId,
+    object_lease_id: uuid::Uuid,
 ) -> TestResult {
     let executor = connect_postgres(&fixture.postgres_url, 4).await?;
     let database = Database::new(PostgresDialect, executor);
@@ -39,9 +40,27 @@ pub(super) async fn assert_pre_projection_gap(
                 .bind(CHECKPOINT_IDEMPOTENCY_KEY),
         )
         .await?;
+    let object_lease_count = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select count(*) from agent_execution_checkpoint_object_leases where object_ref like ",
+            )
+            .bind(format!(
+                "organizations/{}/executions/{}/checkpoints/{checkpoint_id}/%",
+                fixture.organization_id, fixture.execution_id
+            ))
+            .append(" and purpose = 'capture' and lease_id = ")
+            .bind(object_lease_id),
+        )
+        .await?;
     assert_eq!(
-        (projection_count, outbox_count, idempotency_count),
-        (0, 0, 0)
+        (
+            projection_count,
+            outbox_count,
+            idempotency_count,
+            object_lease_count
+        ),
+        (0, 0, 0, 1)
     );
     Ok(())
 }
@@ -117,6 +136,16 @@ pub(super) async fn assert_committed_recovery_state(
                 .bind(FORK_IDEMPOTENCY_KEY),
         )
         .await?;
+    let object_lease_count = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select count(*) from agent_execution_checkpoint_object_leases where organization_id = ",
+            )
+            .bind(fixture.organization_id.as_uuid())
+            .append(" and checkpoint_id = ")
+            .bind(checkpoint_id.as_uuid()),
+        )
+        .await?;
     assert_eq!(checkpoint_count, 1);
     assert_eq!(execution_count, 2);
     assert_eq!(child_event_count, 1);
@@ -124,6 +153,7 @@ pub(super) async fn assert_committed_recovery_state(
     assert_eq!(fork_outbox_count, 1);
     assert_eq!(checkpoint_idempotency_count, 1);
     assert_eq!(fork_idempotency_count, 1);
+    assert_eq!(object_lease_count, 0);
     Ok(())
 }
 

@@ -35,6 +35,8 @@ struct State {
         (OrganizationId, AgentExecutionCheckpointId),
         crate::modules::agents::domain::AgentExecutionCheckpoint,
     >,
+    execution_checkpoint_object_leases:
+        BTreeMap<String, crate::modules::agents::domain::AgentExecutionCheckpointObjectLease>,
     change_sets: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecutionChangeSet>,
     events: BTreeMap<(OrganizationId, AgentConversationId, u64), AgentExecutionEvent>,
     idempotency: BTreeMap<(String, String), IdempotencyEntry>,

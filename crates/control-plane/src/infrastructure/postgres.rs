@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 168;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "168";
+pub const CLOUD_MIGRATION_COUNT: i64 = 169;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "169";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1553,6 +1553,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/168_agent_execution_checkpoints.sql"
+            )),
+        ),
+        Migration::new(
+            "169",
+            "Agent checkpoint object capture and cleanup leases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/169_agent_checkpoint_object_leases.sql"
             )),
         ),
     ]
@@ -3697,6 +3705,41 @@ mod agent_execution_checkpoint_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 168 duplicated content or lifecycle authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_checkpoint_object_lease_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/169_agent_checkpoint_object_leases.sql"
+    ));
+
+    #[test]
+    fn migration_169_adds_only_a_bounded_checkpoint_object_fence() {
+        for expected in [
+            "create table agent_execution_checkpoint_object_leases",
+            "purpose in ('capture', 'inventory', 'cleanup')",
+            "lease_expires_at > reserved_at",
+            "agent_execution_checkpoint_object_leases_expiration_idx",
+            "deliberately has no tenant foreign key",
+            "stores no checkpoint payload",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "checkpoint_payload",
+            "checkpoint_content",
+            "secret_material",
+            "create queue",
+            "references organizations",
+            "references agent_executions",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 169 duplicated payload, queue, or lifecycle authority: {forbidden}"
             );
         }
     }

@@ -1,5 +1,5 @@
 use crate::infrastructure::FlowOperationCoordinator;
-use crate::modules::agents::AgentExecutionReconciler;
+use crate::modules::agents::{AgentExecutionCheckpointObjectReconciler, AgentExecutionReconciler};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::audit::AuditRetentionWorker;
 use crate::modules::edge::{
@@ -44,6 +44,7 @@ struct WorkerProcesses {
     build_run_reconciler: BuildRunReconciler,
     execution_reconciler: ExecutionReconciler,
     agent_execution_reconciler: AgentExecutionReconciler,
+    agent_checkpoint_object_reconciler: Option<AgentExecutionCheckpointObjectReconciler>,
     workflow_run_reconciler: WorkflowRunReconciler,
     human_task_coordinator: HumanTaskCoordinator,
     human_task_resume_worker: HumanTaskResumeWorker,
@@ -82,6 +83,7 @@ impl ControlPlaneWorkers {
         build_run_reconciler: BuildRunReconciler,
         execution_reconciler: ExecutionReconciler,
         agent_execution_reconciler: AgentExecutionReconciler,
+        agent_checkpoint_object_reconciler: Option<AgentExecutionCheckpointObjectReconciler>,
         workflow_run_reconciler: WorkflowRunReconciler,
         human_task_coordinator: HumanTaskCoordinator,
         human_task_resume_worker: HumanTaskResumeWorker,
@@ -113,6 +115,7 @@ impl ControlPlaneWorkers {
                 build_run_reconciler,
                 execution_reconciler,
                 agent_execution_reconciler,
+                agent_checkpoint_object_reconciler,
                 workflow_run_reconciler,
                 human_task_coordinator,
                 human_task_resume_worker,
@@ -271,6 +274,7 @@ impl ControlPlane {
                 build_run_reconciler,
                 execution_reconciler,
                 agent_execution_reconciler,
+                agent_checkpoint_object_reconciler,
                 workflow_run_reconciler,
                 human_task_coordinator,
                 human_task_resume_worker,
@@ -313,6 +317,14 @@ impl ControlPlane {
                 shutdown_receiver.clone(),
                 move |shutdown| agent_execution_reconciler.run(shutdown),
             );
+            if let Some(agent_checkpoint_object_reconciler) = agent_checkpoint_object_reconciler {
+                spawn_worker(
+                    &mut workers,
+                    "Agent checkpoint object reconciler",
+                    shutdown_receiver.clone(),
+                    move |shutdown| agent_checkpoint_object_reconciler.run(shutdown),
+                );
+            }
             spawn_worker(
                 &mut workers,
                 "WorkflowRun reconciler",

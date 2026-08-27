@@ -301,6 +301,26 @@ pub struct AgentExecutionCheckpointObjectReference {
 }
 
 impl AgentExecutionCheckpointObjectReference {
+    pub fn from_inventory(object_ref: impl Into<String>, size_bytes: u64) -> Result<Self, String> {
+        let object_ref = object_ref.into();
+        let identity = checkpoint_object_identity(&object_ref)?;
+        let reference = Self {
+            schema: AGENT_EXECUTION_CHECKPOINT_OBJECT_SCHEMA.into(),
+            namespace: AGENT_EXECUTION_CHECKPOINT_NAMESPACE.into(),
+            object_ref,
+            digest: identity.digest,
+            size_bytes,
+            media_type: AGENT_EXECUTION_CHECKPOINT_MEDIA_TYPE.into(),
+        };
+        reference.validate()?;
+        Ok(reference)
+    }
+
+    pub fn identity(&self) -> Result<AgentExecutionCheckpointObjectIdentity, String> {
+        self.validate()?;
+        checkpoint_object_identity(&self.object_ref)
+    }
+
     pub fn from_snapshot(
         checkpoint_id: AgentExecutionCheckpointId,
         snapshot: &AgentExecutionCheckpointSnapshot,
@@ -374,6 +394,35 @@ impl AgentExecutionCheckpointObjectReference {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentExecutionCheckpointObjectIdentity {
+    pub organization_id: OrganizationId,
+    pub execution_id: AgentExecutionId,
+    pub checkpoint_id: AgentExecutionCheckpointId,
+    pub digest: Sha256Digest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentExecutionCheckpointObjectInventoryEntry {
+    pub object_ref: String,
+    pub size_bytes: u64,
+}
+
+impl AgentExecutionCheckpointObjectInventoryEntry {
+    pub fn reference(&self) -> Result<AgentExecutionCheckpointObjectReference, String> {
+        AgentExecutionCheckpointObjectReference::from_inventory(
+            self.object_ref.clone(),
+            self.size_bytes,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentExecutionCheckpointObjectInventoryPage {
+    pub entries: Vec<AgentExecutionCheckpointObjectInventoryEntry>,
+    pub next_after: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -588,6 +637,58 @@ fn checkpoint_object_ref(
     )
 }
 
+fn checkpoint_object_identity(
+    object_ref: &str,
+) -> Result<AgentExecutionCheckpointObjectIdentity, String> {
+    let mut segments = object_ref.split('/');
+    if segments.next() != Some("organizations") {
+        return Err("Agent checkpoint object path has no organization identity".into());
+    }
+    let organization_id = segments
+        .next()
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .map(OrganizationId::from_uuid)
+        .ok_or_else(|| {
+            "Agent checkpoint object path has an invalid organization identity".to_owned()
+        })?;
+    if segments.next() != Some("executions") {
+        return Err("Agent checkpoint object path has no execution identity".into());
+    }
+    let execution_id = segments
+        .next()
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .map(AgentExecutionId::from_uuid)
+        .ok_or_else(|| {
+            "Agent checkpoint object path has an invalid execution identity".to_owned()
+        })?;
+    if segments.next() != Some("checkpoints") {
+        return Err("Agent checkpoint object path has no checkpoint identity".into());
+    }
+    let checkpoint_id = segments
+        .next()
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .map(AgentExecutionCheckpointId::from_uuid)
+        .ok_or_else(|| {
+            "Agent checkpoint object path has an invalid checkpoint identity".to_owned()
+        })?;
+    if segments.next() != Some("sha256") {
+        return Err("Agent checkpoint object path has no digest algorithm".into());
+    }
+    let digest = segments
+        .next()
+        .map(|value| format!("sha256:{value}"))
+        .ok_or_else(|| "Agent checkpoint object path has no digest".to_owned())?;
+    if segments.next() != Some("checkpoint.json") || segments.next().is_some() {
+        return Err("Agent checkpoint object path has an invalid checkpoint suffix".into());
+    }
+    Ok(AgentExecutionCheckpointObjectIdentity {
+        organization_id,
+        execution_id,
+        checkpoint_id,
+        digest: Sha256Digest::parse(digest)?,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapturedAgentExecutionCheckpoint {
     pub checkpoint: AgentExecutionCheckpoint,
@@ -626,4 +727,24 @@ pub trait IAgentExecutionCheckpointObjectStore: Send + Sync {
         &self,
         reference: &AgentExecutionCheckpointObjectReference,
     ) -> Result<Vec<u8>, AgentExecutionCheckpointObjectError>;
+
+    async fn inventory_page(
+        &self,
+        _after: Option<&str>,
+        _limit: usize,
+    ) -> Result<AgentExecutionCheckpointObjectInventoryPage, AgentExecutionCheckpointObjectError>
+    {
+        Err(AgentExecutionCheckpointObjectError::Unavailable(
+            "Agent checkpoint object inventory is unsupported by this adapter".into(),
+        ))
+    }
+
+    async fn remove(
+        &self,
+        _reference: &AgentExecutionCheckpointObjectReference,
+    ) -> Result<(), AgentExecutionCheckpointObjectError> {
+        Err(AgentExecutionCheckpointObjectError::Unavailable(
+            "Agent checkpoint object cleanup is unsupported by this adapter".into(),
+        ))
+    }
 }

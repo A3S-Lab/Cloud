@@ -3,13 +3,13 @@ use crate::infrastructure::{
     SmtpCredentials, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
 };
 use crate::modules::agents::{
-    AgentExecutionCheckpointObjectStore, AgentExecutionFlowRuntime,
-    AgentExecutionFlowRuntimeDependencies, AgentExecutionProviderRegistry,
-    AgentExecutionReconciler, AgentsModule, AppendAgentExecutionEventsHandler,
-    BuiltInAgentExecutionProviderRegistry, CancelAgentExecutionHandler,
-    CaptureAgentExecutionCheckpointHandler, CreateAgentConversationHandler,
-    DecideAgentApprovalCheckpointHandler, ForkAgentExecutionHandler,
-    GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
+    AgentExecutionCheckpointObjectReconciler, AgentExecutionCheckpointObjectStore,
+    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
+    AgentExecutionProviderRegistry, AgentExecutionReconciler, AgentsModule,
+    AppendAgentExecutionEventsHandler, BuiltInAgentExecutionProviderRegistry,
+    CancelAgentExecutionHandler, CaptureAgentExecutionCheckpointHandler,
+    CreateAgentConversationHandler, DecideAgentApprovalCheckpointHandler,
+    ForkAgentExecutionHandler, GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
     GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
     GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
@@ -1478,6 +1478,26 @@ async fn build_api_worker_application(
             100,
         )
         .map_err(ControlPlaneStartupError::AgentExecution)?;
+        let agent_checkpoint_object_reconciler =
+            if config.objects.provider == ObjectStorageProviderKind::S3 {
+                Some(
+                    AgentExecutionCheckpointObjectReconciler::new(
+                        Arc::clone(&agents),
+                        Arc::clone(&agent_checkpoint_objects),
+                        Duration::from_millis(
+                            config.executions.checkpoint_object_reconcile_interval_ms,
+                        ),
+                        chrono_duration(config.executions.checkpoint_object_orphan_grace_ms)
+                            .map_err(ControlPlaneStartupError::Framework)?,
+                        chrono_duration(config.executions.checkpoint_object_cleanup_lease_ms)
+                            .map_err(ControlPlaneStartupError::Framework)?,
+                        config.executions.checkpoint_object_reconcile_batch_size,
+                    )
+                    .map_err(ControlPlaneStartupError::AgentExecution)?,
+                )
+            } else {
+                None
+            };
         let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
         let operation_reconciler = OperationReconciler::new(
             Arc::new(ReconcileOperationsHandler::new(
@@ -1600,6 +1620,7 @@ async fn build_api_worker_application(
             build_run_reconciler,
             execution_reconciler,
             agent_execution_reconciler,
+            agent_checkpoint_object_reconciler,
             workflow_run_reconciler,
             human_task_coordinator,
             human_task_resume_worker,
@@ -3141,10 +3162,14 @@ fn build_management_application_with_health(
                     ),
                 )
                 .command_handler::<crate::modules::agents::CaptureAgentExecutionCheckpoint, _>(
-                    CaptureAgentExecutionCheckpointHandler::new(
+                    CaptureAgentExecutionCheckpointHandler::with_object_lease(
                         capture_agent_execution_checkpoints,
                         Arc::clone(&agent_checkpoint_objects),
-                    ),
+                        chrono_duration(
+                            config.executions.checkpoint_object_capture_lease_ms,
+                        )?,
+                    )
+                    .map_err(BootError::Internal)?,
                 )
                 .command_handler::<crate::modules::agents::ForkAgentExecution, _>(
                     ForkAgentExecutionHandler::new(

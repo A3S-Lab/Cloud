@@ -2,10 +2,14 @@ use super::tests::{code_binding, conversation, create_conversation, execution, s
 use super::*;
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentEventContent, AgentExecution, AgentExecutionCheckpoint,
-    AgentExecutionCheckpointCommitted, AgentExecutionEvent, AgentExecutionEventDraft,
-    AgentExecutionEventKind, AgentExecutionForked, BindAgentCodeRunWrite,
-    CommitAgentExecutionCheckpointWrite, ForkAgentExecutionWrite,
-    IAgentExecutionCheckpointRepository, RecoverAgentCodeRunWrite, MAX_INLINE_AGENT_EVENT_BYTES,
+    AgentExecutionCheckpointCommitted, AgentExecutionCheckpointObjectCaptureReservation,
+    AgentExecutionCheckpointObjectReconcileDisposition, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionForked, BindAgentCodeRunWrite,
+    ClaimExpiredAgentExecutionCheckpointObjectsWrite, CommitAgentExecutionCheckpointWrite,
+    CompleteAgentExecutionCheckpointObjectCleanupWrite, ForkAgentExecutionWrite,
+    IAgentExecutionCheckpointRepository, ReconcileAgentExecutionCheckpointObjectWrite,
+    RecoverAgentCodeRunWrite, ReserveAgentExecutionCheckpointObjectWrite,
+    MAX_INLINE_AGENT_EVENT_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     AgentExecutionId, IdempotencyRequest, NodeId, OperationId,
@@ -138,10 +142,93 @@ async fn checkpoint_commit_and_fork_preserve_immutable_lineage() {
     let checkpoint_event =
         AgentExecutionCheckpointCommitted::envelope(&captured.checkpoint, Uuid::now_v7())
             .expect("checkpoint event");
+    let committed_at = captured.checkpoint.captured_at + Duration::seconds(1);
+    let first_object_lease = match repository
+        .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+            checkpoint: captured.checkpoint.clone(),
+            reserved_at: committed_at,
+            lease_duration: Duration::minutes(5),
+        })
+        .await
+        .expect("reserve checkpoint object")
+    {
+        AgentExecutionCheckpointObjectCaptureReservation::Reserved(lease) => lease,
+        AgentExecutionCheckpointObjectCaptureReservation::Committed(_) => {
+            panic!("new checkpoint cannot already be committed")
+        }
+    };
+    assert!(matches!(
+        repository
+            .reconcile_execution_checkpoint_object(ReconcileAgentExecutionCheckpointObjectWrite {
+                reference: captured.checkpoint.object.clone(),
+                observed_at: committed_at + Duration::seconds(1),
+                orphan_grace: Duration::hours(1),
+                cleanup_lease_duration: Duration::minutes(5),
+            },)
+            .await
+            .expect("active capture inventory"),
+        AgentExecutionCheckpointObjectReconcileDisposition::Deferred { .. }
+    ));
+    let cleanup_at = committed_at + Duration::minutes(6);
+    let cleanup_claims = repository
+        .claim_expired_execution_checkpoint_objects(
+            ClaimExpiredAgentExecutionCheckpointObjectsWrite {
+                claimed_at: cleanup_at,
+                cleanup_lease_duration: Duration::minutes(5),
+                limit: 10,
+            },
+        )
+        .await
+        .expect("claim expired capture");
+    assert_eq!(cleanup_claims.len(), 1);
+    assert!(repository
+        .commit_execution_checkpoint(CommitAgentExecutionCheckpointWrite {
+            checkpoint: captured.checkpoint.clone(),
+            event: checkpoint_event.clone(),
+            idempotency: idempotency("agent-checkpoints", "stale-capture", b"stale-capture"),
+            object_lease_id: Some(first_object_lease.lease_id),
+            committed_at: cleanup_at,
+        })
+        .await
+        .is_err());
+    assert!(repository
+        .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+            checkpoint: captured.checkpoint.clone(),
+            reserved_at: cleanup_at + Duration::minutes(6),
+            lease_duration: Duration::minutes(5),
+        })
+        .await
+        .is_err());
+    repository
+        .complete_execution_checkpoint_object_cleanup(
+            CompleteAgentExecutionCheckpointObjectCleanupWrite {
+                lease: cleanup_claims[0].clone(),
+                completed_at: cleanup_at + Duration::minutes(6),
+            },
+        )
+        .await
+        .expect("complete orphan cleanup");
+    let committed_at = cleanup_at + Duration::minutes(6) + Duration::seconds(1);
+    let object_lease = match repository
+        .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+            checkpoint: captured.checkpoint.clone(),
+            reserved_at: committed_at,
+            lease_duration: Duration::minutes(5),
+        })
+        .await
+        .expect("reserve checkpoint object after cleanup")
+    {
+        AgentExecutionCheckpointObjectCaptureReservation::Reserved(lease) => lease,
+        AgentExecutionCheckpointObjectCaptureReservation::Committed(_) => {
+            panic!("cleaned checkpoint cannot already be committed")
+        }
+    };
     let checkpoint_write = || CommitAgentExecutionCheckpointWrite {
         checkpoint: captured.checkpoint.clone(),
         event: checkpoint_event.clone(),
         idempotency: idempotency("agent-checkpoints", "capture", b"capture"),
+        object_lease_id: Some(object_lease.lease_id),
+        committed_at,
     };
     let committed = repository
         .commit_execution_checkpoint(checkpoint_write())

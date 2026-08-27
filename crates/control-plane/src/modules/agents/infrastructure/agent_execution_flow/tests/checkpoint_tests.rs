@@ -1,8 +1,9 @@
 use super::*;
 use crate::modules::agents::domain::{
-    AgentExecutionCheckpoint, AgentExecutionCheckpointCommitted, AgentExecutionForked,
+    AgentExecutionCheckpoint, AgentExecutionCheckpointCommitted,
+    AgentExecutionCheckpointObjectCaptureReservation, AgentExecutionForked,
     CommitAgentExecutionCheckpointWrite, ForkAgentExecutionWrite,
-    IAgentExecutionCheckpointRepository,
+    IAgentExecutionCheckpointRepository, ReserveAgentExecutionCheckpointObjectWrite,
 };
 
 #[tokio::test]
@@ -35,11 +36,28 @@ async fn fork_start_materializes_and_verifies_the_checkpoint_trajectory() {
     let checkpoint_event =
         AgentExecutionCheckpointCommitted::envelope(&captured.checkpoint, Uuid::now_v7())
             .expect("checkpoint event");
+    let committed_at = captured.checkpoint.captured_at + Duration::seconds(1);
+    let object_lease = match agents
+        .reserve_execution_checkpoint_object(ReserveAgentExecutionCheckpointObjectWrite {
+            checkpoint: captured.checkpoint.clone(),
+            reserved_at: committed_at,
+            lease_duration: Duration::minutes(5),
+        })
+        .await
+        .expect("reserve checkpoint object")
+    {
+        AgentExecutionCheckpointObjectCaptureReservation::Reserved(lease) => lease,
+        AgentExecutionCheckpointObjectCaptureReservation::Committed(_) => {
+            panic!("new checkpoint cannot already be committed")
+        }
+    };
     let checkpoint = agents
         .commit_execution_checkpoint(CommitAgentExecutionCheckpointWrite {
             checkpoint: captured.checkpoint,
             event: checkpoint_event,
             idempotency: idempotency("agent-flow-checkpoints", "capture", b"capture"),
+            object_lease_id: Some(object_lease.lease_id),
+            committed_at,
         })
         .await
         .expect("commit checkpoint")

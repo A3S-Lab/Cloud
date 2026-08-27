@@ -1,6 +1,7 @@
 mod approval_queries;
 mod approval_rows;
 mod approval_writes;
+mod checkpoint_object_leases;
 mod checkpoint_queries;
 mod checkpoint_writes;
 mod code_agent_writes;
@@ -15,14 +16,18 @@ use crate::modules::agents::domain::{
     AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
     AgentApprovalCheckpointStatus, AgentApprovalCheckpointWrite, AgentCodeRunWrite,
     AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
-    AgentExecutionChangeSet, AgentExecutionCheckpoint, AgentExecutionCheckpointWrite,
+    AgentExecutionChangeSet, AgentExecutionCheckpoint,
+    AgentExecutionCheckpointObjectCaptureReservation, AgentExecutionCheckpointObjectLease,
+    AgentExecutionCheckpointObjectReconcileDisposition, AgentExecutionCheckpointWrite,
     AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
     AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite,
-    CancelActiveAgentApprovalCheckpointWrite, CommitAgentExecutionCheckpointWrite,
+    CancelActiveAgentApprovalCheckpointWrite, ClaimExpiredAgentExecutionCheckpointObjectsWrite,
+    CommitAgentExecutionCheckpointWrite, CompleteAgentExecutionCheckpointObjectCleanupWrite,
     CreateAgentConversationWrite, DecideAgentApprovalCheckpointWrite,
     ExpireAgentApprovalCheckpointWrite, ForkAgentExecutionWrite,
     IAgentApprovalCheckpointRepository, IAgentExecutionCheckpointRepository, IAgentRepository,
-    RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite,
+    ReconcileAgentExecutionCheckpointObjectWrite, RecoverAgentCodeRunWrite,
+    RequestAgentExecutionCancellationWrite, ReserveAgentExecutionCheckpointObjectWrite,
     ResumeAgentApprovalCheckpointWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
@@ -112,6 +117,13 @@ impl IAgentApprovalCheckpointRepository for PostgresAgentRepository {
 
 #[async_trait]
 impl IAgentExecutionCheckpointRepository for PostgresAgentRepository {
+    async fn reserve_execution_checkpoint_object(
+        &self,
+        write: ReserveAgentExecutionCheckpointObjectWrite,
+    ) -> Result<AgentExecutionCheckpointObjectCaptureReservation, RepositoryError> {
+        checkpoint_object_leases::reserve(&self.executor, write).await
+    }
+
     async fn commit_execution_checkpoint(
         &self,
         write: CommitAgentExecutionCheckpointWrite,
@@ -168,6 +180,27 @@ impl IAgentExecutionCheckpointRepository for PostgresAgentRepository {
             limit,
         )
         .await
+    }
+
+    async fn reconcile_execution_checkpoint_object(
+        &self,
+        write: ReconcileAgentExecutionCheckpointObjectWrite,
+    ) -> Result<AgentExecutionCheckpointObjectReconcileDisposition, RepositoryError> {
+        checkpoint_object_leases::reconcile(&self.executor, write).await
+    }
+
+    async fn claim_expired_execution_checkpoint_objects(
+        &self,
+        write: ClaimExpiredAgentExecutionCheckpointObjectsWrite,
+    ) -> Result<Vec<AgentExecutionCheckpointObjectLease>, RepositoryError> {
+        checkpoint_object_leases::claim_expired(&self.executor, write).await
+    }
+
+    async fn complete_execution_checkpoint_object_cleanup(
+        &self,
+        write: CompleteAgentExecutionCheckpointObjectCleanupWrite,
+    ) -> Result<(), RepositoryError> {
+        checkpoint_object_leases::complete_cleanup(&self.executor, write).await
     }
 }
 

@@ -1,18 +1,84 @@
 use super::*;
 use crate::modules::agents::domain::{
     AgentConversationStatus, AgentExecution, AgentExecutionCheckpoint,
+    AgentExecutionCheckpointObjectCaptureReservation, AgentExecutionCheckpointObjectLease,
+    AgentExecutionCheckpointObjectLeasePurpose, AgentExecutionCheckpointObjectReconcileDisposition,
     AgentExecutionCheckpointWrite, AgentExecutionEvent, AgentExecutionTelemetryCorrelation,
-    AgentExecutionWrite, AgentExecutionWriteReference, CommitAgentExecutionCheckpointWrite,
-    ForkAgentExecutionWrite, IAgentExecutionCheckpointRepository,
+    AgentExecutionWrite, AgentExecutionWriteReference,
+    ClaimExpiredAgentExecutionCheckpointObjectsWrite, CommitAgentExecutionCheckpointWrite,
+    CompleteAgentExecutionCheckpointObjectCleanupWrite, ForkAgentExecutionWrite,
+    IAgentExecutionCheckpointRepository, ReconcileAgentExecutionCheckpointObjectWrite,
+    ReserveAgentExecutionCheckpointObjectWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentExecutionCheckpointId, AgentExecutionId, IdempotencyRequest, OrganizationId,
     RepositoryError,
 };
 use async_trait::async_trait;
+use uuid::Uuid;
 
 #[async_trait]
 impl IAgentExecutionCheckpointRepository for InMemoryAgentRepository {
+    async fn reserve_execution_checkpoint_object(
+        &self,
+        write: ReserveAgentExecutionCheckpointObjectWrite,
+    ) -> Result<AgentExecutionCheckpointObjectCaptureReservation, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let lease_expires_at = write.lease_expires_at().map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        let checkpoint_key = (write.checkpoint.organization_id, write.checkpoint.id);
+        if let Some(existing) = state.execution_checkpoints.get(&checkpoint_key).cloned() {
+            if existing != write.checkpoint {
+                return Err(RepositoryError::Conflict(
+                    "Agent checkpoint identity is already bound to different content".into(),
+                ));
+            }
+            state
+                .execution_checkpoint_object_leases
+                .remove(&write.checkpoint.object.object_ref);
+            return Ok(AgentExecutionCheckpointObjectCaptureReservation::Committed(
+                Box::new(existing),
+            ));
+        }
+        validate_checkpoint_authority(&state, &write.checkpoint)?;
+        let object_ref = write.checkpoint.object.object_ref.clone();
+        let lease_id = match state.execution_checkpoint_object_leases.get(&object_ref) {
+            Some(existing) if existing.reference != write.checkpoint.object => {
+                return Err(RepositoryError::Conflict(
+                    "Agent checkpoint object lease changed its immutable descriptor".into(),
+                ));
+            }
+            Some(existing)
+                if existing.purpose == AgentExecutionCheckpointObjectLeasePurpose::Cleanup =>
+            {
+                return Err(RepositoryError::Conflict(format!(
+                    "Agent checkpoint object cleanup must complete before capture; its current lease expires at {}",
+                    existing.lease_expires_at
+                )));
+            }
+            Some(existing)
+                if existing.purpose == AgentExecutionCheckpointObjectLeasePurpose::Capture
+                    && existing.lease_expires_at > write.reserved_at =>
+            {
+                existing.lease_id
+            }
+            Some(_) | None => Uuid::now_v7(),
+        };
+        let lease = checkpoint_object_lease(
+            &write.checkpoint,
+            AgentExecutionCheckpointObjectLeasePurpose::Capture,
+            lease_id,
+            write.reserved_at,
+            lease_expires_at,
+        )?;
+        state
+            .execution_checkpoint_object_leases
+            .insert(object_ref, lease.clone());
+        Ok(AgentExecutionCheckpointObjectCaptureReservation::Reserved(
+            Box::new(lease),
+        ))
+    }
+
     async fn commit_execution_checkpoint(
         &self,
         write: CommitAgentExecutionCheckpointWrite,
@@ -47,12 +113,33 @@ impl IAgentExecutionCheckpointRepository for InMemoryAgentRepository {
                 write.idempotency,
                 IdempotencyResponse::ExecutionCheckpoint(key.0, key.1),
             );
+            state
+                .execution_checkpoint_object_leases
+                .remove(&existing.object.object_ref);
             return Ok(AgentExecutionCheckpointWrite {
                 checkpoint: existing,
                 replayed: true,
             });
         }
 
+        let lease_id = write.object_lease_id.ok_or_else(|| {
+            RepositoryError::Conflict("Agent checkpoint object has no active capture lease".into())
+        })?;
+        let lease = state
+            .execution_checkpoint_object_leases
+            .get(&write.checkpoint.object.object_ref)
+            .ok_or_else(|| {
+                RepositoryError::Conflict("Agent checkpoint object capture lease is missing".into())
+            })?;
+        if lease.lease_id != lease_id
+            || lease.purpose != AgentExecutionCheckpointObjectLeasePurpose::Capture
+            || lease.reference != write.checkpoint.object
+            || lease.lease_expires_at <= write.committed_at
+        {
+            return Err(RepositoryError::Conflict(
+                "Agent checkpoint object capture lease is stale".into(),
+            ));
+        }
         validate_checkpoint_authority(&state, &write.checkpoint)?;
         state
             .execution_checkpoints
@@ -63,6 +150,9 @@ impl IAgentExecutionCheckpointRepository for InMemoryAgentRepository {
             IdempotencyResponse::ExecutionCheckpoint(key.0, key.1),
         );
         state.outbox.push(write.event);
+        state
+            .execution_checkpoint_object_leases
+            .remove(&write.checkpoint.object.object_ref);
         Ok(AgentExecutionCheckpointWrite {
             checkpoint: write.checkpoint,
             replayed: false,
@@ -281,6 +371,195 @@ impl IAgentExecutionCheckpointRepository for InMemoryAgentRepository {
             .cloned()
             .collect())
     }
+
+    async fn reconcile_execution_checkpoint_object(
+        &self,
+        write: ReconcileAgentExecutionCheckpointObjectWrite,
+    ) -> Result<AgentExecutionCheckpointObjectReconcileDisposition, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let identity = write
+            .reference
+            .identity()
+            .map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        if state
+            .execution_checkpoints
+            .get(&(identity.organization_id, identity.checkpoint_id))
+            .is_some_and(|checkpoint| checkpoint.object == write.reference)
+        {
+            state
+                .execution_checkpoint_object_leases
+                .remove(&write.reference.object_ref);
+            return Ok(AgentExecutionCheckpointObjectReconcileDisposition::Referenced);
+        }
+        if let Some(existing) = state
+            .execution_checkpoint_object_leases
+            .get(&write.reference.object_ref)
+        {
+            if existing.reference != write.reference {
+                return Err(RepositoryError::Storage(
+                    "stored Agent checkpoint object lease changed its inventory descriptor".into(),
+                ));
+            }
+            if existing.lease_expires_at > write.observed_at {
+                return Ok(
+                    AgentExecutionCheckpointObjectReconcileDisposition::Deferred {
+                        retry_not_before: existing.lease_expires_at,
+                    },
+                );
+            }
+        } else {
+            let lease = object_lease(
+                write.reference.clone(),
+                AgentExecutionCheckpointObjectLeasePurpose::Inventory,
+                Uuid::now_v7(),
+                write.observed_at,
+                write
+                    .observation_expires_at()
+                    .map_err(invalid_repository_write)?,
+            )?;
+            let retry_not_before = lease.lease_expires_at;
+            state
+                .execution_checkpoint_object_leases
+                .insert(write.reference.object_ref.clone(), lease);
+            return Ok(
+                AgentExecutionCheckpointObjectReconcileDisposition::Deferred { retry_not_before },
+            );
+        }
+
+        let lease = object_lease(
+            write.reference.clone(),
+            AgentExecutionCheckpointObjectLeasePurpose::Cleanup,
+            Uuid::now_v7(),
+            write.observed_at,
+            write
+                .cleanup_expires_at()
+                .map_err(invalid_repository_write)?,
+        )?;
+        state
+            .execution_checkpoint_object_leases
+            .insert(write.reference.object_ref.clone(), lease.clone());
+        Ok(AgentExecutionCheckpointObjectReconcileDisposition::CleanupClaimed(Box::new(lease)))
+    }
+
+    async fn claim_expired_execution_checkpoint_objects(
+        &self,
+        write: ClaimExpiredAgentExecutionCheckpointObjectsWrite,
+    ) -> Result<Vec<AgentExecutionCheckpointObjectLease>, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let cleanup_expires_at = write
+            .cleanup_expires_at()
+            .map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        let keys = state
+            .execution_checkpoint_object_leases
+            .iter()
+            .filter(|(_, lease)| lease.lease_expires_at <= write.claimed_at)
+            .map(|(object_ref, _)| object_ref.clone())
+            .take(write.limit)
+            .collect::<Vec<_>>();
+        let mut claims = Vec::new();
+        for object_ref in keys {
+            let existing = state
+                .execution_checkpoint_object_leases
+                .get(&object_ref)
+                .cloned()
+                .ok_or_else(|| corrupt("Agent checkpoint object lease disappeared"))?;
+            if state
+                .execution_checkpoints
+                .get(&(existing.organization_id, existing.checkpoint_id))
+                .is_some_and(|checkpoint| checkpoint.object == existing.reference)
+            {
+                state.execution_checkpoint_object_leases.remove(&object_ref);
+                continue;
+            }
+            let lease = object_lease(
+                existing.reference,
+                AgentExecutionCheckpointObjectLeasePurpose::Cleanup,
+                Uuid::now_v7(),
+                write.claimed_at,
+                cleanup_expires_at,
+            )?;
+            state
+                .execution_checkpoint_object_leases
+                .insert(object_ref, lease.clone());
+            claims.push(lease);
+        }
+        Ok(claims)
+    }
+
+    async fn complete_execution_checkpoint_object_cleanup(
+        &self,
+        write: CompleteAgentExecutionCheckpointObjectCleanupWrite,
+    ) -> Result<(), RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        let Some(existing) = state
+            .execution_checkpoint_object_leases
+            .get(&write.lease.reference.object_ref)
+            .cloned()
+        else {
+            return Ok(());
+        };
+        if state
+            .execution_checkpoints
+            .get(&(existing.organization_id, existing.checkpoint_id))
+            .is_some_and(|checkpoint| checkpoint.object == existing.reference)
+        {
+            return Err(RepositoryError::Conflict(
+                "Agent checkpoint object became referenced during cleanup".into(),
+            ));
+        }
+        if existing != write.lease
+            || existing.purpose != AgentExecutionCheckpointObjectLeasePurpose::Cleanup
+        {
+            return Err(RepositoryError::Conflict(
+                "Agent checkpoint object cleanup lease is stale".into(),
+            ));
+        }
+        state
+            .execution_checkpoint_object_leases
+            .remove(&write.lease.reference.object_ref);
+        Ok(())
+    }
+}
+
+fn checkpoint_object_lease(
+    checkpoint: &AgentExecutionCheckpoint,
+    purpose: AgentExecutionCheckpointObjectLeasePurpose,
+    lease_id: Uuid,
+    reserved_at: chrono::DateTime<chrono::Utc>,
+    lease_expires_at: chrono::DateTime<chrono::Utc>,
+) -> Result<AgentExecutionCheckpointObjectLease, RepositoryError> {
+    object_lease(
+        checkpoint.object.clone(),
+        purpose,
+        lease_id,
+        reserved_at,
+        lease_expires_at,
+    )
+}
+
+fn object_lease(
+    reference: crate::modules::agents::domain::AgentExecutionCheckpointObjectReference,
+    purpose: AgentExecutionCheckpointObjectLeasePurpose,
+    lease_id: Uuid,
+    reserved_at: chrono::DateTime<chrono::Utc>,
+    lease_expires_at: chrono::DateTime<chrono::Utc>,
+) -> Result<AgentExecutionCheckpointObjectLease, RepositoryError> {
+    let identity = reference.identity().map_err(invalid_repository_write)?;
+    let lease = AgentExecutionCheckpointObjectLease {
+        reference,
+        organization_id: identity.organization_id,
+        execution_id: identity.execution_id,
+        checkpoint_id: identity.checkpoint_id,
+        purpose,
+        lease_id,
+        reserved_at,
+        lease_expires_at,
+    };
+    lease.validate().map_err(invalid_repository_write)?;
+    Ok(lease)
 }
 
 fn validate_checkpoint_authority(

@@ -463,3 +463,38 @@ fn production_composition_builds_one_provider_and_derives_every_consumer_namespa
         );
     }
 }
+
+#[test]
+fn agent_checkpoint_cleanup_reuses_the_shared_s3_authority_and_one_supervisor() {
+    let app = include_str!("../../app.rs");
+    let adapter = include_str!(
+        "../../modules/agents/infrastructure/agent_execution_checkpoint_object_store.rs"
+    );
+    let reconciler = include_str!(
+        "../../modules/agents/infrastructure/agent_execution_checkpoint_object_reconciler.rs"
+    );
+    let server = include_str!("../../server.rs");
+
+    assert!(app.contains("config.objects.provider == ObjectStorageProviderKind::S3"));
+    assert!(app.contains("Arc::clone(&agent_checkpoint_objects)"));
+    assert!(adapter.contains(".list_page("));
+    assert!(adapter.contains(".remove("));
+    assert_eq!(
+        server
+            .matches("move |shutdown| agent_checkpoint_object_reconciler.run(shutdown)")
+            .count(),
+        1
+    );
+    for forbidden in [
+        "object_store::",
+        "std::fs::",
+        "tokio::fs::",
+        "AmazonS3Builder",
+        "create queue",
+    ] {
+        assert!(
+            !reconciler.contains(forbidden),
+            "checkpoint cleanup must reuse repository and object-store authorities; found {forbidden}"
+        );
+    }
+}

@@ -512,7 +512,7 @@ jobs:
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log"
           grep --fixed-strings \
-            'A3S_CLOUD_A1_CHECKPOINT_POSTGRES_RECOVERY_CERTIFIED store=postgresql object_authority=process-shared checkpoint_crashes=1 fork_crashes=1 checkpoints=1 forks=1 checkpoint_replays=1 fork_replays=1 lineage=exact' \
+            'A3S_CLOUD_A1_CHECKPOINT_POSTGRES_RECOVERY_CERTIFIED store=postgresql object_authority=process-shared checkpoint_crashes=1 fork_crashes=1 checkpoints=1 forks=1 checkpoint_replays=1 fork_replays=1 orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease lineage=exact' \
             "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log" \
             >"$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt")" -eq 1
@@ -548,6 +548,9 @@ jobs:
                 checkpointObjectBeforeProjectionRecovery: true,
                 checkpointProjectionReplay: true,
                 forkCommitBeforeResponseRecovery: true,
+                checkpointOrphanInventory: true,
+                checkpointOrphanCleanup: true,
+                checkpointCleanupLeaseFenced: true,
                 forkLineageExact: true
               }
             }' >"$EVIDENCE_DIR/agent-recovery.json"

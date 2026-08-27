@@ -543,7 +543,12 @@ creating their own control planes:
     inherited trajectories for nested forks. Every new fork revalidates the
     published Agent artifact and selected provider profile, creates a new
     execution, verifies its parent object again before provider dispatch, and
-    fails closed on missing or drifted evidence. The API does not claim
+    fails closed on missing or drifted evidence. Migration `169` adds
+    short-lived PostgreSQL capture, inventory-grace, and cleanup fences. For
+    the production S3 backend, one supervised worker reuses the same shared
+    immutable-object client to claim expired writes, observe untracked valid
+    keys for the configured grace period, and remove only the object protected
+    by its exact cleanup lease. The API does not claim
     provider-private or Box suspend/resume support. It also retains `1.72.0`'s
     closed BuildPlan detection, idempotent acceptance, and exact accepted-plan
     reads plus `1.71.0`'s bounded, authorization-first Agent
@@ -640,15 +645,17 @@ creating their own control planes:
     `A1.5` adds durable approval checkpoints and exact provider-neutral resume.
     Component-level `A1.6` adds bounded immutable logical execution
     checkpoints, explicit fork lineage, trajectory reads, exact Runtime
-    telemetry correlation, migration `168`, REST/OpenAPI `1.73.0`, and the
-    maintained TypeScript client. Its checked-in PostgreSQL process-death gate
-    kills a child after the exact checkpoint object is durable but before its
-    projection, then again after the fork transaction but before response
+    telemetry correlation, migrations `168`-`169`, REST/OpenAPI `1.73.0`, and
+    the maintained TypeScript client. Its checked-in PostgreSQL process-death
+    gate kills a child after the exact checkpoint object is durable but before
+    its projection, then again after the fork transaction but before response
     delivery; fresh repositories adopt/replay both boundaries exactly once.
-    Production model and Tool binding producers, any additional independent MCP
-    binding, retained real-provider/Box Tool-audit, approval/fork execution and
-    cleanup evidence, and provider/Box private checkpoint certification remain
-    open.
+    The same gate inventories and removes an unreferenced valid object only
+    after PostgreSQL observation grace and an exact cleanup fence. Production
+    model and Tool binding producers, any additional independent MCP binding,
+    retained real-provider/Box Tool-audit and approval/fork execution, real S3
+    inventory/cleanup evidence, and provider/Box private checkpoint
+    certification remain open.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six

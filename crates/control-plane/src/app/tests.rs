@@ -1110,6 +1110,11 @@ fn config() -> CloudConfig {
             observation_poll_ms: 10,
             convergence_timeout_ms: 20_000,
             cleanup_timeout_ms: 20_000,
+            checkpoint_object_reconcile_interval_ms: 1_000,
+            checkpoint_object_capture_lease_ms: 120_000,
+            checkpoint_object_orphan_grace_ms: 600_000,
+            checkpoint_object_cleanup_lease_ms: 20_000,
+            checkpoint_object_reconcile_batch_size: 100,
         },
         builds: BuildsConfig {
             reconcile_interval_ms: 1_000,

@@ -1366,6 +1366,10 @@ Current supporting records:
   namespace, plus immutable execution lineage for forks. A checkpoint on a fork
   materializes its verified inherited trajectory so nested forks are
   self-contained; and
+- one short-lived `agent_execution_checkpoint_object_leases` fence for exact
+  capture, inventory grace, or cleanup. It contains only the immutable object
+  descriptor and lease identity, has no payload, and deliberately survives
+  tenant deletion so legacy or deleted-tenant objects remain reclaimable; and
 - `AgentExecutionEvent`, including provider-neutral digest-only Tool
   request/result records, with each accepted Tool record correlated to the
   shared audit store as `a3s.cloud.agent-tool-audit.v1` in the same PostgreSQL
@@ -1375,8 +1379,9 @@ Planned supporting work:
 
 - production binding producers for exact model and Tool identities and any MCP
   identity not already supplied by the selected Agent Workload revision; and
-- retained PostgreSQL/real-provider approval and fork recovery evidence plus
-  provider/Box private checkpoint capability and cleanup certification.
+- retained PostgreSQL/real-provider approval and fork recovery evidence, real
+  S3 namespace inventory/cleanup evidence, and provider/Box private checkpoint
+  capability certification.
 
 The context owns semantic Agent state but delegates long-running coordination
 to Flow and Operations, placement and rollout to Workloads, node delivery to
@@ -3682,6 +3687,11 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   verified immutable object reference with an exact namespace, digest, length,
   and media type. No Agent-specific object backend or mutable execution-head
   store is permitted.
+- `A1.6` reserves the exact object descriptor in PostgreSQL before upload.
+  Capture commit requires the current fence; autonomous inventory first records
+  grace and deletes only after claiming an exact cleanup fence. A cleanup fence
+  blocks capture even after expiry until idempotent removal and lease completion
+  converge, so a stale cleanup cannot race a replacement write.
 - In `A1.6`, forking creates a new execution with immutable parent and
   checkpoint lineage; it never mutates the parent trajectory.
 - Provider-private suspend/resume remains unavailable until the selected
