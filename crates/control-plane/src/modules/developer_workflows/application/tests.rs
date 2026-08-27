@@ -1,16 +1,20 @@
 use super::{
-    AcceptBuildPlan, AcceptBuildPlanHandler, BuildPlanSourceRevisionEvidence,
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
-    IDeveloperWorkflowAuthorizationPort,
+    AcceptBuildPlan, AcceptBuildPlanHandler, BuildPlanQueryService,
+    BuildPlanSourceRevisionEvidence, DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
+    GetAcceptedBuildPlan, GetAcceptedBuildPlanHandler, IBuildPlanSourceRevisionPort,
+    IDeveloperWorkflowAuthorizationPort, ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT,
 };
-use crate::modules::developer_workflows::domain::{BuildPlanProposal, IBuildPlanRepository};
+use crate::modules::developer_workflows::domain::{
+    AcceptBuildPlanWrite, AcceptedBuildPlan, BuildPlanProposal, IBuildPlanRepository,
+};
 use crate::modules::developer_workflows::infrastructure::InMemoryBuildPlanRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    Sha256Digest, SourceRevisionId,
+    BuildPlanId, EnvironmentId, GitCommitSha, IdempotencyRequest, IdempotentWrite, OrganizationId,
+    PrincipalId, ProjectId, RepositoryError, Sha256Digest, SourceRevisionId,
 };
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -186,6 +190,178 @@ async fn authorization_precedes_source_resolution_and_replay() {
     assert_eq!(source.calls(), 0);
 }
 
+#[tokio::test]
+async fn accepted_build_plan_queries_share_one_authorized_scope() {
+    let fixture = Fixture::new();
+    let repository = Arc::new(InMemoryBuildPlanRepository::new());
+    let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
+    let acceptance = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
+    let accepted = acceptance
+        .execute(fixture.command("query-authority"), context())
+        .await
+        .expect("acceptance Boot result")
+        .expect("accepted BuildPlan")
+        .plan;
+
+    let authorization = query_authorization(true);
+    let queries = Arc::new(BuildPlanQueryService::new(
+        repository,
+        authorization.clone(),
+    ));
+    let get = GetAcceptedBuildPlanHandler::new(Arc::clone(&queries));
+    let list = ListAcceptedBuildPlansHandler::new(queries);
+
+    let found = get
+        .execute(
+            GetAcceptedBuildPlan {
+                organization_id: fixture.organization_id,
+                project_id: fixture.project_id,
+                environment_id: fixture.environment_id,
+                build_plan_id: accepted.id,
+                principal_id: fixture.actor_principal_id,
+            },
+            context(),
+        )
+        .await
+        .expect("get Boot result")
+        .expect("get accepted BuildPlan");
+    let page = list
+        .execute(
+            ListAcceptedBuildPlans {
+                organization_id: fixture.organization_id,
+                project_id: fixture.project_id,
+                environment_id: fixture.environment_id,
+                source_revision_id: fixture.source_revision_id,
+                limit: 50,
+                principal_id: fixture.actor_principal_id,
+            },
+            context(),
+        )
+        .await
+        .expect("list Boot result")
+        .expect("list accepted BuildPlans");
+
+    assert_eq!(found, accepted);
+    assert_eq!(page, vec![accepted]);
+    assert_eq!(authorization.calls(), 2);
+}
+
+#[tokio::test]
+async fn accepted_build_plan_queries_authorize_before_private_input_validation() {
+    let fixture = Fixture::new();
+    let denied_authorization = query_authorization(false);
+    let denied = ListAcceptedBuildPlansHandler::new(Arc::new(BuildPlanQueryService::new(
+        Arc::new(InMemoryBuildPlanRepository::new()),
+        denied_authorization.clone(),
+    )));
+    let denied_error = denied
+        .execute(
+            ListAcceptedBuildPlans {
+                organization_id: fixture.organization_id,
+                project_id: fixture.project_id,
+                environment_id: fixture.environment_id,
+                source_revision_id: SourceRevisionId::from_uuid(Uuid::nil()),
+                limit: 0,
+                principal_id: fixture.actor_principal_id,
+            },
+            context(),
+        )
+        .await
+        .expect("denied Boot result")
+        .expect_err("denied query must be concealed");
+    assert!(matches!(denied_error, ApplicationError::NotFound(_)));
+    assert_eq!(denied_authorization.calls(), 1);
+
+    let allowed = ListAcceptedBuildPlansHandler::new(Arc::new(BuildPlanQueryService::new(
+        Arc::new(InMemoryBuildPlanRepository::new()),
+        query_authorization(true),
+    )));
+    for limit in [0, MAXIMUM_BUILD_PLAN_LIST_LIMIT + 1] {
+        let error = allowed
+            .execute(
+                ListAcceptedBuildPlans {
+                    organization_id: fixture.organization_id,
+                    project_id: fixture.project_id,
+                    environment_id: fixture.environment_id,
+                    source_revision_id: fixture.source_revision_id,
+                    limit,
+                    principal_id: fixture.actor_principal_id,
+                },
+                context(),
+            )
+            .await
+            .expect("bounded Boot result")
+            .expect_err("unbounded query must fail");
+        assert!(matches!(error, ApplicationError::Invalid(_)));
+    }
+}
+
+#[tokio::test]
+async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
+    let fixture = Fixture::new();
+    let repository = Arc::new(InMemoryBuildPlanRepository::new());
+    let acceptance = AcceptBuildPlanHandler::new(
+        repository,
+        Arc::new(FakeSourcePort::new(Some(fixture.evidence()))),
+        authorization(true),
+    );
+    let accepted = acceptance
+        .execute(fixture.command("query-drift"), context())
+        .await
+        .expect("acceptance Boot result")
+        .expect("accepted BuildPlan")
+        .plan;
+
+    let mut wrong_scope = accepted.clone();
+    wrong_scope.project_id = ProjectId::new();
+    let get = GetAcceptedBuildPlanHandler::new(Arc::new(BuildPlanQueryService::new(
+        Arc::new(ScriptedBuildPlanRepository {
+            found: Some(wrong_scope),
+            listed: Vec::new(),
+        }),
+        query_authorization(true),
+    )));
+    let get_error = get
+        .execute(
+            GetAcceptedBuildPlan {
+                organization_id: fixture.organization_id,
+                project_id: fixture.project_id,
+                environment_id: fixture.environment_id,
+                build_plan_id: accepted.id,
+                principal_id: fixture.actor_principal_id,
+            },
+            context(),
+        )
+        .await
+        .expect("get Boot result")
+        .expect_err("cross-scope repository result must fail closed");
+    assert!(matches!(get_error, ApplicationError::Internal(_)));
+
+    let list = ListAcceptedBuildPlansHandler::new(Arc::new(BuildPlanQueryService::new(
+        Arc::new(ScriptedBuildPlanRepository {
+            found: None,
+            listed: vec![accepted.clone(), accepted],
+        }),
+        query_authorization(true),
+    )));
+    let list_error = list
+        .execute(
+            ListAcceptedBuildPlans {
+                organization_id: fixture.organization_id,
+                project_id: fixture.project_id,
+                environment_id: fixture.environment_id,
+                source_revision_id: fixture.source_revision_id,
+                limit: 2,
+                principal_id: fixture.actor_principal_id,
+            },
+            context(),
+        )
+        .await
+        .expect("list Boot result")
+        .expect_err("non-canonical repository page must fail closed");
+    assert!(matches!(list_error, ApplicationError::Internal(_)));
+}
+
 struct FakeSourcePort {
     evidence: Option<BuildPlanSourceRevisionEvidence>,
     calls: AtomicUsize,
@@ -221,6 +397,14 @@ impl IBuildPlanSourceRevisionPort for FakeSourcePort {
 
 struct FakeAuthorizationPort {
     allowed: bool,
+    expected_action: DeveloperWorkflowAction,
+    calls: AtomicUsize,
+}
+
+impl FakeAuthorizationPort {
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
@@ -230,7 +414,8 @@ impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
         access: DeveloperWorkflowEnvironmentAccess,
     ) -> Result<bool, RepositoryError> {
         access.validate().map_err(RepositoryError::Forbidden)?;
-        if access.action != DeveloperWorkflowAction::AcceptBuildPlan {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if access.action != self.expected_action {
             return Err(RepositoryError::Forbidden(
                 "unexpected Developer Workflow action".into(),
             ));
@@ -240,7 +425,75 @@ impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
 }
 
 fn authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
-    Arc::new(FakeAuthorizationPort { allowed })
+    Arc::new(FakeAuthorizationPort {
+        allowed,
+        expected_action: DeveloperWorkflowAction::AcceptBuildPlan,
+        calls: AtomicUsize::new(0),
+    })
+}
+
+fn query_authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
+    Arc::new(FakeAuthorizationPort {
+        allowed,
+        expected_action: DeveloperWorkflowAction::ReadBuildPlan,
+        calls: AtomicUsize::new(0),
+    })
+}
+
+struct ScriptedBuildPlanRepository {
+    found: Option<AcceptedBuildPlan>,
+    listed: Vec<AcceptedBuildPlan>,
+}
+
+#[async_trait]
+impl IBuildPlanRepository for ScriptedBuildPlanRepository {
+    async fn replay_acceptance(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AcceptedBuildPlan>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn accept(
+        &self,
+        _write: AcceptBuildPlanWrite,
+    ) -> Result<IdempotentWrite<AcceptedBuildPlan>, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "scripted BuildPlan repository is read-only".into(),
+        ))
+    }
+
+    async fn find(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _build_plan_id: BuildPlanId,
+    ) -> Result<Option<AcceptedBuildPlan>, RepositoryError> {
+        Ok(self.found.clone())
+    }
+
+    async fn find_for_source_root(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _source_revision_id: SourceRevisionId,
+        _project_root: &str,
+    ) -> Result<Option<AcceptedBuildPlan>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn list_for_source(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _source_revision_id: SourceRevisionId,
+        _limit: usize,
+    ) -> Result<Vec<AcceptedBuildPlan>, RepositoryError> {
+        Ok(self.listed.clone())
+    }
 }
 
 struct Fixture {

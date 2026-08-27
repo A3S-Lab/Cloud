@@ -3,6 +3,7 @@ mod accepted_profile_compilation;
 mod authorization;
 mod build_outcome;
 mod build_plan_detection_query;
+mod build_plan_queries;
 mod detection;
 mod preview_environment;
 mod preview_policy_acceptance;
@@ -28,6 +29,11 @@ pub use build_outcome::{
     WORKLOAD_BUILD_OUTCOME_SCHEMA,
 };
 pub use build_plan_detection_query::{DetectBuildPlanProposals, DetectBuildPlanProposalsHandler};
+pub use build_plan_queries::{
+    BuildPlanQueryService, GetAcceptedBuildPlan, GetAcceptedBuildPlanHandler,
+    ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler, DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+};
 pub use detection::BuildPlanDetectionService;
 pub use preview_environment::{
     EnsurePreviewEnvironment, IPreviewEnvironmentPort, PreviewEnvironmentBinding,

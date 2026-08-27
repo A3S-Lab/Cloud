@@ -474,6 +474,22 @@ resolver, cache, queue, or lifecycle mechanism. Public interfaces,
 pre-acceptance source discovery, BuildRun, Workload, Route, Operation,
 scheduling, and downstream lifecycle handoffs remain outside this slice.
 
+`P0.1-C6` exposes the existing detection and acceptance authorities without a
+second workflow mechanism. One Application `BuildPlanQueryService` owns
+accepted-plan read authorization, exact scope and canonical ACL validation,
+the bounded page rule, and strict `(project_root, BuildPlanId)` ordering through
+the repository interface. The REST controller and four Management MCP tools
+dispatch only the existing typed commands/queries and share one response
+projection; the maintained client and CLI remain transport adapters over REST.
+Detection/list/get require coarse `cloud:read`, acceptance requires
+`build:write`, and the shared Developer Workflows authorization port remains
+the exact membership, Resource Grant, and Environment authority. Closed inputs
+accept only identities and canonical `proposalAcl`. Outputs retain canonical
+proposal/contract ACLs plus typed evidence while excluding source bytes,
+credentials, checkout receipts, and local paths. C6 adds no parser, table,
+migration, evaluator, provider, checkout, cache, queue, worker, Relay, scheduler,
+or downstream lifecycle state.
+
 Component-only `P0.2-C1/C2` owns explicit workload-profile intent and its
 acceptance history. Canonical `a3s.cloud.workload-profile.v1` binds a closed
 `web`, `worker`, or `scheduled_task` profile to one exact accepted BuildPlan;

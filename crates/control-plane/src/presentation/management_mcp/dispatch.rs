@@ -20,6 +20,10 @@ use super::connectors::{
     ListConnectorProfilesArguments, ListConnectorRevisionsArguments,
     ReviseConnectorProfileArguments,
 };
+use super::developer_workflows::{
+    AcceptBuildPlanArguments, DetectBuildPlansArguments, GetAcceptedBuildPlanArguments,
+    ListAcceptedBuildPlansArguments,
+};
 use super::durable_cells::{
     CreateDurableCellApplicationArguments, DeployDurableCellApplicationArguments,
     DurableCellApplicationArguments, DurableCellApplicationRevisionArguments,
@@ -74,9 +78,9 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    applications, artifacts, audit, connectors, durable_cells, edge, execution_templates, forms,
-    identity, nodes, notifications, ontology, operations, plugins, projects, search, security,
-    workflow, workloads,
+    applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
+    execution_templates, forms, identity, nodes, notifications, ontology, operations, plugins,
+    projects, search, security, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -1453,6 +1457,50 @@ pub async fn execute(
                 organization_id,
                 arguments,
                 resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::BuildPlanDetectionsCreate => {
+            let arguments = arguments::parse::<DetectBuildPlansArguments>(arguments).ok()?;
+            developer_workflows::detect_build_plans(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::BuildPlansAccept => {
+            let arguments = arguments::parse::<AcceptBuildPlanArguments>(arguments).ok()?;
+            developer_workflows::accept_build_plan(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::BuildPlansList => {
+            let arguments = arguments::parse::<ListAcceptedBuildPlansArguments>(arguments).ok()?;
+            developer_workflows::list_build_plans(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::BuildPlansGet => {
+            let arguments = arguments::parse::<GetAcceptedBuildPlanArguments>(arguments).ok()?;
+            developer_workflows::get_build_plan(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
                 request_id,
             )
             .await

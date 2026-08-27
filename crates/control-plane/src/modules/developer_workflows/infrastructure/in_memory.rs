@@ -203,15 +203,7 @@ impl IBuildPlanRepository for InMemoryBuildPlanRepository {
             })
             .cloned()
             .collect::<Vec<_>>();
-        plans.sort_by(|left, right| {
-            left.contract
-                .spec()
-                .proposal
-                .spec()
-                .project_root
-                .cmp(&right.contract.spec().proposal.spec().project_root)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        plans.sort_by(AcceptedBuildPlan::canonical_cmp);
         plans.truncate(limit);
         Ok(plans)
     }

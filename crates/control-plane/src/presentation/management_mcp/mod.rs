@@ -4,6 +4,7 @@ mod artifacts;
 mod audit;
 mod catalog;
 mod connectors;
+mod developer_workflows;
 mod dispatch;
 mod durable_cells;
 mod edge;

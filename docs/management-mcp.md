@@ -15,6 +15,13 @@ BuildRun-log unavailability, and signed BuildRun evidence through the same
 application queries and REST response projections. The operational-mutation slice adds five replay-safe
 Workload, Deployment, and BuildRun commands through the existing application
 handlers and REST response projections.
+The Developer Workflows `P0.1-C6` slice adds four BuildPlan tools over the same
+detection query, acceptance command, and accepted-plan read service used by
+REST. Detection/list/get require `cloud:read`; acceptance requires
+`build:write`. All arguments carry exact Project and Environment scope,
+acceptance receives only canonical `proposalAcl`, and responses reuse the REST
+DTOs with canonical ACL and typed evidence. MCP owns no detector, ACL parser,
+authorization evaluator, repository, checkout, provider, or build lifecycle.
 The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
 tools over the same Workflow command/query handlers. It does not introduce an
 MCP-specific Ontology store, migration policy, ACL parser, or graph database.
@@ -819,6 +826,24 @@ reads or idempotency replay. Denied and missing Form IDs therefore return the
 same `404`, revocation applies on the next request, and an environment-only
 grant cannot authorize a project-scoped Form.
 
+## BuildPlan review and acceptance
+
+`a3s_cloud_build_plan_detections_create` accepts `projectId`, `environmentId`,
+and `sourceRevisionId`, then dispatches the existing authorization-first
+detection query. It never accepts source bytes or a checkout path.
+
+`a3s_cloud_build_plans_accept` adds canonical `proposalAcl` and an explicit
+`idempotencyKey`, then dispatches the existing acceptance command. New
+acceptance returns `201`; exact replay returns `200` with `replayed: true`.
+`a3s_cloud_build_plans_list` accepts the same three exact scope/source
+identities and an optional limit from 1 through 200 (default 50).
+`a3s_cloud_build_plans_get` accepts the exact scope plus `buildPlanId`.
+
+Both reads use the single Application query service, which authorizes before
+private identity validation and fails closed on repository scope, canonical ACL,
+page-bound, duplicate, or ordering drift. No MCP adapter reads a repository or
+reimplements Membership, Resource Grant, Environment, or detector policy.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -870,7 +895,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 137-tool administrator and 77-tool
+current focused source runner requires exact 141-tool administrator and 80-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -909,7 +934,8 @@ definition/Goal/Plan lifecycle, built-in node-catalog cross-surface equality,
 native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
 immutable Application release lifecycle, immutable Connector profile/revision lifecycle, Durable Cell application and
-deployment lifecycle with Secret-free responses, strict-boundary, and replay
+deployment lifecycle with Secret-free responses, BuildPlan ACL-only review and
+acceptance, strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.

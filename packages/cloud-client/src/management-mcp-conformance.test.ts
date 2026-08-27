@@ -29,9 +29,9 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
-it('pins the current signed-audit and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(137);
-  expect(READ_ONLY_TOOLS).toHaveLength(77);
+it('pins the current BuildPlan, signed-audit, and retention management MCP catalogs', () => {
+  expect(ADMIN_TOOLS).toHaveLength(141);
+  expect(READ_ONLY_TOOLS).toHaveLength(80);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);

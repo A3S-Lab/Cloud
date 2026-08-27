@@ -5,6 +5,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use uuid::Uuid;
 
 const BUILD_PLAN_NAMESPACE: Uuid = Uuid::from_bytes([
@@ -118,5 +119,16 @@ impl AcceptedBuildPlan {
             return Err("accepted BuildPlan identity or immutable state is invalid".into());
         }
         Ok(())
+    }
+
+    /// Canonical order for a page of accepted BuildPlans within one Source revision.
+    pub(crate) fn canonical_cmp(&self, other: &Self) -> Ordering {
+        self.contract
+            .spec()
+            .proposal
+            .spec()
+            .project_root
+            .cmp(&other.contract.spec().proposal.spec().project_root)
+            .then_with(|| self.id.cmp(&other.id))
     }
 }

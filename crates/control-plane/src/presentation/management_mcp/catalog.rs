@@ -13,6 +13,9 @@ use crate::modules::connectors::{
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
+use crate::modules::developer_workflows::{
+    BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+};
 use crate::modules::durable_cells::domain::{
     DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
     DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
@@ -46,6 +49,10 @@ use a3s_use_extension::{
 };
 use serde_json::{json, Value};
 
+pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
+pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
+pub const BUILD_PLANS_GET: &str = "a3s_cloud_build_plans_get";
+pub const BUILD_PLANS_LIST: &str = "a3s_cloud_build_plans_list";
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
 pub const BUILD_RUNS_LIST: &str = "a3s_cloud_build_runs_list";
 pub const BUILD_RUNS_CANCEL: &str = "a3s_cloud_build_runs_cancel";
@@ -322,6 +329,10 @@ pub enum ManagementTool {
     DeploymentsCancel,
     RoutesList,
     RoutesGet,
+    BuildPlanDetectionsCreate,
+    BuildPlansAccept,
+    BuildPlansList,
+    BuildPlansGet,
     BuildRunsList,
     BuildRunsGet,
     BuildRunLogsGet,
@@ -345,7 +356,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 137] = [
+    const ALL: [Self; 141] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -477,6 +488,10 @@ impl ManagementTool {
         Self::DeploymentsCancel,
         Self::RoutesList,
         Self::RoutesGet,
+        Self::BuildPlanDetectionsCreate,
+        Self::BuildPlansAccept,
+        Self::BuildPlansList,
+        Self::BuildPlansGet,
         Self::BuildRunsList,
         Self::BuildRunsGet,
         Self::BuildRunLogsGet,
@@ -648,6 +663,10 @@ impl ManagementTool {
             Self::DeploymentsCancel => DEPLOYMENTS_CANCEL,
             Self::RoutesList => ROUTES_LIST,
             Self::RoutesGet => ROUTES_GET,
+            Self::BuildPlanDetectionsCreate => BUILD_PLAN_DETECTIONS_CREATE,
+            Self::BuildPlansAccept => BUILD_PLANS_ACCEPT,
+            Self::BuildPlansList => BUILD_PLANS_LIST,
+            Self::BuildPlansGet => BUILD_PLANS_GET,
             Self::BuildRunsList => BUILD_RUNS_LIST,
             Self::BuildRunsGet => BUILD_RUNS_GET,
             Self::BuildRunLogsGet => BUILD_RUN_LOGS_GET,
@@ -712,7 +731,9 @@ impl ManagementTool {
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
-            Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
+            Self::BuildPlansAccept | Self::BuildRunsCancel | Self::BuildRunsRetry => {
+                Some(ApiTokenScope::BUILD_WRITE)
+            }
             Self::MyMembershipInvitationsList
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
@@ -738,7 +759,10 @@ impl ManagementTool {
             | Self::DurableCellApplicationsList
             | Self::DurableCellApplicationsGet
             | Self::DurableCellRevisionsList
-            | Self::DurableCellRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::DurableCellRevisionsGet
+            | Self::BuildPlanDetectionsCreate
+            | Self::BuildPlansList
+            | Self::BuildPlansGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -865,6 +889,10 @@ impl ManagementTool {
             | Self::DurableCellRoutesPublish
             | Self::WorkloadsList
             | Self::RoutesList
+            | Self::BuildPlanDetectionsCreate
+            | Self::BuildPlansAccept
+            | Self::BuildPlansList
+            | Self::BuildPlansGet
             | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
@@ -1763,6 +1791,30 @@ impl ManagementTool {
                 uuid_id_schema("routeId"),
                 true,
             ),
+            Self::BuildPlanDetectionsCreate => (
+                "Detect BuildPlans",
+                "Detect deterministic BuildPlan proposals for one immutable SourceRevision.",
+                detect_build_plans_schema(),
+                true,
+            ),
+            Self::BuildPlansAccept => (
+                "Accept BuildPlan",
+                "Accept one canonical BuildPlan proposal ACL with explicit idempotency.",
+                accept_build_plan_schema(),
+                false,
+            ),
+            Self::BuildPlansList => (
+                "List BuildPlans",
+                "List a bounded canonical page of accepted BuildPlans for one SourceRevision.",
+                list_build_plans_schema(),
+                true,
+            ),
+            Self::BuildPlansGet => (
+                "Get BuildPlan",
+                "Get one accepted BuildPlan in an exact tenant-authorized environment.",
+                get_build_plan_schema(),
+                true,
+            ),
             Self::BuildRunsList => (
                 "List build runs",
                 "List a bounded set of BuildRuns in one tenant-authorized environment.",
@@ -2199,6 +2251,95 @@ fn revoke_notification_outbound_subscription_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["subscriptionId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn build_plan_environment_properties() -> serde_json::Map<String, Value> {
+    serde_json::Map::from_iter([
+        (
+            "projectId".into(),
+            json!({"type": "string", "format": "uuid"}),
+        ),
+        (
+            "environmentId".into(),
+            json!({"type": "string", "format": "uuid"}),
+        ),
+    ])
+}
+
+fn build_plan_source_properties() -> serde_json::Map<String, Value> {
+    let mut properties = build_plan_environment_properties();
+    properties.insert(
+        "sourceRevisionId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties
+}
+
+fn detect_build_plans_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": build_plan_source_properties(),
+        "required": ["projectId", "environmentId", "sourceRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn accept_build_plan_schema() -> Value {
+    let mut properties = build_plan_source_properties();
+    properties.insert(
+        "proposalAcl".into(),
+        json!({
+            "type": "string",
+            "minLength": 1,
+            "maxLength": BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES
+        }),
+    );
+    properties.insert("idempotencyKey".into(), idempotency_key_schema());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [
+            "projectId",
+            "environmentId",
+            "sourceRevisionId",
+            "proposalAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn list_build_plans_schema() -> Value {
+    let mut properties = build_plan_source_properties();
+    properties.insert(
+        "limit".into(),
+        json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+            "default": DEFAULT_BUILD_PLAN_LIST_LIMIT
+        }),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["projectId", "environmentId", "sourceRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn get_build_plan_schema() -> Value {
+    let mut properties = build_plan_environment_properties();
+    properties.insert(
+        "buildPlanId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["projectId", "environmentId", "buildPlanId"],
         "additionalProperties": false
     })
 }
@@ -3481,6 +3622,53 @@ mod tests {
     }
 
     #[test]
+    fn build_plan_catalog_is_acl_only_environment_bound_and_scope_explicit() {
+        for tool in [
+            ManagementTool::BuildPlanDetectionsCreate,
+            ManagementTool::BuildPlansList,
+            ManagementTool::BuildPlansGet,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::EnvironmentArguments)
+            );
+            assert_eq!(
+                tool.definition()["annotations"]["readOnlyHint"].as_bool(),
+                Some(true)
+            );
+        }
+        assert_eq!(
+            ManagementTool::BuildPlansAccept.required_scope(),
+            Some(ApiTokenScope::BUILD_WRITE)
+        );
+        assert_eq!(
+            ManagementTool::BuildPlansAccept.resource_binding(),
+            Some(ManagementResourceBinding::EnvironmentArguments)
+        );
+
+        let acceptance = ManagementTool::BuildPlansAccept.definition();
+        let properties = &acceptance["inputSchema"]["properties"];
+        assert_eq!(
+            properties["proposalAcl"]["maxLength"].as_u64(),
+            Some(BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES as u64)
+        );
+        assert!(properties.get("proposal").is_none());
+        assert!(properties.get("sourceBytes").is_none());
+        assert_eq!(
+            acceptance["inputSchema"]["additionalProperties"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            ManagementTool::BuildPlanDetectionsCreate.name(),
+            BUILD_PLAN_DETECTIONS_CREATE
+        );
+        assert_eq!(ManagementTool::BuildPlansAccept.name(), BUILD_PLANS_ACCEPT);
+        assert_eq!(ManagementTool::BuildPlansList.name(), BUILD_PLANS_LIST);
+        assert_eq!(ManagementTool::BuildPlansGet.name(), BUILD_PLANS_GET);
+    }
+
+    #[test]
     fn restricted_catalog_exposes_direct_and_filtered_collection_tools() {
         let principal = restricted_principal(ResourceGrantScope::Project {
             project_id: ProjectId::new(),
@@ -3517,6 +3705,10 @@ mod tests {
         assert!(ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(ManagementTool::DeploymentsCancel.visible_to(&principal));
         assert!(ManagementTool::RoutesGet.visible_to(&principal));
+        assert!(ManagementTool::BuildPlanDetectionsCreate.visible_to(&principal));
+        assert!(ManagementTool::BuildPlansAccept.visible_to(&principal));
+        assert!(ManagementTool::BuildPlansList.visible_to(&principal));
+        assert!(ManagementTool::BuildPlansGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunLogsGet.visible_to(&principal));
         assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));
@@ -3596,6 +3788,10 @@ mod tests {
         assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsCancel.visible_to(&principal));
         assert!(!ManagementTool::RoutesGet.visible_to(&principal));
+        assert!(!ManagementTool::BuildPlanDetectionsCreate.visible_to(&principal));
+        assert!(!ManagementTool::BuildPlansAccept.visible_to(&principal));
+        assert!(!ManagementTool::BuildPlansList.visible_to(&principal));
+        assert!(!ManagementTool::BuildPlansGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsCancel.visible_to(&principal));
         for tool in [

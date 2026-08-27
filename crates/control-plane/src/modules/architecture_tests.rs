@@ -1121,6 +1121,118 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
 }
 
 #[test]
+fn developer_workflows_build_plan_reads_have_one_application_authority() {
+    let query = std::fs::read_to_string(
+        module_root().join("developer_workflows/application/build_plan_queries.rs"),
+    )
+    .expect("read accepted BuildPlan queries");
+    let production_query = production_source(&query);
+    let compact_query = production_query.split_whitespace().collect::<String>();
+
+    for required in [
+        "pubstructBuildPlanQueryService",
+        "plans:Arc<dynIBuildPlanRepository>",
+        "authorization:Arc<dynIDeveloperWorkflowAuthorizationPort>",
+        "DeveloperWorkflowAction::ReadBuildPlan",
+        "implQueryHandler<GetAcceptedBuildPlan>",
+        "implQueryHandler<ListAcceptedBuildPlans>",
+    ] {
+        assert!(
+            compact_query.contains(required),
+            "accepted BuildPlan reads lost their single Application authority {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "crate::modules::projects",
+        "crate::modules::sources",
+        "ResourceAccessEvaluator",
+        "Postgres",
+        "InMemory",
+        "CommandBus",
+        "CommandHandler",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_query.contains(forbidden),
+            "accepted BuildPlan read authority imported foreign policy, a concrete adapter, or lifecycle mechanism {forbidden}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        module_root().join("developer_workflows/presentation/controller.rs"),
+    )
+    .expect("read Developer Workflows controller");
+    let production_controller = production_source(&controller);
+    for required in [
+        "DetectBuildPlanProposals",
+        "GetAcceptedBuildPlan",
+        "ListAcceptedBuildPlans",
+        ".execute(",
+    ] {
+        assert!(
+            production_controller.contains(required),
+            "Developer Workflows presentation stopped dispatching the Application boundary {required}"
+        );
+    }
+    for forbidden in [
+        "IBuildPlanRepository",
+        "developer_workflows::infrastructure",
+        "authorize_environment_action",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
+        ".find(",
+        ".list_for_source(",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_controller.contains(forbidden),
+            "Developer Workflows presentation bypassed its Application boundary with {forbidden}"
+        );
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("control-plane source root")
+            .join("presentation/management_mcp/developer_workflows.rs"),
+    )
+    .expect("read Developer Workflows Management MCP adapter");
+    let production_management_mcp = production_source(&management_mcp);
+    for required in [
+        "DetectBuildPlanProposals",
+        "AcceptBuildPlan",
+        "GetAcceptedBuildPlan",
+        "ListAcceptedBuildPlans",
+        ".execute(",
+    ] {
+        assert!(
+            production_management_mcp.contains(required),
+            "Developer Workflows Management MCP stopped dispatching the Application boundary {required}"
+        );
+    }
+    for forbidden in [
+        "IBuildPlanRepository",
+        "developer_workflows::infrastructure",
+        "authorize_environment_action",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
+        ".find(",
+        ".list_for_source(",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_management_mcp.contains(forbidden),
+            "Developer Workflows Management MCP bypassed its Application boundary with {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

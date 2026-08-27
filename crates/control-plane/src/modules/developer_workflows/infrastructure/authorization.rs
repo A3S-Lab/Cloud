@@ -44,6 +44,7 @@ impl IDeveloperWorkflowAuthorizationPort for IdentityProjectsDeveloperWorkflowAu
         access.validate().map_err(RepositoryError::Forbidden)?;
         match access.action {
             DeveloperWorkflowAction::DetectBuildPlan
+            | DeveloperWorkflowAction::ReadBuildPlan
             | DeveloperWorkflowAction::AcceptBuildPlan
             | DeveloperWorkflowAction::AcceptWorkloadProfile
             | DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy => {}
