@@ -19,6 +19,7 @@ use crate::modules::connectors::{
     InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
 };
 use crate::modules::developer_workflows::{
+    BuildPlanSourceLayoutError, BuildPlanSourceLayoutRequest, IBuildPlanSourceLayoutPort,
     InMemoryBuildPlanRepository, InMemoryPullRequestPreviewPolicyRepository,
     InMemoryWorkloadProfileRepository,
 };
@@ -260,11 +261,29 @@ struct TestSecretEncryption;
 
 struct TestSourceResolver;
 
+struct UnavailableBuildPlanSourceLayout;
+
 struct TestOciArtifactResolver;
 
 struct TestGithubAppAuthorization;
 
 struct UnavailableMcpRoutePolicyRepository;
+
+#[async_trait]
+impl IBuildPlanSourceLayoutPort for UnavailableBuildPlanSourceLayout {
+    async fn acquire(
+        &self,
+        request: BuildPlanSourceLayoutRequest,
+    ) -> std::result::Result<
+        Option<crate::modules::developer_workflows::domain::SourceLayoutSnapshot>,
+        BuildPlanSourceLayoutError,
+    > {
+        request
+            .validate()
+            .map_err(BuildPlanSourceLayoutError::Invalid)?;
+        Ok(None)
+    }
+}
 
 #[async_trait::async_trait]
 impl IOciArtifactResolver for TestOciArtifactResolver {
@@ -1967,6 +1986,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         connector_profiles.unwrap_or_else(|| Arc::new(InMemoryConnectorProfileRepository::new()));
     let connector_execution = connector_execution
         .unwrap_or_else(|| Arc::new(InMemoryConnectorExecutionRepository::new()));
+    let source_repository_credentials: Arc<dyn ISourceRepositoryCredentialProvider> =
+        Arc::new(SourceRepositoryCredentialService::new(
+            github_connections.clone(),
+            github_installation_tokens,
+        ));
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -1985,6 +2009,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 asset_git,
                 github_authorization,
                 source_resolver,
+                source_repository_credentials,
+                developer_workflow_source_layouts: Arc::new(UnavailableBuildPlanSourceLayout),
                 source_webhook_verifier: Arc::new(
                     GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)
                         .map_err(BootError::Internal)?,
@@ -2073,7 +2099,6 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             source_webhooks,
             source_subscriptions,
             github_connections,
-            github_installation_tokens,
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,

@@ -304,10 +304,12 @@ impl GitSourceCheckout {
                 "checked-out source no longer matches its immutable receipt",
             ));
         }
-        Ok(receipt.checked_out_source(source, request))
+        let checked_out = receipt.checked_out_source(source, request, digest.entries);
+        checked_out.validate_for(request).map_err(integrity)?;
+        Ok(checked_out)
     }
 
-    async fn replay(
+    async fn replay_at(
         &self,
         request: &SourceCheckoutRequest,
         checkout: &Path,
@@ -362,7 +364,7 @@ impl ISourceCheckout for GitSourceCheckout {
         let root = ensure_root(&self.root).await?;
         let checkout = root.join(request.checkout_id.to_string());
         match tokio::fs::symlink_metadata(&checkout).await {
-            Ok(_) => return self.replay(request, &checkout).await,
+            Ok(_) => return self.replay_at(request, &checkout).await,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => return Err(storage("could not inspect source checkout path")),
         }
@@ -387,15 +389,39 @@ impl ISourceCheckout for GitSourceCheckout {
             Ok(Ok(_)) => {}
         }
         match tokio::fs::rename(&staging, &checkout).await {
-            Ok(()) => self.replay(request, &checkout).await,
+            Ok(()) => match self.replay_at(request, &checkout).await {
+                Ok(checked_out) => Ok(checked_out),
+                Err(error) => {
+                    remove_staging(&checkout).await;
+                    Err(error)
+                }
+            },
             Err(_) if tokio::fs::symlink_metadata(&checkout).await.is_ok() => {
                 remove_staging(&staging).await;
-                self.replay(request, &checkout).await
+                self.replay_at(request, &checkout).await
             }
             Err(_) => {
                 remove_staging(&staging).await;
                 Err(storage("could not commit source checkout"))
             }
+        }
+    }
+
+    async fn replay(
+        &self,
+        request: &SourceCheckoutRequest,
+    ) -> Result<CheckedOutSource, SourceCheckoutError> {
+        validate_request(request)?;
+        let root = canonical_existing_root(&self.root).await?.ok_or_else(|| {
+            integrity("source checkout root is unavailable for credential-free replay")
+        })?;
+        let checkout = root.join(request.checkout_id.to_string());
+        match tokio::fs::symlink_metadata(&checkout).await {
+            Ok(_) => self.replay_at(request, &checkout).await,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(integrity(
+                "source checkout is unavailable for credential-free replay",
+            )),
+            Err(_) => Err(storage("could not inspect source checkout path")),
         }
     }
 
@@ -405,17 +431,8 @@ impl ISourceCheckout for GitSourceCheckout {
                 "source checkout ID cannot be nil".into(),
             ));
         }
-        let root_metadata = match tokio::fs::symlink_metadata(&self.root).await {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(_) => return Err(storage("could not inspect source checkout root")),
-        };
-        if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-            return Err(integrity("source checkout root is not an owned directory"));
-        }
-        let root = match tokio::fs::canonicalize(&self.root).await {
-            Ok(root) => root,
-            Err(_) => return Err(storage("could not inspect source checkout root")),
+        let Some(root) = canonical_existing_root(&self.root).await? else {
+            return Ok(());
         };
         let checkout = root.join(checkout_id.to_string());
         match tokio::fs::symlink_metadata(&checkout).await {
@@ -431,20 +448,29 @@ impl ISourceCheckout for GitSourceCheckout {
     }
 }
 
-async fn ensure_root(root: &Path) -> Result<PathBuf, SourceCheckoutError> {
-    tokio::fs::create_dir_all(root)
-        .await
-        .map_err(|_| storage("could not create source checkout root"))?;
-    let metadata = tokio::fs::symlink_metadata(root)
-        .await
-        .map_err(|_| storage("could not inspect source checkout root"))?;
+async fn canonical_existing_root(root: &Path) -> Result<Option<PathBuf>, SourceCheckoutError> {
+    let metadata = match tokio::fs::symlink_metadata(root).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(storage("could not inspect source checkout root")),
+    };
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(integrity("source checkout root is not an owned directory"));
     }
     tokio::fs::canonicalize(root)
         .await
         .map(GitCommandRunner::normalize_path)
+        .map(Some)
         .map_err(|_| storage("could not canonicalize source checkout root"))
+}
+
+async fn ensure_root(root: &Path) -> Result<PathBuf, SourceCheckoutError> {
+    tokio::fs::create_dir_all(root)
+        .await
+        .map_err(|_| storage("could not create source checkout root"))?;
+    canonical_existing_root(root)
+        .await?
+        .ok_or_else(|| storage("source checkout root disappeared after creation"))
 }
 
 async fn require_directory(path: &Path, label: &str) -> Result<(), SourceCheckoutError> {
@@ -458,7 +484,14 @@ async fn require_directory(path: &Path, label: &str) -> Result<(), SourceCheckou
 }
 
 async fn remove_staging(path: &Path) {
-    let _ = tokio::fs::remove_dir_all(path).await;
+    if let Err(error) = tokio::fs::remove_dir_all(path).await {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(
+                error = %error,
+                "source checkout temporary cleanup failed"
+            );
+        }
+    }
 }
 
 fn one_line(output: Vec<u8>, message: &str) -> Result<String, SourceCheckoutError> {
@@ -472,11 +505,7 @@ fn one_line(output: Vec<u8>, message: &str) -> Result<String, SourceCheckoutErro
 }
 
 fn validate_request(request: &SourceCheckoutRequest) -> Result<(), SourceCheckoutError> {
-    if request.checkout_id.is_nil() {
-        return Err(SourceCheckoutError::Invalid(
-            "source checkout ID cannot be nil".into(),
-        ));
-    }
+    request.validate().map_err(SourceCheckoutError::Invalid)?;
     if request.repository.provider() != GitProvider::Github {
         return Err(SourceCheckoutError::Invalid(
             "source checkout provider is unsupported".into(),

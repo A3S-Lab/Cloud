@@ -1,4 +1,4 @@
-use super::authorization::authorize_environment_write;
+use super::authorization::authorize_environment_action;
 use super::{
     DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
     IDeveloperWorkflowAuthorizationPort, IPreviewSourceSubscriptionQueryPort,
@@ -75,7 +75,7 @@ impl CommandHandler<AcceptPullRequestPreviewPolicy> for AcceptPullRequestPreview
         let subscriptions = Arc::clone(&self.subscriptions);
         let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
-            if let Err(error) = authorize_environment_write(
+            if let Err(error) = authorize_environment_action(
                 authorization.as_ref(),
                 DeveloperWorkflowEnvironmentAccess {
                     organization_id: command.organization_id,

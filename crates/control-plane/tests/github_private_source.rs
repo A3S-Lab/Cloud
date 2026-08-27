@@ -14,9 +14,10 @@ use a3s_cloud_control_plane::modules::sources::domain::{
 };
 use a3s_cloud_control_plane::modules::sources::published::BuildRecipe;
 use a3s_cloud_control_plane::modules::sources::{
-    ExternalSourceBuildArchiveAdapter, GitSourceCheckout, GithubInstallationTokenIssuer,
-    GithubSourceResolver, ISourceBuildInputQueryPort, InMemoryGithubConnectionRepository,
-    SourceBuildInputQueryService,
+    AuthorizedSourceCheckoutService, ExternalSourceBuildArchiveAdapter, GitSourceCheckout,
+    GithubInstallationTokenIssuer, GithubSourceResolver, ISourceBuildInputQueryPort,
+    InMemoryGithubConnectionRepository, SourceBuildInputQueryService,
+    SourceRepositoryCredentialService,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -148,16 +149,21 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
     assert_eq!(accepted.commit_sha, resolved.commit_sha);
     assert!(!accepted.directory.join(".git").exists());
     drop(credential);
-    assert_eq!(checkout.checkout(&request, None).await?, accepted);
+    assert_eq!(checkout.replay(&request).await?, accepted);
     let handoff_directory = secure_handoff_directory(&required(HANDOFF_DIRECTORY_ENV)?).await?;
     let artifact_store = Arc::new(NodeArtifactObjectStore::local(
         handoff_directory.join("artifact-store"),
         512 * 1024 * 1024,
     )?);
-    let external_source_archives = Arc::new(ExternalSourceBuildArchiveAdapter::new(
+    let authorized_checkout = Arc::new(AuthorizedSourceCheckoutService::new(
         checkout.clone(),
-        Arc::new(InMemoryGithubConnectionRepository::new()),
-        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(SourceRepositoryCredentialService::new(
+            Arc::new(InMemoryGithubConnectionRepository::new()),
+            Arc::new(GithubInstallationTokenIssuer::disabled()),
+        )),
+    ));
+    let external_source_archives = Arc::new(ExternalSourceBuildArchiveAdapter::new(
+        authorized_checkout,
         handoff_directory.join("input-staging"),
         100_000,
         512 * 1024 * 1024,

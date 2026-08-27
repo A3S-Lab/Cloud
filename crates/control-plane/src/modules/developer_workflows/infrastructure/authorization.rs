@@ -12,7 +12,7 @@ use crate::modules::shared_kernel::domain::RepositoryError;
 use async_trait::async_trait;
 use std::sync::Arc;
 
-/// Resolves one Developer Workflows write decision through the existing
+/// Resolves one action-scoped Developer Workflows decision through the existing
 /// Identity membership/grant authority and Projects environment authority.
 #[derive(Clone)]
 pub struct IdentityProjectsDeveloperWorkflowAuthorizationAdapter {
@@ -37,13 +37,14 @@ impl IdentityProjectsDeveloperWorkflowAuthorizationAdapter {
 
 #[async_trait]
 impl IDeveloperWorkflowAuthorizationPort for IdentityProjectsDeveloperWorkflowAuthorizationAdapter {
-    async fn can_write_environment(
+    async fn is_environment_action_allowed(
         &self,
         access: DeveloperWorkflowEnvironmentAccess,
     ) -> Result<bool, RepositoryError> {
         access.validate().map_err(RepositoryError::Forbidden)?;
         match access.action {
-            DeveloperWorkflowAction::AcceptBuildPlan
+            DeveloperWorkflowAction::DetectBuildPlan
+            | DeveloperWorkflowAction::AcceptBuildPlan
             | DeveloperWorkflowAction::AcceptWorkloadProfile
             | DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy => {}
         }

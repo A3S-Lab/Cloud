@@ -19,8 +19,10 @@ pub use github_connection_authority::{
 pub use github_installation_token::{
     GithubInstallationTokenError, GithubInstallationTokenRequest, IGithubInstallationTokenService,
 };
+pub(crate) use source_checkout::validate_checked_out_source_path;
 pub use source_checkout::{
-    CheckedOutSource, ISourceCheckout, SourceCheckoutError, SourceCheckoutRequest,
+    CheckedOutSource, CheckedOutSourceEntry, CheckedOutSourceEntryKind, ISourceCheckout,
+    SourceCheckoutError, SourceCheckoutRequest,
 };
 pub use source_provider_credential::SourceProviderCredential;
 pub use source_repository_policy::SourceRepositoryPolicy;

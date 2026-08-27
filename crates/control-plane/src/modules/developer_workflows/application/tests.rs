@@ -225,7 +225,7 @@ struct FakeAuthorizationPort {
 
 #[async_trait]
 impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
-    async fn can_write_environment(
+    async fn is_environment_action_allowed(
         &self,
         access: DeveloperWorkflowEnvironmentAccess,
     ) -> Result<bool, RepositoryError> {

@@ -27,16 +27,18 @@ pub use repositories::{
     ISourceSubscriptionRepository, ISourceWebhookRepository, PersistGithubProviderReconciliation,
     ReconcileGithubConnectionLifecycle, SourceWebhookAcceptance, WebhookDeliveryReservation,
 };
+pub(crate) use services::validate_checked_out_source_path;
 pub use services::{
-    CheckedOutSource, GithubAppAuthorizationError, GithubConnectionAuthorityError,
-    GithubConnectionAuthorityRequest, GithubInstallationAuthorityError,
-    GithubInstallationAuthorityRequest, GithubInstallationTokenError,
-    GithubInstallationTokenRequest, GithubInstallationVerificationRequest,
-    IGithubAppAuthorizationService, IGithubConnectionAuthorityService,
-    IGithubInstallationAuthorityProvider, IGithubInstallationTokenService, ISourceCheckout,
-    ISourceResolver, ISourceWebhookVerifier, ResolvedSource, SourceCheckoutError,
-    SourceCheckoutRequest, SourceProviderCredential, SourceRepositoryPolicy, SourceResolutionError,
-    SourceResolutionRequest, SourceWebhookVerificationError, SourceWebhookVerificationRequest,
+    CheckedOutSource, CheckedOutSourceEntry, CheckedOutSourceEntryKind,
+    GithubAppAuthorizationError, GithubConnectionAuthorityError, GithubConnectionAuthorityRequest,
+    GithubInstallationAuthorityError, GithubInstallationAuthorityRequest,
+    GithubInstallationTokenError, GithubInstallationTokenRequest,
+    GithubInstallationVerificationRequest, IGithubAppAuthorizationService,
+    IGithubConnectionAuthorityService, IGithubInstallationAuthorityProvider,
+    IGithubInstallationTokenService, ISourceCheckout, ISourceResolver, ISourceWebhookVerifier,
+    ResolvedSource, SourceCheckoutError, SourceCheckoutRequest, SourceProviderCredential,
+    SourceRepositoryPolicy, SourceResolutionError, SourceResolutionRequest,
+    SourceWebhookVerificationError, SourceWebhookVerificationRequest,
     VerifiedGithubConnectionLifecycle, VerifiedGithubInstallation, VerifiedPullRequestChange,
     VerifiedRepositoryWebhook, VerifiedSourcePush, VerifiedSourceWebhook,
 };

@@ -512,6 +512,10 @@ fn build_plan_detection_has_one_closed_production_composition_path() {
         "Arc::new(AssetAclBuildPlanDetector)",
         "Arc::new(DockerfileBuildPlanDetector)",
         "BuildPlanDetectionService::new(",
+        "SourceRepositoryCredentialService::new(",
+        "AuthorizedSourceCheckoutService::new(",
+        "SourceBuildInputQueryService::new(",
+        "DeveloperWorkflowSourceLayoutAdapter::new(",
         "DetectBuildPlanProposalsHandler::new(",
     ] {
         assert_eq!(
@@ -573,8 +577,8 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
         composition
             .matches("Arc::clone(&developer_workflow_authorization)")
             .count(),
-        3,
-        "BuildPlan, workload-profile, and Preview Policy acceptance must share one authorization port instance"
+        4,
+        "BuildPlan detection plus BuildPlan, workload-profile, and Preview Policy acceptance must share one authorization port instance"
     );
     for command in [
         "crate::modules::developer_workflows::AcceptWorkloadProfile, _",
@@ -894,7 +898,6 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
         .map(|(body, _)| body)
         .expect("worker Flow composition root");
     for required in [
-        "GitSourceCheckout::new(",
         "OciBuildOutputValidator::new(",
         "build_evidence_signer(",
         "FlowRuntimeRouter::new(",
@@ -905,6 +908,25 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
             "worker Flow composition lost required capability {required}"
         );
     }
+    assert_eq!(
+        application.matches("GitSourceCheckout::new(").count(),
+        1,
+        "API detection and worker builds must share one Sources checkout constructor"
+    );
+    assert_eq!(
+        application
+            .matches("SourceRepositoryCredentialService::new(")
+            .count(),
+        1,
+        "source resolution and checkout must share one repository credential service"
+    );
+    assert_eq!(
+        application
+            .matches("AuthorizedSourceCheckoutService::new(")
+            .count(),
+        1,
+        "public/private source checkout must have one authorization service"
+    );
     assert!(
         application.contains(
             "if config.server.role.owns_event_transport() {\n        Some(event_publisher(&config).await?)"

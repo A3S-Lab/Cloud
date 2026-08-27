@@ -1,7 +1,9 @@
 use super::GitSourceCheckout;
+use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitReference, GitRepository, ISourceCheckout, ISourceResolver,
-    SourceCheckoutError, SourceCheckoutRequest, SourceResolutionRequest,
+    CheckedOutSourceEntryKind, GitCommitSha, GitProvider, GitReference, GitRepository,
+    ISourceCheckout, ISourceResolver, SourceCheckoutError, SourceCheckoutRequest,
+    SourceResolutionRequest,
 };
 use crate::modules::sources::GithubSourceResolver;
 use std::path::Path;
@@ -24,6 +26,14 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
     let checkout = fixture.checkout(&checkout_root, 1_000);
     let checkout_id = Uuid::now_v7();
     let request = source_request(checkout_id, &first_commit);
+    assert!(matches!(
+        checkout.replay(&request).await,
+        Err(SourceCheckoutError::Integrity(_))
+    ));
+    assert!(
+        !checkout_root.exists(),
+        "strict replay must not create a missing checkout root"
+    );
     let accepted = checkout
         .checkout(&request, None)
         .await
@@ -39,11 +49,21 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
     );
     assert!(!accepted.directory.join(".git").exists());
     assert!(accepted.content_digest.starts_with("sha256:"));
+    assert_eq!(accepted.file_count, accepted.entries.len());
+    assert_eq!(accepted.content_bytes, 6);
+    let message = accepted
+        .entries
+        .iter()
+        .find(|entry| entry.path() == "message.txt")
+        .expect("message entry metadata");
+    assert_eq!(message.kind(), CheckedOutSourceEntryKind::Regular);
+    assert_eq!(message.size_bytes(), 6);
+    assert_eq!(
+        message.content_digest(),
+        &Sha256Digest::from_bytes(b"first\n")
+    );
 
-    let replay = checkout
-        .checkout(&request, None)
-        .await
-        .expect("checkout replay");
+    let replay = checkout.replay(&request).await.expect("checkout replay");
     assert_eq!(replay, accepted);
 
     let conflict = checkout
@@ -56,7 +76,7 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
         .await
         .expect("tamper with checkout");
     let tampered = checkout
-        .checkout(&request, None)
+        .replay(&request)
         .await
         .expect_err("tampered checkout");
     assert!(matches!(tampered, SourceCheckoutError::Integrity(_)));
@@ -66,6 +86,11 @@ async fn checkout_pins_the_commit_and_replays_immutable_content() {
         .remove(checkout_id)
         .await
         .expect("idempotent remove");
+    assert!(!checkout_root.join(checkout_id.to_string()).exists());
+    assert!(matches!(
+        checkout.replay(&request).await,
+        Err(SourceCheckoutError::Integrity(_))
+    ));
     assert!(!checkout_root.join(checkout_id.to_string()).exists());
 }
 
@@ -161,10 +186,7 @@ async fn checkout_preserves_symlinks_that_remain_inside_the_source_root() {
         std::path::PathBuf::from("target.txt")
     );
     assert_eq!(
-        checkout
-            .checkout(&request, None)
-            .await
-            .expect("symlink replay"),
+        checkout.replay(&request).await.expect("symlink replay"),
         accepted
     );
 }
@@ -248,10 +270,7 @@ async fn real_github_checkout_materializes_the_resolved_commit_without_git_metad
     assert!(accepted.directory.join("README.md").is_file());
     assert!(!accepted.directory.join(".git").exists());
     assert_eq!(
-        checkout
-            .checkout(&request, None)
-            .await
-            .expect("public replay"),
+        checkout.replay(&request).await.expect("public replay"),
         accepted
     );
     checkout

@@ -1095,8 +1095,11 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
 
     assert!(
         compact.contains("Arc<BuildPlanDetectionService>")
+            && compact.contains("Arc<dynIBuildPlanSourceLayoutPort>")
+            && compact.contains("Arc<dynIDeveloperWorkflowAuthorizationPort>")
+            && compact.contains("authorize_environment_action(")
             && compact.contains("implQueryHandler<DetectBuildPlanProposals>"),
-        "BuildPlan detection must enter Application through one local service and query boundary"
+        "BuildPlan detection must enter Application through authorization, one source-layout port, and the local detector service"
     );
     for forbidden in [
         "AssetAclBuildPlanDetector",
@@ -1113,6 +1116,192 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
         assert!(
             !production.contains(forbidden),
             "BuildPlan detection query imported a concrete adapter or lifecycle mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
+    let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Sources BuildPlan source-layout adapter");
+    let production = production_source(&adapter);
+    let compact = production.split_whitespace().collect::<String>();
+    for required in [
+        "implIBuildPlanSourceLayoutPortforDeveloperWorkflowSourceLayoutAdapter",
+        "Arc<dynISourceBuildInputQueryPort>",
+        "Arc<dynIAuthorizedSourceCheckout>",
+        "SourceLayoutSnapshot::new(",
+        ".find_source_build_input(",
+        ".checkout(",
+        ".replay(",
+        ".remove(",
+    ] {
+        assert!(
+            compact.contains(required),
+            "trusted source-layout acquisition lost boundary {required}"
+        );
+    }
+    for forbidden in [
+        "ISourceRevisionRepository",
+        "IGithubConnectionRepository",
+        "IGithubInstallationTokenService",
+        "SourceProviderCredential",
+        "GitSourceCheckout",
+        "read_dir(",
+        "Postgres",
+        "IOutboxRepository",
+        "IEventPublisher",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "source-layout adapter acquired an owner repository, credential, traversal, persistence, or delivery mechanism {forbidden}"
+        );
+    }
+
+    let checkout = std::fs::read_to_string(
+        module_root().join("sources/application/authorized_source_checkout.rs"),
+    )
+    .expect("read authorized Source checkout service");
+    let production_checkout = production_source(&checkout);
+    let compact_checkout = production_checkout.split_whitespace().collect::<String>();
+    for required in [
+        "Arc<dynISourceCheckout>",
+        "Arc<dynISourceRepositoryCredentialProvider>",
+        "implIAuthorizedSourceCheckoutforAuthorizedSourceCheckoutService",
+    ] {
+        assert!(
+            compact_checkout.contains(required),
+            "the sole authorized checkout service lost owner mechanism {required}"
+        );
+    }
+    for forbidden in [
+        "IGithubConnectionRepository",
+        "IGithubInstallationTokenService",
+        "GithubInstallationTokenRequest",
+    ] {
+        assert!(
+            !production_checkout.contains(forbidden),
+            "authorized checkout duplicated repository credential mechanism {forbidden}"
+        );
+    }
+    let strict_replay = production_checkout
+        .rsplit_once("async fn replay(")
+        .map(|(_, body)| body)
+        .and_then(|body| body.split_once("async fn remove(").map(|(body, _)| body))
+        .expect("authorized checkout strict replay body");
+    assert!(strict_replay.contains("self.checkout.replay(request)"));
+    for forbidden in ["credentials", ".checkout("] {
+        assert!(
+            !strict_replay.contains(forbidden),
+            "strict checkout replay reacquired provider bytes through {forbidden}"
+        );
+    }
+
+    let git_checkout = std::fs::read_to_string(
+        module_root().join("sources/infrastructure/git_source_checkout.rs"),
+    )
+    .expect("read Git source checkout");
+    let strict_git_replay = git_checkout
+        .rsplit_once("async fn replay(")
+        .map(|(_, body)| body)
+        .and_then(|body| body.split_once("async fn remove(").map(|(body, _)| body))
+        .expect("Git checkout strict replay body");
+    for required in [
+        "canonical_existing_root",
+        "self.replay_at(request, &checkout)",
+    ] {
+        assert!(strict_git_replay.contains(required));
+    }
+    for forbidden in ["ensure_root(", "self.prepare(", "self.git(", ".checkout("] {
+        assert!(
+            !strict_git_replay.contains(forbidden),
+            "strict Git replay can recreate or reacquire source bytes through {forbidden}"
+        );
+    }
+
+    let credentials = std::fs::read_to_string(
+        module_root().join("sources/application/source_repository_credential.rs"),
+    )
+    .expect("read Source repository credential service");
+    let production_credentials = production_source(&credentials);
+    let compact_credentials = production_credentials
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "Arc<dynIGithubConnectionRepository>",
+        "Arc<dynIGithubInstallationTokenService>",
+        "implISourceRepositoryCredentialProviderforSourceRepositoryCredentialService",
+    ] {
+        assert!(
+            compact_credentials.contains(required),
+            "the sole repository credential service lost owner mechanism {required}"
+        );
+    }
+
+    let resolution = std::fs::read_to_string(
+        module_root()
+            .join("sources/application/commands/resolve_external_source_revision/handler.rs"),
+    )
+    .expect("read Source revision resolution handler");
+    assert!(resolution.contains("Arc<dyn ISourceRepositoryCredentialProvider>"));
+    for forbidden in [
+        "IGithubConnectionRepository",
+        "IGithubInstallationTokenService",
+        "GithubInstallationTokenRequest",
+    ] {
+        assert!(
+            !resolution.contains(forbidden),
+            "Source resolution duplicated repository credential mechanism {forbidden}"
+        );
+    }
+
+    let archive = std::fs::read_to_string(
+        module_root().join("sources/infrastructure/external_build_archive.rs"),
+    )
+    .expect("read external Source archive adapter");
+    let production_archive = production_source(&archive);
+    let compact_archive = production_archive.split_whitespace().collect::<String>();
+    assert!(production_archive.contains("Arc<dyn IAuthorizedSourceCheckout>"));
+    assert_eq!(
+        compact_archive
+            .matches(".checkout(request.organization_id(),&checkout_request)")
+            .count(),
+        1
+    );
+    assert_eq!(production_archive.matches(".replay(").count(), 1);
+    for forbidden in [
+        "IGithubConnectionRepository",
+        "IGithubInstallationTokenService",
+        "GithubInstallationTokenRequest",
+        "SourceProviderCredential",
+    ] {
+        assert!(
+            !production_archive.contains(forbidden),
+            "external archive duplicated authorized checkout mechanism {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("src directory")
+            .join("app.rs"),
+    )
+    .expect("read application composition");
+    for constructor in [
+        "GitSourceCheckout::new(",
+        "SourceRepositoryCredentialService::new(",
+        "AuthorizedSourceCheckoutService::new(",
+        "SourceBuildInputQueryService::new(",
+        "DeveloperWorkflowSourceLayoutAdapter::new(",
+    ] {
+        assert_eq!(
+            app.matches(constructor).count(),
+            1,
+            "production composition must select {constructor} exactly once"
         );
     }
 }

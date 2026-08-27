@@ -34,18 +34,19 @@ async fn organization_wide_membership_requires_the_exact_existing_environment() 
     let adapter = authorization(Arc::clone(&owners));
 
     for action in [
+        DeveloperWorkflowAction::DetectBuildPlan,
         DeveloperWorkflowAction::AcceptBuildPlan,
         DeveloperWorkflowAction::AcceptWorkloadProfile,
         DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy,
     ] {
         assert!(adapter
-            .can_write_environment(fixture.access(action))
+            .is_environment_action_allowed(fixture.access(action))
             .await
             .expect("owner authorization"));
     }
-    assert_eq!(owners.membership_calls(), 3);
+    assert_eq!(owners.membership_calls(), 4);
     assert_eq!(owners.grant_calls(), 0);
-    assert_eq!(owners.environment_calls(), 3);
+    assert_eq!(owners.environment_calls(), 4);
 
     let missing_owners = Arc::new(StubOwnerRepositories::new(
         Some(fixture.membership(MembershipRole::Member)),
@@ -54,7 +55,7 @@ async fn organization_wide_membership_requires_the_exact_existing_environment() 
     ));
     let missing = authorization(missing_owners);
     assert!(!missing
-        .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+        .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
         .await
         .expect("concealed missing environment"));
 }
@@ -69,7 +70,7 @@ async fn restricted_membership_requires_an_exact_grant_before_projects_lookup() 
     ));
     let denied = authorization(Arc::clone(&denied_owners));
     assert!(!denied
-        .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+        .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
         .await
         .expect("restricted denial"));
     assert_eq!(denied_owners.grant_calls(), 1);
@@ -86,7 +87,7 @@ async fn restricted_membership_requires_an_exact_grant_before_projects_lookup() 
     ));
     let allowed = authorization(Arc::clone(&allowed_owners));
     assert!(allowed
-        .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+        .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
         .await
         .expect("project descendant authorization"));
     assert_eq!(allowed_owners.grant_calls(), 1);
@@ -103,7 +104,7 @@ async fn missing_or_inconsistent_owner_evidence_fails_closed_before_resource_acc
     ));
     let missing = authorization(Arc::clone(&missing_owners));
     assert!(!missing
-        .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+        .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
         .await
         .expect("missing membership is concealed"));
     assert_eq!(missing_owners.grant_calls(), 0);
@@ -123,7 +124,7 @@ async fn missing_or_inconsistent_owner_evidence_fails_closed_before_resource_acc
     let inconsistent = authorization(Arc::clone(&inconsistent_owners));
     assert!(matches!(
         inconsistent
-            .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+            .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
             .await,
         Err(RepositoryError::Storage(_))
     ));
@@ -146,7 +147,7 @@ async fn missing_or_inconsistent_owner_evidence_fails_closed_before_resource_acc
     let inconsistent_grant = authorization(Arc::clone(&inconsistent_grant_owners));
     assert!(matches!(
         inconsistent_grant
-            .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+            .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
             .await,
         Err(RepositoryError::Storage(_))
     ));
@@ -167,7 +168,7 @@ async fn missing_or_inconsistent_owner_evidence_fails_closed_before_resource_acc
     let inconsistent_environment = authorization(Arc::clone(&inconsistent_environment_owners));
     assert!(matches!(
         inconsistent_environment
-            .can_write_environment(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
+            .is_environment_action_allowed(fixture.access(DeveloperWorkflowAction::AcceptBuildPlan))
             .await,
         Err(RepositoryError::Storage(_))
     ));

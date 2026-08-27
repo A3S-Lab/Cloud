@@ -74,6 +74,7 @@ AI application platform parity manifest.
 | [0067](0067-single-owner-authorized-build-plan-acceptance-composition.md) | Compose one owner-authorized BuildPlan acceptance path through existing Identity, Projects, Sources, and persistence authorities |
 | [0068](0068-single-owner-authorized-workload-profile-acceptance-composition.md) | Compose workload-profile acceptance through the shared owner authorization port and existing revision authority |
 | [0069](0069-single-owner-authorized-preview-policy-acceptance-composition.md) | Compose Preview Policy acceptance through one Sources subscription adapter, shared authorization, and existing revision authority |
+| [0070](0070-single-authorized-source-layout-acquisition.md) | Acquire one exact accepted-revision BuildPlan layout through the shared authorization and Sources checkout authorities |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

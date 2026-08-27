@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeveloperWorkflowAction {
+    DetectBuildPlan,
     AcceptBuildPlan,
     AcceptWorkloadProfile,
     AcceptPullRequestPreviewPolicy,
@@ -41,18 +42,18 @@ impl DeveloperWorkflowEnvironmentAccess {
 /// remain typed repository errors.
 #[async_trait]
 pub trait IDeveloperWorkflowAuthorizationPort: Send + Sync {
-    async fn can_write_environment(
+    async fn is_environment_action_allowed(
         &self,
         access: DeveloperWorkflowEnvironmentAccess,
     ) -> Result<bool, RepositoryError>;
 }
 
-pub(super) async fn authorize_environment_write(
+pub(super) async fn authorize_environment_action(
     authorization: &dyn IDeveloperWorkflowAuthorizationPort,
     access: DeveloperWorkflowEnvironmentAccess,
 ) -> ApplicationResult<()> {
     access.validate().map_err(|_| concealed_environment())?;
-    match authorization.can_write_environment(access).await {
+    match authorization.is_environment_action_allowed(access).await {
         Ok(true) => Ok(()),
         Ok(false) | Err(RepositoryError::NotFound | RepositoryError::Forbidden(_)) => {
             Err(concealed_environment())

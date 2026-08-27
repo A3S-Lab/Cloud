@@ -2,10 +2,10 @@ use crate::modules::artifacts::application::{
     BuildInputPreparationError, ExternalSourceArchiveRequest, IExternalSourceArchivePort,
     OpenExternalSourceArchive,
 };
-use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{BuildRunId, Sha256Digest};
+use crate::modules::sources::application::IAuthorizedSourceCheckout;
 use crate::modules::sources::domain::{
-    CheckedOutSource, GithubInstallationTokenRequest, IGithubConnectionRepository,
-    IGithubInstallationTokenService, ISourceCheckout, SourceCheckoutError, SourceCheckoutRequest,
+    CheckedOutSource, SourceCheckoutError, SourceCheckoutRequest,
 };
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
@@ -27,9 +27,7 @@ const MAX_ARCHIVE_BYTES: u64 = 1024 * 1024 * 1024 * 1024;
 /// policy remain inside Sources. Artifacts receives only immutable digests and
 /// a bounded byte stream.
 pub struct ExternalSourceBuildArchiveAdapter {
-    checkout: Arc<dyn ISourceCheckout>,
-    connections: Arc<dyn IGithubConnectionRepository>,
-    installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    checkout: Arc<dyn IAuthorizedSourceCheckout>,
     staging_root: PathBuf,
     max_entries: usize,
     max_archive_bytes: u64,
@@ -37,9 +35,7 @@ pub struct ExternalSourceBuildArchiveAdapter {
 
 impl ExternalSourceBuildArchiveAdapter {
     pub fn new(
-        checkout: Arc<dyn ISourceCheckout>,
-        connections: Arc<dyn IGithubConnectionRepository>,
-        installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+        checkout: Arc<dyn IAuthorizedSourceCheckout>,
         staging_root: impl Into<PathBuf>,
         max_entries: usize,
         max_archive_bytes: u64,
@@ -55,8 +51,6 @@ impl ExternalSourceBuildArchiveAdapter {
         }
         Ok(Self {
             checkout,
-            connections,
-            installation_tokens,
             staging_root,
             max_entries,
             max_archive_bytes,
@@ -73,49 +67,11 @@ impl ExternalSourceBuildArchiveAdapter {
             request.commit_sha().clone(),
         )
         .map_err(BuildInputPreparationError::Invalid)?;
-        let checked_out = match self.checkout.checkout(&checkout_request, None).await {
-            Ok(source) => source,
-            Err(SourceCheckoutError::Unavailable(_)) => {
-                let connection = self
-                    .connections
-                    .find(request.organization_id())
-                    .await
-                    .map_err(|error| {
-                        BuildInputPreparationError::Unavailable(format!(
-                            "source connection lookup failed: {error}"
-                        ))
-                    })?
-                    .filter(|connection| {
-                        connection.organization_id == request.organization_id()
-                            && connection.is_authoritative()
-                    })
-                    .ok_or_else(|| {
-                        BuildInputPreparationError::Unavailable(
-                            "source repository has no active installation authority".into(),
-                        )
-                    })?;
-                let credential = self
-                    .installation_tokens
-                    .issue(GithubInstallationTokenRequest {
-                        organization_id: connection.organization_id,
-                        connection_id: connection.id,
-                        installation_id: connection.installation_id,
-                        repository: request.repository().clone(),
-                        requested_at: chrono::Utc::now(),
-                    })
-                    .await
-                    .map_err(|_| {
-                        BuildInputPreparationError::Unavailable(
-                            "source repository credential is unavailable".into(),
-                        )
-                    })?;
-                self.checkout
-                    .checkout(&checkout_request, Some(&credential))
-                    .await
-                    .map_err(map_checkout_error)?
-            }
-            Err(error) => return Err(map_checkout_error(error)),
-        };
+        let checked_out = self
+            .checkout
+            .checkout(request.organization_id(), &checkout_request)
+            .await
+            .map_err(map_checkout_error)?;
         validate_checkout(&checkout_request, &checked_out)?;
         Ok((checkout_request, checked_out))
     }
@@ -181,7 +137,7 @@ impl IExternalSourceArchivePort for ExternalSourceBuildArchiveAdapter {
         // This credential-free replay rehashes the owner checkout immediately
         // after packaging. The returned archive file is immutable and no
         // provider state is exposed while Artifacts admits its bytes.
-        let replay = match self.checkout.checkout(&checkout_request, None).await {
+        let replay = match self.checkout.replay(&checkout_request).await {
             Ok(replay) => replay,
             Err(error) => {
                 let _ = tokio::fs::remove_file(&archive_path).await;
@@ -228,18 +184,9 @@ fn validate_checkout(
     request: &SourceCheckoutRequest,
     source: &CheckedOutSource,
 ) -> Result<(), BuildInputPreparationError> {
-    if source.checkout_id != request.checkout_id
-        || source.repository != request.repository
-        || source.commit_sha != request.commit_sha
-        || source.directory.as_os_str().is_empty()
-    {
-        return Err(BuildInputPreparationError::Integrity(
-            "source checkout receipt differs from its exact request".into(),
-        ));
-    }
-    GitCommitSha::parse(&source.git_tree_id).map_err(BuildInputPreparationError::Integrity)?;
-    Sha256Digest::parse(&source.content_digest).map_err(BuildInputPreparationError::Integrity)?;
-    Ok(())
+    source
+        .validate_for(request)
+        .map_err(BuildInputPreparationError::Integrity)
 }
 
 fn map_checkout_error(error: SourceCheckoutError) -> BuildInputPreparationError {

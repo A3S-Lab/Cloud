@@ -7,11 +7,14 @@ pub mod published;
 #[cfg(test)]
 pub(crate) use application::publish_source_build_input;
 pub use application::{
-    GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
+    AuthorizedSourceCheckoutService, GithubConnectionAuthorityReconcileReport,
+    GithubConnectionAuthorityReconciler, IAuthorizedSourceCheckout,
     IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
-    PreviewSourceRevisionDesiredState, PreviewSourceRevisionProjectionOutcome,
-    PreviewSourceRevisionProjectionReceipt, ProjectPreviewSourceRevision,
-    SourceBuildInputQueryError, SourceBuildInputQueryService,
+    ISourceRepositoryCredentialProvider, PreviewSourceRevisionDesiredState,
+    PreviewSourceRevisionProjectionOutcome, PreviewSourceRevisionProjectionReceipt,
+    ProjectPreviewSourceRevision, SourceBuildInputQueryError, SourceBuildInputQueryService,
+    SourceRepositoryCredentialError, SourceRepositoryCredentialRequest,
+    SourceRepositoryCredentialService,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{
@@ -58,8 +61,8 @@ pub use infrastructure::persistence::{
     PostgresSourceSubscriptionRepository,
 };
 pub use infrastructure::{
-    ExternalSourceBuildArchiveAdapter, GitSourceCheckout, GithubAppClient,
-    GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
+    DeveloperWorkflowSourceLayoutAdapter, ExternalSourceBuildArchiveAdapter, GitSourceCheckout,
+    GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
     PullRequestPreviewSourceProjector, RevalidatingGithubInstallationTokens,
 };
 pub use presentation::SourcesModule;

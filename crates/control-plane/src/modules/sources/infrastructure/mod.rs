@@ -1,3 +1,4 @@
+mod developer_workflow_source_layout;
 mod external_build_archive;
 mod git_source_checkout;
 mod github_app_client;
@@ -8,6 +9,7 @@ pub mod persistence;
 mod pull_request_preview_source_projector;
 mod revalidating_github_installation_tokens;
 
+pub use developer_workflow_source_layout::DeveloperWorkflowSourceLayoutAdapter;
 pub use external_build_archive::ExternalSourceBuildArchiveAdapter;
 pub use git_source_checkout::GitSourceCheckout;
 pub use github_app_client::GithubAppClient;

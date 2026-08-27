@@ -454,10 +454,25 @@ consumer authorization port by validating active Identity Membership/Resource
 Grant evidence, reusing Identity's sole `ResourceAccessEvaluator`, and querying
 the exact Projects Environment only after scope admission. The existing
 Sources adapter remains the only source-revision evidence boundary, and the
-existing BuildPlan repository remains the only acceptance transaction. Public
-interfaces and all source-layout acquisition, BuildRun, Workload, Route,
-Operation, scheduling, and downstream lifecycle handoffs remain outside this
-slice.
+existing BuildPlan repository remains the only acceptance transaction.
+
+`P0.1-C5` closes the trusted accepted-revision SourceLayout boundary. The
+internal detection query now carries exact scope, `SourceRevisionId`, and
+Principal identity instead of caller-authored source bytes. It authorizes
+through the same Developer Workflows port before one consumer-owned layout
+port queries Sources' existing published build input. Sources alone resolves
+its revision, while one repository-credential authority shared by revision
+resolution and checkout alone restores the connection, validates installation
+authority, and issues the ephemeral token. The checkout coordinator owns the
+public/private fallback, immutable receipt, canonical file inventory, replay
+fence, and transient cleanup. Replay is a separate credential-free operation;
+it cannot recreate a missing checkout through a provider. Only the bounded
+SourceLayout value crosses back; provider credentials and local paths do not.
+The same authorized checkout service supplies the existing Artifacts archive
+adapter, so C5 adds no second checkout, source-inventory traversal, credential
+resolver, cache, queue, or lifecycle mechanism. Public interfaces,
+pre-acceptance source discovery, BuildRun, Workload, Route, Operation,
+scheduling, and downstream lifecycle handoffs remain outside this slice.
 
 Component-only `P0.2-C1/C2` owns explicit workload-profile intent and its
 acceptance history. Canonical `a3s.cloud.workload-profile.v1` binds a closed

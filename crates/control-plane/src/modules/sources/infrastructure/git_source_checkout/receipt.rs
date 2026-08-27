@@ -28,6 +28,7 @@ impl CheckoutReceipt {
         &self,
         directory: PathBuf,
         request: &SourceCheckoutRequest,
+        entries: Vec<crate::modules::sources::domain::CheckedOutSourceEntry>,
     ) -> CheckedOutSource {
         CheckedOutSource {
             checkout_id: self.checkout_id,
@@ -38,6 +39,7 @@ impl CheckoutReceipt {
             content_digest: self.content_digest.clone(),
             file_count: self.file_count,
             content_bytes: self.content_bytes,
+            entries,
         }
     }
 }

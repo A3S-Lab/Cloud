@@ -99,7 +99,7 @@ async fn authenticated_http_checkout_uses_a_transient_header_and_credential_free
     drop(credential);
     assert_eq!(
         checkout
-            .checkout(&request, None)
+            .replay(&request)
             .await
             .expect("credential-free replay"),
         accepted

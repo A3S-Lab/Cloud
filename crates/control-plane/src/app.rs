@@ -79,7 +79,7 @@ use crate::modules::developer_workflows::{
     ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
     CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
     DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter, IBuildPlanRepository,
-    IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
     IPullRequestPreviewPolicyRepository, IPullRequestPreviewProjectionPort,
     IPullRequestPreviewProjectionRepository, IWorkloadProfileRepository,
     IdentityProjectsDeveloperWorkflowAuthorizationAdapter, ProjectsPreviewEnvironmentAdapter,
@@ -231,16 +231,19 @@ use crate::modules::sources::domain::{
     ISourceWebhookRepository, ISourceWebhookVerifier, SourceRepositoryPolicy,
 };
 use crate::modules::sources::{
-    AcceptSourceWebhookDeliveryHandler, BeginGithubConnectionHandler,
-    CompleteGithubConnectionHandler, CreateGithubRepositorySubscriptionHandler,
-    DeactivateGithubRepositorySubscriptionHandler, ExternalSourceBuildArchiveAdapter,
+    AcceptSourceWebhookDeliveryHandler, AuthorizedSourceCheckoutService,
+    BeginGithubConnectionHandler, CompleteGithubConnectionHandler,
+    CreateGithubRepositorySubscriptionHandler, DeactivateGithubRepositorySubscriptionHandler,
+    DeveloperWorkflowSourceLayoutAdapter, ExternalSourceBuildArchiveAdapter,
     GetGithubConnectionHandler, GitSourceCheckout, GithubAppClient,
     GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer, GithubSourceResolver,
-    GithubWebhookVerifier, IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
+    GithubWebhookVerifier, IAuthorizedSourceCheckout, IPreviewSourceRevisionProjectionPort,
+    ISourceBuildInputQueryPort, ISourceRepositoryCredentialProvider,
     ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
     PrepareGithubConnectionOauthHandler, PullRequestPreviewSourceProjector,
     ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
-    RevalidatingGithubInstallationTokens, SourceBuildInputQueryService, SourcesModule,
+    RevalidatingGithubInstallationTokens, SourceBuildInputQueryService,
+    SourceRepositoryCredentialService, SourcesModule,
 };
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
@@ -849,32 +852,40 @@ async fn build_api_worker_application(
     let durable_cell_artifacts = Arc::clone(&artifacts);
     let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
     let operation_lease = Duration::from_millis(config.operations.lease_ms);
+    let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
+        GitSourceCheckout::new(
+            &config.sources.checkout_dir,
+            Duration::from_millis(config.sources.checkout_timeout_ms),
+            config.sources.checkout_max_files,
+            config.sources.checkout_max_bytes,
+        )
+        .map_err(ControlPlaneStartupError::Sources)?,
+    );
+    let source_repository_credentials: Arc<dyn ISourceRepositoryCredentialProvider> =
+        Arc::new(SourceRepositoryCredentialService::new(
+            Arc::clone(&github_connections),
+            Arc::clone(&github_installation_tokens),
+        ));
+    let authorized_source_checkout: Arc<dyn IAuthorizedSourceCheckout> =
+        Arc::new(AuthorizedSourceCheckoutService::new(
+            source_checkout,
+            Arc::clone(&source_repository_credentials),
+        ));
+    let source_build_inputs: Arc<dyn ISourceBuildInputQueryPort> =
+        Arc::new(SourceBuildInputQueryService::new(Arc::clone(&sources)));
     let flow = if run_operations {
-        let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
-            GitSourceCheckout::new(
-                &config.sources.checkout_dir,
-                Duration::from_millis(config.sources.checkout_timeout_ms),
-                config.sources.checkout_max_files,
-                config.sources.checkout_max_bytes,
-            )
-            .map_err(ControlPlaneStartupError::Build)?,
-        );
-        let source_build_inputs: Arc<dyn ISourceBuildInputQueryPort> =
-            Arc::new(SourceBuildInputQueryService::new(Arc::clone(&sources)));
         let hosted_asset_build_inputs: Arc<dyn IHostedAssetBuildInputQueryPort> =
             Arc::new(HostedAssetBuildInputQueryService::new(
                 Arc::clone(&assets),
                 Arc::clone(&asset_git_repositories),
             ));
         let build_sources: Arc<dyn IBuildSourceResolver> = Arc::new(CloudBuildSourceResolver::new(
-            source_build_inputs,
+            Arc::clone(&source_build_inputs),
             hosted_asset_build_inputs,
         ));
         let external_source_archives = Arc::new(
             ExternalSourceBuildArchiveAdapter::new(
-                source_checkout,
-                Arc::clone(&github_connections),
-                Arc::clone(&github_installation_tokens),
+                Arc::clone(&authorized_source_checkout),
                 &config.builds.input_staging_dir,
                 config.builds.input_max_entries,
                 config.builds.input_max_bytes,
@@ -1236,6 +1247,11 @@ async fn build_api_worker_application(
         let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
             EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
         );
+        let developer_workflow_source_layouts: Arc<dyn IBuildPlanSourceLayoutPort> =
+            Arc::new(DeveloperWorkflowSourceLayoutAdapter::new(
+                Arc::clone(&source_build_inputs),
+                Arc::clone(&authorized_source_checkout),
+            ));
         Some(ManagementSurfaceDependencies {
             oidc_provider,
             plugin_trust_roots,
@@ -1246,6 +1262,8 @@ async fn build_api_worker_application(
             asset_git,
             github_authorization,
             source_resolver,
+            source_repository_credentials: Arc::clone(&source_repository_credentials),
+            developer_workflow_source_layouts,
             source_webhook_verifier,
             domain_verifier,
             gateway_projector,
@@ -1711,7 +1729,6 @@ async fn build_api_worker_application(
                 source_webhooks,
                 source_subscriptions,
                 github_connections,
-                github_installation_tokens,
                 secret_encryption: Arc::clone(&key_encryption),
                 route_targets,
                 route_commands,
@@ -1865,6 +1882,8 @@ struct ManagementSurfaceDependencies {
     asset_git: Arc<AssetGitApplicationService>,
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     source_resolver: Arc<dyn ISourceResolver>,
+    source_repository_credentials: Arc<dyn ISourceRepositoryCredentialProvider>,
+    developer_workflow_source_layouts: Arc<dyn IBuildPlanSourceLayoutPort>,
     source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
     domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
@@ -1940,7 +1959,6 @@ struct ManagementApplicationDependencies {
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     github_connections: Arc<dyn IGithubConnectionRepository>,
-    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
@@ -2025,7 +2043,6 @@ fn build_management_application_with_health(
         source_webhooks,
         source_subscriptions,
         github_connections,
-        github_installation_tokens,
         secret_encryption,
         route_targets,
         route_commands,
@@ -2048,6 +2065,8 @@ fn build_management_application_with_health(
         asset_git,
         github_authorization,
         source_resolver,
+        source_repository_credentials,
+        developer_workflow_source_layouts,
         source_webhook_verifier,
         domain_verifier,
         gateway_projector,
@@ -2086,13 +2105,17 @@ fn build_management_application_with_health(
         )),
         Arc::clone(&developer_workflow_authorization),
     );
-    let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(Arc::new(
-        BuildPlanDetectionService::new(vec![
-            Arc::new(AssetAclBuildPlanDetector),
-            Arc::new(DockerfileBuildPlanDetector),
-        ])
-        .map_err(BootError::Internal)?,
-    ));
+    let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(
+        Arc::new(
+            BuildPlanDetectionService::new(vec![
+                Arc::new(AssetAclBuildPlanDetector),
+                Arc::new(DockerfileBuildPlanDetector),
+            ])
+            .map_err(BootError::Internal)?,
+        ),
+        developer_workflow_source_layouts,
+        Arc::clone(&developer_workflow_authorization),
+    );
     let developer_workflow_build_outcomes = Arc::new(ExternalSourceBuildOutcomeQueryService::new(
         Arc::clone(&builds),
     ));
@@ -2456,7 +2479,6 @@ fn build_management_application_with_health(
     let accept_webhook_connections = Arc::clone(&github_connections);
     let reconcile_github_connections = Arc::clone(&github_connections);
     let create_subscription_connections = Arc::clone(&github_connections);
-    let resolve_github_connections = Arc::clone(&github_connections);
     let get_github_connections = github_connections;
     let begin_github_authorization = Arc::clone(&github_authorization);
     let prepare_github_authorization = Arc::clone(&github_authorization);
@@ -2884,8 +2906,7 @@ fn build_management_application_with_health(
                     ResolveExternalSourceRevisionHandler::new(
                         source_environments,
                         accept_sources,
-                        resolve_github_connections,
-                        github_installation_tokens,
+                        source_repository_credentials,
                         source_resolver,
                         source_policy,
                     ),

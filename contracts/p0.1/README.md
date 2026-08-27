@@ -12,6 +12,16 @@ therefore independent of checkout directory, caller, acceptance time, or
 storage adapter. Caller and time remain immutable record/audit facts outside
 the desired-state ACL.
 
+`P0.1-C5` changes no frozen ACL schema. It production-binds detection to one
+authorized, exact accepted `SourceRevision`: Developer Workflows requests the
+layout through its consumer-owned port, while Sources alone resolves provider
+credentials through the same repository-credential authority used by
+SourceRevision resolution, then traverses and digests the Git checkout, replays
+its immutable receipt through a strict credential-free operation that cannot
+recreate missing bytes, and removes the transient checkout. Only the existing
+bounded `SourceLayoutSnapshot` enters detection; credentials, receipts, and local paths
+remain outside this contract.
+
 The C1 proposal remains review evidence only. C2 persists one immutable
 acceptance per Source revision and project root through migration `146`, with
 authorization-first internal CQRS, exact Sources evidence admission,

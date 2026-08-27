@@ -1,10 +1,13 @@
+mod authorized_source_checkout;
 pub mod commands;
 mod github_connection_authority_reconciler;
 pub(crate) mod github_flow_security;
 mod preview_source_revision_projection;
 pub mod queries;
 mod source_build_input;
+mod source_repository_credential;
 
+pub use authorized_source_checkout::{AuthorizedSourceCheckoutService, IAuthorizedSourceCheckout};
 pub use github_connection_authority_reconciler::{
     GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
 };
@@ -18,4 +21,8 @@ pub use preview_source_revision_projection::{
 pub(crate) use source_build_input::publish_source_build_input;
 pub use source_build_input::{
     ISourceBuildInputQueryPort, SourceBuildInputQueryError, SourceBuildInputQueryService,
+};
+pub use source_repository_credential::{
+    ISourceRepositoryCredentialProvider, SourceRepositoryCredentialError,
+    SourceRepositoryCredentialRequest, SourceRepositoryCredentialService,
 };

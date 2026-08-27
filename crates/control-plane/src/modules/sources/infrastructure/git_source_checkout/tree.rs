@@ -3,7 +3,11 @@ use std::collections::{BTreeMap, VecDeque};
 use std::path::{Component, Path};
 use tokio::io::AsyncReadExt;
 
-use crate::modules::sources::domain::SourceCheckoutError;
+use crate::modules::shared_kernel::domain::Sha256Digest;
+use crate::modules::sources::domain::{
+    validate_checked_out_source_path, CheckedOutSourceEntry, CheckedOutSourceEntryKind,
+    SourceCheckoutError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ManifestKind {
@@ -26,6 +30,7 @@ pub(super) struct WorktreeDigest {
     pub(super) digest: String,
     pub(super) file_count: usize,
     pub(super) content_bytes: u64,
+    pub(super) entries: Vec<CheckedOutSourceEntry>,
 }
 
 impl GitTreeManifest {
@@ -48,7 +53,7 @@ impl GitTreeManifest {
                 .map_err(|_| integrity("Git tree metadata is not UTF-8"))?;
             let path = std::str::from_utf8(&record[tab + 1..])
                 .map_err(|_| integrity("Git tree path is not UTF-8"))?;
-            validate_repository_path(path)?;
+            validate_checked_out_source_path(path).map_err(integrity)?;
             let fields = header.split_ascii_whitespace().collect::<Vec<_>>();
             if fields.len() != 4 {
                 return Err(integrity("Git tree contains a malformed entry"));
@@ -140,15 +145,12 @@ pub(super) async fn digest_worktree(
                 .file_name()
                 .into_string()
                 .map_err(|_| integrity("checked-out source path is not UTF-8"))?;
-            validate_path_segment(&name)?;
             let relative = if relative_parent.is_empty() {
                 name
             } else {
                 format!("{relative_parent}/{name}")
             };
-            if relative.len() > 4096 {
-                return Err(integrity("checked-out source path is too long"));
-            }
+            validate_checked_out_source_path(&relative).map_err(integrity)?;
             let metadata = tokio::fs::symlink_metadata(entry.path())
                 .await
                 .map_err(|_| storage("could not inspect checked-out source"))?;
@@ -204,6 +206,7 @@ pub(super) async fn digest_worktree(
     }
 
     let mut hasher = Sha256::new();
+    let mut source_entries = Vec::with_capacity(files.len());
     hasher.update(b"a3s.cloud.source-tree.v1\0");
     for (relative, entry) in &entries {
         hash_field(&mut hasher, relative.as_bytes());
@@ -212,6 +215,7 @@ pub(super) async fn digest_worktree(
             ScannedEntry::Regular { executable, size } => {
                 hasher.update(if *executable { b"x" } else { b"f" });
                 hasher.update(size.to_be_bytes());
+                let mut entry_hasher = Sha256::new();
                 let mut file = tokio::fs::File::open(root.join(relative))
                     .await
                     .map_err(|_| storage("could not read checked-out source file"))?;
@@ -225,11 +229,31 @@ pub(super) async fn digest_worktree(
                         break;
                     }
                     hasher.update(&buffer[..read]);
+                    entry_hasher.update(&buffer[..read]);
                 }
+                source_entries.push(
+                    CheckedOutSourceEntry::new(
+                        relative.clone(),
+                        CheckedOutSourceEntryKind::Regular,
+                        *size,
+                        Sha256Digest::parse(format!("sha256:{:x}", entry_hasher.finalize()))
+                            .map_err(integrity)?,
+                    )
+                    .map_err(integrity)?,
+                );
             }
             ScannedEntry::Symlink { target } => {
                 hasher.update(b"l");
                 hash_field(&mut hasher, target.as_bytes());
+                source_entries.push(
+                    CheckedOutSourceEntry::new(
+                        relative.clone(),
+                        CheckedOutSourceEntryKind::Symlink,
+                        target.len() as u64,
+                        Sha256Digest::from_bytes(target.as_bytes()),
+                    )
+                    .map_err(integrity)?,
+                );
             }
         }
     }
@@ -238,6 +262,7 @@ pub(super) async fn digest_worktree(
             digest: format!("sha256:{:x}", hasher.finalize()),
             file_count: files.len(),
             content_bytes,
+            entries: source_entries,
         },
         ScannedWorktree {
             files,
@@ -292,16 +317,6 @@ impl ScannedEntry {
             )),
         }
     }
-}
-
-fn validate_repository_path(value: &str) -> Result<(), SourceCheckoutError> {
-    if value.is_empty() || value.len() > 4096 || value.starts_with('/') || value.contains('\\') {
-        return Err(integrity("Git tree contains an unsafe path"));
-    }
-    for segment in value.split('/') {
-        validate_path_segment(segment)?;
-    }
-    Ok(())
 }
 
 fn validate_path_segment(value: &str) -> Result<(), SourceCheckoutError> {
