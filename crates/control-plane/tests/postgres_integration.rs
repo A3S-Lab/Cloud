@@ -237,6 +237,13 @@ mod workloads_support;
 
 use postgres_fixture::*;
 
+#[test]
+fn shared_postgres_fixture_configuration_satisfies_production_policy() {
+    postgres_fixture::config()
+        .validate()
+        .expect("shared PostgreSQL fixture configuration must remain valid");
+}
+
 const ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"

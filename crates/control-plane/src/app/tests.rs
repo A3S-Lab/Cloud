@@ -998,6 +998,13 @@ impl ICertificateAuthority for TestCertificateAuthority {
     }
 }
 
+#[test]
+fn application_test_configuration_satisfies_production_policy() {
+    config()
+        .validate()
+        .expect("application test configuration must remain valid");
+}
+
 fn config() -> CloudConfig {
     CloudConfig {
         server: ServerConfig {
@@ -1113,7 +1120,7 @@ fn config() -> CloudConfig {
             checkpoint_object_reconcile_interval_ms: 1_000,
             checkpoint_object_capture_lease_ms: 120_000,
             checkpoint_object_orphan_grace_ms: 600_000,
-            checkpoint_object_cleanup_lease_ms: 20_000,
+            checkpoint_object_cleanup_lease_ms: 120_000,
             checkpoint_object_reconcile_batch_size: 100,
         },
         builds: BuildsConfig {
