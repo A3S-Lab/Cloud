@@ -16,7 +16,7 @@ import {
 } from './command-options';
 import type { CloudContext } from './context';
 import { requireOrganization } from './context';
-import { usageError } from './errors';
+import { inputValidationUsageError, usageError } from './errors';
 import type { CommandResult } from './results';
 import { gatewayRoutePolicyTimelineResult } from './security-results';
 
@@ -47,10 +47,7 @@ export async function executeSecurityCommand(
   try {
     encodeSecurityTimelineQuery(query);
   } catch (error) {
-    if (error instanceof TypeError || error instanceof RangeError) {
-      throw usageError(error.message);
-    }
-    throw error;
+    throw inputValidationUsageError(error);
   }
   return gatewayRoutePolicyTimelineResult(
     await cloudApi().listGatewayRoutePolicySecurityTimeline(requireOrganization(context), routeId, query)

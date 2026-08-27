@@ -24,7 +24,7 @@ import {
 } from './command-options';
 import type { CloudContext } from './context';
 import { requireOrganization } from './context';
-import { usageError } from './errors';
+import { inputValidationUsageError, usageError } from './errors';
 import {
   notificationMutationResult,
   notificationAlertPoliciesResult,
@@ -72,10 +72,7 @@ export async function executeNotificationCommand(
       try {
         encodeNotificationQuery(query);
       } catch (error) {
-        if (error instanceof TypeError || error instanceof RangeError) {
-          throw usageError(error.message);
-        }
-        throw error;
+        throw inputValidationUsageError(error);
       }
       return notificationsResult(await cloudApi().listNotifications(organizationId, query));
     }
@@ -108,10 +105,7 @@ export async function executeNotificationCommand(
       try {
         encodeNotificationAlertPolicyQuery(query);
       } catch (error) {
-        if (error instanceof TypeError || error instanceof RangeError) {
-          throw usageError(error.message);
-        }
-        throw error;
+        throw inputValidationUsageError(error);
       }
       return notificationAlertPoliciesResult(
         await cloudApi().listNotificationAlertPolicies(organizationId, query)
@@ -170,10 +164,7 @@ export async function executeNotificationCommand(
       try {
         encodeOutboundNotificationSubscriptionQuery(query);
       } catch (error) {
-        if (error instanceof TypeError || error instanceof RangeError) {
-          throw usageError(error.message);
-        }
-        throw error;
+        throw inputValidationUsageError(error);
       }
       return outboundNotificationSubscriptionsResult(
         await cloudApi().listOutboundNotificationSubscriptions(organizationId, query)

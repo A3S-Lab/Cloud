@@ -45,6 +45,13 @@ export function usageError(message: string): CliError {
   return new CliError(ExitCode.Usage, 'INVALID_ARGUMENT', message);
 }
 
+export function inputValidationUsageError(error: unknown): CliError {
+  if (error instanceof TypeError || error instanceof RangeError) {
+    return usageError(error.message);
+  }
+  throw error;
+}
+
 export function normalizeError(error: unknown): CliError {
   if (error instanceof CliError) {
     return error;

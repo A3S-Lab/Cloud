@@ -30,14 +30,9 @@ export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 export const MAX_PROJECT_ATTRIBUTION_LABELS = 32;
 
-const AGENT_PROVIDER_KINDS: ReadonlySet<AgentProviderKind> = new Set([
-  'a3s.code',
-  'reference.echo',
-]);
+const AGENT_PROVIDER_KINDS: ReadonlySet<AgentProviderKind> = new Set(['a3s.code', 'reference.echo']);
 
-export function validateAgentProviderKind(
-  kind: unknown
-): asserts kind is AgentProviderKind | undefined {
+export function validateAgentProviderKind(kind: unknown): asserts kind is AgentProviderKind | undefined {
   if (
     kind !== undefined &&
     (typeof kind !== 'string' || !AGENT_PROVIDER_KINDS.has(kind as AgentProviderKind))

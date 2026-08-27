@@ -21,7 +21,7 @@ import {
 } from './command-options';
 import type { CloudContext } from './context';
 import { parseUuid, requireOrganization } from './context';
-import { usageError } from './errors';
+import { inputValidationUsageError, usageError } from './errors';
 import type { CommandResult } from './results';
 import {
   auditExportManifestResult,
@@ -85,10 +85,7 @@ export async function executeAuditCommand(
     try {
       encodeAuditExportManifestQuery(query);
     } catch (error) {
-      if (error instanceof TypeError || error instanceof RangeError) {
-        throw usageError(error.message);
-      }
-      throw error;
+      throw inputValidationUsageError(error);
     }
     return auditExportManifestResult(
       await cloudApi().exportAuditRecordManifest(requireOrganization(context), query)
@@ -105,10 +102,7 @@ export async function executeAuditCommand(
     try {
       encodeAuditExportQuery(query);
     } catch (error) {
-      if (error instanceof TypeError || error instanceof RangeError) {
-        throw usageError(error.message);
-      }
-      throw error;
+      throw inputValidationUsageError(error);
     }
     return auditExportResult(await cloudApi().exportAuditRecords(requireOrganization(context), query));
   }
@@ -122,10 +116,7 @@ export async function executeAuditCommand(
   try {
     encodeAuditRecordQuery(query);
   } catch (error) {
-    if (error instanceof TypeError || error instanceof RangeError) {
-      throw usageError(error.message);
-    }
-    throw error;
+    throw inputValidationUsageError(error);
   }
   return auditRecordsResult(await cloudApi().listAuditRecords(requireOrganization(context), query));
 }

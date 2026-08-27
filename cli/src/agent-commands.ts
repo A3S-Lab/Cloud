@@ -1,8 +1,4 @@
-import {
-  type CloudApi,
-  type CloudSequenceQuery,
-  validateAgentProviderKind,
-} from '@a3s/cloud-client';
+import { type CloudApi, type CloudSequenceQuery, validateAgentProviderKind } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
@@ -17,7 +13,7 @@ import {
 } from './command-options';
 import type { CloudContext } from './context';
 import { hasUnsafeControl, requireEnvironment, requireOrganization, requireProject } from './context';
-import { usageError } from './errors';
+import { inputValidationUsageError, usageError } from './errors';
 import {
   agentConversationMutationResult,
   agentConversationResult,
@@ -102,8 +98,7 @@ export async function executeAgentCommand(
         )
       );
     case 'agent-executions start': {
-      const providerKind = arguments_.providerKind;
-      validateAgentProviderKind(providerKind);
+      const providerKind = agentProviderKind(arguments_.providerKind);
       const idempotencyKey = requireMutationCommand(
         arguments_,
         5,
@@ -135,6 +130,15 @@ export async function executeAgentCommand(
     }
     default:
       return undefined;
+  }
+}
+
+function agentProviderKind(value: unknown) {
+  try {
+    validateAgentProviderKind(value);
+    return value;
+  } catch (error) {
+    throw inputValidationUsageError(error);
   }
 }
 
