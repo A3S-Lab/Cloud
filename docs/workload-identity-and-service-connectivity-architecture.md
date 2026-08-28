@@ -243,13 +243,15 @@ Cloud Dashboard or private identity-provider UI is required.
 | `H0.4-WI6` | Revocation, expiry, clock, process/node loss, partition and upgrade evidence | Planned |
 | `H0.4-WI7` | Optional trust-domain federation, region isolation and exact-provider conformance | Planned |
 
-`WI1-C2` persistence is ordered after the remaining `C0.5-MT1` contract work
-freezes explicit installation-scoped audit/Outbox evidence and the single
-Identity platform-permission decision. Trust-domain state is installation
-state: it cannot be placed under a synthetic Organization, and a legacy
+`WI1-C2` persistence is ordered after `C0.5-MT1-C3` and `MT2` establish one
+canonical persisted Installation identity, explicit scope-aware audit/Outbox
+evidence, and the Application/persistence authority behind the single Identity
+platform-permission decision. Trust-domain state is installation state: it
+cannot be placed under a synthetic Organization, and a legacy
 `actor_is_platform_admin` boolean cannot authorize it. Component-only
-`MT1-C1` supplies the shared scope identity and canonical platform-role
-policy/binding model, but does not yet supply that effective decision.
+`MT1-C1/C2` already supplies shared scope identity, canonical platform-role and
+support-grant intent, and replayable privileged-decision evidence; it does not
+yet supply current-head loading, durable revocation or an authorization port.
 
 `WI1-C1` deliberately exposes only provider capability inspection. Credential
 issuance is unavailable until `WI2` can prove the exact Fleet Claim, Node,

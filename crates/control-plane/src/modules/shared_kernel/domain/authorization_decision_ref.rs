@@ -10,6 +10,11 @@ pub struct AuthorizationDecisionRef {
     pub digest: Sha256Digest,
 }
 
+/// Neutral name used when a later authorization decision binds an earlier
+/// authentication or authorization proof. This is an alias, not a second
+/// evidence-reference representation.
+pub type DecisionEvidenceRef = AuthorizationDecisionRef;
+
 impl AuthorizationDecisionRef {
     pub fn new(id: impl Into<String>, digest: Sha256Digest) -> Result<Self, String> {
         let value = Self {
@@ -21,6 +26,7 @@ impl AuthorizationDecisionRef {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        Sha256Digest::parse(self.digest.as_str())?;
         if self.id.is_empty()
             || self.id.trim() != self.id
             || self.id.len() > MAX_AUTHORIZATION_DECISION_ID_BYTES
@@ -46,5 +52,10 @@ mod tests {
         assert!(AuthorizationDecisionRef::new("", digest()).is_err());
         assert!(AuthorizationDecisionRef::new(" padded ", digest()).is_err());
         assert!(AuthorizationDecisionRef::new("line\nbreak", digest()).is_err());
+
+        let forged: AuthorizationDecisionRef =
+            serde_json::from_str(r#"{"id":"grant-evaluation-1","digest":"sha256:not-a-digest"}"#)
+                .expect("wire shape");
+        assert!(forged.validate().is_err());
     }
 }

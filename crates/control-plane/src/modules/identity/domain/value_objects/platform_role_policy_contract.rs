@@ -72,6 +72,8 @@ impl PlatformRole {
                     | PlatformPermission::ConfigurationRead
                     | PlatformPermission::UpgradeRead
                     | PlatformPermission::BackupRestoreRead
+                    | PlatformPermission::TenantSupportRead
+                    | PlatformPermission::TenantSupportUse
                     | PlatformPermission::OperationsRead
                     | PlatformPermission::OperationsExecute
             ),
@@ -90,6 +92,7 @@ impl PlatformRole {
                     | PlatformPermission::UpgradeRead
                     | PlatformPermission::BackupRestoreRead
                     | PlatformPermission::TenantLifecycleRead
+                    | PlatformPermission::TenantSupportRead
                     | PlatformPermission::OperationsRead
                     | PlatformPermission::AuditRead
                     | PlatformPermission::AuditExport
@@ -127,6 +130,9 @@ pub enum PlatformPermission {
     BackupRestoreManage,
     TenantLifecycleRead,
     TenantLifecycleManage,
+    TenantSupportRead,
+    TenantSupportManage,
+    TenantSupportUse,
     OperationsRead,
     OperationsExecute,
     AuditRead,
@@ -156,7 +162,7 @@ impl<'de> Deserialize<'de> for PlatformPermission {
 }
 
 impl PlatformPermission {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 36] = [
         Self::PlatformRead,
         Self::RolePolicyRead,
         Self::RolePolicyManage,
@@ -183,6 +189,9 @@ impl PlatformPermission {
         Self::BackupRestoreManage,
         Self::TenantLifecycleRead,
         Self::TenantLifecycleManage,
+        Self::TenantSupportRead,
+        Self::TenantSupportManage,
+        Self::TenantSupportUse,
         Self::OperationsRead,
         Self::OperationsExecute,
         Self::AuditRead,
@@ -220,6 +229,9 @@ impl PlatformPermission {
             Self::BackupRestoreManage => "platform:backup-restore:manage",
             Self::TenantLifecycleRead => "platform:tenant-lifecycle:read",
             Self::TenantLifecycleManage => "platform:tenant-lifecycle:manage",
+            Self::TenantSupportRead => "platform:tenant-support:read",
+            Self::TenantSupportManage => "platform:tenant-support:manage",
+            Self::TenantSupportUse => "platform:tenant-support:use",
             Self::OperationsRead => "platform:operations:read",
             Self::OperationsExecute => "platform:operations:execute",
             Self::AuditRead => "platform:audit:read",
@@ -253,6 +265,7 @@ impl PlatformPermission {
                 | Self::UpgradeManage
                 | Self::BackupRestoreManage
                 | Self::TenantLifecycleManage
+                | Self::TenantSupportManage
                 | Self::OperationsExecute
                 | Self::AuditRetentionManage
                 | Self::RecoveryExecute
@@ -551,6 +564,26 @@ mod tests {
         assert!(!contract.spec().admits(
             PlatformRole::SecurityAuditor,
             PlatformPermission::OperationsExecute
+        ));
+        assert!(contract.spec().admits(
+            PlatformRole::PlatformAdmin,
+            PlatformPermission::TenantSupportManage
+        ));
+        assert!(contract.spec().admits(
+            PlatformRole::PlatformOperator,
+            PlatformPermission::TenantSupportUse
+        ));
+        assert!(!contract.spec().admits(
+            PlatformRole::PlatformOperator,
+            PlatformPermission::TenantSupportManage
+        ));
+        assert!(contract.spec().admits(
+            PlatformRole::SecurityAuditor,
+            PlatformPermission::TenantSupportRead
+        ));
+        assert!(!contract.spec().admits(
+            PlatformRole::SecurityAuditor,
+            PlatformPermission::TenantSupportUse
         ));
         assert_eq!(
             serde_json::to_string(&PlatformPermission::WorkloadTrustManage)

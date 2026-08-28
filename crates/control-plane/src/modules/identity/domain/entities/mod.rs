@@ -10,6 +10,7 @@ mod recipient_contact;
 mod recipient_contact_verification;
 mod recipient_contact_verification_delivery;
 mod resource_grant;
+mod tenant_support_grant;
 mod workload_identity;
 
 pub use api_token::{
@@ -39,4 +40,5 @@ pub use recipient_contact_verification_delivery::{
     RecipientContactVerificationDeliveryStatus,
 };
 pub use resource_grant::ResourceGrant;
+pub use tenant_support_grant::TenantSupportGrant;
 pub use workload_identity::{AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision};

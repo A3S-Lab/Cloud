@@ -1874,6 +1874,169 @@ fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrow
 }
 
 #[test]
+fn privileged_tenant_support_reuses_one_decision_evidence_mechanism_and_never_implies_data_access()
+{
+    let root = module_root();
+    let policy = std::fs::read_to_string(
+        root.join("identity/domain/value_objects/platform_role_policy_contract.rs"),
+    )
+    .expect("read platform role policy ACL");
+    let contract = std::fs::read_to_string(
+        root.join("identity/domain/value_objects/tenant_support_grant_contract.rs"),
+    )
+    .expect("read tenant support grant ACL");
+    let grant =
+        std::fs::read_to_string(root.join("identity/domain/entities/tenant_support_grant.rs"))
+            .expect("read tenant support grant entity");
+    let decision = std::fs::read_to_string(
+        root.join("identity/domain/services/privileged_authorization_decision.rs"),
+    )
+    .expect("read privileged authorization decision");
+    let resource_decision = std::fs::read_to_string(
+        root.join("identity/domain/services/resource_authorization_decision.rs"),
+    )
+    .expect("read resource authorization decision");
+    let evidence_ref =
+        std::fs::read_to_string(root.join("shared_kernel/domain/authorization_decision_ref.rs"))
+            .expect("read shared decision evidence reference");
+
+    assert_eq!(
+        contract
+            .matches("pub enum TenantSupportPermission {")
+            .count(),
+        1
+    );
+    assert_eq!(
+        contract
+            .matches("pub struct TenantSupportGrantContract {")
+            .count(),
+        1
+    );
+    for required in [
+        "pub const ALL: [Self; 7]",
+        "cloud.identity.tenant-support-grant.v1",
+        "a3s_acl",
+        "canonical_digest",
+        "parse_acl",
+        "generate_acl",
+        "security_alert_required",
+        "post_incident_review_required",
+        "break-glass tenant support must notify tenant and security and require review",
+        "ScopeContext::Organization",
+        "ScopeContext::Project",
+        "ScopeContext::Environment",
+    ] {
+        assert!(
+            contract.contains(required),
+            "tenant support grant lost bounded canonical intent {required}"
+        );
+    }
+    for forbidden in [
+        "tenant-support:secret",
+        "tenant-support:payload",
+        "tenant-support:prompt",
+        "tenant-support:response",
+        "tenant-support:runtime:exec",
+        "serde_yaml",
+        "toml::",
+        "actor_is_platform_admin",
+    ] {
+        assert!(
+            !production_source(&contract).contains(forbidden),
+            "tenant support grant introduced forbidden tenant-data or configuration authority {forbidden}"
+        );
+    }
+
+    assert_eq!(grant.matches("pub struct TenantSupportGrant {").count(), 1);
+    for required in [
+        "non-renewing",
+        "revocation_generation",
+        "self.scope().contains(requested_scope)",
+        "self.revoked_at.is_none()",
+    ] {
+        assert!(
+            grant.contains(required),
+            "tenant support lifecycle lost terminal narrowing rule {required}"
+        );
+    }
+    for forbidden in [
+        "fn renew(",
+        "fn extend(",
+        "fn reactivate(",
+        "Postgres",
+        "Redis",
+    ] {
+        assert!(
+            !production_source(&grant).contains(forbidden),
+            "tenant support lifecycle acquired renewal or infrastructure mechanism {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        decision
+            .matches("pub struct PrivilegedAuthorizationDecision {")
+            .count(),
+        1
+    );
+    for required in [
+        "DecisionEvidenceRef",
+        "canonical_json_bounded",
+        "validate_audit_action",
+        "PlatformRolePolicyContract::restore",
+        "TenantSupportGrantContract::restore",
+        "PlatformPermission::TenantSupportUse",
+        "IdentityPrincipalKind::Human",
+        "platform role alone cannot authorize the requested scope",
+        "self.scope.is_tenant_scope()",
+    ] {
+        assert!(
+            decision.contains(required),
+            "privileged decision lost exact replay or tenant-intersection evidence {required}"
+        );
+    }
+    for forbidden in [
+        "actor_is_platform_admin",
+        "HeaderMap",
+        "thread_local",
+        "Postgres",
+        "Redis",
+        "a3s_lane",
+        "reqwest",
+        "Repository",
+    ] {
+        assert!(
+            !production_source(&decision).contains(forbidden),
+            "privileged decision acquired ambient, persistence, cache, or provider authority {forbidden}"
+        );
+    }
+
+    for required in [
+        "platform:tenant-support:read",
+        "platform:tenant-support:manage",
+        "platform:tenant-support:use",
+    ] {
+        assert!(
+            policy.contains(required),
+            "platform role policy lost support-plane permission {required}"
+        );
+    }
+    assert!(resource_decision.contains("validate_audit_action"));
+    assert!(!production_source(&resource_decision).contains("fn valid_action("));
+    assert_eq!(
+        evidence_ref
+            .matches("pub struct AuthorizationDecisionRef {")
+            .count(),
+        1
+    );
+    assert_eq!(
+        evidence_ref
+            .matches("pub type DecisionEvidenceRef = AuthorizationDecisionRef;")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

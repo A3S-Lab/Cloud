@@ -29,12 +29,13 @@ cross-context scope ratchets, capacity fairness, privileged support access and
 the complete isolation matrix remain gated below and must not be advertised as
 available early.
 
-Component-only `C0.5-MT1-C1` now freezes one explicit `ScopeContext` with the
-exact Installation/Organization/Project/Environment lineage, canonical
-`cloud.identity.platform-role-policy.v1`, deterministic accepted policy
-revisions, closed roles and permissions, and the `PlatformRoleBinding` domain
-lifecycle. This adds no repository, effective authorization decision,
-installation-scoped audit/Outbox persistence or public interface. The legacy
+Component-only `C0.5-MT1-C1` and `C0.5-MT1-C2` now freeze one explicit
+`ScopeContext` with exact Installation/Organization/Project/Environment
+lineage, canonical platform-role policy and tenant-support-grant ACLs,
+deterministic accepted policy revisions, closed roles/permissions, role-binding
+and terminal support-grant lifecycles, and one digest-bound privileged allow
+fact. This adds no repository, Application authorization interface,
+installation-scoped audit/Outbox persistence or public authority. The legacy
 `actor_is_platform_admin` boolean remains migration debt and is not valid proof
 for new MT1 or workload-identity paths.
 
@@ -106,20 +107,44 @@ never receives a broad dataset to filter locally.
 
 A platform role does **not** imply access to tenant source, prompts, responses,
 files, Secrets, checkpoints, Cell state or model credentials. When operational
-support genuinely requires tenant scope, Identity issues a separate bounded
+support genuinely requires tenant scope, Identity accepts a separate bounded
 `TenantSupportGrant` that pins:
 
-- exact Principal, Organization and optionally Project/Environment;
+- exact intended Principal, Installation/Organization and optionally
+  Project/Environment;
 - closed read or recovery permissions, never an unbounded administrator flag;
-- incident/change-ticket reference and human-readable justification digest;
-- approver, start, maximum expiry and revocation generation; and
-- whether tenant notification or dual approval is required by policy.
+- bounded incident/change-ticket reference and an opaque justification digest;
+- one or two distinct approver IDs, start and bounded expiry; and
+- tenant-notification, independent security-alert and post-incident-review
+  requirements.
 
 Support grants are short-lived, non-renewing in place and prominent in audit.
 Secret plaintext, prompt/response content and interactive Runtime exec remain
 separately denied unless an even narrower capability has an explicit owning
 gate. Emergency break-glass uses the same model with a shorter expiry,
-mandatory reason, independent alert and post-incident review.
+mandatory tenant notification, independent platform-security alert and
+post-incident review. The accepted aggregate adds one terminal revocation
+generation.
+
+The allow fact is not configuration. It reuses the existing canonical-JSON,
+SHA-256 and `AuthorizationDecisionRef` mechanism and embeds exact policy/grant
+ACL snapshots plus their revisions, versions and digests. Standard tenant
+support is therefore:
+
+```text
+active exact human Principal
+  AND current accepted platform-role policy
+  AND active binding admitting platform:tenant-support:use
+  AND active exact-subject TenantSupportGrant
+  AND requested descendant scope
+  AND one closed support permission
+```
+
+Role-only tenant scope is limited to tenant-lifecycle administration and
+support-grant metadata read/manage. It never authorizes tenant application
+data. Approver liveness/separation-of-duties and current-head loading remain
+Application obligations in `MT2`; the component contracts alone grant no
+authority.
 
 ## 3. Tenant scope is part of identity
 
@@ -263,7 +288,7 @@ create a second tenancy milestone or authorization engine.
 
 | Gate | Required outcome |
 | --- | --- |
-| `C0.5-MT1` | Freeze installation versus Organization/Project/Environment scope, closed platform permissions, `PlatformRoleBinding`, `TenantSupportGrant`, effective-decision and audit ACLs |
+| `C0.5-MT1` | Freeze installation versus Organization/Project/Environment scope, closed platform permissions, `PlatformRoleBinding`, canonical `TenantSupportGrant` intent, digest-bound effective-decision evidence, and one scope-aware audit/Outbox contract |
 | `C0.5-MT2` | Persist role bindings/support grants with last-owner, self-escalation, expiry, revocation, idempotency and immutable-history invariants; migrate no platform record through a synthetic tenant |
 | `C0.5-MT3` | Enforce system-admin, organization-owner/admin, member/restricted and service-Principal matrices through one Identity decision port across REST/client/CLI/Management MCP |
 | `C0.5-MT4` | Ratchet every tenant aggregate, repository, composite foreign key, Outbox/audit/idempotency/object reference and cursor to exact scope; zero presentation-only or browser-side tenant filtering |
@@ -271,12 +296,14 @@ create a second tenancy milestone or authorization engine.
 | `C0.5-MT6` | Prove OIDC/SAML/SCIM, session/MFA policy, platform-role provisioning restrictions, tenant suspension/export/deletion and time-bounded audited support access |
 | `C0.5-MT7` | Run adversarial cross-tenant ID/cursor/replay/cache/object/Secret/network/route/log/search/usage tests plus system-admin privilege-escalation and break-glass recovery on real PostgreSQL/S3/Gateway/Runtime/Box providers |
 
-`C0.5-MT1-C1` is implemented only as a domain component. `MT1` remains open
-for `TenantSupportGrant`, effective-decision and audit ACLs, plus an explicit
-installation-scoped audit/Outbox contract. `MT2` then persists those contracts
-and their concurrency invariants; `MT3` replaces boolean administrator bypasses
-with the one Identity decision port. No platform-RBAC availability is claimed
-before those gates and the later adversarial evidence pass.
+`C0.5-MT1-C1` and `C0.5-MT1-C2` are implemented only as domain components.
+`MT1-C3` remains open for one canonical Installation identity and explicit
+scope-aware audit/Outbox contract; it cannot retrofit global facts through a
+synthetic Organization. `MT2` then persists policies, bindings and grants with
+their current-head, approver, idempotency and concurrency invariants; `MT3`
+replaces boolean administrator bypasses with the one Identity decision port.
+No platform-RBAC availability is claimed before those gates and the later
+adversarial evidence pass.
 
 Production multi-tenancy is not complete until every product lane also proves
 its own scope-specific failure and cleanup cases. Passing Identity unit tests

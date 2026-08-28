@@ -7,6 +7,7 @@ mod organization_name;
 mod platform_role_policy_contract;
 mod recipient_contact;
 mod resource_grant_scope;
+mod tenant_support_grant_contract;
 mod trust_domain_contract;
 mod workload_identity_policy_contract;
 
@@ -22,6 +23,12 @@ pub use platform_role_policy_contract::{
 };
 pub use recipient_contact::{RecipientContactSigningKeyId, RecipientEmailAddress};
 pub use resource_grant_scope::ResourceGrantScope;
+pub use tenant_support_grant_contract::{
+    TenantNotificationRequirement, TenantSupportApprovalRequirement, TenantSupportGrantContract,
+    TenantSupportGrantContractSpec, TenantSupportGrantMode, TenantSupportPermission,
+    TENANT_SUPPORT_BREAK_GLASS_MAX_SECONDS, TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
+    TENANT_SUPPORT_GRANT_SCHEMA, TENANT_SUPPORT_STANDARD_MAX_SECONDS,
+};
 pub use trust_domain_contract::{
     TrustDomainContract, TrustDomainContractSpec, TrustDomainName, WorkloadIdentityFormat,
     WorkloadIdentityRevocationMode, MAX_TRUST_DOMAIN_FEDERATION_BUNDLES,

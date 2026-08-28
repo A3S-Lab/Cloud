@@ -92,7 +92,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "in_progress"
   }
   gate "C0.5" {
-    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md"]
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md", "doc:docs/decisions/app-platform/0081-one-privileged-authorization-evidence-model.md", "implementation:crates/control-plane/src/modules/identity/domain/entities/tenant_support_grant.rs", "implementation:crates/control-plane/src/modules/identity/domain/services/privileged_authorization_decision.rs", "implementation:crates/control-plane/src/modules/identity/domain/value_objects/tenant_support_grant_contract.rs", "test:crates/control-plane/src/modules/architecture_tests.rs"]
     state = "planned"
   }
   gate "H0.5" {

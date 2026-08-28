@@ -199,7 +199,8 @@ one-time verification challenges, exact external OIDC subject links and one-time
 login/link flow persistence under `C0.3`, component-only installation Trust
 Domains and exact Workload Identity Policy revisions under `H0.4-WI1-C1`,
 component-only explicit platform scope, role-policy revisions and role bindings
-under `C0.5-MT1-C1`, planned SAML/OIDC provider, SCIM, and session policy under
+under `C0.5-MT1-C1`, component-only tenant-support grants and privileged
+decision evidence under `C0.5-MT1-C2`, planned SAML/OIDC provider, SCIM, and session policy under
 `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, issue workload
@@ -232,13 +233,16 @@ Primary aggregates:
   selection remain open)
 - `PlatformRoleBinding` (`C0.5-MT1-C1` component lifecycle implemented;
   authorization, last-owner/self-escalation rules and persistence remain open)
+- `TenantSupportGrant` (`C0.5-MT1-C2` canonical ACL and terminal component
+  lifecycle implemented; approver/current-head loading, persistence and
+  interfaces remain open)
 - `TrustDomain` and immutable `TrustDomainRevision` (`H0.4-WI1-C1` component
   contract implemented; persistence and interfaces remain open)
 - `WorkloadIdentityPolicy` and immutable
   `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1` component contract
   implemented; exact execution-attestation binding remains `WI2`)
 
-#### Platform scope and RBAC (`C0.5-MT1-C1` component)
+#### Platform scope and RBAC (`C0.5-MT1-C1/C2` components)
 
 The shared `ScopeContext` is one closed identity value with exactly four forms:
 Installation, Organization, Project and Environment. Every child repeats and
@@ -253,18 +257,25 @@ closed `PlatformPermission` IDs, the four role bundles `platform_owner`,
 `platform_admin`, `platform_operator` and `security_auditor`, plus deterministic
 accepted revisions and installation-scoped role bindings. Immutable ceilings
 prevent policy-defined privilege expansion; the owner retains the closed
-recovery permission set. A binding names a role, while a future effective
-decision resolves the current accepted policy rather than copying permissions
-or pinning every binding to an obsolete revision. Its audit fact must record
-that exact revision and digest.
+recovery permission set. A binding names a role. The component
+`PrivilegedAuthorizationDecision` resolves an active Principal, current
+accepted policy and active exact-installation bindings rather than copying
+permissions or pinning every binding to an obsolete revision. Its immutable
+canonical-JSON evidence embeds that exact ACL revision/snapshot/digest and
+reuses the one SHA-256 decision-reference representation.
 
 Platform permission never implies tenant source, payload, Secret, model
 credential, Cell state or runtime-exec access; that requires a separate bounded
-`TenantSupportGrant`. `MT1-C1` adds no repository, application decision,
-Outbox/audit persistence, interface or availability. Remaining `MT1`, `MT2`
-and `MT3` work supplies those contracts, active-Principal checks, optimistic
-concurrency, idempotency, self-escalation and last-owner protection, and removes
-the legacy boolean administrator bypass.
+canonical `cloud.identity.tenant-support-grant.v1` plus an active exact human,
+an active binding admitting `platform:tenant-support:use`, a descendant scope
+and one closed non-sensitive support permission. Grants are bounded,
+non-renewing and terminally revocable; break-glass requires tenant notification
+plus an independent security alert and post-incident review. `MT1-C1/C2` add
+no repository, Application interface,
+Outbox/audit persistence or availability. `MT1-C3`, `MT2` and `MT3` supply one
+canonical Installation identity, scope-aware audit/Outbox, approver/current-head
+loading, optimistic concurrency, idempotency, self-escalation and last-owner
+protection, then remove the legacy boolean administrator bypass.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

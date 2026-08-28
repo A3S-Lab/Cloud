@@ -4,7 +4,7 @@ use crate::modules::identity::domain::value_objects::{
     ApiTokenScope, MembershipRole, ResourceGrantScope,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, canonical_timestamp, sha256_digest, ApiTokenId,
+    canonical_json_bounded, canonical_timestamp, sha256_digest, validate_audit_action, ApiTokenId,
     AuthorizationDecisionRef, MembershipId, OrganizationId, PrincipalId, ResourceGrantId,
     Sha256Digest,
 };
@@ -17,7 +17,6 @@ const RESOURCE_AUTHORIZATION_DECISION_API_VERSION: &str =
 const RESOURCE_AUTHORIZATION_DECISION_REFERENCE_PREFIX: &str =
     "urn:a3s:cloud:identity:resource-authorization-decision:";
 const RESOURCE_AUTHORIZATION_DECISION_MAX_BYTES: usize = 128 * 1024;
-const RESOURCE_AUTHORIZATION_ACTION_MAX_BYTES: usize = 255;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -102,7 +101,7 @@ impl ResourceAuthorizationDecisionRequest {
             || self.principal_id.as_uuid().is_nil()
             || self.credential_id.as_uuid().is_nil()
             || self.request_id.is_nil()
-            || !valid_action(&self.action)
+            || validate_audit_action(&self.action).is_err()
         {
             return Err("resource authorization decision request is invalid".into());
         }
@@ -199,7 +198,7 @@ impl ResourceAuthorizationDecision {
                 .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE))
             || self.request_id.is_nil()
             || self.decided_at != canonical_timestamp(self.decided_at)
-            || !valid_action(&self.action)
+            || validate_audit_action(&self.action).is_err()
             || !basis_evaluator(&self.basis)?.allows(self.resource)
             || self.compute_digest()? != self.digest
         {
@@ -330,18 +329,6 @@ fn basis_evaluator(basis: &ResourceAuthorizationBasis) -> Result<ResourceAccessE
             ))
         }
     }
-}
-
-fn valid_action(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= RESOURCE_AUTHORIZATION_ACTION_MAX_BYTES
-        && value.split('.').count() >= 3
-        && value.split('.').all(|segment| {
-            !segment.is_empty()
-                && segment
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
-        })
 }
 
 #[cfg(test)]

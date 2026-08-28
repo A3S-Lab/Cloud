@@ -139,7 +139,10 @@ release truth.
   lifecycle cleanup.
 - A distinct system-administrator RBAC plane for installation, fleet,
   migration, policy, incident, and break-glass duties; system roles do not
-  silently become tenant access.
+  silently become tenant access. Tenant support requires an active exact human,
+  an admitted support-use role, a short-lived non-renewing grant, descendant
+  scope and one closed non-sensitive permission; the allow fact pins replayable
+  policy/grant evidence.
 - REST/OpenAPI, maintained TypeScript client, CLI, and sessionless Management
   MCP all dispatch the same Application commands and queries.
 - OpenShift-class outcomes—declarative reconciliation, scheduling, isolation,
@@ -200,7 +203,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 | Lane | Status |
 | --- | --- |
 | Tenant-scoped PostgreSQL identity, ORM-backed Operations/Flow, Outbox, API, and migration authority | **Verified foundation** |
-| Installation scope and system-administrator RBAC | **Early component foundation**; one explicit scope hierarchy plus canonical platform-role policy/revision/binding domain contracts exist, but no production authority is available before scoped audit/Outbox, persistence, effective decisions, support grants, interfaces, and hostile-tenant evidence |
+| Installation scope and system-administrator RBAC | **Early component foundation**; one explicit scope hierarchy, canonical platform-role policy/bindings, bounded tenant-support grants, and replayable privileged-decision evidence exist. No production authority is available before canonical installation identity, scoped audit/Outbox, repositories, Application interfaces, concurrency controls, cross-surface enforcement, and hostile-tenant evidence |
 | Node, Workload, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress**; several component gates exist, current real-provider/release recertification remains |
 | Agent and hosted MCP product lanes | **In progress**; do not infer complete AaaS availability from component evidence |
 | Ontology Workflow and AI Applications/Files foundations | **In progress**; complete WaaS/Application products remain gate-bound |

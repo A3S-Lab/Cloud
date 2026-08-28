@@ -3889,13 +3889,22 @@ node.
   deterministic accepted revisions, immutable role ceilings, and the
   installation-scoped `PlatformRoleBinding` domain lifecycle. This slice has
   no repository, public interface or effective authority.
-- Complete the rest of `MT1` before persistence-dependent workload-trust work:
-  add `TenantSupportGrant`, effective-decision and audit ACLs, and one explicit
-  installation-aware audit/Outbox contract. `MT2` then adds optimistic
-  persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
-  replaces every boolean platform-administrator bypass with the single
-  Identity decision port. A global record must never be stored under a
-  synthetic Organization.
+- Implemented as component-only `C0.5-MT1-C2`: canonical bounded
+  `cloud.identity.tenant-support-grant.v1`, terminal revocation, closed
+  non-sensitive support permissions and one canonical-JSON/SHA-256 privileged
+  decision fact. Platform authorization requires active Principal, current
+  policy and active binding; tenant support additionally requires an active
+  exact human, grant, descendant scope and closed permission. The decision
+  embeds exact policy/grant ACL snapshots and reuses the one decision-reference
+  representation. This slice has no repository, Application interface or
+  production authority.
+- Complete `MT1-C3` before persistence-dependent workload-trust work: define
+  one canonical Installation identity and one discriminated scope-aware shared
+  audit/Outbox contract, including compatibility for existing Organization
+  facts. `MT2` then adds current-head/approver loading, optimistic persistence,
+  idempotency, last-owner and self-escalation safeguards. `MT3` replaces every
+  boolean platform-administrator bypass with the single Identity decision
+  port. A global record must never be stored under a synthetic Organization.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,

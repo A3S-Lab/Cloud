@@ -13,7 +13,7 @@ mod sha256_digest;
 mod timestamp;
 
 pub(crate) use audit_action::validate_audit_action;
-pub use authorization_decision_ref::AuthorizationDecisionRef;
+pub use authorization_decision_ref::{AuthorizationDecisionRef, DecisionEvidenceRef};
 pub use canonical_json::{canonical_json_bounded, sha256_digest};
 pub(crate) use dsse::dsse_pae_bounded;
 pub use git_commit_sha::GitCommitSha;
@@ -34,15 +34,15 @@ pub use identifiers::{
     NodeId, NodePoolId, NotificationAlertPolicyId, NotificationId, NotificationSubscriptionId,
     OidcFlowId, OntologyId, OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId,
     PlatformRoleBindingId, PlatformRolePolicyId, PlatformRolePolicyRevisionId, PluginRegistryId,
-    PrincipalId, ProjectAttributionProfileId, ProjectId, PullRequestPreviewId,
-    PullRequestPreviewPolicyRevisionId, RecipientContactId, RecipientContactVerificationId,
-    ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId,
-    SourcePullRequestChangeId, SourceRevisionId, SourceSubscriptionId, StorageNamespaceId,
-    TrustDomainId, TrustDomainRevisionId, UserFileId, UserFileUploadId, WorkflowDecisionId,
-    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadIdentityPolicyId, WorkloadIdentityPolicyRevisionId, WorkloadPlacementGroupId,
-    WorkloadProfileId, WorkloadProfileRevisionId, WorkloadReplicaId, WorkloadReplicaMemberId,
-    WorkloadRevisionId,
+    PrincipalId, PrivilegedAuthorizationDecisionId, ProjectAttributionProfileId, ProjectId,
+    PullRequestPreviewId, PullRequestPreviewPolicyRevisionId, RecipientContactId,
+    RecipientContactVerificationId, ResourceClaimId, ResourceGrantId, RouteId, SecretId,
+    SourceConnectionId, SourcePullRequestChangeId, SourceRevisionId, SourceSubscriptionId,
+    StorageNamespaceId, TenantSupportGrantId, TrustDomainId, TrustDomainRevisionId, UserFileId,
+    UserFileUploadId, WorkflowDecisionId, WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
+    WorkflowRunId, WorkloadId, WorkloadIdentityPolicyId, WorkloadIdentityPolicyRevisionId,
+    WorkloadPlacementGroupId, WorkloadProfileId, WorkloadProfileRevisionId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

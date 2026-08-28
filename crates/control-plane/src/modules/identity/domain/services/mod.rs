@@ -1,4 +1,5 @@
 mod oidc_provider;
+mod privileged_authorization_decision;
 mod recipient_contact_proof;
 mod recipient_contact_verification_delivery;
 mod resource_access_evaluator;
@@ -8,6 +9,11 @@ mod workload_identity_provider;
 pub use oidc_provider::{
     IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
     OidcProviderError, VerifiedOidcIdentity,
+};
+pub use privileged_authorization_decision::{
+    PlatformRoleBindingDecisionEvidence, PlatformRolePolicyDecisionEvidence,
+    PrivilegedAuthorizationDecision, PrivilegedAuthorizationDecisionRequest,
+    TenantSupportGrantDecisionEvidence,
 };
 pub use recipient_contact_proof::{IRecipientContactProofService, RecipientContactProofError};
 pub use recipient_contact_verification_delivery::{
