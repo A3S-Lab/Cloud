@@ -887,7 +887,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "unavailable"
     category = "authoring_toolkit"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0075-single-user-file-lifecycle-authority.md"]
     gate = "APP0.2"
     label = "File Input"
     owner = "files"
