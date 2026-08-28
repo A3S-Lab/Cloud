@@ -15,7 +15,8 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotencyRequest, NodeCommandId, OperationId,
 };
 use a3s_cloud_contracts::{
-    AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    AgentProviderCapabilityV1, AgentProviderCommandV1, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult,
 };
 use a3s_flow::FlowError;
 use chrono::{DateTime, Utc};
@@ -425,6 +426,23 @@ async fn begin_provider_recovery(
     dispatched: DispatchedAgentExecution,
     observed_at: DateTime<Utc>,
 ) -> a3s_flow::Result<ObserveOutput> {
+    let profile = execution
+        .code
+        .as_ref()
+        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?
+        .provider()
+        .map_err(|error| flow_error("could not restore Agent recovery provider", error))?
+        .profile()
+        .map_err(|error| flow_error("could not restore Agent recovery profile", error))?;
+    if !profile.supports(AgentProviderCapabilityV1::Recovery) {
+        return fail_observation(
+            runtime,
+            execution,
+            "Agent provider does not support process recovery",
+            observed_at,
+        )
+        .await;
+    }
     let write = runtime
         .agents
         .recover_code_run(RecoverAgentCodeRunWrite {

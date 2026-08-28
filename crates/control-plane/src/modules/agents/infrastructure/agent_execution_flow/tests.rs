@@ -52,6 +52,7 @@ use uuid::Uuid;
 
 mod approval_tests;
 mod checkpoint_tests;
+mod recovery_tests;
 
 #[derive(Default)]
 struct TestCheckpointObjects {
