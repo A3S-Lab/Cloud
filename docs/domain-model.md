@@ -1595,11 +1595,15 @@ then narrows every existing session to the deterministic Application-scoped
 end user linked to the acting Principal. Stable caller session and invocation
 identities drive exact replay. Open/close, request/cancel, current-state reads,
 and bounded contiguous message-cursor replay all reuse the same repository;
-ambiguous commits are resolved from persisted state. Migration `127` applies
-the ordinary WorkflowRun 30-day timeout maximum to durable invocation
-authority. These commands and queries are registered internally but expose no
-public delivery protocol, application credential, anonymous route, or second
-Workflow/Flow history.
+ambiguous commits are resolved from persisted state. Migration `126` stores the
+exact positive timeout admitted through the Applications-owned WorkflowRun
+port. Historical migration `127` copied Workflow's 30-day maximum into the
+Applications table; migration `171` removes that constraint without rewriting
+authority rows. Workflow remains the sole owner of timeout default and maximum,
+while the Applications Domain retains only its local non-zero,
+integer-representation, and deadline-overflow invariants. These commands and
+queries are registered internally but expose no public delivery protocol,
+application credential, anonymous route, or second Workflow/Flow history.
 
 The C7 internal Workflow consumer boundary accepts only Organization,
 WorkflowRun, stable step/attempt/ordinal effect identity, canonical occurrence
@@ -1787,7 +1791,12 @@ tombstone so evidence cannot disappear implicitly. Migration `170` commits the
 aggregate projection, allocation, shared idempotency result, audit record, and
 one metadata-only Outbox lifecycle event in the same transaction. The fixed
 initial quota is admission policy for a new row; the stored row remains
-authoritative.
+authoritative. The retained
+[PostgreSQL 17 H0 persistence step](https://github.com/A3S-Lab/Cloud/actions/runs/33159659047/job/98810769471)
+verifies rollback on a failed shared side effect, concurrent quota
+serialization, tenant/project identity fencing, exact reservation and
+lifecycle replay, upload/scan/tombstone transitions, and quota release through
+the same repository and object ports used by production composition.
 
 The aggregate derives `cleanup_due_at` from state and the canonical retention
 deadline. PostgreSQL checks that projection but does not create a cleanup

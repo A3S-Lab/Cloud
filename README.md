@@ -189,6 +189,12 @@ second deletion state machine.
 
 REST/OpenAPI `1.77.0`, the maintained client, CLI, and five Management MCP
 tools expose reserve/list/get/tombstone/quota through the same CQRS handlers.
+The retained
+[PostgreSQL 17 H0 persistence step](https://github.com/A3S-Lab/Cloud/actions/runs/33159659047/job/98810769471)
+verifies migration `170`, transaction rollback on audit failure, concurrent
+organization-quota serialization, exact replay/conflict handling, the
+upload/scan/tombstone lifecycle, quota release, and atomic Outbox, audit, and
+idempotency side effects through the production repository ports.
 These are metadata-management interfaces only: public byte transfer, live scan
 execution, object cleanup execution, and Knowledge/KnowledgePipeline
 aggregates remain unavailable and are not emulated by Files.
@@ -389,7 +395,7 @@ capability.
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
-| AI Applications, Files/Knowledge, Automations | Component foundations in progress; Files C1/C2 now include the canonical ACL lifecycle, atomic quota/persistence, authorization-first CQRS, REST/OpenAPI `1.77.0`, client, CLI, and Management MCP. Public byte transfer, scan/cleanup execution, Knowledge/KnowledgePipeline, retained PostgreSQL cross-surface evidence, and complete products remain unavailable |
+| AI Applications, Files/Knowledge, Automations | Component foundations in progress; Files C1/C2 now include the canonical ACL lifecycle, atomic quota/persistence, authorization-first CQRS, REST/OpenAPI `1.77.0`, client, CLI, and Management MCP, with retained PostgreSQL 17 lifecycle/quota persistence evidence. Public byte transfer, scan/cleanup execution, Knowledge/KnowledgePipeline, and complete products remain unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |
 | Production scale / HA | In progress; release claims remain gate-bound |
@@ -762,8 +768,11 @@ creating their own control planes:
    execution authority through migrations `125`-`127`. A typed internal port
    creates or adopts the exact ordinary Workflow Goal, Plan, and Run and
    recovers cancellation, while deterministic Model/Agent preset wrappers use
-   Workflow's shared publication authority. Neither adds another Flow history
-   or dispatch path. Authorization-first internal session, invocation,
+   Workflow's shared publication authority. Invocation timeouts enter through
+   that Applications-owned port and its sole Workflow adapter; Applications
+   does not copy Workflow's default or maximum, and migration `171` removes the
+   historical database copy. Neither adds another Flow history or dispatch
+   path. Authorization-first internal session, invocation,
    cancellation, and bounded cursor CQRS recover exact persisted state; no
    application-scoped public delivery protocol is claimed. The C7 internal
     Workflow consumer port resolves Applications authority from the bound Run
@@ -815,6 +824,12 @@ ACL. Configuration is parsed only through `a3s-acl`.
 | `objects` | One deployment-level local or S3-compatible immutable-object root |
 | `registry`, `sources`, `edge`, `gateway` | Source policy, OCI publication, routes, certificates, Gateway apply |
 | `logs`, `security`, `box` | Retention, production trust, isolation, transient Secret materialization |
+
+The `objects` client is Rust `object_store` with its AWS/S3 adapter. Cloud does
+not bundle an S3 server: production supplies one shared HTTPS AWS S3 or
+S3-compatible endpoint, while the checksum-pinned MinIO instance used by CI is
+only a compatibility fixture. This is immutable object storage, not a
+POSIX/FUSE filesystem mount.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) for development, and
