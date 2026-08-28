@@ -16,7 +16,6 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationId, ApplicationSessionId, EnvironmentId, OntologyId,
     OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
 };
-use crate::modules::workflow::domain::workflow_run_timeout_seconds;
 use a3s_boot::{Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -128,9 +127,9 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                     Err(error) => return Ok(Err(error.into())),
                 }
             }
-            let timeout_seconds = match workflow_run_timeout_seconds(command.timeout_seconds) {
+            let timeout_seconds = match workflows.admit_timeout_seconds(command.timeout_seconds) {
                 Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                Err(error) => return Ok(Err(error)),
             };
             let canonical = match canonical_json_bounded(
                 &json!({

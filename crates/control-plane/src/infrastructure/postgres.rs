@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 170;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "170";
+pub const CLOUD_MIGRATION_COUNT: i64 = 171;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "171";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1569,6 +1569,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/170_user_files.sql"
+            )),
+        ),
+        Migration::new(
+            "171",
+            "Workflow-owned Application invocation timeout policy",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/171_application_invocation_timeout_policy_owner.sql"
             )),
         ),
     ]
@@ -3996,6 +4004,42 @@ mod application_invocation_timeout_policy_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 127 duplicated or rewrote authority through {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod application_invocation_timeout_policy_owner_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/171_application_invocation_timeout_policy_owner.sql"
+    ));
+
+    #[test]
+    fn migration_171_removes_the_copied_workflow_timeout_policy() {
+        let lower = MIGRATION.to_ascii_lowercase();
+        for expected in [
+            "alter table application_invocation_workflow_authorities",
+            "drop constraint application_invocation_workflow_authorities_timeout_policy",
+            "workflow alone owns its default and maximum",
+        ] {
+            assert!(
+                lower.contains(&expected.to_ascii_lowercase()),
+                "missing {expected}"
+            );
+        }
+        for forbidden in [
+            "add constraint",
+            "2592000",
+            "30-day",
+            "create table",
+            "update application_invocation_workflow_authorities",
+            "delete from application_invocation_workflow_authorities",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 171 retained or replaced the copied timeout policy through {forbidden}"
             );
         }
     }

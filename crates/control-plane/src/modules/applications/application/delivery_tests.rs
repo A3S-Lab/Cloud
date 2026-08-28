@@ -16,7 +16,7 @@ use crate::modules::applications::domain::{
     ApplicationSession, ApplicationSessionStatus, ApplicationWorkflowBinding,
     CloseApplicationSessionWrite, ConversationVariableRevision, CreateApplicationWrite,
     IApplicationRepository, IApplicationSessionRepository, OpenApplicationSessionWrite,
-    RequestApplicationInvocationWrite, APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS,
+    RequestApplicationInvocationWrite,
 };
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
@@ -30,7 +30,6 @@ use crate::modules::shared_kernel::domain::{
     PrincipalId, ProjectId, RepositoryError, ResourceName, Sha256Digest, WorkflowDefinitionId,
     WorkflowRevisionId, WorkflowRunId,
 };
-use crate::modules::workflow::domain::WORKFLOW_RUN_MAX_TIMEOUT_SECONDS;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use async_trait::async_trait;
 use chrono::{Duration, TimeZone, Utc};
@@ -89,6 +88,16 @@ impl RecordingWorkflowRunPort {
 
 #[async_trait]
 impl IApplicationWorkflowRunPort for RecordingWorkflowRunPort {
+    fn admit_timeout_seconds(&self, requested: Option<u64>) -> ApplicationResult<u64> {
+        let value = requested.unwrap_or(3_600);
+        if value == 0 || i64::try_from(value).is_err() {
+            return Err(ApplicationError::Invalid(
+                "fixture WorkflowRun timeout is unsupported".into(),
+            ));
+        }
+        Ok(value)
+    }
+
     async fn start_or_adopt(
         &self,
         request: &ApplicationWorkflowRunRequest,
@@ -1078,10 +1087,6 @@ fn application_delivery_types_are_send_and_sync() {
     assert_send_sync::<GetApplicationInvocationHandler>();
     assert_send_sync::<ReplayApplicationSession>();
     assert_send_sync::<ReplayApplicationSessionHandler>();
-    assert_eq!(
-        APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS,
-        WORKFLOW_RUN_MAX_TIMEOUT_SECONDS
-    );
 }
 
 fn digest(marker: char) -> Sha256Digest {

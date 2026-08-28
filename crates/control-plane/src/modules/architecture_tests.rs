@@ -2207,6 +2207,126 @@ fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     );
 }
 
+#[test]
+fn applications_enter_workflow_timeout_admission_through_one_owner_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("applications/application/workflow_run_port.rs"),
+    )
+    .expect("read Applications WorkflowRun port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_port.contains(
+            "fnadmit_timeout_seconds(&self,requested:Option<u64>)->ApplicationResult<u64>;"
+        ),
+        "Applications lost its consumer-owned Workflow timeout admission contract"
+    );
+    assert!(
+        !production_source(&port).contains("crate::modules::workflow"),
+        "the Applications-owned port imported Workflow internals"
+    );
+
+    let mut application_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("applications")
+            && layer(relative) == Some("application")
+            && source.contains("crate::modules::workflow")
+        {
+            application_violations.insert(display(relative));
+        }
+    });
+    assert!(
+        application_violations.is_empty(),
+        "Applications Application bypassed its Workflow port:\n{}",
+        application_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    for relative in [
+        "applications/application/invocation_commands.rs",
+        "applications/application/delivery_commands.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        assert_eq!(
+            production_source(&source)
+                .matches(".admit_timeout_seconds(")
+                .count(),
+            1,
+            "{relative} must enter timeout admission exactly once through the owner adapter"
+        );
+    }
+
+    let authority = std::fs::read_to_string(
+        module_root().join("applications/domain/application_invocation_workflow_authority.rs"),
+    )
+    .expect("read Applications Workflow authority");
+    for forbidden in [
+        "APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS",
+        "30 * 24 * 60 * 60",
+    ] {
+        assert!(
+            !production_source(&authority).contains(forbidden),
+            "Applications Domain copied the Workflow timeout policy {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(module_root().join("applications/infrastructure/workflow_run.rs"))
+            .expect("read Workflow-owned Applications adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_adapter.contains(
+            "fnadmit_timeout_seconds(&self,requested:Option<u64>)->ApplicationResult<u64>"
+        ),
+        "the Workflow adapter stopped implementing timeout admission"
+    );
+    assert_eq!(
+        production_source(&adapter)
+            .matches("workflow_run_timeout_seconds(")
+            .count(),
+        1,
+        "the Workflow timeout rule must have one Applications adapter entry point"
+    );
+
+    for relative in [
+        "../presentation/api_contract/operation.rs",
+        "../presentation/management_mcp/catalog.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        assert!(
+            !source.contains("\"maximum\": 2592000"),
+            "{relative} copied the Workflow timeout maximum into a public schema"
+        );
+        assert!(
+            !source.contains("\"default\": 86400"),
+            "{relative} copied the Workflow timeout default into a public schema"
+        );
+    }
+
+    let management_workflow =
+        std::fs::read_to_string(module_root().join("../presentation/management_mcp/workflow.rs"))
+            .expect("read Workflow Management MCP presentation");
+    let management_workflow = production_source(&management_workflow);
+    assert_eq!(
+        management_workflow
+            .matches("workflow_run_timeout_seconds(")
+            .count(),
+        1,
+        "Management MCP must delegate timeout validation to Workflow's owning rule"
+    );
+    assert!(
+        !management_workflow.contains("WORKFLOW_RUN_MAX_TIMEOUT_SECONDS"),
+        "Management MCP copied Workflow's timeout-bound validation mechanism"
+    );
+}
+
 fn foreign_outer_layer_sites() -> BTreeSet<String> {
     let mut sites = BTreeSet::new();
     visit_production_sources(|relative, source| {

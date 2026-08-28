@@ -3709,8 +3709,8 @@ fn start_workflow_run_schema() -> Value {
             "timeoutSeconds": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 2592000,
-                "default": 86400
+                "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
             },
             "idempotencyKey": idempotency_key_schema()
         },
@@ -4140,6 +4140,30 @@ mod tests {
                 definition["annotations"]["destructiveHint"].as_bool(),
                 Some(destructive),
                 "{} destructive annotation",
+                tool.name()
+            );
+        }
+    }
+
+    #[test]
+    fn workflow_timeout_schemas_reference_the_workflow_owner() {
+        for tool in [
+            ManagementTool::ApplicationInvocationsRequest,
+            ManagementTool::WorkflowRunsStart,
+        ] {
+            let definition = tool.definition();
+            let timeout = &definition["inputSchema"]["properties"]["timeoutSeconds"];
+            assert_eq!(timeout["minimum"], 1, "{} minimum", tool.name());
+            assert_eq!(
+                timeout["maximum"],
+                WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                "{} maximum",
+                tool.name()
+            );
+            assert_eq!(
+                timeout["default"],
+                WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
+                "{} default",
                 tool.name()
             );
         }

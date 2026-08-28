@@ -20,7 +20,6 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
     RepositoryError, Sha256Digest,
 };
-use crate::modules::workflow::domain::workflow_run_timeout_seconds;
 use a3s_boot::{Command, CommandHandler, CqrsContext};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -458,9 +457,16 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                     "Application invocation identity is invalid".into(),
                 )));
             }
-            if let Err(error) = workflow_run_timeout_seconds(Some(command.timeout_seconds)) {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
+            let timeout_seconds =
+                match workflows.admit_timeout_seconds(Some(command.timeout_seconds)) {
+                    Ok(value) if value == command.timeout_seconds => value,
+                    Ok(_) => {
+                        return Ok(Err(ApplicationError::Conflict(
+                            "admitted Application WorkflowRun timeout drifted".into(),
+                        )))
+                    }
+                    Err(error) => return Ok(Err(error)),
+                };
             let release = match load_release(
                 applications.as_ref(),
                 command.organization_id,
@@ -523,7 +529,7 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                         command.ontology_digest.clone(),
                         command.environment_id,
                         command.actor_principal_id,
-                        command.timeout_seconds,
+                        timeout_seconds,
                     ) {
                         Ok(value) => value,
                         Err(error) => return Ok(Err(ApplicationError::Invalid(error))),

@@ -229,17 +229,7 @@ impl WorkflowApplicationRunService {
         let run = &record.run;
         let input = &run.execution_input;
         let plan = &input.plan;
-        let timeout_seconds = workflow_run_timeout_seconds(Some(request.timeout_seconds))
-            .map_err(ApplicationError::Invalid)?;
-        let timeout = chrono::Duration::seconds(i64::try_from(timeout_seconds).map_err(|_| {
-            ApplicationError::Invalid("Application WorkflowRun timeout is unsupported".into())
-        })?);
-        let deadline_at = request
-            .requested_at
-            .checked_add_signed(timeout)
-            .ok_or_else(|| {
-                ApplicationError::Invalid("Application WorkflowRun deadline overflowed".into())
-            })?;
+        let deadline_at = request.deadline_at().map_err(ApplicationError::Invalid)?;
         let inputs = plan
             .steps
             .iter()
@@ -408,13 +398,16 @@ impl WorkflowApplicationRunService {
 
 #[async_trait]
 impl IApplicationWorkflowRunPort for WorkflowApplicationRunService {
+    fn admit_timeout_seconds(&self, requested: Option<u64>) -> ApplicationResult<u64> {
+        workflow_run_timeout_seconds(requested).map_err(ApplicationError::Invalid)
+    }
+
     async fn start_or_adopt(
         &self,
         request: &ApplicationWorkflowRunRequest,
     ) -> ApplicationResult<ApplicationWorkflowRunEvidence> {
         request.validate().map_err(ApplicationError::Invalid)?;
-        workflow_run_timeout_seconds(Some(request.timeout_seconds))
-            .map_err(ApplicationError::Invalid)?;
+        self.admit_timeout_seconds(Some(request.timeout_seconds))?;
         if let Some(record) = self.adopt_record(request).await? {
             return Self::evidence(request, &record);
         }
@@ -457,6 +450,7 @@ impl IApplicationWorkflowRunPort for WorkflowApplicationRunService {
         requested_at: DateTime<Utc>,
     ) -> ApplicationResult<Option<ApplicationWorkflowRunEvidence>> {
         request.validate().map_err(ApplicationError::Invalid)?;
+        self.admit_timeout_seconds(Some(request.timeout_seconds))?;
         let Some(mut record) = self.adopt_record(request).await? else {
             return Ok(None);
         };

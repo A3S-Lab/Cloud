@@ -4007,6 +4007,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(invocation_workflow_authority_trigger_count, 2);
+    let copied_timeout_policy_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'application_invocation_workflow_authorities'::regclass and conname = 'application_invocation_workflow_authorities_timeout_policy'",
+        ))
+        .await?;
+    assert_eq!(copied_timeout_policy_count, 0);
     for index in [
         "workflow_runs_project_requested_idx",
         "workflow_runs_reconciliation_idx",

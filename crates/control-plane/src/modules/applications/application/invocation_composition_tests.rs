@@ -12,7 +12,6 @@ use crate::modules::applications::domain::{
     ApplicationSession, ApplicationWorkflowBinding, ConversationVariableRevision,
     CreateApplicationWrite, IApplicationRepository, IApplicationSessionRepository,
     OpenApplicationSessionWrite, RequestApplicationInvocationWrite,
-    APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS,
 };
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
@@ -94,6 +93,16 @@ impl ExactWorkflowRunPort {
 
 #[async_trait]
 impl IApplicationWorkflowRunPort for ExactWorkflowRunPort {
+    fn admit_timeout_seconds(&self, requested: Option<u64>) -> ApplicationResult<u64> {
+        let value = requested.unwrap_or(3_600);
+        if value == 0 || i64::try_from(value).is_err() {
+            return Err(ApplicationError::Invalid(
+                "fixture WorkflowRun timeout is unsupported".into(),
+            ));
+        }
+        Ok(value)
+    }
+
     async fn start_or_adopt(
         &self,
         request: &ApplicationWorkflowRunRequest,
@@ -344,7 +353,7 @@ async fn deterministic_workflow_identity_is_scoped_to_the_application_aggregate(
     );
 
     let mut unsupported_timeout = fixture.workflow_authority;
-    unsupported_timeout.timeout_seconds = APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS + 1;
+    unsupported_timeout.timeout_seconds = u64::MAX;
     assert!(ApplicationWorkflowRunRequest::from_invocation(
         &fixture.release,
         &fixture.session,

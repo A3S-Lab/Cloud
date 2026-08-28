@@ -1083,8 +1083,8 @@ fn describe_request_body(
                         "timeoutSeconds": {
                             "type": "integer",
                             "minimum": 1,
-                            "maximum": 2592000,
-                            "default": 86400
+                            "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                            "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
                         }
                     }
                 }

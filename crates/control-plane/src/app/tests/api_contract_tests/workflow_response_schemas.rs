@@ -255,6 +255,17 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
     }
     let run_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-runs"];
+    let timeout = &run_collection["post"]["requestBody"]["content"]["application/json"]["schema"]
+        ["properties"]["timeoutSeconds"];
+    assert_eq!(timeout["minimum"], 1);
+    assert_eq!(
+        timeout["maximum"],
+        crate::modules::workflow::WORKFLOW_RUN_MAX_TIMEOUT_SECONDS
+    );
+    assert_eq!(
+        timeout["default"],
+        crate::modules::workflow::WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+    );
     let run_cancellation = &document["paths"]
         ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/cancel"];
     for status in ["200", "202"] {

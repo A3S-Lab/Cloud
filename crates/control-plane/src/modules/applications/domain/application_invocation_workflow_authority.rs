@@ -7,12 +7,6 @@ use crate::modules::shared_kernel::domain::{
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 
-/// Applications persists only timeout values admitted by the ordinary
-/// WorkflowRun contract. Keeping the same closed bound in the durable record
-/// prevents in-memory and PostgreSQL admission from diverging before
-/// composition.
-pub const APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS: u64 = 30 * 24 * 60 * 60;
-
 /// Immutable authority needed to compose one Application invocation into its
 /// ordinary WorkflowRun.
 ///
@@ -82,13 +76,13 @@ impl ApplicationInvocationWorkflowAuthority {
                 .environment_id
                 .is_some_and(|environment_id| environment_id.as_uuid().is_nil())
             || self.timeout_seconds == 0
-            || self.timeout_seconds > APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS
             || Sha256Digest::parse(self.application_release_digest.as_str())?
                 != self.application_release_digest
             || Sha256Digest::parse(self.ontology_digest.as_str())? != self.ontology_digest
         {
             return Err("stored Application invocation Workflow authority is invalid".into());
         }
+        self.timeout()?;
         Ok(())
     }
 
@@ -107,12 +101,7 @@ impl ApplicationInvocationWorkflowAuthority {
                 "Application invocation Workflow authority changed its immutable owner".into(),
             );
         }
-        let timeout_seconds = i64::try_from(self.timeout_seconds).map_err(|_| {
-            "Application invocation Workflow authority timeout exceeds supported time".to_owned()
-        })?;
-        let timeout = Duration::try_seconds(timeout_seconds).ok_or_else(|| {
-            "Application invocation Workflow authority timeout exceeds supported time".to_owned()
-        })?;
+        let timeout = self.timeout()?;
         invocation
             .requested_at
             .checked_add_signed(timeout)
@@ -120,5 +109,14 @@ impl ApplicationInvocationWorkflowAuthority {
                 "Application invocation Workflow authority deadline overflowed".to_owned()
             })?;
         Ok(())
+    }
+
+    fn timeout(&self) -> Result<Duration, String> {
+        let timeout_seconds = i64::try_from(self.timeout_seconds).map_err(|_| {
+            "Application invocation Workflow authority timeout exceeds supported time".to_owned()
+        })?;
+        Duration::try_seconds(timeout_seconds).ok_or_else(|| {
+            "Application invocation Workflow authority timeout exceeds supported time".to_owned()
+        })
     }
 }

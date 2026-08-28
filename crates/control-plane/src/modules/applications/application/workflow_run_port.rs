@@ -137,7 +137,7 @@ impl ApplicationWorkflowRunRequest {
         Ok(())
     }
 
-    fn deadline_at(&self) -> Result<DateTime<Utc>, String> {
+    pub(crate) fn deadline_at(&self) -> Result<DateTime<Utc>, String> {
         let timeout_seconds = i64::try_from(self.timeout_seconds)
             .map_err(|_| "Application WorkflowRun timeout exceeds supported time".to_owned())?;
         let timeout = Duration::try_seconds(timeout_seconds)
@@ -239,6 +239,11 @@ impl ApplicationWorkflowRunEvidence {
 
 #[async_trait]
 pub trait IApplicationWorkflowRunPort: Send + Sync {
+    /// Admit and normalize a caller timeout through Workflow's owning rule.
+    /// Applications persists only the returned value and does not copy the
+    /// Workflow default or maximum into its own Domain.
+    fn admit_timeout_seconds(&self, requested: Option<u64>) -> ApplicationResult<u64>;
+
     async fn start_or_adopt(
         &self,
         request: &ApplicationWorkflowRunRequest,

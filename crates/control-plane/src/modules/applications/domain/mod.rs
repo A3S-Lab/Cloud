@@ -18,9 +18,7 @@ pub use application_end_user::ApplicationEndUser;
 pub use application_invocation::{
     ApplicationInvocation, ApplicationInvocationStatus, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
 };
-pub use application_invocation_workflow_authority::{
-    ApplicationInvocationWorkflowAuthority, APPLICATION_INVOCATION_MAX_TIMEOUT_SECONDS,
-};
+pub use application_invocation_workflow_authority::ApplicationInvocationWorkflowAuthority;
 pub use application_message::{
     digest_json, ApplicationMessage, ApplicationMessageKind, APPLICATION_MESSAGE_MAX_BYTES,
 };

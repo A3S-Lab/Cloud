@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
     ApiTokenId, HumanTaskId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
+use crate::modules::workflow::domain::workflow_run_timeout_seconds;
 use crate::modules::workflow::presentation::{
     HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
     WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse, WorkflowGoalMutationResponse,
@@ -20,7 +21,7 @@ use crate::modules::workflow::{
     ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun,
     WorkflowPayloadAcl, WorkflowPayloadKind, WorkflowSemanticContractAcls,
     HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
-    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use a3s_form_core::FormInteractionSubmission;
@@ -230,12 +231,9 @@ where
     D: Deserializer<'de>,
 {
     let value = u64::deserialize(deserializer)?;
-    if value == 0 || value > WORKFLOW_RUN_MAX_TIMEOUT_SECONDS {
-        return Err(D::Error::custom(format!(
-            "WorkflowRun timeout must be between 1 and {WORKFLOW_RUN_MAX_TIMEOUT_SECONDS} seconds"
-        )));
-    }
-    Ok(Some(value))
+    workflow_run_timeout_seconds(Some(value))
+        .map(Some)
+        .map_err(D::Error::custom)
 }
 
 fn deserialize_optional_cancellation_reason<'de, D>(

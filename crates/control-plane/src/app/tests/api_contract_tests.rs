@@ -554,6 +554,16 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
         invocation_schema["properties"]["input"]["x-a3s-max-canonical-bytes"],
         crate::modules::applications::APPLICATION_INVOCATION_INPUT_MAX_BYTES
     );
+    let timeout = &invocation_schema["properties"]["timeoutSeconds"];
+    assert_eq!(timeout["minimum"], 1);
+    assert_eq!(
+        timeout["maximum"],
+        crate::modules::workflow::WORKFLOW_RUN_MAX_TIMEOUT_SECONDS
+    );
+    assert_eq!(
+        timeout["default"],
+        crate::modules::workflow::WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+    );
     assert!(invocation["post"]["responses"]["201"].is_object());
     assert!(document["paths"][format!("{invocation_path}/{{invocation_id}}")]["get"].is_object());
     let cancel = &document["paths"][format!("{invocation_path}/{{invocation_id}}/cancel")]["post"];
