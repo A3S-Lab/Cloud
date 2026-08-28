@@ -3913,7 +3913,12 @@ node.
   consumer use one strict Integration Events-owned `PublishedOutboxEnvelope`;
   its bounded legacy Organization projection is checked against canonical
   scope, and tenant-only consumers fail closed on Installation facts.
-  Retained PostgreSQL 17 certification remains the release evidence gate.
+  The [retained PostgreSQL 17, NATS JetStream, and Mailpit H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33216764575/job/99002026417)
+  verifies migrations, historical tenant deletion, scoped security projection,
+  SMTP delivery and both terminal replay paths; the [complete main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/33216764575) passes all ten
+  jobs.
   Next, `MT2` adds current-head/approver loading, optimistic policy/binding/grant
   persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
   replaces every boolean platform-administrator bypass with the single
