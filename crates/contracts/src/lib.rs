@@ -4,6 +4,7 @@ mod agent_provider;
 mod api;
 mod app_platform_manifest;
 mod event;
+mod inference;
 mod mcp;
 mod node;
 mod registry_credential;
@@ -51,6 +52,11 @@ pub use app_platform_manifest::{
     APP_PLATFORM_PARITY_MANIFEST_SCHEMA,
 };
 pub use event::DomainEventEnvelope;
+pub use inference::{
+    InferenceServingPhase, PowerAdmissionObservation, PowerPromptCacheObservation,
+    PowerTransferHealth, PowerWorkerCapabilities, PowerWorkerObservation,
+    POWER_WORKER_OBSERVATION_SCHEMA,
+};
 pub use mcp::{
     validate_mcp_allowed_origins, validate_mcp_telemetry_names, McpCredentialProjection,
     McpGatewayProjection, McpGrantProjection, McpLimitsProjection, McpRoutePolicyProjection,
