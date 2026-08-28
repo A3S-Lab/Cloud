@@ -67,6 +67,11 @@ authority. Installation audit is retained indefinitely in this foundation;
 tenant retention continues through the existing Organization authority. A3S
 Event carries the full scope and a derived nullable legacy `organizationId` for
 bounded consumer migration, never a second stored ownership value.
+Consumers that read committed Outbox rows decode the canonical `OutboxMessage`
+shape, including its resolved Installation, and use its one checked
+`domain_event()` adapter when an owner decoder needs the pre-commit
+`DomainEventEnvelope` reference shape. Consumers must not reconstruct or
+deserialize a committed row directly as an uncommitted domain envelope.
 
 ## Consequences
 

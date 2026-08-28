@@ -1920,6 +1920,11 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     assert!(!persistence.contains("enum AuditAttributionScope"));
     assert!(outbox_persistence.contains("cloud_scope_document("));
     assert!(security_persistence.contains("\"cloud_scope_document\""));
+    assert!(security_persistence.contains("let message: OutboxMessage = serde_json::from_value"));
+    assert!(security_persistence.contains("message.domain_event()"));
+    assert!(
+        !security_persistence.contains("let event: DomainEventEnvelope = serde_json::from_value")
+    );
     assert!(hosted_build_gate.contains("'scope', cloud_scope_document("));
     assert!(!hosted_build_gate.contains("'organization_id', organization_id"));
 

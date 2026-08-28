@@ -2,12 +2,12 @@ use crate::infrastructure::{AuditRecords, OutboxEvents};
 use crate::modules::edge::domain::events::{
     MCP_ROUTE_POLICY_CREATED_EVENT_KEY, MCP_ROUTE_POLICY_REVISED_EVENT_KEY,
 };
+use crate::modules::integration_events::OutboxMessage;
 use crate::modules::security::domain::{
     GatewayRoutePolicyTimelineCursor, GatewayRoutePolicyTimelineEntry,
     IGatewayRoutePolicyTimelineRepository,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, RouteId};
-use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{
     bound, cast, coalesce, select_from, sql_function, Database, OrderDirection, PostgresDialect,
     PostgresExecutor,
@@ -84,6 +84,8 @@ impl IGatewayRoutePolicyTimelineRepository for PostgresGatewayRoutePolicyTimelin
                 OutboxEvents::causation_id().expression(),
                 text_key("payload"),
                 OutboxEvents::payload().expression(),
+                text_key("delivery_attempts"),
+                OutboxEvents::delivery_attempts().expression(),
             ],
         );
         let mut query = select_from::<OutboxEvents>()
@@ -131,9 +133,14 @@ impl IGatewayRoutePolicyTimelineRepository for PostgresGatewayRoutePolicyTimelin
 }
 
 fn decode_entry(row: TimelineRow) -> Result<GatewayRoutePolicyTimelineEntry, RepositoryError> {
-    let event: DomainEventEnvelope = serde_json::from_value(row.0).map_err(|error| {
+    let message: OutboxMessage = serde_json::from_value(row.0).map_err(|error| {
         RepositoryError::Storage(format!(
-            "security timeline event document is invalid: {error}"
+            "security timeline committed event document is invalid: {error}"
+        ))
+    })?;
+    let event = message.domain_event().map_err(|error| {
+        RepositoryError::Storage(format!(
+            "security timeline owner event document is invalid: {error}"
         ))
     })?;
     let audit_record_id = (!row.1.is_nil()).then_some(row.1);

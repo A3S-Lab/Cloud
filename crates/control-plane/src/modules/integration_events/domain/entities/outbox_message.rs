@@ -1,4 +1,5 @@
 use crate::modules::shared_kernel::domain::ScopeContext;
+use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -42,6 +43,29 @@ impl OutboxMessage {
         }
         Ok(())
     }
+
+    /// Restores the owner-domain envelope from one committed Outbox fact.
+    ///
+    /// The committed scope retains its database-resolved Installation identity;
+    /// the owner-domain reference intentionally projects only the lineage a
+    /// domain fact is allowed to carry before persistence resolves ownership.
+    pub fn domain_event(&self) -> Result<DomainEventEnvelope, String> {
+        self.validate()?;
+        let event = DomainEventEnvelope {
+            event_id: self.event_id,
+            event_key: self.event_key.clone(),
+            schema_version: self.schema_version,
+            scope: self.scope.reference(),
+            aggregate_id: self.aggregate_id,
+            aggregate_version: self.aggregate_version,
+            occurred_at: self.occurred_at,
+            correlation_id: self.correlation_id,
+            causation_id: self.causation_id,
+            payload: self.payload.clone(),
+        };
+        event.validate()?;
+        Ok(event)
+    }
 }
 
 #[cfg(test)]
@@ -79,5 +103,24 @@ mod tests {
             installation_id: InstallationId::from_uuid(Uuid::nil()),
         });
         assert!(value.validate().is_err());
+    }
+
+    #[test]
+    fn committed_message_has_one_checked_adapter_to_its_owner_domain_envelope() {
+        let installation_id = InstallationId::new();
+        let organization_id = crate::modules::shared_kernel::domain::OrganizationId::new();
+        let value = message(
+            ScopeContext::organization(installation_id, organization_id)
+                .expect("Organization scope"),
+        );
+        let event = value.domain_event().expect("domain event");
+        assert_eq!(
+            event.scope,
+            a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: organization_id.as_uuid(),
+            }
+        );
+        assert_eq!(event.event_id, value.event_id);
+        assert_eq!(event.payload, value.payload);
     }
 }
