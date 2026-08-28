@@ -21,13 +21,27 @@ Cloud scope and never block an interface/provider gate.
 
 I0 adds an optional inference product profile to A3S Cloud. Its target is a
 clearly gated GPUStack-like multi-node model-serving capability set, not API,
-UI, or implementation compatibility with GPUStack. The finished profile will:
+UI, or implementation compatibility with GPUStack.
+
+The distributed-serving design is also reviewed against
+[llm-d v0.9.0](https://github.com/llm-d/llm-d/releases/tag/v0.9.0) as a
+capability reference. llm-d is not a dependency or an A3S bounded context.
+A3S does not adopt its Kubernetes resources, component boundaries,
+configuration formats, or control loops. The native profile preserves useful
+outcomes only where they fit the authoritative A3S domain model.
+
+The finished profile will:
 
 - inventory and health-check accelerator devices on enrolled nodes;
 - resolve immutable model revisions and maintain content-addressed node caches;
 - run typed inference backends on exact accelerator claims;
 - scale independent serving replicas across nodes;
 - run one distributed serving replica as an atomic multi-node placement group;
+- select replicas with bounded load, cache-locality, and latency evidence;
+- admit and queue saturated traffic under explicit priority and fairness policy;
+- separate prefill and decode execution only through a typed serving topology;
+- move or offload opaque model state without exposing KV bytes to Cloud or
+  Gateway;
 - expose OpenAI-compatible streaming APIs through A3S Gateway;
 - apply model-level authorization, weighted routing, fallback, and rate limits;
 - record auditable request and token usage without coupling scheduling to
@@ -58,6 +72,12 @@ The capability boundary is explicit:
 | Model authorization, rate limits, weighted targets, fallback and usage | Included | `I0.2b`/`I0.2c` |
 | Independent replicas on multiple nodes | Included | `H0.3` + `I0.3` |
 | One Power distributed serving replica spanning multiple GPU nodes | Included after independent replicas | `H0.3` + `I0.4` |
+| Load-aware and explicit cache-affinity replica selection | Included after independent replicas | `I0.3`, Gateway and Power observations |
+| Bounded request flow control, priorities and fairness | Included after the base data plane | `I0.3`/`I0.5`, Inference policy and Gateway execution |
+| Prefill/decode-disaggregated serving and opaque state transfer | Included as an independently gated topology | `I0.4`, Inference, Workloads, Gateway and Power |
+| Tiered prompt/KV state, peer reuse and cache-pressure signals | Included only behind model-neutral Power contracts and model-owned adapters | `PW0` + `I0.4`/`I0.5` |
+| SLO-aware selection and variant autoscaling | Included through the sole Workloads autoscaler | `H0.5` + `I0.5` |
+| OpenAI-compatible batch inference | Deferred as a separately versioned protocol and Execution composition | `I0.6` |
 | External OpenAI-compatible provider targets | Included as a later isolated slice | `I0.2d` |
 | Role-focused model discovery, project key lifecycle, provider/route diagnostics, API exploration, and usage showback | Included after the underlying data-plane, usage, external-provider, and C0 principal gates | `C0.3` + `I0.2e` |
 | Production Gateway/control-plane HA and autoscaling | Reuse the generic platform implementation | `H0.4`/`H0.5` + `I0.5` gates |
@@ -112,12 +132,24 @@ The capability boundary is explicit:
     inference Service boundary. Power never owns placement, device allocation,
     routing, tenant authorization, usage accounting, or another lifecycle
     store.
+14. A reference project's resource names do not create A3S aggregates. A
+    serving pool is a projection over one immutable InferenceDeployment
+    revision and its eligible Workloads replicas; endpoint picking is a
+    Gateway strategy, not another control-plane service.
+15. Raw prompts, token sequences, KV bytes, exact cache contents, and
+    per-request model state never enter Cloud desired state or PostgreSQL.
+    Cloud may retain only bounded aggregate observations and prompt-free usage
+    facts owned by an explicit contract.
+16. Managed deployments have one control loop per decision: Inference owns
+    serving intent, Workloads alone writes desired replicas and placement,
+    Edge alone publishes eligible endpoints, Gateway alone selects an endpoint
+    for a request, and Power alone executes on its bound resources.
 
 ## 3. Bounded-context ownership
 
 | Context | Authoritative facts | Explicit exclusions |
 | --- | --- | --- |
-| Inference | Models and immutable revisions, backend revisions, inference deployment revisions and scaling intent, model routes, immutable Edge binding references and grants, environment provider targets, usage ledger | Effective placement/autoscaling policy, Node state, Runtime observations, effective replica state, device availability, instance endpoints, TLS state |
+| Inference | Models and immutable revisions, backend revisions, inference deployment revisions, serving objectives, phase/cache/scaling intent, model routes, immutable Edge binding references and grants, environment provider targets, usage ledger | Effective placement/autoscaling policy, Node state, Runtime observations, effective replica state, device availability, instance endpoints, exact cache contents, TLS state |
 | Workloads | Managed Workload spec, desired replica count, effective placement/autoscaling policy and evaluator, replica/member identity, placement generation, Runtime convergence, health | Model formats, tokenizer semantics, backend catalogs, model grants |
 | Fleet | Node identity and eligibility, inventory snapshots, accelerator devices and topology, artifact-cache observations, node commands and acknowledgements | Model deployment policy, backend arguments, desired replica count |
 | Edge | Domain claims, logical Gateway scopes, certificates, complete target-set snapshots, Gateway revision and acknowledgement | Model catalog, replica scheduling, token usage |
@@ -128,6 +160,27 @@ The capability boundary is explicit:
 
 Cross-context mutation uses commands or application ports. No inference
 repository writes Workloads, Fleet, Edge, Identity, or Operations tables.
+
+### 3.1 Distributed-inference concepts in the A3S domain
+
+The external distributed-inference vocabulary is translated through an
+anti-corruption boundary instead of copied into the domain:
+
+| Reference concept | A3S meaning | Fact owner |
+| --- | --- | --- |
+| Inference pool | A read-only projection of one deployment revision and its currently eligible replica endpoints | Inference identity, Workloads replica facts, Edge endpoint projection |
+| Endpoint picker | A request-scoped filter/score/pick strategy applied to one complete snapshot | Gateway |
+| Model server | One immutable Power Service release running as an inference-managed Workload | Inference release intent, Workloads lifecycle, Power execution |
+| Variant | A separately revisioned deployment target when lifecycle or scaling differs; otherwise a value in the immutable topology/profile | Inference; no label-derived aggregate |
+| KV-cache index | Ephemeral, privacy-bounded cache-locality evidence | Power produces; Gateway consumes; Cloud never persists exact entries |
+| Flow-control queue | Bounded request-path state derived from an applied policy | Gateway; never a Cloud queue or desired-state store |
+
+The domain owns intent through typed value objects such as
+`ServingObjective`, `PhaseTopology`, `CachePolicy`, `ReplicaSelectionPolicy`,
+and `ScalingIntent`. Infrastructure compilers project those values into an
+ordinary Workloads execution/autoscaling plan, a complete Edge/Gateway
+snapshot, and a closed Power ACL profile. An algorithm name, Kubernetes label,
+metric name, or backend-specific option is not a domain value.
 
 An inference-managed Workload carries exactly one immutable owner reference:
 
@@ -224,6 +277,29 @@ ServingTopology
     pipeline_parallel
   }
 ```
+
+Execution phases are a separate, orthogonal value object. Distributed tensor
+or expert parallelism within one phase must not be confused with splitting one
+request across phases:
+
+```text
+PhaseTopology
+  Aggregated
+  PrefillDecode {
+    prefill_profile,
+    decode_profile,
+    transfer_profile,
+    fallback_policy
+  }
+```
+
+Each referenced profile is immutable and capability-checked. It contains
+model-neutral resource and behavior bounds rather than a vLLM, SGLang, NIXL,
+or llm-d option map. Encode disaggregation for multimodal models is a later
+typed profile; it is not implied by text prefill/decode support. A
+`CachePolicy` independently declares allowed device, host, local-storage, and
+peer tiers plus privacy, byte, lifetime, and recovery bounds. The owning model
+adapter retains KV/recurrent layout and semantic correctness.
 
 The backend compiler converts one InferenceDeployment revision into a generic
 Workload execution plan. One Workload replica is either one Runtime Service or
@@ -751,6 +827,51 @@ network with workload identity, isolation, bounded port allocation, partition
 behavior, and recovery. The control mTLS address is not reused implicitly as a
 tenant data-plane address.
 
+### 9.1 Distributed inference optimization boundary
+
+The optimized request path is deliberately split across existing owners:
+
+```text
+InferenceDeployment revision
+  -> Workloads placement, roles, replicas and sole autoscaling policy
+  -> Edge complete eligible-endpoint snapshot
+  -> Gateway request-scoped admission and endpoint selection
+  -> Power phase execution, bounded cache state and transfer
+```
+
+Inference compiles one immutable serving objective into three independent
+projections:
+
+1. a generic Workloads plan containing phase roles, hard topology/network
+   requirements, resource estimates and scaling intent;
+2. a complete Gateway scheduling policy containing only eligible strategy
+   names, fixed bounds, priority/fairness rules and safe fallback behavior; and
+3. a closed Power ACL profile containing execution, cache-tier, state-transfer,
+   telemetry and privacy bounds.
+
+Power exposes versioned capabilities and bounded observations for queue depth,
+active execution, prompt-cache occupancy/pressure, phase readiness and
+transfer health. Model-specific adapters own tokenization and KV/recurrent
+semantics. Gateway may consume opaque cache-affinity identities or bounded
+cache summaries and may maintain short-lived scoring state; it never reads or
+transfers KV bytes. Cloud receives only aggregate, age-bound observations
+needed for rollout, SLO and autoscaling evaluation.
+
+For a prefill/decode topology, Gateway selects the decode endpoint and, when
+the immutable policy and current evidence require disaggregation, one
+compatible prefill endpoint from the same deployment generation. Power
+executes the phases and performs the generation-, model-, layout-, lease-,
+byte-, time-, cancellation- and peer-bound state transfer. A failed transfer
+follows the declared recompute or fail policy before the first response byte;
+Gateway never infers correctness from a timeout or cache metric.
+
+No new `a3s-llm-d` process, scheduler, database, service-discovery authority,
+or compatibility configuration is introduced. If direct interoperability with
+an upstream llm-d or Gateway API deployment is later justified, it is an
+optional infrastructure anti-corruption adapter behind these ports. It cannot
+change domain types, become a production scheduling dependency, or bypass the
+Cloud compatibility lock and real mixed-version conformance gates.
+
 ## 10. Gateway, authorization, and usage
 
 ### 10.1 Route and rollout model
@@ -841,6 +962,35 @@ independent. Retry or fallback is allowed only before any response byte is sent
 to the client. Authentication and input 4xx responses never fall back. Every
 attempt receives its own stable attempt ID and usage outcome, because an
 upstream may consume tokens even when fallback later succeeds.
+
+#### Replica selection and flow control
+
+Target selection is a two-level operation. Inference first resolves the
+authorized external model alias to an ordered deployment/provider target.
+Gateway then selects only from the exact healthy endpoints in that target's
+applied Edge snapshot. A scheduling profile is a closed filter/score/pick
+pipeline, not user-supplied code:
+
+1. filter by deployment, rollout generation, model/profile digest, phase role,
+   readiness, and required capabilities;
+2. score with age-bounded local concurrency, Power queue/cache observations,
+   explicit prompt-cache affinity, and an optional certified latency model;
+3. pick deterministically within equal scores and record the selected evidence
+   generation on the request attempt.
+
+An explicit `prompt_cache_key` may participate in an opaque, credential- and
+model-scoped affinity digest. Gateway does not tokenize or persist the prompt,
+and an absent key does not authorize content-derived affinity. Precise
+token-prefix indexing requires a separately privacy-reviewed Power/model
+adapter and is not inferred from a cache-hit counter.
+
+Flow control is bounded in-memory request-path state created from the complete
+applied policy. It applies pool defense, priority bands, fairness and ordering
+before backend dispatch. It has fixed request/byte/time caps, cancellation,
+drain and overload behavior. Cloud owns the policy, Gateway owns the live
+queue, and neither Power nor Workloads creates a competing admission queue for
+the same boundary. Backend-local execution admission remains Power's separate
+resource-safety mechanism.
 
 ### 10.3 Tenant naming, authorization, and limits
 
@@ -1151,6 +1301,10 @@ evidence, and fenced release protocol.
 
 - Depend on H0.3 multi-node replicas, drain/evacuation, private endpoints, and
   independently placed Gateway foundations.
+- Add the closed Gateway filter/score/pick profile, explicit cache-affinity and
+  age-bounded Power load observations without another discovery authority.
+- Add bounded pool-defense flow control and prove priority/fairness behavior
+  under saturation without moving desired replica decisions into Gateway.
 - Scale manually across at least three nodes, kill a non-Gateway serving node,
   and prove traffic contains only allowed rollout revisions, with no duplicate
   provider unit or released-but-live claim.
@@ -1164,6 +1318,10 @@ evidence, and fenced release protocol.
   membership, rank, port, partition, and process failure must converge to
   either every declared GPU claim/member ready or no active target and no
   releasable committed claim. Runtime unit count need not equal GPU count.
+- Gate phase-disaggregated serving independently from tensor/expert-parallel
+  membership. Prove decode and prefill role selection, opaque state-transfer
+  leases, cancellation, recompute/fail policy, target removal, and cleanup on
+  real high-speed networking before advertising prefill/decode support.
 
 ### I0.5: production hardening and provider breadth
 
@@ -1172,6 +1330,9 @@ evidence, and fenced release protocol.
 - Pass inference-specific Gateway loss, mixed-revision, autoscaling, quota,
   disaster-recovery, load, cache-pressure, and usage-backlog gates on those
   profiles.
+- Add certified latency-aware selection, tiered/peer cache behavior and
+  SLO-aware multi-variant scaling only through the same Inference intent,
+  Gateway observation and sole Workloads autoscaling authorities.
 - Add hardware partitions and each new vendor/backend only through the exported
   accelerator/backend conformance suites.
 - Add a named external Provider adapter only after its real endpoint passes the
@@ -1196,9 +1357,11 @@ for every vendor or media API. It begins only after `I0.5`; no `I0.6` profile is
 required for the base Inference product or for `EV0`.
 
 - Define one closed, versioned `InferenceProtocolProfile` per Responses,
-  rerank, Anthropic Messages/count-tokens, image generation/editing, speech, or
-  transcription contract. A profile fixes endpoint, body/stream framing,
-  errors, bounds, usage semantics, cancellation, retention, and redaction.
+  Batch, rerank, Anthropic Messages/count-tokens, image generation/editing,
+  speech, or transcription contract. A profile fixes endpoint, body/stream
+  framing, errors, bounds, usage semantics, cancellation, retention, and
+  redaction. Batch job identity and durable lifecycle compose with Files and
+  Executions; Gateway and Power do not gain a second job database.
 - Keep Gateway as the protocol/data-plane executor and Inference as desired
   policy and usage authority. A long asynchronous media operation creates an
   ordinary authenticated Execution and stores retained results through the
@@ -1298,12 +1461,15 @@ The recommended merge order is:
 11. C0.3 principal/grant, authorized-search, and attribution backend
     foundations, then I0.2e API/client/CLI/MCP self-service and governance;
 12. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
-13. I0.3 independent replica failover and rolling update;
+13. I0.3 independent replica failover, rolling update, closed intelligent
+    selection, and bounded flow control;
 14. H0.3 placement-group/private-network gate, then I0.4 distributed Power;
-15. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
-16. I0.5 inference HA, load, quota and disaster gates;
-17. named vendor and external-Provider adapters through conformance; and
-18. optional I0.6 protocol and approved subscription/custom-channel profiles,
+15. independently certify I0.4 prefill/decode topology and opaque state
+    transfer without treating distributed membership as phase support;
+16. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
+17. I0.5 inference HA, latency/cache-aware load, quota and disaster gates;
+18. named vendor and external-Provider adapters through conformance; and
+19. optional I0.6 protocol and approved subscription/custom-channel profiles,
     one independently certified profile at a time.
 
 No slice weakens the verified E0 path, creates a parallel deployment path, or

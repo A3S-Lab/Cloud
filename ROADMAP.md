@@ -2160,10 +2160,10 @@ placement remain open.
 | `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
 | `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
 | `I0.2e` | Grant-derived model/key self-service APIs, diagnostics, search, and usage showback through the maintained client, CLI, and Management MCP; console and playground projections are deferred during the backend-first phase | `C0.3` + `I0.2d` |
-| `I0.3` | Multi-node independent serving replicas and failover | `I0.2e` + `H0.3` |
-| `I0.4` | One typed Power distributed serving replica across multiple nodes | `I0.3` + `H0.3` placement-group and private-network gates |
-| `I0.5` | Gateway/control-plane HA, autoscaling, quota, disaster recovery, provider breadth, and load hardening | `I0.4` + `H0.4` + `H0.5` |
-| `I0.6` | Separately versioned optional Responses, rerank, Anthropic Messages, media, custom-upstream, and approved subscription-backed Provider profiles over the same keys, usage, Secret, routing, and recovery authorities | `I0.5`; each profile also requires its own protocol, legal/terms, credential-isolation, usage, failure, and recovery conformance |
+| `I0.3` | Multi-node independent serving replicas, failover, closed load/cache-aware endpoint selection, and bounded priority/fairness flow control | `I0.2e` + `H0.3` |
+| `I0.4` | One typed Power distributed serving replica across multiple nodes plus an independently certified prefill/decode topology and opaque state-transfer contract | `I0.3` + `H0.3` placement-group and private-network gates |
+| `I0.5` | Gateway/control-plane HA, sole-Workloads SLO/variant autoscaling, certified latency/cache-aware routing, quota, disaster recovery, provider breadth, and load hardening | `I0.4` + `H0.4` + `H0.5` |
+| `I0.6` | Separately versioned optional Responses, Batch, rerank, Anthropic Messages, media, custom-upstream, and approved subscription-backed Provider profiles over the same keys, usage, Secret, routing, and recovery authorities | `I0.5`; each profile also requires its own protocol, legal/terms, credential-isolation, usage, failure, and recovery conformance |
 
 The first and required provider combination is NVIDIA, A3S Box, and A3S Power.
 Cloud does not expose vLLM, Ray, or another Power engine as a separate
