@@ -146,12 +146,22 @@ pub(super) async fn crash_at(
 }
 
 pub(super) fn publish_marker(path: &Path, marker: CrashMarker) -> TestResult {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("WorkflowRun crash marker path has no UTF-8 file name")?;
+    let pending = path.with_file_name(format!(".{file_name}.{}.pending", std::process::id()));
     let file = std::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
-        .open(path)?;
+        .open(&pending)?;
     serde_json::to_writer(&file, &marker)?;
     file.sync_all()?;
+    drop(file);
+    if let Err(error) = std::fs::rename(&pending, path) {
+        let _ = std::fs::remove_file(&pending);
+        return Err(error.into());
+    }
     Ok(())
 }
 
@@ -254,4 +264,50 @@ fn require_sigkill(status: ExitStatus) -> TestResult {
 fn require_probe_environment(name: &str) -> Result<String, std::io::Error> {
     std::env::var(name)
         .map_err(|_| std::io::Error::other(format!("WorkflowRun crash probe omitted {name}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crash_marker_is_published_as_one_complete_json_document() {
+        let directory = tempfile::tempdir().expect("marker directory");
+        let path = directory.path().join("workflow-run-crash.json");
+        publish_marker(
+            &path,
+            CrashMarker {
+                mode: ProbeMode::CreateCommit.as_str().into(),
+                workflow_run_id: "workflow-run".into(),
+                operation_id: "operation".into(),
+                flow_run_id: "flow-run".into(),
+                status: "pending".into(),
+                aggregate_version: 1,
+                last_flow_sequence: 0,
+                execution_id: None,
+                execution_operation_id: None,
+                execution_status: None,
+                execution_aggregate_version: None,
+                execution_template_id: None,
+                execution_template_revision_id: None,
+                execution_template_digest: None,
+                invocation_template_digest: None,
+                composite_children: None,
+            },
+        )
+        .expect("publish crash marker");
+
+        let document: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).expect("read published crash marker"))
+                .expect("parse complete crash marker");
+        assert_eq!(document["mode"], ProbeMode::CreateCommit.as_str());
+        assert_eq!(document["workflowRunId"], "workflow-run");
+        assert_eq!(
+            std::fs::read_dir(directory.path())
+                .expect("list marker directory")
+                .count(),
+            1,
+            "atomic publication left a pending marker"
+        );
+    }
 }
