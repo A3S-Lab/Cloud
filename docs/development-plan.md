@@ -4530,10 +4530,10 @@ schema.
 `domain/services` contains traits only; adapters and manager composition live
 under `infrastructure`, and controllers delegate to the command/query buses.
 
-The upstream protocol-level-4 `PluginHostManager` contract is frozen in
-`a3s-use-core` 0.2.3, and the Registry/catalog API is pinned at
-`a3s-use-extension` 0.3.2. Both resolve to exact Use revision
-`09ec2b1243c01b4de86338610cd71fbd8b1aec43`. Verified `U0.1` pins the released
+The upstream protocol-level-6 `PluginHostManager` contract is pinned in
+`a3s-use-core` 0.2.4, and the Registry/catalog API is pinned at
+`a3s-use-extension` 0.3.3. Both resolve to exact Use revision
+`4c698b1f145a55e9bca88e5c1f5aea2bf294a669`. Verified `U0.1` pins the released
 Cargo dependencies and Use gitlink and registers the sorted Use component plus
 all ten consumed plugin-host schemas in `compat/cloud-stack.acl`. The gitlink,
 dependency, lock entry, canonical
