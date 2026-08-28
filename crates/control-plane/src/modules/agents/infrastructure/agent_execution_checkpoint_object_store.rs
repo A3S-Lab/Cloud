@@ -153,10 +153,16 @@ fn map_object_error(error: ImmutableObjectError) -> AgentExecutionCheckpointObje
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::DisposableS3TestContext;
     use crate::modules::agents::domain::{
-        AgentExecutionCheckpointObjectReference, AGENT_EXECUTION_CHECKPOINT_MEDIA_TYPE,
-        AGENT_EXECUTION_CHECKPOINT_NAMESPACE, AGENT_EXECUTION_CHECKPOINT_OBJECT_SCHEMA,
+        AgentExecutionCheckpointObjectReference, IAgentRepository,
+        AGENT_EXECUTION_CHECKPOINT_MEDIA_TYPE, AGENT_EXECUTION_CHECKPOINT_NAMESPACE,
+        AGENT_EXECUTION_CHECKPOINT_OBJECT_SCHEMA,
     };
+    use crate::modules::agents::infrastructure::{
+        AgentExecutionCheckpointObjectReconciler, InMemoryAgentRepository,
+    };
+    use chrono::{Duration as ChronoDuration, Utc};
     use object_store::memory::InMemory;
     use std::sync::Arc;
 
@@ -256,5 +262,104 @@ mod tests {
             store.get(&references[0]).await,
             Err(AgentExecutionCheckpointObjectError::NotFound)
         ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires an explicitly configured disposable S3-compatible bucket"]
+    async fn real_s3_compatible_checkpoint_orphan_reconciliation_is_exact_and_idempotent() {
+        let context = DisposableS3TestContext::from_environment("agent-checkpoint-reconciliation")
+            .expect("disposable S3 test context");
+        let transport = if context.uses_secure_transport() {
+            "https"
+        } else {
+            "http"
+        };
+        let store = Arc::new(AgentExecutionCheckpointObjectStore::from_client(
+            context.client(),
+        ));
+
+        let result = exercise_real_s3_orphan_reconciliation(store).await;
+        let cleanup = context.remove_all().await;
+        if let Err(error) = result {
+            panic!("real S3 checkpoint reconciliation failed: {error}; cleanup={cleanup:?}");
+        }
+        assert_eq!(
+            cleanup.expect("clean disposable S3 checkpoint namespace"),
+            0,
+            "checkpoint reconciliation left objects for fixture cleanup"
+        );
+        println!(
+            "A3S_CLOUD_A1_CHECKPOINT_S3_RECONCILIATION_CERTIFIED provider=s3-compatible transport={transport} orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease cleanup_replay=1 namespace_cleanup=verified"
+        );
+    }
+
+    async fn exercise_real_s3_orphan_reconciliation(
+        store: Arc<AgentExecutionCheckpointObjectStore>,
+    ) -> Result<(), String> {
+        let body = b"abandoned-real-s3-checkpoint".to_vec();
+        let reference = reference(&body);
+        let write = store
+            .put(&reference, body)
+            .await
+            .map_err(|error| error.to_string())?;
+        if write.replayed {
+            return Err("first real S3 checkpoint write unexpectedly replayed".into());
+        }
+
+        let agents: Arc<dyn IAgentRepository> = Arc::new(InMemoryAgentRepository::new());
+        let objects: Arc<dyn IAgentExecutionCheckpointObjectStore> = store.clone();
+        let reconciler = AgentExecutionCheckpointObjectReconciler::new(
+            agents,
+            objects,
+            std::time::Duration::from_secs(1),
+            ChronoDuration::milliseconds(10),
+            ChronoDuration::seconds(5),
+            100,
+        )?;
+        let observed_at = Utc::now();
+        let observed = reconciler
+            .run_once_at(observed_at)
+            .await
+            .map_err(|error| error.to_string())?;
+        if observed.inventoried != 1
+            || observed.deferred != 1
+            || observed.removed != 0
+            || !observed.failures.is_empty()
+        {
+            return Err(format!(
+                "real S3 checkpoint inventory did not defer the exact orphan: {observed:?}"
+            ));
+        }
+
+        let cleaned = reconciler
+            .run_once_at(observed_at + ChronoDuration::milliseconds(11))
+            .await
+            .map_err(|error| error.to_string())?;
+        if cleaned.expired_claims != 1 || cleaned.removed != 1 || !cleaned.failures.is_empty() {
+            return Err(format!(
+                "real S3 checkpoint cleanup did not remove the exact leased orphan: {cleaned:?}"
+            ));
+        }
+        if !matches!(
+            store.get(&reference).await,
+            Err(AgentExecutionCheckpointObjectError::NotFound)
+        ) {
+            return Err("real S3 checkpoint cleanup did not make the orphan absent".into());
+        }
+
+        let replay = reconciler
+            .run_once_at(observed_at + ChronoDuration::milliseconds(12))
+            .await
+            .map_err(|error| error.to_string())?;
+        if replay.expired_claims != 0
+            || replay.inventoried != 0
+            || replay.removed != 0
+            || !replay.failures.is_empty()
+        {
+            return Err(format!(
+                "real S3 checkpoint cleanup replay was not empty and idempotent: {replay:?}"
+            ));
+        }
+        Ok(())
     }
 }

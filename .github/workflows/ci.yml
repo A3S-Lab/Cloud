@@ -322,6 +322,23 @@ jobs:
           echo "::error title=Object namespace page process-death gate failed::$detail"
           exit 1
 
+      - name: Certify Agent checkpoint orphan reconciliation against S3-compatible storage
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-agent-checkpoint-s3-reconciliation.log"
+          marker='A3S_CLOUD_A1_CHECKPOINT_S3_RECONCILIATION_CERTIFIED provider=s3-compatible transport=http orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease cleanup_replay=1 namespace_cleanup=verified'
+          if cargo test --locked -p a3s-cloud-control-plane --lib \
+              modules::agents::infrastructure::agent_execution_checkpoint_object_store::tests::real_s3_compatible_checkpoint_orphan_reconciliation_is_exact_and_idempotent \
+              -- --ignored --exact --nocapture --test-threads=1 2>&1 | tee "$log" &&
+            grep --fixed-strings --line-regexp "$marker" "$log" >/dev/null; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Agent checkpoint S3 reconciliation gate failed::$detail"
+          exit 1
+
       - name: Stop S3-compatible object fixture
         if: always()
         run: |
@@ -329,6 +346,17 @@ jobs:
             kill "$A3S_CLOUD_MINIO_PID" 2>/dev/null || true
             wait "$A3S_CLOUD_MINIO_PID" 2>/dev/null || true
           fi
+
+      - name: Upload Agent checkpoint S3 reconciliation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-checkpoint-s3-reconciliation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/a3s-cloud-agent-checkpoint-s3-reconciliation.log
+            ${{ runner.temp }}/a3s-cloud-object-pages-minio.log
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Migrate and verify stable replica sets
         run: |

@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   s3-compatible-namespace:
-    name: HTTPS S3-compatible CAS and cleanup
+    name: HTTPS S3-compatible CAS and Agent cleanup
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:

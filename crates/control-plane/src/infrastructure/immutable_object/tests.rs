@@ -403,6 +403,9 @@ fn real_s3_consumer_gates_share_the_one_test_fixture_and_production_client() {
     let consumers = [
         include_str!("../../modules/fleet/infrastructure/s3_log_chunk_store_tests.rs"),
         include_str!("../../modules/data/infrastructure/shared_object_namespace.rs"),
+        include_str!(
+            "../../modules/agents/infrastructure/agent_execution_checkpoint_object_store.rs"
+        ),
     ];
     for source in consumers {
         assert!(source.contains("DisposableS3TestContext"));

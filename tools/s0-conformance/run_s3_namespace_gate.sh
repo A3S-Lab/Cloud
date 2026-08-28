@@ -26,13 +26,22 @@ cargo test --locked -p a3s-cloud-control-plane \
   -- --ignored --exact --nocapture --test-threads=1 \
   2>&1 | tee "$evidence_directory/provider.log"
 gate_status=${PIPESTATUS[0]}
+cargo test --locked -p a3s-cloud-control-plane --lib \
+  modules::agents::infrastructure::agent_execution_checkpoint_object_store::tests::real_s3_compatible_checkpoint_orphan_reconciliation_is_exact_and_idempotent \
+  -- --ignored --exact --nocapture --test-threads=1 \
+  2>&1 | tee "$evidence_directory/agent-checkpoint-reconciliation.log"
+checkpoint_status=${PIPESTATUS[0]}
 set -e
 
-EVIDENCE_LOG="$evidence_directory/provider.log" python3 - <<'PY'
+EVIDENCE_DIRECTORY="$evidence_directory" python3 - <<'PY'
 import os
 from pathlib import Path
 
-log = Path(os.environ["EVIDENCE_LOG"]).read_bytes()
+evidence = Path(os.environ["EVIDENCE_DIRECTORY"])
+log = b"\n".join(
+    (evidence / name).read_bytes()
+    for name in ["provider.log", "agent-checkpoint-reconciliation.log"]
+)
 names = [
     "A3S_CLOUD_TEST_S3_ACCESS_KEY_ID",
     "A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY",
@@ -47,6 +56,9 @@ PY
 if (( gate_status != 0 )); then
   exit "$gate_status"
 fi
+if (( checkpoint_status != 0 )); then
+  exit "$checkpoint_status"
+fi
 
 marker='A3S_CLOUD_S0_NAMESPACE_PROVIDER_CERTIFIED provider=s3-compatible protocol=a3s.s0.object-namespace.v1 checks=7/7 cleanup=verified'
 grep --fixed-strings --line-regexp "$marker" \
@@ -54,8 +66,19 @@ grep --fixed-strings --line-regexp "$marker" \
   >"$evidence_directory/provider-certification.txt"
 test "$(wc -l <"$evidence_directory/provider-certification.txt")" -eq 1
 
+checkpoint_marker='A3S_CLOUD_A1_CHECKPOINT_S3_RECONCILIATION_CERTIFIED provider=s3-compatible transport=https orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease cleanup_replay=1 namespace_cleanup=verified'
+grep --fixed-strings --line-regexp "$checkpoint_marker" \
+  "$evidence_directory/agent-checkpoint-reconciliation.log" \
+  >"$evidence_directory/agent-checkpoint-reconciliation-certification.txt"
+test "$(wc -l <"$evidence_directory/agent-checkpoint-reconciliation-certification.txt")" -eq 1
+
 (
   cd -- "$evidence_directory"
-  sha256sum cloud-revision.txt provider.log provider-certification.txt \
+  sha256sum \
+    cloud-revision.txt \
+    provider.log \
+    provider-certification.txt \
+    agent-checkpoint-reconciliation.log \
+    agent-checkpoint-reconciliation-certification.txt \
     >evidence-sha256.txt
 )
