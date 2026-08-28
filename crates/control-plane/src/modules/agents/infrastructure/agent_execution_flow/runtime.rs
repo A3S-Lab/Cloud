@@ -296,6 +296,16 @@ pub(super) async fn observe(
                 )
                 .await;
             }
+            if !provider_supports_recovery(&execution)? {
+                let failed_at = Utc::now().max(execution.updated_at);
+                return fail_observation(
+                    runtime,
+                    execution,
+                    "Agent provider does not support process recovery",
+                    failed_at,
+                )
+                .await;
+            }
             return recovery::begin(runtime, execution, *input.dispatched).await;
         }
         return Err(FlowError::Runtime(
@@ -426,15 +436,7 @@ async fn begin_provider_recovery(
     dispatched: DispatchedAgentExecution,
     observed_at: DateTime<Utc>,
 ) -> a3s_flow::Result<ObserveOutput> {
-    let profile = execution
-        .code
-        .as_ref()
-        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?
-        .provider()
-        .map_err(|error| flow_error("could not restore Agent recovery provider", error))?
-        .profile()
-        .map_err(|error| flow_error("could not restore Agent recovery profile", error))?;
-    if !profile.supports(AgentProviderCapabilityV1::Recovery) {
+    if !provider_supports_recovery(&execution)? {
         return fail_observation(
             runtime,
             execution,
@@ -454,6 +456,18 @@ async fn begin_provider_recovery(
         .await
         .map_err(|error| flow_error("could not recover the restarted A3S Code provider", error))?;
     recovery::begin(runtime, write.execution, dispatched).await
+}
+
+fn provider_supports_recovery(execution: &AgentExecution) -> a3s_flow::Result<bool> {
+    let profile = execution
+        .code
+        .as_ref()
+        .ok_or_else(|| FlowError::Runtime("Agent execution has no provider binding".into()))?
+        .provider()
+        .map_err(|error| flow_error("could not restore Agent recovery provider", error))?
+        .profile()
+        .map_err(|error| flow_error("could not restore Agent recovery profile", error))?;
+    Ok(profile.supports(AgentProviderCapabilityV1::Recovery))
 }
 
 pub(super) fn observe_pending(

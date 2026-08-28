@@ -10,7 +10,7 @@ use crate::modules::agents::domain::{
     AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStarted,
     AgentProviderProfileBinding, AgentReleaseBinding, BindAgentCodeRunWrite,
     CreateAgentConversationWrite, IAgentExecutionCheckpointObjectStore, IAgentRepository,
-    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    RecoverAgentCodeRunWrite, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::agents::BuiltInAgentExecutionProviderRegistry;
