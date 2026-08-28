@@ -2,19 +2,21 @@ use crate::migrate_and_connect_for_test;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, AgentProviderCommandReceiptV1, AgentProviderCommandV1,
-    AgentProviderRunIdentityV1, AgentProviderRunStateV1, DomainEventEnvelope,
-    NodeCodeAgentEventBatchV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
-    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
-    RuntimeObservationReport, RuntimeServiceEndpoint,
+    AgentProtocolRunStateV1, AgentProviderCapabilityV1, AgentProviderCommandReceiptV1,
+    AgentProviderCommandV1, AgentProviderEventPageV1, AgentProviderEventRecordV1,
+    AgentProviderRunIdentityV1, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
+    DomainEventEnvelope, NodeAgentProviderEventBatchV1, NodeCodeAgentEventBatchV1, NodeCommandAck,
+    NodeCommandEnvelope, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
+    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
+    RuntimeServiceEndpoint, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
-    AcceptAgentCodeEventBatchWrite, AgentCodeRunBinding, AgentExecutionCancellationRequested,
-    AgentExecutionCheckpointObjectError, AgentExecutionCheckpointObjectReference,
-    AgentExecutionCheckpointObjectWrite, AgentExecutionEventKind, AgentExecutionFlowConfig,
-    AgentExecutionFlowConfigOptions, AgentExecutionFlowRuntime,
-    AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunBinding,
+    AgentExecutionCancellationRequested, AgentExecutionCheckpointObjectError,
+    AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointObjectWrite,
+    AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
+    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
     BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
     IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
     RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
@@ -91,6 +93,27 @@ struct ScenarioState {
     retention_successor_run_id: String,
     start_dispatched: Value,
     start_sequence: u64,
+}
+
+struct StartedScenarioState {
+    organization_id: OrganizationId,
+    conversation_id: AgentConversationId,
+    execution_id: AgentExecutionId,
+    run_id: String,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+    runtime_spec: RuntimeUnitSpec,
+    runtime_capabilities: RuntimeCapabilities,
+    initial_runtime_received_at: DateTime<Utc>,
+    initial_runtime_started_at_ms: u64,
+    start_dispatched: Value,
+    start_sequence: u64,
+}
+
+struct StartedProviderScenario {
+    state: StartedScenarioState,
+    agents: Arc<PostgresAgentRepository>,
+    initial_binding: AgentCodeRunBinding,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -383,5 +406,6 @@ pub(super) async fn prepare_checkpoint_recovery_scenario(
 }
 
 include!("agent_code_recovery/scenario.rs");
+include!("agent_code_recovery/non_code_recovery.rs");
 include!("agent_code_recovery/runtime_fixture.rs");
 include!("agent_code_recovery/protocol.rs");

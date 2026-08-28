@@ -1,4 +1,144 @@
 async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioState> {
+    let StartedProviderScenario {
+        state,
+        agents,
+        initial_binding,
+    } = prepare_started_provider_scenario(postgres_url, NATIVE_CODE_AGENT_PROVIDER_KIND).await?;
+    let initial_run_id = initial_binding.identity().run_id.clone();
+    let first = event_batch(
+        state.execution_id,
+        &initial_binding,
+        Uuid::now_v7(),
+        AgentProtocolRunStateV1::Executing,
+        1,
+    )?;
+    let first_accepted_at = accepted_at(&first)?;
+    let first_receipt = agents
+        .accept_code_event_batch(AcceptAgentCodeEventBatchWrite::new(
+            state.organization_id,
+            state.node_id,
+            first,
+            first_accepted_at,
+        )?)
+        .await?;
+    assert!(!first_receipt.replayed);
+
+    let checkpoint = agents
+        .find_execution(state.organization_id, state.execution_id)
+        .await?
+        .ok_or_else(|| invalid("Agent execution disappeared after first Code page"))?
+        .code
+        .ok_or_else(|| invalid("Agent execution lost its first Code checkpoint"))?;
+    let gap = retention_gap_batch(
+        state.execution_id,
+        &checkpoint,
+        first_receipt.accepted_at_ms + 10,
+    )?;
+    let gap_accepted_at = first_accepted_at + Duration::milliseconds(1);
+    let gap_write = || {
+        AcceptAgentCodeEventBatchWrite::new(
+            state.organization_id,
+            state.node_id,
+            gap.clone(),
+            gap_accepted_at,
+        )
+    };
+    let gap_receipt = agents.accept_code_event_batch(gap_write()?).await?;
+    assert!(!gap_receipt.replayed);
+    let gap_replay = agents.accept_code_event_batch(gap_write()?).await?;
+    assert!(gap_replay.replayed);
+    assert_eq!(gap_replay.accepted_at_ms, gap_receipt.accepted_at_ms);
+
+    let recovered = agents
+        .find_execution(state.organization_id, state.execution_id)
+        .await?
+        .ok_or_else(|| invalid("Agent execution disappeared after retention recovery"))?;
+    let recovered_binding = recovered
+        .code
+        .clone()
+        .ok_or_else(|| invalid("retention recovery omitted its successor binding"))?;
+    let retention_successor_run_id = recovered_binding.identity().run_id.clone();
+    assert_eq!(
+        retention_successor_run_id,
+        AgentCodeRunBinding::recovery_run_id(state.execution_id, &initial_run_id)
+    );
+
+    let stale = stale_checkpoint_batch(
+        state.execution_id,
+        &checkpoint,
+        gap.page.observed_at_ms + 1,
+    )?;
+    let stale_write = || {
+        AcceptAgentCodeEventBatchWrite::new(
+            state.organization_id,
+            state.node_id,
+            stale.clone(),
+            gap_accepted_at + Duration::milliseconds(1),
+        )
+    };
+    let stale_receipt = agents.accept_code_event_batch(stale_write()?).await?;
+    assert!(!stale_receipt.replayed);
+    assert!(
+        agents
+            .accept_code_event_batch(stale_write()?)
+            .await?
+            .replayed
+    );
+
+    let successor = event_batch(
+        state.execution_id,
+        &recovered_binding,
+        Uuid::now_v7(),
+        AgentProtocolRunStateV1::Planning,
+        1,
+    )?;
+    let successor_accepted_at = accepted_at(&successor)?;
+    let successor_write = || {
+        AcceptAgentCodeEventBatchWrite::new(
+            state.organization_id,
+            state.node_id,
+            successor.clone(),
+            successor_accepted_at,
+        )
+    };
+    let successor_receipt = agents.accept_code_event_batch(successor_write()?).await?;
+    assert!(!successor_receipt.replayed);
+    assert!(
+        agents
+            .accept_code_event_batch(successor_write()?)
+            .await?
+            .replayed
+    );
+    assert_eq!(
+        agents
+            .list_events(state.organization_id, state.conversation_id, None, 100)
+            .await?
+            .len(),
+        3
+    );
+
+    Ok(ScenarioState {
+        organization_id: state.organization_id,
+        conversation_id: state.conversation_id,
+        execution_id: state.execution_id,
+        run_id: state.run_id,
+        node_id: state.node_id,
+        agent_instance_id: state.agent_instance_id,
+        runtime_spec: state.runtime_spec,
+        runtime_capabilities: state.runtime_capabilities,
+        initial_runtime_received_at: state.initial_runtime_received_at,
+        initial_runtime_started_at_ms: state.initial_runtime_started_at_ms,
+        initial_run_id,
+        retention_successor_run_id,
+        start_dispatched: state.start_dispatched,
+        start_sequence: state.start_sequence,
+    })
+}
+
+async fn prepare_started_provider_scenario(
+    postgres_url: &str,
+    provider_kind: &str,
+) -> TestResult<StartedProviderScenario> {
     let executor = migrate_and_connect_for_test(postgres_url, 8).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let organization_id = OrganizationId::new();
@@ -223,7 +363,7 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
                 resource_access: ResourceAccessEvaluator::organization_wide(),
                 agent_asset_id: asset.id,
                 agent_asset_release_id: published.id,
-                provider_kind: NATIVE_CODE_AGENT_PROVIDER_KIND.into(),
+                provider_kind: provider_kind.into(),
                 input: json!({"prompt": "prove durable recovery"}),
                 idempotency_key: "start-recovery-execution".into(),
                 request_id: Uuid::now_v7(),
@@ -280,128 +420,22 @@ async fn prepare_persisted_scenario(postgres_url: &str) -> TestResult<ScenarioSt
         .code
         .clone()
         .ok_or_else(|| invalid("prepared Agent execution omitted its Code binding"))?;
-    let initial_run_id = initial_binding.identity().run_id.clone();
-    let first = event_batch(
-        execution.execution.id,
-        &initial_binding,
-        Uuid::now_v7(),
-        AgentProtocolRunStateV1::Executing,
-        1,
-    )?;
-    let first_accepted_at = accepted_at(&first)?;
-    let first_receipt = agents
-        .accept_code_event_batch(AcceptAgentCodeEventBatchWrite::new(
+    Ok(StartedProviderScenario {
+        state: StartedScenarioState {
             organization_id,
+            conversation_id: conversation.conversation.id,
+            execution_id: execution.execution.id,
+            run_id,
             node_id,
-            first,
-            first_accepted_at,
-        )?)
-        .await?;
-    assert!(!first_receipt.replayed);
-
-    let checkpoint = agents
-        .find_execution(organization_id, execution.execution.id)
-        .await?
-        .ok_or_else(|| invalid("Agent execution disappeared after first Code page"))?
-        .code
-        .ok_or_else(|| invalid("Agent execution lost its first Code checkpoint"))?;
-    let gap = retention_gap_batch(
-        execution.execution.id,
-        &checkpoint,
-        first_receipt.accepted_at_ms + 10,
-    )?;
-    let gap_accepted_at = first_accepted_at + Duration::milliseconds(1);
-    let gap_write = || {
-        AcceptAgentCodeEventBatchWrite::new(organization_id, node_id, gap.clone(), gap_accepted_at)
-    };
-    let gap_receipt = agents.accept_code_event_batch(gap_write()?).await?;
-    assert!(!gap_receipt.replayed);
-    let gap_replay = agents.accept_code_event_batch(gap_write()?).await?;
-    assert!(gap_replay.replayed);
-    assert_eq!(gap_replay.accepted_at_ms, gap_receipt.accepted_at_ms);
-
-    let recovered = agents
-        .find_execution(organization_id, execution.execution.id)
-        .await?
-        .ok_or_else(|| invalid("Agent execution disappeared after retention recovery"))?;
-    let recovered_binding = recovered
-        .code
-        .clone()
-        .ok_or_else(|| invalid("retention recovery omitted its successor binding"))?;
-    let retention_successor_run_id = recovered_binding.identity().run_id.clone();
-    assert_eq!(
-        retention_successor_run_id,
-        AgentCodeRunBinding::recovery_run_id(execution.execution.id, &initial_run_id)
-    );
-
-    let stale = stale_checkpoint_batch(
-        execution.execution.id,
-        &checkpoint,
-        gap.page.observed_at_ms + 1,
-    )?;
-    let stale_write = || {
-        AcceptAgentCodeEventBatchWrite::new(
-            organization_id,
-            node_id,
-            stale.clone(),
-            gap_accepted_at + Duration::milliseconds(1),
-        )
-    };
-    let stale_receipt = agents.accept_code_event_batch(stale_write()?).await?;
-    assert!(!stale_receipt.replayed);
-    assert!(
-        agents
-            .accept_code_event_batch(stale_write()?)
-            .await?
-            .replayed
-    );
-
-    let successor = event_batch(
-        execution.execution.id,
-        &recovered_binding,
-        Uuid::now_v7(),
-        AgentProtocolRunStateV1::Planning,
-        1,
-    )?;
-    let successor_accepted_at = accepted_at(&successor)?;
-    let successor_write = || {
-        AcceptAgentCodeEventBatchWrite::new(
-            organization_id,
-            node_id,
-            successor.clone(),
-            successor_accepted_at,
-        )
-    };
-    let successor_receipt = agents.accept_code_event_batch(successor_write()?).await?;
-    assert!(!successor_receipt.replayed);
-    assert!(
-        agents
-            .accept_code_event_batch(successor_write()?)
-            .await?
-            .replayed
-    );
-    assert_eq!(
-        agents
-            .list_events(organization_id, conversation.conversation.id, None, 100,)
-            .await?
-            .len(),
-        3
-    );
-
-    Ok(ScenarioState {
-        organization_id,
-        conversation_id: conversation.conversation.id,
-        execution_id: execution.execution.id,
-        run_id,
-        node_id,
-        agent_instance_id,
-        runtime_spec,
-        runtime_capabilities,
-        initial_runtime_received_at,
-        initial_runtime_started_at_ms,
-        initial_run_id,
-        retention_successor_run_id,
-        start_dispatched,
-        start_sequence: start.sequence,
+            agent_instance_id,
+            runtime_spec,
+            runtime_capabilities,
+            initial_runtime_received_at,
+            initial_runtime_started_at_ms,
+            start_dispatched,
+            start_sequence: start.sequence,
+        },
+        agents,
+        initial_binding,
     })
 }

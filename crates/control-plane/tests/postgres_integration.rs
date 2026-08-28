@@ -349,6 +349,19 @@ async fn postgres_agent_code_recovery_survives_retention_runtime_and_control_pla
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_non_code_provider_recovery_fails_closed_across_control_plane_restart() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        agent_code_recovery_support::exercise_non_code_provider_recovery_fallback,
+    )
+    .await
+    .expect("PostgreSQL non-Code provider recovery fallback gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_agent_checkpoint_and_fork_recover_across_process_death() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
