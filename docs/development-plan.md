@@ -3919,10 +3919,19 @@ node.
   SMTP delivery and both terminal replay paths; the [complete main CI
   run](https://github.com/A3S-Lab/Cloud/actions/runs/33216764575) passes all ten
   jobs.
-  Next, `MT2` adds current-head/approver loading, optimistic policy/binding/grant
-  persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
-  replaces every boolean platform-administrator bypass with the single
-  Identity decision port.
+  Verified `MT2-C1` adds migration `177` and the sole
+  `IPlatformRbacRepository`: immutable accepted-policy history, one exact head,
+  versioned active bindings, current-policy/actor loading, optimistic CAS,
+  idempotency, self-escalation denial, owner-only owner administration and
+  deferred database last-owner/Principal-disable recovery. One canonical
+  Installation-row lock serializes replicas and each transition reuses the
+  shared Audit/Outbox transaction. The retained [PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33220123607/job/99012267599)
+  races bootstrap, policy-head advancement and owner revocation across two
+  repository instances and rejects direct-SQL bypass. `MT2-C2/C3` next add
+  evidence-backed approver/grant persistence and one atomic current-snapshot
+  privileged-decision Application interface. `MT3` replaces every boolean
+  platform-administrator bypass with that single Identity decision port.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,

@@ -87,6 +87,7 @@ AI application platform parity manifest.
 | [0080](0080-identity-owned-platform-scope-and-rbac.md) | Keep explicit installation/tenant scope and closed platform RBAC inside the single Identity authority |
 | [0081](0081-one-privileged-authorization-evidence-model.md) | Keep support intent in canonical ACL and issued privileged allows in the one digest-bound decision evidence model |
 | [0082](0082-one-installation-scoped-fact-rail.md) | Persist one immutable Installation identity and reuse one exact scope-aware Audit/Outbox fact rail |
+| [0083](0083-one-platform-rbac-persistence-authority.md) | Serialize policy heads and role bindings through one Identity/PostgreSQL authority with recoverable-owner invariants |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

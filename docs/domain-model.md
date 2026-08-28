@@ -231,10 +231,13 @@ Primary aggregates:
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
 - `PlatformRolePolicy` and immutable `AcceptedPlatformRolePolicyRevision`
-  (`C0.5-MT1-C1` component contract implemented; persistence and current-head
-  selection remain open)
+  (`C0.5-MT2-C1` persists immutable revision history and one exact current head
+  with predecessor CAS through the sole Identity repository)
 - `PlatformRoleBinding` (`C0.5-MT1-C1` component lifecycle implemented;
-  authorization, last-owner/self-escalation rules and persistence remain open)
+  `C0.5-MT2-C1` adds version-CAS persistence, active-Principal loading,
+  self-escalation denial, owner-only owner administration, deferred last-owner
+  recovery, idempotency and Installation-scoped Audit/Outbox; Application and
+  cross-surface authorization remain open)
 - `TenantSupportGrant` (`C0.5-MT1-C2` canonical ACL and terminal component
   lifecycle implemented; approver/current-head loading, persistence and
   interfaces remain open)
@@ -287,11 +290,16 @@ and one closed non-sensitive support permission. Grants are bounded,
   locks and verifies live tenant lineage only when a fact is inserted; immutable
   fact snapshots then outlive tenant aggregate deletion without cascading or
   mutating identity. Scope lineage is immutable, and the existing relay and
-  audit authority remain singular. `MT2` and `MT3` still
-  supply policy/binding/grant repositories, approver/current-head loading,
-  optimistic concurrency, idempotency, self-escalation and last-owner
-  protection, then remove the legacy boolean administrator bypass. Until then,
-  the component RBAC model grants no production authority.
+  audit authority remain singular. Migration `177` and the one
+  `IPlatformRbacRepository` now persist accepted policy history, its exact head
+  and versioned bindings under the canonical Installation-row lock. Initial
+  policy/owner visibility, idempotency, self-escalation and last-owner recovery,
+  Audit and Outbox commit atomically and database triggers reject direct-SQL
+  bypass. `MT2-C2/C3` still supply evidence-backed support approval/grant
+  persistence and one current-snapshot privileged decision/Application
+  interface; `MT3` then removes the legacy boolean administrator bypass. Until
+  that decision surface is consumed, persisted RBAC is not general production
+  authority.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

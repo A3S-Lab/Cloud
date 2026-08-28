@@ -3159,9 +3159,16 @@ next workload-trust slice. They introduce one explicit scope hierarchy, one
 persisted immutable Installation identity, one shared scope-aware Audit/Outbox
 fact rail, one Identity-owned closed platform-role policy/binding model, a
 canonical bounded support-grant ACL, and one replayable privileged-decision
-evidence model. The next ordering is `MT2`: persist policy, bindings and grants
-with current-head, approval, last-owner, self-escalation, idempotency and
-concurrency invariants. Only then may `WI1-C2` persist installation trust state;
+evidence model. `C0.5-MT2-C1` is now verified: migration `177` and the single
+Identity repository port persist immutable policy revisions, one exact current
+head and versioned bindings; one Installation-row lock serializes replicas,
+while shared idempotency/Audit/Outbox, policy-head CAS, active-Principal checks,
+self-escalation denial and database-enforced recoverable-owner constraints
+commit atomically. The retained [PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/33220123607/job/99012267599)
+proves racing bootstrap, policy acceptance, owner revocation and direct-SQL
+bypass rejection. `MT2-C2/C3` next persist evidence-backed support approvals
+and grants, then issue current-snapshot privileged decisions and maintained
+interfaces. Only then may `WI1-C2` persist installation trust state;
 no path may use a synthetic Organization or `actor_is_platform_admin` as
 authority.
 
