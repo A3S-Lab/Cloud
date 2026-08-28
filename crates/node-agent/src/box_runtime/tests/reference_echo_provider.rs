@@ -116,17 +116,20 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         archive: provider_archive,
         downloads: AtomicUsize::new(0),
     });
-    let artifacts = Arc::new(NodeArtifactManager::new(
-        node_state.path(),
-        ArtifactConfig {
-            max_blob_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
-            max_entries: 16,
-            max_file_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
-            max_expanded_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
-        },
-        node_id,
-        transport.clone(),
-    )?);
+    let artifacts = Arc::new(
+        NodeArtifactManager::new(
+            node_state.path(),
+            ArtifactConfig {
+                max_blob_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
+                max_entries: 16,
+                max_file_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
+                max_expanded_bytes: MAX_PROVIDER_ARTIFACT_BYTES,
+            },
+            node_id,
+            transport.clone(),
+        )
+        .map_err(invalid)?,
+    );
     let provider = super::super::build_box_runtime_provider(
         &BoxRuntimeConfig {
             home_dir: home.clone(),
