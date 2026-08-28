@@ -7,6 +7,11 @@ mod request_context;
 mod request_id_middleware;
 mod sequence_stream;
 
+pub(crate) use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
+
 pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
 
 pub(crate) fn bounded_acl_document(

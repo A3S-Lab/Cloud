@@ -25,4 +25,4 @@ pub use domain::{
 };
 pub(crate) use infrastructure::object_namespace_recovery_flow_step_names;
 pub(crate) use infrastructure::object_namespace_recovery_flow_workflow_identities;
-pub use infrastructure::ObjectNamespaceRecoveryFlowRuntime;
+pub(crate) use infrastructure::ObjectNamespaceRecoveryFlowRuntime;

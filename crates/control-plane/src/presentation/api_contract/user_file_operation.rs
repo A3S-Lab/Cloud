@@ -1,8 +1,8 @@
-use crate::modules::files::presentation::{
+use crate::modules::files::{DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT};
+use crate::modules::files::{
     USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_ITEM_ROUTE,
     USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
 };
-use crate::modules::files::{DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT};
 use serde_json::{json, Value};
 
 pub(super) fn is_user_file_path(path: &str) -> bool {

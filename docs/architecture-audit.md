@@ -3,7 +3,7 @@
 ## 1. Purpose and authority
 
 This document records the implementation-facing architecture audit begun on
-2026-08-24. It does not replace the stable target in
+2026-08-24 and updated on 2026-08-28. It does not replace the stable target in
 [architecture.md](architecture.md), the aggregate definitions in
 [domain-model.md](domain-model.md), or delivery status in
 [ROADMAP.md](../ROADMAP.md).
@@ -64,9 +64,12 @@ The codebase has strong foundations:
 The audit also found structural gaps that prevent the stronger statement that
 all boundaries are interface-only:
 
-1. Most context roots publicly expose their application, domain,
-   infrastructure, and presentation modules. This makes the intended facade a
-   convention instead of a compiler-enforced boundary.
+1. Public outer-layer exposure remains broad: 47 context/layer facade entries
+   still expose Infrastructure or Presentation when public module declarations
+   and equivalent public re-exports or aliases are treated as the same
+   mechanism. This makes the intended facade only partially compiler-enforced. The expanded
+   fitness ratchet now detects both spellings, so visibility cannot be hidden
+   behind a private module followed by `pub use`.
 2. Product application services frequently import another context's repository
    trait and aggregate directly. The dependency is abstract in Rust, but it
    still bypasses the owning application boundary.
@@ -104,6 +107,13 @@ Each bounded context will expose three deliberately different surfaces.
 | Published language | Cross-context | Stable IDs, immutable references, bounded snapshots, closed outcome enums, and committed fact schemas |
 | Owner ports | Cross-context, application-facing | Commands and queries that preserve the owner's authorization, invariants, idempotency, and replay rules |
 | Composition surface | Crate-only | Concrete repositories, provider adapters, controllers, workers, and module wiring used only by the process composition root |
+
+Visibility is semantic, not syntactic. `pub mod infrastructure`,
+`pub use infrastructure::Adapter`, and a public alias of that adapter all
+expose the same forbidden outer-layer surface. Tests and process assembly use
+crate-private composition exports; an external conformance fixture must move
+behind a bounded test contract instead of making a concrete adapter part of
+the product API.
 
 The target Rust shape is:
 
@@ -167,7 +177,7 @@ snapshot or an application port result.
 | Connectors | Reusable outbound profile/revision, egress policy, exact attempt fencing/evidence, and response-object reference | Provider-neutral attempt model and Workflow port are strong. Application services directly depend on Secrets application/domain types. | Publish a SecretVersionAccess port result and keep exact materialization in Secrets. Connector attempts remain the sole HTTP retry/evidence authority for consumers such as Notifications. |
 | Notifications | Personal inbox, subscriptions, alert policy, delivery facts, and terminal delivery receipts | Correctly reuses Connector and SMTP mechanisms, but domain types embed Connector outcomes and Identity email/evaluator types. | Consume versioned Connector and Identity published contracts. Alert sources arrive only as closed owner facts. Do not add provider retries, timers, or authorization stores. |
 | Plugins | Tenant registry enrollment and exact A3S Use package assignment intent | Small, port-oriented, and correctly excludes installation/reconciliation authority. | Narrow the module facade and preserve A3S Use as the only package lifecycle owner. |
-| Files | Upload session/metadata intent and immutable-object references | `K0.1-C1/C2` isolate one aggregate and ACL, one streaming object port, and one metadata/quota repository port. Migration `170` atomically persists lifecycle, quota, shared audit/Outbox/idempotency; authorization-first CQRS is exposed through REST/OpenAPI `1.77.0`, client, CLI, and five Management MCP tools. Architecture tests reject a second uploader, provider, scanner store, cleanup queue, or presentation bypass. | Retained PostgreSQL cross-surface evidence and live upload/scan/cleanup execution remain before Files availability. Bytes use the shared immutable-object authority and never become Build Artifacts. |
+| Files | Upload session/metadata intent and immutable-object references | `K0.1-C1/C2` isolate one aggregate and ACL, one streaming object port, and one metadata/quota repository port. Migration `170` atomically persists lifecycle, quota, shared audit/Outbox/idempotency; authorization-first CQRS is exposed through REST/OpenAPI `1.77.0`, client, CLI, and five Management MCP tools. Presentation, module assembly, and the in-memory adapter are crate-private. HTTP authorization enters through the root Presentation adapter instead of Identity Presentation, and the Domain persistence-write bundle is the one mapping authority for the canonical `file.user-file.*` audit vocabulary used by PostgreSQL and failure probes. Architecture tests reject a second uploader, provider, scanner store, cleanup queue, presentation bypass, or public outer-layer exposure written as either a module or re-export. | Move the two concrete adapters used by the external persistence fixture behind a bounded conformance surface, then make all Infrastructure crate-private. Retained PostgreSQL cross-surface evidence and live upload/scan/cleanup execution remain before Files availability. Bytes use the shared immutable-object authority and never become Build Artifacts. |
 
 ### 5.5 Durable Cells
 
@@ -265,13 +275,20 @@ therefore Application policy, not a sixth I/O port.
    explicitly admitting pure published contracts at named execution boundaries.
 5. Add a narrow-facade test for every context.
 
-Baseline status on 2026-08-24: the source-level ratchets live in
+Baseline status updated on 2026-08-28: the source-level ratchets live in
 [`architecture_tests.rs`](../crates/control-plane/src/modules/architecture_tests.rs).
 They freeze exact cross-context outer-layer sites, duplicate physical ORM
 mappings, domain technical-dependency debt, named Runtime/Flow published
 contract entry points, Shared Kernel direction, and public Infrastructure /
-Presentation facades. The baseline passes. This proves that these debt classes
-cannot silently expand; it does not certify the allowlisted sites as correct or
+Presentation facades. Public facade detection now treats a public module,
+re-export, or alias of a private outer layer as the same exposure. The current
+allowlists contain 60 cross-context outer-layer import sites, 11 duplicate
+mapping sites across five tables, and 47 public outer-layer context/layer
+surfaces; Domain technical dependency and Shared Kernel back-edge allowlists
+remain empty. Files Presentation, the Data recovery runtime, Developer
+Workflows module assembly, and the Files in-memory adapter are now
+crate-private. The baseline passes. This proves that these debt classes cannot
+silently expand; it does not certify the allowlisted sites as correct or
 replace the refactors in Waves 1-6.
 
 ### Wave 1: governance ports and module facades
@@ -281,6 +298,14 @@ replace the refactors in Waves 1-6.
 3. Introduce Organization, Project/Environment, and Node scope lookup ports.
 4. Make Infrastructure and Presentation crate-private; keep public contracts
    and application ports deliberate.
+
+The first facade hardening slice closes three public composition leaks without
+changing behavior: Data's recovery runtime, Developer Workflows module
+assembly, and Files module assembly are crate-private, as is the Files
+in-memory adapter. Files still exposes its PostgreSQL repository and shared
+object-store adapter for an external retained conformance fixture. That exact
+Infrastructure surface is frozen debt; replacing the fixture's concrete-type
+dependency with a bounded conformance contract is the next facade task.
 
 Artifacts now satisfies item 4 for Presentation. Its node-artifact stream,
 descriptor, error, and store contract form one consumer-owned Application
@@ -518,6 +543,8 @@ The architecture optimization is complete only when all of the following are
 true:
 
 - every module has one documented decision authority and a narrow facade;
+- no context root publicly declares, re-exports, or aliases Infrastructure or
+  Presentation;
 - product domains import no foreign aggregate, repository, infrastructure, or
   presentation implementation;
 - every synchronous cross-context action uses an owner application port;

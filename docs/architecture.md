@@ -616,6 +616,21 @@ crate-private implementation details. Existing public outer-layer modules and
 foreign outer-layer imports are migration debt frozen by architecture fitness
 tests; the allowlists may shrink but must not grow.
 
+The facade has exactly three semantic surfaces:
+
+| Surface | Allowed visibility | Allowed contents |
+| --- | --- | --- |
+| Published Language | Cross-context | Stable IDs, immutable references, bounded snapshots, closed outcomes, and versioned committed fact schemas |
+| Owner Application contract | Cross-context | Commands, queries, and ports that preserve owner authorization, invariants, idempotency, and replay |
+| Composition | Crate-private | Concrete repositories, providers, controllers, workers, module assembly, and test wiring |
+
+Visibility cannot be changed by indirection. Publicly declaring an
+Infrastructure or Presentation module, publicly re-exporting one of its types,
+or publishing an alias for such a type are the same boundary violation. A
+conformance test is not a reason to widen the product facade; it consumes a
+bounded contract or crate-private fixture. Architecture fitness tests ratchet
+all equivalent spellings together.
+
 Artifacts applies this rule to node-artifact transport: its async byte reader,
 descriptor, error vocabulary, and store trait are an Application-owned port.
 The Domain contains admitted artifact semantics and immutable receipts, not a
@@ -2237,12 +2252,23 @@ Evolution follows these rules:
    accepted product profile records its semantic owner, Operation/Flow owner,
    Execution or Workload projection, data authority, provider mechanism,
    route owner, observation, and recovery path.
+9. Treat the single-authority map as exclusive. A new implementation for an
+   existing concern must replace the old mechanism behind its existing port;
+   it cannot add a parallel repository, scheduler, retry rail, publisher,
+   object client, or provider lifecycle.
+10. Keep context facades semantic and narrow. Public module declarations,
+    re-exports, type aliases, and convenience wrappers are evaluated by the
+    layer they expose, not by the spelling used at the root.
 
 ## 17. Architecture definition of done
 
 An architectural capability is complete only when:
 
 - exactly one bounded context and one component own every new decision;
+- public context facades expose no Infrastructure or Presentation module,
+  concrete type, alias, or wrapper;
+- each physical table has one mapping authority and every temporary
+  architecture-debt allowlist is empty;
 - domain, application, infrastructure, and presentation boundaries pass source
   architecture checks;
 - every relational path uses A3S ORM and every product configuration path uses

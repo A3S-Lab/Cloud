@@ -1967,6 +1967,7 @@ edge -> infrastructure
 edge -> presentation
 executions -> infrastructure
 executions -> presentation
+files -> infrastructure
 fleet -> infrastructure
 fleet -> presentation
 forms -> infrastructure
@@ -2009,10 +2010,21 @@ workloads -> presentation
             return;
         };
         for outer_layer in ["infrastructure", "presentation"] {
-            if source
+            let exposes_module = source
                 .lines()
-                .any(|line| line.trim() == format!("pub mod {outer_layer};"))
-            {
+                .any(|line| line.trim() == format!("pub mod {outer_layer};"));
+            let exposes_implementation = production_source(source)
+                .split(';')
+                .map(str::trim)
+                .filter(|statement| statement.starts_with("pub "))
+                .any(|statement| {
+                    statement
+                        .split(|character: char| {
+                            !(character.is_ascii_alphanumeric() || character == '_')
+                        })
+                        .any(|segment| segment == outer_layer)
+                });
+            if exposes_module || exposes_implementation {
                 actual.insert(format!("{source_context} -> {outer_layer}"));
             }
         }
@@ -2021,7 +2033,7 @@ workloads -> presentation
     let unexpected = difference(&actual, &allowed);
     assert!(
         unexpected.is_empty(),
-        "a bounded context publicly exposed a new outer-layer module:\n{}",
+        "a bounded context publicly exposed a new outer-layer declaration, re-export, or alias:\n{}",
         unexpected.join("\n")
     );
 }

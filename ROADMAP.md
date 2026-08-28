@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-08-23.**
+**Status as of 2026-08-28.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -13,6 +13,7 @@ plans.
 | --- | --- |
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
 | [Technical architecture](docs/architecture.md) | Stable component ownership, control paths, consistency boundaries, deployment profiles, and failure behavior |
+| [Architecture audit](docs/architecture-audit.md) | Current DDD boundary debt, executable ratchets, ordered convergence waves, and the zero-debt release condition |
 | [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |
 | [Workflow and evolution plan](docs/workflow-evolution-plan.md) | Detailed `W0`, heterogeneous `A1`, and governed `EV0` contracts, ordered slices, safety policy, and recovery evidence |
 | [AI application platform plan](docs/ai-application-platform-plan.md) | Detailed `APP0`, `K0`, `AUT0`, built-in node coverage, Flow-preservation contract, and public parity evidence |
@@ -36,6 +37,36 @@ The roadmap is gate-driven, not date-driven:
 | In progress | A usable implementation slice exists, but named exit evidence remains |
 | Planned | The capability is unavailable until its owning gate passes |
 | Historical | Prior implementation evidence retained for regression coverage; it does not certify the current provider contract |
+
+### 1.1 Architecture integrity release condition
+
+Architecture integrity is a cross-cutting release condition, not another
+business capability or control plane. Every product gate must reuse the same
+layer model and the authority named in the technical architecture. A gate
+cannot create its own repository for foreign state, scheduler, retry rail,
+Outbox publisher, object client, provider lifecycle, authorization evaluator,
+or presentation-to-persistence shortcut.
+
+The executable baseline on 2026-08-28 is deliberately explicit:
+
+| Ratchet | Current debt baseline | Production release requirement |
+| --- | --- | --- |
+| Cross-context outer-layer imports | 60 exact source sites | Zero; every collaboration uses an owner Application port or a committed versioned fact |
+| Duplicate physical ORM mappings | 11 mapping sites across `mcp_service_profiles`, `nodes`, `operation_requests`, `workloads`, and `workflow_runs` | One mapping authority per physical table |
+| Public outer-layer facade surfaces | 47 context/layer entries after treating declarations, re-exports, and aliases as the same exposure | Zero; only Published Language and deliberate Application contracts remain cross-context |
+| Domain technical dependencies and Shared Kernel back-edges | Zero | Remain zero |
+
+The current hardening slice makes Files Presentation, the Data recovery runtime,
+the Developer Workflows module assembly, and the Files in-memory repository
+crate-private. Files HTTP authorization now enters through the sole root
+Presentation adapter, and every Files lifecycle transition derives its
+canonical `file.user-file.*` audit action from the one Domain persistence-write
+mapping. Two Files concrete adapters remain temporarily public for the retained
+external PostgreSQL/object-store conformance fixture; they are allowlisted migration
+debt, not a supported architectural contract. No new entry may be added to any
+debt list. Public availability does not advance from architecture refactoring
+alone; the affected real-provider and recovery gates must pass again after
+each debt-removal wave.
 
 ## 2. Product position
 

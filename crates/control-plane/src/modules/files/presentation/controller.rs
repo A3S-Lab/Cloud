@@ -9,13 +9,11 @@ use crate::modules::files::application::{
     UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
-};
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, UserFileId};
 use crate::presentation::{
     actor_principal_id, application_error_response, request_id, request_identity,
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,

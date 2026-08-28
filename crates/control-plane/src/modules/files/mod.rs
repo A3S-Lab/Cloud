@@ -1,7 +1,7 @@
 mod application;
 mod domain;
 mod infrastructure;
-pub mod presentation;
+mod presentation;
 
 pub use application::{
     ExpireUserFileUpload, ExpireUserFileUploadHandler, GetUserFile, GetUserFileHandler,
@@ -22,7 +22,11 @@ pub use domain::{
     USER_FILE_PUBLIC_INTEGER_MAX, USER_FILE_REJECTION_REASON_MAX_BYTES,
     USER_FILE_RETENTION_MAX_DAYS, USER_FILE_UPLOAD_MAX_TTL_SECONDS,
 };
-pub use infrastructure::{
-    InMemoryUserFileRepository, PostgresUserFileRepository, SharedUserFileObjectStore,
+#[cfg(test)]
+pub(crate) use infrastructure::InMemoryUserFileRepository;
+pub use infrastructure::{PostgresUserFileRepository, SharedUserFileObjectStore};
+pub(crate) use presentation::{
+    FilesModule, UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
+    USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_ITEM_ROUTE,
+    USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
 };
-pub use presentation::FilesModule;

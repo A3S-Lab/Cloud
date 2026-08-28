@@ -50,7 +50,7 @@ pub use infrastructure::{
     RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
     WorkloadsServiceProfileAdapter,
 };
-pub use presentation::DeveloperWorkflowsModule;
+pub(crate) use presentation::DeveloperWorkflowsModule;
 pub(crate) use presentation::{
     AcceptedBuildPlanResponse, AcceptedPullRequestPreviewPolicyRevisionResponse,
     AcceptedWorkloadProfileRevisionResponse, BuildPlanDetectionResponse, BuildPlanMutationResponse,

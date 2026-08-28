@@ -558,7 +558,7 @@ async fn user_file_side_effect_counts(
             .bind(organization_id.as_uuid())
             .append(" and event_key = 'user-file.lifecycle.changed'), (select count(*) from audit_records where organization_id = ")
             .bind(organization_id.as_uuid())
-            .append(" and action like 'user-file.%'), (select count(*) from idempotency_records where scope_key = ")
+            .append(" and action like 'file.user-file.%'), (select count(*) from idempotency_records where scope_key = ")
             .bind(reservation_scope)
             .append(" or scope_key like ")
             .bind(format!("{reservation_scope}/%"))
