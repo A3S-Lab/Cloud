@@ -6,6 +6,7 @@ use crate::modules::shared_kernel::domain::{
     PlatformRolePolicyRevisionId, PrincipalId,
 };
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const MAX_PORTABLE_REVISION_NUMBER: u64 = 9_007_199_254_740_991;
@@ -13,7 +14,7 @@ const PLATFORM_ROLE_POLICY_REVISION_NAMESPACE: Uuid = Uuid::from_bytes([
     0xa9, 0xf6, 0xf3, 0x52, 0x2d, 0x43, 0x49, 0xca, 0x89, 0xad, 0xd4, 0xc7, 0xd9, 0x3d, 0x12, 0x44,
 ]);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcceptedPlatformRolePolicyRevision {
     pub installation_id: InstallationId,
     pub policy_id: PlatformRolePolicyId,
@@ -114,7 +115,7 @@ impl AcceptedPlatformRolePolicyRevision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlatformRoleBinding {
     pub id: PlatformRoleBindingId,
     pub installation_id: InstallationId,

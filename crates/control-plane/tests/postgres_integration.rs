@@ -232,6 +232,8 @@ mod notifications_support;
 mod oidc_cross_surface_support;
 #[path = "support/outbound_smtp.rs"]
 mod outbound_smtp_support;
+#[path = "support/platform_rbac.rs"]
+mod platform_rbac_support;
 #[path = "support/plugins.rs"]
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
@@ -854,6 +856,19 @@ async fn postgres_installation_identity_and_shared_fact_scope_are_fail_closed() 
     run_isolated_postgres(&admin_url, exercise_installation_scoped_fact_foundation)
         .await
         .expect("PostgreSQL Installation-scoped fact foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_platform_rbac_is_atomic_recoverable_and_multi_replica_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        platform_rbac_support::exercise_platform_rbac_authority,
+    )
+    .await
+    .expect("PostgreSQL platform RBAC authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

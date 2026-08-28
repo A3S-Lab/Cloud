@@ -80,7 +80,7 @@ pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
 pub use domain::repositories::{
-    IOidcIdentityRepository, IRecipientContactRepository,
+    IOidcIdentityRepository, IPlatformRbacRepository, IRecipientContactRepository,
     IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
     ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };

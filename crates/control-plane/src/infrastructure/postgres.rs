@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 176;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "176";
+pub const CLOUD_MIGRATION_COUNT: i64 = 177;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "177";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1617,6 +1617,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/176_historical_fact_scope_lifecycle.sql"
             )),
         ),
+        Migration::new(
+            "177",
+            "platform RBAC authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/177_platform_rbac_authority.sql"
+            )),
+        ),
     ]
 }
 
@@ -1631,6 +1639,10 @@ mod cloud_migration_manifest_tests;
 #[cfg(test)]
 #[path = "postgres_tests/installation_scoped_facts_migration.rs"]
 mod installation_scoped_facts_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/platform_rbac_authority_migration.rs"]
+mod platform_rbac_authority_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/node_protocol_session_migration.rs"]

@@ -10,6 +10,7 @@ mod postgres;
 mod postgres_membership_invitations;
 mod postgres_memberships;
 mod postgres_oidc_identity;
+mod postgres_platform_rbac;
 mod postgres_recipient_contact_support;
 mod postgres_recipient_contact_verification_deliveries;
 mod postgres_recipient_contacts;
