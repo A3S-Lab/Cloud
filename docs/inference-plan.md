@@ -13,15 +13,23 @@ portfolio and publishes its current status and dependencies. This document
 owns the detailed inference contracts, delivery gates, and evidence within the
 roadmap's Cloud/Gateway ownership boundary.
 
-The active delivery phase follows the roadmap's interface-only boundary. I0
-work may change domain, ACL, persistence, provider, Gateway, REST/OpenAPI,
-maintained client, CLI, Management MCP, documentation, and conformance code.
-Product consoles, visual playgrounds, and browser-owned state are outside
-Cloud scope and never block an interface/provider gate.
+Logical model, weight-variant, external hub resolution, immutable artifact,
+object-storage, node-cache, license, and trust boundaries are normative in
+[Model and Weight Supply Architecture](model-supply-architecture.md).
 
-I0 adds an optional inference product profile to A3S Cloud. Its target is a
-clearly gated GPUStack-like multi-node model-serving capability set, not API,
-UI, or implementation compatibility with GPUStack.
+The active delivery phase follows the roadmap's management-interface boundary.
+I0 work may change domain, ACL, persistence, provider, Gateway, REST/OpenAPI,
+maintained client, CLI, Management MCP, documentation, and conformance code.
+A Cloud-owned model Dashboard, visual playground, and browser-owned authority
+are outside scope and never block an interface/provider gate. Tenant-owned
+`WEB0` Applications may present inference experiences through the same public
+Gateway, grants, routes, and usage contracts without creating private APIs.
+
+I0 adds A3S Cloud's first-class shared inference service. It is independently
+gated because accelerator and request-path evidence is specialized, but it is
+not an optional architecture afterthought: AaaS, WaaS, and FaaS consume its
+governed model routes. Its target is a GPUStack-like multi-node model-serving
+capability set, not API, UI, or implementation compatibility with GPUStack.
 
 The distributed-serving design is also reviewed against
 [llm-d v0.9.0](https://github.com/llm-d/llm-d/releases/tag/v0.9.0) as a
@@ -66,7 +74,7 @@ The capability boundary is explicit:
 | Capability area | Decision | Owning gate or context |
 | --- | --- | --- |
 | Enrolled-node accelerator inventory, health and exclusive allocation | Included in the first profile | `I0.0`/`I0.1`, Fleet and Workloads |
-| Immutable model catalog, source resolution and node cache | Included | `I0.2a`, Artifacts and Inference |
+| Immutable Model/Revision/WeightVariant catalog, exact ModelScope/Hugging Face/import resolution, weight manifests/objects, and node cache | Included | `I0.2a`, Artifacts, Inference, shared objects, and Fleet |
 | Typed A3S Power serving and same-node tensor parallelism | Included first | `PW0.1` + `I0.2a` |
 | OpenAI Models, Chat Completions, Completions and Embeddings APIs | Included with an exact endpoint contract | `I0.2b`, Gateway and Inference |
 | Model authorization, rate limits, weighted targets, fallback and usage | Included | `I0.2b`/`I0.2c` |
@@ -168,7 +176,7 @@ anti-corruption boundary instead of copied into the domain:
 
 | Reference concept | A3S meaning | Fact owner |
 | --- | --- | --- |
-| Inference pool | A read-only projection of one deployment revision and its currently eligible replica endpoints | Inference identity, Workloads replica facts, Edge endpoint projection |
+| Inference pool | A read-only projection of one deployment revision, role slot, and its currently eligible replica endpoints | Inference identity, Workloads replica facts, Edge endpoint projection |
 | Endpoint picker | A request-scoped filter/score/pick strategy applied to one complete snapshot | Gateway |
 | Model server | One immutable Power Service release running as an inference-managed Workload | Inference release intent, Workloads lifecycle, Power execution |
 | Variant | A separately revisioned deployment target when lifecycle or scaling differs; otherwise a value in the immutable topology/profile | Inference; no label-derived aggregate |
@@ -182,21 +190,36 @@ ordinary Workloads execution/autoscaling plan, a complete Edge/Gateway
 snapshot, and a closed Power ACL profile. An algorithm name, Kubernetes label,
 metric name, or backend-specific option is not a domain value.
 
-An inference-managed Workload carries exactly one immutable owner reference:
+Every inference-managed Workload carries exactly one immutable owner
+reference. The base aggregated topology has one `serve` projection slot. A
+phase-disaggregated topology has separate stable `encode`, `prefill`, and/or
+`decode` slots only when their lifecycle or scaling differs:
 
 ```text
 ManagedOwnerRef {
   kind: InferenceDeployment,
   owner_id,
   owner_generation,
-  owner_spec_digest
+  owner_spec_digest,
+  projection_key
 }
 ```
 
+`projection_key` is a planned generic managed-owner extension, not an
+Inference-owned replica registry. It is required because prefill and decode
+have different resource curves and must be independently scalable. Every slot
+still creates an ordinary managed Workload; Workloads retains the only
+replica, placement, Claim, Runtime, rollout, and autoscaling authority. A slot
+may itself be one Service per replica or one all-or-none placement group of
+Services.
+
 Ordinary Workloads mutation APIs reject a managed Workload. Inference commands
 delegate scale, update, stop, and rollback to Workloads. Workloads is the sole
-authority for the effective desired replica count and every replica/member
-state; inference query handlers compose those projections for users.
+authority for each slot's effective desired replica count and every
+replica/member state; inference query handlers compose those projections for
+users. A complete Edge/Gateway serving cohort binds all required slots to the
+same model, backend, deployment revision, compatibility digest, and rollout
+cohort, so a request cannot mix incompatible prefill/decode generations.
 
 ## 4. Inference domain model
 
@@ -291,21 +314,33 @@ PhaseTopology
     transfer_profile,
     fallback_policy
   }
+  EncodePrefillDecode {
+    encode_profile,
+    prefill_profile,
+    decode_profile,
+    transfer_profiles,
+    fallback_policy
+  }
 ```
 
 Each referenced profile is immutable and capability-checked. It contains
 model-neutral resource and behavior bounds rather than a vLLM, SGLang, NIXL,
-or llm-d option map. Encode disaggregation for multimodal models is a later
-typed profile; it is not implied by text prefill/decode support. A
+or llm-d option map. Encode disaggregation for multimodal models is
+independently gated because the upstream pattern remains less mature; it is
+never implied by text prefill/decode support. A
 `CachePolicy` independently declares allowed device, host, local-storage, and
 peer tiers plus privacy, byte, lifetime, and recovery bounds. The owning model
 adapter retains KV/recurrent layout and semantic correctness.
 
-The backend compiler converts one InferenceDeployment revision into a generic
-Workload execution plan. One Workload replica is either one Runtime Service or
-one placement group containing a leader and bounded member set. Workloads owns
-the replica, group, members, generation, and lifecycle. This avoids a second
-`inference_replicas` source of truth.
+The backend compiler converts one InferenceDeployment revision into a closed,
+sorted set of generic Workload role plans. Aggregated serving emits only
+`serve`; P/D emits `prefill` and `decode`; E/P/D additionally emits `encode`.
+One role-slot replica is either one Runtime Service or one placement group
+containing a leader and bounded member set. A backend-required request
+coordinator or sidecar is an immutable Power data-plane member of that plan,
+not a Cloud controller. Workloads owns every replica, group, member,
+generation, and lifecycle. This avoids a second `inference_replicas` or
+phase-worker source of truth.
 
 ### 4.3 Commands and queries
 
@@ -849,8 +884,9 @@ InferenceDeployment revision
 Inference compiles one immutable serving objective into three independent
 projections:
 
-1. a generic Workloads plan containing phase roles, hard topology/network
-   requirements, resource estimates and scaling intent;
+1. a closed set of generic Workloads role plans containing stable projection
+   keys, phase roles, hard topology/network requirements, resource estimates,
+   compatibility cohort, and per-role scaling intent;
 2. a complete Gateway scheduling policy containing only eligible strategy
    names, fixed bounds, priority/fairness rules and safe fallback behavior; and
 3. a closed Power ACL profile containing execution, cache-tier, state-transfer,
@@ -866,11 +902,26 @@ needed for rollout, SLO and autoscaling evaluation.
 
 For a prefill/decode topology, Gateway selects the decode endpoint and, when
 the immutable policy and current evidence require disaggregation, one
-compatible prefill endpoint from the same deployment generation. Power
-executes the phases and performs the generation-, model-, layout-, lease-,
-byte-, time-, cancellation- and peer-bound state transfer. A failed transfer
-follows the declared recompute or fail policy before the first response byte;
-Gateway never infers correctness from a timeout or cache metric.
+compatible prefill endpoint from the same serving cohort. For admitted
+multimodal E/P/D, it also selects a compatible encode endpoint only when the
+request needs that phase. Power executes the phases and performs the
+generation-, model-, tokenizer-, layout-, lease-, byte-, time-, cancellation-
+and peer-bound state transfer. A failed transfer follows the declared
+recompute or fail policy before the first response byte; Gateway never infers
+correctness from a timeout or cache metric.
+
+Resource placement and request dispatch are different layers with one owner
+each. Workloads/Fleet schedules role replicas onto hardware. Gateway filters,
+scores, and selects already eligible phase endpoints for one request. Calling
+both activities "scheduling" must not permit either layer to copy the other's
+Claims, endpoint registry, or desired state.
+
+The sole Workloads autoscaler evaluates every role slot. Prefill and decode may
+have different targets, floors, cooldowns, GPU shapes, and desired replica
+counts, but use the same policy/decision engine. It must preserve a bounded
+compatible-cohort floor: shrinking one phase cannot strand accepted work or
+publish a cohort missing a required role. A multi-node replica inside any role
+still scales as one all-or-none placement group.
 
 No new `a3s-llm-d` process, scheduler, database, service-discovery authority,
 or compatibility configuration is introduced. If direct interoperability with
@@ -1329,6 +1380,11 @@ evidence, and fenced release protocol.
   membership. Prove decode and prefill role selection, opaque state-transfer
   leases, cancellation, recompute/fail policy, target removal, and cleanup on
   real high-speed networking before advertising prefill/decode support.
+- Add the generic managed-owner projection key and prove one deployment can
+  reconcile independently scaled `prefill` and `decode` Workloads without an
+  inference replica table, phase scheduler, or mixed-generation serving
+  cohort. Gate multimodal `encode` separately with its own compatibility and
+  real-backend evidence.
 
 ### I0.5: production hardening and provider breadth
 

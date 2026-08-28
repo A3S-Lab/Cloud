@@ -16,12 +16,28 @@ shipped claim unless its gate is marked `Verified` in the product roadmap.
 | [README](../README.md) | Product introduction, current capabilities, and operator entry points |
 | This document | Stable target architecture and authority boundaries |
 | [Product roadmap](../ROADMAP.md) | Product gates, status, dependencies, and delivery order |
+| [Ecosystem project roadmaps](project-roadmaps/README.md) | Cross-repository missions, dependencies, delivery waves, evidence, and forbidden overlap |
+| [Platform completeness review](platform-gap-analysis.md) | Structural and delivery gaps plus closure priority |
+| [AI service platform architecture](ai-service-platform-architecture.md) | Canonical AaaS, WaaS, FaaS, Durable Cell, Inference, Gateway, Runtime, and Box composition |
+| [Agent Runtime architecture](agent-runtime-architecture.md) | Stateful Agent Service binding, checkpoint recovery, Tool/FaaS calls, and scaling |
+| [Function Runtime architecture](function-runtime-architecture.md) | Hosted Task, hosted stateless Service, external FaaS, and sessionless MCP profiles |
+| [Static Web hosting architecture](static-web-hosting-architecture.md) | React/Vue build, immutable Web release, Application UI binding, and Gateway object target |
+| [Deployment and cluster architecture](deployment-and-cluster-architecture.md) | System bootstrap, process roles, middleware, registries, and CPU/GPU cluster ownership |
+| [Elastic service deployment architecture](elastic-service-deployment-architecture.md) | Stateless/stateful deployment, Task concurrency, drain/fence, autoscaling, and node capacity |
+| [Runtime CI/CD architecture](runtime-cicd-architecture.md) | Flow-backed source-to-release-to-promotion delivery for every Runtime target and Cloud system service |
+| [Workload identity and service connectivity](workload-identity-and-service-connectivity-architecture.md) | Attestation, short-lived workload identity, private discovery, peer policy, mTLS, and revocation |
+| [Distributed API consistency](distributed-api-consistency-architecture.md) | Multi-replica commands, rate limiting, caching, locks, transactions, and cross-provider sagas |
+| [Redis and Lane platform architecture](redis-and-lane-platform-architecture.md) | Post-durable fairness/backpressure and reconstructible Redis acceleration |
+| [Observability and analytics architecture](observability-and-analytics-architecture.md) | Causal logs, metrics, traces, SLOs, incidents, evidence retention, and optional Doris projections |
+| [Multi-tenant developer platform architecture](multi-tenant-developer-platform-architecture.md) | Tenant/system-admin authorization planes, isolation, quotas, and lifecycle |
+| [DDD, AOP, and pattern architecture](ddd-aop-and-pattern-architecture.md) | Layer rules, explicit aspect ordering, pattern catalog, and fitness tests |
 | [Development plan](development-plan.md) | Implementation slices, recovery evidence, and exit gates |
 | [Domain model](domain-model.md) | Aggregates, state machines, invariants, and data ownership |
 | [Workflow and evolution plan](workflow-evolution-plan.md) | Detailed `W0`, heterogeneous `A1`, and governed `EV0` contracts, ordering, and failure evidence |
 | [AI application platform plan](ai-application-platform-plan.md) | Detailed `APP0`, `K0`, `AUT0`, built-in node coverage, and public parity evidence |
 | [Durable Cell Service plan](durable-cell-platform-plan.md) | Detailed `CELL0` authority, provider/storage boundary, fencing, gates, and fault evidence |
 | [Inference plan](inference-plan.md) | Detailed `I0` model-serving design |
+| [Model and weight supply architecture](model-supply-architecture.md) | Logical model governance, exact external-hub resolution, immutable weight artifacts, object storage, node cache, license, and trust |
 | [Management MCP contract](management-mcp.md) | Management MCP transport and authorization contract |
 | [A3S Use plugin roadmap](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md) | Canonical package, catalog, plan/apply, grant, binding, capability-generation, and shared Plugin Manager delivery |
 
@@ -31,12 +47,35 @@ whether implementation evidence is sufficient to advance a gate.
 
 ## 2. Product objective and non-goals
 
-The A3S Cloud product stack is an A3S-native platform for durable, isolated,
-resumable Agent and application execution on operator-owned Linux systems. Its
-target is to replace the operational roles commonly assembled from Google AX
-and Kubernetes without requiring either system.
+The A3S Cloud product stack is an Agent-first, Flow-native platform for
+durable, isolated, resumable AI services on operator-owned Linux systems. Its
+four first-class service capabilities are:
 
-The outward-facing application layer groups that platform into five products:
+| Capability | Product semantic owner | Execution projection |
+| --- | --- | --- |
+| AaaS | Agents owns conversation, AgentExecution, semantic events, approval, checkpoint/fork, provider binding, and recovery | Warm stateful Runtime `Service`; bounded batch Agents may use `Task` |
+| WaaS | Workflow owns ontology, immutable definition/plan, WorkflowRun, graph order, typed nodes, HumanTask, and outcome; A3S Flow owns durable coordination | No Workflow Runtime unit; nodes call owner ports that project Tasks, Services, Connectors, Agents, Inference, or Cells |
+| FaaS | Function release/profile owns the closed hosted-Task, hosted-stateless-Service, or external-Connector mode and invocation authority | Runtime `Task`, Runtime `Service`, or no local Unit for external FaaS |
+| Durable Cell | Durable Cells owns application/revision/compatibility/retention and exact deployment/storage correlation | Ordinary provider Runtime `Service`; individual human/multi-Agent collaboration Cells are provider-owned named state |
+
+Durable Cell's later delivery sequence does not reduce its architecture status.
+It is the persistent low-latency shared-state primitive for human/Agent rooms,
+multi-Agent blackboards, presence, alarms, and hibernatable sessions; it does
+not replace Agent or Workflow history.
+
+Model Inference is a first-class shared platform service consumed by AaaS,
+WaaS, and FaaS. Inference owns model and serving semantics; Workloads/Fleet
+owns one CPU/GPU placement and scaling path; A3S Power executes as ordinary
+Runtime Services on Box; Gateway performs request-scoped model/role endpoint
+selection. Independent replicas, multi-node gang replicas, and
+prefill/decode-disaggregated roles remain distinct typed axes.
+
+The target is to replace the operational roles commonly assembled from Google
+AX and Kubernetes without requiring either system.
+
+Existing outward-facing vocabulary also groups the platform into five product
+compositions. These are views over the service capabilities above, not new
+lifecycles or bounded contexts:
 
 | Product | Customer outcome | Reused authorities |
 | --- | --- | --- |
@@ -44,7 +83,7 @@ The outward-facing application layer groups that platform into five products:
 | Workflow autonomous orchestrator | Turn ontology-defined business objects, relationships, rules, goals, and constraints into executable, recoverable workflows across Agents, tools, people, and services | Workflow owns ontology and plan semantics; A3S Flow and Operations remain the only durable orchestration path; existing Agent, MCP, Inference, and Use ports execute typed steps |
 | Agent Factory | Turn heterogeneous Agent prototypes and Harnesses into versioned, evaluated, deployable products with one Cloud execution and evidence contract | Assets, Agents, Workloads, Fleet, Runtime, Box, and one provider-neutral Harness port; A3S Code is the first-party native provider rather than the only admissible Harness |
 | AI Application Platform | Build, publish, monitor, and govern Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences with Knowledge, plugins, triggers, APIs, embed, and MCP delivery | Applications projects every mode to an exact Workflow revision; classic/New Agent reuse A0/A1/AR0; Knowledge pipelines reuse Workflow/Flow; Automations starts exact releases; existing platform authorities remain authoritative |
-| Durable Cell Service | Run named, SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, and fenced recovery | Durable Cells owns application intent; Workloads/Fleet host an ordinary Runtime Service fleet; a selected provider and S0 own per-Cell state and single-writer fencing |
+| Durable Cell Service | Give humans and multiple Agents named shared collaboration state with serialized turns, SQLite durability, alarms, WebSockets, idle eviction/reactivation, and fenced recovery | Durable Cells owns application intent; Workloads/Fleet host an ordinary Runtime Service fleet; a selected provider and S0 own per-Cell state and single-writer fencing |
 
 These are product compositions, not new control planes or bounded-context
 authorities. Each product reuses the single-authority map below. Their public
@@ -68,9 +107,10 @@ is normative so those names cannot turn into duplicate mechanisms:
 | Workflow Service and intelligent orchestration | `Workflow` context for ontology, goals, plan revisions, and Workflow semantic state | A3S Flow plus Operations remains the only durable workflow engine |
 | Ontology Knowledge Graph | Versioned Workflow-owned objects, relationships, rules, goals, and constraints | PostgreSQL through A3S ORM is authoritative; Search/vector indexes are rebuildable projections and no graph database is introduced |
 | Agent Service | `Agents` context with one versioned `AgentExecutionProvider` port | All Harnesses reuse one AgentExecution state model, Fleet channel, Runtime/Box lifecycle, event sequence, and conformance suite |
+| Runtime CI/CD | `Delivery Pipelines` context for immutable pipeline revisions, runs, approvals, promotion policy and owner receipts | Sources, Artifacts, product Releases, Flow, Lane, Workloads, Fleet, Runtime, Box, Edge, Gateway and Operations remain the sole mechanisms |
 | MCP Service | Hosted MCP release and service profile | Existing `A0`/`MCP0`, Workloads, Edge, and Gateway contracts; no MCP scheduler or registry copy |
 | Model Service | Inference model, deployment, route, provider, and usage semantics | Existing `I0`, Power, Workloads, Fleet, Edge, and Gateway contracts; no model scheduler in the service facade |
-| Runtime WaaS/AaaS/FaaS | Product profiles compiled to existing primitives | WorkflowRun uses Flow, AgentExecution uses Agents, and finite functions use Executions; Runtime still exposes only Task and Service lifecycle |
+| Runtime AaaS/WaaS/FaaS and Durable Cell | First-class product profiles compiled to existing primitives | WorkflowRun uses Flow, AgentExecution uses Agents, Functions choose Execution Task, Workload Service, or Connector, and each Cell provider replica is an ordinary Service; Runtime still exposes only Task and Service lifecycle |
 | Asset Hosting | Federated catalog of exact AssetRelease, WorkflowRevision, ModelRevision, and A3S Use package references | Search provides one read projection; each owning context retains release authority and bytes use one immutable-object client |
 | Distributed File Storage | Product storage plane over immutable objects and fenced mutable volumes | Shared immutable-object infrastructure plus `S0` Data providers and `H0` replication; it is never business desired-state authority |
 | Durable Cell Service | Managed named-state application over one immutable profile and ordinary Service fleet | Durable Cells owns application revisions/projections; the Cell provider owns individual SQLite/ownership inside S0; no Cell scheduler, Runtime class, Gateway lookup, or PostgreSQL state mirror |
@@ -87,6 +127,7 @@ box in the public diagram. The following preservation matrix is mandatory:
 | --- | --- | --- |
 | Organizations, projects, environments, identity, grants, REST/OpenAPI, TypeScript client, CLI, and Management MCP | Identity, Projects, `F0`, `C0` | Governance foundation for every product service; never replaced by Unified Gateway |
 | External sources, webhooks, reproducible builds, provenance, previews, monorepos, and imports | Sources, Artifacts, `G0`, `P0` | Supply-chain path feeding hosted applications and capabilities |
+| Runtime CI/CD, conformance, promotion, canary observation and rollback eligibility | Delivery Pipelines, `CD0`, product Release owners, Workloads and Edge | One build-once Flow-backed delivery path for every target; no product-local pipeline or rollout controller |
 | Hosted Git, immutable Agent/MCP/Skill releases, Skill binding, and A3S Use assignments | Assets, Plugins, `A0`, `U0` | Concrete authorities behind Asset Hosting and capability discovery |
 | Generic finite Tasks and ordinary application Services | Executions, Workloads, `R0`, `D0` | Continue as first-class products; WaaS/AaaS/FaaS profiles compile to them rather than replacing them |
 | Node enrollment, outbound mTLS, inventory, Claims, commands, receipts, fencing, and cleanup | Fleet, Node Agent, `N0`, `H0` | Single scheduling and node-control substrate for every new capability |
@@ -96,7 +137,62 @@ box in the public diagram. The following preservation matrix is mandatory:
 | Named SQLite-backed Durable Cells, alarms, WebSockets, idle eviction, and fenced handoff | Durable Cells, selected provider, `CELL0` | Product intent compiles to Workloads/Runtime/Box; per-Cell state and ownership never enter Cloud PostgreSQL or Gateway |
 | Operations, idempotency, Outbox/Event, audit, Search, notifications, telemetry, and runbooks | Operations, Integration Events, Search, `F0`, `C0`, `H0` | Cross-cutting mechanisms reused by Workflow and Evolution; none becomes a new product-local implementation |
 
-### 2.1 Reference capability preservation register
+### 2.1 Canonical service, execution, and supply topology
+
+```text
+clients / browsers / SDKs
+  -> A3S Gateway                         public transport and request dispatch
+  -> A3S Cloud product owner             AaaS / WaaS / FaaS / Cell / Inference
+  -> Delivery Pipelines                  build / verify / release / promote only when delivering a revision
+  -> Operations + A3S Flow               durable long-running coordination
+  -> Executions or Workloads             Task intent or Service/replica intent
+  -> Fleet inventory + Resource Claims   one CPU/GPU placement authority
+  -> A3S Runtime Task / Service           provider-neutral lifecycle/evidence
+  -> A3S Box                              process, sandbox, network, mounts
+  -> CPU or GPU node
+```
+
+No layer may skip downward to obtain a mechanism owned by another layer.
+Product contexts do not call Box; Gateway does not start Runtime Units;
+Runtime does not understand tenant, Agent, Workflow, Function, Cell, or model
+semantics; and Fleet does not select inference endpoints for requests.
+
+Static React/Vue output follows a separate terminal projection after its build
+Task: immutable bundle in the shared object authority -> Assets Web release ->
+Application UI binding -> Edge snapshot -> Gateway read-only object target.
+It does not remain a Service. SSR/BFF remains an ordinary Service.
+
+Cloud has one system bootstrap plane and one tenant workload plane. A3S OS/Box
+starts PostgreSQL, NATS, S3, Hosted Git storage, external OCI Registry, A3S Use
+Registry, migrator, API, Worker, Relay, and Gateway in
+dependency order. Tenant Workloads begin only after that plane is healthy, so
+Cloud never schedules the database or scheduler required to start itself.
+
+The supply plane deliberately has three Registry authorities:
+
+| Authority | Stores | Must not become |
+| --- | --- | --- |
+| Hosted Git | Mutable refs and Git objects for tenant source Assets | OCI blob store, object-store emulation, or package catalog |
+| External OCI Registry | Digest-addressed OCI manifests/blobs; Artifacts owns accepted publication/provenance | Git authority, model catalog, or Cloud-built registry server |
+| A3S Use Registry | Signed TUF metadata, reviewed catalogs, and immutable cognitive-package targets | OCI tag convention, Git ref convention, or Cloud plugin/package manager |
+| Model supply | Inference-owned Model/Revision/WeightVariant metadata plus Artifacts-owned manifests and S3-owned weight/tokenizer/config/card/license bytes | Git repository, executable image, Use package, PostgreSQL blob store, or node cache authority |
+
+The three Registry services plus model supply reuse Secrets and shared object
+transport where appropriate, but their identity, trust, retention, and
+recovery contracts remain separate. ADR
+[0078](decisions/app-platform/0078-separate-git-oci-use-registry-authorities.md)
+is normative.
+
+Manual scaling, autoscaling, rollout, maintenance, and recovery share the
+existing Workload replica/placement/Claim/Runtime/target transition. Explicit
+state-safety profiles add the required drain proof for stateless requests,
+Agent sessions/checkpoints, Cell writer epochs, replicated state, and GPU gang
+members. Finite Tasks scale through fair concurrency admission instead of fake
+replicas. ADR
+[0077](decisions/app-platform/0077-single-elastic-workload-authority.md) is
+normative.
+
+### 2.2 Reference capability preservation register
 
 External products are references for useful outcomes, not authorities inside
 Cloud. This register was reconciled with the public TokenHub and Google AX
@@ -498,8 +594,10 @@ fall back to the old configuration shape.
 
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
-versioned components. Cloud ships no management Web UI or static SPA server;
-all product management enters through `all` or `api`. A worker or relay never
+versioned components. Cloud ships no management Dashboard or management SPA
+server; all product management enters through `all` or `api`. Tenant
+Application and Agent Web releases are immutable `WEB0` content served through
+Gateway and do not add a Cloud management UI or UI-specific backend. A worker or relay never
 registers REST, OpenAPI, or Management MCP product routes merely to obtain a
 health listener. The dedicated relay also does not initialize Flow, Runtime,
 Box, OIDC, GitHub, Vault, Gateway certificate, or object-storage providers. Its

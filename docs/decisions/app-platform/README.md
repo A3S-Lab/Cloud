@@ -80,6 +80,9 @@ AI application platform parity manifest.
 | [0073](0073-single-preview-management-interface.md) | Expose pull-request Preview Policy acceptance, immutable policy reads, and exact current Preview observation through one application authority and thin public adapters |
 | [0074](0074-single-transient-source-discovery-authority.md) | Discover policy-admitted GitHub repositories, branches, and tags through one transient Sources application authority and revalidating provider port |
 | [0075](0075-single-user-file-lifecycle-authority.md) | Persist quota, metadata, audit, Outbox, idempotency, and maintained Files interfaces through one authorization-first UserFile lifecycle authority |
+| [0076](0076-single-agent-flow-function-runtime-authority.md) | Compose Agent, Workflow, hosted/external Function, and sessionless MCP execution from one authority per concern without another Runtime or scheduler |
+| [0077](0077-single-elastic-workload-authority.md) | Deploy and scale stateless, Agent, Durable Cell, Task, and distributed-inference profiles through one Workloads/Fleet authority with explicit safety proofs |
+| [0078](0078-separate-git-oci-use-registry-authorities.md) | Keep Hosted Git, external OCI Registry, signed A3S Use Registry, and governed model/weight supply as separate content and trust authorities |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

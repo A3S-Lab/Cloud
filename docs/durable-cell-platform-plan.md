@@ -10,6 +10,11 @@ similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 status, while [architecture.md](architecture.md) remains authoritative for
 cross-component ownership.
 
+Durable Cell is a first-class Cloud service. Its later near-term delivery
+position is only portfolio sequencing; it does not make Cells an optional
+architecture afterthought or a private implementation detail of Agents,
+Workflow, Applications, or storage.
+
 celld is a reference implementation, not an API promise. Its documented model
 combines a Worker runtime with named Durable Objects, one SQLite database per
 object, object-store coordination, single-writer fencing, replication before
@@ -36,6 +41,22 @@ address named, long-lived state entities. Each Cell:
 - can leave memory when idle and later reactivate from durable state;
 - preserves acknowledged writes across process or node loss; and
 - moves between provider replicas without exposing placement to callers.
+
+The primary AI-native outcome is a persistent shared collaboration space. A
+Cell name may identify a human/Agent room, a team session, a multi-Agent
+blackboard, shared presence, a coordination object, or another
+application-local live state key. Human and Agent requests enter through the
+same authenticated Gateway surface and are serialized under the Cell's current
+writer epoch. Acknowledged shared mutations survive hibernation, process loss,
+and recovery; alarms and WebSockets allow the space to remain live without a
+permanently resident process per room.
+
+That shared space is a data-plane collaboration primitive, not a second
+orchestrator. A3S Flow still owns durable graph ordering, waits, retries, and
+compensation. Agents still own conversation/execution history. Applications,
+Files, and Knowledge still own durable business records and documents. A Cell
+may project or coordinate a live view of those identities, but it cannot
+become their hidden source of truth.
 
 The first production profile is a dedicated Cell fleet per application. A
 shared process may not host mutually untrusted applications until a later
@@ -72,8 +93,8 @@ it is required while preventing it from becoming a second Cloud platform.
 
 ### 3.1 Relationship to Agent Runtime and A3S Runtime
 
-Durable Cells and the governed Agent Runtime experience are sibling Cloud
-product projections. They reuse the same Operations, Workloads, Fleet,
+Durable Cells and the governed Agent Runtime experience are first-class sibling
+Cloud product projections. They reuse the same Operations, Workloads, Fleet,
 Runtime, Box, Secrets, and Gateway authorities, but they do not inherit from or
 own one another:
 

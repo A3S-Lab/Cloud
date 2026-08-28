@@ -51,9 +51,12 @@ This is a capability target, not a compatibility promise. A3S Cloud does not
 copy another product's internal API, storage model, package format, execution
 engine, or configuration authority. All admitted product configuration is
 closed A3S ACL parsed and generated only through `a3s-acl`.
-Product Studio/Web UI implementation and visual parity are intentionally
-outside this repository's interface-only scope; baseline UI outcomes are
-translated only into stable domain and protocol contracts where applicable.
+An A3S Cloud management Studio/Dashboard and visual parity are intentionally
+outside this repository's scope; baseline management outcomes are translated
+into stable domain and protocol contracts where applicable. Tenant-owned
+Application and Agent interfaces remain first-class `WEB0` releases: they are
+built as immutable content, served through Gateway, and consume only the same
+public APIs and grants available to every other client.
 
 The document hierarchy is:
 
@@ -793,10 +796,12 @@ availability is the composite public parity claim and remains unavailable until
 
 ## 12. Implementation sequence
 
-Each slice follows the repository's interface-only policy: tests and ACL
-contracts, domain invariants, application commands/queries, A3S ORM persistence,
-real adapters, REST/OpenAPI, maintained client, CLI, applicable Management MCP,
-and failure/recovery evidence.
+Each slice follows the repository's management-interface and tenant-Web
+separation policy: tests and ACL contracts, domain invariants, application
+commands/queries, A3S ORM persistence, real adapters, REST/OpenAPI, maintained
+client, CLI, applicable Management MCP, and failure/recovery evidence. A `WEB0`
+tenant release is an additional consumer and delivery artifact, never a private
+management contract or product authority.
 
 The recommended sequence is:
 

@@ -2,14 +2,19 @@
 
 ## 1. Domain objective
 
-A3S Cloud manages the path from an immutable source to a healthy, reachable
-workload on an operator-owned node. The model must support ordinary OCI
-applications and A3S-native Agent, MCP, and Skill assets without pretending
-that every platform object is an asset.
+A3S Cloud manages the path from tenant intent to durable, reachable AI
+services on operator-owned CPU/GPU infrastructure. AaaS, WaaS, FaaS, and
+Durable Cell are first-class product capabilities; shared Inference, static Web
+delivery, object storage, source/artifact/package supply, and multi-tenancy
+support them. The model must support ordinary OCI applications and A3S-native
+Agent, MCP, and Skill assets without pretending that every platform object is
+an asset.
 
-Planned I0 adds models and inference deployments as a separate product profile
-that compiles into the same Workloads path; it does not broaden the Asset kind
-set or create a second deployment engine.
+Planned I0 adds the first-class shared model-inference service. Aggregated,
+independent-replica, gang-distributed, and prefill/decode-disaggregated serving
+all compile into managed Workload role slots under the same Workloads/Fleet
+path; I0 does not broaden the Asset kind set or create a second deployment or
+GPU scheduling engine.
 
 In-progress A1 adds durable Agent conversations, executions, semantic events,
 approvals, checkpoints, forks, trajectories, and one provider-neutral Harness
@@ -25,12 +30,23 @@ contract foundation; later gates compile semantic intent to the existing
 Operations and A3S Flow path. W0 does not add another workflow engine,
 scheduler, graph database authority, or task queue.
 
+Planned FN0 adds immutable Function profiles. A profile selects exactly one
+finite Execution/Runtime Task, stateless Workload/Runtime Service, or external
+Connector attempt. Workflow nodes and Agent Tools consume the same Function
+authority; no Function scheduler, queue, Runtime class, or provider retry
+store is introduced.
+
 In-progress APP0 and planned K0/AUT0 add application release/session semantics, RAG
 Knowledge and user-file metadata, and definitions that create exact-release
 invocations. Every ApplicationRelease and KnowledgePipelineRelease binds an
 exact Workflow revision; every durable run still uses Operations and Flow.
 These contexts do not add mode-specific runtimes, an ingestion DAG, a trigger
 queue, a package manager, a model registry, or another object client.
+
+Planned WEB0 adds immutable Web Asset releases and Application UI bindings.
+React/Vue and other static builds are Runtime Tasks whose successful output is
+stored once in the shared object authority and served by Gateway. Static Web
+delivery is not a per-site Service; SSR/BFF remains an ordinary Service.
 
 Planned EV0 adds authorized evidence-dataset manifests, evaluation suites,
 experiments, candidate revisions, promotion decisions, and rollback evidence.
@@ -44,12 +60,14 @@ authoritative for catalog verification, immutable package generations,
 Workspace Grants, Runtime Bindings, capability publication, drain, and
 receipt-owned cleanup.
 
-`CELL0` adds Durable Cell application intent for named, SQLite-backed state
-entities. Cloud owns immutable application revisions and exact deployment
-projections; the selected provider owns each Cell's state, ownership epoch,
-alarm, WebSocket residency, and peer forwarding inside one S0 namespace. It
-does not add a Cell table, scheduler, Runtime class, Gateway owner lookup, node
-channel, or object client.
+`CELL0` adds the first-class Durable Cell collaboration-state service. A named
+Cell may represent a human/Agent room, multi-Agent blackboard, live shared
+session, presence object, or another application-local key. Cloud owns
+immutable application revisions and exact deployment projections; the
+selected provider owns each Cell's state, ownership epoch, alarm, WebSocket
+residency, and peer forwarding inside one S0 namespace. It does not add a Cell
+table, scheduler, Runtime class, Gateway owner lookup, node channel, or object
+client, and it does not replace Agent or Workflow history.
 
 The domain uses ordinary transactional aggregates. It does not event-source all
 business data. A3S Flow event-sources long-running operations, and A3S Event
@@ -71,6 +89,9 @@ distributes committed facts after the corresponding database transaction.
 | Asset | Hosted reusable A3S unit. Its kind is exactly Agent, MCP, or Skill. |
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
 | Asset release | An immutable, versioned publication of one asset revision and artifact. |
+| Hosted Git repository | Assets-owned mutable Git refs and objects served through the one Hosted Git authority and writer lease; it is not an OCI Registry, object bucket, or Use catalog. |
+| OCI Registry | External standards-compliant storage for digest-addressed OCI manifests/blobs. Artifacts owns accepted publication/provenance and Secrets owns credentials; Cloud does not implement the registry. |
+| A3S Use Registry | Signed TUF metadata, reviewed catalog records, and immutable cognitive-package targets whose formats and verification are owned by A3S Use; Cloud stores only tenant enrollment/trust evidence and assignments. |
 | Use plugin package | One immutable A3S Use package identified by `<publisher>/<name>` that may contribute named Tool Task, Tool Service, MCP, Skill, UI, and OKF surfaces. It is not a Cloud Asset. |
 | Plugin registry | An organization-enrolled TUF registry reference and exact trust-root evidence consumed and verified by A3S Use. It is not a Source or OCI registry. |
 | Plugin assignment | Environment-scoped Cloud desired state selecting one exact signed package record, named surfaces, one Use workspace scope, one target Plugin Host, and present/enabled intent. |
@@ -103,6 +124,10 @@ distributes committed facts after the corresponding database transaction.
 | Agent semantic event | Immutable ordered conversation fact such as model output, tool request/result, approval, checkpoint, failure, or terminal outcome; it is not Flow history or a Runtime log. |
 | Agent approval checkpoint | Grant-checked durable decision boundary that prevents Harness progress until an explicit allow, deny, expiry, or cancellation outcome commits. |
 | Agent execution checkpoint | Digest-addressed immutable logical execution state used for verified resume or fork lineage. |
+| Function release | Immutable Function code/artifact and closed profile selecting `hosted_task`, `hosted_service`, or `external`; it is not a Runtime subtype. |
+| Function invocation | Tenant/parent/target/attempt/input/deadline/idempotency authority delegated to Executions, Workloads, or Connectors according to the exact Function profile. |
+| Web release | Immutable verified static bundle manifest, object-prefix identity, entry point, MIME/cache/CSP policy, SPA fallback, provenance, and retention evidence. It is not a running Service. |
+| Application UI binding | Exact Application or Agent release to Web-release and Edge-route correlation; it contains no browser-owned business state or hidden backend. |
 | Evidence dataset | Immutable manifest of tenant-authorized, redacted, retention-bound evidence references with complete provenance and explicit gaps. |
 | Evaluation suite | Immutable evaluator, reward-policy, baseline, integrity, and acceptance-policy revision. |
 | Evolution experiment | One Flow-coordinated evaluation or candidate-generation intent bound to exact dataset, suite, inputs, and compute policy. |
@@ -124,12 +149,23 @@ distributes committed facts after the corresponding database transaction.
 | Preview build lifecycle projection receipt | Immutable Artifacts version/admission/retirement fence that binds an exact Preview version to its optional candidate and prior BuildRun retirement evidence. It is not an Inbox, build queue, retry scheduler, or second BuildRun lifecycle. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
 | Inference model | Tenant-scoped logical model with immutable, resolved model revisions. It is not an Asset. |
+| Model revision | Immutable semantic model revision owning architecture, task/modality, context and compatibility, exact source, license/trust, derivation lineage, and admitted weight-variant references; it stores no weight bytes. |
+| Model weight variant | Immutable precision/quantization/format/tokenizer compatibility selection bound to one exact Artifacts-owned model manifest. |
+| Model artifact manifest | Canonical path-sorted file/shard roles, digests, sizes, root digest, provenance, and shared-object references for weights, tokenizer/config, model card, license, and notices; Artifacts owns it. |
+| Node model cache observation | Fleet-owned age-bounded proof of verified manifest/files and cache capacity on one node; it is applied state, not model availability or durability truth. |
 | Inference backend | Versioned, typed compiler profile that turns one model-serving revision into a generic Workload execution plan. |
-| Inference deployment | Environment-scoped model-serving intent projected into one inference-managed Workload. |
+| Inference deployment | Environment-scoped model-serving intent projected into a closed set of inference-managed Workload role slots. |
+| Inference role slot | Stable `serve`, `prefill`, `decode`, or independently gated `encode` projection key for one managed Workload whose replicas scale together; a replica may itself be a gang placement group. |
+| Inference serving cohort | Complete Gateway-visible set of required role endpoints bound to one compatible model, backend, deployment revision, and rollout generation. |
 | Inference route | External model name, target and fallback policy projected into an Edge target set. |
 | Workload | Environment-scoped desired long-running service. It is not an Asset. |
 | Workload revision | Immutable desired runtime specification derived from one source. |
 | Deployment | One attempt to make a workload revision active on a node. |
+| Scaling policy revision | Immutable Workloads-owned bounds, targets, windows, change rates, cooldowns, zero policy, availability budget, and state-safety requirements. |
+| Scaling signal window | Bounded source-attributed demand/capacity summary used as evidence; it is never desired replica truth. |
+| Scaling decision | Idempotent Workloads mutation bound to one control generation, policy digest, signal-window digest, quota result, reason, and resulting placement generation. |
+| Drain lease | Generation-bound closure of new admission plus a deadline and exact request/session/checkpoint/fence evidence required before retirement. |
+| Capacity intent | Future Compute-owned pool capacity request derived from pending Claims and safety headroom; it cannot select placement or commit Claims. |
 | Node | Enrolled Linux execution target running the A3S Cloud node agent. |
 | Observation | Node-reported fact about the current provider resource and health. |
 | Log chunk | One ordered stdout/stderr position for a Runtime unit generation, stored as verified object bytes with authoritative metadata until body retention leaves a durable tombstone and later compaction leaves a durable sequence range. |
@@ -144,7 +180,7 @@ distributes committed facts after the corresponding database transaction.
 | Durable Cell application | Tenant/project/environment identity for one immutable named-state program and one dedicated provider Service fleet. It is not a Workload or Asset. |
 | Durable Cell application revision | Immutable bundle/provenance, compatibility and state-migration policy, declared Cell classes/bindings, exact Service-profile digest, retention policy, and deployment projection inputs. |
 | Durable Cell Service profile | Canonical ACL fixing the provider protocol, dedicated-fleet isolation, SQLite/single-writer/epoch/durable-ack guarantees, handler/storage requirements, distinct ports, and traffic bounds. |
-| Durable Cell | Application-addressed name whose SQLite lineage, ownership epoch, alarm, WebSocket residency, and activation state belong solely to the selected provider; it is intentionally not a Cloud aggregate. |
+| Durable Cell | Application-addressed shared human/Agent collaboration name whose SQLite lineage, serialized turns, ownership epoch, alarm, WebSocket residency, and activation state belong solely to the selected provider; it is intentionally not a Cloud aggregate. |
 | Secret | Tenant-owned secret identity with immutable encrypted versions. |
 | Operation | Durable A3S Flow run coordinating a deployment, build, backup, restore, rollback, or repair. |
 

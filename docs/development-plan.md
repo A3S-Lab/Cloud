@@ -113,14 +113,17 @@ is the detailed authority. A
 delivery slice may defer one of these outcomes only by retaining its named gate
 and unavailable status; deleting its marketing label is not retirement.
 
-## 1.1 Interface-only execution policy
+## 1.1 Management-interface and tenant-Web separation policy
 
-Effective 2026-08-18, A3S Cloud ships no product Web UI. The product `web/`,
-static `crates/web-server/`, `deploy/web/`, and `tools/web/` paths and their
-build/runtime/CI wiring are removed. The former `website/` documentation SPA,
-the former `architecture-3d/` interactive application, and their Pages
-pipeline are removed as well. Project documentation remains Markdown and
-static README assets, outside every product delivery and availability gate.
+Effective 2026-08-18, A3S Cloud ships no Cloud management Dashboard. The former
+management `web/`, static `crates/web-server/`, `deploy/web/`, and `tools/web/`
+paths and their build/runtime/CI wiring are removed. The former `website/`
+documentation SPA, the former `architecture-3d/` interactive application, and
+their Pages pipeline are removed as well. Project documentation remains
+Markdown and static README assets, outside every product delivery and
+availability gate. This does not prohibit `WEB0`: immutable tenant-owned
+React/Vue or other Web releases are Application/Agent content built through
+Task/Box and served through Gateway without a Cloud UI authority.
 
 An active delivery slice proceeds in this order:
 
@@ -136,9 +139,11 @@ An active delivery slice proceeds in this order:
 6. pass real-provider, failure, process-death, recovery, cleanup, security, and
    cross-repository conformance gates.
 
-No backend endpoint is added only to fit a screen. Product UI state, UI-only
-business behavior, and UI-specific lifecycles are outside Cloud scope. A gate
-is judged only by its supported REST/OpenAPI, maintained client, CLI,
+No backend endpoint is added only to fit a management screen. Cloud-Dashboard
+state, UI-only business behavior, and UI-specific lifecycles are outside Cloud
+scope. Tenant Web delivery reuses the same public API and Gateway policies and
+cannot weaken authorization. A management gate is judged only by its supported
+REST/OpenAPI, maintained client, CLI,
 Management MCP, provider, recovery, and evidence contracts.
 
 ## 2. Engineering rules
@@ -1248,9 +1253,10 @@ Complete the first user-visible release loop.
   with reference-only Secret bindings, and operation queries expose explicit
   rollback lineage plus route/certificate state through the supported
   interfaces without deleting durable history.
-- Retired on 2026-08-18: the product SPA, private static server, Gateway SPA
-  profile, local frontend supervision, and their CI gates were removed under
-  the interface-only product boundary.
+- Retired on 2026-08-18: the former Cloud management SPA, private static
+  server, Gateway management-SPA profile, local frontend supervision, and their
+  CI gates were removed. This retirement does not remove the separate `WEB0`
+  immutable tenant-release and Gateway object-target architecture.
 
 ### Exit gate
 
@@ -1281,7 +1287,8 @@ Complete the first user-visible release loop.
   success.
 - REST/OpenAPI, the maintained client, CLI, and Management MCP reach the same
   application boundary through Gateway; the API-only launcher leaves no child
-  process and no product SPA/static-server fallback exists.
+  process and no Cloud management SPA/static-server fallback exists. A tenant
+  `WEB0` release is independently published as immutable Gateway content.
 - The full scenario runs from a clean machine in CI and on a separately managed
   Linux host; screenshots or mocks are not release evidence.
 
@@ -3917,7 +3924,8 @@ node.
 - Backend persona fixtures prove consumer, project-steward, and
   platform-operator REST/client/CLI/MCP calls expose only authorized query
   results. Global search, counts, timing, and guessed identifiers do not reveal
-  a denied resource. Product UI fixtures are outside the interface-only gate.
+  a denied resource. Cloud management-UI fixtures are outside this gate;
+  tenant `WEB0` clients must pass the same public-contract authorization cases.
 - The `C0.3-PA2a` gate proves that updating a Project attribution profile affects
   only future audit facts: historical records retain the exact prior reference,
   legacy absence stays explicit, and exports contain no Secret, prompt,
