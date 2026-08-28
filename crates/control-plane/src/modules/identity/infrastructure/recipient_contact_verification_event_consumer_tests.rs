@@ -6,12 +6,12 @@ use crate::modules::identity::domain::value_objects::{
     RecipientContactSigningKeyId, RecipientEmailAddress,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, OrganizationId, PrincipalId, RecipientContactId,
-    RecipientContactVerificationId,
+    canonical_timestamp, InstallationId, OrganizationId, PrincipalId, RecipientContactId,
+    RecipientContactVerificationId, ScopeContext,
 };
 use a3s_event::{Event, MemoryProvider};
 use async_trait::async_trait;
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -61,6 +61,8 @@ fn received_event() -> ReceivedEvent {
         Uuid::now_v7(),
     )
     .expect("Outbox fact");
+    let scope = ScopeContext::organization(InstallationId::new(), organization_id)
+        .expect("committed scope");
     let mut event = Event::typed(
         SUBJECT,
         "cloud",
@@ -69,6 +71,7 @@ fn received_event() -> ReceivedEvent {
         RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
         "a3s-cloud",
         serde_json::json!({
+            "scope": scope,
             "organizationId": outbox.organization_id(),
             "aggregateId": outbox.aggregate_id,
             "aggregateVersion": outbox.aggregate_version,

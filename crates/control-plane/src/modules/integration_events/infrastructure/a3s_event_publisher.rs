@@ -1,8 +1,9 @@
-use crate::modules::integration_events::domain::entities::OutboxMessage;
+use crate::modules::integration_events::domain::entities::{
+    OutboxMessage, PublishedOutboxEnvelope,
+};
 use crate::modules::integration_events::domain::services::{EventPublishError, IEventPublisher};
 use a3s_event::{Event, EventBus, MemoryProvider, NatsConfig, NatsProvider, PublishOptions};
 use async_trait::async_trait;
-use serde_json::json;
 use std::sync::Arc;
 
 pub struct A3sEventPublisher {
@@ -49,6 +50,10 @@ impl A3sEventPublisher {
 #[async_trait]
 impl IEventPublisher for A3sEventPublisher {
     async fn publish(&self, message: &OutboxMessage) -> Result<(), EventPublishError> {
+        let envelope =
+            PublishedOutboxEnvelope::from_message(message).map_err(EventPublishError::new)?;
+        let payload = serde_json::to_value(envelope)
+            .map_err(|error| EventPublishError::new(error.to_string()))?;
         let mut event = Event::typed(
             self.subject(&message.event_key),
             "cloud",
@@ -56,16 +61,7 @@ impl IEventPublisher for A3sEventPublisher {
             message.schema_version,
             &message.event_key,
             "a3s-cloud",
-            json!({
-                "scope": message.scope,
-                "organizationId": message.organization_id(),
-                "aggregateId": message.aggregate_id,
-                "aggregateVersion": message.aggregate_version,
-                "occurredAt": message.occurred_at,
-                "correlationId": message.correlation_id,
-                "causationId": message.causation_id,
-                "data": message.payload,
-            }),
+            payload,
         );
         event.id = message.event_id.to_string();
         self.bus

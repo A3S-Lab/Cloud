@@ -11,11 +11,13 @@ use crate::modules::notifications::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, NotificationId,
-    OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
+    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, InstallationId,
+    NotificationId, OrganizationId, PrincipalId, ProjectId, RepositoryError, ScopeContext,
+    Sha256Digest,
 };
 use a3s_event::{Event, MemoryProvider};
 use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -184,6 +186,8 @@ fn delivery_with_budget(maximum_provider_attempts: Option<u64>) -> OutboundNotif
 
 fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> ReceivedEvent {
     let fact = delivery.requested_event().expect("delivery fact");
+    let scope = ScopeContext::organization(InstallationId::new(), delivery.organization_id())
+        .expect("committed scope");
     let mut event = Event::typed(
         SUBJECT,
         "cloud",
@@ -192,6 +196,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         serde_json::json!({
+            "scope": scope,
             "organizationId": fact.organization_id(),
             "aggregateId": fact.aggregate_id,
             "aggregateVersion": fact.aggregate_version,

@@ -66,7 +66,12 @@ integration-fact mechanism. The existing Audit table remains the only audit
 authority. Installation audit is retained indefinitely in this foundation;
 tenant retention continues through the existing Organization authority. A3S
 Event carries the full scope and a derived nullable legacy `organizationId` for
-bounded consumer migration, never a second stored ownership value.
+bounded consumer migration, never a second stored ownership value. The
+Integration Events context owns one strict `PublishedOutboxEnvelope`: the
+publisher constructs it from the validated committed `OutboxMessage`, and every
+consumer decodes that same contract. Its legacy Organization projection must
+equal the canonical scope or validation fails; tenant-only consumers explicitly
+reject Installation scope. No consumer owns a private copy of the wire shape.
 Consumers that read committed Outbox rows decode the canonical `OutboxMessage`
 shape, including its resolved Installation, and use its one checked
 `domain_event()` adapter when an owner decoder needs the pre-commit

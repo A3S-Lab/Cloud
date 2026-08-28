@@ -1,3 +1,4 @@
+use crate::modules::integration_events::PublishedOutboxEnvelope;
 use crate::modules::notifications::application::{
     IOutboundNotificationDispatcher, OutboundNotificationDispatchResult,
 };
@@ -10,8 +11,6 @@ use a3s_event::{
     DeliverPolicy, EventBus, EventError, PendingEvent, ReceivedEvent, SubscribeOptions,
     SubscriptionFilter,
 };
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -280,31 +279,23 @@ fn decode_delivery_event(
     }
     let envelope: PublishedOutboxEnvelope = serde_json::from_value(event.payload.clone())
         .map_err(|_| "outbound notification Outbox envelope is invalid".to_owned())?;
-    let delivery = OutboundNotificationDelivery::from_payload(&envelope.data)?;
+    envelope
+        .validate()
+        .map_err(|_| "outbound notification Outbox envelope is invalid".to_owned())?;
+    let organization_id = envelope.require_tenant_organization_id()?;
+    let delivery = OutboundNotificationDelivery::from_payload(envelope.data())?;
     if event.version != delivery.schema_version()
-        || envelope.organization_id != delivery.organization_id().as_uuid()
-        || envelope.aggregate_id != delivery.id()
-        || envelope.aggregate_version != 1
-        || envelope.occurred_at != delivery.occurred_at()
-        || envelope.correlation_id != delivery.correlation_id()
-        || envelope.causation_id != Some(delivery.source_event_id())
+        || organization_id != delivery.organization_id().as_uuid()
+        || envelope.aggregate_id() != delivery.id()
+        || envelope.aggregate_version() != 1
+        || envelope.occurred_at() != delivery.occurred_at()
+        || envelope.correlation_id() != delivery.correlation_id()
+        || envelope.causation_id() != Some(delivery.source_event_id())
         || event_id != delivery.requested_event_id()
     {
         return Err("outbound notification fact identity is inconsistent".into());
     }
     Ok(delivery)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishedOutboxEnvelope {
-    organization_id: Uuid,
-    aggregate_id: Uuid,
-    aggregate_version: u64,
-    occurred_at: DateTime<Utc>,
-    correlation_id: Uuid,
-    causation_id: Option<Uuid>,
-    data: serde_json::Value,
 }
 
 fn valid_exact_subject(value: &str) -> bool {

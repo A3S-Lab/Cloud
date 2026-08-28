@@ -1885,6 +1885,23 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         manifest.join("src/modules/integration_events/domain/entities/outbox_message.rs"),
     )
     .expect("read committed Outbox message");
+    let published_envelope = std::fs::read_to_string(
+        manifest
+            .join("src/modules/integration_events/domain/entities/published_outbox_envelope.rs"),
+    )
+    .expect("read published Outbox envelope");
+    let publisher = std::fs::read_to_string(
+        manifest.join("src/modules/integration_events/infrastructure/a3s_event_publisher.rs"),
+    )
+    .expect("read A3S Event publisher");
+    let notification_consumer = std::fs::read_to_string(
+        manifest.join("src/modules/notifications/infrastructure/outbound_event_consumer.rs"),
+    )
+    .expect("read notification event consumer");
+    let identity_consumer = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/infrastructure/recipient_contact_verification_event_consumer.rs",
+    ))
+    .expect("read Identity event consumer");
     let persistence = std::fs::read_to_string(manifest.join("src/infrastructure/postgres.rs"))
         .expect("read shared PostgreSQL persistence");
     let outbox_persistence = std::fs::read_to_string(
@@ -1914,6 +1931,32 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     assert!(!event.contains("pub organization_id: Uuid"));
     assert!(outbox.contains("pub scope: ScopeContext"));
     assert!(!outbox.contains("pub organization_id: Uuid"));
+    assert_eq!(
+        [
+            published_envelope.as_str(),
+            publisher.as_str(),
+            notification_consumer.as_str(),
+            identity_consumer.as_str(),
+        ]
+        .into_iter()
+        .map(|source| source.matches("struct PublishedOutboxEnvelope").count())
+        .sum::<usize>(),
+        1
+    );
+    assert!(published_envelope.contains("pub fn from_message(message: &OutboxMessage)"));
+    assert!(published_envelope.contains("canonical_organization_id"));
+    assert!(published_envelope.contains("self.organization_id != canonical_organization_id"));
+    assert!(published_envelope.contains("deny_unknown_fields"));
+    assert!(publisher.contains("PublishedOutboxEnvelope::from_message(message)"));
+    assert!(!publisher.contains("\"scope\": message.scope"));
+    for consumer in [&notification_consumer, &identity_consumer] {
+        assert!(
+            consumer.contains("use crate::modules::integration_events::PublishedOutboxEnvelope")
+        );
+        assert!(consumer.contains(".validate()"));
+        assert!(consumer.contains("envelope.require_tenant_organization_id()"));
+        assert!(!consumer.contains("struct PublishedOutboxEnvelope"));
+    }
     assert!(persistence.contains("pub(crate) scope: CloudScopeRef"));
     assert!(persistence.contains("async fn resolve_cloud_scope("));
     assert!(persistence.contains("ScopeContext::from_resolved_reference"));

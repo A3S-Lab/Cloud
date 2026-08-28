@@ -6,13 +6,12 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::events::RecipientContactChanged;
 use crate::modules::identity::domain::value_objects::RecipientContactSigningKeyId;
+use crate::modules::integration_events::PublishedOutboxEnvelope;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, RecipientContactId};
 use a3s_event::{
     DeliverPolicy, EventBus, EventError, PendingEvent, ReceivedEvent, SubscribeOptions,
     SubscriptionFilter,
 };
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -166,7 +165,11 @@ fn decode_verification_requested_event(
     }
     let envelope: PublishedOutboxEnvelope = serde_json::from_value(event.payload.clone())
         .map_err(|_| "recipient contact verification Outbox envelope is invalid".to_owned())?;
-    let payload: RecipientContactChanged = serde_json::from_value(envelope.data)
+    envelope
+        .validate()
+        .map_err(|_| "recipient contact verification Outbox envelope is invalid".to_owned())?;
+    let organization_id = envelope.require_tenant_organization_id()?;
+    let payload: RecipientContactChanged = serde_json::from_value(envelope.data().clone())
         .map_err(|_| "recipient contact verification payload is invalid".to_owned())?;
     let challenge_id = payload
         .challenge_id
@@ -196,33 +199,19 @@ fn decode_verification_requested_event(
         || payload.verified_at.is_some()
         || payload.revoked_at.is_some()
         || event_id != challenge_id.as_uuid()
-        || envelope.organization_id.is_nil()
-        || envelope.aggregate_id != payload.contact_id
-        || envelope.aggregate_version != payload.contact_version
-        || envelope.occurred_at != issued_at
-        || envelope.correlation_id.is_nil()
-        || envelope.causation_id.is_some()
+        || envelope.aggregate_id() != payload.contact_id
+        || envelope.aggregate_version() != payload.contact_version
+        || envelope.occurred_at() != issued_at
+        || envelope.causation_id().is_some()
     {
         return Err("recipient contact verification fact identity is inconsistent".into());
     }
     let fact = RecipientContactVerificationDeliveryFact {
-        organization_id: OrganizationId::from_uuid(envelope.organization_id),
+        organization_id: OrganizationId::from_uuid(organization_id),
         verification,
     };
     fact.validate()?;
     Ok(fact)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishedOutboxEnvelope {
-    organization_id: Uuid,
-    aggregate_id: Uuid,
-    aggregate_version: u64,
-    occurred_at: DateTime<Utc>,
-    correlation_id: Uuid,
-    causation_id: Option<Uuid>,
-    data: serde_json::Value,
 }
 
 fn valid_exact_subject(value: &str) -> bool {

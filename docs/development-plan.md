@@ -3909,7 +3909,10 @@ node.
   complete live lineage; historical facts retain immutable identity snapshots
   instead of lifecycle foreign keys, so tenant deletion cannot erase audit or
   Outbox evidence. Global facts use no synthetic Organization, and the
-  relay/audit mechanisms remain singular.
+  relay/audit mechanisms remain singular. The A3S Event publisher and every
+  consumer use one strict Integration Events-owned `PublishedOutboxEnvelope`;
+  its bounded legacy Organization projection is checked against canonical
+  scope, and tenant-only consumers fail closed on Installation facts.
   Retained PostgreSQL 17 certification remains the release evidence gate.
   Next, `MT2` adds current-head/approver loading, optimistic policy/binding/grant
   persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
