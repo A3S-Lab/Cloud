@@ -1894,6 +1894,8 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     let security_persistence =
         std::fs::read_to_string(manifest.join("src/modules/security/infrastructure/postgres.rs"))
             .expect("read Security fact projection");
+    let hosted_build_gate = std::fs::read_to_string(manifest.join("tests/support/build_runs.rs"))
+        .expect("read hosted build PostgreSQL gate");
     let migration = std::fs::read_to_string(
         manifest.join("../../migrations/174_installation_scoped_facts.sql"),
     )
@@ -1910,6 +1912,8 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     assert!(!persistence.contains("enum AuditAttributionScope"));
     assert!(outbox_persistence.contains("cloud_scope_document("));
     assert!(security_persistence.contains("\"cloud_scope_document\""));
+    assert!(hosted_build_gate.contains("'scope', cloud_scope_document("));
+    assert!(!hosted_build_gate.contains("'organization_id', organization_id"));
 
     assert_eq!(
         migration

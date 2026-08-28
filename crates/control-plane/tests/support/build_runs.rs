@@ -1437,7 +1437,7 @@ async fn drive_hosted_release_publication(
     let outcome_json = database
         .fetch_one_as(
             sql_query::<serde_json::Value>(
-                "select jsonb_build_object('event_id', event_id, 'event_key', event_key, 'schema_version', schema_version, 'organization_id', organization_id, 'aggregate_id', aggregate_id, 'aggregate_version', aggregate_version, 'occurred_at', occurred_at, 'correlation_id', correlation_id, 'causation_id', causation_id, 'payload', payload, 'delivery_attempts', delivery_attempts) from outbox_events where organization_id = ",
+                "select jsonb_build_object('event_id', event_id, 'event_key', event_key, 'schema_version', schema_version, 'scope', cloud_scope_document(scope_kind, installation_id, organization_id, project_id, environment_id), 'aggregate_id', aggregate_id, 'aggregate_version', aggregate_version, 'occurred_at', occurred_at, 'correlation_id', correlation_id, 'causation_id', causation_id, 'payload', payload, 'delivery_attempts', delivery_attempts) from outbox_events where organization_id = ",
             )
             .bind(asset.organization_id.as_uuid())
             .append(" and aggregate_id = ")
