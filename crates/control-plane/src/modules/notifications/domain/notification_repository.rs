@@ -29,7 +29,7 @@ impl MarkNotificationReadWrite {
             || self.notification.read_at.is_none()
             || self.event.event_key != "notification.inbox.read"
             || self.event.schema_version != 1
-            || self.event.organization_id != self.notification.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.notification.organization_id.as_uuid())
             || self.event.aggregate_id != self.notification.id.as_uuid()
             || self.event.aggregate_version != self.notification.aggregate_version
             || self.event.occurred_at != self.notification.read_at.expect("validated read time")

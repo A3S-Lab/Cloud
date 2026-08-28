@@ -16,7 +16,13 @@ fn domain_claim_message(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: claim_id.as_uuid(),
         aggregate_version,
         occurred_at,

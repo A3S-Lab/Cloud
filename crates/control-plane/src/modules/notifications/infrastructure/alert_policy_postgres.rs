@@ -205,16 +205,18 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: policy.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "notification.alert-policy.created",
                             aggregate_id: policy.id.as_uuid(),
                             occurred_at: policy.created_at,
                             request_id: write.request_id,
-                            attribution_scope: spec.target.project_id().map_or_else(
-                                AuditWrite::not_applicable,
+                            scope: spec.target.project_id().map_or_else(
+                                || {
+                                    AuditWrite::organization_scope(policy.organization_id.as_uuid())
+                                },
                                 |project_id| {
-                                    AuditWrite::project_attribution(
+                                    AuditWrite::resource_scope(
+                                        policy.organization_id.as_uuid(),
                                         project_id,
                                         spec.target.environment_id(),
                                     )
@@ -310,23 +312,21 @@ impl INotificationAlertPolicyRepository for PostgresNotificationRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: policy.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "notification.alert-policy.revoked",
                             aggregate_id: policy.id.as_uuid(),
                             occurred_at: policy.revoked_at.expect("validated policy revoke time"),
                             request_id: write.request_id,
-                            attribution_scope: policy
-                                .definition
-                                .spec()
-                                .target
-                                .project_id()
-                                .map_or_else(AuditWrite::not_applicable, |project_id| {
-                                    AuditWrite::project_attribution(
+                            scope: policy.definition.spec().target.project_id().map_or_else(
+                                || AuditWrite::organization_scope(policy.organization_id.as_uuid()),
+                                |project_id| {
+                                    AuditWrite::resource_scope(
+                                        policy.organization_id.as_uuid(),
                                         project_id,
                                         policy.definition.spec().target.environment_id(),
                                     )
-                                }),
+                                },
+                            ),
                             details: serde_json::json!({
                                 "policyId": policy.id,
                                 "recipientPrincipalId": policy.recipient_principal_id,

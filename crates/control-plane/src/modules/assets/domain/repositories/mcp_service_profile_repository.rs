@@ -63,7 +63,7 @@ impl BindMcpServiceProfileWrite {
                 .is_some_and(|causation_id| causation_id.is_nil())
             || self.event.event_key != "asset.mcp-service-profile.bound"
             || self.event.schema_version != 1
-            || self.event.organization_id != self.binding.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.binding.organization_id.as_uuid())
             || self.event.aggregate_id != self.binding.asset_release_id.as_uuid()
             || self.event.aggregate_version != 1
             || self.event.occurred_at != self.binding.created_at

@@ -135,13 +135,16 @@ async fn store_application_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: record.application.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
             action: "application.release.published",
             aggregate_id: record.application.id.as_uuid(),
             occurred_at: record.release.created_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(record.application.project_id, None),
+            scope: AuditWrite::resource_scope(
+                record.application.organization_id.as_uuid(),
+                record.application.project_id,
+                None,
+            ),
             details: serde_json::json!({
                 "projectId": record.application.project_id,
                 "releaseId": record.release.id,

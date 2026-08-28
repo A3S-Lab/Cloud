@@ -198,16 +198,19 @@ async fn store_resource_grant_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: grant.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: grant.id.as_uuid(),
             occurred_at: grant.updated_at,
             request_id,
-            attribution_scope: grant.scope.project_id().map_or_else(
-                AuditWrite::not_applicable,
+            scope: grant.scope.project_id().map_or_else(
+                || AuditWrite::organization_scope(grant.organization_id.as_uuid()),
                 |project_id| {
-                    AuditWrite::project_attribution(project_id, grant.scope.environment_id())
+                    AuditWrite::resource_scope(
+                        grant.organization_id.as_uuid(),
+                        project_id,
+                        grant.scope.environment_id(),
+                    )
                 },
             ),
             details: serde_json::json!({

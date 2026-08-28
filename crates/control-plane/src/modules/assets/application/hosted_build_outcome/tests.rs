@@ -251,7 +251,13 @@ async fn outbox_adapter_rejects_envelope_drift_before_mutating_assets() {
         event_id: Uuid::now_v7(),
         event_key: crate::modules::artifacts::published::HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
         schema_version: 1,
-        organization_id: outcome.organization_id().as_uuid(),
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                outcome.organization_id().as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: outcome.build_run_id().as_uuid(),
         aggregate_version: outcome.build_run_version(),
         occurred_at: outcome.finished_at(),

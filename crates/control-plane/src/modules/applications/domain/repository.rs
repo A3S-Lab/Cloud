@@ -181,7 +181,7 @@ fn validate_event(
     if event.event_id.is_nil()
         || event.event_key != "application.release.published"
         || event.schema_version != 1
-        || event.organization_id != record.application.organization_id.as_uuid()
+        || event.organization_id() != Some(record.application.organization_id.as_uuid())
         || event.aggregate_id != record.application.id.as_uuid()
         || event.aggregate_version != record.application.aggregate_version
         || event.occurred_at != record.release.created_at

@@ -147,7 +147,7 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         || deployment.cancellation_requested_at.is_some()
         || deployment.cancelled_at.is_some()
         || deployment.aggregate_version != 1
-        || event.organization_id != workload.organization_id.as_uuid()
+        || event.organization_id() != Some(workload.organization_id.as_uuid())
         || event.aggregate_id != deployment.id.as_uuid()
         || event.aggregate_version != deployment.aggregate_version
         || revision.external_build.as_ref().is_some_and(|external| {

@@ -194,7 +194,7 @@ fn validate_event(
 ) -> Result<(), String> {
     if event.event_key != event_key
         || event.schema_version != 1
-        || event.organization_id != record.profile.organization_id.as_uuid()
+        || event.organization_id() != Some(record.profile.organization_id.as_uuid())
         || event.aggregate_id != record.profile.id.as_uuid()
         || event.aggregate_version != record.profile.aggregate_version
         || event.occurred_at != record.revision.created_at

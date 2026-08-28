@@ -5,11 +5,11 @@ use super::postgres_access::{
 use super::postgres_schema::{AuditRecords, IdempotencyRecords, OutboxEvents};
 use crate::config::valid_postgres_role_name;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, ProjectId,
-    RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, InstallationId, NodeId, OrganizationId,
+    ProjectId, RepositoryError, ScopeContext,
 };
 use a3s_boot::{migrate_postgres_queue, BootError, HealthIndicatorResult};
-use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_cloud_contracts::{CloudScopeRef, DomainEventEnvelope};
 use a3s_flow::{migrate_postgres_flow, FlowError};
 use a3s_orm::migration::MigrationRunError;
 use a3s_orm::{
@@ -24,37 +24,35 @@ use uuid::Uuid;
 
 pub(crate) struct AuditWrite {
     pub(crate) audit_id: Uuid,
-    pub(crate) organization_id: Uuid,
+    pub(crate) scope: CloudScopeRef,
     pub(crate) actor_id: Option<Uuid>,
     pub(crate) action: &'static str,
     pub(crate) aggregate_id: Uuid,
     pub(crate) occurred_at: DateTime<Utc>,
     pub(crate) request_id: Uuid,
-    pub(crate) attribution_scope: AuditAttributionScope,
     pub(crate) details: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AuditAttributionScope {
-    NotApplicable,
-    Project {
-        project_id: ProjectId,
-        environment_id: Option<EnvironmentId>,
-    },
-}
-
 impl AuditWrite {
-    pub(crate) const fn not_applicable() -> AuditAttributionScope {
-        AuditAttributionScope::NotApplicable
+    pub(crate) const fn organization_scope(organization_id: Uuid) -> CloudScopeRef {
+        CloudScopeRef::Organization { organization_id }
     }
 
-    pub(crate) const fn project_attribution(
+    pub(crate) const fn resource_scope(
+        organization_id: Uuid,
         project_id: ProjectId,
         environment_id: Option<EnvironmentId>,
-    ) -> AuditAttributionScope {
-        AuditAttributionScope::Project {
-            project_id,
-            environment_id,
+    ) -> CloudScopeRef {
+        match environment_id {
+            Some(environment_id) => CloudScopeRef::Environment {
+                organization_id,
+                project_id: project_id.as_uuid(),
+                environment_id: environment_id.as_uuid(),
+            },
+            None => CloudScopeRef::Project {
+                organization_id,
+                project_id: project_id.as_uuid(),
+            },
         }
     }
 }
@@ -206,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 173;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "173";
+pub const CLOUD_MIGRATION_COUNT: i64 = 174;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "174";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1595,6 +1593,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/173_human_task_submission_owner.sql"
             )),
         ),
+        Migration::new(
+            "174",
+            "canonical Cloud Installation and scoped facts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/174_installation_scoped_facts.sql"
+            )),
+        ),
     ]
 }
 
@@ -1605,6 +1611,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
 mod cloud_migration_manifest_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/installation_scoped_facts_migration.rs"]
+mod installation_scoped_facts_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/node_protocol_session_migration.rs"]
@@ -1806,17 +1816,104 @@ where
     require_one_row("idempotency record", rows)
 }
 
+async fn resolve_cloud_scope(
+    transaction: &PostgresTransaction,
+    reference: &CloudScopeRef,
+) -> Result<ScopeContext, PostgresPersistenceError> {
+    reference
+        .validate()
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let installation_id = match *reference {
+        CloudScopeRef::Installation { installation_id } => fetch_optional::<Uuid, _>(
+            transaction,
+            sql_query::<Uuid>(
+                "select installation.id from cloud_installations installation where installation.singleton_key and installation.id = ",
+            )
+            .bind(installation_id)
+            .append(" for share of installation"),
+        )
+        .await?,
+        CloudScopeRef::Organization { organization_id } => fetch_optional::<Uuid, _>(
+            transaction,
+            sql_query::<Uuid>(
+                "select organization.installation_id from organizations organization where organization.id = ",
+            )
+            .bind(organization_id)
+            .append(" for share of organization"),
+        )
+        .await?,
+        CloudScopeRef::Project {
+            organization_id,
+            project_id,
+        } => fetch_optional::<Uuid, _>(
+            transaction,
+            sql_query::<Uuid>(
+                "select organization.installation_id from organizations organization join projects project on project.organization_id = organization.id where organization.id = ",
+            )
+            .bind(organization_id)
+            .append(" and project.id = ")
+            .bind(project_id)
+            .append(" for share of organization, project"),
+        )
+        .await?,
+        CloudScopeRef::Environment {
+            organization_id,
+            project_id,
+            environment_id,
+        } => fetch_optional::<Uuid, _>(
+            transaction,
+            sql_query::<Uuid>(
+                "select organization.installation_id from organizations organization join projects project on project.organization_id = organization.id join environments environment on environment.organization_id = project.organization_id and environment.project_id = project.id where organization.id = ",
+            )
+            .bind(organization_id)
+            .append(" and project.id = ")
+            .bind(project_id)
+            .append(" and environment.id = ")
+            .bind(environment_id)
+            .append(" for share of organization, project, environment"),
+        )
+        .await?,
+    }
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "Cloud fact scope does not resolve to one canonical Installation lineage".into(),
+        )
+    })?;
+    ScopeContext::from_resolved_reference(InstallationId::from_uuid(installation_id), *reference)
+        .map_err(PostgresPersistenceError::Invariant)
+}
+
 pub(crate) async fn store_outbox(
     transaction: &PostgresTransaction,
     event: &DomainEventEnvelope,
 ) -> Result<(), PostgresPersistenceError> {
+    event
+        .validate()
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let scope = resolve_cloud_scope(transaction, &event.scope).await?;
     let rows = execute(
         transaction,
         insert_into::<OutboxEvents>()
             .value(OutboxEvents::event_id(), event.event_id)
             .value(OutboxEvents::event_key(), event.event_key.as_str())
             .value(OutboxEvents::schema_version(), event.schema_version)
-            .value(OutboxEvents::organization_id(), event.organization_id)
+            .value(
+                OutboxEvents::installation_id(),
+                scope.installation_id().as_uuid(),
+            )
+            .value(OutboxEvents::scope_kind(), scope.kind())
+            .value(
+                OutboxEvents::organization_id(),
+                scope.organization_id().map(OrganizationId::as_uuid),
+            )
+            .value(
+                OutboxEvents::project_id(),
+                scope.project_id().map(ProjectId::as_uuid),
+            )
+            .value(
+                OutboxEvents::environment_id(),
+                scope.environment_id().map(EnvironmentId::as_uuid),
+            )
             .value(OutboxEvents::aggregate_id(), event.aggregate_id)
             .value(OutboxEvents::aggregate_version(), event.aggregate_version)
             .value(OutboxEvents::occurred_at(), event.occurred_at)
@@ -1833,7 +1930,6 @@ pub(crate) async fn store_audit(
     audit: &AuditWrite,
 ) -> Result<(), PostgresPersistenceError> {
     if audit.audit_id.is_nil()
-        || audit.organization_id.is_nil()
         || audit.aggregate_id.is_nil()
         || audit.request_id.is_nil()
         || crate::modules::shared_kernel::domain::validate_audit_action(audit.action).is_err()
@@ -1843,22 +1939,41 @@ pub(crate) async fn store_audit(
             "audit record is invalid".into(),
         ));
     }
-    let (project_id, environment_id, attribution_profile_id, attribution_status) =
-        resolve_audit_attribution(transaction, audit).await?;
+    audit
+        .scope
+        .validate()
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let scope = resolve_cloud_scope(transaction, &audit.scope).await?;
+    let (attribution_profile_id, attribution_status) =
+        resolve_audit_attribution(transaction, audit, scope).await?;
     require_one_row(
         "audit record",
         execute(
             transaction,
             insert_into::<AuditRecords>()
                 .value(AuditRecords::audit_id(), audit.audit_id)
-                .value(AuditRecords::organization_id(), audit.organization_id)
+                .value(
+                    AuditRecords::installation_id(),
+                    scope.installation_id().as_uuid(),
+                )
+                .value(AuditRecords::scope_kind(), scope.kind())
+                .value(
+                    AuditRecords::organization_id(),
+                    scope.organization_id().map(OrganizationId::as_uuid),
+                )
                 .value(AuditRecords::actor_id(), audit.actor_id)
                 .value(AuditRecords::action(), audit.action)
                 .value(AuditRecords::aggregate_id(), audit.aggregate_id)
                 .value(AuditRecords::occurred_at(), audit.occurred_at)
                 .value(AuditRecords::request_id(), audit.request_id)
-                .value(AuditRecords::project_id(), project_id)
-                .value(AuditRecords::environment_id(), environment_id)
+                .value(
+                    AuditRecords::project_id(),
+                    scope.project_id().map(ProjectId::as_uuid),
+                )
+                .value(
+                    AuditRecords::environment_id(),
+                    scope.environment_id().map(EnvironmentId::as_uuid),
+                )
                 .value(
                     AuditRecords::attribution_profile_id(),
                     attribution_profile_id,
@@ -1873,46 +1988,28 @@ pub(crate) async fn store_audit(
 async fn resolve_audit_attribution(
     transaction: &PostgresTransaction,
     audit: &AuditWrite,
-) -> Result<(Option<Uuid>, Option<Uuid>, Option<Uuid>, &'static str), PostgresPersistenceError> {
-    match audit.attribution_scope {
-        AuditAttributionScope::NotApplicable => Ok((None, None, None, "not_applicable")),
-        AuditAttributionScope::Project {
+    scope: ScopeContext,
+) -> Result<(Option<Uuid>, &'static str), PostgresPersistenceError> {
+    match scope {
+        ScopeContext::Installation { .. } | ScopeContext::Organization { .. } => {
+            Ok((None, "not_applicable"))
+        }
+        ScopeContext::Project {
+            organization_id,
             project_id,
-            environment_id,
+            ..
+        }
+        | ScopeContext::Environment {
+            organization_id,
+            project_id,
+            ..
         } => {
-            if project_id.as_uuid().is_nil()
-                || environment_id.is_some_and(|value| value.as_uuid().is_nil())
-            {
-                return Err(PostgresPersistenceError::Invariant(
-                    "audit attribution scope is invalid".into(),
-                ));
-            }
-            fetch_optional::<Uuid, _>(
-                transaction,
-                sql_query::<Uuid>(
-                    "select project.id from projects project where project.organization_id = ",
-                )
-                .bind(audit.organization_id)
-                .append(" and project.id = ")
-                .bind(project_id.as_uuid())
-                .append(" and (")
-                .bind(environment_id.map(EnvironmentId::as_uuid))
-                .append("::uuid is null or exists (select 1 from environments environment where environment.organization_id = project.organization_id and environment.project_id = project.id and environment.id = ")
-                .bind(environment_id.map(EnvironmentId::as_uuid))
-                .append(")) for share of project"),
-            )
-            .await?
-            .ok_or_else(|| {
-                PostgresPersistenceError::Invariant(
-                    "audit attribution Project or Environment is outside the tenant scope".into(),
-                )
-            })?;
             let profile = fetch_optional::<Uuid, _>(
                 transaction,
                 sql_query::<Uuid>(
                     "select profile.id from project_attribution_profiles profile where profile.organization_id = ",
                 )
-                .bind(audit.organization_id)
+                .bind(organization_id.as_uuid())
                 .append(" and profile.project_id = ")
                 .bind(project_id.as_uuid())
                 .append(" and profile.created_at <= ")
@@ -1921,8 +2018,6 @@ async fn resolve_audit_attribution(
             )
             .await?;
             Ok((
-                Some(project_id.as_uuid()),
-                environment_id.map(EnvironmentId::as_uuid),
                 profile,
                 if profile.is_some() {
                     "profile_bound"

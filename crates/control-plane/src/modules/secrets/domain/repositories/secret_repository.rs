@@ -205,7 +205,7 @@ fn validate_write(
     version.validate()?;
     if secret.id != version.secret_id
         || event.event_key != event_key
-        || event.organization_id != secret.organization_id.as_uuid()
+        || event.organization_id() != Some(secret.organization_id.as_uuid())
         || event.aggregate_id != secret.id.as_uuid()
         || event.aggregate_version != secret.aggregate_version
         || event.occurred_at != secret.updated_at

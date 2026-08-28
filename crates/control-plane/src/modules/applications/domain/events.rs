@@ -88,7 +88,9 @@ impl ApplicationReleasePublished {
             event_id: Uuid::now_v7(),
             event_key: "application.release.published".into(),
             schema_version: 1,
-            organization_id: application.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: application.organization_id.as_uuid(),
+            },
             aggregate_id: application.id.as_uuid(),
             aggregate_version: application.aggregate_version,
             occurred_at: release.created_at,

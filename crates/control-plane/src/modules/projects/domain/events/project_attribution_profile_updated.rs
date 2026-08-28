@@ -29,7 +29,9 @@ impl ProjectAttributionProfileUpdated {
             event_id: Uuid::now_v7(),
             event_key: "project.attribution-profile.updated".into(),
             schema_version: 1,
-            organization_id: profile.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: profile.organization_id.as_uuid(),
+            },
             aggregate_id: profile.project_id.as_uuid(),
             aggregate_version: project_aggregate_version,
             occurred_at: profile.created_at,

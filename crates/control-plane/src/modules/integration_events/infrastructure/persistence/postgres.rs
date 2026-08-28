@@ -41,13 +41,18 @@ impl IOutboxRepository for PostgresOutboxRepository {
                         .bind(owner)
                         .append(", leased_until = now() + (")
                         .bind(lease_millis)
-                        .append("::bigint * interval '1 millisecond'), delivery_attempts = e.delivery_attempts + 1 from candidates c where e.event_id = c.event_id returning jsonb_build_object('event_id', e.event_id, 'event_key', e.event_key, 'schema_version', e.schema_version, 'organization_id', e.organization_id, 'aggregate_id', e.aggregate_id, 'aggregate_version', e.aggregate_version, 'occurred_at', e.occurred_at, 'correlation_id', e.correlation_id, 'causation_id', e.causation_id, 'payload', e.payload, 'delivery_attempts', e.delivery_attempts)"),
+                        .append("::bigint * interval '1 millisecond'), delivery_attempts = e.delivery_attempts + 1 from candidates c where e.event_id = c.event_id returning jsonb_build_object('event_id', e.event_id, 'event_key', e.event_key, 'schema_version', e.schema_version, 'scope', cloud_scope_document(e.scope_kind, e.installation_id, e.organization_id, e.project_id, e.environment_id), 'aggregate_id', e.aggregate_id, 'aggregate_version', e.aggregate_version, 'occurred_at', e.occurred_at, 'correlation_id', e.correlation_id, 'causation_id', e.causation_id, 'payload', e.payload, 'delivery_attempts', e.delivery_attempts)"),
                     )
                     .await?;
                     rows.into_iter()
-                        .map(serde_json::from_value)
-                        .collect::<Result<Vec<OutboxMessage>, _>>()
-                        .map_err(PostgresPersistenceError::from)
+                        .map(|row| {
+                            let message: OutboxMessage = serde_json::from_value(row)?;
+                            message
+                                .validate()
+                                .map_err(PostgresPersistenceError::Invariant)?;
+                            Ok(message)
+                        })
+                        .collect::<Result<Vec<_>, PostgresPersistenceError>>()
                 })
             })
             .await

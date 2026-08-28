@@ -135,7 +135,9 @@ impl NodeAvailabilityChanged {
             event_id,
             event_key: NODE_UNAVAILABLE_EVENT_KEY.into(),
             schema_version: 1,
-            organization_id: snapshot.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: snapshot.organization_id.as_uuid(),
+            },
             aggregate_id: snapshot.node_id.as_uuid(),
             aggregate_version: availability_phase,
             occurred_at: detected_at,
@@ -206,7 +208,9 @@ impl NodeAvailabilityChanged {
             event_id,
             event_key: NODE_AVAILABILITY_RESOLVED_EVENT_KEY.into(),
             schema_version: 1,
-            organization_id: snapshot.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: snapshot.organization_id.as_uuid(),
+            },
             aggregate_id: snapshot.node_id.as_uuid(),
             aggregate_version: availability_phase,
             occurred_at: resolved_at,
@@ -277,10 +281,10 @@ impl NodeAvailabilityChanged {
         };
         if event.schema_version != 1
             || event.event_id.is_nil()
-            || event.organization_id.is_nil()
+            || event.organization_id().is_none()
             || event.aggregate_id.is_nil()
             || canonical_timestamp(event.occurred_at) != event.occurred_at
-            || payload.organization_id.as_uuid() != event.organization_id
+            || Some(payload.organization_id.as_uuid()) != event.organization_id()
             || payload.node_id.as_uuid() != event.aggregate_id
             || payload.organization_id.as_uuid().is_nil()
             || payload.node_id.as_uuid().is_nil()

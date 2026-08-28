@@ -26,7 +26,9 @@ impl SourceRevisionAccepted {
             event_id: Uuid::now_v7(),
             event_key: SOURCE_REVISION_ACCEPTED_EVENT_KEY.into(),
             schema_version: SOURCE_REVISION_ACCEPTED_SCHEMA_VERSION,
-            organization_id: revision.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: revision.organization_id.as_uuid(),
+            },
             aggregate_id: revision.id.as_uuid(),
             aggregate_version: revision.aggregate_version,
             occurred_at: revision.accepted_at,

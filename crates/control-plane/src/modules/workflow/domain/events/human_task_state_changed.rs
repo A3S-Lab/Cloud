@@ -40,7 +40,9 @@ impl HumanTaskStateChanged {
             event_id: Uuid::new_v5(&task.id.as_uuid(), event_identity.as_bytes()),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: task.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: task.organization_id.as_uuid(),
+            },
             aggregate_id: task.id.as_uuid(),
             aggregate_version: task.aggregate_version,
             occurred_at: task.updated_at,

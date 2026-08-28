@@ -225,13 +225,12 @@ pub(super) async fn store_membership_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: record.membership.organization_id.as_uuid(),
+            scope: AuditWrite::organization_scope(record.membership.organization_id.as_uuid()),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: record.membership.id.as_uuid(),
             occurred_at: record.membership.updated_at,
             request_id,
-            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "principalId": record.principal.id,
                 "principalKind": record.principal.kind.as_str(),

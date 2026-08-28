@@ -481,7 +481,10 @@ async fn load_outbox_messages(
             event_id: row.event_id,
             event_key: row.event_key,
             schema_version: row.schema_version,
-            organization_id: row.organization_id,
+            scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+                a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+                a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(row.organization_id),
+            ).expect("scope"),
             aggregate_id: row.aggregate_id,
             aggregate_version: row.aggregate_version,
             occurred_at: row.occurred_at,
@@ -550,7 +553,13 @@ fn message(
         event_id: Uuid::now_v7(),
         event_key: PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY.into(),
         schema_version: PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: source_pull_request_change_id.as_uuid(),
         aggregate_version: 1,
         occurred_at,

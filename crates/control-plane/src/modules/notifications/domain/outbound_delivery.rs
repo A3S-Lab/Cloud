@@ -237,7 +237,9 @@ impl OutboundNotificationDelivery {
             event_id: self.requested_event_id(),
             event_key: OUTBOUND_NOTIFICATION_EVENT_KEY.into(),
             schema_version: self.schema_version,
-            organization_id: self.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: self.organization_id.as_uuid(),
+            },
             aggregate_id: self.id,
             aggregate_version: 1,
             occurred_at: self.occurred_at,

@@ -185,7 +185,9 @@ pub(super) async fn publish_active_route(
                 event_id: Uuid::now_v7(),
                 event_key: "edge.route.publication-staged".into(),
                 schema_version: 1,
-                organization_id: workload.organization_id.as_uuid(),
+                scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                    organization_id: workload.organization_id.as_uuid(),
+                },
                 aggregate_id: route_id.as_uuid(),
                 aggregate_version: 2,
                 occurred_at: staged_at,
@@ -1126,7 +1128,9 @@ pub(super) fn event(organization_id: OrganizationId) -> DomainEventEnvelope {
         event_id: Uuid::now_v7(),
         event_key: "fleet.enrollment-token.issued".into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: organization_id.as_uuid(),
+        },
         aggregate_id: Uuid::now_v7(),
         aggregate_version: 1,
         occurred_at: Utc::now(),

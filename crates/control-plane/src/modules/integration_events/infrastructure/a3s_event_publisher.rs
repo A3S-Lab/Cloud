@@ -57,7 +57,8 @@ impl IEventPublisher for A3sEventPublisher {
             &message.event_key,
             "a3s-cloud",
             json!({
-                "organizationId": message.organization_id,
+                "scope": message.scope,
+                "organizationId": message.organization_id(),
                 "aggregateId": message.aggregate_id,
                 "aggregateVersion": message.aggregate_version,
                 "occurredAt": message.occurred_at,

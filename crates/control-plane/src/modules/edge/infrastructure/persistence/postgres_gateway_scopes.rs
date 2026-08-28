@@ -316,7 +316,7 @@ fn validate_event(bundle: &CreateGatewayScopeWrite) -> Result<(), RepositoryErro
         || scope.updated_at != scope.created_at
         || event.event_key != "edge.gateway-scope.created"
         || event.schema_version != 2
-        || event.organization_id != scope.organization_id.as_uuid()
+        || event.organization_id() != Some(scope.organization_id.as_uuid())
         || event.aggregate_id != scope.id.as_uuid()
         || event.aggregate_version != scope.aggregate_version
         || event.occurred_at != scope.created_at

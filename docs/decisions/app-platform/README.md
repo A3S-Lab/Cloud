@@ -86,6 +86,7 @@ AI application platform parity manifest.
 | [0079](0079-identity-owned-workload-trust-contract.md) | Keep workload trust policy in Identity while Fleet, Workloads, Runtime, Box, and Secrets retain evidence and lifecycle authority |
 | [0080](0080-identity-owned-platform-scope-and-rbac.md) | Keep explicit installation/tenant scope and closed platform RBAC inside the single Identity authority |
 | [0081](0081-one-privileged-authorization-evidence-model.md) | Keep support intent in canonical ACL and issued privileged allows in the one digest-bound decision evidence model |
+| [0082](0082-one-installation-scoped-fact-rail.md) | Persist one immutable Installation identity and reuse one exact scope-aware Audit/Outbox fact rail |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

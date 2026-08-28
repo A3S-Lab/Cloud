@@ -1874,6 +1874,71 @@ fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrow
 }
 
 #[test]
+fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let event = std::fs::read_to_string(manifest.join("../contracts/src/event.rs"))
+        .expect("read public event envelope");
+    let scope_reference =
+        std::fs::read_to_string(manifest.join("../contracts/src/cloud_scope_ref.rs"))
+            .expect("read public Cloud scope reference");
+    let outbox = std::fs::read_to_string(
+        manifest.join("src/modules/integration_events/domain/entities/outbox_message.rs"),
+    )
+    .expect("read committed Outbox message");
+    let persistence = std::fs::read_to_string(manifest.join("src/infrastructure/postgres.rs"))
+        .expect("read shared PostgreSQL persistence");
+    let outbox_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/integration_events/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Outbox persistence");
+    let security_persistence =
+        std::fs::read_to_string(manifest.join("src/modules/security/infrastructure/postgres.rs"))
+            .expect("read Security fact projection");
+    let migration = std::fs::read_to_string(
+        manifest.join("../../migrations/174_installation_scoped_facts.sql"),
+    )
+    .expect("read Installation scope migration");
+
+    assert!(scope_reference.contains("pub enum CloudScopeRef"));
+    assert!(event.contains("pub scope: CloudScopeRef"));
+    assert!(!event.contains("pub organization_id: Uuid"));
+    assert!(outbox.contains("pub scope: ScopeContext"));
+    assert!(!outbox.contains("pub organization_id: Uuid"));
+    assert!(persistence.contains("pub(crate) scope: CloudScopeRef"));
+    assert!(persistence.contains("async fn resolve_cloud_scope("));
+    assert!(persistence.contains("ScopeContext::from_resolved_reference"));
+    assert!(!persistence.contains("enum AuditAttributionScope"));
+    assert!(outbox_persistence.contains("cloud_scope_document("));
+    assert!(security_persistence.contains("\"cloud_scope_document\""));
+
+    assert_eq!(
+        migration
+            .matches("create table cloud_installations")
+            .count(),
+        1
+    );
+    assert_eq!(
+        migration
+            .matches("create function cloud_scope_document")
+            .count(),
+        1
+    );
+    assert!(migration.contains("alter table outbox_events"));
+    assert!(migration.contains("alter table audit_records"));
+    for forbidden in [
+        "create table platform_outbox",
+        "create table tenant_outbox",
+        "create table platform_audit",
+        "create table tenant_audit",
+    ] {
+        assert!(
+            !migration.contains(forbidden),
+            "Installation scope introduced duplicate mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn privileged_tenant_support_reuses_one_decision_evidence_mechanism_and_never_implies_data_access()
 {
     let root = module_root();

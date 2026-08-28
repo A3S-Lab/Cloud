@@ -41,7 +41,7 @@ impl AcceptPullRequestPreviewPolicyRevisionWrite {
             || self.event.event_id.is_nil()
             || self.event.event_key != PULL_REQUEST_PREVIEW_POLICY_REVISION_ACCEPTED_EVENT_KEY
             || self.event.schema_version != 1
-            || self.event.organization_id != self.revision.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.revision.organization_id.as_uuid())
             || self.event.aggregate_id != self.revision.source_subscription_id.as_uuid()
             || self.event.aggregate_version != self.revision.revision_number
             || self.event.occurred_at != self.revision.accepted_at

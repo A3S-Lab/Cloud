@@ -32,7 +32,7 @@ impl CreateAgentConversationWrite {
             || conversation.last_event_sequence != 0
             || event.event_key != "agent.conversation.created"
             || event.schema_version != 1
-            || event.organization_id != conversation.organization_id.as_uuid()
+            || event.organization_id() != Some(conversation.organization_id.as_uuid())
             || event.aggregate_id != conversation.id.as_uuid()
             || event.aggregate_version != conversation.aggregate_version
             || event.occurred_at != conversation.created_at
@@ -70,7 +70,7 @@ impl StartAgentExecutionWrite {
             || execution.aggregate_version != 1
             || event.event_key != "agent.execution.started"
             || event.schema_version != 1
-            || event.organization_id != execution.organization_id.as_uuid()
+            || event.organization_id() != Some(execution.organization_id.as_uuid())
             || event.aggregate_id != execution.id.as_uuid()
             || event.aggregate_version != execution.aggregate_version
             || event.occurred_at != execution.requested_at
@@ -112,7 +112,7 @@ impl RequestAgentExecutionCancellationWrite {
             || execution.cancellation_requested_at != Some(execution.updated_at)
             || event.event_key != "agent.execution.cancellation-requested"
             || event.schema_version != 1
-            || event.organization_id != execution.organization_id.as_uuid()
+            || event.organization_id() != Some(execution.organization_id.as_uuid())
             || event.aggregate_id != execution.id.as_uuid()
             || event.aggregate_version != execution.aggregate_version
             || event.occurred_at != execution.updated_at

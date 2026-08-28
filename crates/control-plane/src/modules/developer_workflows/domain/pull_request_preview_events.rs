@@ -42,7 +42,9 @@ impl PullRequestPreviewLifecycleEvent {
             event_id: Uuid::now_v7(),
             event_key: PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
             schema_version: PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
-            organization_id: preview.policy_authority.policy.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: preview.policy_authority.policy.organization_id.as_uuid(),
+            },
             aggregate_id: preview.id.as_uuid(),
             aggregate_version: preview.aggregate_version,
             occurred_at,
@@ -77,7 +79,7 @@ impl PullRequestPreviewLifecycleEvent {
                 format!("Preview lifecycle payload could not be decoded: {error}")
             })?;
         Self::validate_payload(&payload)?;
-        if envelope.organization_id != payload.organization_id.as_uuid()
+        if envelope.organization_id() != Some(payload.organization_id.as_uuid())
             || envelope.aggregate_id != payload.preview_id.as_uuid()
             || envelope.aggregate_version != payload.preview_aggregate_version
         {

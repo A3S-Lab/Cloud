@@ -395,16 +395,20 @@ impl INotificationRepository for PostgresNotificationRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: write.notification.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "notification.inbox.read",
                             aggregate_id: write.notification.id.as_uuid(),
                             occurred_at: write.notification.read_at.expect("validated read time"),
                             request_id: write.request_id,
-                            attribution_scope: write.notification.scope.project_id().map_or_else(
-                                AuditWrite::not_applicable,
+                            scope: write.notification.scope.project_id().map_or_else(
+                                || {
+                                    AuditWrite::organization_scope(
+                                        write.notification.organization_id.as_uuid(),
+                                    )
+                                },
                                 |project_id| {
-                                    AuditWrite::project_attribution(
+                                    AuditWrite::resource_scope(
+                                        write.notification.organization_id.as_uuid(),
                                         project_id,
                                         write.notification.scope.environment_id(),
                                     )

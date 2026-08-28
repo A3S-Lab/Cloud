@@ -67,7 +67,9 @@ impl WorkflowRevisionPublished {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: definition.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: definition.organization_id.as_uuid(),
+            },
             aggregate_id: definition.id.as_uuid(),
             aggregate_version: definition.aggregate_version,
             occurred_at: revision.created_at,

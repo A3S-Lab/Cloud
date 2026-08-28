@@ -28,7 +28,9 @@ impl ApiTokenCreated {
             event_id: Uuid::now_v7(),
             event_key: "identity.token.created".into(),
             schema_version: 1,
-            organization_id: token.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: token.organization_id.as_uuid(),
+            },
             aggregate_id: token.id.as_uuid(),
             aggregate_version: token.aggregate_version,
             occurred_at: token.created_at,

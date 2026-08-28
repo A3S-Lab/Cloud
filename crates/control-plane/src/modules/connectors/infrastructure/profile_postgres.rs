@@ -622,13 +622,13 @@ async fn store_connector_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: record.profile.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: record.profile.id.as_uuid(),
             occurred_at: record.revision.created_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(
+            scope: AuditWrite::resource_scope(
+                record.profile.organization_id.as_uuid(),
                 record.profile.project_id,
                 Some(record.profile.environment_id),
             ),

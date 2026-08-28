@@ -23,7 +23,9 @@ impl OrganizationCreated {
             event_id: Uuid::now_v7(),
             event_key: "identity.organization.created".into(),
             schema_version: 1,
-            organization_id: organization.id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: organization.id.as_uuid(),
+            },
             aggregate_id: organization.id.as_uuid(),
             aggregate_version: organization.aggregate_version,
             occurred_at: organization.created_at,

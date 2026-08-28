@@ -493,7 +493,9 @@ pub(super) async fn exercise_notification_persistence(
         event_id: Uuid::now_v7(),
         event_key: "notification.inbox.read".into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: organization_id.as_uuid(),
+        },
         aggregate_id: read.id.as_uuid(),
         aggregate_version: read.aggregate_version,
         occurred_at: read.read_at.expect("read time"),
@@ -906,7 +908,7 @@ async fn assert_suppressed_delivery_rejected(
                             .append(", ")
                             .bind(fact.schema_version)
                             .append(", ")
-                            .bind(fact.organization_id)
+                            .bind(fact.organization_id())
                             .append(", ")
                             .bind(fact.aggregate_id)
                             .append(", ")

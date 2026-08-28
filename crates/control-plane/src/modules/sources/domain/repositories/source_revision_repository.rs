@@ -35,7 +35,7 @@ impl AcceptSourceRevision {
         if event.event_id.is_nil()
             || event.event_key != SOURCE_REVISION_ACCEPTED_EVENT_KEY
             || event.schema_version != SOURCE_REVISION_ACCEPTED_SCHEMA_VERSION
-            || event.organization_id != self.revision.organization_id.as_uuid()
+            || event.organization_id() != Some(self.revision.organization_id.as_uuid())
             || event.aggregate_id != self.revision.id.as_uuid()
             || event.aggregate_version != self.revision.aggregate_version
             || event.occurred_at != self.revision.accepted_at

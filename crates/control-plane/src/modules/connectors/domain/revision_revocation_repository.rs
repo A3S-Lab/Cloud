@@ -85,7 +85,7 @@ fn validate_event(
 ) -> Result<(), String> {
     if event.event_key != "connector.revision.revoked"
         || event.schema_version != 1
-        || event.organization_id != revocation.organization_id.as_uuid()
+        || event.organization_id() != Some(revocation.organization_id.as_uuid())
         || event.aggregate_id != revocation.revision_id.as_uuid()
         || event.aggregate_version != 1
         || event.occurred_at != revocation.revoked_at

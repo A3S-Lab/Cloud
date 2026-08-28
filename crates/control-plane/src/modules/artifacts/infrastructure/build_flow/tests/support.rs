@@ -726,7 +726,9 @@ fn event(organization_id: OrganizationId) -> DomainEventEnvelope {
         event_id: Uuid::now_v7(),
         event_key: "test.build.fixture".into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: organization_id.as_uuid(),
+        },
         aggregate_id: Uuid::now_v7(),
         aggregate_version: 1,
         occurred_at: Utc::now(),

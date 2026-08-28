@@ -157,13 +157,12 @@ async fn store_invitation_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: invitation.organization_id.as_uuid(),
+            scope: AuditWrite::organization_scope(invitation.organization_id.as_uuid()),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: invitation.id.as_uuid(),
             occurred_at: invitation.updated_at,
             request_id,
-            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "principalId": invitation.principal_id,
                 "role": invitation.role.as_str(),

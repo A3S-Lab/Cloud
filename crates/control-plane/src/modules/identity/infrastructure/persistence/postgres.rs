@@ -124,13 +124,12 @@ impl IOrganizationRepository for PostgresIdentityRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: organization.id.as_uuid(),
+                            scope: AuditWrite::organization_scope(organization.id.as_uuid()),
                             actor_id: Some(actor_principal_id.as_uuid()),
                             action: "identity.organization.created",
                             aggregate_id: organization.id.as_uuid(),
                             occurred_at: organization.created_at,
                             request_id,
-                            attribution_scope: AuditWrite::not_applicable(),
                             details: serde_json::json!({
                                 "ownerMembershipId": owner_membership.id,
                                 "ownerPrincipalId": owner_membership.principal_id,

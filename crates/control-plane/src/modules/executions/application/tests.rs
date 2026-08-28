@@ -146,7 +146,9 @@ async fn environment() -> (
                 event_id: Uuid::now_v7(),
                 event_key: "project.environment.created".into(),
                 schema_version: 1,
-                organization_id: organization_id.as_uuid(),
+                scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                    organization_id: organization_id.as_uuid(),
+                },
                 aggregate_id: environment_id.as_uuid(),
                 aggregate_version: 1,
                 occurred_at: created_at,

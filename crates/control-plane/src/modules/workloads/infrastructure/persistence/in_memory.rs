@@ -603,7 +603,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             || request.operation.subject.kind() != "workload"
             || request.operation.subject.id() != request.workload.id.as_uuid()
             || request.operation.requested_at < request.workload.updated_at
-            || request.event.organization_id != request.workload.organization_id.as_uuid()
+            || request.event.organization_id() != Some(request.workload.organization_id.as_uuid())
             || request.event.aggregate_id != request.workload.id.as_uuid()
             || request.event.aggregate_version != request.workload.aggregate_version
         {
@@ -2725,7 +2725,7 @@ fn validate_cancellation_bundle(
         .map_err(RepositoryError::Conflict)?;
     if current.aggregate_version != request.expected_version
         || expected != request.deployment
-        || request.event.organization_id != request.deployment.organization_id.as_uuid()
+        || request.event.organization_id() != Some(request.deployment.organization_id.as_uuid())
         || request.event.aggregate_id != request.deployment.id.as_uuid()
         || request.event.aggregate_version != request.deployment.aggregate_version
     {

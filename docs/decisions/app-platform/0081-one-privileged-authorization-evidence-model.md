@@ -61,11 +61,11 @@ requested action/scope/resource/request identity, decision time and, when used,
 the complete support-grant ACL plus lifecycle generation. Historical validation
 therefore does not depend on Redis, a cache or mutable current rows.
 
-The next persistence slice must introduce one canonical installation identity
-and a discriminated `ScopeContext` for Audit and Outbox. It must migrate
-existing Organization facts without inventing global tenant IDs. PostgreSQL/CAS
-remains revocation and policy-head truth; cache or locks may only accelerate a
-decision.
+ADR 0082 implements the following persistence foundation: one canonical
+Installation identity and one discriminated scope contract for the existing
+Audit and Outbox rail. Existing Organization facts migrate without inventing a
+global tenant ID. PostgreSQL/CAS remains revocation and policy-head truth;
+cache or locks may only accelerate a decision.
 
 ## Consequences
 
@@ -76,7 +76,7 @@ decision.
 - Approver existence, active-human status, separation of duties, current policy
   head and persistence concurrency are Application/persistence obligations;
   component constructors alone grant no production authority.
-- `C0.5-MT1-C2` is component-only. Canonical installation identity,
-  installation-aware Audit/Outbox, repositories, Application interfaces,
-  last-owner/self-escalation controls, cross-surface enforcement and hostile
-  multi-replica evidence remain required.
+- `C0.5-MT1-C2` remains component-only. ADR 0082 supplies canonical
+  Installation identity and Installation-aware Audit/Outbox; repositories,
+  Application interfaces, last-owner/self-escalation controls, cross-surface
+  enforcement and hostile multi-replica evidence remain required.

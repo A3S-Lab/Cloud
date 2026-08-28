@@ -69,7 +69,7 @@ fn received_event() -> ReceivedEvent {
         RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
         "a3s-cloud",
         serde_json::json!({
-            "organizationId": outbox.organization_id,
+            "organizationId": outbox.organization_id(),
             "aggregateId": outbox.aggregate_id,
             "aggregateVersion": outbox.aggregate_version,
             "occurredAt": outbox.occurred_at,

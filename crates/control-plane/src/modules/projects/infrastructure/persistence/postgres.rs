@@ -302,13 +302,12 @@ impl IProjectRepository for PostgresProjectsRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: profile.organization_id.as_uuid(),
                             actor_id: Some(profile.created_by.as_uuid()),
                             action: "project.attribution-profile.updated",
                             aggregate_id: profile.project_id.as_uuid(),
                             occurred_at: profile.created_at,
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(profile.organization_id.as_uuid(),
                                 profile.project_id,
                                 None,
                             ),

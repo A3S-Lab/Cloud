@@ -29,7 +29,7 @@ impl IIntegrationEventProjector for HostedBuildOutcomeProjector {
             .map_err(|error| invalid_message(format!("payload could not be decoded: {error}")))?;
         outcome.validate().map_err(invalid_message)?;
         if message.schema_version != 1
-            || message.organization_id != outcome.organization_id().as_uuid()
+            || message.organization_id() != Some(outcome.organization_id().as_uuid())
             || message.aggregate_id != outcome.build_run_id().as_uuid()
             || message.aggregate_version != outcome.build_run_version()
             || message.occurred_at != outcome.finished_at()

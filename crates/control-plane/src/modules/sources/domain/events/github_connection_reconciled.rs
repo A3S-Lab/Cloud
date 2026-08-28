@@ -22,7 +22,9 @@ impl GithubConnectionReconciled {
             event_id: Uuid::now_v7(),
             event_key: "source.github-connection.reconciled".into(),
             schema_version: 1,
-            organization_id: connection.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: connection.organization_id.as_uuid(),
+            },
             aggregate_id: connection.id.as_uuid(),
             aggregate_version: connection.aggregate_version,
             occurred_at: connection.updated_at,

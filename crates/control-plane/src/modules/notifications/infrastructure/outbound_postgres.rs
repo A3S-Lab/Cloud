@@ -558,16 +558,20 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: subscription.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "notification.outbound-subscription.created",
                             aggregate_id: subscription.id.as_uuid(),
                             occurred_at: subscription.created_at,
                             request_id: write.request_id,
-                            attribution_scope: spec.target.connector().map_or_else(
-                                AuditWrite::not_applicable,
+                            scope: spec.target.connector().map_or_else(
+                                || {
+                                    AuditWrite::organization_scope(
+                                        subscription.organization_id.as_uuid(),
+                                    )
+                                },
                                 |target| {
-                                    AuditWrite::project_attribution(
+                                    AuditWrite::resource_scope(
+                                        subscription.organization_id.as_uuid(),
                                         target.project_id,
                                         Some(target.environment_id),
                                     )
@@ -667,7 +671,6 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: subscription.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "notification.outbound-subscription.revoked",
                             aggregate_id: subscription.id.as_uuid(),
@@ -675,17 +678,25 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
                                 .revoked_at
                                 .expect("validated subscription revoke time"),
                             request_id: write.request_id,
-                            attribution_scope: subscription
+                            scope: subscription
                                 .definition
                                 .spec()
                                 .target
                                 .connector()
-                                .map_or_else(AuditWrite::not_applicable, |target| {
-                                    AuditWrite::project_attribution(
-                                        target.project_id,
-                                        Some(target.environment_id),
-                                    )
-                                }),
+                                .map_or_else(
+                                    || {
+                                        AuditWrite::organization_scope(
+                                            subscription.organization_id.as_uuid(),
+                                        )
+                                    },
+                                    |target| {
+                                        AuditWrite::resource_scope(
+                                            subscription.organization_id.as_uuid(),
+                                            target.project_id,
+                                            Some(target.environment_id),
+                                        )
+                                    },
+                                ),
                             details: serde_json::json!({
                                 "subscriptionId": subscription.id,
                                 "recipientPrincipalId": subscription.recipient_principal_id,

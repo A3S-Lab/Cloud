@@ -130,7 +130,9 @@ impl CommandHandler<MarkNotificationRead> for MarkNotificationReadHandler {
                 event_id: Uuid::now_v7(),
                 event_key: "notification.inbox.read".into(),
                 schema_version: 1,
-                organization_id: notification.organization_id.as_uuid(),
+                scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                    organization_id: notification.organization_id.as_uuid(),
+                },
                 aggregate_id: notification.id.as_uuid(),
                 aggregate_version: notification.aggregate_version,
                 occurred_at: read_at,

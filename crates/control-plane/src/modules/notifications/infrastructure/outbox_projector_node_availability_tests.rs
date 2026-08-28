@@ -6,11 +6,16 @@ use crate::modules::fleet::domain::value_objects::NodeState;
 use a3s_cloud_contracts::DomainEventEnvelope;
 
 fn message(event: DomainEventEnvelope) -> OutboxMessage {
+    let event_organization_id = event.organization_id().expect("tenant event");
     OutboxMessage {
         event_id: event.event_id,
         event_key: event.event_key,
         schema_version: event.schema_version,
-        organization_id: event.organization_id,
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(event_organization_id),
+        )
+        .expect("scope"),
         aggregate_id: event.aggregate_id,
         aggregate_version: event.aggregate_version,
         occurred_at: event.occurred_at,
@@ -71,7 +76,7 @@ fn resolution_with_reason(
         event_id: firing.event_id,
         event_key: firing.event_key.clone(),
         schema_version: firing.schema_version,
-        organization_id: firing.organization_id,
+        scope: firing.scope.reference(),
         aggregate_id: firing.aggregate_id,
         aggregate_version: firing.aggregate_version,
         occurred_at: firing.occurred_at,
@@ -84,7 +89,9 @@ fn resolution_with_reason(
     message(
         NodeAvailabilityChanged::resolved_envelope(
             NodeAvailabilitySnapshot {
-                organization_id: OrganizationId::from_uuid(firing.organization_id),
+                organization_id: OrganizationId::from_uuid(
+                    firing.organization_id().expect("tenant event"),
+                ),
                 node_id: NodeId::from_uuid(firing.aggregate_id),
                 state,
                 node_aggregate_version: node_version,

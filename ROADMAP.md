@@ -1485,7 +1485,7 @@ not introduce a second scheduler.
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 | `C0.5-MT1-C1` | Implemented; component-only (`2026-08-29`) | One explicit Installation/Organization/Project/Environment `ScopeContext`, canonical `cloud.identity.platform-role-policy.v1`, immutable role ceilings, deterministic accepted revisions, and installation-scoped `PlatformRoleBinding` lifecycle are implemented with architecture ratchets. This slice adds no repository, effective decision, support grant, scoped audit/Outbox persistence, interface, or production authority. |
 | `C0.5-MT1-C2` | Implemented; component-only (`2026-08-29`) | Canonical `cloud.identity.tenant-support-grant.v1`, closed non-sensitive support permissions, bounded standard/break-glass windows, approval/tenant-notification/security-alert/review intent, terminal revocation, and one digest-bound `PrivilegedAuthorizationDecision` now require active Principal + current accepted policy + active binding, with an additional exact human/grant/scope/permission intersection for tenant support. ACL carries desired intent; the dynamic allow fact reuses canonical JSON, SHA-256 and the one decision-reference type. This slice adds no repository, Application interface, audit/Outbox persistence, or production authority. |
-| `C0.5-MT1-C3` | Planned | Freeze one canonical persisted Installation identity and a discriminated Installation/Organization/Project/Environment scope for the shared Audit and Outbox envelopes. Define the compatibility migration for existing Organization facts without a sentinel or synthetic Organization, and keep one relay and one audit authority. |
+| `C0.5-MT1-C3` | Implemented; retained PostgreSQL 17 CI certification pending (`2026-08-29`) | Migration `174` creates one database-owned immutable Installation identity, binds every Organization to it, and evolves the existing Audit and Outbox tables in place with one closed Installation/Organization/Project/Environment scope shape. `CloudScopeRef` carries uncommitted fact scope; the shared PostgreSQL boundary locks and resolves canonical lineage into `ScopeContext` before either write. Existing Organization writers remain compatible during bounded rolling upgrade through database defaults; platform facts carry no sentinel Organization. Scope lineage and Installation identity are immutable, cross-tenant child references fail closed, platform audit bypasses tenant retention, and the existing relay/A3S Event and audit authorities remain the only mechanisms. No platform-policy repository, effective RBAC interface, or production administrator authority is added. |
 | `C0.5` | Planned | Enterprise SAML/OIDC federation, SCIM provisioning/deprovisioning, session policy, application/Workflow/Knowledge-granular Resource Grants, tamper-evident audit and SIEM export, PII-redaction policy, BYOK/data-residency bindings, and air-gapped governance evidence over the existing Identity, Secrets, audit, `S0`, and `H0` authorities |
 
 No presentation surface owns business rules or bypasses tenant guards,
@@ -3154,16 +3154,16 @@ close the delivery, workload-trust, observability, and compatibility semantics
 used by every later Runtime profile; they add no parallel executor, service
 mesh, telemetry truth, or release controller.
 
-Component-only `C0.5-MT1-C1` and `C0.5-MT1-C2` are implemented as prerequisites
-for the next workload-trust slice. They introduce one explicit scope hierarchy,
-one Identity-owned closed platform-role policy/binding model, a canonical
-bounded support-grant ACL, and one replayable privileged-decision evidence
-model. The next ordering is `MT1-C3`: establish canonical Installation identity
-and the shared scope-aware audit/Outbox envelope. `MT2` then supplies
-persistence, current-head, approval, last-owner, self-escalation, idempotency
-and concurrency invariants. Only then may `WI1-C2` persist installation trust
-state; no path may use a synthetic Organization or
-`actor_is_platform_admin` as authority.
+`C0.5-MT1-C1` through `C0.5-MT1-C3` are implemented as prerequisites for the
+next workload-trust slice. They introduce one explicit scope hierarchy, one
+persisted immutable Installation identity, one shared scope-aware Audit/Outbox
+fact rail, one Identity-owned closed platform-role policy/binding model, a
+canonical bounded support-grant ACL, and one replayable privileged-decision
+evidence model. The next ordering is `MT2`: persist policy, bindings and grants
+with current-head, approval, last-owner, self-escalation, idempotency and
+concurrency invariants. Only then may `WI1-C2` persist installation trust state;
+no path may use a synthetic Organization or `actor_is_platform_admin` as
+authority.
 
 Component-only `H0.4-WI1-C1` is implemented. Identity now owns canonical
 `cloud.identity.trust-domain.v1` and

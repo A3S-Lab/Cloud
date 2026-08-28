@@ -29,15 +29,17 @@ cross-context scope ratchets, capacity fairness, privileged support access and
 the complete isolation matrix remain gated below and must not be advertised as
 available early.
 
-Component-only `C0.5-MT1-C1` and `C0.5-MT1-C2` now freeze one explicit
-`ScopeContext` with exact Installation/Organization/Project/Environment
-lineage, canonical platform-role policy and tenant-support-grant ACLs,
-deterministic accepted policy revisions, closed roles/permissions, role-binding
-and terminal support-grant lifecycles, and one digest-bound privileged allow
-fact. This adds no repository, Application authorization interface,
-installation-scoped audit/Outbox persistence or public authority. The legacy
-`actor_is_platform_admin` boolean remains migration debt and is not valid proof
-for new MT1 or workload-identity paths.
+`C0.5-MT1-C1` through `C0.5-MT1-C3` now freeze one explicit resolved
+`ScopeContext`, one public uncommitted `CloudScopeRef`, exact
+Installation/Organization/Project/Environment lineage, canonical platform-role
+policy and tenant-support-grant ACLs, deterministic accepted policy revisions,
+closed roles/permissions, role-binding and terminal support-grant lifecycles,
+and one digest-bound privileged allow fact. Migration `174` persists the one
+immutable Installation and evolves the existing Audit/Outbox rail for all four
+scopes without a sentinel Organization. This still adds no policy/binding/grant
+repository, Application authorization interface or public RBAC authority. The
+legacy `actor_is_platform_admin` boolean remains migration debt and is not valid
+proof for new MT1 or workload-identity paths.
 
 ## 2. One identity authority, two authorization planes
 
@@ -296,14 +298,13 @@ create a second tenancy milestone or authorization engine.
 | `C0.5-MT6` | Prove OIDC/SAML/SCIM, session/MFA policy, platform-role provisioning restrictions, tenant suspension/export/deletion and time-bounded audited support access |
 | `C0.5-MT7` | Run adversarial cross-tenant ID/cursor/replay/cache/object/Secret/network/route/log/search/usage tests plus system-admin privilege-escalation and break-glass recovery on real PostgreSQL/S3/Gateway/Runtime/Box providers |
 
-`C0.5-MT1-C1` and `C0.5-MT1-C2` are implemented only as domain components.
-`MT1-C3` remains open for one canonical Installation identity and explicit
-scope-aware audit/Outbox contract; it cannot retrofit global facts through a
-synthetic Organization. `MT2` then persists policies, bindings and grants with
-their current-head, approver, idempotency and concurrency invariants; `MT3`
-replaces boolean administrator bypasses with the one Identity decision port.
-No platform-RBAC availability is claimed before those gates and the later
-adversarial evidence pass.
+`C0.5-MT1-C1/C2` are implemented as domain components, and `MT1-C3` implements
+the canonical persisted Installation plus the single scope-aware Audit/Outbox
+foundation. `MT2` next persists policies, bindings and grants with their
+current-head, approver, last-owner, self-escalation, idempotency and concurrency
+invariants; `MT3` replaces boolean administrator bypasses with the one Identity
+decision port. No platform-RBAC availability is claimed before those gates and
+the later adversarial evidence pass.
 
 Production multi-tenancy is not complete until every product lane also proves
 its own scope-specific failure and cleanup cases. Passing Identity unit tests

@@ -45,7 +45,9 @@ impl FormDraftChanged {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: draft.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: draft.organization_id.as_uuid(),
+            },
             aggregate_id: draft.id.as_uuid(),
             aggregate_version: draft.aggregate_version,
             occurred_at: draft.updated_at,
@@ -89,7 +91,9 @@ impl FormReleasePublished {
             event_id: Uuid::now_v7(),
             event_key: "form.release.published".into(),
             schema_version: 1,
-            organization_id: release.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: release.organization_id.as_uuid(),
+            },
             aggregate_id: release.form_id.as_uuid(),
             aggregate_version: draft.aggregate_version,
             occurred_at: release.published_at,

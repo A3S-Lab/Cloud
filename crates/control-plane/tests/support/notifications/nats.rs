@@ -261,7 +261,7 @@ fn delivery_event(delivery: &OutboundNotificationDelivery, subject: &str) -> Res
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         json!({
-            "organizationId": fact.organization_id,
+            "organizationId": fact.organization_id(),
             "aggregateId": fact.aggregate_id,
             "aggregateVersion": fact.aggregate_version,
             "occurredAt": fact.occurred_at,

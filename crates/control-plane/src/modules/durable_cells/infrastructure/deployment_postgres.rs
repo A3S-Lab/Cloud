@@ -150,13 +150,12 @@ impl IDurableCellDeploymentRepository for PostgresDurableCellDeploymentRepositor
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: projection.organization_id.as_uuid(),
                             actor_id: Some(deployment.requested_by.as_uuid()),
                             action: "durable-cell.deployment.requested",
                             aggregate_id: projection.application_id.as_uuid(),
                             occurred_at: deployment.requested_at,
                             request_id: deployment.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(projection.organization_id.as_uuid(),
                                 projection.project_id,
                                 Some(projection.environment_id),
                             ),

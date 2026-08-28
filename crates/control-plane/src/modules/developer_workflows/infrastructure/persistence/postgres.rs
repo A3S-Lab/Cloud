@@ -121,13 +121,13 @@ impl IBuildPlanRepository for PostgresBuildPlanRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: write.plan.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "developer.build-plan.accepted",
                             aggregate_id: write.plan.id.as_uuid(),
                             occurred_at: write.plan.accepted_at,
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(
+                                write.plan.organization_id.as_uuid(),
                                 write.plan.project_id,
                                 Some(write.plan.environment_id),
                             ),

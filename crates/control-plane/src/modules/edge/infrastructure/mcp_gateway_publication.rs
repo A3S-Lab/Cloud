@@ -500,7 +500,7 @@ impl GatewayManagedSnapshotComposition {
             || publication.command_issued_at != self.candidate.mcp().observed_at()
             || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
             || self.event.schema_version != 2
-            || self.event.organization_id != primary_scope.organization_id.as_uuid()
+            || self.event.organization_id() != Some(primary_scope.organization_id.as_uuid())
             || self.event.aggregate_id != publication.node_id.as_uuid()
             || self.event.aggregate_version != expected_scope_version
             || self.event.occurred_at != publication.command_issued_at

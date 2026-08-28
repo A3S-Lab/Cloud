@@ -26,7 +26,9 @@ impl WorkflowRunRequested {
             event_id: Uuid::now_v7(),
             event_key: "workflow.run.requested".into(),
             schema_version: 1,
-            organization_id: run.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: run.organization_id.as_uuid(),
+            },
             aggregate_id: run.id.as_uuid(),
             aggregate_version: run.aggregate_version,
             occurred_at: run.requested_at,

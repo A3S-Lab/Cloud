@@ -148,7 +148,9 @@ impl GatewayCertificateExpiryChanged {
                 ),
                 event_key: event_key.into(),
                 schema_version: 1,
-                organization_id: convergence.organization_id.as_uuid(),
+                scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                    organization_id: convergence.organization_id.as_uuid(),
+                },
                 aggregate_id,
                 aggregate_version: certificate_expiry_aggregate_version(
                     active_certificate.gateway_revision,
@@ -175,7 +177,7 @@ impl GatewayCertificateExpiryChanged {
             return Err("Gateway certificate expiry retry selected a non-firing event".into());
         }
         Ok(existing.event_id == candidate.event_id
-            && existing.organization_id == candidate.organization_id
+            && existing.organization_id() == candidate.organization_id()
             && existing.aggregate_id == candidate.aggregate_id
             && existing.aggregate_version == candidate.aggregate_version
             && existing_payload.organization_id == candidate_payload.organization_id
@@ -216,14 +218,14 @@ impl GatewayCertificateExpiryChanged {
         };
         if event.schema_version != 1
             || event.event_id.is_nil()
-            || event.organization_id.is_nil()
+            || event.organization_id().is_none()
             || event.aggregate_id.is_nil()
             || event.correlation_id.is_nil()
             || event.causation_id.is_some()
             || canonical_timestamp(event.occurred_at) != event.occurred_at
             || canonical_timestamp(payload.active_certificate_expires_at)
                 != payload.active_certificate_expires_at
-            || payload.organization_id.as_uuid() != event.organization_id
+            || Some(payload.organization_id.as_uuid()) != event.organization_id()
             || payload.organization_id.as_uuid().is_nil()
             || payload.project_id.as_uuid().is_nil()
             || payload.environment_id.as_uuid().is_nil()

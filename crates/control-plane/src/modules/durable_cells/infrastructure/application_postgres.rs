@@ -731,13 +731,13 @@ async fn store_durable_cell_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: record.application.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: record.application.id.as_uuid(),
             occurred_at: record.application.updated_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(
+            scope: AuditWrite::resource_scope(
+                record.application.organization_id.as_uuid(),
                 record.application.project_id,
                 Some(record.application.environment_id),
             ),

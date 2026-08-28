@@ -32,7 +32,7 @@ use a3s_cloud_control_plane::modules::audit::{
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
-    A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
+    A3sEventPublisher, IOutboxRepository, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationProjection, OperationReconciler,
@@ -816,6 +816,16 @@ async fn postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe() {
     run_isolated_postgres(&admin_url, exercise_postgres_replica_set_foundation)
         .await
         .expect("PostgreSQL Workload replica-set foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_installation_identity_and_shared_fact_scope_are_fail_closed() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_installation_scoped_fact_foundation)
+        .await
+        .expect("PostgreSQL Installation-scoped fact foundation gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2249,6 +2259,281 @@ async fn exercise_postgres_replica_set_foundation(
         &replica_set,
     )
     .await?;
+    Ok(())
+}
+
+async fn exercise_installation_scoped_fact_foundation(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let (installation_count, installation_id) = database
+        .fetch_one_as(sql_query::<(i64, Uuid)>(
+            "select (select count(*) from cloud_installations), installation.id from cloud_installations installation where installation.singleton_key",
+        ))
+        .await?;
+    assert_eq!(installation_count, 1);
+    assert!(!installation_id.is_nil());
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<Uuid>("select current_cloud_installation_id()"))
+            .await?,
+        installation_id
+    );
+    assert!(migrate_for_test(&url, 2).await?.is_up_to_date());
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<Uuid>("select id from cloud_installations"))
+            .await?,
+        installation_id,
+        "idempotent migration changed the persisted Installation identity"
+    );
+
+    let first_organization_id = Uuid::now_v7();
+    let second_organization_id = Uuid::now_v7();
+    let project_id = Uuid::now_v7();
+    let now = Utc::now();
+    for (id, name, key) in [
+        (
+            first_organization_id,
+            "Installation tenant A",
+            "installation-tenant-a",
+        ),
+        (
+            second_organization_id,
+            "Installation tenant B",
+            "installation-tenant-b",
+        ),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+                )
+                .bind(id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(key)
+                .append(", 1, ")
+                .bind(now)
+                .append(")"),
+            )
+            .await?;
+    }
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(first_organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", 'Installation project', 'installation-project', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    let organization_installations = database
+        .fetch_all_as(sql_query::<Uuid>(
+            "select installation_id from organizations order by id",
+        ))
+        .await?;
+    assert_eq!(organization_installations.rows, vec![installation_id; 2]);
+
+    let legacy_event_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+            )
+            .bind(legacy_event_id)
+            .append(", 'identity.organization.updated', 1, ")
+            .bind(first_organization_id)
+            .append(", ")
+            .bind(first_organization_id)
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", '{}'::jsonb)"),
+        )
+        .await?;
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(Uuid, String, Option<Uuid>, Option<Uuid>, Option<Uuid>)>(
+                    "select installation_id, scope_kind, organization_id, project_id, environment_id from outbox_events where event_id = ",
+                )
+                .bind(legacy_event_id),
+            )
+            .await?,
+        (
+            installation_id,
+            "organization".into(),
+            Some(first_organization_id),
+            None,
+            None,
+        ),
+        "mixed-version tenant writer did not resolve through the database singleton"
+    );
+
+    let platform_event_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, installation_id, scope_kind, organization_id, project_id, environment_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+            )
+            .bind(platform_event_id)
+            .append(", 'identity.platform-role.changed', 1, ")
+            .bind(installation_id)
+            .append(", 'installation', null, null, null, ")
+            .bind(Uuid::now_v7())
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", '{}'::jsonb)"),
+        )
+        .await?;
+
+    let legacy_audit_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(legacy_audit_id)
+            .append(", ")
+            .bind(first_organization_id)
+            .append(", 'identity.organization.updated', ")
+            .bind(first_organization_id)
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'not_applicable', '{}'::jsonb)"),
+        )
+        .await?;
+    let platform_audit_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, installation_id, scope_kind, organization_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(platform_audit_id)
+            .append(", ")
+            .bind(installation_id)
+            .append(", 'installation', null, 'identity.platform-role.changed', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'not_applicable', '{}'::jsonb)"),
+        )
+        .await?;
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(Uuid, String, Option<Uuid>)>(
+                    "select installation_id, scope_kind, organization_id from audit_records where audit_id = ",
+                )
+                .bind(platform_audit_id),
+            )
+            .await?,
+        (installation_id, "installation".into(), None)
+    );
+
+    let claimed = PostgresOutboxRepository::new(executor.clone())
+        .claim(Uuid::now_v7(), 10, Duration::from_secs(30))
+        .await?;
+    assert_eq!(claimed.len(), 2);
+    let legacy_message = claimed
+        .iter()
+        .find(|message| message.event_id == legacy_event_id)
+        .expect("legacy Organization message");
+    assert_eq!(legacy_message.scope.kind(), "organization");
+    assert_eq!(
+        legacy_message.organization_id(),
+        Some(first_organization_id)
+    );
+    assert_eq!(
+        legacy_message.scope.installation_id().as_uuid(),
+        installation_id
+    );
+    let platform_message = claimed
+        .iter()
+        .find(|message| message.event_id == platform_event_id)
+        .expect("Installation message");
+    assert_eq!(platform_message.scope.kind(), "installation");
+    assert_eq!(platform_message.organization_id(), None);
+    assert_eq!(
+        platform_message.scope.installation_id().as_uuid(),
+        installation_id
+    );
+
+    let cross_tenant = database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, installation_id, scope_kind, organization_id, project_id, environment_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+            )
+            .bind(Uuid::now_v7())
+            .append(", 'project.cross-tenant.rejected', 1, ")
+            .bind(installation_id)
+            .append(", 'project', ")
+            .bind(second_organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", null, ")
+            .bind(Uuid::now_v7())
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", '{}'::jsonb)"),
+        )
+        .await;
+    assert!(
+        cross_tenant.is_err(),
+        "cross-tenant Project scope was accepted"
+    );
+
+    assert!(database
+        .execute(
+            sql_query::<()>("update cloud_installations set schema_version = 1 where id = ")
+                .bind(installation_id),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>("delete from cloud_installations where id = ").bind(installation_id),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>(
+                "insert into cloud_installations (singleton_key, id, schema_version, created_at) values (true, ",
+            )
+            .bind(Uuid::now_v7())
+            .append(", 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await
+        .is_err());
+    assert!(database
+        .execute(
+            sql_query::<()>("update outbox_events set organization_id = ")
+                .bind(first_organization_id)
+                .append(" where event_id = ")
+                .bind(platform_event_id),
+        )
+        .await
+        .is_err());
+
     Ok(())
 }
 

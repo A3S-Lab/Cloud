@@ -114,7 +114,9 @@ impl NotificationAlertPolicyEvent {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version: policy.definition.event_schema_version(),
-            organization_id: policy.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: policy.organization_id.as_uuid(),
+            },
             aggregate_id: policy.id.as_uuid(),
             aggregate_version: policy.aggregate_version,
             occurred_at: policy.revoked_at.unwrap_or(policy.created_at),
@@ -193,7 +195,7 @@ fn validate_policy_event(
         || request_id.is_nil()
         || event.event_key != event_key
         || event.schema_version != policy.definition.event_schema_version()
-        || event.organization_id != policy.organization_id.as_uuid()
+        || event.organization_id() != Some(policy.organization_id.as_uuid())
         || event.aggregate_id != policy.id.as_uuid()
         || event.aggregate_version != policy.aggregate_version
         || event.occurred_at != policy.revoked_at.unwrap_or(policy.created_at)

@@ -61,7 +61,9 @@ impl UserFileLifecycleChanged {
             event_id: Uuid::now_v7(),
             event_key: "user-file.lifecycle.changed".into(),
             schema_version: 1,
-            organization_id: file.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: file.organization_id.as_uuid(),
+            },
             aggregate_id: file.id.as_uuid(),
             aggregate_version: file.aggregate_version,
             occurred_at: file.updated_at,

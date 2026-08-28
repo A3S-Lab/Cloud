@@ -100,6 +100,11 @@ impl OutboxNotificationProjector {
             }
             _ => return Ok(Vec::new()),
         };
+        let organization_id = message.organization_id().ok_or_else(|| {
+            RepositoryError::Storage(
+                "tenant notification source event has Installation scope".into(),
+            )
+        })?;
 
         // The organization-scoped inbox is reachable only by active members. Invitation and
         // revocation facts therefore remain in their existing lifecycle surfaces instead of
@@ -107,7 +112,7 @@ impl OutboxNotificationProjector {
         let membership = self
             .memberships
             .find_membership(
-                OrganizationId::from_uuid(message.organization_id),
+                OrganizationId::from_uuid(organization_id),
                 crate::modules::shared_kernel::domain::MembershipId::from_uuid(
                     message.aggregate_id,
                 ),
@@ -126,7 +131,7 @@ impl OutboxNotificationProjector {
         }
 
         Notification::project(
-            OrganizationId::from_uuid(message.organization_id),
+            OrganizationId::from_uuid(organization_id),
             recipient,
             message.event_id,
             message.event_key.clone(),
@@ -158,9 +163,12 @@ impl OutboxNotificationProjector {
         else {
             return Ok(Vec::new());
         };
+        let organization_id = message.organization_id().ok_or_else(|| {
+            RepositoryError::Storage("tenant alert source event has Installation scope".into())
+        })?;
         let policies = alert_policies
             .list_active_alert_policies_for_source(
-                OrganizationId::from_uuid(message.organization_id),
+                OrganizationId::from_uuid(organization_id),
                 source,
                 target,
                 message.occurred_at,
@@ -519,7 +527,7 @@ fn decode_domain_claim(message: &OutboxMessage) -> Result<DomainClaimChanged, Re
         DomainClaimState::Verified => payload.failure.is_none(),
         DomainClaimState::Pending | DomainClaimState::Revoked => false,
     };
-    if payload.organization_id.as_uuid() != message.organization_id
+    if Some(payload.organization_id.as_uuid()) != message.organization_id()
         || payload.domain_claim_id.as_uuid() != message.aggregate_id
         || payload.project_id.as_uuid().is_nil()
         || payload.environment_id.as_uuid().is_nil()
@@ -572,7 +580,7 @@ fn decode_gateway_certificate_renewal(
         GatewayCertificateRenewalStatus::Failed => payload.previous_certificate_id,
         GatewayCertificateRenewalStatus::Renewed => payload.replacement_certificate_id,
     };
-    if payload.organization_id.as_uuid() != message.organization_id
+    if Some(payload.organization_id.as_uuid()) != message.organization_id()
         || payload.project_id.as_uuid().is_nil()
         || payload.environment_id.as_uuid().is_nil()
         || payload.route_id.as_uuid().is_nil()
@@ -632,7 +640,7 @@ fn decode_workload_deployment_health(
     })?;
     if message.event_id.is_nil()
         || payload.organization_id.as_uuid().is_nil()
-        || payload.organization_id.as_uuid() != message.organization_id
+        || Some(payload.organization_id.as_uuid()) != message.organization_id()
         || payload.project_id.as_uuid().is_nil()
         || payload.environment_id.as_uuid().is_nil()
         || payload.workload_id.as_uuid().is_nil()

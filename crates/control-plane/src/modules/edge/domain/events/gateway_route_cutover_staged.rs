@@ -42,7 +42,9 @@ impl GatewayRouteCutoverStaged {
             event_id: Uuid::now_v7(),
             event_key: "edge.route.cutover-staged".into(),
             schema_version: 2,
-            organization_id: cutover.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: cutover.organization_id.as_uuid(),
+            },
             aggregate_id: cutover.deployment_id.as_uuid(),
             aggregate_version: 1,
             occurred_at: cutover.staged_at,

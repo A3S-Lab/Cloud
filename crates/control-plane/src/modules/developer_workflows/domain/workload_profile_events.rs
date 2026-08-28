@@ -40,7 +40,9 @@ impl WorkloadProfileRevisionAccepted {
             event_id: Uuid::now_v7(),
             event_key: WORKLOAD_PROFILE_REVISION_ACCEPTED_EVENT_KEY.into(),
             schema_version: 1,
-            organization_id: revision.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: revision.organization_id.as_uuid(),
+            },
             aggregate_id: revision.profile_id.as_uuid(),
             aggregate_version: revision.revision_number,
             occurred_at: revision.accepted_at,

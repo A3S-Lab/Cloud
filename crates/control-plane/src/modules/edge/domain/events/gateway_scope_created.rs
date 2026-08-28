@@ -27,7 +27,9 @@ impl GatewayScopeCreated {
             event_id: Uuid::now_v7(),
             event_key: "edge.gateway-scope.created".into(),
             schema_version: 2,
-            organization_id: scope.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: scope.organization_id.as_uuid(),
+            },
             aggregate_id: scope.id.as_uuid(),
             aggregate_version: scope.aggregate_version,
             occurred_at: scope.created_at,

@@ -120,7 +120,9 @@ impl HostedAssetBuildRequested {
             event_id: Uuid::now_v7(),
             event_key: HOSTED_ASSET_BUILD_REQUESTED_EVENT_KEY.into(),
             schema_version: HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION,
-            organization_id: release.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: release.organization_id.as_uuid(),
+            },
             aggregate_id: release.id.as_uuid(),
             aggregate_version: release.aggregate_version,
             occurred_at: release.updated_at,
@@ -216,7 +218,9 @@ impl McpServiceProfileBound {
             event_id: Uuid::now_v7(),
             event_key: "asset.mcp-service-profile.bound".into(),
             schema_version: 1,
-            organization_id: binding.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: binding.organization_id.as_uuid(),
+            },
             aggregate_id: binding.asset_release_id.as_uuid(),
             aggregate_version: 1,
             occurred_at: binding.created_at,
@@ -256,7 +260,9 @@ fn asset_event(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: asset.organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: asset.organization_id.as_uuid(),
+        },
         aggregate_id: asset.id.as_uuid(),
         aggregate_version: asset.aggregate_version,
         occurred_at: asset.updated_at,
@@ -280,7 +286,9 @@ fn release_event(
         } else {
             1
         },
-        organization_id: release.organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: release.organization_id.as_uuid(),
+        },
         aggregate_id: release.id.as_uuid(),
         aggregate_version: release.aggregate_version,
         occurred_at: release.updated_at,

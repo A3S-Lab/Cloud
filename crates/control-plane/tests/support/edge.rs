@@ -1174,7 +1174,9 @@ fn staged(
             event_id: Uuid::now_v7(),
             event_key: "edge.route.publication-staged".into(),
             schema_version: 1,
-            organization_id: fixture.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: fixture.organization_id.as_uuid(),
+            },
             aggregate_id: route.id.as_uuid(),
             aggregate_version: route.aggregate_version,
             occurred_at: now,

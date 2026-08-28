@@ -112,7 +112,7 @@ pub(super) fn decode_node_availability(
         event_id: message.event_id,
         event_key: message.event_key.clone(),
         schema_version: message.schema_version,
-        organization_id: message.organization_id,
+        scope: message.scope.reference(),
         aggregate_id: message.aggregate_id,
         aggregate_version: message.aggregate_version,
         occurred_at: message.occurred_at,

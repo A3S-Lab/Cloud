@@ -56,7 +56,7 @@ impl CreatePluginRegistryWrite {
             || event.event_id.is_nil()
             || event.event_key != "plugins.registry.enrolled"
             || event.schema_version != 1
-            || event.organization_id != registry.organization_id.as_uuid()
+            || event.organization_id() != Some(registry.organization_id.as_uuid())
             || event.aggregate_id != registry.id.as_uuid()
             || event.aggregate_version != registry.aggregate_version
             || event.occurred_at != registry.created_at

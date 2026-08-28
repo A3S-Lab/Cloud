@@ -3,6 +3,7 @@
 mod agent_provider;
 mod api;
 mod app_platform_manifest;
+mod cloud_scope_ref;
 mod event;
 mod inference;
 mod mcp;
@@ -53,6 +54,7 @@ pub use app_platform_manifest::{
     AppPlatformGate, AppPlatformGateState, AppPlatformParityManifest, AppPlatformReference,
     APP_PLATFORM_PARITY_MANIFEST_SCHEMA,
 };
+pub use cloud_scope_ref::CloudScopeRef;
 pub use event::DomainEventEnvelope;
 pub use inference::{
     InferenceServingPhase, PowerAdmissionObservation, PowerPromptCacheObservation,

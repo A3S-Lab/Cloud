@@ -128,7 +128,7 @@ fn validate_request(
         || request.operation.workflow.name() != "cloud.workload.stop"
         || request.operation.workflow.version() != "1"
         || request.operation.requested_at < request.workload.updated_at
-        || request.event.organization_id != request.workload.organization_id.as_uuid()
+        || request.event.organization_id() != Some(request.workload.organization_id.as_uuid())
         || request.event.aggregate_id != request.workload.id.as_uuid()
         || request.event.aggregate_version != request.workload.aggregate_version
     {

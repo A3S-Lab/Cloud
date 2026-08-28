@@ -788,7 +788,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
         event_id: stale_node_firing.event_id,
         event_key: stale_node_firing.event_key.clone(),
         schema_version: stale_node_firing.schema_version,
-        organization_id: stale_node_firing.organization_id,
+        scope: stale_node_firing.scope.reference(),
         aggregate_id: stale_node_firing.aggregate_id,
         aggregate_version: stale_node_firing.aggregate_version,
         occurred_at: stale_node_firing.occurred_at,
@@ -831,7 +831,7 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
         event_id: node_firing.event_id,
         event_key: node_firing.event_key.clone(),
         schema_version: node_firing.schema_version,
-        organization_id: node_firing.organization_id,
+        scope: node_firing.scope.reference(),
         aggregate_id: node_firing.aggregate_id,
         aggregate_version: node_firing.aggregate_version,
         occurred_at: node_firing.occurred_at,
@@ -1013,7 +1013,13 @@ fn notification_domain_claim_message(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: claim_id.as_uuid(),
         aggregate_version,
         occurred_at,
@@ -1058,7 +1064,13 @@ fn notification_gateway_certificate_renewal_message(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: renewal_subject_id(route_id, node_id),
         aggregate_version,
         occurred_at,
@@ -1119,7 +1131,13 @@ fn notification_gateway_certificate_expiry_message(
         ),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id,
         aggregate_version: certificate_expiry_aggregate_version(
             certificate_gateway_revision,
@@ -1167,7 +1185,13 @@ fn notification_workload_deployment_health_message(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: workload_id.as_uuid(),
         aggregate_version,
         occurred_at,
@@ -1193,11 +1217,18 @@ fn notification_workload_deployment_health_message(
 }
 
 fn notification_node_availability_message(event: DomainEventEnvelope) -> OutboxMessage {
+    let event_organization_id = event.organization_id().expect("tenant event");
     OutboxMessage {
         event_id: event.event_id,
         event_key: event.event_key,
         schema_version: event.schema_version,
-        organization_id: event.organization_id,
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                event_organization_id,
+            ),
+        )
+        .expect("scope"),
         aggregate_id: event.aggregate_id,
         aggregate_version: event.aggregate_version,
         occurred_at: event.occurred_at,
@@ -1221,7 +1252,7 @@ async fn persist_outbox_message(
                 .append(", ")
                 .bind(message.schema_version)
                 .append(", ")
-                .bind(message.organization_id)
+                .bind(message.organization_id())
                 .append(", ")
                 .bind(message.aggregate_id)
                 .append(", ")

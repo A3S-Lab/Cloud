@@ -95,7 +95,7 @@ fn validate_event(
     let binding = resolution.binding();
     if event.event_key != "connector.execution-attempt.resolved"
         || event.schema_version != 1
-        || event.organization_id != binding.organization_id().as_uuid()
+        || event.organization_id() != Some(binding.organization_id().as_uuid())
         || event.aggregate_id != binding.attempt_id()
         || event.aggregate_version != 1
         || event.occurred_at != resolution.resolved_at()

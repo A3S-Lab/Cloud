@@ -72,7 +72,9 @@ impl WorkloadReplicaEvacuated {
             event_id: Uuid::now_v7(),
             event_key: "workload.replica.evacuated".into(),
             schema_version: 1,
-            organization_id: current.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: current.organization_id.as_uuid(),
+            },
             aggregate_id: current.id.as_uuid(),
             aggregate_version: current.aggregate_version,
             occurred_at: current.updated_at,

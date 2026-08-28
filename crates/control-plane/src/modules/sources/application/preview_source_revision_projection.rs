@@ -401,7 +401,9 @@ pub(in crate::modules::sources) fn lifecycle_event(
         event_id: Uuid::now_v7(),
         event_key: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
         schema_version: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
-        organization_id: receipt.organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: receipt.organization_id.as_uuid(),
+        },
         aggregate_id: receipt.preview_id.as_uuid(),
         aggregate_version: receipt.preview_aggregate_version,
         occurred_at: receipt.fact_occurred_at,

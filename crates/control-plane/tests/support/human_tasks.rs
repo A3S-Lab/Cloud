@@ -652,7 +652,9 @@ fn event(record: &HumanTaskRecord, key: &str, occurred_at: DateTime<Utc>) -> Dom
         event_id: Uuid::now_v7(),
         event_key: key.into(),
         schema_version: 1,
-        organization_id: record.task.organization_id.as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: record.task.organization_id.as_uuid(),
+        },
         aggregate_id: record.task.id.as_uuid(),
         aggregate_version: record.task.aggregate_version,
         occurred_at,

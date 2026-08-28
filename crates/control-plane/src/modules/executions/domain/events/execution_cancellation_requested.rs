@@ -19,7 +19,9 @@ impl ExecutionCancellationRequested {
             event_id: Uuid::now_v7(),
             event_key: "execution.run.cancellation-requested".into(),
             schema_version: 1,
-            organization_id: execution.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: execution.organization_id.as_uuid(),
+            },
             aggregate_id: execution.id.as_uuid(),
             aggregate_version: execution.aggregate_version,
             occurred_at: execution.updated_at,

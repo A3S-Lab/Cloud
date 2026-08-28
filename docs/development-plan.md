@@ -3898,13 +3898,18 @@ node.
   embeds exact policy/grant ACL snapshots and reuses the one decision-reference
   representation. This slice has no repository, Application interface or
   production authority.
-- Complete `MT1-C3` before persistence-dependent workload-trust work: define
-  one canonical Installation identity and one discriminated scope-aware shared
-  audit/Outbox contract, including compatibility for existing Organization
-  facts. `MT2` then adds current-head/approver loading, optimistic persistence,
-  idempotency, last-owner and self-escalation safeguards. `MT3` replaces every
-  boolean platform-administrator bypass with the single Identity decision
-  port. A global record must never be stored under a synthetic Organization.
+- Implemented `MT1-C3`: migration `174` persists one immutable database-owned
+  Installation identity, assigns it to every Organization, and evolves the
+  existing Audit and Outbox tables in place with one exact discriminated
+  Installation/Organization/Project/Environment scope. The shared persistence
+  boundary locks and resolves canonical lineage before writing; bounded
+  rolling-upgrade defaults preserve old Organization writers, global facts use
+  no synthetic Organization, and the relay/audit mechanisms remain singular.
+  Retained PostgreSQL 17 certification remains the release evidence gate.
+  Next, `MT2` adds current-head/approver loading, optimistic policy/binding/grant
+  persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
+  replaces every boolean platform-administrator bypass with the single
+  Identity decision port.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,

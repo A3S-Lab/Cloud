@@ -140,7 +140,9 @@ impl OutboundNotificationSubscriptionEvent {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version,
-            organization_id: subscription.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: subscription.organization_id.as_uuid(),
+            },
             aggregate_id: subscription.id.as_uuid(),
             aggregate_version: subscription.aggregate_version,
             occurred_at,
@@ -236,7 +238,7 @@ fn validate_subscription_event(
         || request_id.is_nil()
         || event.event_key != event_key
         || event.schema_version != subscription.definition.schema_version()
-        || event.organization_id != subscription.organization_id.as_uuid()
+        || event.organization_id() != Some(subscription.organization_id.as_uuid())
         || event.aggregate_id != subscription.id.as_uuid()
         || event.aggregate_version != subscription.aggregate_version
         || event.occurred_at != subscription.revoked_at.unwrap_or(subscription.created_at)

@@ -124,13 +124,12 @@ impl IExecutionTemplateRepository for PostgresExecutionTemplateRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: revision.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "execution.template.published",
                             aggregate_id: revision.template_id.as_uuid(),
                             occurred_at: revision.created_at,
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(revision.organization_id.as_uuid(),
                                 revision.project_id,
                                 None,
                             ),

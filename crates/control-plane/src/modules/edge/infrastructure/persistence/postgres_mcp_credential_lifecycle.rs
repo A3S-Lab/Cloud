@@ -437,13 +437,13 @@ async fn store_credential_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: credential.organization_id.as_uuid(),
             actor_id: None,
             action,
             aggregate_id: credential.id.as_uuid(),
             occurred_at: credential.updated_at(),
             request_id,
-            attribution_scope: AuditWrite::project_attribution(
+            scope: AuditWrite::resource_scope(
+                credential.organization_id.as_uuid(),
                 credential.project_id,
                 Some(credential.environment_id),
             ),

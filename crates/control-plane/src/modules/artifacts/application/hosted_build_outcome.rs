@@ -66,7 +66,9 @@ pub(crate) fn hosted_build_outcome_event(
         event_id: Uuid::now_v7(),
         event_key: HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
         schema_version: 1,
-        organization_id: outcome.organization_id().as_uuid(),
+        scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+            organization_id: outcome.organization_id().as_uuid(),
+        },
         aggregate_id: outcome.build_run_id().as_uuid(),
         aggregate_version: outcome.build_run_version(),
         occurred_at: outcome.finished_at(),

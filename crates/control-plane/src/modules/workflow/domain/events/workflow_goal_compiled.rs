@@ -40,7 +40,9 @@ impl WorkflowGoalCompiled {
             event_id: Uuid::now_v7(),
             event_key: "workflow.goal.compiled".into(),
             schema_version: 1,
-            organization_id: goal.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: goal.organization_id.as_uuid(),
+            },
             aggregate_id: goal.id.as_uuid(),
             aggregate_version: 1,
             occurred_at: goal.created_at,

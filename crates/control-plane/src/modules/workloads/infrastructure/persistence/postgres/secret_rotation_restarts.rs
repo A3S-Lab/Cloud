@@ -30,7 +30,14 @@ use a3s_orm::{
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-type RotationRow = (Uuid, Uuid, Uuid, DateTime<Utc>, Uuid, serde_json::Value);
+type RotationRow = (
+    Uuid,
+    Option<Uuid>,
+    Uuid,
+    DateTime<Utc>,
+    Uuid,
+    serde_json::Value,
+);
 
 struct JsonPath;
 
@@ -55,6 +62,7 @@ pub(super) async fn pending(
                         .eq_column(OutboxEvents::event_id()),
                 )
                 .filter(OutboxEvents::event_key().eq("secret.version.created"))
+                .filter(OutboxEvents::organization_id().is_not_null())
                 .filter(SecretRotationReconciliations::secret_event_id().is_null())
                 .order_by(OutboxEvents::occurred_at(), OrderDirection::Asc)
                 .order_by(OutboxEvents::event_id(), OrderDirection::Asc)
@@ -115,7 +123,8 @@ async fn reconcile_in_transaction(
                 OutboxEvents::payload(),
             ))
             .filter(OutboxEvents::event_id().eq(rotation.event_id))
-            .filter(OutboxEvents::event_key().eq("secret.version.created")),
+            .filter(OutboxEvents::event_key().eq("secret.version.created"))
+            .filter(OutboxEvents::organization_id().is_not_null()),
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;
@@ -588,6 +597,9 @@ fn references_rotated_secret(rotation: &SecretRotation) -> Expression {
 
 fn decode_rotation(row: RotationRow) -> Result<SecretRotation, RepositoryError> {
     let (event_id, organization_id, aggregate_id, occurred_at, correlation_id, payload) = row;
+    let organization_id = organization_id.ok_or_else(|| {
+        RepositoryError::Storage("stored Secret rotation event has Installation scope".into())
+    })?;
     let payload: SecretChanged = serde_json::from_value(payload).map_err(|error| {
         RepositoryError::Storage(format!("stored Secret rotation event is invalid: {error}"))
     })?;

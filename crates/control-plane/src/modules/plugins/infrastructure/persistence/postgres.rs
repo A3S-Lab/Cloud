@@ -166,13 +166,12 @@ impl IPluginRegistryRepository for PostgresPluginRegistryRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: registry.organization_id.as_uuid(),
+                            scope: AuditWrite::organization_scope(registry.organization_id.as_uuid()),
                             actor_id: Some(actor_id.as_uuid()),
                             action: "plugins.registry.enrolled",
                             aggregate_id: registry.id.as_uuid(),
                             occurred_at: registry.created_at,
                             request_id,
-                            attribution_scope: AuditWrite::not_applicable(),
                             details: serde_json::json!({
                                 "endpoint": registry.endpoint.as_str(),
                                 "rootObjectRef": registry.trust_root.object_ref().as_str(),

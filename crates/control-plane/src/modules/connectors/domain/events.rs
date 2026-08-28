@@ -62,7 +62,9 @@ impl ConnectorExecutionAttemptResolved {
             event_id: Uuid::now_v7(),
             event_key: "connector.execution-attempt.resolved".into(),
             schema_version: 1,
-            organization_id: binding.organization_id().as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: binding.organization_id().as_uuid(),
+            },
             aggregate_id: binding.attempt_id(),
             aggregate_version: 1,
             occurred_at: resolution.resolved_at(),
@@ -115,7 +117,9 @@ impl ConnectorRevisionRevoked {
             event_id: Uuid::now_v7(),
             event_key: "connector.revision.revoked".into(),
             schema_version: 1,
-            organization_id: revocation.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: revocation.organization_id.as_uuid(),
+            },
             aggregate_id: revocation.revision_id.as_uuid(),
             aggregate_version: 1,
             occurred_at: revocation.revoked_at,
@@ -201,7 +205,9 @@ impl ConnectorRevisionPublished {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: profile.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: profile.organization_id.as_uuid(),
+            },
             aggregate_id: profile.id.as_uuid(),
             aggregate_version: profile.aggregate_version,
             occurred_at: revision.created_at,

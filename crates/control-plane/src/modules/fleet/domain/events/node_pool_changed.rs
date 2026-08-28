@@ -49,7 +49,9 @@ impl NodePoolChanged {
             event_id: Uuid::now_v7(),
             event_key: "fleet.node-pool.changed".into(),
             schema_version: 1,
-            organization_id: pool.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: pool.organization_id.as_uuid(),
+            },
             aggregate_id: pool.id.as_uuid(),
             aggregate_version: pool.aggregate_version,
             occurred_at,

@@ -61,7 +61,13 @@ impl GatewayCertificateExpiryFixture {
             ),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: self.organization_id.as_uuid(),
+            scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                crate::modules::shared_kernel::domain::InstallationId::new(),
+                crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                    self.organization_id.as_uuid(),
+                ),
+            )
+            .expect("scope"),
             aggregate_id,
             aggregate_version: certificate_expiry_aggregate_version(
                 certificate_gateway_revision,

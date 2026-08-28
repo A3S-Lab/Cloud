@@ -264,7 +264,8 @@ pub(super) async fn request_cancellation(
                     ))
                 })?;
                 if expected != request.deployment
-                    || request.event.organization_id != request.deployment.organization_id.as_uuid()
+                    || request.event.organization_id()
+                        != Some(request.deployment.organization_id.as_uuid())
                     || request.event.aggregate_id != request.deployment.id.as_uuid()
                     || request.event.aggregate_version != request.deployment.aggregate_version
                 {

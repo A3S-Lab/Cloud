@@ -29,7 +29,9 @@ impl ExecutionTemplatePublished {
             event_id: Uuid::now_v7(),
             event_key: "execution.template.published".into(),
             schema_version: 1,
-            organization_id: revision.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: revision.organization_id.as_uuid(),
+            },
             aggregate_id: revision.template_id.as_uuid(),
             aggregate_version: 1,
             occurred_at: revision.created_at,

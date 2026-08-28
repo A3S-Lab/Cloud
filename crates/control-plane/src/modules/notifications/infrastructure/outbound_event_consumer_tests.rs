@@ -192,7 +192,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         serde_json::json!({
-            "organizationId": fact.organization_id,
+            "organizationId": fact.organization_id(),
             "aggregateId": fact.aggregate_id,
             "aggregateVersion": fact.aggregate_version,
             "occurredAt": fact.occurred_at,

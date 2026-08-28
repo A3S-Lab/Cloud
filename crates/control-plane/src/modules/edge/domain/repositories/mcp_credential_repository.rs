@@ -200,7 +200,7 @@ fn validate_event(
     event_key: &str,
 ) -> Result<(), String> {
     if event.event_key != event_key
-        || event.organization_id != credential.organization_id.as_uuid()
+        || event.organization_id() != Some(credential.organization_id.as_uuid())
         || event.aggregate_id != credential.id.as_uuid()
         || event.aggregate_version != credential.aggregate_version()
         || event.occurred_at != credential.updated_at()

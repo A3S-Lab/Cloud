@@ -911,11 +911,20 @@ pub async fn exercise_hosted_build_run_persistence(
     // restarted worker observes it. They must reserve exactly one BuildRun.
     let left_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let right_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let event_organization_id = hosted_build_requested
+        .organization_id()
+        .expect("tenant event");
     let message = OutboxMessage {
         event_id: hosted_build_requested.event_id,
         event_key: hosted_build_requested.event_key,
         schema_version: hosted_build_requested.schema_version,
-        organization_id: hosted_build_requested.organization_id,
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                event_organization_id,
+            ),
+        )
+        .expect("scope"),
         aggregate_id: hosted_build_requested.aggregate_id,
         aggregate_version: hosted_build_requested.aggregate_version,
         occurred_at: hosted_build_requested.occurred_at,

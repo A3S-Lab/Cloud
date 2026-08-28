@@ -22,7 +22,9 @@ impl GatewayRolloutStaged {
             event_id: uuid::Uuid::now_v7(),
             event_key: "edge.gateway-rollout.staged".into(),
             schema_version: 1,
-            organization_id: scope.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: scope.organization_id.as_uuid(),
+            },
             aggregate_id: rollout.id.as_uuid(),
             aggregate_version: rollout.aggregate_version,
             occurred_at: rollout.started_at,

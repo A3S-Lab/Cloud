@@ -793,7 +793,7 @@ fn validate_domain_event(
     claim: &DomainClaim,
     event: &DomainEventEnvelope,
 ) -> Result<(), RepositoryError> {
-    if event.organization_id != claim.organization_id.as_uuid()
+    if event.organization_id() != Some(claim.organization_id.as_uuid())
         || event.aggregate_id != claim.id.as_uuid()
         || event.aggregate_version != claim.aggregate_version
         || event.correlation_id.is_nil()

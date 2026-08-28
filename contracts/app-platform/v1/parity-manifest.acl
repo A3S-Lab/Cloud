@@ -92,7 +92,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "in_progress"
   }
   gate "C0.5" {
-    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md", "doc:docs/decisions/app-platform/0081-one-privileged-authorization-evidence-model.md", "implementation:crates/control-plane/src/modules/identity/domain/entities/tenant_support_grant.rs", "implementation:crates/control-plane/src/modules/identity/domain/services/privileged_authorization_decision.rs", "implementation:crates/control-plane/src/modules/identity/domain/value_objects/tenant_support_grant_contract.rs", "test:crates/control-plane/src/modules/architecture_tests.rs"]
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md", "doc:docs/decisions/app-platform/0081-one-privileged-authorization-evidence-model.md", "doc:docs/decisions/app-platform/0082-one-installation-scoped-fact-rail.md", "implementation:crates/contracts/src/cloud_scope_ref.rs", "implementation:crates/control-plane/src/infrastructure/postgres.rs", "implementation:crates/control-plane/src/modules/identity/domain/entities/tenant_support_grant.rs", "implementation:crates/control-plane/src/modules/identity/domain/services/privileged_authorization_decision.rs", "implementation:crates/control-plane/src/modules/identity/domain/value_objects/tenant_support_grant_contract.rs", "implementation:migrations/174_installation_scoped_facts.sql", "test:crates/control-plane/src/infrastructure/postgres_tests/installation_scoped_facts_migration.rs", "test:crates/control-plane/src/modules/architecture_tests.rs", "test:crates/control-plane/tests/postgres_integration.rs"]
     state = "planned"
   }
   gate "H0.5" {

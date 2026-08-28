@@ -59,7 +59,9 @@ impl ExpiryOutboxRow {
             event_id,
             event_key: self.event_key,
             schema_version: self.schema_version,
-            organization_id: self.organization_id,
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: self.organization_id,
+            },
             aggregate_id: self.aggregate_id,
             aggregate_version: self.aggregate_version,
             occurred_at: self.occurred_at,

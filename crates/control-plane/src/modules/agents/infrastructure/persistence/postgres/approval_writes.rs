@@ -590,13 +590,13 @@ async fn store_approval_audit(
         transaction,
         &AuditWrite {
             audit_id: uuid::Uuid::now_v7(),
-            organization_id: checkpoint.organization_id.as_uuid(),
             actor_id,
             action,
             aggregate_id: checkpoint.execution_id.as_uuid(),
             occurred_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(
+            scope: AuditWrite::resource_scope(
+                checkpoint.organization_id.as_uuid(),
                 checkpoint.project_id,
                 Some(checkpoint.environment_id),
             ),

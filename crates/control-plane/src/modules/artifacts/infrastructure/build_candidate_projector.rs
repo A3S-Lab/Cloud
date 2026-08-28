@@ -36,7 +36,7 @@ impl BuildCandidateProjector {
         let fact: SourceRevisionAcceptedFact = decode(message, "accepted Source revision")?;
         fact.validate().map_err(invalid_message)?;
         if message.schema_version != SOURCE_REVISION_ACCEPTED_SCHEMA_VERSION
-            || message.organization_id != fact.organization_id().as_uuid()
+            || message.organization_id() != Some(fact.organization_id().as_uuid())
             || message.aggregate_id != fact.source_revision_id().as_uuid()
             || message.aggregate_version != 1
             || message.correlation_id.is_nil()
@@ -72,7 +72,7 @@ impl BuildCandidateProjector {
         let fact: HostedAssetBuildRequestedFact = decode(message, "hosted Asset build request")?;
         fact.validate().map_err(invalid_message)?;
         if message.schema_version != HOSTED_ASSET_BUILD_REQUESTED_SCHEMA_VERSION
-            || message.organization_id != fact.organization_id().as_uuid()
+            || message.organization_id() != Some(fact.organization_id().as_uuid())
             || message.aggregate_id != fact.asset_release_id().as_uuid()
             || message.aggregate_version != 1
             || message.correlation_id.is_nil()
@@ -116,7 +116,7 @@ impl BuildCandidateProjector {
         })?;
         if message.event_id.is_nil()
             || message.schema_version != PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION
-            || message.organization_id != fact.organization_id().as_uuid()
+            || message.organization_id() != Some(fact.organization_id().as_uuid())
             || message.aggregate_id != fact.preview_id().as_uuid()
             || message.aggregate_version != fact.preview_aggregate_version()
             || message.occurred_at != canonical_timestamp(message.occurred_at)
@@ -471,7 +471,13 @@ mod tests {
                 event_id: Uuid::now_v7(),
                 event_key: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
                 schema_version: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
-                organization_id: self.organization_id.as_uuid(),
+                scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                    crate::modules::shared_kernel::domain::InstallationId::new(),
+                    crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                        self.organization_id.as_uuid(),
+                    ),
+                )
+                .expect("scope"),
                 aggregate_id: self.preview_id.as_uuid(),
                 aggregate_version: version,
                 occurred_at,
@@ -525,11 +531,18 @@ mod tests {
     }
 
     fn outbox_message(event: a3s_cloud_contracts::DomainEventEnvelope) -> OutboxMessage {
+        let event_organization_id = event.organization_id().expect("tenant event");
         OutboxMessage {
             event_id: event.event_id,
             event_key: event.event_key,
             schema_version: event.schema_version,
-            organization_id: event.organization_id,
+            scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                crate::modules::shared_kernel::domain::InstallationId::new(),
+                crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                    event_organization_id,
+                ),
+            )
+            .expect("scope"),
             aggregate_id: event.aggregate_id,
             aggregate_version: event.aggregate_version,
             occurred_at: event.occurred_at,

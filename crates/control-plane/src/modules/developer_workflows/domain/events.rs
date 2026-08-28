@@ -40,7 +40,9 @@ impl BuildPlanAccepted {
             event_id: Uuid::now_v7(),
             event_key: BUILD_PLAN_ACCEPTED_EVENT_KEY.into(),
             schema_version: 1,
-            organization_id: plan.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: plan.organization_id.as_uuid(),
+            },
             aggregate_id: plan.id.as_uuid(),
             aggregate_version: plan.aggregate_version,
             occurred_at: plan.accepted_at,

@@ -39,7 +39,7 @@ impl PullRequestPreviewSourceProjector {
         })?;
         if message.event_id.is_nil()
             || message.schema_version != PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_SCHEMA_VERSION
-            || message.organization_id != fact.organization_id.as_uuid()
+            || message.organization_id() != Some(fact.organization_id.as_uuid())
             || message.aggregate_id != fact.preview_id.as_uuid()
             || message.aggregate_version != fact.preview_aggregate_version
             || message.occurred_at != canonical_timestamp(message.occurred_at)
@@ -287,7 +287,13 @@ mod tests {
             event_id: Uuid::now_v7(),
             event_key: PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
             schema_version: PULL_REQUEST_PREVIEW_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
-            organization_id: organization_id.as_uuid(),
+            scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                crate::modules::shared_kernel::domain::InstallationId::new(),
+                crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                    organization_id.as_uuid(),
+                ),
+            )
+            .expect("scope"),
             aggregate_id: preview_id.as_uuid(),
             aggregate_version: version,
             occurred_at,

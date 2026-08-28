@@ -139,7 +139,9 @@ impl GatewayCertificateRenewalChanged {
                 event_id: Uuid::now_v7(),
                 event_key: event_key.into(),
                 schema_version: 1,
-                organization_id: convergence.organization_id.as_uuid(),
+                scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                    organization_id: convergence.organization_id.as_uuid(),
+                },
                 aggregate_id,
                 aggregate_version: convergence.gateway_revision,
                 occurred_at,

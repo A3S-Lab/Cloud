@@ -51,6 +51,16 @@ impl IGatewayRoutePolicyTimelineRepository for PostgresGatewayRoutePolicyTimelin
         ]);
         let text_key =
             |key: &'static str| cast::<String, String>(bound::<String>(key), "text").expression();
+        let scope_document = sql_function::<Value>(
+            "cloud_scope_document",
+            [
+                OutboxEvents::scope_kind().expression(),
+                OutboxEvents::installation_id().expression(),
+                OutboxEvents::organization_id().expression(),
+                OutboxEvents::project_id().expression(),
+                OutboxEvents::environment_id().expression(),
+            ],
+        );
         let event_document = sql_function::<Value>(
             "jsonb_build_object",
             [
@@ -60,8 +70,8 @@ impl IGatewayRoutePolicyTimelineRepository for PostgresGatewayRoutePolicyTimelin
                 OutboxEvents::event_key().expression(),
                 text_key("schema_version"),
                 OutboxEvents::schema_version().expression(),
-                text_key("organization_id"),
-                OutboxEvents::organization_id().expression(),
+                text_key("scope"),
+                scope_document.expression(),
                 text_key("aggregate_id"),
                 OutboxEvents::aggregate_id().expression(),
                 text_key("aggregate_version"),

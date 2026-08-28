@@ -20,7 +20,9 @@ impl ProjectCreated {
             event_id: Uuid::now_v7(),
             event_key: "project.project.created".into(),
             schema_version: 1,
-            organization_id: project.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: project.organization_id.as_uuid(),
+            },
             aggregate_id: project.id.as_uuid(),
             aggregate_version: project.aggregate_version,
             occurred_at: project.created_at,

@@ -68,7 +68,9 @@ impl PullRequestChangeCommitted {
             event_id: Uuid::now_v7(),
             event_key: PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY.into(),
             schema_version: PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
-            organization_id: fact.organization_id().as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: fact.organization_id().as_uuid(),
+            },
             aggregate_id: fact.source_pull_request_change_id().as_uuid(),
             aggregate_version: 1,
             occurred_at,

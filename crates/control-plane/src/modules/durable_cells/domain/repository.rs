@@ -290,7 +290,7 @@ fn validate_event(
     let revision = &record.revision;
     if event.event_key != event_key
         || event.schema_version != 1
-        || event.organization_id != application.organization_id.as_uuid()
+        || event.organization_id() != Some(application.organization_id.as_uuid())
         || event.aggregate_id != application.id.as_uuid()
         || event.aggregate_version != application.aggregate_version
         || event.occurred_at != application.updated_at

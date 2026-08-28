@@ -418,7 +418,7 @@ fn event_metadata_matches(
             .is_none_or(|causation_id| !causation_id.is_nil())
         && event.event_key == event_key
         && event.schema_version == schema_version
-        && event.organization_id == organization_id
+        && event.organization_id() == Some(organization_id)
         && event.aggregate_id == aggregate_id
         && event.aggregate_version == aggregate_version
         && event.occurred_at == occurred_at

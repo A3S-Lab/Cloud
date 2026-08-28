@@ -20,7 +20,9 @@ impl GithubRepositorySubscriptionDeactivated {
             event_id: Uuid::now_v7(),
             event_key: "source.github-repository-subscription.deactivated".into(),
             schema_version: 1,
-            organization_id: subscription.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: subscription.organization_id.as_uuid(),
+            },
             aggregate_id: subscription.id.as_uuid(),
             aggregate_version: subscription.aggregate_version,
             occurred_at: subscription

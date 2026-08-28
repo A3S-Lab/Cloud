@@ -268,13 +268,13 @@ async fn store_policy_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: policy.spec().organization_id.as_uuid(),
             actor_id: None,
             action: write.kind.action(),
             aggregate_id: policy.spec().route_id.as_uuid(),
             occurred_at: write.requested_at,
             request_id: write.request_id,
-            attribution_scope: AuditWrite::project_attribution(
+            scope: AuditWrite::resource_scope(
+                policy.spec().organization_id.as_uuid(),
                 policy.spec().project_id,
                 Some(policy.spec().environment_id),
             ),

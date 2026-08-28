@@ -46,7 +46,7 @@ impl PullRequestPreviewProjector {
             .map_err(|error| invalid_fact(format!("payload could not be decoded: {error}")))?;
         fact.validate().map_err(invalid_fact)?;
         if message.schema_version != PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION
-            || message.organization_id != fact.organization_id().as_uuid()
+            || message.organization_id() != Some(fact.organization_id().as_uuid())
             || message.aggregate_id != fact.source_pull_request_change_id().as_uuid()
             || message.aggregate_version != 1
             || message.occurred_at != canonical_timestamp(message.occurred_at)
@@ -169,7 +169,7 @@ fn envelope(message: &OutboxMessage) -> DomainEventEnvelope {
         event_id: message.event_id,
         event_key: message.event_key.clone(),
         schema_version: message.schema_version,
-        organization_id: message.organization_id,
+        scope: message.scope.reference(),
         aggregate_id: message.aggregate_id,
         aggregate_version: message.aggregate_version,
         occurred_at: message.occurred_at,
@@ -276,7 +276,10 @@ mod tests {
         let inputs = port.inputs.lock().await;
         assert_eq!(inputs.len(), 1);
         let input = &inputs[0];
-        assert_eq!(input.organization_id.as_uuid(), message.organization_id);
+        assert_eq!(
+            Some(input.organization_id.as_uuid()),
+            message.organization_id()
+        );
         assert_eq!(
             input.source_pull_request_change_id.as_uuid(),
             message.aggregate_id
@@ -387,7 +390,13 @@ mod tests {
             event_id: Uuid::now_v7(),
             event_key: PULL_REQUEST_CHANGE_COMMITTED_EVENT_KEY.into(),
             schema_version: PULL_REQUEST_CHANGE_COMMITTED_SCHEMA_VERSION,
-            organization_id: organization_id.as_uuid(),
+            scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                crate::modules::shared_kernel::domain::InstallationId::new(),
+                crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                    organization_id.as_uuid(),
+                ),
+            )
+            .expect("scope"),
             aggregate_id: change_id.as_uuid(),
             aggregate_version: 1,
             occurred_at,
@@ -502,11 +511,18 @@ mod tests {
     }
 
     fn outbox_message(event: DomainEventEnvelope) -> OutboxMessage {
+        let event_organization_id = event.organization_id().expect("tenant event");
         OutboxMessage {
             event_id: event.event_id,
             event_key: event.event_key,
             schema_version: event.schema_version,
-            organization_id: event.organization_id,
+            scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                crate::modules::shared_kernel::domain::InstallationId::new(),
+                crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                    event_organization_id,
+                ),
+            )
+            .expect("scope"),
             aggregate_id: event.aggregate_id,
             aggregate_version: event.aggregate_version,
             occurred_at: event.occurred_at,

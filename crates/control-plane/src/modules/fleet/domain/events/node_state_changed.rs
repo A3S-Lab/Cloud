@@ -23,7 +23,9 @@ impl NodeStateChanged {
             event_id: Uuid::now_v7(),
             event_key: "fleet.node.state-changed".into(),
             schema_version: 1,
-            organization_id: node.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: node.organization_id.as_uuid(),
+            },
             aggregate_id: node.id.as_uuid(),
             aggregate_version: node.aggregate_version,
             occurred_at: changed_at,

@@ -23,7 +23,13 @@ fn workload_deployment_health_message(
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: workload_id.as_uuid(),
         aggregate_version,
         occurred_at,
@@ -461,7 +467,10 @@ fn malformed_workload_deployment_health_payloads_fail_closed() {
     assert!(decode_workload_deployment_health(&nil_subject).is_err());
 
     let mut nil_organization = message.clone();
-    nil_organization.organization_id = Uuid::nil();
+    nil_organization.scope = crate::modules::shared_kernel::domain::ScopeContext::Organization {
+        installation_id: crate::modules::shared_kernel::domain::InstallationId::new(),
+        organization_id: OrganizationId::from_uuid(Uuid::nil()),
+    };
     nil_organization.payload["organizationId"] = serde_json::json!(Uuid::nil());
     assert!(decode_workload_deployment_health(&nil_organization).is_err());
 

@@ -699,7 +699,7 @@ impl INodePoolRepository for InMemoryNodeRepository {
             });
         }
         write.pool.validate().map_err(RepositoryError::Conflict)?;
-        if write.event.organization_id != write.pool.organization_id.as_uuid()
+        if write.event.organization_id() != Some(write.pool.organization_id.as_uuid())
             || write.event.aggregate_id != write.pool.id.as_uuid()
             || write.event.aggregate_version != write.pool.aggregate_version
         {

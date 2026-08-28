@@ -1,4 +1,5 @@
 use super::{EnvironmentId, InstallationId, OrganizationId, ProjectId};
+use a3s_cloud_contracts::CloudScopeRef;
 use serde::{Deserialize, Serialize};
 
 /// Exact Cloud authority scope carried across Application and owner-port
@@ -27,6 +28,47 @@ pub enum ScopeContext {
 }
 
 impl ScopeContext {
+    /// Builds authority context only after persistence has resolved the
+    /// reference's canonical owning Installation.
+    pub(crate) fn from_resolved_reference(
+        resolved_installation_id: InstallationId,
+        reference: CloudScopeRef,
+    ) -> Result<Self, String> {
+        reference.validate()?;
+        match reference {
+            CloudScopeRef::Installation {
+                installation_id: referenced,
+            } => {
+                if referenced != resolved_installation_id.as_uuid() {
+                    return Err("Cloud scope reference belongs to another installation".into());
+                }
+                Self::installation(resolved_installation_id)
+            }
+            CloudScopeRef::Organization { organization_id } => Self::organization(
+                resolved_installation_id,
+                OrganizationId::from_uuid(organization_id),
+            ),
+            CloudScopeRef::Project {
+                organization_id,
+                project_id,
+            } => Self::project(
+                resolved_installation_id,
+                OrganizationId::from_uuid(organization_id),
+                ProjectId::from_uuid(project_id),
+            ),
+            CloudScopeRef::Environment {
+                organization_id,
+                project_id,
+                environment_id,
+            } => Self::environment(
+                resolved_installation_id,
+                OrganizationId::from_uuid(organization_id),
+                ProjectId::from_uuid(project_id),
+                EnvironmentId::from_uuid(environment_id),
+            ),
+        }
+    }
+
     pub fn installation(installation_id: InstallationId) -> Result<Self, String> {
         Self::checked(Self::Installation { installation_id })
     }
@@ -148,6 +190,37 @@ impl ScopeContext {
         !matches!(self, Self::Installation { .. })
     }
 
+    pub const fn reference(self) -> CloudScopeRef {
+        match self {
+            Self::Installation { installation_id } => CloudScopeRef::Installation {
+                installation_id: installation_id.as_uuid(),
+            },
+            Self::Organization {
+                organization_id, ..
+            } => CloudScopeRef::Organization {
+                organization_id: organization_id.as_uuid(),
+            },
+            Self::Project {
+                organization_id,
+                project_id,
+                ..
+            } => CloudScopeRef::Project {
+                organization_id: organization_id.as_uuid(),
+                project_id: project_id.as_uuid(),
+            },
+            Self::Environment {
+                organization_id,
+                project_id,
+                environment_id,
+                ..
+            } => CloudScopeRef::Environment {
+                organization_id: organization_id.as_uuid(),
+                project_id: project_id.as_uuid(),
+                environment_id: environment_id.as_uuid(),
+            },
+        }
+    }
+
     /// Returns whether `self` is the same scope as, or an ancestor of,
     /// `candidate`. UUID equality at a lower level never bypasses its parents.
     pub fn contains(self, candidate: Self) -> Result<bool, String> {
@@ -258,6 +331,32 @@ mod tests {
             OrganizationId::new(),
             ProjectId::new(),
             EnvironmentId::from_uuid(Uuid::nil())
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn admitted_scope_round_trips_through_one_public_reference_shape() {
+        let installation_id = InstallationId::new();
+        let value = ScopeContext::environment(
+            installation_id,
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+        )
+        .expect("scope");
+        assert_eq!(
+            ScopeContext::from_resolved_reference(installation_id, value.reference()),
+            Ok(value)
+        );
+        assert!(
+            ScopeContext::from_resolved_reference(InstallationId::new(), value.reference()).is_ok()
+        );
+
+        let installation = ScopeContext::installation(installation_id).expect("installation");
+        assert!(ScopeContext::from_resolved_reference(
+            InstallationId::new(),
+            installation.reference()
         )
         .is_err());
     }

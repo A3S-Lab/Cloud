@@ -399,7 +399,13 @@ async fn provider_retry_replays_one_logical_notification() {
         event_id: Uuid::now_v7(),
         event_key: "identity.membership.created".into(),
         schema_version: 1,
-        organization_id: organization_id.as_uuid(),
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: membership_id.as_uuid(),
         aggregate_version: 1,
         occurred_at,
@@ -473,7 +479,11 @@ fn malformed_identity_payload_fails_closed() {
         event_id: Uuid::now_v7(),
         event_key: "identity.membership.created".into(),
         schema_version: 1,
-        organization_id: Uuid::now_v7(),
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            crate::modules::shared_kernel::domain::OrganizationId::from_uuid(Uuid::now_v7()),
+        )
+        .expect("scope"),
         aggregate_id,
         aggregate_version: 1,
         occurred_at: Utc::now(),
@@ -516,7 +526,13 @@ async fn inaccessible_identity_lifecycle_facts_are_not_projected() {
                 event_id: Uuid::now_v7(),
                 event_key: event_key.into(),
                 schema_version: 1,
-                organization_id: organization_id.as_uuid(),
+                scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+                    crate::modules::shared_kernel::domain::InstallationId::new(),
+                    crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                        organization_id.as_uuid(),
+                    ),
+                )
+                .expect("scope"),
                 aggregate_id: membership_id.as_uuid(),
                 aggregate_version: 1,
                 occurred_at,

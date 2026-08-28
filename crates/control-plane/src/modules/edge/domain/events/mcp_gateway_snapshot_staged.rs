@@ -70,7 +70,9 @@ impl McpGatewaySnapshotStaged {
             event_id: Uuid::now_v7(),
             event_key: "edge.mcp-gateway.snapshot-staged".into(),
             schema_version: 2,
-            organization_id: scope.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: scope.organization_id.as_uuid(),
+            },
             aggregate_id: publication.node_id.as_uuid(),
             aggregate_version: next_physical_scope_version,
             occurred_at: publication.command_issued_at,

@@ -103,7 +103,9 @@ impl RecipientContactChanged {
             event_id,
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: organization_id.as_uuid(),
+            },
             aggregate_id: contact.id.as_uuid(),
             aggregate_version: contact.aggregate_version,
             occurred_at,

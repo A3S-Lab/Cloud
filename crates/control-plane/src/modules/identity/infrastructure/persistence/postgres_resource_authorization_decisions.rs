@@ -100,16 +100,20 @@ impl IResourceAuthorizationDecisionRepository for PostgresIdentityRepository {
                         transaction,
                         &AuditWrite {
                             audit_id: decision.id,
-                            organization_id: decision.organization_id.as_uuid(),
                             actor_id: Some(decision.principal_id.as_uuid()),
                             action: ResourceAuthorizationDecision::audit_action(),
                             aggregate_id: decision.aggregate_id(),
                             occurred_at: decision.decided_at,
                             request_id: decision.request_id,
-                            attribution_scope: decision.resource.project_id().map_or_else(
-                                AuditWrite::not_applicable,
+                            scope: decision.resource.project_id().map_or_else(
+                                || {
+                                    AuditWrite::organization_scope(
+                                        decision.organization_id.as_uuid(),
+                                    )
+                                },
                                 |project_id| {
-                                    AuditWrite::project_attribution(
+                                    AuditWrite::resource_scope(
+                                        decision.organization_id.as_uuid(),
                                         project_id,
                                         decision.resource.environment_id(),
                                     )

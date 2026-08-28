@@ -571,13 +571,16 @@ async fn persist_side_effects(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: file.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: file.id.as_uuid(),
             occurred_at: file.updated_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(file.project_id, None),
+            scope: AuditWrite::resource_scope(
+                file.organization_id.as_uuid(),
+                file.project_id,
+                None,
+            ),
             details: serde_json::json!({
                 "projectId": file.project_id,
                 "userFileId": file.id,

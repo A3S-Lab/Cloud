@@ -212,13 +212,12 @@ async fn store_profile_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: binding.organization_id.as_uuid(),
+            scope: AuditWrite::organization_scope(binding.organization_id.as_uuid()),
             actor_id: None,
             action: "asset.mcp-service-profile.bound",
             aggregate_id: binding.asset_release_id.as_uuid(),
             occurred_at: binding.created_at,
             request_id,
-            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "assetId": binding.asset_id,
                 "assetReleaseId": binding.asset_release_id,

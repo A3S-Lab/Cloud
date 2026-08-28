@@ -381,13 +381,16 @@ pub(super) async fn store_task_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: record.task.organization_id.as_uuid(),
             actor_id: actor_principal_id.map(|value| value.as_uuid()),
             action,
             aggregate_id: record.task.id.as_uuid(),
             occurred_at: record.task.updated_at,
             request_id,
-            attribution_scope: AuditWrite::project_attribution(record.task.project_id, None),
+            scope: AuditWrite::resource_scope(
+                record.task.organization_id.as_uuid(),
+                record.task.project_id,
+                None,
+            ),
             details: serde_json::json!({
                 "projectId": record.task.project_id,
                 "workflowRunId": record.task.workflow_run_id,

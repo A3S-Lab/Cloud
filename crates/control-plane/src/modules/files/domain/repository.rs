@@ -193,7 +193,7 @@ fn validate_event(
     let expected = UserFileLifecycleChanged::changed(file, request_id, event.causation_id)?;
     if event.event_key != expected.event_key
         || event.schema_version != expected.schema_version
-        || event.organization_id != expected.organization_id
+        || event.organization_id() != expected.organization_id()
         || event.aggregate_id != expected.aggregate_id
         || event.aggregate_version != expected.aggregate_version
         || event.occurred_at != expected.occurred_at

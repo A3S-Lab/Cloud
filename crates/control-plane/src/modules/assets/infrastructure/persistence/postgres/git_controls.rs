@@ -251,13 +251,12 @@ pub(super) async fn complete_write(
                     transaction,
                     &AuditWrite {
                         audit_id: Uuid::now_v7(),
-                        organization_id: completion.lease.organization_id.as_uuid(),
+                        scope: AuditWrite::organization_scope(completion.lease.organization_id.as_uuid()),
                         actor_id: Some(completion.lease.actor_id),
                         action: completion.lease.operation.audit_action(),
                         aggregate_id: completion.lease.asset_id.as_uuid(),
                         occurred_at: completion.completed_at,
                         request_id: completion.lease.request_id,
-                        attribution_scope: AuditWrite::not_applicable(),
                         details: json!({
                             "schema": "a3s.cloud.asset-git-audit.v1",
                             "operation": completion.lease.operation.as_str(),

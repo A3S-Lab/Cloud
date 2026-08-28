@@ -49,7 +49,9 @@ impl DeploymentRequested {
             event_id: Uuid::now_v7(),
             event_key: "workload.deployment.requested".into(),
             schema_version: 2,
-            organization_id: deployment.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: deployment.organization_id.as_uuid(),
+            },
             aggregate_id: deployment.id.as_uuid(),
             aggregate_version: deployment.aggregate_version,
             occurred_at: deployment.requested_at,

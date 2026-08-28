@@ -307,7 +307,13 @@ fn lifecycle_message(
         event_id: Uuid::now_v7(),
         event_key: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_EVENT_KEY.into(),
         schema_version: PREVIEW_SOURCE_REVISION_LIFECYCLE_COMMITTED_SCHEMA_VERSION,
-        organization_id: fixture.organization_id.as_uuid(),
+        scope: a3s_cloud_control_plane::modules::shared_kernel::domain::ScopeContext::organization(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::InstallationId::new(),
+            a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                fixture.organization_id.as_uuid(),
+            ),
+        )
+        .expect("scope"),
         aggregate_id: fixture.preview_id.as_uuid(),
         aggregate_version: version,
         occurred_at,
@@ -346,7 +352,7 @@ async fn persist_owner_fact(
                 .append(", ")
                 .bind(message.schema_version)
                 .append(", ")
-                .bind(message.organization_id)
+                .bind(message.organization_id())
                 .append(", ")
                 .bind(message.aggregate_id)
                 .append(", ")

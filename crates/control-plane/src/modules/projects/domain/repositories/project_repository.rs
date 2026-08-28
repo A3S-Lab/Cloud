@@ -36,7 +36,7 @@ impl UpdateProjectAttributionWrite {
             || self.expected_project_version.checked_add(1) != Some(project.aggregate_version)
             || self.event.event_key != "project.attribution-profile.updated"
             || self.event.schema_version != 1
-            || self.event.organization_id != project.organization_id.as_uuid()
+            || self.event.organization_id() != Some(project.organization_id.as_uuid())
             || self.event.aggregate_id != project.id.as_uuid()
             || self.event.aggregate_version != project.aggregate_version
             || self.event.occurred_at != profile.created_at

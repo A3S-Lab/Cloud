@@ -46,7 +46,9 @@ impl ResourceGrantChanged {
             event_id: Uuid::now_v7(),
             event_key: event_key.into(),
             schema_version: 1,
-            organization_id: grant.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: grant.organization_id.as_uuid(),
+            },
             aggregate_id: grant.id.as_uuid(),
             aggregate_version: grant.aggregate_version,
             occurred_at: grant.updated_at,

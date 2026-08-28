@@ -71,7 +71,9 @@ impl McpRoutePolicyChanged {
             event_id: Uuid::now_v7(),
             event_key: kind.event_key().into(),
             schema_version: 1,
-            organization_id: spec.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: spec.organization_id.as_uuid(),
+            },
             aggregate_id: spec.route_id.as_uuid(),
             aggregate_version: policy.policy_revision(),
             occurred_at: canonical_timestamp(occurred_at),
@@ -93,7 +95,7 @@ impl McpRoutePolicyChanged {
         };
         if event.schema_version != 1
             || event.event_id.is_nil()
-            || event.organization_id.is_nil()
+            || event.organization_id().is_none()
             || event.aggregate_id.is_nil()
             || event.correlation_id.is_nil()
             || event.causation_id.is_some()
@@ -102,7 +104,7 @@ impl McpRoutePolicyChanged {
             || payload.project_id.is_nil()
             || payload.environment_id.is_nil()
             || payload.route_id.is_nil()
-            || payload.organization_id != event.organization_id
+            || Some(payload.organization_id) != event.organization_id()
             || payload.route_id != event.aggregate_id
             || payload.policy_revision == 0
             || payload.policy_revision > MAX_SAFE_ACL_INTEGER
@@ -131,7 +133,7 @@ mod tests {
             event_id: Uuid::now_v7(),
             event_key: kind.event_key().into(),
             schema_version: 1,
-            organization_id,
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization { organization_id },
             aggregate_id: route_id,
             aggregate_version: policy_revision,
             occurred_at: canonical_timestamp(Utc::now()),
@@ -156,7 +158,7 @@ mod tests {
         ] {
             let event = event(kind);
             let payload = McpRoutePolicyChanged::decode_envelope(&event).expect("owner fact");
-            assert_eq!(payload.organization_id, event.organization_id);
+            assert_eq!(Some(payload.organization_id), event.organization_id());
             assert_eq!(payload.route_id, event.aggregate_id);
             assert_eq!(payload.policy_revision, event.aggregate_version);
         }

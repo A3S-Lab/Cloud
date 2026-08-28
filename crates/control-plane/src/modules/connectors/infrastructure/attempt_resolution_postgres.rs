@@ -179,13 +179,12 @@ impl IConnectorExecutionAttemptResolutionRepository
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: binding.organization_id().as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "connector.execution-attempt.resolved",
                             aggregate_id: binding.attempt_id(),
                             occurred_at: write.resolution.resolved_at(),
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(binding.organization_id().as_uuid(),
                                 binding.project_id(),
                                 Some(binding.environment_id()),
                             ),

@@ -30,7 +30,7 @@ impl CommitAgentExecutionCheckpointWrite {
         let checkpoint = &self.checkpoint;
         if self.event.event_key != "agent.execution-checkpoint.committed"
             || self.event.schema_version != 1
-            || self.event.organization_id != checkpoint.organization_id.as_uuid()
+            || self.event.organization_id() != Some(checkpoint.organization_id.as_uuid())
             || self.event.aggregate_id != checkpoint.id.as_uuid()
             || self.event.aggregate_version != checkpoint.aggregate_version
             || self.event.occurred_at != checkpoint.captured_at
@@ -278,7 +278,7 @@ impl ForkAgentExecutionWrite {
             || lineage.parent_execution_id == self.execution.id
             || self.event.event_key != "agent.execution.forked"
             || self.event.schema_version != 1
-            || self.event.organization_id != self.execution.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.execution.organization_id.as_uuid())
             || self.event.aggregate_id != self.execution.id.as_uuid()
             || self.event.aggregate_version != self.execution.aggregate_version
             || self.event.occurred_at != self.execution.requested_at

@@ -27,7 +27,7 @@ impl AcceptBuildPlanWrite {
             || self.event.event_id.is_nil()
             || self.event.event_key != BUILD_PLAN_ACCEPTED_EVENT_KEY
             || self.event.schema_version != 1
-            || self.event.organization_id != self.plan.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.plan.organization_id.as_uuid())
             || self.event.aggregate_id != self.plan.id.as_uuid()
             || self.event.aggregate_version != 1
             || self.event.occurred_at != self.plan.accepted_at

@@ -29,11 +29,24 @@ orm_table! {
 }
 
 orm_table! {
+    pub(crate) struct CloudInstallations => "cloud_installations" {
+        singleton_key: bool => "singleton_key",
+        id: Uuid => "id",
+        schema_version: u64 => "schema_version",
+        created_at: DateTime<Utc> => "created_at",
+    }
+}
+
+orm_table! {
     pub(crate) struct OutboxEvents => "outbox_events" {
         event_id: Uuid => "event_id",
         event_key: String => "event_key",
         schema_version: u32 => "schema_version",
-        organization_id: Uuid => "organization_id",
+        installation_id: Uuid => "installation_id",
+        scope_kind: String => "scope_kind",
+        organization_id: Option<Uuid> => "organization_id",
+        project_id: Option<Uuid> => "project_id",
+        environment_id: Option<Uuid> => "environment_id",
         aggregate_id: Uuid => "aggregate_id",
         aggregate_version: u64 => "aggregate_version",
         occurred_at: DateTime<Utc> => "occurred_at",
@@ -49,7 +62,9 @@ orm_table! {
 orm_table! {
     pub(crate) struct AuditRecords => "audit_records" {
         audit_id: Uuid => "audit_id",
-        organization_id: Uuid => "organization_id",
+        installation_id: Uuid => "installation_id",
+        scope_kind: String => "scope_kind",
+        organization_id: Option<Uuid> => "organization_id",
         actor_id: Option<Uuid> => "actor_id",
         action: String => "action",
         aggregate_id: Uuid => "aggregate_id",

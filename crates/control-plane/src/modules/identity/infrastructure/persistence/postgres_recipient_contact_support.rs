@@ -255,13 +255,12 @@ pub(super) async fn store_recipient_contact_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: organization_id.as_uuid(),
+            scope: AuditWrite::organization_scope(organization_id.as_uuid()),
             actor_id: Some(actor_principal_id.as_uuid()),
             action,
             aggregate_id: contact.id.as_uuid(),
             occurred_at,
             request_id,
-            attribution_scope: AuditWrite::not_applicable(),
             details: serde_json::json!({
                 "contactId": contact.id,
                 "principalId": contact.principal_id,

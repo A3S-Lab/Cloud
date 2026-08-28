@@ -23,7 +23,9 @@ impl PluginRegistryEnrolled {
             event_id: Uuid::now_v7(),
             event_key: "plugins.registry.enrolled".into(),
             schema_version: 1,
-            organization_id: registry.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: registry.organization_id.as_uuid(),
+            },
             aggregate_id: registry.id.as_uuid(),
             aggregate_version: registry.aggregate_version,
             occurred_at: registry.created_at,

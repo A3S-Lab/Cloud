@@ -21,7 +21,9 @@ impl EnvironmentCreated {
             event_id: Uuid::now_v7(),
             event_key: "project.environment.created".into(),
             schema_version: 1,
-            organization_id: environment.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: environment.organization_id.as_uuid(),
+            },
             aggregate_id: environment.id.as_uuid(),
             aggregate_version: environment.aggregate_version,
             occurred_at: environment.created_at,

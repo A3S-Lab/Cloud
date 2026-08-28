@@ -144,13 +144,13 @@ impl IPullRequestPreviewPolicyRepository for PostgresPullRequestPreviewPolicyRep
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: write.revision.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "developer.pull-request-preview-policy.revision-accepted",
                             aggregate_id: write.revision.source_subscription_id.as_uuid(),
                             occurred_at: write.revision.accepted_at,
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(
+                                write.revision.organization_id.as_uuid(),
                                 write.revision.project_id,
                                 Some(write.revision.source_environment_id),
                             ),

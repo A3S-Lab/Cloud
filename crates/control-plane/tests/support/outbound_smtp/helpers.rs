@@ -274,7 +274,7 @@ pub(super) fn smtp_delivery_event(
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
         json!({
-            "organizationId": fact.organization_id,
+            "organizationId": fact.organization_id(),
             "aggregateId": fact.aggregate_id,
             "aggregateVersion": fact.aggregate_version,
             "occurredAt": fact.occurred_at,

@@ -198,9 +198,11 @@ revocation, Resource Grants, exact human-Principal recipient contacts and their
 one-time verification challenges, exact external OIDC subject links and one-time
 login/link flow persistence under `C0.3`, component-only installation Trust
 Domains and exact Workload Identity Policy revisions under `H0.4-WI1-C1`,
-component-only explicit platform scope, role-policy revisions and role bindings
-under `C0.5-MT1-C1`, component-only tenant-support grants and privileged
-decision evidence under `C0.5-MT1-C2`, planned SAML/OIDC provider, SCIM, and session policy under
+  component-only explicit platform scope, role-policy revisions and role bindings
+  under `C0.5-MT1-C1`, component-only tenant-support grants and privileged
+  decision evidence under `C0.5-MT1-C2`, canonical persisted Installation and
+  shared scoped fact persistence under `C0.5-MT1-C3`, and planned SAML/OIDC
+  provider, SCIM, and session policy under
 `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, issue workload
@@ -242,15 +244,20 @@ Primary aggregates:
   `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1` component contract
   implemented; exact execution-attestation binding remains `WI2`)
 
-#### Platform scope and RBAC (`C0.5-MT1-C1/C2` components)
+#### Platform scope and RBAC (`C0.5-MT1-C1/C2/C3` foundation)
 
-The shared `ScopeContext` is one closed identity value with exactly four forms:
-Installation, Organization, Project and Environment. Every child repeats and
-validates its full parent lineage. Containment and intersection can only retain
-or narrow an already admitted scope; an equal child UUID under another parent,
-an ambient request value or a Workspace cannot expand authority. Installation
-records therefore need no synthetic Organization. The value carries no tenant,
-project, audit, deployment or Runtime lifecycle into the shared kernel.
+The shared `ScopeContext` is one closed resolved identity value with exactly
+four forms: Installation, Organization, Project and Environment. Every child
+repeats and validates its full parent lineage. `CloudScopeRef` is the matching
+published reference for an uncommitted fact: an Installation reference names
+the exact Installation, while a tenant reference carries its complete tenant
+lineage. The single PostgreSQL persistence boundary locks canonical owner rows,
+resolves the owning Installation, and only then admits a full `ScopeContext`.
+Containment and intersection can only retain or narrow an already admitted
+scope; an equal child UUID under another parent, an ambient request value or a
+Workspace cannot expand authority. Installation records therefore need no
+synthetic Organization. Neither value carries tenant, project, audit,
+deployment or Runtime lifecycle into the shared kernel.
 
 Identity owns canonical `cloud.identity.platform-role-policy.v1` A3S ACL,
 closed `PlatformPermission` IDs, the four role bundles `platform_owner`,
@@ -269,13 +276,17 @@ credential, Cell state or runtime-exec access; that requires a separate bounded
 canonical `cloud.identity.tenant-support-grant.v1` plus an active exact human,
 an active binding admitting `platform:tenant-support:use`, a descendant scope
 and one closed non-sensitive support permission. Grants are bounded,
-non-renewing and terminally revocable; break-glass requires tenant notification
-plus an independent security alert and post-incident review. `MT1-C1/C2` add
-no repository, Application interface,
-Outbox/audit persistence or availability. `MT1-C3`, `MT2` and `MT3` supply one
-canonical Installation identity, scope-aware audit/Outbox, approver/current-head
-loading, optimistic concurrency, idempotency, self-escalation and last-owner
-protection, then remove the legacy boolean administrator bypass.
+  non-renewing and terminally revocable; break-glass requires tenant notification
+  plus an independent security alert and post-incident review. `MT1-C3` adds
+  migration `174`: one database-owned immutable Installation, Organization
+  ownership, and exact scope columns on the existing Audit and Outbox tables.
+  Platform facts have a null Organization, old Organization writers remain
+  compatible during bounded rolling upgrade, scope lineage is immutable, and
+  the existing relay and audit authority remain singular. `MT2` and `MT3` still
+  supply policy/binding/grant repositories, approver/current-head loading,
+  optimistic concurrency, idempotency, self-escalation and last-owner
+  protection, then remove the legacy boolean administrator bypass. Until then,
+  the component RBAC model grants no production authority.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

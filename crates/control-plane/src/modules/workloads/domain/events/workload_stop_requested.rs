@@ -25,7 +25,9 @@ impl WorkloadStopRequested {
             event_id: Uuid::now_v7(),
             event_key: "workload.stop.requested".into(),
             schema_version: 1,
-            organization_id: workload.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: workload.organization_id.as_uuid(),
+            },
             aggregate_id: workload.id.as_uuid(),
             aggregate_version: workload.aggregate_version,
             occurred_at: operation.requested_at,

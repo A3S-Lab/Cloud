@@ -519,13 +519,13 @@ impl IConnectorRevisionRevocationRepository for PostgresConnectorExecutionAttemp
                         transaction,
                         &AuditWrite {
                             audit_id: Uuid::now_v7(),
-                            organization_id: write.revocation.organization_id.as_uuid(),
                             actor_id: Some(write.actor_principal_id.as_uuid()),
                             action: "connector.revision.revoked",
                             aggregate_id: write.revocation.revision_id.as_uuid(),
                             occurred_at: write.revocation.revoked_at,
                             request_id: write.request_id,
-                            attribution_scope: AuditWrite::project_attribution(
+                            scope: AuditWrite::resource_scope(
+                                write.revocation.organization_id.as_uuid(),
                                 write.revocation.project_id,
                                 Some(write.revocation.environment_id),
                             ),

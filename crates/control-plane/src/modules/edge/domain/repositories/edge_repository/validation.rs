@@ -29,7 +29,7 @@ impl StageGatewayRolloutRollback {
             || self.rollout.aggregate_version != 1
             || self.event.event_key != "edge.gateway-rollout.staged"
             || self.event.schema_version != 1
-            || self.event.organization_id != self.scope.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.scope.organization_id.as_uuid())
             || self.event.aggregate_id != self.rollout.id.as_uuid()
             || self.event.aggregate_version != self.rollout.aggregate_version
             || self.event.occurred_at != self.rollout.started_at
@@ -155,7 +155,7 @@ impl StageGatewayRollout {
             || self.rollout.aggregate_version != 1
             || self.event.event_key != "edge.gateway-rollout.staged"
             || self.event.schema_version != 1
-            || self.event.organization_id != self.scope.organization_id.as_uuid()
+            || self.event.organization_id() != Some(self.scope.organization_id.as_uuid())
             || self.event.aggregate_id != self.rollout.id.as_uuid()
             || self.event.aggregate_version != self.rollout.aggregate_version
             || self.event.occurred_at != self.rollout.started_at
@@ -272,7 +272,7 @@ impl StageGatewayRollout {
             })?;
         if route_event.event_key != "edge.route.publication-staged"
             || route_event.schema_version != 3
-            || route_event.organization_id != self.scope.organization_id.as_uuid()
+            || route_event.organization_id() != Some(self.scope.organization_id.as_uuid())
             || route_event.aggregate_id != primary.id.as_uuid()
             || route_event.aggregate_version != primary.aggregate_version
             || route_event.occurred_at != primary.updated_at
@@ -341,7 +341,7 @@ impl StageGatewayCertificateConvergence {
             || convergence.gateway_command_id != publication.command_id
             || convergence.snapshot_digest != publication.snapshot_digest
             || publication.expected_revision.is_none()
-            || self.event.organization_id != convergence.organization_id.as_uuid()
+            || self.event.organization_id() != Some(convergence.organization_id.as_uuid())
             || self.event.aggregate_id
                 != convergence
                     .replacement_certificate_id
@@ -406,7 +406,7 @@ impl StageGatewayRouteCutover {
                 != crate::modules::edge::domain::GatewayCertificateState::Provisioning
             || certificate.csr_digest.is_some()
             || certificate.material.is_some()
-            || self.event.organization_id != cutover.organization_id.as_uuid()
+            || self.event.organization_id() != Some(cutover.organization_id.as_uuid())
             || self.event.aggregate_id != cutover.deployment_id.as_uuid()
             || self.event.correlation_id != publication.command_correlation_id
         {

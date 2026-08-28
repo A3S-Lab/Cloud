@@ -134,9 +134,10 @@ release truth.
 
 ### Developer platform and governance
 
-- Installation, Organization, Project, and Environment scopes with
-  multi-tenant isolation, memberships, grants, quotas, credentials, and
-  lifecycle cleanup.
+- One persisted immutable Installation identity and one exact discriminated
+  Installation/Organization/Project/Environment scope contract across tenant
+  isolation, memberships, grants, quotas, credentials, audit, Outbox, and
+  lifecycle cleanup. Platform facts never borrow a sentinel Organization.
 - A distinct system-administrator RBAC plane for installation, fleet,
   migration, policy, incident, and break-glass duties; system roles do not
   silently become tenant access. Tenant support requires an active exact human,
@@ -156,7 +157,7 @@ release truth.
 | Concern | Rule |
 | --- | --- |
 | Command concurrency | Tenant scope, idempotency key, expected aggregate version, and payload digest are checked transactionally; conflicting replay fails closed |
-| Database writes | Aggregate, idempotency, audit, and Outbox commit together through A3S ORM/PostgreSQL; no distributed database transaction spans external providers |
+| Database writes | Aggregate, idempotency, audit, and Outbox commit together through A3S ORM/PostgreSQL; the database resolves each fact to its canonical Installation lineage, and no distributed transaction spans an external provider |
 | Cross-system work | A3S Flow sagas and owner receipts reconcile uncertain outcomes; transactional Outbox publishes only committed facts |
 | Rate limits | Gateway enforces request limits; owner admission enforces durable quota. Redis may accelerate counters but is never quota truth |
 | Cache | Redis contains bounded, reconstructible reads, discovery, tokens, and coordination hints with revisioned invalidation; cache loss changes latency, not correctness |
@@ -185,7 +186,7 @@ contract or a versioned fact emitted from the owner's committed Outbox.
 | Provider lifecycle | A3S Runtime + A3S Box | Direct process/container/FaaS calls from product domains |
 | Public traffic | Edge desired state + A3S Gateway applied state | Cloud proxy, per-product ingress, or a second Gateway publisher |
 | Immutable and mutable data | Shared object client + Data/S0 | Per-product S3 clients, backup engines, or provider state as desired-state truth |
-| Integration facts | Transactional Outbox + A3S Event | Publish-before-commit or product-local event buses |
+| Integration facts | One scope-aware transactional Outbox + A3S Event | Publish-before-commit, sentinel tenants, or product/platform-local event buses |
 | Configuration | A3S ACL parsed by `a3s-acl` | Compatibility parsers or another product configuration language |
 
 Cross-cutting behavior is an explicit ordered pipeline—authentication,
@@ -203,7 +204,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 | Lane | Status |
 | --- | --- |
 | Tenant-scoped PostgreSQL identity, ORM-backed Operations/Flow, Outbox, API, and migration authority | **Verified foundation** |
-| Installation scope and system-administrator RBAC | **Early component foundation**; one explicit scope hierarchy, canonical platform-role policy/bindings, bounded tenant-support grants, and replayable privileged-decision evidence exist. No production authority is available before canonical installation identity, scoped audit/Outbox, repositories, Application interfaces, concurrency controls, cross-surface enforcement, and hostile-tenant evidence |
+| Installation scope and system-administrator RBAC | **Foundation in progress**; one persisted immutable Installation identity, explicit scope hierarchy, shared scope-aware Audit/Outbox rail, canonical platform-role policy/bindings, bounded tenant-support grants, and replayable privileged-decision evidence exist. Production RBAC still requires policy/binding/grant repositories, current-head and approval invariants, Application interfaces, cross-surface enforcement, and hostile multi-replica evidence |
 | Node, Workload, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress**; several component gates exist, current real-provider/release recertification remains |
 | Agent and hosted MCP product lanes | **In progress**; do not infer complete AaaS availability from component evidence |
 | Ontology Workflow and AI Applications/Files foundations | **In progress**; complete WaaS/Application products remain gate-bound |

@@ -38,7 +38,9 @@ impl PullRequestPreviewPolicyRevisionAccepted {
             event_id: Uuid::now_v7(),
             event_key: PULL_REQUEST_PREVIEW_POLICY_REVISION_ACCEPTED_EVENT_KEY.into(),
             schema_version: 1,
-            organization_id: revision.organization_id.as_uuid(),
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: revision.organization_id.as_uuid(),
+            },
             aggregate_id: revision.source_subscription_id.as_uuid(),
             aggregate_version: revision.revision_number,
             occurred_at: revision.accepted_at,

@@ -69,8 +69,8 @@ work may not accept `actor_is_platform_admin` as proof.
   scope are the stable decision vocabulary exposed to consuming contexts.
 - Redis, caches, Gateway claims and distributed locks may accelerate a current
   decision but cannot become role-policy, binding or revocation truth.
-- `C0.5-MT1-C1` is component-only. ADR 0081 defines the following support-grant
-  and effective-decision evidence slice. Installation-scoped Outbox/audit
-  persistence, repositories, authorization interfaces, migration of boolean
-  administrator bypasses and adversarial multi-replica evidence remain
-  required.
+- `C0.5-MT1-C1` is component-only. ADR 0081 defines support-grant and
+  effective-decision evidence; ADR 0082 supplies Installation-scoped
+  Outbox/audit persistence. Policy/binding/grant repositories, authorization
+  interfaces, migration of boolean administrator bypasses and adversarial
+  multi-replica evidence remain required.
