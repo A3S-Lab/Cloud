@@ -67,7 +67,8 @@ permissions:
 
 concurrency:
   group: box-provider-conformance-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Retained hardware-backed evidence must finish while newer revisions wait.
+  cancel-in-progress: false
 
 jobs:
   box-certification:
