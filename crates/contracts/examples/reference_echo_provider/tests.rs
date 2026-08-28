@@ -4,7 +4,42 @@ use a3s_cloud_contracts::{
     AgentProviderRunResumeV1, HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1,
     HarnessProviderBindingV1, HarnessWorkspaceBindingV1,
 };
+use std::net::Shutdown;
+use std::time::Duration;
 use uuid::Uuid;
+
+#[test]
+fn disconnected_probe_does_not_terminate_the_provider_connection_loop() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("reference listener");
+    let address = listener.local_addr().expect("reference address");
+    let server = std::thread::spawn(move || {
+        let mut state = FixtureState::new().expect("reference state");
+        for _ in 0..2 {
+            let (stream, _) = listener.accept().expect("reference connection");
+            serve_connection(stream, &mut state);
+        }
+    });
+
+    let disconnected = TcpStream::connect(address).expect("disconnected probe");
+    disconnected
+        .shutdown(Shutdown::Both)
+        .expect("disconnect probe");
+    drop(disconnected);
+
+    let mut health = TcpStream::connect(address).expect("health connection");
+    health
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .expect("health timeout");
+    health
+        .write_all(b"GET /health HTTP/1.1\r\nHost: runtime-health\r\nConnection: close\r\n\r\n")
+        .expect("health request");
+    let mut response = String::new();
+    health
+        .read_to_string(&mut response)
+        .expect("health response");
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+    server.join().expect("reference server");
+}
 
 #[test]
 fn approval_resume_requires_the_exact_pending_tool_identity_and_replays() {

@@ -270,17 +270,30 @@ fn main() -> FixtureResult {
     let mut state = FixtureState::new()?;
     println!("A3S_REFERENCE_ECHO_PROVIDER_READY listen={listen}");
     for connection in listener.incoming() {
-        let mut stream = connection?;
-        stream.set_nodelay(true)?;
-        if let Err(error) = handle_request(&mut stream, &mut state) {
-            write_json_response(
-                &mut stream,
-                "400 Bad Request",
-                &serde_json::json!({"error": error.to_string()}),
-            )?;
-        }
+        serve_connection(connection?, &mut state);
     }
     Ok(())
+}
+
+fn serve_connection(mut stream: TcpStream, state: &mut FixtureState) {
+    if let Err(error) = stream.set_nodelay(true) {
+        eprintln!("reference provider could not configure a client connection: {error}");
+        return;
+    }
+    if let Err(request_error) = handle_request(&mut stream, state) {
+        if let Err(response_error) = write_json_response(
+            &mut stream,
+            "400 Bad Request",
+            &serde_json::json!({"error": request_error.to_string()}),
+        ) {
+            // A health checker or caller may close as soon as it has the status
+            // it needs. That is a connection-local failure, never a reason to
+            // terminate the provider and abandon every admitted run.
+            eprintln!(
+                "reference provider client disconnected before its error response: {response_error}"
+            );
+        }
+    }
 }
 
 fn handle_request(stream: &mut TcpStream, state: &mut FixtureState) -> FixtureResult {
