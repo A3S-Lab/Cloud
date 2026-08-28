@@ -329,7 +329,7 @@ jobs:
           if cargo test --locked -p a3s-cloud-control-plane --lib \
               modules::agents::infrastructure::agent_execution_checkpoint_object_store::tests::real_s3_compatible_checkpoint_orphan_reconciliation_is_exact_and_idempotent \
               -- --ignored --exact --nocapture --test-threads=1 2>&1 | tee "$log" &&
-            grep --fixed-strings --line-regexp "$marker" "$log" >/dev/null; then
+            test "$(grep --fixed-strings --count "$marker" "$log")" -eq 1; then
             exit 0
           fi
           detail=$(tail -c 3000 "$log")

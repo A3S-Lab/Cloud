@@ -61,13 +61,13 @@ if (( checkpoint_status != 0 )); then
 fi
 
 marker='A3S_CLOUD_S0_NAMESPACE_PROVIDER_CERTIFIED provider=s3-compatible protocol=a3s.s0.object-namespace.v1 checks=7/7 cleanup=verified'
-grep --fixed-strings --line-regexp "$marker" \
+grep --fixed-strings "$marker" \
   "$evidence_directory/provider.log" \
   >"$evidence_directory/provider-certification.txt"
 test "$(wc -l <"$evidence_directory/provider-certification.txt")" -eq 1
 
 checkpoint_marker='A3S_CLOUD_A1_CHECKPOINT_S3_RECONCILIATION_CERTIFIED provider=s3-compatible transport=https orphan_inventory=1 orphan_cleanup=1 cleanup_fence=lease cleanup_replay=1 namespace_cleanup=verified'
-grep --fixed-strings --line-regexp "$checkpoint_marker" \
+grep --fixed-strings "$checkpoint_marker" \
   "$evidence_directory/agent-checkpoint-reconciliation.log" \
   >"$evidence_directory/agent-checkpoint-reconciliation-certification.txt"
 test "$(wc -l <"$evidence_directory/agent-checkpoint-reconciliation-certification.txt")" -eq 1
