@@ -5,6 +5,7 @@ use crate::modules::identity::domain::entities::{
 use crate::modules::identity::domain::value_objects::{
     RecipientContactSigningKeyId, RecipientEmailAddress,
 };
+use crate::modules::integration_events::OutboxMessage;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, InstallationId, OrganizationId, PrincipalId, RecipientContactId,
     RecipientContactVerificationId, ScopeContext,
@@ -63,6 +64,23 @@ fn received_event() -> ReceivedEvent {
     .expect("Outbox fact");
     let scope = ScopeContext::organization(InstallationId::new(), organization_id)
         .expect("committed scope");
+    let message = OutboxMessage {
+        event_id: outbox.event_id,
+        event_key: outbox.event_key.clone(),
+        schema_version: outbox.schema_version,
+        scope,
+        aggregate_id: outbox.aggregate_id,
+        aggregate_version: outbox.aggregate_version,
+        occurred_at: outbox.occurred_at,
+        correlation_id: outbox.correlation_id,
+        causation_id: outbox.causation_id,
+        payload: outbox.payload.clone(),
+        delivery_attempts: 1,
+    };
+    let payload = serde_json::to_value(
+        PublishedOutboxEnvelope::from_message(&message).expect("published envelope"),
+    )
+    .expect("published envelope JSON");
     let mut event = Event::typed(
         SUBJECT,
         "cloud",
@@ -70,16 +88,7 @@ fn received_event() -> ReceivedEvent {
         outbox.schema_version,
         RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
         "a3s-cloud",
-        serde_json::json!({
-            "scope": scope,
-            "organizationId": outbox.organization_id(),
-            "aggregateId": outbox.aggregate_id,
-            "aggregateVersion": outbox.aggregate_version,
-            "occurredAt": outbox.occurred_at,
-            "correlationId": outbox.correlation_id,
-            "causationId": outbox.causation_id,
-            "data": outbox.payload,
-        }),
+        payload,
     );
     event.id = outbox.event_id.to_string();
     ReceivedEvent {

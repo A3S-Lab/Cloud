@@ -576,6 +576,11 @@ pub(super) async fn exercise_outbound_smtp_provider_delivery(
 
     let executor = migrate_and_connect_for_test(&url, 8).await?;
     let database = Database::new(PostgresDialect, executor.clone());
+    let installation_id = InstallationId::from_uuid(
+        database
+            .fetch_one_as(sql_query::<Uuid>("select current_cloud_installation_id()"))
+            .await?,
+    );
     let repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
     let organization_id = OrganizationId::new();
     let principal_id = PrincipalId::new();
@@ -713,7 +718,7 @@ pub(super) async fn exercise_outbound_smtp_provider_delivery(
     assert_eq!(observed_delivery.provider_call_count(), 1);
 
     let accepted_admissions = counting_repository.admission_count();
-    bus.publish_event(&smtp_delivery_event(&accepted, &subject)?)
+    bus.publish_event(&smtp_delivery_event(&accepted, &subject, installation_id)?)
         .await?;
     tokio::time::timeout(
         Duration::from_secs(10),
@@ -798,8 +803,12 @@ pub(super) async fn exercise_outbound_smtp_provider_delivery(
     assert_eq!(observed_delivery.provider_call_count(), 5);
 
     let indeterminate_admissions = counting_repository.admission_count();
-    bus.publish_event(&smtp_delivery_event(&indeterminate, &subject)?)
-        .await?;
+    bus.publish_event(&smtp_delivery_event(
+        &indeterminate,
+        &subject,
+        installation_id,
+    )?)
+    .await?;
     tokio::time::timeout(
         Duration::from_secs(10),
         counting_repository.wait_for_admission_after(indeterminate_admissions),

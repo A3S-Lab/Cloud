@@ -2,6 +2,7 @@ use a3s_boot::{
     BootError, BootRequest, BootResponse, CqrsContext, HttpMethod, ModuleRef, QueryHandler,
     QueueOptions,
 };
+use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_cloud_control_plane::app::{
     build_application_with_source_resolver,
     build_application_with_source_resolver_and_oidc_provider,
@@ -32,7 +33,8 @@ use a3s_cloud_control_plane::modules::audit::{
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
-    A3sEventPublisher, IOutboxRepository, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
+    A3sEventPublisher, IOutboxRepository, OutboxMessage, OutboxRelay, OutboxRelayConfig,
+    PostgresOutboxRepository, PublishedOutboxEnvelope,
 };
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationProjection, OperationReconciler,
@@ -44,8 +46,8 @@ use a3s_cloud_control_plane::modules::security::{
     PostgresGatewayRoutePolicyTimelineRepository, SecurityAuditCorrelation,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, EnvironmentId, IdempotencyRequest, OperationId, OrganizationId,
-    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, RouteId,
+    AssetId, EnvironmentId, IdempotencyRequest, InstallationId, OperationId, OrganizationId,
+    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, RouteId, ScopeContext,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -68,6 +70,32 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+
+fn published_outbox_payload(
+    fact: &DomainEventEnvelope,
+    scope: ScopeContext,
+) -> Result<Value, String> {
+    fact.validate()?;
+    scope.validate()?;
+    if fact.scope != scope.reference() {
+        return Err("test Outbox fact and resolved scope do not match".into());
+    }
+    let message = OutboxMessage {
+        event_id: fact.event_id,
+        event_key: fact.event_key.clone(),
+        schema_version: fact.schema_version,
+        scope,
+        aggregate_id: fact.aggregate_id,
+        aggregate_version: fact.aggregate_version,
+        occurred_at: fact.occurred_at,
+        correlation_id: fact.correlation_id,
+        causation_id: fact.causation_id,
+        payload: fact.payload.clone(),
+        delivery_attempts: 1,
+    };
+    let envelope = PublishedOutboxEnvelope::from_message(&message)?;
+    serde_json::to_value(envelope).map_err(|error| error.to_string())
+}
 
 struct IntegrationAuditExportSigner {
     signer: Arc<dyn IBuildEvidenceSigner>,

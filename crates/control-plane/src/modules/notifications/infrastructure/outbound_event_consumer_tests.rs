@@ -1,5 +1,6 @@
 use super::*;
 use crate::modules::connectors::{ConnectorExecutionEvidence, ConnectorExecutionOutcome};
+use crate::modules::integration_events::OutboxMessage;
 use crate::modules::notifications::{
     outbound_notification_attempt_id, IOutboundNotificationDeliveryRepository,
     IOutboundNotificationDispatcher, Notification, NotificationScope, NotificationSeverity,
@@ -188,6 +189,23 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
     let fact = delivery.requested_event().expect("delivery fact");
     let scope = ScopeContext::organization(InstallationId::new(), delivery.organization_id())
         .expect("committed scope");
+    let message = OutboxMessage {
+        event_id: fact.event_id,
+        event_key: fact.event_key.clone(),
+        schema_version: fact.schema_version,
+        scope,
+        aggregate_id: fact.aggregate_id,
+        aggregate_version: fact.aggregate_version,
+        occurred_at: fact.occurred_at,
+        correlation_id: fact.correlation_id,
+        causation_id: fact.causation_id,
+        payload: fact.payload.clone(),
+        delivery_attempts: 1,
+    };
+    let payload = serde_json::to_value(
+        PublishedOutboxEnvelope::from_message(&message).expect("published envelope"),
+    )
+    .expect("published envelope JSON");
     let mut event = Event::typed(
         SUBJECT,
         "cloud",
@@ -195,16 +213,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         fact.schema_version,
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
-        serde_json::json!({
-            "scope": scope,
-            "organizationId": fact.organization_id(),
-            "aggregateId": fact.aggregate_id,
-            "aggregateVersion": fact.aggregate_version,
-            "occurredAt": fact.occurred_at,
-            "correlationId": fact.correlation_id,
-            "causationId": fact.causation_id,
-            "data": fact.payload,
-        }),
+        payload,
     );
     event.id = fact.event_id.to_string();
     ReceivedEvent {

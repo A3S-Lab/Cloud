@@ -72,6 +72,8 @@ publisher constructs it from the validated committed `OutboxMessage`, and every
 consumer decodes that same contract. Its legacy Organization projection must
 equal the canonical scope or validation fails; tenant-only consumers explicitly
 reject Installation scope. No consumer owns a private copy of the wire shape.
+Provider conformance gates also construct replay events through that production
+contract; test fixtures do not maintain a shadow JSON wire schema.
 Consumers that read committed Outbox rows decode the canonical `OutboxMessage`
 shape, including its resolved Installation, and use its one checked
 `domain_event()` adapter when an owner decoder needs the pre-commit

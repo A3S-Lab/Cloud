@@ -1902,6 +1902,14 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         "src/modules/identity/infrastructure/recipient_contact_verification_event_consumer.rs",
     ))
     .expect("read Identity event consumer");
+    let postgres_gate = std::fs::read_to_string(manifest.join("tests/postgres_integration.rs"))
+        .expect("read PostgreSQL provider gate");
+    let notification_nats_gate =
+        std::fs::read_to_string(manifest.join("tests/support/notifications/nats.rs"))
+            .expect("read notification NATS provider gate");
+    let notification_smtp_gate =
+        std::fs::read_to_string(manifest.join("tests/support/outbound_smtp/helpers.rs"))
+            .expect("read notification SMTP provider gate");
     let persistence = std::fs::read_to_string(manifest.join("src/infrastructure/postgres.rs"))
         .expect("read shared PostgreSQL persistence");
     let outbox_persistence = std::fs::read_to_string(
@@ -1949,6 +1957,11 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     assert!(published_envelope.contains("deny_unknown_fields"));
     assert!(publisher.contains("PublishedOutboxEnvelope::from_message(message)"));
     assert!(!publisher.contains("\"scope\": message.scope"));
+    assert!(postgres_gate.contains("PublishedOutboxEnvelope::from_message(&message)"));
+    for provider_gate in [&notification_nats_gate, &notification_smtp_gate] {
+        assert!(provider_gate.contains("published_outbox_payload("));
+        assert!(!provider_gate.contains("\"organizationId\": fact.organization_id()"));
+    }
     for consumer in [&notification_consumer, &identity_consumer] {
         assert!(
             consumer.contains("use crate::modules::integration_events::PublishedOutboxEnvelope")

@@ -133,6 +133,11 @@ pub(super) async fn exercise_notification_nats_delivery(
     definition: OutboundNotificationSubscriptionDefinition,
     occurred_at: chrono::DateTime<Utc>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let installation_id = InstallationId::from_uuid(
+        database
+            .fetch_one_as(sql_query::<Uuid>("select current_cloud_installation_id()"))
+            .await?,
+    );
     let notification = source_notification(
         database,
         organization_id,
@@ -215,7 +220,7 @@ pub(super) async fn exercise_notification_nats_delivery(
         delivery_repository,
         dispatcher_port,
     )?;
-    bus.publish_event(&delivery_event(&delivery, &subject)?)
+    bus.publish_event(&delivery_event(&delivery, &subject, installation_id)?)
         .await?;
     tokio::time::timeout(
         std::time::Duration::from_secs(10),
@@ -251,8 +256,16 @@ async fn stop_notification_consumer(
     Ok(())
 }
 
-fn delivery_event(delivery: &OutboundNotificationDelivery, subject: &str) -> Result<Event, String> {
+fn delivery_event(
+    delivery: &OutboundNotificationDelivery,
+    subject: &str,
+    installation_id: InstallationId,
+) -> Result<Event, String> {
     let fact = delivery.requested_event()?;
+    let payload = published_outbox_payload(
+        &fact,
+        ScopeContext::organization(installation_id, delivery.organization_id())?,
+    )?;
     let mut event = Event::typed(
         subject,
         "cloud",
@@ -260,15 +273,7 @@ fn delivery_event(delivery: &OutboundNotificationDelivery, subject: &str) -> Res
         fact.schema_version,
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
-        json!({
-            "organizationId": fact.organization_id(),
-            "aggregateId": fact.aggregate_id,
-            "aggregateVersion": fact.aggregate_version,
-            "occurredAt": fact.occurred_at,
-            "correlationId": fact.correlation_id,
-            "causationId": fact.causation_id,
-            "data": fact.payload,
-        }),
+        payload,
     );
     event.id = fact.event_id.to_string();
     Ok(event)

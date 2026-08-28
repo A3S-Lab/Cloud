@@ -264,8 +264,13 @@ pub(super) async fn stop_smtp_notification_consumer(
 pub(super) fn smtp_delivery_event(
     delivery: &OutboundNotificationDelivery,
     subject: &str,
+    installation_id: InstallationId,
 ) -> Result<Event, String> {
     let fact = delivery.requested_event()?;
+    let payload = published_outbox_payload(
+        &fact,
+        ScopeContext::organization(installation_id, delivery.organization_id())?,
+    )?;
     let mut event = Event::typed(
         subject,
         "cloud",
@@ -273,15 +278,7 @@ pub(super) fn smtp_delivery_event(
         fact.schema_version,
         OUTBOUND_NOTIFICATION_EVENT_KEY,
         "a3s-cloud",
-        json!({
-            "organizationId": fact.organization_id(),
-            "aggregateId": fact.aggregate_id,
-            "aggregateVersion": fact.aggregate_version,
-            "occurredAt": fact.occurred_at,
-            "correlationId": fact.correlation_id,
-            "causationId": fact.causation_id,
-            "data": fact.payload,
-        }),
+        payload,
     );
     event.id = fact.event_id.to_string();
     Ok(event)
