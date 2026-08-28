@@ -1642,6 +1642,129 @@ fn developer_workflows_workload_profile_public_surface_has_one_application_autho
 }
 
 #[test]
+fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_secret_mechanism() {
+    let root = module_root();
+    let trust_path = "identity/domain/value_objects/trust_domain_contract.rs";
+    let policy_path = "identity/domain/value_objects/workload_identity_policy_contract.rs";
+    let revision_path = "identity/domain/entities/workload_identity.rs";
+    let repository_path = "identity/domain/repositories/workload_identity_repository.rs";
+    let provider_path = "identity/domain/services/workload_identity_provider.rs";
+
+    let trust = std::fs::read_to_string(root.join(trust_path)).expect("read trust-domain ACL");
+    let policy =
+        std::fs::read_to_string(root.join(policy_path)).expect("read workload identity policy ACL");
+    let revisions =
+        std::fs::read_to_string(root.join(revision_path)).expect("read identity revisions");
+    let repositories =
+        std::fs::read_to_string(root.join(repository_path)).expect("read identity repositories");
+    let provider =
+        std::fs::read_to_string(root.join(provider_path)).expect("read identity provider port");
+
+    assert_eq!(trust.matches("pub struct TrustDomainContract {").count(), 1);
+    assert_eq!(
+        policy
+            .matches("pub struct WorkloadIdentityPolicyContract {")
+            .count(),
+        1
+    );
+    for required in [
+        "a3s_acl",
+        "canonical_digest",
+        "parse_acl",
+        "generate_acl",
+        "cloud.identity.trust-domain.v1",
+    ] {
+        assert!(
+            trust.contains(required),
+            "trust-domain contract lost canonical ACL boundary {required}"
+        );
+    }
+    for required in [
+        "a3s_acl",
+        "a3s_cloud_contracts::{RuntimeIsolationLevel, RuntimeUnitClass}",
+        "cloud.identity.workload-policy.v1",
+        "validate_against_trust_domain",
+    ] {
+        assert!(
+            policy.contains(required),
+            "workload identity contract lost unified boundary {required}"
+        );
+    }
+    for forbidden in [
+        "RuntimeTask",
+        "RuntimeService",
+        "AgentRuntime",
+        "FunctionRuntime",
+        "CellRuntime",
+        "private_key",
+        "certificate_pem",
+        "serde_yaml",
+        "toml::",
+    ] {
+        assert!(
+            !production_source(&format!("{trust}\n{policy}")).contains(forbidden),
+            "Identity ACL introduced duplicate runtime, secret, or configuration mechanism {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        revisions
+            .matches("pub struct AcceptedTrustDomainRevision {")
+            .count(),
+        1
+    );
+    assert_eq!(
+        revisions
+            .matches("pub struct AcceptedWorkloadIdentityPolicyRevision {")
+            .count(),
+        1
+    );
+    assert!(revisions.contains("Uuid::new_v5"));
+    assert_eq!(
+        repositories
+            .matches("pub trait ITrustDomainRepository")
+            .count(),
+        1
+    );
+    assert_eq!(
+        repositories
+            .matches("pub trait IWorkloadIdentityPolicyRepository")
+            .count(),
+        1
+    );
+    for forbidden in ["Postgres", "InMemory", "reqwest", "redis", "a3s_lane"] {
+        assert!(
+            !production_source(&repositories).contains(forbidden),
+            "Identity repository port imported concrete mechanism {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        provider
+            .matches("pub trait IWorkloadIdentityProviderService")
+            .count(),
+        1
+    );
+    assert!(provider.contains("async fn inspect_capabilities"));
+    assert!(provider.contains("observed_federation_bundle_digests"));
+    for forbidden in [
+        "async fn issue",
+        "private_key",
+        "certificate_pem",
+        "supports_federation",
+        "RuntimeUnitSpec",
+        "NodeId",
+        "Postgres",
+        "reqwest",
+    ] {
+        assert!(
+            !production_source(&provider).contains(forbidden),
+            "WI1 provider capability port prematurely acquired WI2/WI3 or concrete authority {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

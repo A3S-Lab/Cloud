@@ -44,7 +44,7 @@ alter a verified A3S release. That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The fifty-two authority decisions are
+implementation is not a public capability. The registered accepted authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not

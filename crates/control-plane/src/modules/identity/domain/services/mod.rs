@@ -3,6 +3,7 @@ mod recipient_contact_proof;
 mod recipient_contact_verification_delivery;
 mod resource_access_evaluator;
 mod resource_authorization_decision;
+mod workload_identity_provider;
 
 pub use oidc_provider::{
     IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
@@ -19,4 +20,8 @@ pub use resource_authorization_decision::{
     ResourceAuthorizationBasis, ResourceAuthorizationCredentialEvidence,
     ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest,
     ResourceAuthorizationGrantEvidence,
+};
+pub use workload_identity_provider::{
+    IWorkloadIdentityProviderService, WorkloadIdentityProviderCapabilities,
+    WorkloadIdentityProviderError,
 };

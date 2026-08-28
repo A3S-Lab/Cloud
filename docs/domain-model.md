@@ -196,11 +196,14 @@ Owns stable human and service Principals, organizations, Membership roles,
 exact-Principal MembershipInvitations, Principal-bound API credentials,
 revocation, Resource Grants, exact human-Principal recipient contacts and their
 one-time verification challenges, exact external OIDC subject links and one-time
-login/link flow persistence under `C0.3`, planned SAML/OIDC provider, SCIM, and session
-policy under `C0.5`, and tenant context. It answers who may
+login/link flow persistence under `C0.3`, component-only installation Trust
+Domains and exact Workload Identity Policy revisions under `H0.4-WI1-C1`,
+planned SAML/OIDC provider, SCIM, and session policy under `C0.5`, and tenant
+context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
-role, treat an identity-provider session as Cloud authority, or store asset
-collaborator data in an unvalidated metadata document.
+role, treat an identity-provider session as Cloud authority, issue workload
+credentials without exact Fleet/Runtime attestation, own network enforcement,
+or store asset collaborator data in an unvalidated metadata document.
 
 Primary aggregates:
 
@@ -223,6 +226,40 @@ Primary aggregates:
   remain gated)
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
+- `TrustDomain` and immutable `TrustDomainRevision` (`H0.4-WI1-C1` component
+  contract implemented; persistence and interfaces remain open)
+- `WorkloadIdentityPolicy` and immutable
+  `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1` component contract
+  implemented; exact execution-attestation binding remains `WI2`)
+
+#### Workload trust contract (`H0.4-WI1-C1` component)
+
+Identity owns canonical `cloud.identity.trust-domain.v1` and
+`cloud.identity.workload-policy.v1` ACLs. A Trust Domain binds one installation
+to exact non-secret provider-profile and trust-bundle digests, allowed
+node-attestation profiles, identity formats, credential bounds, revocation
+mode, and explicit federation bundles. A Workload Identity Policy binds one
+Organization/Project/Environment, Workload revision, closed product role,
+node pool, semantics profile, Runtime Unit class and isolation level,
+credential rotation policy, audiences, private service names, and peer-policy
+revision digests.
+
+The Contracts published language supplies Runtime's exact `Task`/`Service` and
+isolation types, so Identity neither imports Runtime execution authority nor
+creates parallel Agent, Function, Cell, inference, or system-service identity
+classes. Accepted revisions derive deterministic IDs from stable owner,
+revision number, and canonical contract digest. Repository ports carry an
+expected predecessor revision; Redis or a distributed lock cannot replace
+that durable compare-and-swap fence.
+
+The replaceable provider port can inspect only capability and exact observed
+root/federation trust-bundle evidence; a federation support boolean is not
+accepted as proof. It cannot issue credentials, receive private keys, or
+mutate a provider registration database. PostgreSQL persistence, authorization,
+transactional Outbox/audit, REST/OpenAPI/client/CLI/Management MCP, exact
+Fleet/Runtime attestation, local credential delivery, discovery, peer policy,
+enforcement, revocation drills, and real-provider evidence remain open. No
+workload identity availability is claimed by `WI1-C1`.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

@@ -195,7 +195,7 @@ imports and duplicate mappings from spreading while existing debt is removed.
 
 ## Delivery status
 
-The portfolio is gate-driven, not percentage-driven. As of **2026-08-28**:
+The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 
 | Lane | Status |
 | --- | --- |
@@ -204,7 +204,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-28**:
 | Agent and hosted MCP product lanes | **In progress**; do not infer complete AaaS availability from component evidence |
 | Ontology Workflow and AI Applications/Files foundations | **In progress**; complete WaaS/Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress**; Durable Cell service is not yet available |
-| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation** according to their owning gates |
+| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation**; workload identity has a component-only canonical WI1 contract and remains unavailable pending persistence, attestation, issuance, enforcement, and provider evidence |
 
 See the [product roadmap](ROADMAP.md), [platform gap analysis](docs/platform-gap-analysis.md),
 and [ecosystem project roadmaps](docs/project-roadmaps/README.md) for exact

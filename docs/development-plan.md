@@ -5347,7 +5347,7 @@ Follow the detailed gates in
 [`ai-application-platform-plan.md`](ai-application-platform-plan.md):
 
 1. retain the frozen versioned ACL parity manifest, its exact digest-bound
-   23-node profile contract, sixty accepted authority decisions, the
+   23-node profile contract, all registered accepted authority decisions, the
    immutable step-descriptor domain contract, the read-only discovery projection, Plan
    v2 exact semantic pins, Plan v3 descriptor-bound finite-Execution failure
    routing, Run v5 Connector attempt/wait replay, Run v6 immutable
@@ -6078,6 +6078,19 @@ Connector-attempt and `all` Outbox adapters remain role-reachable only. The
 factory contains no connection, migration, query, cache, or domain mechanism,
 and a source gate prevents a direct process-root constructor or second
 constructor rule.
+
+Component-only `H0.4-WI1-C1` establishes the first production workload-trust
+contract inside Identity. Strong installation, trust-domain, policy and
+revision identities bind two canonical A3S ACL contracts. Exact A3S Runtime
+`Task`/`Service` and isolation types are reused across closed Agent, Workflow,
+Function, MCP, Durable Cell, inference, build, Gateway and Cloud system roles;
+deterministic immutable revisions and predecessor-fenced repository ports
+prevent mutable or competing policy heads. One replaceable provider port can
+inspect only non-secret capability and trust-bundle evidence. It cannot issue
+credentials before `WI2` supplies exact Fleet/Runtime attestation. Persistence,
+authorization, Outbox/audit, public interfaces, real provider composition and
+`WI2` through `WI7` remain open, so no workload identity availability is
+claimed.
 
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same

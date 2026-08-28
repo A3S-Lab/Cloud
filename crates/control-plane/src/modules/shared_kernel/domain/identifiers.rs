@@ -39,6 +39,7 @@ macro_rules! identifier {
 }
 
 identifier!(OrganizationId);
+identifier!(InstallationId);
 identifier!(PrincipalId);
 identifier!(RecipientContactId);
 identifier!(RecipientContactVerificationId);
@@ -48,6 +49,10 @@ identifier!(MembershipId);
 identifier!(MembershipInvitationId);
 identifier!(ResourceGrantId);
 identifier!(ApiTokenId);
+identifier!(TrustDomainId);
+identifier!(TrustDomainRevisionId);
+identifier!(WorkloadIdentityPolicyId);
+identifier!(WorkloadIdentityPolicyRevisionId);
 identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
 identifier!(NotificationId);

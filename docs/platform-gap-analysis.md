@@ -82,6 +82,16 @@ not make a particular provider's database Cloud truth.
 Unit attestation, issuance/rotation, peer policy, service discovery, failure
 and revocation, federation/upgrade conformance.
 
+**Implementation progress:** component-only `H0.4-WI1-C1` now establishes the
+Identity-owned strong IDs, two canonical ACL contracts, deterministic
+immutable revisions, predecessor-fenced repository ports, direct reuse of
+Runtime's `Task`/`Service` and isolation types, and one capability-only
+replaceable provider port. This closes the ambiguous contract boundary but
+does not close the P0 gap: PostgreSQL ownership, authorization, atomic
+Outbox/audit, maintained interfaces, Fleet/Runtime attestation, issuance,
+private discovery, enforcement, failure evidence, and real-provider
+certification remain absent.
+
 ### 3.3 P0: platform observability, SLO and incident lifecycle
 
 **Gap:** many contexts emit excellent local evidence, but the platform lacks

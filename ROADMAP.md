@@ -3151,6 +3151,18 @@ close the delivery, workload-trust, observability, and compatibility semantics
 used by every later Runtime profile; they add no parallel executor, service
 mesh, telemetry truth, or release controller.
 
+Component-only `H0.4-WI1-C1` is implemented. Identity now owns canonical
+`cloud.identity.trust-domain.v1` and
+`cloud.identity.workload-policy.v1` ACL contracts, strong installation,
+trust-domain, policy, and deterministic revision identities, predecessor-fenced
+repository ports, and one capability-inspection provider port. The policy
+reuses A3S Runtime's exact `Task`/`Service` and isolation types and covers the
+closed Agent, Workflow worker, Function, MCP, Durable Cell, inference, build,
+Gateway, and Cloud system-service roles without adding a runtime subtype.
+`H0.4-WI1` remains unavailable until persistence, authorization, atomic
+Outbox/audit, maintained interfaces, and provider evidence land; `WI2` through
+`WI7` remain planned.
+
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,
    `H0.1`, and `H0.2` on exact Box revisions; first publish the unified Runtime

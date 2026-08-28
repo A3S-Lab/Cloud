@@ -233,15 +233,22 @@ Cloud Dashboard or private identity-provider UI is required.
 
 ## 13. Delivery gates
 
-| Gate | Outcome |
-| --- | --- |
-| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports |
-| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box |
-| `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation |
-| `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots |
-| `H0.4-WI5` | Box network enforcement, egress policy and Gateway-to-origin identity |
-| `H0.4-WI6` | Revocation, expiry, clock, process/node loss, partition and upgrade evidence |
-| `H0.4-WI7` | Optional trust-domain federation, region isolation and exact-provider conformance |
+| Gate | Outcome | Current state |
+| --- | --- | --- |
+| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | Component foundation in progress: `WI1-C1` implements strong installation/trust/policy/revision identities, canonical `cloud.identity.trust-domain.v1` and `cloud.identity.workload-policy.v1` ACL contracts, deterministic immutable revisions, optimistic predecessor-fenced repository ports, and one capability-only replaceable identity-provider port. Persistence, authorization, Outbox/audit, public interfaces, and retained provider evidence remain open. |
+| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | Planned |
+| `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
+| `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
+| `H0.4-WI5` | Box network enforcement, egress policy and Gateway-to-origin identity | Planned |
+| `H0.4-WI6` | Revocation, expiry, clock, process/node loss, partition and upgrade evidence | Planned |
+| `H0.4-WI7` | Optional trust-domain federation, region isolation and exact-provider conformance | Planned |
+
+`WI1-C1` deliberately exposes only provider capability inspection. Credential
+issuance is unavailable until `WI2` can prove the exact Fleet Claim, Node,
+Runtime Unit and generation. This prevents an Infrastructure adapter from
+minting identity from mutable hostnames, image names, process IDs, or shared
+cluster credentials. The decision is recorded in
+[ADR 0079](decisions/app-platform/0079-identity-owned-workload-trust-contract.md).
 
 ## 14. Non-goals
 
@@ -258,4 +265,3 @@ Cloud Dashboard or private identity-provider UI is required.
 
 - [SPIFFE Workload API](https://spiffe.io/docs/latest/spiffe-specs/spiffe_workload_api/)
 - [SPIFFE federation](https://spiffe.io/docs/latest/spiffe-specs/spiffe_federation/)
-

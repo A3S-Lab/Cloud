@@ -82,11 +82,13 @@ pub use application::queries::list_resource_grants::{
 pub use domain::repositories::{
     IOidcIdentityRepository, IRecipientContactRepository,
     IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
 pub use domain::services::{
-    IOidcProviderService, IRecipientContactVerificationDeliveryService, OidcAuthorization,
-    OidcAuthorizationRequest, OidcCodeVerificationRequest, OidcProviderError,
-    ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest, VerifiedOidcIdentity,
+    IOidcProviderService, IRecipientContactVerificationDeliveryService,
+    IWorkloadIdentityProviderService, OidcAuthorization, OidcAuthorizationRequest,
+    OidcCodeVerificationRequest, OidcProviderError, ResourceAuthorizationDecision,
+    ResourceAuthorizationDecisionRequest, VerifiedOidcIdentity,
 };
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use infrastructure::OpenIdConnectProviderService;

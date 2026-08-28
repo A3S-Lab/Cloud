@@ -88,7 +88,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "in_progress"
   }
   gate "C0.3" {
-    evidence = ["implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
+    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
     state = "in_progress"
   }
   gate "C0.5" {

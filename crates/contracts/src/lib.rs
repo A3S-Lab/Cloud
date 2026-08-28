@@ -23,7 +23,9 @@ pub use a3s_code_core::{
     AGENT_PROTOCOL_MAX_EVENTS_PER_PAGE, AGENT_PROTOCOL_MAX_EVENT_PAGE_BYTES,
     AGENT_PROTOCOL_MAX_EVENT_RECORD_BYTES, AGENT_PROTOCOL_V1,
 };
-pub use a3s_runtime::contract::RuntimeServiceEndpoint;
+pub use a3s_runtime::contract::{
+    IsolationLevel as RuntimeIsolationLevel, RuntimeServiceEndpoint, RuntimeUnitClass,
+};
 pub use agent_provider::{
     AgentProviderApprovalDecisionV1, AgentProviderApprovalOutcomeV1,
     AgentProviderCapabilityNegotiationV1, AgentProviderCapabilityRequirementsV1,

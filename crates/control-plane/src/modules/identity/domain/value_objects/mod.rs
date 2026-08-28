@@ -6,6 +6,8 @@ mod membership_role;
 mod organization_name;
 mod recipient_contact;
 mod resource_grant_scope;
+mod trust_domain_contract;
+mod workload_identity_policy_contract;
 
 pub use api_token_credential::{ApiTokenDigest, ApiTokenSecret, BootstrapCredential};
 pub use api_token_name::ApiTokenName;
@@ -15,3 +17,13 @@ pub use membership_role::MembershipRole;
 pub use organization_name::OrganizationName;
 pub use recipient_contact::{RecipientContactSigningKeyId, RecipientEmailAddress};
 pub use resource_grant_scope::ResourceGrantScope;
+pub use trust_domain_contract::{
+    TrustDomainContract, TrustDomainContractSpec, TrustDomainName, WorkloadIdentityFormat,
+    WorkloadIdentityRevocationMode, MAX_TRUST_DOMAIN_FEDERATION_BUNDLES,
+    TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, TRUST_DOMAIN_CONTRACT_SCHEMA,
+};
+pub use workload_identity_policy_contract::{
+    PrivateServiceName, WorkloadIdentityAudience, WorkloadIdentityPolicyContract,
+    WorkloadIdentityPolicySpec, WorkloadProductRole, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+    WORKLOAD_IDENTITY_POLICY_SCHEMA,
+};

@@ -9,6 +9,7 @@ mod recipient_contact;
 mod recipient_contact_verification;
 mod recipient_contact_verification_delivery;
 mod resource_grant;
+mod workload_identity;
 
 pub use api_token::{
     ApiToken, AuthenticatedApiToken, IdentityBootstrap, MAX_OIDC_LOGIN_TOKEN_LIFETIME,
@@ -36,3 +37,4 @@ pub use recipient_contact_verification_delivery::{
     RecipientContactVerificationDeliveryStatus,
 };
 pub use resource_grant::ResourceGrant;
+pub use workload_identity::{AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision};
