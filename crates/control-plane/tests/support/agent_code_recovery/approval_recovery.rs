@@ -253,6 +253,13 @@ async fn decide_approval_across_reconnect(
 ) -> TestResult<AgentApprovalCheckpoint> {
     let first = reconnect_approval_runtime(postgres_url).await?;
     let authorizer = RecordingApprovalAuthorizer::default();
+    let actor_principal_id = PrincipalId::new();
+    seed_approval_actor(
+        &first.executor,
+        actor_principal_id,
+        scenario.checkpoint.requested_at,
+    )
+    .await?;
     let command = DecideAgentApprovalCheckpoint {
         organization_id: scenario.state.organization_id,
         execution_id: scenario.state.execution_id,
@@ -261,7 +268,7 @@ async fn decide_approval_across_reconnect(
         outcome,
         reason: Some(format!("{idempotency_key} by integration policy")),
         resource_access: ResourceAccessEvaluator::organization_wide(),
-        actor_principal_id: PrincipalId::new(),
+        actor_principal_id,
         credential_id: ApiTokenId::new(),
         actor_is_platform_admin: false,
         idempotency_key: idempotency_key.into(),
@@ -293,6 +300,25 @@ async fn decide_approval_across_reconnect(
     assert_eq!(replayed.checkpoint, decided.checkpoint);
     assert_eq!(replay_authorizer.calls.load(Ordering::SeqCst), 0);
     Ok(decided.checkpoint)
+}
+
+async fn seed_approval_actor(
+    executor: &PostgresExecutor,
+    actor_principal_id: PrincipalId,
+    created_at: DateTime<Utc>,
+) -> TestResult {
+    Database::new(PostgresDialect, executor.clone())
+        .execute(
+            sql_query::<()>(
+                "insert into identity_principals (id, kind, name, aggregate_version, created_at, disabled_at) values (",
+            )
+            .bind(actor_principal_id.as_uuid())
+            .append(", 'human', 'Agent approval recovery actor', 1, ")
+            .bind(created_at)
+            .append(", null)"),
+        )
+        .await?;
+    Ok(())
 }
 
 async fn settle_approval_resolution(
