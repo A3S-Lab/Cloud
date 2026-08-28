@@ -5,6 +5,7 @@ pub mod enroll_node;
 pub mod issue_enrollment_token;
 pub mod lease_node_commands;
 pub mod manage_node_pool;
+pub mod negotiate_node_session;
 pub mod record_gateway_acknowledgement;
 pub mod record_node_log_chunks;
 pub mod record_node_observations;
@@ -25,6 +26,9 @@ pub use issue_enrollment_token::{
 pub use lease_node_commands::{LeaseNodeCommands, LeaseNodeCommandsHandler};
 pub use manage_node_pool::{
     ManageNodePool, ManageNodePoolHandler, NodePoolMutation, NodePoolMutationResult,
+};
+pub use negotiate_node_session::{
+    NegotiateNodeSession, NegotiateNodeSessionHandler, NegotiateNodeSessionResult,
 };
 pub use record_gateway_acknowledgement::{
     RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,

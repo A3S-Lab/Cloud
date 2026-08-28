@@ -13,11 +13,12 @@ pub use commands::{
     EnqueueNodeCommandHandler, EnqueueNodeCommandResult, EnrollNode, EnrollNodeHandler,
     EnrollNodeResult, IssueEnrollmentToken, IssueEnrollmentTokenHandler,
     IssueEnrollmentTokenResult, LeaseNodeCommands, LeaseNodeCommandsHandler, ManageNodePool,
-    ManageNodePoolHandler, NodePoolMutation, NodePoolMutationResult, RecordGatewayAcknowledgement,
-    RecordGatewayAcknowledgementHandler, RecordNodeLogChunks, RecordNodeLogChunksHandler,
-    RecordNodeObservations, RecordNodeObservationsHandler, RecordNodeResourceInventory,
-    RecordNodeResourceInventoryHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
-    RotateNodeCertificateResult,
+    ManageNodePoolHandler, NegotiateNodeSession, NegotiateNodeSessionHandler,
+    NegotiateNodeSessionResult, NodePoolMutation, NodePoolMutationResult,
+    RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler, RecordNodeLogChunks,
+    RecordNodeLogChunksHandler, RecordNodeObservations, RecordNodeObservationsHandler,
+    RecordNodeResourceInventory, RecordNodeResourceInventoryHandler, RotateNodeCertificate,
+    RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
 pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
 pub use log_compaction::LogCompactionWorker;

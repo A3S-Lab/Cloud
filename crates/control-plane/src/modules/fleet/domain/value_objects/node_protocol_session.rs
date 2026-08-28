@@ -5,8 +5,6 @@ use a3s_cloud_contracts::{
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
-const MAX_SELECTION_LIFETIME_HOURS: i64 = 24;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeProtocolPolicy {
     supported: NodeProtocolContractSet,
@@ -118,7 +116,7 @@ impl NodeProtocolNegotiation {
             .validate_at(received_at)
             .map_err(NodeProtocolSessionError::InvalidContract)?;
         if selection_lifetime <= Duration::zero()
-            || selection_lifetime > Duration::hours(MAX_SELECTION_LIFETIME_HOURS)
+            || selection_lifetime > Duration::hours(NodeSessionSelection::MAX_LIFETIME_HOURS)
             || proposed_session_id.is_nil()
         {
             return Err(NodeProtocolSessionError::InvalidSelectionDraft);

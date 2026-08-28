@@ -1,5 +1,6 @@
 mod in_memory;
 mod in_memory_control;
+mod in_memory_session;
 #[cfg(test)]
 mod inventory_typed_orm_tests;
 mod postgres;

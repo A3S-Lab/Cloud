@@ -8,7 +8,6 @@ const MAX_CONTRACTS_PER_DIRECTION: usize = 128;
 const MAX_CONTRACT_ID_BYTES: usize = 255;
 const MAX_SAFE_PROTOCOL_GENERATION: u64 = (1_u64 << 53) - 1;
 const MAX_HELLO_AGE_SECONDS: i64 = 300;
-const MAX_SELECTION_LIFETIME_HOURS: i64 = 24;
 const MAX_SELECTION_CLOCK_SKEW_SECONDS: i64 = 30;
 
 /// Exact node-protocol schemas the Agent can read from and write to Cloud.
@@ -131,6 +130,7 @@ pub struct NodeSessionSelection {
 
 impl NodeSessionSelection {
     pub const SCHEMA: &'static str = "a3s.cloud.node-session-selection.v1";
+    pub const MAX_LIFETIME_HOURS: i64 = 24;
 
     pub fn validate_for(&self, hello: &NodeSessionHello, now: DateTime<Utc>) -> Result<(), String> {
         hello.validate()?;
@@ -191,8 +191,7 @@ impl NodeSessionSelection {
             return Err("node session selection sequence or generation is invalid".into());
         }
         let lifetime = self.expires_at - self.selected_at;
-        if lifetime <= Duration::zero() || lifetime > Duration::hours(MAX_SELECTION_LIFETIME_HOURS)
-        {
+        if lifetime <= Duration::zero() || lifetime > Duration::hours(Self::MAX_LIFETIME_HOURS) {
             return Err("node session selection lifetime is invalid".into());
         }
         self.contracts.validate()?;

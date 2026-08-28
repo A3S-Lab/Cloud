@@ -6,7 +6,9 @@ use crate::modules::fleet::domain::repositories::{
     NodeEvacuationCause, NodeEvacuationSource, NodeHeartbeatUpdate, NodeLogCompactionRange,
     NodePoolWrite, NodeResourceInventoryRecord, NodeStateChange,
 };
-use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
+use crate::modules::fleet::domain::value_objects::{
+    EnrollmentTokenCredential, NodeProtocolSessionRecord, NodeState,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId,
     NodeCommandId, NodeId, NodePoolId, OrganizationId, RepositoryError,
@@ -40,6 +42,7 @@ pub(super) struct State {
     pub(super) observations: BTreeMap<Uuid, super::in_memory_control::StoredObservation>,
     pub(super) resource_inventories: BTreeMap<(NodeId, u64), NodeResourceInventoryRecord>,
     pub(super) inventory_heads: BTreeMap<NodeId, u64>,
+    pub(super) protocol_sessions: BTreeMap<NodeId, NodeProtocolSessionRecord>,
     pub(super) gateway_acknowledgements:
         BTreeMap<Uuid, super::in_memory_control::StoredGatewayAcknowledgement>,
     pub(super) log_batches: BTreeMap<Uuid, super::in_memory_control::StoredLogBatch>,
