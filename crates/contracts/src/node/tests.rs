@@ -708,3 +708,4 @@ mod code_agent_tests;
 mod durable_cell_tests;
 mod gateway_tests;
 mod plugin_host_tests;
+mod session_tests;

@@ -13,6 +13,7 @@ mod observation;
 mod plugin_host;
 mod resource_claim;
 mod secret;
+mod session;
 #[cfg(test)]
 mod tests;
 
@@ -73,6 +74,9 @@ pub use resource_claim::{
     RUNTIME_RESOURCE_CLAIM_ID_KEY,
 };
 pub use secret::{CloudSecretReference, NodeSecretMaterialRequest, NodeSecretMaterialResponse};
+pub use session::{
+    NodeProtocolContractSet, NodeSessionHello, NodeSessionSelection, NodeSessionSelectionReference,
+};
 
 pub(crate) fn validate_single_line(label: &str, value: &str, max: usize) -> Result<(), String> {
     if value.trim().is_empty()
