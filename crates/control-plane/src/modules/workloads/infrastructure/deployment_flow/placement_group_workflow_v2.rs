@@ -18,7 +18,8 @@ use crate::modules::workloads::domain::repositories::{
 use crate::modules::workloads::infrastructure::replica_deployment_materialization::validate_existing_materialization;
 use a3s_cloud_contracts::NodeResourceInventory;
 use a3s_flow::{FlowError, RuntimeCommand, StepInvocation, WorkflowInvocation};
-use a3s_runtime::contract::{RuntimeCapabilities, RuntimeUnitSpec};
+use a3s_runtime::contract::{RuntimeCapabilities, RuntimeUnitClass, RuntimeUnitSpec};
+use a3s_runtime::{RuntimeConsumerRequirements, RuntimeError};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -851,6 +852,7 @@ fn member_edges(
     specs: &[RuntimeUnitSpec],
     nodes: &[SchedulableNode],
 ) -> a3s_flow::Result<Vec<Vec<MemberNodeCandidate>>> {
+    let runtime_requirements = RuntimeConsumerRequirements::new(RuntimeUnitClass::Service);
     context
         .group
         .members
@@ -867,17 +869,15 @@ fn member_edges(
                 .iter()
                 .enumerate()
                 .filter_map(|(node_index, node)| {
-                    let missing = match node.capabilities.missing_for(spec) {
-                        Ok(missing) => missing,
+                    match runtime_requirements.admit_spec(spec, &node.capabilities) {
+                        Ok(()) => {}
+                        Err(RuntimeError::UnsupportedCapabilities(_)) => return None,
                         Err(error) => {
                             return Some(Err(runtime_error(
-                                "could not match group Runtime capabilities",
+                                "could not admit group Service Runtime consumer requirements",
                                 error,
                             )))
                         }
-                    };
-                    if !missing.is_empty() {
-                        return None;
                     }
                     let requirements =
                         match CompiledResourceRequirements::compile(&resources, &node.inventory) {

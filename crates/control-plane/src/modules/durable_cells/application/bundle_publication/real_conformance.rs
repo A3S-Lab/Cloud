@@ -45,7 +45,7 @@ use a3s_runtime::contract::{
     RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeServiceEndpoint,
     RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, SecretReference, SecretTarget,
 };
-use a3s_runtime::RuntimeError;
+use a3s_runtime::{RuntimeConsumerRequirements, RuntimeError};
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use futures_util::{SinkExt, StreamExt};
@@ -1413,14 +1413,13 @@ async fn require_runtime_support(
     runtime: &dyn a3s_runtime::RuntimeClient,
     spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> GateResult<()> {
-    let missing = runtime.capabilities().await?.missing_for(spec)?;
-    if !missing.is_empty() {
-        return Err(invalid(format!(
-            "pinned Box cannot run the Durable Cell conformance projection: {}",
-            missing.join(", ")
-        ))
-        .into());
-    }
+    RuntimeConsumerRequirements::new(RuntimeUnitClass::Service)
+        .admit_spec(spec, &runtime.capabilities().await?)
+        .map_err(|error| {
+            invalid(format!(
+                "pinned Box cannot admit the Durable Cell Runtime consumer requirements: {error}"
+            ))
+        })?;
     Ok(())
 }
 

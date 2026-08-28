@@ -17,8 +17,10 @@ use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
 use a3s_flow::FlowError;
 use a3s_runtime::contract::{
-    RuntimeApplyRequest, RuntimeCapabilities, RuntimeObservation, RuntimeUnitSpec, RuntimeUnitState,
+    RuntimeApplyRequest, RuntimeCapabilities, RuntimeObservation, RuntimeUnitClass,
+    RuntimeUnitSpec, RuntimeUnitState,
 };
+use a3s_runtime::{RuntimeConsumerRequirements, RuntimeError};
 use chrono::{DateTime, Utc};
 
 pub(super) async fn schedule(
@@ -75,6 +77,7 @@ pub(super) async fn schedule(
         )));
     }
     let now = Utc::now().max(execution.updated_at);
+    let runtime_requirements = RuntimeConsumerRequirements::new(RuntimeUnitClass::Task);
     let mut nodes = runtime
         .nodes
         .list(execution.organization_id)
@@ -104,12 +107,15 @@ pub(super) async fn schedule(
                 continue;
             }
         };
-        if !capabilities
-            .missing_for(&spec)
-            .map_err(|error| flow_error("could not match execution Runtime capabilities", error))?
-            .is_empty()
-        {
-            continue;
+        match runtime_requirements.admit_spec(&spec, &capabilities) {
+            Ok(()) => {}
+            Err(RuntimeError::UnsupportedCapabilities(_)) => continue,
+            Err(error) => {
+                return Err(flow_error(
+                    "could not admit execution Runtime consumer requirements",
+                    error,
+                ))
+            }
         }
         let expected = execution.aggregate_version;
         execution

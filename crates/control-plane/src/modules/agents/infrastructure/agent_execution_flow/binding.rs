@@ -8,7 +8,8 @@ use a3s_cloud_contracts::{
     HarnessSecretReferenceV1, HarnessSecretTargetV1, HarnessSkillBindingV1,
     HarnessWorkspaceBindingV1, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
 };
-use a3s_runtime::contract::TransportProtocol;
+use a3s_runtime::contract::{RuntimeUnitClass, TransportProtocol};
+use a3s_runtime::RuntimeConsumerRequirements;
 use chrono::{DateTime, Utc};
 
 pub(super) async fn ready(
@@ -47,7 +48,11 @@ pub(super) async fn ready(
         .await
         .map_err(|error| format!("could not load Agent Runtime observation: {error}"))?
         .ok_or_else(|| "Agent Runtime has no observation yet".to_owned())?;
-    observation.observation.validate_against(&spec)?;
+    RuntimeConsumerRequirements::new(RuntimeUnitClass::Service)
+        .require_health()
+        .require_service_endpoints()
+        .accept_observation(&spec, &observation.observation)
+        .map_err(|error| error.to_string())?;
     if observation
         .received_at
         .checked_add_signed(runtime.config.heartbeat_timeout)

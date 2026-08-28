@@ -42,7 +42,8 @@ use a3s_cloud_contracts::{
 };
 use a3s_runtime::contract::{
     IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
-    RuntimeFeature, RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
+    RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation,
+    RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
@@ -722,7 +723,11 @@ async fn record_running_observation(
         observed_at_ms,
         started_at_ms: Some(started_at_ms),
         finished_at_ms: None,
-        health: None,
+        health: Some(RuntimeHealthObservation {
+            state: RuntimeHealthState::Healthy,
+            checked_at_ms: observed_at_ms,
+            message: None,
+        }),
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

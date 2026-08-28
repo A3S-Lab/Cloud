@@ -32,8 +32,10 @@ use crate::modules::workloads::domain::services::{
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeResourceClaimBinding};
 use a3s_flow::{FlowError, StepInvocation};
 use a3s_runtime::contract::{
-    RuntimeApplyRequest, RuntimeCapabilities, RuntimeHealthState, RuntimeUnitState,
+    RuntimeApplyRequest, RuntimeCapabilities, RuntimeHealthState, RuntimeUnitClass,
+    RuntimeUnitState,
 };
+use a3s_runtime::{RuntimeConsumerRequirements, RuntimeError};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -753,6 +755,7 @@ async fn schedule(
         .await
         .map_err(|error| flow_error("could not list deployment scheduling candidates", error))?;
     nodes.sort_by_key(|node| node.id);
+    let runtime_requirements = RuntimeConsumerRequirements::new(RuntimeUnitClass::Service);
     let mut anti_affinity_unavailable = false;
     for node in nodes {
         if input
@@ -775,11 +778,15 @@ async fn schedule(
                 continue;
             }
         };
-        let missing = capabilities
-            .missing_for(&input.resolved.spec)
-            .map_err(|error| flow_error("could not match Runtime capabilities", error))?;
-        if !missing.is_empty() {
-            continue;
+        match runtime_requirements.admit_spec(&input.resolved.spec, &capabilities) {
+            Ok(()) => {}
+            Err(RuntimeError::UnsupportedCapabilities(_)) => continue,
+            Err(error) => {
+                return Err(flow_error(
+                    "could not admit Service Runtime consumer requirements",
+                    error,
+                ))
+            }
         }
         let Some(inventory) = runtime
             .node_control
