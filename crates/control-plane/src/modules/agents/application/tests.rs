@@ -10,7 +10,10 @@ use super::{
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
 };
-use crate::modules::agents::{BuiltInAgentExecutionProviderRegistry, InMemoryAgentRepository};
+use crate::modules::agents::{
+    AssetsAgentReleaseAdmissionAdapter, BuiltInAgentExecutionProviderRegistry,
+    InMemoryAgentRepository,
+};
 use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::artifacts::{HostedArtifactQueryService, InMemoryBuildRunRepository};
@@ -165,8 +168,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
 
     let start_handler = StartAgentExecutionHandler::new(
         agents.clone(),
-        assets,
-        artifacts,
+        Arc::new(AssetsAgentReleaseAdmissionAdapter::new(assets, artifacts)),
         Arc::new(BuiltInAgentExecutionProviderRegistry::new().expect("provider registry")),
     );
     let start = StartAgentExecution {
@@ -377,8 +379,11 @@ async fn workflow_agent_port_pins_release_replays_output_and_cancellation() {
     builds.seed_build(build).await;
     let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
     let agents = Arc::new(InMemoryAgentRepository::new());
-    let service =
-        WorkflowAgentApplicationService::new(environments, agents.clone(), assets, artifacts);
+    let service = WorkflowAgentApplicationService::new(
+        environments,
+        agents.clone(),
+        Arc::new(AssetsAgentReleaseAdmissionAdapter::new(assets, artifacts)),
+    );
     let request = WorkflowAgentRequest {
         organization_id,
         project_id,

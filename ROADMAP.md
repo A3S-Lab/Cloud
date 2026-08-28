@@ -315,6 +315,15 @@ cannot advance the user-visible Operation timestamp. In-memory fairness and
 rebuild tests plus the PostgreSQL foundation gate cover the same repository
 contract without another scheduler, queue, or reconciliation table.
 
+The next DDD convergence slice is also implemented. Agent Start, Fork, and
+Workflow dispatch now enter immutable release admission through one
+Agents-owned port. One consumer-side adapter composes the Assets release and
+Artifacts OCI-location owner interfaces and returns only the Agents aggregate's
+immutable binding. Executable architecture tests prohibit direct foreign
+repository/query imports in Agents Application and prohibit a second adapter,
+persistence mechanism, Outbox/projector, command handler, or worker at this
+boundary.
+
 `BX0` is the release-blocking provider migration:
 
 1. `BX0.1` pins one certified Box/Runtime pair, adds closed `box` ACL

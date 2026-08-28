@@ -170,7 +170,7 @@ snapshot or an application port result.
 
 | Module | Unique authority | Current assessment | Required optimization |
 | --- | --- | --- | --- |
-| Agents | Conversation, AgentExecution, semantic event sequence, approvals/checkpoints/forks trajectory | Semantic state is separate from Runtime logs and generic Executions. Start no longer reads a BuildRun aggregate: it consumes the bounded Assets deployable read model and an Artifacts OCI-location query interface. It still orchestrates those two owner interfaces directly. | Introduce an Agents-owned AgentReleaseAdmission port whose adapter composes the two owner interfaces and returns one immutable execution binding. Keep provider-neutral Harness execution behind an Agents-owned port and the common Workloads/Fleet/Runtime path. |
+| Agents | Conversation, AgentExecution, semantic event sequence, approvals/checkpoints/forks trajectory | Semantic state is separate from Runtime logs and generic Executions. Start, fork, and Workflow dispatch now consume one Agents-owned `IAgentReleaseAdmissionPort`; only the consumer-owned Infrastructure adapter may compose the Assets deployable-release and Artifacts OCI-location owner interfaces, and it returns one immutable `AgentReleaseBinding`. Application imports neither owner repository/query interface nor the foreign deployable read model. An architecture fitness test rejects a second adapter, concrete persistence, Outbox/projector, command handler, or worker in this boundary. | Keep provider-neutral Harness execution behind Agents-owned ports and the common Workloads/Fleet/Runtime path. Apply the same owner-port rule to remaining model/Tool producers; never add an Agent release repository, build query, scheduler, or retry mechanism. |
 | Applications | Application/release, session, invocation, message, variable, and delivery semantics | Best current example of consumer-owned application ports to Workflow. A few Workflow constants/types still leak directly into application code. | Complete the anti-corruption layer: all Workflow compilation/run/effect interaction travels through Applications-owned ports and published snapshots. No Workflow repositories or timeout helpers cross directly. |
 | Workflow | Ontology, WorkflowDefinition, Goal, Plan, WorkflowRun, HumanTask, decision, and semantic step projections | Rich invariants and strong Flow authority tests. Domain imports Forms submission types; persistence reads/writes Forms state directly. The module is also large enough that internal packages need explicit ownership. | Define internal subdomains for Definition/Planning, Run, and Human Interaction. Access Executions, Connectors, Applications, and Forms only through application ports. Flow remains the only durable execution history. |
 | Forms | Form draft/release schema and form semantic validation | Domain is isolated and already guarded. FormSubmission is declared Forms-owned while Workflow persists it inside the HumanTask transaction, so authority and storage disagree. | Make the ownership decision explicit. Recommended: Forms owns definitions/releases and validation; Workflow owns an immutable HumanTaskSubmission evidence value. If general standalone submissions are later required, they use a separate Forms command and aggregate. |
@@ -514,7 +514,11 @@ reservation query and Published-Language-only projector imports.
 1. Finish Applications-to-Workflow anti-corruption ports.
 2. Resolve FormSubmission ownership and migrate Workflow HumanTask persistence.
 3. Publish Connector attempt outcomes and Identity contact references.
-4. Isolate Agent release admission from Assets/Artifacts repositories.
+
+Agent release admission is complete for this wave: Start, Fork, and Workflow
+dispatch share one Agents-owned port and one consumer-side adapter, with a
+source-level ratchet that forbids direct Assets/Artifacts access from Agents
+Application.
 
 ### Wave 5: Durable Cells and Runtime boundary
 

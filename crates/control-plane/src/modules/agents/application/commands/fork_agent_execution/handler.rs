@@ -1,15 +1,14 @@
 use super::{ForkAgentExecution, ForkAgentExecutionResult};
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
-use crate::modules::agents::application::support::{
-    bind_deployable_agent_release, idempotency, load_checkpoint_snapshot, validate_request_id,
+use crate::modules::agents::application::{
+    support::{idempotency, load_checkpoint_snapshot, validate_request_id},
+    AgentReleaseAdmissionRequest, IAgentReleaseAdmissionPort,
 };
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecution, AgentExecutionEventDraft, AgentExecutionEventKind,
     AgentExecutionForked, AgentExecutionProviderRegistry, ForkAgentExecutionWrite,
     IAgentExecutionCheckpointObjectStore, IAgentRepository,
 };
-use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OperationId, RepositoryError};
 use a3s_boot::{CommandHandler, CqrsContext};
@@ -18,8 +17,7 @@ use std::sync::Arc;
 pub struct ForkAgentExecutionHandler {
     agents: Arc<dyn IAgentRepository>,
     objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    releases: Arc<dyn IAgentReleaseAdmissionPort>,
     providers: Arc<dyn AgentExecutionProviderRegistry>,
 }
 
@@ -27,15 +25,13 @@ impl ForkAgentExecutionHandler {
     pub fn new(
         agents: Arc<dyn IAgentRepository>,
         objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
-        assets: Arc<dyn IAssetRepository>,
-        artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        releases: Arc<dyn IAgentReleaseAdmissionPort>,
         providers: Arc<dyn AgentExecutionProviderRegistry>,
     ) -> Self {
         Self {
             agents,
             objects,
-            assets,
-            artifacts,
+            releases,
             providers,
         }
     }
@@ -50,8 +46,7 @@ impl CommandHandler<ForkAgentExecution> for ForkAgentExecutionHandler {
     {
         let agents = Arc::clone(&self.agents);
         let objects = Arc::clone(&self.objects);
-        let assets = Arc::clone(&self.assets);
-        let artifacts = Arc::clone(&self.artifacts);
+        let releases = Arc::clone(&self.releases);
         let providers = Arc::clone(&self.providers);
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
@@ -147,19 +142,14 @@ impl CommandHandler<ForkAgentExecution> for ForkAgentExecutionHandler {
                     )));
                 }
             };
-            let deployable = match load_deployable_agent_release(
-                assets.as_ref(),
-                artifacts.as_ref(),
-                command.organization_id,
-                access.execution.agent.asset_id(),
-                access.execution.agent.asset_release_id(),
-            )
-            .await
+            let current_agent = match releases
+                .admit(AgentReleaseAdmissionRequest {
+                    organization_id: command.organization_id,
+                    asset_id: access.execution.agent.asset_id(),
+                    asset_release_id: access.execution.agent.asset_release_id(),
+                })
+                .await
             {
-                Ok(deployable) => deployable,
-                Err(error) => return Ok(Err(error)),
-            };
-            let current_agent = match bind_deployable_agent_release(&deployable) {
                 Ok(binding) => binding,
                 Err(error) => return Ok(Err(error)),
             };

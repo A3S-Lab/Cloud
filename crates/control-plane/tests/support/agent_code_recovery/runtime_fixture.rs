@@ -5,13 +5,24 @@ async fn insert_scope(
     environment_id: EnvironmentId,
     created_at: DateTime<Utc>,
 ) -> TestResult {
+    let scope_suffix = organization_id.as_uuid().simple().to_string();
+    let organization_name = format!("Agent recovery tenant {scope_suffix}");
+    let organization_name_key = format!("agent-recovery-tenant-{scope_suffix}");
+    let project_name = format!("Agent recovery project {scope_suffix}");
+    let project_name_key = format!("agent-recovery-project-{scope_suffix}");
+    let environment_name = format!("Agent recovery environment {scope_suffix}");
+    let environment_name_key = format!("agent-recovery-environment-{scope_suffix}");
     database
         .execute(
             sql_query::<()>(
                 "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
             )
             .bind(organization_id.as_uuid())
-            .append(", 'Agent recovery tenant', 'agent-recovery-tenant', 1, ")
+            .append(", ")
+            .bind(organization_name)
+            .append(", ")
+            .bind(organization_name_key)
+            .append(", 1, ")
             .bind(created_at)
             .append(")"),
         )
@@ -24,7 +35,11 @@ async fn insert_scope(
             .bind(organization_id.as_uuid())
             .append(", ")
             .bind(project_id.as_uuid())
-            .append(", 'Agent recovery project', 'agent-recovery-project', 1, ")
+            .append(", ")
+            .bind(project_name)
+            .append(", ")
+            .bind(project_name_key)
+            .append(", 1, ")
             .bind(created_at)
             .append(")"),
         )
@@ -39,7 +54,11 @@ async fn insert_scope(
             .bind(project_id.as_uuid())
             .append(", ")
             .bind(environment_id.as_uuid())
-            .append(", 'Agent recovery environment', 'agent-recovery-environment', 1, ")
+            .append(", ")
+            .bind(environment_name)
+            .append(", ")
+            .bind(environment_name_key)
+            .append(", 1, ")
             .bind(created_at)
             .append(")"),
         )
@@ -107,7 +126,9 @@ async fn enroll_node(
                 payload: json!({"name": token.name}),
             },
             idempotency(
-                "test.agent-code-recovery.enrollment",
+                &format!(
+                    "test.agent-code-recovery.organizations/{organization_id}/enrollment"
+                ),
                 "issue-node-token",
                 b"issue-node-token",
             )?,

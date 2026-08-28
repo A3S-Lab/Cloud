@@ -1132,7 +1132,11 @@ mechanism is introduced.
 generic finite Task product. `Agents` owns conversation semantics and binds an
 immutable Agent release to the common orchestration path; it is not another
 execution engine. Both reuse Flow, Workloads placement policy, Fleet, Runtime,
-and Box.
+and Box. Start, Fork, and Workflow dispatch acquire that binding through one
+Agents-owned release-admission port. Only its consumer-side Infrastructure
+adapter composes the Assets and Artifacts owner interfaces; Agents Application
+cannot import either repository/query interface or create another release,
+build, persistence, retry, or scheduling authority.
 
 `Workflow` and `Evolution` are also semantic authorities rather than execution
 engines. Workflow compiles immutable plans and Evolution governs evidence,

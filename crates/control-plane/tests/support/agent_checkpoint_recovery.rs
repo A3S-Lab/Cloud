@@ -11,10 +11,11 @@ use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
     AgentExecutionCheckpoint, AgentExecutionCheckpointObjectCaptureReservation,
     AgentExecutionCheckpointObjectReconciler, AgentExecutionCheckpointObjectReference,
-    AgentExecutionCheckpointSnapshot, BuiltInAgentExecutionProviderRegistry,
-    CaptureAgentExecutionCheckpoint, CaptureAgentExecutionCheckpointHandler,
-    CaptureAgentExecutionCheckpointResult, CapturedAgentExecutionCheckpoint, ForkAgentExecution,
-    ForkAgentExecutionHandler, ForkAgentExecutionResult, IAgentExecutionCheckpointObjectStore,
+    AgentExecutionCheckpointSnapshot, AssetsAgentReleaseAdmissionAdapter,
+    BuiltInAgentExecutionProviderRegistry, CaptureAgentExecutionCheckpoint,
+    CaptureAgentExecutionCheckpointHandler, CaptureAgentExecutionCheckpointResult,
+    CapturedAgentExecutionCheckpoint, ForkAgentExecution, ForkAgentExecutionHandler,
+    ForkAgentExecutionResult, IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort,
     IAgentRepository, PostgresAgentRepository, ReserveAgentExecutionCheckpointObjectWrite,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
@@ -52,8 +53,7 @@ struct Fixture {
 struct Dependencies {
     agents: Arc<dyn IAgentRepository>,
     objects: Arc<DurableCheckpointObjectStore>,
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    releases: Arc<dyn IAgentReleaseAdmissionPort>,
     providers: Arc<BuiltInAgentExecutionProviderRegistry>,
 }
 
@@ -375,11 +375,12 @@ async fn build_dependencies(fixture: &Fixture) -> TestResult<Dependencies> {
     let artifacts: Arc<dyn IHostedArtifactQueryPort> = Arc::new(HostedArtifactQueryService::new(
         Arc::new(PostgresBuildRunRepository::new(executor)),
     ));
+    let releases: Arc<dyn IAgentReleaseAdmissionPort> =
+        Arc::new(AssetsAgentReleaseAdmissionAdapter::new(assets, artifacts));
     Ok(Dependencies {
         agents,
         objects: Arc::new(DurableCheckpointObjectStore::new(&fixture.objects_dir)?),
-        assets,
-        artifacts,
+        releases,
         providers: Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
     })
 }
@@ -448,8 +449,7 @@ async fn execute_fork(
     Ok(ForkAgentExecutionHandler::new(
         Arc::clone(&dependencies.agents),
         dependencies.objects.clone(),
-        Arc::clone(&dependencies.assets),
-        Arc::clone(&dependencies.artifacts),
+        Arc::clone(&dependencies.releases),
         dependencies.providers.clone(),
     )
     .execute(

@@ -4822,6 +4822,12 @@ resumable, and approval-governed execution without introducing a second
 scheduler, event log, node-control channel, object store, audit path, or source
 of truth.
 
+Release admission now has one Agents-owned application port shared by Start,
+Fork, and Workflow dispatch. Its sole Infrastructure adapter composes the
+Assets deployable-release and Artifacts OCI-location owner interfaces and
+returns only the immutable `AgentReleaseBinding`; Agents Application imports
+neither foreign authority and owns no parallel release/build mechanism.
+
 Together with the existing Cloud control path and the native A3S Code runtime,
 this milestone replaces AX's Agent server, actor controller, and snapshot
 responsibilities. Cloud owns one provider-neutral `AgentExecutionProvider`

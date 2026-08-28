@@ -358,6 +358,10 @@ already enforce that current debt can shrink but cannot spread:
   client, CLI, and MCP share its bounded transient DTOs. It adds no authorization,
   persistence, delivery, cache, retry, or lifecycle mechanism. Hosted-Asset
   staging and public Infrastructure remain frozen debt;
+- Agents Start, Fork, and Workflow dispatch share one Agents-owned release
+  admission port. Its sole Infrastructure adapter composes the Assets and
+  Artifacts owner interfaces and returns only an immutable Agents binding; no
+  Agent Application service imports either foreign repository/query interface;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
 - Shared Kernel dependencies and public outer-layer facades cannot expand.

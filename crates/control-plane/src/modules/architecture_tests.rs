@@ -2092,6 +2092,121 @@ workloads -> presentation
     );
 }
 
+#[test]
+fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("agents/application/agent_release_admission.rs"),
+    )
+    .expect("read Agents release-admission port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructAgentReleaseAdmissionRequest",
+        "pubtraitIAgentReleaseAdmissionPort:Send+Sync",
+        "ApplicationResult<AgentReleaseBinding>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Agents release admission lost its consumer-owned contract {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::assets",
+        "crate::modules::artifacts",
+        "IAssetRepository",
+        "IHostedArtifactQueryPort",
+        "DeployableAgentRelease",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "the Agents-owned release-admission port imported foreign or concrete authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "agents/application/commands/start_agent_execution/handler.rs",
+        "agents/application/commands/fork_agent_execution/handler.rs",
+        "agents/application/workflow_agent_port.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        let compact = production.split_whitespace().collect::<String>();
+        assert!(
+            compact.contains("Arc<dynIAgentReleaseAdmissionPort>")
+                && compact.contains(".admit(AgentReleaseAdmissionRequest{"),
+            "{relative} stopped entering release admission through the one Agents-owned port"
+        );
+        for forbidden in [
+            "crate::modules::assets",
+            "crate::modules::artifacts",
+            "IAssetRepository",
+            "IHostedArtifactQueryPort",
+            "DeployableAgentRelease",
+            "load_deployable_agent_release",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} bypassed release admission with foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        module_root().join("agents/infrastructure/agent_release_admission.rs"),
+    )
+    .expect("read Agents release-admission adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "implIAgentReleaseAdmissionPortforAssetsAgentReleaseAdmissionAdapter",
+        "assets:Arc<dynIAssetRepository>",
+        "artifacts:Arc<dynIHostedArtifactQueryPort>",
+        "AgentReleaseBinding::new(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "the sole Agents release-admission adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        adapter.matches("load_deployable_agent_release(").count(),
+        1,
+        "Agents release admission must compose the owner query exactly once"
+    );
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "the release-admission adapter introduced concrete state or lifecycle mechanism {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("control-plane source root")
+            .join("app.rs"),
+    )
+    .expect("read control-plane composition root");
+    assert_eq!(
+        app.matches("AssetsAgentReleaseAdmissionAdapter::new(")
+            .count(),
+        2,
+        "API and worker composition must reuse the same adapter type"
+    );
+}
+
 fn foreign_outer_layer_sites() -> BTreeSet<String> {
     let mut sites = BTreeSet::new();
     visit_production_sources(|relative, source| {

@@ -1,15 +1,14 @@
 use super::{StartAgentExecution, StartAgentExecutionResult};
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
-use crate::modules::agents::application::support::{
-    bind_deployable_agent_release, idempotency, validate_request_id,
+use crate::modules::agents::application::{
+    support::{idempotency, validate_request_id},
+    AgentReleaseAdmissionRequest, IAgentReleaseAdmissionPort,
 };
 use crate::modules::agents::domain::{
     AgentConversationStatus, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
     AgentExecutionEventKind, AgentExecutionProviderRegistry, AgentExecutionStarted,
     IAgentRepository, StartAgentExecutionWrite,
 };
-use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OperationId};
 use a3s_boot::{CommandHandler, CqrsContext};
@@ -17,22 +16,19 @@ use std::sync::Arc;
 
 pub struct StartAgentExecutionHandler {
     agents: Arc<dyn IAgentRepository>,
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    releases: Arc<dyn IAgentReleaseAdmissionPort>,
     providers: Arc<dyn AgentExecutionProviderRegistry>,
 }
 
 impl StartAgentExecutionHandler {
     pub fn new(
         agents: Arc<dyn IAgentRepository>,
-        assets: Arc<dyn IAssetRepository>,
-        artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        releases: Arc<dyn IAgentReleaseAdmissionPort>,
         providers: Arc<dyn AgentExecutionProviderRegistry>,
     ) -> Self {
         Self {
             agents,
-            assets,
-            artifacts,
+            releases,
             providers,
         }
     }
@@ -46,8 +42,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<StartAgentExecutionResult>>>
     {
         let agents = Arc::clone(&self.agents);
-        let assets = Arc::clone(&self.assets);
-        let artifacts = Arc::clone(&self.artifacts);
+        let releases = Arc::clone(&self.releases);
         let providers = Arc::clone(&self.providers);
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
@@ -113,19 +108,14 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                     "closed Agent conversation cannot start an execution".into(),
                 )));
             }
-            let deployable = match load_deployable_agent_release(
-                assets.as_ref(),
-                artifacts.as_ref(),
-                command.organization_id,
-                command.agent_asset_id,
-                command.agent_asset_release_id,
-            )
-            .await
+            let binding = match releases
+                .admit(AgentReleaseAdmissionRequest {
+                    organization_id: command.organization_id,
+                    asset_id: command.agent_asset_id,
+                    asset_release_id: command.agent_asset_release_id,
+                })
+                .await
             {
-                Ok(deployable) => deployable,
-                Err(error) => return Ok(Err(error)),
-            };
-            let binding = match bind_deployable_agent_release(&deployable) {
                 Ok(binding) => binding,
                 Err(error) => return Ok(Err(error)),
             };

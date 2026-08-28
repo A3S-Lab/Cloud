@@ -1,4 +1,4 @@
-use super::support::idempotency;
+use super::{support::idempotency, AgentReleaseAdmissionRequest, IAgentReleaseAdmissionPort};
 use crate::modules::agents::domain::{
     AgentConversation, AgentConversationCreated, AgentConversationStatus, AgentEventContent,
     AgentExecution, AgentExecutionCancellationRequested, AgentExecutionEventDraft,
@@ -6,8 +6,6 @@ use crate::modules::agents::domain::{
     CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
     StartAgentExecutionWrite, MAX_INLINE_AGENT_EVENT_BYTES, NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
-use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -171,22 +169,19 @@ pub trait IWorkflowAgentPort: Send + Sync {
 pub struct WorkflowAgentApplicationService {
     environments: Arc<dyn IEnvironmentRepository>,
     agents: Arc<dyn IAgentRepository>,
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    releases: Arc<dyn IAgentReleaseAdmissionPort>,
 }
 
 impl WorkflowAgentApplicationService {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         agents: Arc<dyn IAgentRepository>,
-        assets: Arc<dyn IAssetRepository>,
-        artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        releases: Arc<dyn IAgentReleaseAdmissionPort>,
     ) -> Self {
         Self {
             environments,
             agents,
-            assets,
-            artifacts,
+            releases,
         }
     }
 
@@ -299,31 +294,20 @@ impl WorkflowAgentApplicationService {
         &self,
         request: &WorkflowAgentRequest,
     ) -> ApplicationResult<AgentReleaseBinding> {
-        let deployable = load_deployable_agent_release(
-            self.assets.as_ref(),
-            self.artifacts.as_ref(),
-            request.organization_id,
-            request.agent_asset_id,
-            request.agent_asset_release_id,
-        )
-        .await?;
-        if deployable.artifact_digest() != request.agent_release_digest.as_str() {
+        let binding = self
+            .releases
+            .admit(AgentReleaseAdmissionRequest {
+                organization_id: request.organization_id,
+                asset_id: request.agent_asset_id,
+                asset_release_id: request.agent_asset_release_id,
+            })
+            .await?;
+        if binding.artifact_digest() != &request.agent_release_digest {
             return Err(ApplicationError::Conflict(
                 "Workflow Agent release digest does not match its exact published artifact".into(),
             ));
         }
-        AgentReleaseBinding::new(
-            request.organization_id,
-            deployable.asset_id(),
-            deployable.asset_release_id(),
-            deployable.build_run_id(),
-            deployable.artifact_uri(),
-            Sha256Digest::parse(deployable.artifact_digest())
-                .map_err(ApplicationError::Internal)?,
-            deployable.artifact_media_type(),
-            deployable.artifact_size_bytes(),
-        )
-        .map_err(ApplicationError::Internal)
+        Ok(binding)
     }
 
     async fn start_execution(

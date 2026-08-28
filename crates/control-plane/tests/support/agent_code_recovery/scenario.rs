@@ -194,7 +194,9 @@ async fn prepare_started_provider_scenario_with_tools(
             asset: asset.clone(),
             event: AssetCreated::envelope(&asset, Uuid::now_v7())?,
             idempotency: idempotency(
-                "test.agent-code-recovery.assets",
+                &format!(
+                    "test.agent-code-recovery.organizations/{organization_id}/assets"
+                ),
                 "create-agent",
                 b"create-agent",
             )?,
@@ -218,7 +220,9 @@ async fn prepare_started_provider_scenario_with_tools(
                 release.id.as_uuid(),
             )?),
             idempotency: idempotency(
-                "test.agent-code-recovery.releases",
+                &format!(
+                    "test.agent-code-recovery.organizations/{organization_id}/releases"
+                ),
                 "draft-agent-1.0.0",
                 b"draft-agent-1.0.0",
             )?,
@@ -377,8 +381,7 @@ async fn prepare_started_provider_scenario_with_tools(
         .map_err(|error| invalid(format!("could not create Agent conversation: {error}")))?;
     let execution = StartAgentExecutionHandler::new(
         agents.clone(),
-        assets,
-        artifacts,
+        Arc::new(AssetsAgentReleaseAdmissionAdapter::new(assets, artifacts)),
         Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
     )
         .execute(

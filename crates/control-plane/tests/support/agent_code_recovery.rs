@@ -21,12 +21,12 @@ use a3s_cloud_control_plane::modules::agents::{
     AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointObjectWrite,
     AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
-    BindAgentCodeRunWrite, BuiltInAgentExecutionProviderRegistry, CreateAgentConversation,
-    CreateAgentConversationHandler, DecideAgentApprovalCheckpoint,
-    DecideAgentApprovalCheckpointHandler, IAgentApprovalCheckpointRepository,
-    IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
-    RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
-    NATIVE_CODE_AGENT_PROVIDER_KIND,
+    AssetsAgentReleaseAdmissionAdapter, BindAgentCodeRunWrite,
+    BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
+    DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
+    IAgentApprovalCheckpointRepository, IAgentExecutionCheckpointObjectStore, IAgentRepository,
+    PostgresAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecution,
+    StartAgentExecutionHandler, NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, PostgresBuildRunRepository,

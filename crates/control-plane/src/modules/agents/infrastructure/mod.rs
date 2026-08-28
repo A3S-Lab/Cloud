@@ -2,6 +2,7 @@ mod agent_execution_checkpoint_object_reconciler;
 mod agent_execution_checkpoint_object_store;
 mod agent_execution_flow;
 mod agent_provider;
+mod agent_release_admission;
 mod persistence;
 
 pub use agent_execution_checkpoint_object_reconciler::{
@@ -21,4 +22,5 @@ pub use agent_provider::{
     BuiltInAgentExecutionProviderRegistry, NativeCodeAgentExecutionProvider,
     ReferenceEchoAgentExecutionProvider,
 };
+pub use agent_release_admission::AssetsAgentReleaseAdmissionAdapter;
 pub use persistence::{InMemoryAgentRepository, PostgresAgentRepository};

@@ -6,15 +6,16 @@ use crate::modules::agents::{
     AgentExecutionCheckpointObjectReconciler, AgentExecutionCheckpointObjectStore,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
     AgentExecutionProviderRegistry, AgentExecutionReconciler, AgentsModule,
-    AppendAgentExecutionEventsHandler, BuiltInAgentExecutionProviderRegistry,
-    CancelAgentExecutionHandler, CaptureAgentExecutionCheckpointHandler,
-    CreateAgentConversationHandler, DecideAgentApprovalCheckpointHandler,
-    ForkAgentExecutionHandler, GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
+    AppendAgentExecutionEventsHandler, AssetsAgentReleaseAdmissionAdapter,
+    BuiltInAgentExecutionProviderRegistry, CancelAgentExecutionHandler,
+    CaptureAgentExecutionCheckpointHandler, CreateAgentConversationHandler,
+    DecideAgentApprovalCheckpointHandler, ForkAgentExecutionHandler,
+    GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
     GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
     GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
-    IAgentExecutionCheckpointObjectStore, IAgentRepository, IWorkflowAgentPort,
-    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
+    IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort, IAgentRepository,
+    IWorkflowAgentPort, ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
     ListAgentExecutionCheckpointsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
     WorkflowAgentApplicationService,
 };
@@ -1141,12 +1142,14 @@ async fn build_api_worker_application(
             )));
         let workflow_agent_artifacts: Arc<dyn IHostedArtifactQueryPort> =
             Arc::new(HostedArtifactQueryService::new(Arc::clone(&builds)));
+        let workflow_agent_releases: Arc<dyn IAgentReleaseAdmissionPort> = Arc::new(
+            AssetsAgentReleaseAdmissionAdapter::new(Arc::clone(&assets), workflow_agent_artifacts),
+        );
         let workflow_agent_port: Arc<dyn IWorkflowAgentPort> =
             Arc::new(WorkflowAgentApplicationService::new(
                 Arc::clone(&environments),
                 Arc::clone(&agents),
-                Arc::clone(&assets),
-                workflow_agent_artifacts,
+                workflow_agent_releases,
             ));
         let workflow_application_effects: Arc<dyn IWorkflowApplicationEffectsPort> = Arc::new(
             WorkflowApplicationEffectsService::new(Arc::clone(&application_sessions)),
@@ -2517,8 +2520,7 @@ fn build_management_application_with_health(
     let get_mcp_route_policies = mcp_route_policies;
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
-    let agent_execution_assets = Arc::clone(&assets);
-    let fork_agent_execution_assets = Arc::clone(&assets);
+    let agent_release_admission_assets = Arc::clone(&assets);
     let bind_skill_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
@@ -2573,8 +2575,9 @@ fn build_management_application_with_health(
         Arc::new(HostedArtifactQueryService::new(Arc::clone(&builds)));
     let agent_create_artifacts = Arc::clone(&hosted_artifacts);
     let agent_update_artifacts = Arc::clone(&hosted_artifacts);
-    let agent_execution_artifacts = Arc::clone(&hosted_artifacts);
-    let fork_agent_execution_artifacts = hosted_artifacts;
+    let agent_release_admissions: Arc<dyn IAgentReleaseAdmissionPort> = Arc::new(
+        AssetsAgentReleaseAdmissionAdapter::new(agent_release_admission_assets, hosted_artifacts),
+    );
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_execution_template_projects = Arc::clone(&projects);
@@ -3212,8 +3215,7 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::agents::StartAgentExecution, _>(
                     StartAgentExecutionHandler::new(
                         start_agent_executions,
-                        agent_execution_assets,
-                        agent_execution_artifacts,
+                        Arc::clone(&agent_release_admissions),
                         Arc::clone(&agent_execution_providers),
                     ),
                 )
@@ -3231,8 +3233,7 @@ fn build_management_application_with_health(
                     ForkAgentExecutionHandler::new(
                         fork_agent_executions,
                         Arc::clone(&agent_checkpoint_objects),
-                        fork_agent_execution_assets,
-                        fork_agent_execution_artifacts,
+                        agent_release_admissions,
                         Arc::clone(&agent_execution_providers),
                     ),
                 )
