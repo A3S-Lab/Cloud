@@ -753,7 +753,7 @@ async fn successful_code_commands_project_only_the_current_exact_run_binding() {
 }
 
 #[tokio::test]
-async fn successful_non_code_commands_survive_restart_until_the_runtime_is_removed() {
+async fn successful_non_code_executions_share_one_runtime_until_it_is_removed() {
     let directory = tempfile::tempdir().expect("journal directory");
     let node_id = Uuid::now_v7();
     let execution_id = Uuid::now_v7();
@@ -789,13 +789,50 @@ async fn successful_non_code_commands_survive_restart_until_the_runtime_is_remov
         .await
         .expect("complete provider start");
 
+    let mut sibling_binding = binding.clone();
+    sibling_binding.execution_id = Uuid::now_v7();
+    sibling_binding.provider_run_identity.session_id = "conversation-reference-sibling".into();
+    sibling_binding.provider_run_identity.run_id = "execution-reference-sibling-attempt-1".into();
+    let sibling_command = AgentProviderCommandV1::Start {
+        request: AgentProviderRunStartV1::new(
+            "reference:sibling:start".into(),
+            sibling_binding.provider_run_identity.clone(),
+            "Echo the sibling input.".into(),
+        )
+        .expect("sibling provider start"),
+    };
+    let sibling_start =
+        provider_envelope(node_id, 2, sibling_binding.clone(), sibling_command.clone());
+    journal
+        .begin(sibling_start.clone())
+        .await
+        .expect("begin sibling provider start");
+    let sibling_completed_at = Utc::now();
+    journal
+        .complete(
+            sibling_start.command_id,
+            sibling_completed_at,
+            provider_outcome(
+                &sibling_binding,
+                &sibling_command,
+                sibling_completed_at
+                    .timestamp_millis()
+                    .try_into()
+                    .expect("sibling provider observation time"),
+            ),
+        )
+        .await
+        .expect("complete sibling provider start");
+
     let reopened = FileCommandJournal::new(directory.path(), node_id).expect("reopen journal");
+    let mut expected_bindings = vec![binding.clone(), sibling_binding];
+    expected_bindings.sort_by_key(|binding| binding.execution_id);
     assert_eq!(
         reopened
             .provider_run_bindings()
             .await
             .expect("project provider binding"),
-        vec![binding.clone()]
+        expected_bindings
     );
     assert!(reopened
         .code_run_bindings()
@@ -803,7 +840,7 @@ async fn successful_non_code_commands_survive_restart_until_the_runtime_is_remov
         .expect("project Code bindings")
         .is_empty());
 
-    let remove = remove_envelope(node_id, Uuid::now_v7(), 2, execution_id);
+    let remove = remove_envelope(node_id, Uuid::now_v7(), 3, execution_id);
     let remove_id = remove.command_id;
     reopened.begin(remove).await.expect("begin Runtime removal");
     reopened
