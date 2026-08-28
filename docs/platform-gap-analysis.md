@@ -36,7 +36,7 @@ completed through the existing path rather than redesigned as new mechanisms.
 | Local/distributed inference | Inference/Fleet -> Power -> Gateway | Model/weight supply, GPU topology, KV transport, routing, usage and chaos evidence |
 | Static React/Vue delivery | Developer Workflows/Artifacts -> immutable object release -> Gateway | Build, CSP/cache, route, rollback and framework matrix |
 | Git, OCI, Use and model supply | Four separate typed authorities | Production providers, signing, recovery and lifecycle operations |
-| Multi-tenancy and administrator RBAC | Installation/Organization/Project/Environment plus separate platform roles | Complete system-role, support, lifecycle and hostile-tenant evidence |
+| Multi-tenancy and administrator RBAC | One explicit Installation/Organization/Project/Environment scope plus Identity-owned platform roles | `C0.5-MT1-C1` domain component exists; support grants, scoped audit/Outbox, persistence, effective decisions, interfaces, lifecycle and hostile-tenant evidence remain |
 | Distributed API consistency | Idempotency/CAS/PostgreSQL transaction/Operation/Outbox plus bounded Redis/Lane acceleration | Repository-wide adoption and multi-replica fault certification |
 | CPU/GPU placement and elasticity | Workloads desired state plus Fleet Claims and one scaling authority | H0.3/H0.5 real-cluster scale, drain, state and failure gates |
 

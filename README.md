@@ -199,7 +199,8 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 
 | Lane | Status |
 | --- | --- |
-| PostgreSQL tenancy, identity, ORM-backed Operations/Flow, Outbox, API, and migration authority | **Verified foundation** |
+| Tenant-scoped PostgreSQL identity, ORM-backed Operations/Flow, Outbox, API, and migration authority | **Verified foundation** |
+| Installation scope and system-administrator RBAC | **Early component foundation**; one explicit scope hierarchy plus canonical platform-role policy/revision/binding domain contracts exist, but no production authority is available before scoped audit/Outbox, persistence, effective decisions, support grants, interfaces, and hostile-tenant evidence |
 | Node, Workload, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress**; several component gates exist, current real-provider/release recertification remains |
 | Agent and hosted MCP product lanes | **In progress**; do not infer complete AaaS availability from component evidence |
 | Ontology Workflow and AI Applications/Files foundations | **In progress**; complete WaaS/Application products remain gate-bound |

@@ -29,6 +29,15 @@ cross-context scope ratchets, capacity fairness, privileged support access and
 the complete isolation matrix remain gated below and must not be advertised as
 available early.
 
+Component-only `C0.5-MT1-C1` now freezes one explicit `ScopeContext` with the
+exact Installation/Organization/Project/Environment lineage, canonical
+`cloud.identity.platform-role-policy.v1`, deterministic accepted policy
+revisions, closed roles and permissions, and the `PlatformRoleBinding` domain
+lifecycle. This adds no repository, effective authorization decision,
+installation-scoped audit/Outbox persistence or public interface. The legacy
+`actor_is_platform_admin` boolean remains migration debt and is not valid proof
+for new MT1 or workload-identity paths.
+
 ## 2. One identity authority, two authorization planes
 
 Identity is the sole Principal, credential, role-binding, grant, federation,
@@ -261,6 +270,13 @@ create a second tenancy milestone or authorization engine.
 | `H0.5-MT5` | Prove hierarchical CPU/GPU/storage/request quotas, fair admission, autoscaling caps and noisy-neighbor bounds under concurrent Organizations without another queue or scheduler |
 | `C0.5-MT6` | Prove OIDC/SAML/SCIM, session/MFA policy, platform-role provisioning restrictions, tenant suspension/export/deletion and time-bounded audited support access |
 | `C0.5-MT7` | Run adversarial cross-tenant ID/cursor/replay/cache/object/Secret/network/route/log/search/usage tests plus system-admin privilege-escalation and break-glass recovery on real PostgreSQL/S3/Gateway/Runtime/Box providers |
+
+`C0.5-MT1-C1` is implemented only as a domain component. `MT1` remains open
+for `TenantSupportGrant`, effective-decision and audit ACLs, plus an explicit
+installation-scoped audit/Outbox contract. `MT2` then persists those contracts
+and their concurrency invariants; `MT3` replaces boolean administrator bypasses
+with the one Identity decision port. No platform-RBAC availability is claimed
+before those gates and the later adversarial evidence pass.
 
 Production multi-tenancy is not complete until every product lane also proves
 its own scope-specific failure and cleanup cases. Passing Identity unit tests

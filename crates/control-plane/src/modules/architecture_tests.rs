@@ -1765,6 +1765,115 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
 }
 
 #[test]
+fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrows_scope() {
+    let root = module_root();
+    let scope = std::fs::read_to_string(root.join("shared_kernel/domain/scope_context.rs"))
+        .expect("read shared ScopeContext");
+    let policy = std::fs::read_to_string(
+        root.join("identity/domain/value_objects/platform_role_policy_contract.rs"),
+    )
+    .expect("read platform role policy ACL");
+    let binding = std::fs::read_to_string(root.join("identity/domain/entities/platform_rbac.rs"))
+        .expect("read platform RBAC entities");
+
+    assert_eq!(scope.matches("pub enum ScopeContext {").count(), 1);
+    for required in [
+        "Installation {",
+        "Organization {",
+        "Project {",
+        "Environment {",
+        "pub fn contains(",
+        "pub fn intersection(",
+        "candidate.organization_id() == Some(organization_id)",
+        "candidate.project_id() == Some(project_id)",
+    ] {
+        assert!(
+            scope.contains(required),
+            "ScopeContext lost exact hierarchy or narrowing rule {required}"
+        );
+    }
+    for forbidden in [
+        "Workspace",
+        "HeaderMap",
+        "thread_local",
+        "RuntimeUnit",
+        "NodeId",
+        "MembershipRole",
+    ] {
+        assert!(
+            !production_source(&scope).contains(forbidden),
+            "shared ScopeContext acquired context-private or ambient authority {forbidden}"
+        );
+    }
+
+    assert_eq!(policy.matches("pub enum PlatformRole {").count(), 1);
+    assert_eq!(policy.matches("pub enum PlatformPermission {").count(), 1);
+    assert_eq!(
+        policy
+            .matches("pub struct PlatformRolePolicyContract {")
+            .count(),
+        1
+    );
+    for required in [
+        "a3s_acl",
+        "canonical_digest",
+        "parse_acl",
+        "generate_acl",
+        "cloud.identity.platform-role-policy.v1",
+        "impl Serialize for PlatformPermission",
+        "immutable permission ceiling",
+        "platform:workload-trust:manage",
+    ] {
+        assert!(
+            policy.contains(required),
+            "platform RBAC lost canonical permission authority {required}"
+        );
+    }
+    for forbidden in [
+        "actor_is_platform_admin",
+        "MembershipRole",
+        "ResourceGrant",
+        "ApiTokenScope",
+        "tenant:secret",
+        "tenant:payload",
+        "serde_yaml",
+        "toml::",
+    ] {
+        assert!(
+            !production_source(&policy).contains(forbidden),
+            "platform RBAC duplicated tenant, credential, or configuration authority {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        binding
+            .matches("pub struct AcceptedPlatformRolePolicyRevision {")
+            .count(),
+        1
+    );
+    assert_eq!(
+        binding.matches("pub struct PlatformRoleBinding {").count(),
+        1
+    );
+    assert!(binding.contains("Uuid::new_v5"));
+    assert!(binding.contains("validate_against_policy"));
+    for forbidden in [
+        "actor_is_platform_admin",
+        "IdentityPrincipalKind",
+        "create table",
+        "Postgres",
+        "InMemory",
+        "async_trait",
+        "reqwest",
+    ] {
+        assert!(
+            !production_source(&binding).contains(forbidden),
+            "MT1-C1 entity prematurely acquired directory, persistence, or provider authority {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

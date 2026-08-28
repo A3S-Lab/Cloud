@@ -40,6 +40,9 @@ macro_rules! identifier {
 
 identifier!(OrganizationId);
 identifier!(InstallationId);
+identifier!(PlatformRoleBindingId);
+identifier!(PlatformRolePolicyId);
+identifier!(PlatformRolePolicyRevisionId);
 identifier!(PrincipalId);
 identifier!(RecipientContactId);
 identifier!(RecipientContactVerificationId);

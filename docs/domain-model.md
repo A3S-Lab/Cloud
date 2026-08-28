@@ -198,8 +198,9 @@ revocation, Resource Grants, exact human-Principal recipient contacts and their
 one-time verification challenges, exact external OIDC subject links and one-time
 login/link flow persistence under `C0.3`, component-only installation Trust
 Domains and exact Workload Identity Policy revisions under `H0.4-WI1-C1`,
-planned SAML/OIDC provider, SCIM, and session policy under `C0.5`, and tenant
-context. It answers who may
+component-only explicit platform scope, role-policy revisions and role bindings
+under `C0.5-MT1-C1`, planned SAML/OIDC provider, SCIM, and session policy under
+`C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, issue workload
 credentials without exact Fleet/Runtime attestation, own network enforcement,
@@ -226,11 +227,44 @@ Primary aggregates:
   remain gated)
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
+- `PlatformRolePolicy` and immutable `AcceptedPlatformRolePolicyRevision`
+  (`C0.5-MT1-C1` component contract implemented; persistence and current-head
+  selection remain open)
+- `PlatformRoleBinding` (`C0.5-MT1-C1` component lifecycle implemented;
+  authorization, last-owner/self-escalation rules and persistence remain open)
 - `TrustDomain` and immutable `TrustDomainRevision` (`H0.4-WI1-C1` component
   contract implemented; persistence and interfaces remain open)
 - `WorkloadIdentityPolicy` and immutable
   `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1` component contract
   implemented; exact execution-attestation binding remains `WI2`)
+
+#### Platform scope and RBAC (`C0.5-MT1-C1` component)
+
+The shared `ScopeContext` is one closed identity value with exactly four forms:
+Installation, Organization, Project and Environment. Every child repeats and
+validates its full parent lineage. Containment and intersection can only retain
+or narrow an already admitted scope; an equal child UUID under another parent,
+an ambient request value or a Workspace cannot expand authority. Installation
+records therefore need no synthetic Organization. The value carries no tenant,
+project, audit, deployment or Runtime lifecycle into the shared kernel.
+
+Identity owns canonical `cloud.identity.platform-role-policy.v1` A3S ACL,
+closed `PlatformPermission` IDs, the four role bundles `platform_owner`,
+`platform_admin`, `platform_operator` and `security_auditor`, plus deterministic
+accepted revisions and installation-scoped role bindings. Immutable ceilings
+prevent policy-defined privilege expansion; the owner retains the closed
+recovery permission set. A binding names a role, while a future effective
+decision resolves the current accepted policy rather than copying permissions
+or pinning every binding to an obsolete revision. Its audit fact must record
+that exact revision and digest.
+
+Platform permission never implies tenant source, payload, Secret, model
+credential, Cell state or runtime-exec access; that requires a separate bounded
+`TenantSupportGrant`. `MT1-C1` adds no repository, application decision,
+Outbox/audit persistence, interface or availability. Remaining `MT1`, `MT2`
+and `MT3` work supplies those contracts, active-Principal checks, optimistic
+concurrency, idempotency, self-escalation and last-owner protection, and removes
+the legacy boolean administrator bypass.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

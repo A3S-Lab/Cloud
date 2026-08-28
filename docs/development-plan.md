@@ -3882,6 +3882,20 @@ node.
   envelope, object copy, S0 namespace, audit writer, per-tenant mutable policy,
   SIEM/Connector delivery, queue, scheduler, event rail, or commercial
   authority.
+- Implemented as component-only `C0.5-MT1-C1`: one shared `ScopeContext`
+  carries the exact Installation/Organization/Project/Environment lineage and
+  only narrows by ancestor intersection. Identity owns canonical
+  `cloud.identity.platform-role-policy.v1`, its closed roles and permissions,
+  deterministic accepted revisions, immutable role ceilings, and the
+  installation-scoped `PlatformRoleBinding` domain lifecycle. This slice has
+  no repository, public interface or effective authority.
+- Complete the rest of `MT1` before persistence-dependent workload-trust work:
+  add `TenantSupportGrant`, effective-decision and audit ACLs, and one explicit
+  installation-aware audit/Outbox contract. `MT2` then adds optimistic
+  persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
+  replaces every boolean platform-administrator bypass with the single
+  Identity decision port. A global record must never be stored under a
+  synthetic Organization.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,

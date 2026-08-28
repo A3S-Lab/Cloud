@@ -7,6 +7,7 @@ mod idempotency;
 mod identifiers;
 mod repository_error;
 mod resource_name;
+mod scope_context;
 mod secret_version_reference;
 mod sha256_digest;
 mod timestamp;
@@ -32,7 +33,8 @@ pub use identifiers::{
     McpCredentialId, MembershipId, MembershipInvitationId, NodeCertificateId, NodeCommandId,
     NodeId, NodePoolId, NotificationAlertPolicyId, NotificationId, NotificationSubscriptionId,
     OidcFlowId, OntologyId, OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId,
-    PluginRegistryId, PrincipalId, ProjectAttributionProfileId, ProjectId, PullRequestPreviewId,
+    PlatformRoleBindingId, PlatformRolePolicyId, PlatformRolePolicyRevisionId, PluginRegistryId,
+    PrincipalId, ProjectAttributionProfileId, ProjectId, PullRequestPreviewId,
     PullRequestPreviewPolicyRevisionId, RecipientContactId, RecipientContactVerificationId,
     ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId,
     SourcePullRequestChangeId, SourceRevisionId, SourceSubscriptionId, StorageNamespaceId,
@@ -44,6 +46,7 @@ pub use identifiers::{
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;
+pub use scope_context::ScopeContext;
 pub use secret_version_reference::SecretVersionReference;
 pub use sha256_digest::Sha256Digest;
 pub(crate) use timestamp::canonical_timestamp;

@@ -5,6 +5,7 @@ mod membership;
 mod membership_invitation;
 mod oidc_flow;
 mod organization;
+mod platform_rbac;
 mod recipient_contact;
 mod recipient_contact_verification;
 mod recipient_contact_verification_delivery;
@@ -25,6 +26,7 @@ pub use oidc_flow::{
     OidcFlow, OidcFlowError, OidcFlowPurpose, MAX_OIDC_FLOW_LIFETIME, MIN_OIDC_FLOW_LIFETIME,
 };
 pub use organization::Organization;
+pub use platform_rbac::{AcceptedPlatformRolePolicyRevision, PlatformRoleBinding};
 pub use recipient_contact::{RecipientContact, RecipientContactRecord, RecipientContactStatus};
 pub use recipient_contact_verification::{
     RecipientContactVerification, RecipientContactVerificationClaims,

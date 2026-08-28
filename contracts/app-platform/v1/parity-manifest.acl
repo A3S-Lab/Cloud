@@ -92,7 +92,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "in_progress"
   }
   gate "C0.5" {
-    evidence = ["doc:ROADMAP.md"]
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md"]
     state = "planned"
   }
   gate "H0.5" {
