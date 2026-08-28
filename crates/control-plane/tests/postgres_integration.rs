@@ -362,6 +362,19 @@ async fn postgres_non_code_provider_recovery_fails_closed_across_control_plane_r
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_agent_approval_resume_and_fail_closed_paths_survive_control_plane_restarts() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        agent_code_recovery_support::exercise_agent_approval_postgres_recovery,
+    )
+    .await
+    .expect("PostgreSQL Agent approval recovery gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_agent_checkpoint_and_fork_recover_across_process_death() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;

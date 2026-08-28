@@ -98,6 +98,10 @@ async fn lease_and_ack_code_command(
                 AgentProviderCommandV1::Recover { .. }
             )
             | (
+                ExpectedCommand::Resume,
+                AgentProviderCommandV1::Resume { .. }
+            )
+            | (
                 ExpectedCommand::Cancel,
                 AgentProviderCommandV1::Cancel { .. }
             )

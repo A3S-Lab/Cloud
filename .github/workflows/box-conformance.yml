@@ -561,6 +561,25 @@ jobs:
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-control-plane --test postgres_integration \
+              postgres_agent_approval_resume_and_fail_closed_paths_survive_control_plane_restarts \
+              -- --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/agent-approval-postgres-recovery.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_A1_APPROVAL_POSTGRES_RECOVERY_CERTIFIED store=postgresql provider=reference.echo approval_requests=5 approved=1 denied=1 expired=1 cancelled=1 provider_restart_fail_closed=1 resume_commands=3 cancel_commands=1 recover_commands=0 control_plane_reconnect=verified decision_replay=exact audit=digest_only' \
+            "$EVIDENCE_DIR/agent-approval-postgres-recovery.log" \
+            >"$EVIDENCE_DIR/agent-approval-postgres-recovery-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-approval-postgres-recovery-certification.txt")" -eq 1
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --test postgres_integration \
               postgres_agent_checkpoint_and_fork_recover_across_process_death \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log"
@@ -576,6 +595,7 @@ jobs:
             --rawfile postgresCertification "$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt" \
             --rawfile nonCodeBoxCertification "$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt" \
             --rawfile nonCodeFallbackCertification "$EVIDENCE_DIR/agent-non-code-postgres-fallback-certification.txt" \
+            --rawfile approvalCertification "$EVIDENCE_DIR/agent-approval-postgres-recovery-certification.txt" \
             --rawfile checkpointCertification "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt" \
             '{
               schema: "a3s.cloud.a1-agent-recovery-evidence.v1",
@@ -587,6 +607,7 @@ jobs:
               postgresCertification: ($postgresCertification | rtrimstr("\n")),
               nonCodeBoxCertification: ($nonCodeBoxCertification | rtrimstr("\n")),
               nonCodeFallbackCertification: ($nonCodeFallbackCertification | rtrimstr("\n")),
+              approvalCertification: ($approvalCertification | rtrimstr("\n")),
               checkpointCertification: ($checkpointCertification | rtrimstr("\n")),
               checks: {
                 realProviderProcessDeath: true,
@@ -608,6 +629,13 @@ jobs:
                 nonCodeProviderFallback: true,
                 unsupportedRecoveryNoCommand: true,
                 nonCodeTerminalReplayExact: true,
+                approvalApprovedResume: true,
+                approvalDeniedResume: true,
+                approvalExpiryResume: true,
+                approvalCancellation: true,
+                approvalProviderRestartFailClosed: true,
+                approvalDecisionReplayExact: true,
+                approvalAuditDigestOnly: true,
                 recoverBeforeCancel: true,
                 noDuplicateSemanticProjection: true,
                 checkpointObjectBeforeProjectionRecovery: true,
@@ -639,6 +667,8 @@ jobs:
               agent-non-code-box-provider-certification.txt \
               agent-non-code-postgres-fallback.log \
               agent-non-code-postgres-fallback-certification.txt \
+              agent-approval-postgres-recovery.log \
+              agent-approval-postgres-recovery-certification.txt \
               agent-checkpoint-postgres-recovery.log \
               agent-checkpoint-postgres-recovery-certification.txt \
               agent-recovery.json \

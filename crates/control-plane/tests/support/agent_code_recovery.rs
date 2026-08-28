@@ -2,22 +2,28 @@ use crate::migrate_and_connect_for_test;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, AgentProviderCapabilityV1, AgentProviderCommandReceiptV1,
-    AgentProviderCommandV1, AgentProviderEventPageV1, AgentProviderEventRecordV1,
-    AgentProviderRunIdentityV1, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
-    DomainEventEnvelope, NodeAgentProviderEventBatchV1, NodeCodeAgentEventBatchV1, NodeCommandAck,
-    NodeCommandEnvelope, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
-    NodeCommandResult, NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport,
-    RuntimeServiceEndpoint, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
+    AgentProtocolRunStateV1, AgentProviderApprovalOutcomeV1, AgentProviderCapabilityV1,
+    AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageV1,
+    AgentProviderEventRecordV1, AgentProviderRunIdentityV1, AgentProviderRunStateV1,
+    AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1, DomainEventEnvelope,
+    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
+    HarnessToolBindingV1, HarnessWorkspaceBindingV1, NodeAgentProviderEventBatchV1,
+    NodeCodeAgentEventBatchV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
+    RuntimeObservationReport, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
+    REFERENCE_ECHO_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
-    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentCodeRunBinding,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
+    AgentApprovalCheckpointStatus, AgentCodeRunBinding, AgentExecution,
     AgentExecutionCancellationRequested, AgentExecutionCheckpointObjectError,
     AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointObjectWrite,
     AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
-    BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
+    BindAgentCodeRunWrite, BuiltInAgentExecutionProviderRegistry, CreateAgentConversation,
+    CreateAgentConversationHandler, DecideAgentApprovalCheckpoint,
+    DecideAgentApprovalCheckpointHandler, IAgentApprovalCheckpointRepository,
     IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
     RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
     NATIVE_CODE_AGENT_PROVIDER_KIND,
@@ -41,18 +47,22 @@ use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
 };
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::identity::{
+    IResourceAuthorizationDecisionRepository, ResourceAuthorizationDecisionRequest,
+};
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::PostgresSecretRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, EnrollmentTokenId,
-    EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, ResourceName, Sha256Digest,
+    canonical_json_bounded, sha256_digest, AgentConversationId, AgentExecutionId, ApiTokenId,
+    AssetId, AssetReleaseId, AuthorizationDecisionRef, EnrollmentTokenId, EnvironmentId,
+    GitCommitSha, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, PrincipalId,
+    ProjectId, RepositoryError, ResourceName, Sha256Digest,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     project_runtime_spec, CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
-    HttpHealthCheck, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
-    SourceWorkloadTemplate,
+    Deployment, DeploymentReplicaBinding, HttpHealthCheck, IWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, PostgresWorkloadRepository, ServicePort, ServiceProcess,
+    ServiceResources, SourceWorkloadTemplate, Workload, WorkloadRevision,
 };
 use a3s_flow::{FlowRuntime, StepInvocation};
 use a3s_orm::{
@@ -69,6 +79,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -127,6 +138,7 @@ pub(super) struct CheckpointRecoveryScenario {
 enum ExpectedCommand {
     Start,
     Recover,
+    Resume,
     Cancel,
 }
 
@@ -407,5 +419,6 @@ pub(super) async fn prepare_checkpoint_recovery_scenario(
 
 include!("agent_code_recovery/scenario.rs");
 include!("agent_code_recovery/non_code_recovery.rs");
+include!("agent_code_recovery/approval_recovery.rs");
 include!("agent_code_recovery/runtime_fixture.rs");
 include!("agent_code_recovery/protocol.rs");
