@@ -299,6 +299,41 @@ impl UserFile {
         Ok(&self.contract.spec().content)
     }
 
+    /// Whether this lifecycle state still consumes the organization quota.
+    ///
+    /// Quota is reserved before any bytes are accepted and is released only
+    /// by an expiry or tombstone transition. A rejected object remains
+    /// allocated until its tombstone makes cleanup explicit.
+    pub const fn quota_reserved(&self) -> bool {
+        matches!(
+            self.state,
+            UserFileState::AwaitingUpload
+                | UserFileState::AwaitingScan
+                | UserFileState::Admitted
+                | UserFileState::Rejected
+        )
+    }
+
+    /// Whether the aggregate proves that immutable bytes reached storage.
+    pub const fn has_stored_object(&self) -> bool {
+        self.uploaded_at.is_some()
+    }
+
+    /// The earliest time at which the shared lifecycle event is actionable as
+    /// an object-cleanup intent. Files does not own a second cleanup queue.
+    pub fn cleanup_due_at(&self) -> Option<DateTime<Utc>> {
+        if !self.has_stored_object() {
+            return None;
+        }
+        match self.state {
+            UserFileState::AwaitingScan | UserFileState::Admitted => {
+                Some(self.contract.spec().retention_until)
+            }
+            UserFileState::Rejected | UserFileState::Tombstoned => Some(self.updated_at),
+            UserFileState::AwaitingUpload | UserFileState::Expired => None,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         self.contract.validate()?;
         let content = &self.contract.spec().content;

@@ -21,6 +21,7 @@ pub struct UserFileLifecycleChanged {
     pub media_type: String,
     pub upload_expires_at: DateTime<Utc>,
     pub retention_until: DateTime<Utc>,
+    pub cleanup_due_at: Option<DateTime<Utc>>,
     pub scan_evidence_digest: Option<String>,
     pub rejection_reason_code: Option<String>,
 }
@@ -49,6 +50,7 @@ impl UserFileLifecycleChanged {
             media_type: content.media_type.clone(),
             upload_expires_at: file.contract.spec().upload_expires_at,
             retention_until: file.contract.spec().retention_until,
+            cleanup_due_at: file.cleanup_due_at(),
             scan_evidence_digest: file
                 .scan_evidence_digest
                 .as_ref()

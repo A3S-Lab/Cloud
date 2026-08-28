@@ -1,10 +1,16 @@
 mod events;
 mod object_write;
+mod quota;
+mod repository;
 mod user_file;
 mod user_file_contract;
 
 pub use events::{UserFileLifecycleChanged, USER_FILE_LIFECYCLE_EVENT_SCHEMA};
 pub use object_write::UserFileObjectWrite;
+pub use quota::{
+    UserFileQuota, DEFAULT_USER_FILE_ORGANIZATION_QUOTA_BYTES, USER_FILE_PUBLIC_INTEGER_MAX,
+};
+pub use repository::{IUserFileRepository, ReserveUserFileWrite, TransitionUserFileWrite};
 pub use user_file::{
     UserFile, UserFileScanDecision, UserFileScanReceipt, UserFileState,
     USER_FILE_REJECTION_REASON_MAX_BYTES, USER_FILE_RETENTION_MAX_DAYS,

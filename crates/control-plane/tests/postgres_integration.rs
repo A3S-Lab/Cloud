@@ -220,6 +220,8 @@ mod resource_grants_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[path = "support/user_files.rs"]
+mod user_files_support;
 #[path = "support/workflow_node_catalog.rs"]
 mod workflow_node_catalog_support;
 #[path = "support/workflow_run_process_death.rs"]
@@ -437,6 +439,19 @@ async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL project attribution authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        user_files_support::exercise_user_file_persistence,
+    )
+    .await
+    .expect("PostgreSQL UserFile lifecycle and organization quota authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

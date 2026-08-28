@@ -1,5 +1,6 @@
 use super::developer_workflow_operation::request_schema as developer_workflow_request_schema;
 use super::source_components::build_recipe_request_schema;
+use crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES;
 use serde_json::{json, Value};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
@@ -74,6 +75,12 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/execution-templates" => {
             execution_template_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/user-files" => {
+            user_file_reservation_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone" => {
+            expected_version_schema("expectedVersion")
+        }
         "/organizations/{organization_id}/secrets/{secret_id}/versions" => {
             secret_value_schema()
         }
@@ -133,6 +140,21 @@ fn named_resource_schema() -> Value {
         &["name"],
         json!({
             "name": { "type": "string", "minLength": 1, "maxLength": 63 }
+        }),
+    )
+}
+
+fn user_file_reservation_schema() -> Value {
+    object(
+        &["admissionAcl"],
+        json!({
+            "admissionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL UserFile admission contract."
+            }
         }),
     )
 }

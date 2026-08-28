@@ -12,6 +12,11 @@ use super::source_discovery_operation::{
     query_parameters as source_discovery_query_parameters,
     success_component as source_discovery_success_component,
 };
+use super::user_file_operation::{
+    is_collection_path as is_user_file_collection_path, is_user_file_path,
+    query_parameters as user_file_query_parameters,
+    success_component as user_file_success_component,
+};
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
@@ -280,6 +285,9 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         upsert_parameter(parameters, parameter);
     }
     for parameter in source_discovery_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
+    for parameter in user_file_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
     let is_audit_export_manifest = path.ends_with("/audit-records/export/manifest");
@@ -1270,6 +1278,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     for status in success_statuses(method, path) {
         let component = if is_security_gateway_route_policy_timeline_path(path) {
             "SecurityGatewayRoutePolicyTimelinePageSuccess200".to_owned()
+        } else if let Some(component) = user_file_success_component(method, path, status) {
+            component.to_owned()
         } else if let Some(component) = source_discovery_success_component(method, path, status) {
             component.to_owned()
         } else if let Some(component) = developer_workflow_success_component(method, path, status) {
@@ -1319,7 +1329,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_agent_approval_decision_path(path)
                 || is_agent_execution_checkpoint_collection_path(path)
                 || is_agent_execution_fork_path(path)
-                || is_developer_workflow_request_body_path(path)))
+                || is_developer_workflow_request_body_path(path)
+                || is_user_file_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1350,6 +1361,9 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     }
     if method == "get" {
         return vec![200];
+    }
+    if method == "post" && is_user_file_collection_path(path) {
+        return vec![200, 201];
     }
     if method == "post" && is_durable_cell_state_mutation_path(path) {
         return vec![200];
@@ -1453,6 +1467,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Assets"
     } else if path.contains("source-") || path.starts_with("/webhooks") {
         "Sources"
+    } else if is_user_file_path(path) {
+        "Files"
     } else if path.contains("secrets") {
         "Secrets"
     } else if path.contains("durable-cell-applications") {
@@ -1628,6 +1644,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/agent-conversations")
         || is_developer_workflow_creation_path(path)
         || is_agent_execution_checkpoint_collection_path(path)
+        || is_user_file_collection_path(path)
 }
 
 fn is_recipient_contact_collection_path(path: &str) -> bool {

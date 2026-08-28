@@ -79,6 +79,7 @@ AI application platform parity manifest.
 | [0072](0072-single-workload-profile-management-interface.md) | Expose WorkloadProfile acceptance and immutable revision reads through one application authority and thin public adapters |
 | [0073](0073-single-preview-management-interface.md) | Expose pull-request Preview Policy acceptance, immutable policy reads, and exact current Preview observation through one application authority and thin public adapters |
 | [0074](0074-single-transient-source-discovery-authority.md) | Discover policy-admitted GitHub repositories, branches, and tags through one transient Sources application authority and revalidating provider port |
+| [0075](0075-single-user-file-lifecycle-authority.md) | Persist quota, metadata, audit, Outbox, idempotency, and maintained Files interfaces through one authorization-first UserFile lifecycle authority |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

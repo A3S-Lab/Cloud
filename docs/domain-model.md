@@ -1779,6 +1779,24 @@ Files Application, while Infrastructure adapts the deployment's single
 immutable-object client. Provider keys, buckets, streams, and storage failures
 do not enter the aggregate.
 
+`K0.1-C2` adds one `IUserFileRepository` for the complete metadata consistency
+boundary. A `UserFileQuota` value serializes allocation per Organization;
+reservation increments it before bytes may be accepted, while expiry or
+tombstone releases it. Rejection retains allocation until an explicit
+tombstone so evidence cannot disappear implicitly. Migration `170` commits the
+aggregate projection, allocation, shared idempotency result, audit record, and
+one metadata-only Outbox lifecycle event in the same transaction. The fixed
+initial quota is admission policy for a new row; the stored row remains
+authoritative.
+
+The aggregate derives `cleanup_due_at` from state and the canonical retention
+deadline. PostgreSQL checks that projection but does not create a cleanup
+aggregate, queue, or scheduler. REST/OpenAPI `1.77.0`, the maintained client,
+CLI, and five Management MCP tools call the same authorization-first commands
+and queries. They expose reservation/list/get/tombstone/quota metadata only;
+public byte transfer, live scan/cleanup execution, and Knowledge consumption
+remain unavailable.
+
 Primary aggregates and immutable records:
 
 - `KnowledgeBase` and `KnowledgeBaseRevision`
@@ -1786,9 +1804,9 @@ Primary aggregates and immutable records:
 - `KnowledgeTag` and immutable metadata-schema revisions
 - `IndexRevision` and `RetrievalPolicyRevision`
 - `ExternalKnowledgeBinding`, `KnowledgePipeline`, and `KnowledgePipelineRelease`
-- implemented `UserFile`; a separately durable `FileUploadSession` remains a
-  target only if later multipart/quota semantics require an independent
-  consistency boundary
+- implemented `UserFile` plus its transaction-bound organization quota ledger;
+  the bounded upload identity remains inside this aggregate and no independent
+  `FileUploadSession` authority exists
 
 `Automations` owns schedule, webhook, plugin-event, and source-event definitions
 that create new exact-target invocations. It owns deduplication, filtering,

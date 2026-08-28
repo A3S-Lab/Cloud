@@ -848,6 +848,35 @@ reads or idempotency replay. Denied and missing Form IDs therefore return the
 same `404`, revocation applies on the next request, and an environment-only
 grant cannot authorize a project-scoped Form.
 
+## UserFile lifecycle and quota
+
+`a3s_cloud_user_files_reserve` requires `projectId`, bounded canonical
+`admissionAcl`, and `idempotencyKey`. It requires `file:write`, authorizes the
+Project before replay, and dispatches the same reservation command as REST. A
+new reservation returns `201`; exact replay returns `200` with
+`replayed: true`.
+
+`a3s_cloud_user_files_list` accepts `projectId` and an optional limit from 1
+through 200 (default 50). `a3s_cloud_user_files_get` accepts `projectId` and
+`userFileId`. Both require `cloud:read`, are read-only, and use the same bounded
+response DTOs as REST. A restricted Membership sees these tools only when it
+has Project authority, and the Application boundary makes the final exact
+grant decision.
+
+`a3s_cloud_user_files_tombstone` requires `projectId`, `userFileId`, a positive
+`expectedVersion`, and `idempotencyKey`. It requires `file:write`, is marked
+destructive, and atomically releases any reserved quota with the lifecycle,
+audit, Outbox, and idempotency write. `a3s_cloud_user_file_quota_get` accepts no
+arguments, requires `cloud:read`, and is read-only. Because quota is an
+Organization-wide ledger, that tool is concealed from restricted Memberships
+rather than exposing a partial allocation.
+
+All five tools dispatch one Files command/query authority. Their schemas carry
+only canonical ACL, identities, bounds, and optimistic concurrency. They never
+accept file bytes, provider/bucket details, scanner configuration, multipart
+state, or a cleanup command. Public byte transfer and live scan/cleanup
+execution remain unavailable.
+
 ## GitHub source discovery
 
 `a3s_cloud_github_installation_repositories_list` accepts only an optional
@@ -986,7 +1015,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 152-tool administrator and 87-tool
+current focused runner requires exact 157-tool administrator and 90-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -1027,7 +1056,9 @@ protected HumanTask read/claim/release/privacy, tenant/role boundary, determinis
 immutable Application release lifecycle, immutable Connector profile/revision lifecycle, Durable Cell application and
 deployment lifecycle with Secret-free responses, BuildPlan ACL-only review,
 WorkloadProfile ACL-only acceptance and immutable revision reads, Preview
-Management ACL-only policy lineage and exact behavioral reads, Sources-owned
+Management ACL-only policy lineage and exact behavioral reads, Files-owned
+ACL-only reservation/list/get/tombstone/quota with `file:write` and
+`cloud:read`, Sources-owned
 GitHub repository/reference discovery with `source:write`,
 strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box

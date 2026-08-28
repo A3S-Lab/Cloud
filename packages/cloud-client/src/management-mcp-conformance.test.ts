@@ -29,9 +29,9 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
-it('pins the current Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(152);
-  expect(READ_ONLY_TOOLS).toHaveLength(87);
+it('pins the current Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
+  expect(ADMIN_TOOLS).toHaveLength(157);
+  expect(READ_ONLY_TOOLS).toHaveLength(90);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_workload_profiles_accept')).toEqual([
     'a3s_cloud_workload_profiles_accept',
   ]);
@@ -57,6 +57,24 @@ it('pins the current Developer Workflows, source discovery, signed-audit, and re
     expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
     expect(READ_ONLY_TOOLS).not.toContain(tool);
   }
+  for (const tool of [
+    'a3s_cloud_user_files_reserve',
+    'a3s_cloud_user_files_list',
+    'a3s_cloud_user_files_get',
+    'a3s_cloud_user_files_tombstone',
+    'a3s_cloud_user_file_quota_get',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+  }
+  for (const tool of [
+    'a3s_cloud_user_files_list',
+    'a3s_cloud_user_files_get',
+    'a3s_cloud_user_file_quota_get',
+  ] as const) {
+    expect(READ_ONLY_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+  }
+  expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_reserve');
+  expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_tombstone');
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);
@@ -278,6 +296,7 @@ conformanceIt(
       'a3s_cloud_workflow_runs_cancel',
       'a3s_cloud_application_sessions_close',
       'a3s_cloud_application_invocations_cancel',
+      'a3s_cloud_user_files_tombstone',
     ]);
     for (const tool of toolDefinitions(adminCatalog)) {
       expect(tool.annotations.readOnlyHint).toBe(readOnlyToolSet.has(tool.name));

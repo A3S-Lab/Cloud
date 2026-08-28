@@ -144,6 +144,12 @@ use crate::modules::executions::{
     IExecutionTemplateRepository, IWorkflowExecutionPort, ListExecutionTemplatesHandler,
     ListExecutionsHandler, WorkflowExecutionApplicationService,
 };
+use crate::modules::files::{
+    ExpireUserFileUploadHandler, FilesModule, GetUserFileHandler, GetUserFileQuotaHandler,
+    IUserFileObjectStore, IUserFileRepository, ListUserFilesHandler, RecordUserFileScanHandler,
+    RecordUserFileUploadHandler, ReserveUserFileHandler, SharedUserFileObjectStore,
+    TombstoneUserFileHandler, UserFileApplicationService,
+};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodePoolRepository, INodeRepository,
 };
@@ -535,6 +541,12 @@ async fn build_api_worker_application(
             .subnamespace("logs")
             .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
     ));
+    let user_file_objects: Arc<dyn IUserFileObjectStore> =
+        Arc::new(SharedUserFileObjectStore::from_client(
+            object_storage
+                .subnamespace("user-files")
+                .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
+        ));
     let postgres_adapters = PostgresAdapterFactory::new(executor.clone());
     let developer_workflow_projection =
         run_relay.then(|| postgres_adapters.developer_workflow_projection());
@@ -616,6 +628,7 @@ async fn build_api_worker_application(
     let asset_controls = adapters.assets.controls;
     let mcp_profiles = adapters.assets.mcp_profiles;
     let secrets = adapters.secrets;
+    let user_files = adapters.user_files;
     let connector_profiles = adapters.connector_profiles;
     let connector_execution_adapters = postgres_adapters.connector_execution();
     let connector_attempts = connector_execution_adapters.attempts;
@@ -1781,6 +1794,8 @@ async fn build_api_worker_application(
                 routes,
                 mcp_credentials,
                 secrets,
+                user_files,
+                user_file_objects,
                 sources,
                 source_webhooks,
                 source_subscriptions,
@@ -2014,6 +2029,8 @@ struct ManagementApplicationDependencies {
     routes: Arc<dyn IEdgeRepository>,
     mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     secrets: Arc<dyn ISecretRepository>,
+    user_files: Arc<dyn IUserFileRepository>,
+    user_file_objects: Arc<dyn IUserFileObjectStore>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
@@ -2100,6 +2117,8 @@ fn build_management_application_with_health(
         routes,
         mcp_credentials,
         secrets,
+        user_files,
+        user_file_objects,
         sources,
         source_webhooks,
         source_subscriptions,
@@ -2141,6 +2160,10 @@ fn build_management_application_with_health(
         Arc::clone(&executions),
         Arc::clone(&agents),
         Arc::clone(&workflow_runs),
+    ));
+    let user_file_service = Arc::new(UserFileApplicationService::new(
+        user_files,
+        user_file_objects,
     ));
     let developer_workflow_authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort> =
         Arc::new(IdentityProjectsDeveloperWorkflowAuthorizationAdapter::new(
@@ -2886,6 +2909,21 @@ fn build_management_application_with_health(
                         admit_application_workflow_runs,
                     ),
                 )
+                .command_handler::<crate::modules::files::ReserveUserFile, _>(
+                    ReserveUserFileHandler::new(Arc::clone(&user_file_service)),
+                )
+                .command_handler::<crate::modules::files::TombstoneUserFile, _>(
+                    TombstoneUserFileHandler::new(Arc::clone(&user_file_service)),
+                )
+                .command_handler::<crate::modules::files::RecordUserFileUpload, _>(
+                    RecordUserFileUploadHandler::new(Arc::clone(&user_file_service)),
+                )
+                .command_handler::<crate::modules::files::RecordUserFileScan, _>(
+                    RecordUserFileScanHandler::new(Arc::clone(&user_file_service)),
+                )
+                .command_handler::<crate::modules::files::ExpireUserFileUpload, _>(
+                    ExpireUserFileUploadHandler::new(Arc::clone(&user_file_service)),
+                )
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
                         create_durable_cell_environments,
@@ -3541,6 +3579,15 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::applications::ReplayApplicationSession, _>(
                     ReplayApplicationSessionHandler::new(replay_application_sessions),
                 )
+                .query_handler::<crate::modules::files::ListUserFiles, _>(
+                    ListUserFilesHandler::new(Arc::clone(&user_file_service)),
+                )
+                .query_handler::<crate::modules::files::GetUserFile, _>(
+                    GetUserFileHandler::new(Arc::clone(&user_file_service)),
+                )
+                .query_handler::<crate::modules::files::GetUserFileQuota, _>(
+                    GetUserFileQuotaHandler::new(user_file_service),
+                )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),
                 )
@@ -3835,6 +3882,7 @@ fn build_management_application_with_health(
         .import(NotificationsModule)
         .import(ConnectorsModule)
         .import(ApplicationsModule)
+        .import(FilesModule)
         .import(DurableCellsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

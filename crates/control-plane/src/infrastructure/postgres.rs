@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 169;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "169";
+pub const CLOUD_MIGRATION_COUNT: i64 = 170;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "170";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1561,6 +1561,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/169_agent_checkpoint_object_leases.sql"
+            )),
+        ),
+        Migration::new(
+            "170",
+            "UserFile lifecycle metadata and organization quota",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/170_user_files.sql"
             )),
         ),
     ]
@@ -3740,6 +3748,49 @@ mod agent_checkpoint_object_lease_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 169 duplicated payload, queue, or lifecycle authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod user_file_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/170_user_files.sql"
+    ));
+
+    #[test]
+    fn migration_170_keeps_one_acl_lifecycle_quota_and_outbox_authority() {
+        for expected in [
+            "create table user_file_organization_quotas",
+            "create table user_files",
+            "contract_schema = 'cloud.user-file.v1'",
+            "canonical_acl text not null",
+            "primary key (organization_id, id)",
+            "limit_bytes between 1 and 9007199254740991",
+            "allocated_bytes >= 0 and allocated_bytes <= limit_bytes",
+            "revision between 0 and 9007199254740991",
+            "user_files_upload_expiration_idx",
+            "user_files_cleanup_due_idx",
+            "bytes remain in the shared immutable-object authority",
+            "shared Outbox rather than a Files-local queue",
+        ] {
+            assert!(MIGRATION.contains(expected), "missing {expected}");
+        }
+        for forbidden in [
+            "create queue",
+            "file_bytes",
+            "object_payload",
+            "provider_config",
+            "bucket_name",
+            "access_key",
+            "json_config",
+            "yaml_config",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 170 duplicated configuration, bytes, queue, or provider authority: {forbidden}"
             );
         }
     }

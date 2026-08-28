@@ -443,6 +443,7 @@ fn production_composition_builds_one_provider_and_derives_every_consumer_namespa
         "agent-checkpoints",
         "connector-responses",
         "plugin-trust-roots",
+        "user-files",
     ] {
         assert!(
             production.contains(&format!(".subnamespace(\"{namespace}\")")),

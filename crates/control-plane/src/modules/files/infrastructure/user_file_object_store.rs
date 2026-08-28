@@ -28,7 +28,6 @@ impl SharedUserFileObjectStore {
         Ok(Self { objects })
     }
 
-    #[cfg(test)]
     pub(crate) fn from_client(objects: ImmutableObjectClient) -> Self {
         Self { objects }
     }

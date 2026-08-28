@@ -1,4 +1,4 @@
-pub(super) const TAGS: [(&str, &str); 24] = [
+pub(super) const TAGS: [(&str, &str); 25] = [
     (
         "Platform",
         "Public platform metadata, liveness, and readiness diagnostics.",
@@ -30,6 +30,10 @@ pub(super) const TAGS: [(&str, &str); 24] = [
     (
         "Sources",
         "Source connections, transient provider discovery, subscriptions, revisions, and signed webhook ingestion.",
+    ),
+    (
+        "Files",
+        "Canonical UserFile admission, lifecycle metadata, retention cleanup intent, and organization quota operations.",
     ),
     (
         "Developer Workflows",

@@ -12,6 +12,12 @@ use super::source_discovery_documentation::{
     operation_summary as source_discovery_operation_summary,
     response_data_description as source_discovery_response_data_description,
 };
+use super::user_file_documentation::{
+    component_description as user_file_component_description,
+    operation_description as user_file_operation_description,
+    operation_summary as user_file_operation_summary,
+    response_data_description as user_file_response_data_description,
+};
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
 
@@ -178,6 +184,9 @@ fn component_schema_description(name: &str) -> String {
         return description.into();
     }
     if let Some(description) = developer_workflow_component_description(name) {
+        return description.into();
+    }
+    if let Some(description) = user_file_component_description(name) {
         return description.into();
     }
     match name {
@@ -508,6 +517,9 @@ fn special_description(method: &str, path: &str) -> Option<&'static str> {
     if let Some(description) = developer_workflow_operation_description(method, path) {
         return Some(description);
     }
+    if let Some(description) = user_file_operation_description(method, path) {
+        return Some(description);
+    }
     match (method, path) {
         ("get", "/identity/oidc/{provider_key}/login") => Some(
             "Starts a public OIDC login and redirects to the configured provider. State, nonce, and S256 PKCE bind the one-time flow; nonce and verifier are held only in Secure HttpOnly callback cookies.",
@@ -527,6 +539,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         return summary.into();
     }
     if let Some(summary) = developer_workflow_operation_summary(method, path) {
+        return summary.into();
+    }
+    if let Some(summary) = user_file_operation_summary(method, path) {
         return summary.into();
     }
     match (method, path) {
@@ -1011,6 +1026,9 @@ fn response_data_description(method: &str, path: &str, summary: &str) -> String 
         return description.into();
     }
     if let Some(description) = developer_workflow_response_data_description(method, path) {
+        return description.into();
+    }
+    if let Some(description) = user_file_response_data_description(method, path) {
         return description.into();
     }
     if method == "get" && path.ends_with("/audit-records/export") {

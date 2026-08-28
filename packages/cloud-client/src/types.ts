@@ -252,6 +252,14 @@ export type {
   ScheduleNodePoolMaintenanceInput,
 } from './node';
 export type { SearchResourceKind, SearchResult } from './search';
+export type {
+  ReserveUserFileInput,
+  UserFile,
+  UserFileListOptions,
+  UserFileMutationResult,
+  UserFileQuota,
+  UserFileState,
+} from './files';
 
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 

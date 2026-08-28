@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.76.0" src="https://img.shields.io/badge/REST_contract-1.76.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.77.0" src="https://img.shields.io/badge/REST_contract-1.77.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -138,7 +138,7 @@ not imply availability.
 | Product | Connectors | Outbound profile/revision, exact attempt, egress policy, response evidence |
 | Product | Notifications | Personal inbox, subscription, alert policy, delivery fact and terminal receipt |
 | Product | Plugins | Tenant registry enrollment and exact A3S Use package-assignment intent |
-| Product | Files | Upload/admission metadata and immutable-object reference; never Artifact authority |
+| Product | Files | Canonical UserFile admission/lifecycle, organization quota, retention/cleanup intent, and immutable-object reference; never byte-provider or Artifact authority |
 | Product | Durable Cells | Cell application, immutable revision, compatibility/retention intent, deployment correlation; never individual Cell state |
 
 ### Aggregate collaboration
@@ -162,6 +162,36 @@ Product intent
   -> owner projection
   -> Edge snapshot or committed integration fact
 ```
+
+### Files domain boundary
+
+<p align="center">
+  <img src="assets/readme/files-domain.svg" width="100%" alt="Files DDD model showing one UserFile aggregate, one transactional repository port, one streaming immutable-object port, shared PostgreSQL side effects, and the absence of duplicate upload, provider, scanner, or cleanup mechanisms" />
+</p>
+
+Files owns one `UserFile` aggregate and one organization allocation ledger. The
+canonical `cloud.user-file.v1` A3S ACL binds the exact tenant, UserFile and
+upload identities, logical object reference, digest, bounded size, media type,
+upload deadline, retention deadline, and required scan policy. The aggregate
+moves monotonically from `awaiting_upload` to `awaiting_scan`, then to
+`admitted` or `rejected`; an unused reservation may expire, and any live state
+may be tombstoned. Quota is reserved with creation and released only by expiry
+or tombstone.
+
+One `UserFileApplicationService` authorizes before replay and depends only on
+`IUserFileRepository` plus the streaming `IUserFileObjectStore`. The PostgreSQL
+adapter commits aggregate metadata, quota allocation, Outbox, audit, and
+idempotency in one transaction. The object adapter reuses the process-wide
+immutable-object client under `user-files`; bytes, provider details, scanner
+configuration, and cleanup queues never enter the Files model. `cleanupDueAt`
+is a lifecycle-derived projection carried by the same event authority, not a
+second deletion state machine.
+
+REST/OpenAPI `1.77.0`, the maintained client, CLI, and five Management MCP
+tools expose reserve/list/get/tombstone/quota through the same CQRS handlers.
+These are metadata-management interfaces only: public byte transfer, live scan
+execution, object cleanup execution, and Knowledge/KnowledgePipeline
+aggregates remain unavailable and are not emulated by Files.
 
 ### GitHub source discovery domain boundary
 
@@ -350,7 +380,7 @@ capability.
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
-| AI Applications, Files/Knowledge, Automations | Component foundations in progress; complete products unavailable |
+| AI Applications, Files/Knowledge, Automations | Component foundations in progress; Files C1/C2 now include the canonical ACL lifecycle, atomic quota/persistence, authorization-first CQRS, REST/OpenAPI `1.77.0`, client, CLI, and Management MCP. Public byte transfer, scan/cleanup execution, Knowledge/KnowledgePipeline, retained PostgreSQL cross-surface evidence, and complete products remain unavailable |
 | Data/S0 and Durable Cells | Component foundations in progress; retained provider/lifecycle/fault evidence remains, service unavailable |
 | Inference, governed self-evolution, simplified Agent Runtime experience | Planned |
 | Production scale / HA | In progress; release claims remain gate-bound |
@@ -556,8 +586,13 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.76.0` is the current contract. It
-    adds transient Sources-owned GitHub repository, branch, and tag discovery
+    copied evidence bodies. REST/OpenAPI `1.77.0` is the current contract. It
+    adds Files-owned UserFile reservation, bounded metadata reads, optimistic
+    tombstone, and organization quota through one authorization-first lifecycle
+    authority. Migration `170` commits metadata, allocation, audit, Outbox, and
+    idempotency atomically while bytes remain behind the shared streaming
+    immutable-object port. It retains `1.76.0`'s transient Sources-owned GitHub
+    repository, branch, and tag discovery
     through one policy-filtered, authority-revalidating Application port and
     shared REST/client/CLI/MCP projections, without persisting provider state or
     credentials. It retains `1.75.0`'s closed Developer Workflows Preview Policy acceptance plus current,
@@ -737,11 +772,14 @@ creating their own control planes:
    close/cancel/full replay through contract `1.44.0` and three more Management
    MCP tools, while application credentials, answer streaming, and Gateway
    delivery remain unavailable.
-   `K0.1-C1` now freezes the Files-owned canonical upload reference and
-   admission state machine while reusing the shared immutable-object client;
-   quota transactions, persistence, maintained interfaces, and the Knowledge
-   aggregates remain open. `AUT0` has component-only Connector foundations in
-   progress. All three product surfaces remain unavailable.
+   `K0.1-C1` and `C2` now freeze the Files-owned canonical upload reference and
+   admission state machine, atomic organization quota and PostgreSQL lifecycle,
+   authorization-first CQRS, shared Outbox/audit/idempotency, and maintained
+   REST/OpenAPI `1.77.0`, client, CLI, and Management MCP interfaces. Public
+   byte transfer, live scanner and cleanup execution, retained PostgreSQL
+   cross-surface evidence, and the Knowledge aggregates remain open. `AUT0`
+   has component-only Connector foundations in progress. All three product
+   surfaces remain unavailable.
 5. **Durable Cell Service** targets named SQLite-backed state entities with
    alarms, WebSockets, idle eviction, and fenced recovery. Backend contracts,
    composition, and interfaces exist; provider and lifecycle gates remain, so

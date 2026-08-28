@@ -145,6 +145,39 @@ fn contract_rejects_unsafe_names_media_sizes_and_nil_scope() {
 }
 
 #[test]
+fn organization_quota_is_revisioned_and_json_safe() {
+    let organization_id = OrganizationId::new();
+    assert!(UserFileQuota::empty(organization_id, USER_FILE_PUBLIC_INTEGER_MAX + 1).is_err());
+    assert!(UserFileQuota::restore(
+        organization_id,
+        1,
+        0,
+        USER_FILE_PUBLIC_INTEGER_MAX + 1,
+        Some(timestamp("2026-08-21T00:00:00Z")),
+    )
+    .is_err());
+
+    let quota = UserFileQuota::empty(organization_id, USER_FILE_PUBLIC_INTEGER_MAX)
+        .expect("maximum JSON-safe quota");
+    let reserved = quota
+        .reserve(
+            USER_FILE_PUBLIC_INTEGER_MAX,
+            timestamp("2026-08-21T00:00:00Z"),
+        )
+        .expect("full quota reservation");
+    assert_eq!(reserved.available_bytes(), 0);
+    assert_eq!(reserved.revision, 1);
+    let released = reserved
+        .release(
+            USER_FILE_PUBLIC_INTEGER_MAX,
+            timestamp("2026-08-21T00:00:01Z"),
+        )
+        .expect("full quota release");
+    assert_eq!(released.allocated_bytes, 0);
+    assert_eq!(released.revision, 2);
+}
+
+#[test]
 fn lifecycle_requires_upload_and_scan_before_admission() {
     let reserved = reserved_file();
     assert_eq!(reserved.state, UserFileState::AwaitingUpload);
@@ -305,6 +338,23 @@ fn lifecycle_event_is_bounded_metadata_only() {
     assert_eq!(envelope.aggregate_version, 1);
     assert_eq!(envelope.correlation_id, correlation_id);
     assert_eq!(envelope.payload["schema"], USER_FILE_LIFECYCLE_EVENT_SCHEMA);
+    assert!(envelope.payload["cleanupDueAt"].is_null());
+
+    let uploaded = file
+        .record_upload(
+            file.aggregate_version,
+            &stored_write(&file),
+            timestamp("2026-08-21T00:30:00Z"),
+        )
+        .expect("uploaded file");
+    let cleanup_event =
+        UserFileLifecycleChanged::changed(&uploaded, Uuid::now_v7(), Some(envelope.event_id))
+            .expect("cleanup-bearing lifecycle event");
+    assert_eq!(
+        cleanup_event.payload["cleanupDueAt"],
+        serde_json::json!(uploaded.contract.spec().retention_until)
+    );
+
     let serialized = serde_json::to_string(&envelope).expect("event JSON");
     for forbidden in ["provider", "bucket", "credential", "localPath", "bytes"] {
         assert!(!serialized.contains(forbidden));

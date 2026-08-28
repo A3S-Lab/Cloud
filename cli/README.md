@@ -433,6 +433,11 @@ source-references list <canonical-repository-url> <branch|tag> [--cursor=<opaque
 source-subscriptions list
 source-subscriptions create <repository-url> <branch> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
 source-subscriptions deactivate <subscription-id>
+user-files reserve --file=<user-file.acl>
+user-files list [--limit=<1..200>]
+user-files get <user-file-id>
+user-files tombstone <user-file-id> --expected-version=<version>
+user-file-quota get
 secrets list
 secrets get <secret-id>
 secrets create <name> --value-stdin
@@ -735,6 +740,12 @@ complete URL must be copied because bounded table cells may abbreviate it.
 policy-admitted GitHub projections and a sanitized next cursor. They never print
 or persist the installation token, and they do not create a SourceRevision or
 subscription.
+`user-files reserve` accepts only a bounded `.acl` path and sends the canonical
+document through the shared client with caller-owned idempotency. List/get and
+quota are bounded metadata reads; tombstone requires optimistic concurrency.
+The CLI has no file-byte upload/download, object-provider, scanner, or cleanup
+command. REST contract `1.77.0` keeps those unavailable capabilities outside
+the management interface.
 Secret create, add-version, and revoke-version output includes only the safe
 metadata projection, changed version state, and authoritative `replayed`
 value. Plaintext is excluded even if an invalid upstream response attempts to
@@ -755,7 +766,9 @@ also implemented. Public platform and health diagnostics are implemented with
 a stable unhealthy exit contract. DomainClaim, logical Gateway-scope, and route
 publication parity is implemented through the same typed client. Source
 revision, GitHub connection, and repository-subscription parity is also
-implemented without bypassing the public API. BuildPlan detection, acceptance,
+implemented without bypassing the public API. UserFile reservation,
+list/get/tombstone/quota metadata parity is implemented over the same Files
+CQRS without a binary path. BuildPlan detection, acceptance,
 and immutable read parity use the same Developer Workflows application
 authority. Secret metadata and version
 lifecycle parity is implemented with standard-input-only material handling.

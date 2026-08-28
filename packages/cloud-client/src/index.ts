@@ -59,6 +59,7 @@ export * from './connectors';
 export * from './developer-workflows';
 export * from './diagnostics';
 export * from './durable-cells';
+export * from './files';
 export {
   MAX_RECIPIENT_CONTACT_ADDRESS_BYTES,
   MAX_RECIPIENT_CONTACT_PROOF_BYTES,

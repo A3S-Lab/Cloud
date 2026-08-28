@@ -41,6 +41,9 @@ use super::execution_templates::{
     CreateExecutionTemplateArguments, GetExecutionTemplateArguments,
     ListExecutionTemplatesArguments,
 };
+use super::files::{
+    ListUserFilesArguments, ReserveUserFileArguments, TombstoneUserFileArguments, UserFileArguments,
+};
 use super::forms::{
     CreateFormDraftArguments, FormDraftArguments, FormReleaseArguments, ListFormDraftsArguments,
     PublishFormReleaseArguments, ReviseFormDraftArguments,
@@ -88,8 +91,8 @@ use super::workloads::{
 };
 use super::{
     applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
-    execution_templates, forms, identity, nodes, notifications, ontology, operations, plugins,
-    projects, search, security, sources, workflow, workloads,
+    execution_templates, files, forms, identity, nodes, notifications, ontology, operations,
+    plugins, projects, search, security, sources, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -1181,6 +1184,56 @@ pub async fn execute(
                 arguments::parse::<GithubRepositoryReferencesArguments>(arguments).ok()?;
             sources::list_repository_references(query_bus, organization_id, arguments, request_id)
                 .await
+        }
+        ManagementTool::UserFilesReserve => {
+            let arguments = arguments::parse::<ReserveUserFileArguments>(arguments).ok()?;
+            files::reserve(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFilesList => {
+            let arguments = arguments::parse::<ListUserFilesArguments>(arguments).ok()?;
+            files::list(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFilesGet => {
+            let arguments = arguments::parse::<UserFileArguments>(arguments).ok()?;
+            files::get(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFilesTombstone => {
+            let arguments = arguments::parse::<TombstoneUserFileArguments>(arguments).ok()?;
+            files::tombstone(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFileQuotaGet => {
+            let _arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            files::quota(query_bus, organization_id, resource_access, request_id).await
         }
         ManagementTool::PluginRegistriesList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

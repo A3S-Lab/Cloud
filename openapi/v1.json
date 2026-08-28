@@ -55,7 +55,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -120,7 +120,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -186,7 +186,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -250,7 +250,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -366,7 +366,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -480,7 +480,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -554,7 +554,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -629,7 +629,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -704,7 +704,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -776,7 +776,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -822,7 +822,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -869,7 +869,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -916,7 +916,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -960,7 +960,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1018,7 +1018,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1086,7 +1086,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1155,7 +1155,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1224,7 +1224,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1290,7 +1290,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1356,7 +1356,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1406,7 +1406,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1547,7 +1547,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1701,7 +1701,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1855,7 +1855,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -1994,7 +1994,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2043,7 +2043,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2078,7 +2078,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2106,7 +2106,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2134,7 +2134,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2201,7 +2201,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2269,7 +2269,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2337,7 +2337,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2400,7 +2400,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2451,7 +2451,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2502,7 +2502,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2550,7 +2550,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2608,7 +2608,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2656,7 +2656,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2723,7 +2723,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2790,7 +2790,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2854,7 +2854,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2904,7 +2904,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2951,7 +2951,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -2998,7 +2998,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3042,7 +3042,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3090,7 +3090,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3124,7 +3124,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3158,7 +3158,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3192,7 +3192,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3226,7 +3226,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3260,7 +3260,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3294,7 +3294,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3328,7 +3328,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3362,7 +3362,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3396,7 +3396,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3430,7 +3430,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3464,7 +3464,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3513,7 +3513,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3562,7 +3562,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3636,7 +3636,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3762,7 +3762,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3885,7 +3885,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3941,7 +3941,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -3997,7 +3997,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4055,7 +4055,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4108,7 +4108,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4159,7 +4159,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4207,7 +4207,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4292,7 +4292,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4377,7 +4377,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4429,7 +4429,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4482,7 +4482,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4528,7 +4528,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4590,7 +4590,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4652,7 +4652,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4716,7 +4716,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4775,7 +4775,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4842,7 +4842,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4909,7 +4909,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -4991,7 +4991,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5019,7 +5019,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5047,7 +5047,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5093,7 +5093,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5138,7 +5138,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5183,7 +5183,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5227,7 +5227,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5280,7 +5280,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5307,7 +5307,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5340,7 +5340,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5373,7 +5373,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5406,7 +5406,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5439,7 +5439,303 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserFileListSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": [
+                {
+                  "admissionAcl": "version = 1\n",
+                  "aggregateVersion": 1,
+                  "cleanupDueAt": "2026-08-22T00:00:00Z",
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.user-file.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "expiredAt": "2026-08-22T00:00:00Z",
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "objectRef": "example",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "originalName": "example",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "rejectionReasonCode": "example",
+                  "retentionUntil": "2026-08-22T00:00:00Z",
+                  "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "scanPolicy": "required",
+                  "scannedAt": "2026-08-22T00:00:00Z",
+                  "sizeBytes": 1,
+                  "state": "awaiting_upload",
+                  "tombstonedAt": "2026-08-22T00:00:00Z",
+                  "tombstonedFrom": "awaiting_upload",
+                  "updatedAt": "2026-08-22T00:00:00Z",
+                  "uploadExpiresAt": "2026-08-22T00:00:00Z",
+                  "uploadId": "00000000-0000-4000-8000-000000000001",
+                  "uploadedAt": "2026-08-22T00:00:00Z",
+                  "userFileId": "00000000-0000-4000-8000-000000000001"
+                }
+              ],
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UserFileListSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.77.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserFileMutationSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "file": {
+                  "admissionAcl": "version = 1\n",
+                  "aggregateVersion": 1,
+                  "cleanupDueAt": "2026-08-22T00:00:00Z",
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.user-file.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "expiredAt": "2026-08-22T00:00:00Z",
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "objectRef": "example",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "originalName": "example",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "rejectionReasonCode": "example",
+                  "retentionUntil": "2026-08-22T00:00:00Z",
+                  "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "scanPolicy": "required",
+                  "scannedAt": "2026-08-22T00:00:00Z",
+                  "sizeBytes": 1,
+                  "state": "awaiting_upload",
+                  "tombstonedAt": "2026-08-22T00:00:00Z",
+                  "tombstonedFrom": "awaiting_upload",
+                  "updatedAt": "2026-08-22T00:00:00Z",
+                  "uploadExpiresAt": "2026-08-22T00:00:00Z",
+                  "uploadId": "00000000-0000-4000-8000-000000000001",
+                  "uploadedAt": "2026-08-22T00:00:00Z",
+                  "userFileId": "00000000-0000-4000-8000-000000000001"
+                },
+                "replayed": false
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UserFileMutationSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.77.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserFileMutationSuccess201": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 201,
+              "data": {
+                "file": {
+                  "admissionAcl": "version = 1\n",
+                  "aggregateVersion": 1,
+                  "cleanupDueAt": "2026-08-22T00:00:00Z",
+                  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "contractSchema": "cloud.user-file.v1",
+                  "createdAt": "2026-08-22T00:00:00Z",
+                  "createdBy": "00000000-0000-4000-8000-000000000001",
+                  "expiredAt": "2026-08-22T00:00:00Z",
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "objectRef": "example",
+                  "organizationId": "00000000-0000-4000-8000-000000000001",
+                  "originalName": "example",
+                  "projectId": "00000000-0000-4000-8000-000000000001",
+                  "rejectionReasonCode": "example",
+                  "retentionUntil": "2026-08-22T00:00:00Z",
+                  "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                  "scanPolicy": "required",
+                  "scannedAt": "2026-08-22T00:00:00Z",
+                  "sizeBytes": 1,
+                  "state": "awaiting_upload",
+                  "tombstonedAt": "2026-08-22T00:00:00Z",
+                  "tombstonedFrom": "awaiting_upload",
+                  "updatedAt": "2026-08-22T00:00:00Z",
+                  "uploadExpiresAt": "2026-08-22T00:00:00Z",
+                  "uploadId": "00000000-0000-4000-8000-000000000001",
+                  "uploadedAt": "2026-08-22T00:00:00Z",
+                  "userFileId": "00000000-0000-4000-8000-000000000001"
+                },
+                "replayed": false
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UserFileMutationSuccessResponse"
+            }
+          }
+        },
+        "description": "Created",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.77.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserFileQuotaSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "allocatedBytes": 0,
+                "availableBytes": 0,
+                "limitBytes": 1,
+                "organizationId": "00000000-0000-4000-8000-000000000001",
+                "revision": 0,
+                "updatedAt": "2026-08-22T00:00:00Z"
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UserFileQuotaSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.77.0",
+              "type": "string"
+            }
+          },
+          "x-request-id": {
+            "description": "Request correlation UUID generated or propagated by the control plane.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserFileSuccess200": {
+        "content": {
+          "application/json": {
+            "example": {
+              "code": 200,
+              "data": {
+                "admissionAcl": "version = 1\n",
+                "aggregateVersion": 1,
+                "cleanupDueAt": "2026-08-22T00:00:00Z",
+                "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "contractSchema": "cloud.user-file.v1",
+                "createdAt": "2026-08-22T00:00:00Z",
+                "createdBy": "00000000-0000-4000-8000-000000000001",
+                "expiredAt": "2026-08-22T00:00:00Z",
+                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                "objectRef": "example",
+                "organizationId": "00000000-0000-4000-8000-000000000001",
+                "originalName": "example",
+                "projectId": "00000000-0000-4000-8000-000000000001",
+                "rejectionReasonCode": "example",
+                "retentionUntil": "2026-08-22T00:00:00Z",
+                "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "scanPolicy": "required",
+                "scannedAt": "2026-08-22T00:00:00Z",
+                "sizeBytes": 1,
+                "state": "awaiting_upload",
+                "tombstonedAt": "2026-08-22T00:00:00Z",
+                "tombstonedFrom": "awaiting_upload",
+                "updatedAt": "2026-08-22T00:00:00Z",
+                "uploadExpiresAt": "2026-08-22T00:00:00Z",
+                "uploadId": "00000000-0000-4000-8000-000000000001",
+                "uploadedAt": "2026-08-22T00:00:00Z",
+                "userFileId": "00000000-0000-4000-8000-000000000001"
+              },
+              "message": "example",
+              "requestId": "00000000-0000-4000-8000-000000000001",
+              "timestamp": "2026-08-22T00:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UserFileSuccessResponse"
+            }
+          }
+        },
+        "description": "Success or idempotent replay",
+        "headers": {
+          "x-a3s-api-contract-version": {
+            "description": "Exact A3S Cloud REST contract version used for this response.",
+            "schema": {
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5487,7 +5783,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5571,7 +5867,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5655,7 +5951,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5701,7 +5997,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5757,7 +6053,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -5883,7 +6179,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6009,7 +6305,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6063,7 +6359,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6125,7 +6421,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6226,7 +6522,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6293,7 +6589,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6345,7 +6641,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6429,7 +6725,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6475,7 +6771,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6565,7 +6861,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6656,7 +6952,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6747,7 +7043,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6785,7 +7081,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6876,7 +7172,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -6932,7 +7228,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -7049,7 +7345,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -7166,7 +7462,7 @@
           "x-a3s-api-contract-version": {
             "description": "Exact A3S Cloud REST contract version used for this response.",
             "schema": {
-              "example": "1.76.0",
+              "example": "1.77.0",
               "type": "string"
             }
           },
@@ -21372,6 +21668,673 @@
         ],
         "type": "object"
       },
+      "UserFile": {
+        "additionalProperties": false,
+        "description": "Authoritative Files lifecycle projection binding canonical admission ACL, logical immutable-object evidence, scan admission, retention, and cleanup intent.",
+        "example": {
+          "admissionAcl": "version = 1\n",
+          "aggregateVersion": 1,
+          "cleanupDueAt": "2026-08-22T00:00:00Z",
+          "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "contractSchema": "cloud.user-file.v1",
+          "createdAt": "2026-08-22T00:00:00Z",
+          "createdBy": "00000000-0000-4000-8000-000000000001",
+          "expiredAt": "2026-08-22T00:00:00Z",
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "objectRef": "example",
+          "organizationId": "00000000-0000-4000-8000-000000000001",
+          "originalName": "example",
+          "projectId": "00000000-0000-4000-8000-000000000001",
+          "rejectionReasonCode": "example",
+          "retentionUntil": "2026-08-22T00:00:00Z",
+          "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "scanPolicy": "required",
+          "scannedAt": "2026-08-22T00:00:00Z",
+          "sizeBytes": 1,
+          "state": "awaiting_upload",
+          "tombstonedAt": "2026-08-22T00:00:00Z",
+          "tombstonedFrom": "awaiting_upload",
+          "updatedAt": "2026-08-22T00:00:00Z",
+          "uploadExpiresAt": "2026-08-22T00:00:00Z",
+          "uploadId": "00000000-0000-4000-8000-000000000001",
+          "uploadedAt": "2026-08-22T00:00:00Z",
+          "userFileId": "00000000-0000-4000-8000-000000000001"
+        },
+        "properties": {
+          "admissionAcl": {
+            "description": "Canonical A3S ACL admission contract; this is the only Files product-configuration representation.",
+            "maxLength": 65536,
+            "minLength": 1,
+            "type": "string",
+            "x-a3s-max-canonical-bytes": 65536
+          },
+          "aggregateVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "cleanupDueAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "contentDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "contractDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "contractSchema": {
+            "enum": [
+              "cloud.user-file.v1"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "expiredAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "mediaType": {
+            "maxLength": 127,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+            "type": "string"
+          },
+          "objectRef": {
+            "description": "Logical immutable-object reference without provider, bucket, credential, or local-path details.",
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^organizations/[0-9a-f-]{36}/projects/[0-9a-f-]{36}/files/[0-9a-f-]{36}/uploads/[0-9a-f-]{36}/sha256/[0-9a-f]{64}/content$",
+            "type": "string"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "originalName": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^/\\\\\\u0000-\\u001F\\u007F-\\u009F]+$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "rejectionReasonCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "nullable": true,
+            "type": "string"
+          },
+          "retentionUntil": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "scanEvidenceDigest": {
+            "nullable": true,
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "scanPolicy": {
+            "enum": [
+              "required"
+            ],
+            "type": "string"
+          },
+          "scannedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "sizeBytes": {
+            "maximum": 536870912,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "awaiting_upload",
+              "awaiting_scan",
+              "admitted",
+              "rejected",
+              "expired",
+              "tombstoned"
+            ],
+            "type": "string"
+          },
+          "tombstonedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tombstonedFrom": {
+            "enum": [
+              "awaiting_upload",
+              "awaiting_scan",
+              "admitted",
+              "rejected",
+              "expired",
+              null
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "uploadExpiresAt": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "uploadId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "uploadedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "userFileId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationId",
+          "projectId",
+          "userFileId",
+          "uploadId",
+          "state",
+          "originalName",
+          "contractSchema",
+          "admissionAcl",
+          "contractDigest",
+          "objectRef",
+          "contentDigest",
+          "sizeBytes",
+          "mediaType",
+          "scanPolicy",
+          "uploadExpiresAt",
+          "retentionUntil",
+          "scanEvidenceDigest",
+          "rejectionReasonCode",
+          "tombstonedFrom",
+          "aggregateVersion",
+          "createdBy",
+          "createdAt",
+          "uploadedAt",
+          "scannedAt",
+          "expiredAt",
+          "tombstonedAt",
+          "cleanupDueAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "UserFileList": {
+        "description": "Bounded list of authorized UserFile lifecycle projections.",
+        "example": [
+          {
+            "admissionAcl": "version = 1\n",
+            "aggregateVersion": 1,
+            "cleanupDueAt": "2026-08-22T00:00:00Z",
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.user-file.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "expiredAt": "2026-08-22T00:00:00Z",
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "objectRef": "example",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "originalName": "example",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "rejectionReasonCode": "example",
+            "retentionUntil": "2026-08-22T00:00:00Z",
+            "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "scanPolicy": "required",
+            "scannedAt": "2026-08-22T00:00:00Z",
+            "sizeBytes": 1,
+            "state": "awaiting_upload",
+            "tombstonedAt": "2026-08-22T00:00:00Z",
+            "tombstonedFrom": "awaiting_upload",
+            "updatedAt": "2026-08-22T00:00:00Z",
+            "uploadExpiresAt": "2026-08-22T00:00:00Z",
+            "uploadId": "00000000-0000-4000-8000-000000000001",
+            "uploadedAt": "2026-08-22T00:00:00Z",
+            "userFileId": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "items": {
+          "$ref": "#/components/schemas/UserFile"
+        },
+        "maxItems": 200,
+        "type": "array"
+      },
+      "UserFileListSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserFileList"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying UserFileListSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": [
+            {
+              "admissionAcl": "version = 1\n",
+              "aggregateVersion": 1,
+              "cleanupDueAt": "2026-08-22T00:00:00Z",
+              "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractSchema": "cloud.user-file.v1",
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "expiredAt": "2026-08-22T00:00:00Z",
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "objectRef": "example",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "originalName": "example",
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "rejectionReasonCode": "example",
+              "retentionUntil": "2026-08-22T00:00:00Z",
+              "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "scanPolicy": "required",
+              "scannedAt": "2026-08-22T00:00:00Z",
+              "sizeBytes": 1,
+              "state": "awaiting_upload",
+              "tombstonedAt": "2026-08-22T00:00:00Z",
+              "tombstonedFrom": "awaiting_upload",
+              "updatedAt": "2026-08-22T00:00:00Z",
+              "uploadExpiresAt": "2026-08-22T00:00:00Z",
+              "uploadId": "00000000-0000-4000-8000-000000000001",
+              "uploadedAt": "2026-08-22T00:00:00Z",
+              "userFileId": "00000000-0000-4000-8000-000000000001"
+            }
+          ],
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "UserFileMutation": {
+        "additionalProperties": false,
+        "description": "UserFile mutation result with explicit idempotent-replay state and the authoritative aggregate projection.",
+        "example": {
+          "file": {
+            "admissionAcl": "version = 1\n",
+            "aggregateVersion": 1,
+            "cleanupDueAt": "2026-08-22T00:00:00Z",
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.user-file.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "expiredAt": "2026-08-22T00:00:00Z",
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "objectRef": "example",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "originalName": "example",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "rejectionReasonCode": "example",
+            "retentionUntil": "2026-08-22T00:00:00Z",
+            "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "scanPolicy": "required",
+            "scannedAt": "2026-08-22T00:00:00Z",
+            "sizeBytes": 1,
+            "state": "awaiting_upload",
+            "tombstonedAt": "2026-08-22T00:00:00Z",
+            "tombstonedFrom": "awaiting_upload",
+            "updatedAt": "2026-08-22T00:00:00Z",
+            "uploadExpiresAt": "2026-08-22T00:00:00Z",
+            "uploadId": "00000000-0000-4000-8000-000000000001",
+            "uploadedAt": "2026-08-22T00:00:00Z",
+            "userFileId": "00000000-0000-4000-8000-000000000001"
+          },
+          "replayed": false
+        },
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/UserFile"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file",
+          "replayed"
+        ],
+        "type": "object"
+      },
+      "UserFileMutationSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserFileMutation"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying UserFileMutationSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "file": {
+              "admissionAcl": "version = 1\n",
+              "aggregateVersion": 1,
+              "cleanupDueAt": "2026-08-22T00:00:00Z",
+              "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "contractSchema": "cloud.user-file.v1",
+              "createdAt": "2026-08-22T00:00:00Z",
+              "createdBy": "00000000-0000-4000-8000-000000000001",
+              "expiredAt": "2026-08-22T00:00:00Z",
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "objectRef": "example",
+              "organizationId": "00000000-0000-4000-8000-000000000001",
+              "originalName": "example",
+              "projectId": "00000000-0000-4000-8000-000000000001",
+              "rejectionReasonCode": "example",
+              "retentionUntil": "2026-08-22T00:00:00Z",
+              "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "scanPolicy": "required",
+              "scannedAt": "2026-08-22T00:00:00Z",
+              "sizeBytes": 1,
+              "state": "awaiting_upload",
+              "tombstonedAt": "2026-08-22T00:00:00Z",
+              "tombstonedFrom": "awaiting_upload",
+              "updatedAt": "2026-08-22T00:00:00Z",
+              "uploadExpiresAt": "2026-08-22T00:00:00Z",
+              "uploadId": "00000000-0000-4000-8000-000000000001",
+              "uploadedAt": "2026-08-22T00:00:00Z",
+              "userFileId": "00000000-0000-4000-8000-000000000001"
+            },
+            "replayed": false
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "UserFileQuota": {
+        "additionalProperties": false,
+        "description": "Organization-wide Files quota ledger; allocated and available bytes are derived from the same transactional lifecycle authority.",
+        "example": {
+          "allocatedBytes": 0,
+          "availableBytes": 0,
+          "limitBytes": 1,
+          "organizationId": "00000000-0000-4000-8000-000000000001",
+          "revision": 0,
+          "updatedAt": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "allocatedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "availableBytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limitBytes": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "organizationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationId",
+          "limitBytes",
+          "allocatedBytes",
+          "availableBytes",
+          "revision",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "UserFileQuotaSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserFileQuota"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying UserFileQuotaSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "allocatedBytes": 0,
+            "availableBytes": 0,
+            "limitBytes": 1,
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "revision": 0,
+            "updatedAt": "2026-08-22T00:00:00Z"
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "UserFileSuccessResponse": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserFile"
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Standard A3S success envelope carrying UserFileSuccessResponse data.",
+        "example": {
+          "code": 200,
+          "data": {
+            "admissionAcl": "version = 1\n",
+            "aggregateVersion": 1,
+            "cleanupDueAt": "2026-08-22T00:00:00Z",
+            "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "contractSchema": "cloud.user-file.v1",
+            "createdAt": "2026-08-22T00:00:00Z",
+            "createdBy": "00000000-0000-4000-8000-000000000001",
+            "expiredAt": "2026-08-22T00:00:00Z",
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "objectRef": "example",
+            "organizationId": "00000000-0000-4000-8000-000000000001",
+            "originalName": "example",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "rejectionReasonCode": "example",
+            "retentionUntil": "2026-08-22T00:00:00Z",
+            "scanEvidenceDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "scanPolicy": "required",
+            "scannedAt": "2026-08-22T00:00:00Z",
+            "sizeBytes": 1,
+            "state": "awaiting_upload",
+            "tombstonedAt": "2026-08-22T00:00:00Z",
+            "tombstonedFrom": "awaiting_upload",
+            "updatedAt": "2026-08-22T00:00:00Z",
+            "uploadExpiresAt": "2026-08-22T00:00:00Z",
+            "uploadId": "00000000-0000-4000-8000-000000000001",
+            "uploadedAt": "2026-08-22T00:00:00Z",
+            "userFileId": "00000000-0000-4000-8000-000000000001"
+          },
+          "message": "example",
+          "requestId": "00000000-0000-4000-8000-000000000001",
+          "timestamp": "2026-08-22T00:00:00Z"
+        },
+        "properties": {
+          "code": {
+            "maximum": 399,
+            "minimum": 200,
+            "type": "integer"
+          },
+          "data": {},
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "requestId",
+          "timestamp"
+        ],
+        "type": "object"
+      },
       "WorkflowCapabilityReference": {
         "additionalProperties": false,
         "description": "Reusable schema for the A3S Cloud WorkflowCapabilityReference contract.",
@@ -27494,7 +28457,7 @@
       "url": "https://github.com/A3S-Lab/Cloud/blob/main/LICENSE"
     },
     "title": "A3S Cloud REST API",
-    "version": "1.76.0"
+    "version": "1.77.0"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -27613,7 +28576,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -27656,7 +28619,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The current control-plane liveness report.",
@@ -27699,7 +28662,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The current control-plane readiness report.",
@@ -27791,7 +28754,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-oauth-cookie-bound": true,
@@ -27860,7 +28823,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-oauth-cookie-bound": true,
@@ -27914,7 +28877,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of membership invitations.",
@@ -28020,7 +28983,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -28327,7 +29290,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -28380,7 +29343,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of organizations.",
@@ -28476,7 +29439,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -28552,7 +29515,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an agent conversation projection.",
@@ -28652,7 +29615,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of events.",
@@ -28764,7 +29727,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A resumable stream for agent execution events.",
@@ -28852,7 +29815,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of executions.",
@@ -28991,7 +29954,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -29067,7 +30030,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an agent execution projection.",
@@ -29174,7 +30137,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of agent approval checkpoints.",
@@ -29261,7 +30224,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an agent approval checkpoint projection.",
@@ -29421,7 +30384,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -29513,7 +30476,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -29589,7 +30552,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative agent execution changes projection.",
@@ -29678,7 +30641,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of agent execution checkpoints.",
@@ -29802,7 +30765,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -29889,7 +30852,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an agent execution checkpoint projection.",
@@ -30023,7 +30986,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -30110,7 +31073,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of export an agent execution checkpoint snapshot.",
@@ -30224,7 +31187,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of an agent execution trajectory.",
@@ -30289,7 +31252,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of API tokens.",
@@ -30434,7 +31397,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -30523,7 +31486,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -30597,7 +31560,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an API token projection.",
@@ -30662,7 +31625,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of assets.",
@@ -30780,7 +31743,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -30856,7 +31819,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an asset projection.",
@@ -30945,7 +31908,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -31041,7 +32004,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -31137,7 +32100,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -31227,7 +32190,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of advertise Git references.",
@@ -31315,7 +32278,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of select an asset release.",
@@ -31391,7 +32354,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of releases.",
@@ -31517,7 +32480,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -31604,7 +32567,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an asset release projection.",
@@ -31691,7 +32654,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative the MCP service profile projection.",
@@ -31813,7 +32776,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -31913,7 +32876,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -32129,7 +33092,7 @@
         "tags": [
           "Audit"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of audit records.",
@@ -32345,7 +33308,7 @@
         "tags": [
           "Audit"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "One canonical redacted audit page in a DSSE envelope with its Ed25519 public verification key and key identity.",
@@ -32549,7 +33512,7 @@
         "tags": [
           "Audit"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "Zero through eight canonical signed audit pages plus one signed manifest binding their digests, cursor chain, shared signing key, counts, exact filter, and captured retention state.",
@@ -32614,7 +33577,7 @@
         "tags": [
           "Audit"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The configured audit retention duration and semantic digest plus the durable applied digest, inclusive availability watermark, physical-deletion boundary, aggregate deleted-record count, schedule, and monotonic state version.",
@@ -32706,7 +33669,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -32780,7 +33743,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a build run projection.",
@@ -32856,7 +33819,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative signed build evidence projection.",
@@ -32970,7 +33933,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workload logs.",
@@ -33096,7 +34059,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A resumable stream for workload logs.",
@@ -33188,7 +34151,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33280,7 +34243,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33354,7 +34317,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a deployment projection.",
@@ -33430,7 +34393,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a domain claim projection.",
@@ -33550,7 +34513,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33671,7 +34634,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33795,7 +34758,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33884,7 +34847,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -33958,7 +34921,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an execution projection.",
@@ -34034,7 +34997,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a form projection.",
@@ -34182,7 +35145,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -34258,7 +35221,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of releases.",
@@ -34359,7 +35322,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -34446,7 +35409,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a form release projection.",
@@ -34511,7 +35474,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of gateway certificates.",
@@ -34587,7 +35550,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a human task projection.",
@@ -34687,7 +35650,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -34787,7 +35750,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35134,7 +36097,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35212,7 +36175,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-oauth-cookie-bound": true,
@@ -35289,7 +36252,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an MCP credential projection.",
@@ -35405,7 +36368,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35531,7 +36494,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35607,7 +36570,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an MCP route policy projection.",
@@ -35720,7 +36683,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35785,7 +36748,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of membership invitations.",
@@ -35906,7 +36869,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -35982,7 +36945,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a membership invitation projection.",
@@ -36096,7 +37059,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -36161,7 +37124,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of memberships.",
@@ -36290,7 +37253,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -36366,7 +37329,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a membership projection.",
@@ -36442,7 +37405,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of resource grants.",
@@ -36628,7 +37591,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -36744,7 +37707,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -36872,7 +37835,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -36937,7 +37900,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of node pools.",
@@ -37056,7 +38019,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -37132,7 +38095,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a node pool projection.",
@@ -37279,7 +38242,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -37399,7 +38362,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -37527,7 +38490,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -37655,7 +38618,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -37720,7 +38683,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of nodes.",
@@ -37796,7 +38759,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a node projection.",
@@ -37912,7 +38875,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38028,7 +38991,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38144,7 +39107,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38234,7 +39197,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of notification alert policies.",
@@ -38334,7 +39297,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38410,7 +39373,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a notification alert policy projection.",
@@ -38524,7 +39487,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38614,7 +39577,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of outbound notification subscriptions.",
@@ -38714,7 +39677,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -38790,7 +39753,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an outbound notification subscription projection.",
@@ -38904,7 +39867,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -39005,7 +39968,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of notifications.",
@@ -39081,7 +40044,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a notification projection.",
@@ -39195,7 +40158,7 @@
         "tags": [
           "Notifications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -39271,7 +40234,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an ontology projection.",
@@ -39347,7 +40310,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of revisions.",
@@ -39482,7 +40445,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -39580,7 +40543,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of compare ontology revisions.",
@@ -39667,7 +40630,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an ontology revision projection.",
@@ -39744,7 +40707,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of operations.",
@@ -39821,7 +40784,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A resumable stream for operation updates.",
@@ -39886,7 +40849,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of plugin registries.",
@@ -39962,7 +40925,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a plugin registry projection.",
@@ -40109,7 +41072,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -40331,7 +41294,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded set of authorized matches for the cached plugin catalog.",
@@ -40478,7 +41441,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -40700,7 +41663,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded set of authorized matches for the live plugin catalog.",
@@ -40765,7 +41728,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of projects.",
@@ -40872,7 +41835,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -40961,7 +41924,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of applications.",
@@ -41096,7 +42059,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -41183,7 +42146,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an application projection.",
@@ -41283,7 +42246,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of releases.",
@@ -41422,7 +42385,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -41520,7 +42483,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an application release projection.",
@@ -41660,7 +42623,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -41758,7 +42721,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an application session projection.",
@@ -41900,7 +42863,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -42080,7 +43043,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -42189,7 +43152,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an application invocation projection.",
@@ -42342,7 +43305,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -42465,7 +43428,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of application messages.",
@@ -42588,7 +43551,7 @@
         "tags": [
           "Applications"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of replay an application session.",
@@ -42664,7 +43627,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative the current project attribution profile projection.",
@@ -42815,7 +43778,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -42902,7 +43865,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a project attribution profile projection.",
@@ -42978,7 +43941,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of environments.",
@@ -43096,7 +44059,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -43195,7 +44158,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of agent conversations.",
@@ -43296,7 +44259,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -43776,7 +44739,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -43894,7 +44857,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "Canonical bounded proposals and diagnostics for the exact immutable source identity.",
@@ -44005,7 +44968,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "Canonical bounded accepted BuildPlans for the requested SourceRevision.",
@@ -44147,7 +45110,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The accepted immutable BuildPlan and caller-owned replay state.",
@@ -44245,7 +45208,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative immutable accepted BuildPlan projection.",
@@ -44344,7 +45307,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of build runs.",
@@ -44444,7 +45407,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of Connector profiles.",
@@ -44585,7 +45548,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -44683,7 +45646,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Connector profile projection.",
@@ -44794,7 +45757,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of revisions.",
@@ -44945,7 +45908,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -45054,7 +46017,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Connector revision projection.",
@@ -45188,7 +46151,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of unresolved Connector execution attempts.",
@@ -45308,7 +46271,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Connector execution attempt projection.",
@@ -45428,7 +46391,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Connector execution attempt resolution projection.",
@@ -45597,7 +46560,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -45706,7 +46669,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Connector revision revocation projection.",
@@ -45864,7 +46827,7 @@
         "tags": [
           "Connectors"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -45951,7 +46914,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of domain claims.",
@@ -46080,7 +47043,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -46180,7 +47143,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of Durable Cell applications.",
@@ -46320,7 +47283,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -46418,7 +47381,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Durable Cell application projection.",
@@ -46529,7 +47492,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of revisions.",
@@ -46679,7 +47642,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -46788,7 +47751,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a Durable Cell application revision projection.",
@@ -46965,7 +47928,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -47148,7 +48111,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -47290,7 +48253,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -47432,7 +48395,7 @@
         "tags": [
           "Durable Cells"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -47531,7 +48494,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of executions.",
@@ -47789,7 +48752,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -47876,7 +48839,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of gateway scopes.",
@@ -48047,7 +49010,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -48134,7 +49097,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of MCP credentials.",
@@ -48262,7 +49225,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -48349,7 +49312,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of MCP route policies.",
@@ -48471,7 +49434,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -48615,7 +49578,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The accepted immutable Preview Policy revision and caller-owned replay state.",
@@ -48713,7 +49676,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative current immutable Preview Policy revision.",
@@ -48824,7 +49787,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The bounded canonical ascending Preview Policy revision history.",
@@ -48933,7 +49896,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative exact immutable Preview Policy revision.",
@@ -49044,7 +50007,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative current behavioral pull-request Preview projection.",
@@ -49131,7 +50094,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of routes.",
@@ -49298,7 +50261,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -49385,7 +50348,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of secrets.",
@@ -49523,7 +50486,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -49610,7 +50573,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of source revisions.",
@@ -49874,7 +50837,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -50343,7 +51306,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -50430,7 +51393,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of source subscriptions.",
@@ -50664,7 +51627,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -50775,7 +51738,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -50919,7 +51882,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The accepted immutable WorkloadProfile revision and caller-owned replay state.",
@@ -51017,7 +51980,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative current immutable WorkloadProfile revision.",
@@ -51128,7 +52091,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The bounded canonical ascending WorkloadProfile revision history.",
@@ -51237,7 +52200,7 @@
         "tags": [
           "Developer Workflows"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative exact immutable WorkloadProfile revision.",
@@ -51324,7 +52287,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workloads.",
@@ -51807,7 +52770,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -51883,7 +52846,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of execution templates.",
@@ -51998,7 +52961,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -52096,7 +53059,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative an execution template revision projection.",
@@ -52172,7 +53135,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of forms.",
@@ -52307,7 +53270,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -52413,7 +53376,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of human tasks.",
@@ -52489,7 +53452,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of ontologies.",
@@ -52600,10 +53563,444 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/user-files": {
+      "get": {
+        "description": "Lists a bounded set of UserFile lifecycle projections after project authorization. Binary content, storage-provider details, and scanner configuration are never exposed. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "operationId": "get_organizations_by_organization_id_projects_by_project_id_user_files",
+        "parameters": [
+          {
+            "description": "Stable UUID of the organization addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the project addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum UserFile lifecycle projections returned for the authorized project.",
+            "example": 50,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UserFileListSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List user files",
+        "tags": [
+          "Files"
+        ],
+        "x-a3s-api-contract-version": "1.77.0",
+        "x-a3s-authentication": "bearer-token",
+        "x-a3s-idempotent-replay": false,
+        "x-a3s-response-data": "A bounded list of authorized UserFile lifecycle projections.",
+        "x-a3s-stability": "stable"
+      },
+      "post": {
+        "description": "Reserves one bounded UserFile from a canonical A3S ACL admission contract. Metadata, quota allocation, audit, Outbox, and idempotency commit atomically; byte transfer remains behind the internal streaming immutable-object port. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "operationId": "post_organizations_by_organization_id_projects_by_project_id_user_files",
+        "parameters": [
+          {
+            "description": "Stable UUID of the organization addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the project addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "example": "docs-example-001",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "admissionAcl": "version = 1\n"
+              },
+              "schema": {
+                "additionalProperties": false,
+                "description": "Validated request payload for this operation.",
+                "properties": {
+                  "admissionAcl": {
+                    "description": "Canonical A3S ACL UserFile admission contract.",
+                    "maxLength": 65536,
+                    "minLength": 1,
+                    "type": "string",
+                    "x-a3s-max-canonical-bytes": 65536
+                  }
+                },
+                "required": [
+                  "admissionAcl"
+                ],
+                "type": "object",
+                "x-a3s-contract-correction": "documents-existing-runtime-validation"
+              }
+            }
+          },
+          "description": "Inputs required to reserve a user file. Unknown fields are rejected when the schema is closed.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UserFileMutationSuccess200"
+          },
+          "201": {
+            "$ref": "#/components/responses/UserFileMutationSuccess201"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reserve a user file",
+        "tags": [
+          "Files"
+        ],
+        "x-a3s-api-contract-version": "1.77.0",
+        "x-a3s-authentication": "bearer-token",
+        "x-a3s-idempotent-replay": true,
+        "x-a3s-response-data": "The authoritative UserFile aggregate after the mutation plus an idempotent-replay indicator.",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}": {
+      "get": {
+        "description": "Reads one authorized UserFile lifecycle projection by immutable identity without returning binary content. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "operationId": "get_organizations_by_organization_id_projects_by_project_id_user_files_by_user_file_id",
+        "parameters": [
+          {
+            "description": "Stable UUID of the organization addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the project addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the user file addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "user_file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UserFileSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a user file",
+        "tags": [
+          "Files"
+        ],
+        "x-a3s-api-contract-version": "1.77.0",
+        "x-a3s-authentication": "bearer-token",
+        "x-a3s-idempotent-replay": false,
+        "x-a3s-response-data": "The authoritative UserFile lifecycle projection.",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone": {
+      "post": {
+        "description": "Tombstones one UserFile using optimistic concurrency. Any reserved quota is released in the same transaction and one lifecycle cleanup intent is emitted; no independent deletion queue is created. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "operationId": "post_organizations_by_organization_id_projects_by_project_id_user_files_by_user_file_id_tombstone",
+        "parameters": [
+          {
+            "description": "Stable UUID of the organization addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the project addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable UUID of the user file addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "user_file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "example": "docs-example-001",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "expectedVersion": 1
+              },
+              "schema": {
+                "additionalProperties": false,
+                "description": "Validated request payload for this operation.",
+                "properties": {
+                  "expectedVersion": {
+                    "description": "Current aggregate version used for optimistic concurrency control.",
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedVersion"
+                ],
+                "type": "object",
+                "x-a3s-contract-correction": "documents-existing-runtime-validation"
+              }
+            }
+          },
+          "description": "Inputs required to tombstone a user file. Unknown fields are rejected when the schema is closed.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UserFileMutationSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Tombstone a user file",
+        "tags": [
+          "Files"
+        ],
+        "x-a3s-api-contract-version": "1.77.0",
+        "x-a3s-authentication": "bearer-token",
+        "x-a3s-idempotent-replay": true,
+        "x-a3s-response-data": "The authoritative UserFile aggregate after the mutation plus an idempotent-replay indicator.",
         "x-a3s-stability": "stable"
       }
     },
@@ -52676,7 +54073,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workflow definitions.",
@@ -52875,7 +54272,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -52951,7 +54348,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workflow goals.",
@@ -53062,7 +54459,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -53138,7 +54535,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative the workflow node catalog projection.",
@@ -53226,7 +54623,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workflow runs.",
@@ -53360,7 +54757,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -53425,7 +54822,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of recipient contacts.",
@@ -53540,7 +54937,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -53616,7 +55013,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a recipient contact projection.",
@@ -53738,7 +55135,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -53863,7 +55260,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -53939,7 +55336,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a resource grant projection.",
@@ -54053,7 +55450,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -54129,7 +55526,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a route projection.",
@@ -54219,7 +55616,7 @@
         "tags": [
           "Search"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded set of authorized matches for authorized organization resources.",
@@ -54295,7 +55692,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a secret projection.",
@@ -54416,7 +55813,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -54516,7 +55913,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -54617,7 +56014,7 @@
         "tags": [
           "Security"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of security timeline entries.",
@@ -54682,7 +56079,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative the GitHub source connection projection.",
@@ -54748,7 +56145,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -54840,7 +56237,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded policy-filtered repository page and opaque scope-bound continuation cursor.",
@@ -54961,10 +56358,75 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded branch or tag page for the exact canonical repository and an opaque scope-bound continuation cursor.",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/user-file-quota": {
+      "get": {
+        "description": "Reads the organization-wide Files quota ledger. This endpoint requires organization-wide authorization and conceals the resource from restricted principals. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "operationId": "get_organizations_by_organization_id_user_file_quota",
+        "parameters": [
+          {
+            "description": "Stable UUID of the organization addressed by this operation.",
+            "example": "00000000-0000-4000-8000-000000000001",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UserFileQuotaSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get the user file quota",
+        "tags": [
+          "Files"
+        ],
+        "x-a3s-api-contract-version": "1.77.0",
+        "x-a3s-authentication": "bearer-token",
+        "x-a3s-idempotent-replay": false,
+        "x-a3s-response-data": "The organization quota limit, transactional allocation, remaining availability, revision, and update time.",
         "x-a3s-stability": "stable"
       }
     },
@@ -55037,7 +56499,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workflow definition projection.",
@@ -55113,7 +56575,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of revisions.",
@@ -55323,7 +56785,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -55410,7 +56872,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workflow revision projection.",
@@ -55486,7 +56948,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workflow goal projection.",
@@ -55573,7 +57035,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workflow plan revision projection.",
@@ -55649,7 +57111,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workflow run projection.",
@@ -55770,7 +57232,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -55846,7 +57308,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of inspect workflow run diagnostics.",
@@ -55947,7 +57409,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workflow run history.",
@@ -56023,7 +57485,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative workflow run output projection.",
@@ -56099,7 +57561,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of inspect workflow run variables.",
@@ -56188,7 +57650,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of wait for workflow run completion.",
@@ -56264,7 +57726,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative a workload projection.",
@@ -56718,7 +58180,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57177,7 +58639,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57302,7 +58764,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A bounded collection or page of workload logs.",
@@ -57439,7 +58901,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "A resumable stream for workload logs.",
@@ -57558,7 +59020,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57661,7 +59123,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57775,7 +59237,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57867,7 +59329,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": true,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -57910,7 +59372,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative platform diagnostics projection.",
@@ -57984,7 +59446,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of complete GitHub App setup.",
@@ -58061,7 +59523,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The documented result of start GitHub App setup.",
@@ -58272,7 +59734,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.76.0",
+        "x-a3s-api-contract-version": "1.77.0",
         "x-a3s-authentication": "public",
         "x-a3s-idempotent-replay": false,
         "x-a3s-response-data": "The authoritative mutation result, including replay metadata when the operation is idempotent.",
@@ -58318,6 +59780,10 @@
     {
       "description": "Source connections, transient provider discovery, subscriptions, revisions, and signed webhook ingestion.",
       "name": "Sources"
+    },
+    {
+      "description": "Canonical UserFile admission, lifecycle metadata, retention cleanup intent, and organization quota operations.",
+      "name": "Files"
     },
     {
       "description": "Deterministic BuildPlan detection, review, acceptance, and immutable reads.",
@@ -58384,7 +59850,7 @@
       "name": "Search"
     }
   ],
-  "x-a3s-api-contract-version": "1.76.0",
+  "x-a3s-api-contract-version": "1.77.0",
   "x-a3s-api-major-version": 1,
   "x-a3s-minimum-deprecation-days": 180
 }

@@ -147,6 +147,16 @@ import {
   type GatewayRoutePolicyTimelinePage,
   type SecurityTimelineQuery,
 } from './security';
+import {
+  encodeUserFileListOptions,
+  type ReserveUserFileInput,
+  type UserFile,
+  type UserFileListOptions,
+  type UserFileMutationResult,
+  type UserFileQuota,
+  validateExpectedUserFileVersion,
+  validateUserFileAdmissionAcl,
+} from './files';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import {
   encodeGithubSourceDiscoveryPageOptions,
@@ -369,7 +379,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.76.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.77.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -441,6 +451,13 @@ function developerWorkflowEnvironmentPath(
     `/organizations/${encodeURIComponent(organizationId)}` +
     `/projects/${encodeURIComponent(projectId)}` +
     `/environments/${encodeURIComponent(environmentId)}`
+  );
+}
+
+function userFileCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/user-files`
   );
 }
 
@@ -3757,6 +3774,67 @@ export class CloudApi {
         `/pull-requests/${pullRequestId}`,
       signal
     );
+  }
+
+  reserveUserFile(
+    organizationId: string,
+    projectId: string,
+    input: ReserveUserFileInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<UserFileMutationResult> {
+    validateUserFileAdmissionAcl(input?.admissionAcl);
+    return this.postJson(
+      userFileCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { admissionAcl: input.admissionAcl },
+      signal
+    );
+  }
+
+  listUserFiles(
+    organizationId: string,
+    projectId: string,
+    options: UserFileListOptions = {},
+    signal?: AbortSignal
+  ): Promise<UserFile[]> {
+    return this.get(
+      `${userFileCollectionPath(organizationId, projectId)}${encodeUserFileListOptions(options)}`,
+      signal
+    );
+  }
+
+  getUserFile(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    signal?: AbortSignal
+  ): Promise<UserFile> {
+    return this.get(
+      `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}`,
+      signal
+    );
+  }
+
+  tombstoneUserFile(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<UserFileMutationResult> {
+    validateExpectedUserFileVersion(expectedVersion);
+    return this.postJson(
+      `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/tombstone`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  getUserFileQuota(organizationId: string, signal?: AbortSignal): Promise<UserFileQuota> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/user-file-quota`, signal);
   }
 
   getGithubConnection(organizationId: string, signal?: AbortSignal): Promise<GithubConnection> {

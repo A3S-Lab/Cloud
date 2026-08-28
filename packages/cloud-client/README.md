@@ -130,9 +130,17 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.76.0`. It exposes transient
-`listGithubInstallationRepositories` and `listGithubRepositoryReferences`
-queries through the sole Sources Application authority. The shared client
+The client targets REST contract `1.77.0`. It exposes `reserveUserFile`,
+`listUserFiles`, `getUserFile`, `tombstoneUserFile`, and
+`getUserFileQuota` through the sole Files Application authority. It validates
+ACL byte, list, and optimistic-version transport bounds without parsing or
+generating ACL. The typed surface carries lifecycle metadata and logical
+immutable-object evidence only; it has no buffered upload/download, object
+provider, scanner, or cleanup method.
+
+It retains `1.76.0`'s transient `listGithubInstallationRepositories` and
+`listGithubRepositoryReferences` queries through the sole Sources Application
+authority. The shared client
 validates canonical lowercase GitHub repository URLs, the closed `branch | tag`
 kind, `1..=100` limits, and bounded opaque cursors before transport. Typed pages
 contain provider projections and a continuation cursor, never an installation

@@ -203,6 +203,11 @@ Commands:
   source-subscriptions list List GitHub repository subscriptions
   source-subscriptions create URL BRANCH Create a GitHub subscription idempotently
   source-subscriptions deactivate ID Deactivate a GitHub subscription idempotently
+  user-files reserve     Reserve one UserFile from canonical A3S ACL
+  user-files list        List bounded UserFile lifecycle projections in the selected project
+  user-files get ID      Get one UserFile lifecycle projection
+  user-files tombstone ID Tombstone one UserFile with optimistic concurrency
+  user-file-quota get    Get the organization-wide UserFile quota ledger
   secrets list          List Secret metadata in the selected environment
   secrets get ID        Get Secret metadata and version states
   secrets create NAME   Create a Secret from standard input idempotently

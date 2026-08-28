@@ -627,6 +627,144 @@ fn github_source_discovery_has_one_transient_interface_boundary_and_no_second_me
 }
 
 #[test]
+fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
+    let root = module_root();
+    let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))
+        .expect("read Files repository port");
+    let object_store = std::fs::read_to_string(root.join("files/application/object_store.rs"))
+        .expect("read Files object-store port");
+    assert_eq!(
+        repository.matches("pub trait IUserFileRepository").count(),
+        1
+    );
+    assert_eq!(
+        object_store
+            .matches("pub trait IUserFileObjectStore")
+            .count(),
+        1
+    );
+    assert!(object_store.contains("AsyncRead"));
+    assert!(!object_store.contains("Vec<u8>"));
+
+    let events = std::fs::read_to_string(root.join("files/domain/events.rs"))
+        .expect("read Files lifecycle event");
+    assert_eq!(
+        events
+            .matches("pub struct UserFileLifecycleChanged")
+            .count(),
+        1
+    );
+    assert!(events.contains("cleanup_due_at: Option<DateTime<Utc>>"));
+    for duplicate in ["UserFileCleanupRequested", "UserFileDeletionRequested"] {
+        assert!(
+            !events.contains(duplicate),
+            "Files introduced a second cleanup event authority {duplicate}"
+        );
+    }
+
+    let service = std::fs::read_to_string(root.join("files/application/service.rs"))
+        .expect("read Files Application service");
+    let compact_service = production_source(&service)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "files:Arc<dynIUserFileRepository>",
+        "objects:Arc<dynIUserFileObjectStore>",
+    ] {
+        assert!(
+            compact_service.contains(required),
+            "Files Application lost inward interface boundary {required}"
+        );
+    }
+    for forbidden in [
+        "::infrastructure",
+        "::presentation",
+        "Postgres",
+        "reqwest",
+        "tokio::spawn",
+        "Vec<u8>",
+        "IOutboxRepository",
+        "IEventPublisher",
+    ] {
+        assert!(
+            !production_source(&service).contains(forbidden),
+            "Files Application introduced outer-layer or duplicate mechanism {forbidden}"
+        );
+    }
+
+    let postgres =
+        std::fs::read_to_string(root.join("files/infrastructure/postgres_repository.rs"))
+            .expect("read Files PostgreSQL adapter");
+    for shared_mechanism in ["store_outbox", "store_audit", "store_idempotency"] {
+        assert!(
+            postgres.contains(shared_mechanism),
+            "Files persistence bypassed shared {shared_mechanism} mechanism"
+        );
+    }
+    for forbidden in [
+        "content_bytes",
+        "storage_provider_config",
+        "scanner_provider_config",
+        "user_file_cleanup_queue",
+    ] {
+        assert!(
+            !postgres.contains(forbidden),
+            "Files persistence introduced duplicate authority {forbidden}"
+        );
+    }
+
+    let presentation = [
+        "files/presentation/controller.rs",
+        "files/presentation/mod.rs",
+    ]
+    .into_iter()
+    .map(|relative| {
+        std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"))
+    })
+    .collect::<String>();
+    for forbidden in ["/upload", "Vec<u8>", "IUserFileObjectStore"] {
+        assert!(
+            !presentation.contains(forbidden),
+            "Files public presentation introduced buffered content authority {forbidden}"
+        );
+    }
+
+    let src = root.parent().expect("src directory");
+    let app = std::fs::read_to_string(src.join("app.rs")).expect("read production composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("UserFileApplicationService::new")
+            .count(),
+        1
+    );
+    assert_eq!(
+        production_app
+            .matches("SharedUserFileObjectStore::from_client")
+            .count(),
+        1
+    );
+    assert!(production_app.contains(".subnamespace(\"user-files\")"));
+
+    let migration = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations/170_user_files.sql"),
+    )
+    .expect("read Files migration");
+    for forbidden in [
+        "content_bytes",
+        "storage_provider_config",
+        "scanner_provider_config",
+        "create table user_file_cleanup",
+    ] {
+        assert!(
+            !migration.contains(forbidden),
+            "Files migration introduced duplicate authority {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn artifacts_application_and_presentation_do_not_import_fleet_authority() {
     let mut violations = BTreeSet::new();
 

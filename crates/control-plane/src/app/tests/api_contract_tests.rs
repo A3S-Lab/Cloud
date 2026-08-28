@@ -124,6 +124,87 @@ fn github_source_discovery_contract_is_bounded_closed_and_credential_free() -> R
 }
 
 #[test]
+fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_projection(
+) -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection = "/organizations/{organization_id}/projects/{project_id}/user-files";
+    let item = format!("{collection}/{{user_file_id}}");
+    let tombstone = format!("{item}/tombstone");
+    let quota = "/organizations/{organization_id}/user-file-quota";
+
+    let reserve = &document["paths"][collection]["post"];
+    assert_eq!(reserve["tags"], json!(["Files"]));
+    assert_eq!(
+        reserve["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["admissionAcl"]["maxLength"],
+        crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        reserve["responses"]["201"]["$ref"],
+        "#/components/responses/UserFileMutationSuccess201"
+    );
+    assert_eq!(
+        reserve["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileMutationSuccess200"
+    );
+    assert!(reserve["requestBody"]["content"]
+        .as_object()
+        .is_some_and(|content| content.keys().all(|media| media == "application/json")));
+
+    let list = &document["paths"][collection]["get"];
+    let limit = list["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("UserFile list limit is missing".into()))?;
+    assert_eq!(limit["schema"]["default"], 50);
+    assert_eq!(limit["schema"]["maximum"], 200);
+    assert_eq!(
+        list["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileListSuccess200"
+    );
+    assert_eq!(
+        document["paths"][&item]["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileSuccess200"
+    );
+    assert_eq!(
+        document["paths"][&tombstone]["post"]["requestBody"]["content"]["application/json"]
+            ["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert_eq!(
+        document["paths"][quota]["get"]["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileQuotaSuccess200"
+    );
+
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(schemas["UserFile"]["additionalProperties"], false);
+    assert_eq!(schemas["UserFileMutation"]["additionalProperties"], false);
+    assert_eq!(schemas["UserFileQuota"]["additionalProperties"], false);
+    assert_eq!(schemas["UserFileList"]["maxItems"], 200);
+    let properties = schemas["UserFile"]["properties"]
+        .as_object()
+        .ok_or_else(|| BootError::Internal("UserFile properties are missing".into()))?;
+    for forbidden in [
+        "bytes",
+        "provider",
+        "bucket",
+        "credential",
+        "multipart",
+        "scannerProvider",
+    ] {
+        assert!(!properties.contains_key(forbidden), "{forbidden}");
+    }
+    let upload_path = format!("{item}/upload");
+    assert!(document["paths"].get(upload_path.as_str()).is_none());
+    Ok(())
+}
+
+#[test]
 fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

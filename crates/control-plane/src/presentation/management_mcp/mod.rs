@@ -9,6 +9,7 @@ mod dispatch;
 mod durable_cells;
 mod edge;
 mod execution_templates;
+mod files;
 mod forms;
 mod handler;
 mod identity;

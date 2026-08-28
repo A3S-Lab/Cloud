@@ -28,6 +28,10 @@ use crate::modules::durable_cells::{
     DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
 use crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES;
+use crate::modules::files::{
+    DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
+    USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+};
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -208,6 +212,11 @@ pub const SEARCH: &str = "a3s_cloud_search";
 pub const GITHUB_INSTALLATION_REPOSITORIES_LIST: &str =
     "a3s_cloud_github_installation_repositories_list";
 pub const GITHUB_REPOSITORY_REFERENCES_LIST: &str = "a3s_cloud_github_repository_references_list";
+pub const USER_FILES_RESERVE: &str = "a3s_cloud_user_files_reserve";
+pub const USER_FILES_LIST: &str = "a3s_cloud_user_files_list";
+pub const USER_FILES_GET: &str = "a3s_cloud_user_files_get";
+pub const USER_FILES_TOMBSTONE: &str = "a3s_cloud_user_files_tombstone";
+pub const USER_FILE_QUOTA_GET: &str = "a3s_cloud_user_file_quota_get";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
 pub const PLUGIN_CATALOG_INSPECT: &str = "a3s_cloud_plugin_catalog_inspect";
@@ -321,6 +330,11 @@ pub enum ManagementTool {
     Search,
     GithubInstallationRepositoriesList,
     GithubRepositoryReferencesList,
+    UserFilesReserve,
+    UserFilesList,
+    UserFilesGet,
+    UserFilesTombstone,
+    UserFileQuotaGet,
     PluginRegistriesList,
     PluginRegistriesGet,
     PluginCatalogSearch,
@@ -391,7 +405,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 152] = [
+    const ALL: [Self; 157] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -491,6 +505,11 @@ impl ManagementTool {
         Self::Search,
         Self::GithubInstallationRepositoriesList,
         Self::GithubRepositoryReferencesList,
+        Self::UserFilesReserve,
+        Self::UserFilesList,
+        Self::UserFilesGet,
+        Self::UserFilesTombstone,
+        Self::UserFileQuotaGet,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
         Self::PluginCatalogSearch,
@@ -671,6 +690,11 @@ impl ManagementTool {
             Self::Search => SEARCH,
             Self::GithubInstallationRepositoriesList => GITHUB_INSTALLATION_REPOSITORIES_LIST,
             Self::GithubRepositoryReferencesList => GITHUB_REPOSITORY_REFERENCES_LIST,
+            Self::UserFilesReserve => USER_FILES_RESERVE,
+            Self::UserFilesList => USER_FILES_LIST,
+            Self::UserFilesGet => USER_FILES_GET,
+            Self::UserFilesTombstone => USER_FILES_TOMBSTONE,
+            Self::UserFileQuotaGet => USER_FILE_QUOTA_GET,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
             Self::PluginCatalogSearch => PLUGIN_CATALOG_SEARCH,
@@ -798,6 +822,7 @@ impl ManagementTool {
             Self::GithubInstallationRepositoriesList | Self::GithubRepositoryReferencesList => {
                 Some(ApiTokenScope::SOURCE_WRITE)
             }
+            Self::UserFilesReserve | Self::UserFilesTombstone => Some(ApiTokenScope::FILE_WRITE),
             Self::MyMembershipInvitationsList
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
@@ -833,7 +858,10 @@ impl ManagementTool {
             | Self::PullRequestPreviewPoliciesGet
             | Self::PullRequestPreviewPolicyRevisionsList
             | Self::PullRequestPreviewPolicyRevisionsGet
-            | Self::PullRequestPreviewsGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::PullRequestPreviewsGet
+            | Self::UserFilesList
+            | Self::UserFilesGet
+            | Self::UserFileQuotaGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -941,7 +969,11 @@ impl ManagementTool {
             | Self::WorkflowGoalsList
             | Self::WorkflowRunsStart
             | Self::WorkflowRunsList
-            | Self::HumanTasksList => Some(ManagementResourceBinding::ProjectArgument),
+            | Self::HumanTasksList
+            | Self::UserFilesReserve
+            | Self::UserFilesList
+            | Self::UserFilesGet
+            | Self::UserFilesTombstone => Some(ManagementResourceBinding::ProjectArgument),
             Self::ConnectorProfilesCreate
             | Self::ConnectorProfilesRevise
             | Self::ConnectorProfilesList
@@ -1679,6 +1711,36 @@ impl ManagementTool {
                 github_repository_references_schema(),
                 true,
             ),
+            Self::UserFilesReserve => (
+                "Reserve user file",
+                "Reserve one bounded UserFile from canonical A3S ACL while committing metadata, quota, audit, Outbox, and idempotency atomically; binary transfer remains behind the internal streaming object port.",
+                reserve_user_file_schema(),
+                false,
+            ),
+            Self::UserFilesList => (
+                "List user files",
+                "List a bounded set of UserFile lifecycle projections in one tenant-authorized project without returning binary content or provider details.",
+                list_user_files_schema(),
+                true,
+            ),
+            Self::UserFilesGet => (
+                "Get user file",
+                "Get one exact tenant-authorized UserFile lifecycle projection without returning binary content.",
+                user_file_schema(),
+                true,
+            ),
+            Self::UserFilesTombstone => (
+                "Tombstone user file",
+                "Tombstone one tenant-authorized UserFile with optimistic concurrency, quota release, one lifecycle cleanup intent, and explicit idempotency.",
+                tombstone_user_file_schema(),
+                false,
+            ),
+            Self::UserFileQuotaGet => (
+                "Get user file quota",
+                "Get the organization-wide Files quota ledger from the same transactional UserFile lifecycle authority.",
+                empty_schema(),
+                true,
+            ),
             Self::PluginRegistriesList => (
                 "List plugin registries",
                 "List trusted A3S Use Registry references enrolled in the authenticated organization.",
@@ -2010,6 +2072,7 @@ impl ManagementTool {
                 | Self::DeploymentsCancel
                 | Self::BuildRunsCancel
                 | Self::WorkflowRunsCancel
+                | Self::UserFilesTombstone
         );
         json!({
             "name": self.name(),
@@ -3948,6 +4011,68 @@ fn github_repository_references_schema() -> Value {
     })
 }
 
+fn reserve_user_file_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "admissionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL UserFile admission contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "admissionAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn list_user_files_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_USER_FILE_LIST_LIMIT,
+                "default": DEFAULT_USER_FILE_LIST_LIMIT
+            }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn user_file_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "userFileId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "userFileId"],
+        "additionalProperties": false
+    })
+}
+
+fn tombstone_user_file_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "userFileId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "userFileId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
 fn github_source_discovery_page_properties() -> Map<String, Value> {
     Map::from_iter([
         (
@@ -4149,6 +4274,84 @@ mod tests {
             ManagementTool::GithubRepositoryReferencesList.name(),
             GITHUB_REPOSITORY_REFERENCES_LIST
         );
+    }
+
+    #[test]
+    fn user_file_catalog_is_acl_only_project_bound_and_lifecycle_explicit() {
+        for tool in [
+            ManagementTool::UserFilesReserve,
+            ManagementTool::UserFilesTombstone,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::FILE_WRITE));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::ProjectArgument)
+            );
+            assert_eq!(
+                tool.definition()["annotations"]["readOnlyHint"].as_bool(),
+                Some(false)
+            );
+        }
+        for tool in [ManagementTool::UserFilesList, ManagementTool::UserFilesGet] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::ProjectArgument)
+            );
+            assert_eq!(
+                tool.definition()["annotations"]["readOnlyHint"].as_bool(),
+                Some(true)
+            );
+        }
+        assert_eq!(
+            ManagementTool::UserFileQuotaGet.required_scope(),
+            Some(ApiTokenScope::CLOUD_READ)
+        );
+        assert_eq!(ManagementTool::UserFileQuotaGet.resource_binding(), None);
+        assert_eq!(
+            ManagementTool::UserFileQuotaGet.definition()["annotations"]["readOnlyHint"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            ManagementTool::UserFilesTombstone.definition()["annotations"]["destructiveHint"]
+                .as_bool(),
+            Some(true)
+        );
+
+        let reserve = ManagementTool::UserFilesReserve.definition();
+        let properties = &reserve["inputSchema"]["properties"];
+        assert_eq!(
+            properties["admissionAcl"]["maxLength"].as_u64(),
+            Some(USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES as u64)
+        );
+        assert_eq!(
+            properties["admissionAcl"]["x-a3s-max-canonical-bytes"].as_u64(),
+            Some(USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES as u64)
+        );
+        for forbidden in ["bytes", "provider", "bucket", "credential", "scanner"] {
+            assert!(
+                properties.get(forbidden).is_none(),
+                "Files reserve schema exposed duplicate authority {forbidden}"
+            );
+        }
+
+        let list = ManagementTool::UserFilesList.definition();
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["default"].as_u64(),
+            Some(DEFAULT_USER_FILE_LIST_LIMIT as u64)
+        );
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["maximum"].as_u64(),
+            Some(MAXIMUM_USER_FILE_LIST_LIMIT as u64)
+        );
+        assert_eq!(ManagementTool::UserFilesReserve.name(), USER_FILES_RESERVE);
+        assert_eq!(ManagementTool::UserFilesList.name(), USER_FILES_LIST);
+        assert_eq!(ManagementTool::UserFilesGet.name(), USER_FILES_GET);
+        assert_eq!(
+            ManagementTool::UserFilesTombstone.name(),
+            USER_FILES_TOMBSTONE
+        );
+        assert_eq!(ManagementTool::UserFileQuotaGet.name(), USER_FILE_QUOTA_GET);
     }
 
     #[test]

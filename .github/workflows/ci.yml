@@ -423,6 +423,13 @@ jobs:
           postgres_project_attribution_is_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify UserFile lifecycle and organization quota persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify personal notification, alert-policy, delivery-budget, and suppression persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

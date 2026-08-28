@@ -30,6 +30,10 @@ use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::executions::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
 };
+use crate::modules::files::{
+    IUserFileObjectStore, InMemoryUserFileRepository, UserFileContentReference,
+    UserFileObjectError, UserFileObjectReader, UserFileObjectWrite,
+};
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -234,6 +238,7 @@ mod source_lifecycle_tests;
 mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;
+mod user_file_tests;
 mod workflow_tests;
 mod workload_tests;
 
@@ -270,6 +275,30 @@ struct TestOciArtifactResolver;
 struct TestGithubAppAuthorization;
 
 struct UnavailableMcpRoutePolicyRepository;
+
+struct UnavailableUserFileObjectStore;
+
+#[async_trait]
+impl IUserFileObjectStore for UnavailableUserFileObjectStore {
+    async fn put(
+        &self,
+        _reference: &UserFileContentReference,
+        _reader: UserFileObjectReader,
+    ) -> std::result::Result<UserFileObjectWrite, UserFileObjectError> {
+        Err(UserFileObjectError::Unavailable(
+            "UserFile object writes are unavailable in this fixture".into(),
+        ))
+    }
+
+    async fn verify(
+        &self,
+        _reference: &UserFileContentReference,
+    ) -> std::result::Result<(), UserFileObjectError> {
+        Err(UserFileObjectError::Unavailable(
+            "UserFile object verification is unavailable in this fixture".into(),
+        ))
+    }
+}
 
 #[async_trait]
 impl IBuildPlanSourceLayoutPort for UnavailableBuildPlanSourceLayout {
@@ -669,6 +698,8 @@ struct TestRuntimeRepositories {
     oidc_provider: Option<Arc<dyn IOidcProviderService>>,
     connector_profiles: Option<Arc<InMemoryConnectorProfileRepository>>,
     connector_execution: Option<Arc<InMemoryConnectorExecutionRepository>>,
+    user_files: Option<Arc<InMemoryUserFileRepository>>,
+    user_file_objects: Option<Arc<dyn IUserFileObjectStore>>,
 }
 
 #[async_trait::async_trait]
@@ -1362,6 +1393,35 @@ fn build_test_application(
     )
 }
 
+fn build_test_application_with_user_files(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    user_files: Arc<InMemoryUserFileRepository>,
+    user_file_objects: Arc<dyn IUserFileObjectStore>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            user_files: Some(user_files),
+            user_file_objects: Some(user_file_objects),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
 fn build_test_application_with_connector_repositories(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -1939,6 +1999,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         oidc_provider,
         connector_profiles,
         connector_execution,
+        user_files,
+        user_file_objects,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -2116,6 +2178,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             routes,
             mcp_credentials,
             secrets,
+            user_files: user_files
+                .unwrap_or_else(|| Arc::new(InMemoryUserFileRepository::default())),
+            user_file_objects: user_file_objects
+                .unwrap_or_else(|| Arc::new(UnavailableUserFileObjectStore)),
             sources,
             source_webhooks,
             source_subscriptions,
