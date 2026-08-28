@@ -27,6 +27,8 @@ mod artifact_storage;
 mod durable_cell_provider;
 #[path = "private_registry.rs"]
 mod private_registry;
+#[path = "reference_echo_provider.rs"]
+mod reference_echo_provider;
 
 struct RejectingArtifactTransport;
 
