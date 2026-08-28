@@ -34,9 +34,11 @@ available early.
 Installation/Organization/Project/Environment lineage, canonical platform-role
 policy and tenant-support-grant ACLs, deterministic accepted policy revisions,
 closed roles/permissions, role-binding and terminal support-grant lifecycles,
-and one digest-bound privileged allow fact. Migration `174` persists the one
-immutable Installation and evolves the existing Audit/Outbox rail for all four
-scopes without a sentinel Organization. This still adds no policy/binding/grant
+and one digest-bound privileged allow fact. Migrations `174`-`175` persist the
+one immutable Installation and evolve the existing Audit/Outbox rail for all
+four scopes without a sentinel Organization. One shared bounded trigger derives
+missing scope only for pre-174 tenant writers from existing lineage; it never
+infers Installation scope. This still adds no policy/binding/grant
 repository, Application authorization interface or public RBAC authority. The
 legacy `actor_is_platform_admin` boolean remains migration debt and is not valid
 proof for new MT1 or workload-identity paths.

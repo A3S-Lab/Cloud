@@ -1900,6 +1900,10 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         manifest.join("../../migrations/174_installation_scoped_facts.sql"),
     )
     .expect("read Installation scope migration");
+    let rolling_compatibility = std::fs::read_to_string(
+        manifest.join("../../migrations/175_legacy_scoped_fact_writer_compatibility.sql"),
+    )
+    .expect("read scoped fact rolling compatibility migration");
 
     assert!(scope_reference.contains("pub enum CloudScopeRef"));
     assert!(event.contains("pub scope: CloudScopeRef"));
@@ -1929,6 +1933,21 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     );
     assert!(migration.contains("alter table outbox_events"));
     assert!(migration.contains("alter table audit_records"));
+    assert_eq!(
+        rolling_compatibility
+            .matches("create function derive_legacy_tenant_fact_scope_kind()")
+            .count(),
+        1
+    );
+    assert_eq!(
+        rolling_compatibility
+            .matches("execute function derive_legacy_tenant_fact_scope_kind()")
+            .count(),
+        2
+    );
+    assert!(rolling_compatibility.contains("scope_kind must be explicit for Installation facts"));
+    assert!(!rolling_compatibility.contains("drop constraint outbox_events_scope_shape"));
+    assert!(!rolling_compatibility.contains("drop constraint audit_records_scope_shape"));
     for forbidden in [
         "create table platform_outbox",
         "create table tenant_outbox",

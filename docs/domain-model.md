@@ -278,11 +278,12 @@ an active binding admitting `platform:tenant-support:use`, a descendant scope
 and one closed non-sensitive support permission. Grants are bounded,
   non-renewing and terminally revocable; break-glass requires tenant notification
   plus an independent security alert and post-incident review. `MT1-C3` adds
-  migration `174`: one database-owned immutable Installation, Organization
-  ownership, and exact scope columns on the existing Audit and Outbox tables.
-  Platform facts have a null Organization, old Organization writers remain
-  compatible during bounded rolling upgrade, scope lineage is immutable, and
-  the existing relay and audit authority remain singular. `MT2` and `MT3` still
+  migrations `174`-`175`: one database-owned immutable Installation,
+  Organization ownership, and exact scope columns on the existing Audit and
+  Outbox tables. Platform facts have a null Organization; one shared trigger
+  derives omitted scope only for old tenant writers from existing lineage, while
+  omitted Installation scope fails closed. Scope lineage is immutable, and the
+  existing relay and audit authority remain singular. `MT2` and `MT3` still
   supply policy/binding/grant repositories, approver/current-head loading,
   optimistic concurrency, idempotency, self-escalation and last-owner
   protection, then remove the legacy boolean administrator bypass. Until then,

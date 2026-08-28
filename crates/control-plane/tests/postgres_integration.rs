@@ -2292,6 +2292,7 @@ async fn exercise_installation_scoped_fact_foundation(
     let first_organization_id = Uuid::now_v7();
     let second_organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
+    let environment_id = Uuid::now_v7();
     let now = Utc::now();
     for (id, name, key) in [
         (
@@ -2330,6 +2331,21 @@ async fn exercise_installation_scoped_fact_foundation(
             .append(", ")
             .bind(project_id)
             .append(", 'Installation project', 'installation-project', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(first_organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", 'Installation environment', 'installation-environment', 1, ")
             .bind(now)
             .append(")"),
         )
@@ -2415,6 +2431,83 @@ async fn exercise_installation_scoped_fact_foundation(
             .append(", 'not_applicable', '{}'::jsonb)"),
         )
         .await?;
+    let legacy_project_audit_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, action, aggregate_id, occurred_at, request_id, project_id, attribution_status, details) values (",
+            )
+            .bind(legacy_project_audit_id)
+            .append(", ")
+            .bind(first_organization_id)
+            .append(", 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(project_id)
+            .append(", 'profile_missing', '{}'::jsonb)"),
+        )
+        .await?;
+    let legacy_environment_audit_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, action, aggregate_id, occurred_at, request_id, project_id, environment_id, attribution_status, details) values (",
+            )
+            .bind(legacy_environment_audit_id)
+            .append(", ")
+            .bind(first_organization_id)
+            .append(", 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", 'profile_missing', '{}'::jsonb)"),
+        )
+        .await?;
+    for (audit_id, expected_scope) in [
+        (legacy_audit_id, "organization"),
+        (legacy_project_audit_id, "project"),
+        (legacy_environment_audit_id, "environment"),
+    ] {
+        assert_eq!(
+            database
+                .fetch_one_as(
+                    sql_query::<String>("select scope_kind from audit_records where audit_id = ")
+                        .bind(audit_id),
+                )
+                .await?,
+            expected_scope,
+            "legacy tenant audit writer did not derive exact canonical scope"
+        );
+    }
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into audit_records (audit_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+                )
+                .bind(Uuid::now_v7())
+                .append(", 'identity.platform-role.changed', ")
+                .bind(Uuid::now_v7())
+                .append(", ")
+                .bind(now)
+                .append(", ")
+                .bind(Uuid::now_v7())
+                .append(", 'not_applicable', '{}'::jsonb)"),
+            )
+            .await
+            .is_err(),
+        "an omitted Installation scope was inferred instead of rejected"
+    );
     let platform_audit_id = Uuid::now_v7();
     database
         .execute(
