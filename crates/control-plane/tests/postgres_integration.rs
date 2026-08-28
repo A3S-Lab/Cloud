@@ -2592,6 +2592,105 @@ async fn exercise_installation_scoped_fact_foundation(
         "cross-tenant Project scope was accepted"
     );
 
+    let retired_organization_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(retired_organization_id)
+            .append(", 'Retired fact tenant', ")
+            .bind(format!("retired-fact-tenant-{retired_organization_id}"))
+            .append(", 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    let retained_event_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+            )
+            .bind(retained_event_id)
+            .append(", 'identity.organization.retired', 1, ")
+            .bind(retired_organization_id)
+            .append(", ")
+            .bind(retired_organization_id)
+            .append(", 1, ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", '{}'::jsonb)"),
+        )
+        .await?;
+    let retained_audit_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, action, aggregate_id, occurred_at, request_id, attribution_status, details) values (",
+            )
+            .bind(retained_audit_id)
+            .append(", ")
+            .bind(retired_organization_id)
+            .append(", 'identity.organization.retired', ")
+            .bind(retired_organization_id)
+            .append(", ")
+            .bind(now)
+            .append(", ")
+            .bind(Uuid::now_v7())
+            .append(", 'not_applicable', '{}'::jsonb)"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("delete from organizations where id = ").bind(retired_organization_id),
+        )
+        .await?;
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where event_id = ")
+                    .bind(retained_event_id),
+            )
+            .await?,
+        1,
+        "tenant deletion erased immutable Outbox history"
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where audit_id = ")
+                    .bind(retained_audit_id),
+            )
+            .await?,
+        1,
+        "tenant deletion erased retained audit history"
+    );
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into outbox_events (event_id, event_key, schema_version, installation_id, scope_kind, organization_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+                )
+                .bind(Uuid::now_v7())
+                .append(", 'identity.orphan.rejected', 1, ")
+                .bind(installation_id)
+                .append(", 'organization', ")
+                .bind(retired_organization_id)
+                .append(", ")
+                .bind(retired_organization_id)
+                .append(", 1, ")
+                .bind(now)
+                .append(", ")
+                .bind(Uuid::now_v7())
+                .append(", '{}'::jsonb)"),
+            )
+            .await
+            .is_err(),
+        "a new fact accepted a tenant lineage that no longer exists"
+    );
+
     assert!(database
         .execute(
             sql_query::<()>("update cloud_installations set schema_version = 1 where id = ")

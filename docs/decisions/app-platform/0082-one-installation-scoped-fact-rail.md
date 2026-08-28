@@ -43,13 +43,23 @@ headers, caches and ambient request state are never ownership sources.
 Migration `174` evolves the existing `outbox_events` and `audit_records` tables
 in place. Both store one closed scope discriminator and complete nullable
 lineage. Installation facts require null tenant columns. Tenant facts require
-their exact ancestors and foreign keys, and scope is immutable after insert.
+their exact ancestors, and scope is immutable after insert.
 Existing rows are backfilled as exact tenant facts. Migration `175` removes the
 blunt Organization default and installs one shared bounded compatibility trigger
 for both tables. Only when a pre-174 tenant writer omits `scope_kind` does the
 database derive Organization, Project or Environment from its already-present
 lineage. Missing Installation scope is rejected; every current writer persists
 scope explicitly, and explicit inconsistent scope still fails the closed checks.
+
+Migration `176` corrects the lifecycle boundary without adding a fact store.
+Audit and Outbox are immutable historical facts, not children whose existence
+depends on a mutable tenant aggregate. One trigger function shared by both
+tables validates and `FOR KEY SHARE` locks the complete live
+Installation/Organization/Project/Environment lineage at insert. After commit,
+the stored scope is an immutable identity snapshot: Organization, Project, or
+Environment deletion cannot erase or mutate it. The permanent Installation
+foreign key and all closed shape, attribution, and immutability constraints
+remain; a new fact with stale or cross-tenant lineage still fails closed.
 
 The existing transactional Outbox relay and A3S Event publisher remain the only
 integration-fact mechanism. The existing Audit table remains the only audit
@@ -68,6 +78,9 @@ bounded consumer migration, never a second stored ownership value.
 - The migrations deliberately support old tenant writers through one shared
   lineage derivation seam. Installation scope is never inferred and only current
   code may create it.
+- Historical facts outlive tenant aggregate lifecycle. Referential validity is
+  established under key-share locks at insert rather than by cascade-capable or
+  deletion-blocking tenant foreign keys.
 - `C0.5-MT1-C3` establishes persistence identity and fact scope only. MT2 still
   owns platform-policy/binding/grant repositories, current-head, approval,
   last-owner, self-escalation, idempotency and concurrency rules; MT3 still owns

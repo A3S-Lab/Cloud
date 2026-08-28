@@ -1904,6 +1904,10 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         manifest.join("../../migrations/175_legacy_scoped_fact_writer_compatibility.sql"),
     )
     .expect("read scoped fact rolling compatibility migration");
+    let historical_fact_lifecycle = std::fs::read_to_string(
+        manifest.join("../../migrations/176_historical_fact_scope_lifecycle.sql"),
+    )
+    .expect("read historical fact scope lifecycle migration");
 
     assert!(scope_reference.contains("pub enum CloudScopeRef"));
     assert!(event.contains("pub scope: CloudScopeRef"));
@@ -1948,6 +1952,25 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     assert!(rolling_compatibility.contains("scope_kind must be explicit for Installation facts"));
     assert!(!rolling_compatibility.contains("drop constraint outbox_events_scope_shape"));
     assert!(!rolling_compatibility.contains("drop constraint audit_records_scope_shape"));
+    assert_eq!(
+        historical_fact_lifecycle
+            .matches("create function validate_cloud_fact_scope_lineage_at_insert()")
+            .count(),
+        1
+    );
+    assert_eq!(
+        historical_fact_lifecycle
+            .matches("execute function validate_cloud_fact_scope_lineage_at_insert()")
+            .count(),
+        2
+    );
+    assert!(historical_fact_lifecycle.contains("for key share of tenant, project_row"));
+    assert!(
+        historical_fact_lifecycle.contains("for key share of tenant, project_row, environment_row")
+    );
+    assert!(!historical_fact_lifecycle.contains("on delete cascade"));
+    assert!(!historical_fact_lifecycle.contains("drop constraint outbox_events_scope_shape"));
+    assert!(!historical_fact_lifecycle.contains("drop constraint audit_records_scope_shape"));
     for forbidden in [
         "create table platform_outbox",
         "create table tenant_outbox",
@@ -1955,7 +1978,7 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         "create table tenant_audit",
     ] {
         assert!(
-            !migration.contains(forbidden),
+            !migration.contains(forbidden) && !historical_fact_lifecycle.contains(forbidden),
             "Installation scope introduced duplicate mechanism {forbidden}"
         );
     }

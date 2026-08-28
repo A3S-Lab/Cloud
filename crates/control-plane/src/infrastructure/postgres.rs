@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 175;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "175";
+pub const CLOUD_MIGRATION_COUNT: i64 = 176;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "176";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1607,6 +1607,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/175_legacy_scoped_fact_writer_compatibility.sql"
+            )),
+        ),
+        Migration::new(
+            "176",
+            "historical fact scope lifecycle",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/176_historical_fact_scope_lifecycle.sql"
             )),
         ),
     ]

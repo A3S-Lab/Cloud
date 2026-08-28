@@ -3898,15 +3898,18 @@ node.
   embeds exact policy/grant ACL snapshots and reuses the one decision-reference
   representation. This slice has no repository, Application interface or
   production authority.
-- Implemented `MT1-C3`: migrations `174`-`175` persist one immutable database-owned
-  Installation identity, assigns it to every Organization, and evolves the
+- Implemented `MT1-C3`: migrations `174`-`176` persist one immutable database-owned
+  Installation identity, assign it to every Organization, and evolve the
   existing Audit and Outbox tables in place with one exact discriminated
   Installation/Organization/Project/Environment scope. The shared persistence
   boundary locks and resolves canonical lineage before writing; one shared
   bounded rolling-upgrade trigger derives omitted scope only for old tenant
   writers from their existing lineage, while omitted Installation scope fails
-  closed. Global facts use no synthetic Organization, and the relay/audit
-  mechanisms remain singular.
+  closed. One insert-time validator shared by both tables key-share locks the
+  complete live lineage; historical facts retain immutable identity snapshots
+  instead of lifecycle foreign keys, so tenant deletion cannot erase audit or
+  Outbox evidence. Global facts use no synthetic Organization, and the
+  relay/audit mechanisms remain singular.
   Retained PostgreSQL 17 certification remains the release evidence gate.
   Next, `MT2` adds current-head/approver loading, optimistic policy/binding/grant
   persistence, idempotency, last-owner and self-escalation safeguards. `MT3`
