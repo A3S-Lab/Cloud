@@ -291,7 +291,6 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         &profile,
         &binding,
         node_id,
-        execution_id,
         3,
     )
     .await?;

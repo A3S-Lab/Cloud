@@ -13,7 +13,6 @@ pub(super) struct ApprovalMatrix {
     pub(super) next_sequence: u64,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn exercise_approval_matrix(
     executor: &CommandExecutor,
     provider_harness: &HttpAgentProviderHarnessTransport,
@@ -21,7 +20,6 @@ pub(super) async fn exercise_approval_matrix(
     profile: &AgentProviderProfile,
     base_binding: &NodeAgentProviderRuntimeBindingV1,
     node_id: Uuid,
-    execution_id: Uuid,
     first_sequence: u64,
 ) -> GateResult<ApprovalMatrix> {
     let invocation = approval_invocation(profile, base_binding)?;
@@ -39,16 +37,9 @@ pub(super) async fn exercise_approval_matrix(
     ] {
         let (binding, start) =
             governed_start(profile, base_binding, &invocation, outcome.as_str())?;
-        let (_, started) = dispatch_provider_command(
-            executor,
-            profile,
-            node_id,
-            execution_id,
-            &mut sequence,
-            &binding,
-            &start,
-        )
-        .await?;
+        let (_, started) =
+            dispatch_provider_command(executor, profile, node_id, &mut sequence, &binding, &start)
+                .await?;
         let started_receipt = provider_receipt(&started)?;
         if started_receipt.state != AgentProviderRunStateV1::AwaitingApproval
             || started_receipt.replayed
@@ -92,16 +83,9 @@ pub(super) async fn exercise_approval_matrix(
                 decision,
             )?,
         };
-        let (resume_envelope, resumed) = dispatch_provider_command(
-            executor,
-            profile,
-            node_id,
-            execution_id,
-            &mut sequence,
-            &binding,
-            &resume,
-        )
-        .await?;
+        let (resume_envelope, resumed) =
+            dispatch_provider_command(executor, profile, node_id, &mut sequence, &binding, &resume)
+                .await?;
         let resumed_receipt = provider_receipt(&resumed)?;
         if resumed_receipt.state != AgentProviderRunStateV1::Executing || resumed_receipt.replayed {
             return Err(invalid(format!(
@@ -144,7 +128,6 @@ pub(super) async fn exercise_approval_matrix(
                 executor,
                 profile,
                 node_id,
-                execution_id,
                 &mut sequence,
                 &binding,
                 &resume,
@@ -166,7 +149,6 @@ pub(super) async fn exercise_approval_matrix(
         executor,
         profile,
         node_id,
-        execution_id,
         &mut sequence,
         &cancel_binding,
         &cancel_start,
@@ -186,7 +168,6 @@ pub(super) async fn exercise_approval_matrix(
         executor,
         profile,
         node_id,
-        execution_id,
         &mut sequence,
         &cancel_binding,
         &cancel,
@@ -224,7 +205,6 @@ pub(super) async fn exercise_approval_matrix(
         executor,
         profile,
         node_id,
-        execution_id,
         &mut sequence,
         &pending_restart_binding,
         &pending_start,
@@ -312,23 +292,22 @@ fn governed_start(
         APPROVAL_PROMPT.into(),
     )?;
     let mut binding = base_binding.clone();
+    binding.execution_id = Uuid::now_v7();
     binding.provider_run_identity = request.identity.clone();
     Ok((binding, AgentProviderCommandV1::Start { request }))
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn dispatch_provider_command(
     executor: &CommandExecutor,
     profile: &AgentProviderProfile,
     node_id: Uuid,
-    execution_id: Uuid,
     sequence: &mut u64,
     binding: &NodeAgentProviderRuntimeBindingV1,
     provider_command: &AgentProviderCommandV1,
 ) -> GateResult<(NodeCommandEnvelope, NodeCommandAck)> {
     let envelope = command(
         node_id,
-        execution_id,
+        binding.execution_id,
         *sequence,
         NodeCommandPayload::AgentProviderCommand {
             binding: Box::new(binding.clone()),
@@ -388,4 +367,51 @@ fn approval_request(
 
 fn timestamp_ms() -> GateResult<u64> {
     Ok(u64::try_from(Utc::now().timestamp_millis())?)
+}
+
+#[test]
+fn governed_approval_runs_reserve_distinct_execution_bindings() -> GateResult {
+    let profile =
+        AgentProviderProfile::parse_acl(REFERENCE_ECHO_PROVIDER_PROFILE_ACL).map_err(invalid)?;
+    let base_identity = AgentProviderRunIdentityV1::new(
+        profile.digest().into(),
+        profile.capability_digest().into(),
+        format!("sha256:{}", "a".repeat(64)),
+        "reference-box-conversation".into(),
+        "reference-box-run".into(),
+    )?;
+    let base_binding = NodeAgentProviderRuntimeBindingV1 {
+        schema: NodeAgentProviderRuntimeBindingV1::SCHEMA.into(),
+        execution_id: Uuid::now_v7(),
+        workload_id: Uuid::now_v7(),
+        workload_revision_id: Uuid::now_v7(),
+        deployment_id: Uuid::now_v7(),
+        replica_id: Uuid::now_v7(),
+        runtime_unit_id: "reference-provider".into(),
+        runtime_generation: 1,
+        runtime_spec_digest: format!("sha256:{}", "b".repeat(64)),
+        service_port_name: "agent".into(),
+        provider_profile_acl: profile.canonical_acl().into(),
+        provider_profile_digest: profile.digest().into(),
+        provider_run_identity: base_identity,
+    };
+    let invocation = approval_invocation(&profile, &base_binding)?;
+    let (approved, approved_start) =
+        governed_start(&profile, &base_binding, &invocation, "approved")?;
+    let (denied, denied_start) = governed_start(&profile, &base_binding, &invocation, "denied")?;
+
+    assert_ne!(approved.execution_id, base_binding.execution_id);
+    assert_ne!(denied.execution_id, base_binding.execution_id);
+    assert_ne!(approved.execution_id, denied.execution_id);
+    assert_eq!(approved.runtime_unit_id, base_binding.runtime_unit_id);
+    assert_eq!(approved.runtime_generation, base_binding.runtime_generation);
+    assert_eq!(
+        approved.runtime_spec_digest,
+        base_binding.runtime_spec_digest
+    );
+    approved
+        .validate_command(&approved_start)
+        .map_err(invalid)?;
+    denied.validate_command(&denied_start).map_err(invalid)?;
+    Ok(())
 }
