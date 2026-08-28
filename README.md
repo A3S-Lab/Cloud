@@ -670,7 +670,17 @@ creating their own control planes:
     current backend adds closed REST/client/CLI selection, migration `164`'s
     creation-time immutable profile persistence, exact Flow registry recovery,
     fail-closed Node protocol routing, and durable provider-neutral event-page
-    delivery through the shared outbound-batch primitive. Component-level
+    delivery through the shared outbound-batch primitive. A retained
+    [real Box common-HTTP reference-provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33143185829/job/98758414630)
+    materializes `reference.echo` as an exact Box Artifact and Service, proves
+    health, Start, cursor-exact event pages, and durable node-journal replay,
+    then replaces the provider process and rejects the lost in-memory run
+    because that profile does not advertise Recovery before removing the
+    Runtime and Artifact. The same gate's PostgreSQL 17 fallback step proves
+    control-plane reconnect plus provider-process replacement settles one
+    terminal fallback with zero Recover commands and exact semantic replay.
+    This certifies fail-closed reference-provider fallback, not a
+    Recovery-capable external provider. Component-level
     `A1.4` adds one fail-closed immutable invocation profile before dispatch,
     binds its digest into provider run identity, and records digest-only Tool
     request/result semantics with shared audit correlation. Component-level
