@@ -2046,6 +2046,95 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
 }
 
 #[test]
+fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let port = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/repositories/platform_rbac_repository.rs"),
+    )
+    .expect("read platform RBAC repository port");
+    let persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs"),
+    )
+    .expect("read platform RBAC PostgreSQL adapter");
+    let migration =
+        std::fs::read_to_string(manifest.join("../../migrations/177_platform_rbac_authority.sql"))
+            .expect("read platform RBAC authority migration");
+    let provider_gate = std::fs::read_to_string(manifest.join("tests/support/platform_rbac.rs"))
+        .expect("read platform RBAC PostgreSQL provider gate");
+    let workflow = std::fs::read_to_string(manifest.join("../../.github/workflows/ci.yml"))
+        .expect("read CI workflow");
+
+    assert_eq!(port.matches("pub trait IPlatformRbacRepository").count(), 1);
+    assert_eq!(
+        persistence
+            .matches("impl IPlatformRbacRepository for PostgresIdentityRepository")
+            .count(),
+        1
+    );
+    for required in [
+        "for update of installation",
+        "load_current_policy_for_update",
+        "idempotency_replay",
+        "store_idempotency",
+        "store_outbox",
+        "store_audit",
+        "PlatformPermission::RolePolicyManage",
+        "PlatformPermission::RoleBindingManage",
+        "a Principal cannot escalate its own platform permissions",
+        "the last active platform owner cannot be revoked",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "platform RBAC persistence lost authority rule {required}"
+        );
+    }
+    for forbidden in [
+        "actor_is_platform_admin",
+        "Redis",
+        "a3s_lane",
+        "platform_outbox",
+        "platform_audit",
+        "platform_idempotency",
+        "platform_distributed_lock",
+    ] {
+        assert!(
+            !production_source(&persistence).contains(forbidden),
+            "platform RBAC persistence introduced duplicate or ambient authority {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        migration
+            .matches("create table platform_role_policy_heads")
+            .count(),
+        1
+    );
+    assert!(migration.contains("deferrable initially deferred"));
+    assert!(migration.contains("for update of installation"));
+    assert!(migration.contains("the last active platform owner Principal cannot be disabled"));
+    for duplicate in [
+        "create table platform_outbox",
+        "create table platform_audit",
+        "create table platform_idempotency",
+        "create table platform_distributed_locks",
+    ] {
+        assert!(
+            !migration.contains(duplicate),
+            "platform RBAC migration introduced second mechanism {duplicate}"
+        );
+    }
+
+    assert!(provider_gate.contains("tokio::join!"));
+    assert!(provider_gate.contains("concurrent platform RBAC bootstrap"));
+    assert!(provider_gate.contains("concurrent owner revocation"));
+    assert!(provider_gate.contains("concurrent policy CAS"));
+    assert!(provider_gate.contains("database trigger must reject last-owner bypasses"));
+    assert!(
+        workflow.contains("postgres_platform_rbac_is_atomic_recoverable_and_multi_replica_safe")
+    );
+}
+
+#[test]
 fn privileged_tenant_support_reuses_one_decision_evidence_mechanism_and_never_implies_data_access()
 {
     let root = module_root();
