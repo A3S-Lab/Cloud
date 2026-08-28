@@ -373,7 +373,7 @@ Management MCP tools now expose bounded protected task reads plus versioned
 claim/release/submission through the same Workflow repository, domain state machine,
 transaction-bound idempotency/Outbox/audit path, and shared Identity Resource
 Grant evaluator. Lists omit interaction payloads and only the current claimant
-receives the exact request-bound A3S Form interaction. Migration `172` records
+receives the exact request-bound A3S Form interaction. Migration `173` records
 the corrected ownership without any DDL or evidence rewrite: Forms owns
 definitions/releases and semantic evaluation, while Workflow owns
 HumanTaskSubmission evidence through one Forms port/adapter and the sole table

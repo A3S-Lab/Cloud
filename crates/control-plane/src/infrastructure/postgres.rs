@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 172;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "172";
+pub const CLOUD_MIGRATION_COUNT: i64 = 173;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "173";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1581,10 +1581,18 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "172",
+            "Fleet node protocol session heads",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/172_node_protocol_session_heads.sql"
+            )),
+        ),
+        Migration::new(
+            "173",
             "Workflow-owned HumanTask submission evidence",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/172_human_task_submission_owner.sql"
+                "/../../migrations/173_human_task_submission_owner.sql"
             )),
         ),
     ]
@@ -1597,6 +1605,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
 mod cloud_migration_manifest_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/node_protocol_session_migration.rs"]
+mod node_protocol_session_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/workflow_composite_failure_migration.rs"]
@@ -4057,11 +4069,11 @@ mod application_invocation_timeout_policy_owner_migration_tests {
 mod human_task_submission_owner_migration_tests {
     const MIGRATION: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../migrations/172_human_task_submission_owner.sql"
+        "/../../migrations/173_human_task_submission_owner.sql"
     ));
 
     #[test]
-    fn migration_172_corrects_ownership_without_rewriting_historical_evidence() {
+    fn migration_173_corrects_ownership_without_rewriting_historical_evidence() {
         let lower = MIGRATION.to_ascii_lowercase();
         for expected in [
             "comment on table form_submissions",
@@ -4080,7 +4092,7 @@ mod human_task_submission_owner_migration_tests {
         ] {
             assert!(
                 !lower.contains(forbidden),
-                "migration 172 rewrote HumanTask evidence through {forbidden}"
+                "migration 173 rewrote HumanTask evidence through {forbidden}"
             );
         }
     }

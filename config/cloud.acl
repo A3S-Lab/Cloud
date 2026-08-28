@@ -214,6 +214,7 @@ edge {
 fleet {
   heartbeat_interval_ms = 5000
   heartbeat_timeout_ms = 20000
+  protocol_session_ttl_ms = 300000
   command_long_poll_ms = 25000
   command_lease_ms = 30000
   certificate_ttl_ms = 3600000

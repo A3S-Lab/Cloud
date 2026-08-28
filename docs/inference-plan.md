@@ -487,12 +487,13 @@ ID; the control plane returns the exact negotiated set for that session.
 Enrollment records initial support but is not the only negotiation point,
 because an already enrolled node may upgrade its agent in place.
 
-The contract-only foundation now defines a closed hello and selection pair
-with a process epoch, reconnect sequence, sorted directional schema sets,
-short-lived selection, and a digest-bound previous-selection chain. The Fleet
-endpoint, durable selection head, Agent reconnect state, and enforcement on
-versioned messages remain open; therefore this contract does not yet activate
-protocol negotiation or Power observation delivery by itself.
+The protocol foundation defines a closed hello and selection pair with a
+process epoch, reconnect sequence, sorted directional schema sets, short-lived
+selection, and a digest-bound previous-selection chain. Fleet now owns the
+authenticated `session:hello` command and one durable current selection head;
+exact retries replay and reconnects advance atomically without downgrading the
+selected set. Agent reconnect state and selection enforcement on versioned
+messages remain open, so Power observation delivery is not active yet.
 
 The control plane reads old and new node protocols during a bounded migration
 window. Old agents remain eligible for compatible CPU workloads and are

@@ -56,3 +56,20 @@ orm_table! {
         received_at: DateTime<Utc> => "received_at",
     }
 }
+
+orm_table! {
+    pub(super) struct NodeProtocolSessionHeads => "node_protocol_session_heads" {
+        organization_id: Uuid => "organization_id",
+        node_id: Uuid => "node_id",
+        agent_instance_id: Uuid => "agent_instance_id",
+        session_epoch: Uuid => "session_epoch",
+        hello_sequence: u64 => "hello_sequence",
+        session_id: Uuid => "session_id",
+        generation: u64 => "generation",
+        contracts_digest: String => "contracts_digest",
+        selected_at: DateTime<Utc> => "selected_at",
+        expires_at: DateTime<Utc> => "expires_at",
+        hello: serde_json::Value => "hello",
+        selection: serde_json::Value => "selection",
+    }
+}

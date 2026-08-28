@@ -10,7 +10,9 @@ use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::artifacts::NodeArtifactObjectStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeProtocolSessionRepository, INodeRepository,
+};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
@@ -49,11 +51,13 @@ async fn authenticated_node_accepts_legacy_and_provider_event_batches_with_exact
         prepare_execution(agents.as_ref(), organization_id, NodeId::from_uuid(node_id)).await;
 
     let commands: Arc<dyn INodeControlRepository> = nodes.clone();
+    let sessions: Arc<dyn INodeProtocolSessionRepository> = nodes.clone();
     let node_repository: Arc<dyn INodeRepository> = nodes.clone();
     let edge = Arc::new(InMemoryEdgeRepository::new());
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        sessions,
         agents.clone(),
         Arc::new(
             NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
@@ -77,6 +81,7 @@ async fn authenticated_node_accepts_legacy_and_provider_event_batches_with_exact
         ),
         Duration::days(30),
         Duration::hours(1),
+        Duration::minutes(5),
         Duration::minutes(5),
         Duration::seconds(30),
         StdDuration::from_millis(100),

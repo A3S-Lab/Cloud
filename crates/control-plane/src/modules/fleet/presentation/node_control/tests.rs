@@ -7,7 +7,7 @@ use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCert
 use crate::modules::fleet::application::{EnrollNode, EnrollNodeHandler};
 use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeStateChange,
+    INodeControlRepository, INodeProtocolSessionRepository, INodeRepository, NodeStateChange,
 };
 use crate::modules::fleet::domain::services::{ICertificateAuthority, NodeCertificateRequest};
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
@@ -25,9 +25,10 @@ use a3s_cloud_contracts::{
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandOutcome, NodeCommandPayload,
     NodeCommandResult, NodeGatewayAck, NodeGatewayAckReceipt, NodeHeartbeat, NodeHeartbeatV2,
     NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
-    NodeObservationBatch, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError,
-    NodeProtocolErrorCode, NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
-    ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
+    NodeObservationBatch, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolContractSet,
+    NodeProtocolError, NodeProtocolErrorCode, NodeResourceInventory, NodeResourceInventoryReceipt,
+    NodeResourceSlot, NodeSessionHello, NodeSessionSelection, ResourceAllocation, ResourceKind,
+    ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_node_agent::{EnrolledNodeIdentity, FileNodeIdentityStore, NodeIdentityState};
 use a3s_runtime::contract::{
@@ -76,6 +77,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let agent_instance_id = enrolled_identity.agent_instance_id;
     let node_id = enrollment.node_id;
     let commands: Arc<dyn INodeControlRepository> = nodes.clone();
+    let sessions: Arc<dyn INodeProtocolSessionRepository> = nodes.clone();
     let node_repository: Arc<dyn INodeRepository> = nodes.clone();
     let log_store =
         Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store"));
@@ -83,6 +85,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        sessions,
         agents,
         Arc::new(
             NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
@@ -107,6 +110,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         Duration::days(30),
         Duration::hours(1),
         rotation_replay_window,
+        Duration::minutes(5),
         Duration::seconds(30),
         StdDuration::from_millis(100),
         StdDuration::from_millis(5),
@@ -196,6 +200,69 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .identity(reqwest::Identity::from_pem(identity_pem.as_bytes()).expect("client identity"))
         .build()
         .expect("mTLS client");
+    let session_hello = NodeSessionHello {
+        schema: NodeSessionHello::SCHEMA.into(),
+        node_id,
+        agent_instance_id,
+        session_epoch: Uuid::now_v7(),
+        hello_sequence: 1,
+        offered_at: Utc::now(),
+        agent_version: "0.1.0".into(),
+        contracts: NodeProtocolContractSet {
+            agent_readable: vec![a3s_cloud_contracts::NodeCommandEnvelope::SCHEMA.into()],
+            agent_writable: vec![
+                NodeCommandAck::SCHEMA.into(),
+                NodeObservationBatchV2::SCHEMA.into(),
+                "a3s.cloud.node-power-worker-observation-batch.v1".into(),
+                NodeResourceInventory::SCHEMA.into(),
+            ],
+        },
+        previous_selection: None,
+    };
+    let session_endpoint = format!(
+        "https://localhost:{}/v1/node-control/session:hello",
+        address.port()
+    );
+    let first_session = client
+        .post(&session_endpoint)
+        .json(&session_hello)
+        .send()
+        .await
+        .expect("negotiate node session");
+    assert_eq!(first_session.status(), reqwest::StatusCode::OK);
+    let first_selection = first_session
+        .json::<NodeSessionSelection>()
+        .await
+        .expect("node session selection");
+    first_selection
+        .validate_for(&session_hello, first_selection.selected_at)
+        .expect("valid node session selection");
+    assert_eq!(
+        first_selection.contracts,
+        NodeProtocolContractSet {
+            agent_readable: vec![a3s_cloud_contracts::NodeCommandEnvelope::SCHEMA.into()],
+            agent_writable: vec![
+                NodeCommandAck::SCHEMA.into(),
+                NodeObservationBatchV2::SCHEMA.into(),
+                NodeResourceInventory::SCHEMA.into(),
+            ],
+        }
+    );
+    assert_eq!(
+        first_selection.expires_at - first_selection.selected_at,
+        Duration::minutes(5)
+    );
+    let replayed_selection = client
+        .post(&session_endpoint)
+        .json(&session_hello)
+        .send()
+        .await
+        .expect("replay node session hello")
+        .json::<NodeSessionSelection>()
+        .await
+        .expect("replayed node session selection");
+    assert_eq!(replayed_selection, first_selection);
+
     let response = client
         .post(&endpoint)
         .json(&lease_request(node_id, agent_instance_id))

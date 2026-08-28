@@ -37,7 +37,8 @@ use crate::modules::executions::{
 use crate::modules::files::{IUserFileRepository, PostgresUserFileRepository};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeAvailabilityRepository, INodeControlRepository,
-    INodeDrainRepository, INodePoolRepository, INodeRepository, INodeSchedulingRepository,
+    INodeDrainRepository, INodePoolRepository, INodeProtocolSessionRepository, INodeRepository,
+    INodeSchedulingRepository,
 };
 use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::forms::{IFormRepository, PostgresFormRepository};
@@ -433,6 +434,7 @@ pub(super) struct FleetPostgresAdapters {
     pub(super) node_pools: Arc<dyn INodePoolRepository>,
     pub(super) draining_nodes: Arc<dyn INodeDrainRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) node_protocol_sessions: Arc<dyn INodeProtocolSessionRepository>,
     pub(super) log_retention: Arc<dyn ILogRetentionRepository>,
     pub(super) workload_runtime_control: Arc<dyn IWorkloadRuntimeControl>,
 }
@@ -447,6 +449,7 @@ impl FleetPostgresAdapters {
             node_pools: repository.clone(),
             draining_nodes: repository.clone(),
             node_control: repository.clone(),
+            node_protocol_sessions: repository.clone(),
             log_retention: repository.clone(),
             workload_runtime_control: repository,
         }

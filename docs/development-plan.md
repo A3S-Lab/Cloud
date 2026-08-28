@@ -5206,7 +5206,7 @@ atomically stores a deterministic expiry decision through the existing
 decision/Outbox path. Migration `097` adds exact parent-cancellation candidates,
 persists the cancelling Principal, makes cancellation preempt expiry, and stores
 the deterministic cancellation decision through that same transaction.
-Migration `172` corrects the historical submission table's ownership
+Migration `173` corrects the historical submission table's ownership
 description without rewriting IDs, canonical record JSON, URNs, or replay
 evidence. Forms owns definitions/releases and semantic evaluation; Workflow
 owns the evidence and enters Forms only through one consumer-owned port and one

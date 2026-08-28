@@ -422,6 +422,7 @@ pub struct EdgeConfig {
 pub struct FleetConfig {
     pub heartbeat_interval_ms: u64,
     pub heartbeat_timeout_ms: u64,
+    pub protocol_session_ttl_ms: u64,
     pub command_long_poll_ms: u64,
     pub command_lease_ms: u64,
     pub certificate_ttl_ms: u64,
@@ -780,6 +781,7 @@ impl CloudConfig {
             &[
                 "heartbeat_interval_ms",
                 "heartbeat_timeout_ms",
+                "protocol_session_ttl_ms",
                 "command_long_poll_ms",
                 "command_lease_ms",
                 "certificate_ttl_ms",
@@ -1046,6 +1048,7 @@ impl CloudConfig {
             fleet: FleetConfig {
                 heartbeat_interval_ms: integer(fleet, "heartbeat_interval_ms")?,
                 heartbeat_timeout_ms: integer(fleet, "heartbeat_timeout_ms")?,
+                protocol_session_ttl_ms: integer(fleet, "protocol_session_ttl_ms")?,
                 command_long_poll_ms: integer(fleet, "command_long_poll_ms")?,
                 command_lease_ms: integer(fleet, "command_lease_ms")?,
                 certificate_ttl_ms: integer(fleet, "certificate_ttl_ms")?,
@@ -1691,6 +1694,8 @@ impl CloudConfig {
         }
         if self.fleet.heartbeat_interval_ms == 0
             || self.fleet.heartbeat_timeout_ms <= self.fleet.heartbeat_interval_ms
+            || self.fleet.protocol_session_ttl_ms < self.fleet.heartbeat_timeout_ms
+            || self.fleet.protocol_session_ttl_ms > 86_400_000
             || self.fleet.command_long_poll_ms == 0
             || self.fleet.command_long_poll_ms > 60_000
             || self.fleet.command_lease_ms <= self.fleet.command_long_poll_ms
@@ -1699,7 +1704,7 @@ impl CloudConfig {
             || self.fleet.certificate_rotation_window_ms >= self.fleet.certificate_ttl_ms
         {
             return Err(ConfigError::Invalid(
-                "fleet timing requires bounded independent heartbeat, command lease, and certificate windows"
+                "fleet timing requires bounded independent heartbeat, protocol session, command lease, and certificate windows"
                     .into(),
             ));
         }
@@ -2628,6 +2633,7 @@ edge {
 fleet {
   heartbeat_interval_ms = 5000
   heartbeat_timeout_ms = 20000
+  protocol_session_ttl_ms = 300000
   command_long_poll_ms = 25000
   command_lease_ms = 30000
   certificate_ttl_ms = 3600000
@@ -2758,6 +2764,7 @@ security {
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
         assert_eq!(config.edge.domain_verification_timeout_ms, 5_000);
+        assert_eq!(config.fleet.protocol_session_ttl_ms, 300_000);
         assert_eq!(config.security.profile, SecurityProfile::Development);
         assert_eq!(
             config.security.gateway_certificate_authority,
@@ -3194,6 +3201,16 @@ security {
         assert!(CloudConfig::parse(&VALID.replace(
             "snapshot_renewal_window_ms = 21600000",
             "snapshot_renewal_window_ms = 180000"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "protocol_session_ttl_ms = 300000",
+            "protocol_session_ttl_ms = 10000"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "protocol_session_ttl_ms = 300000",
+            "protocol_session_ttl_ms = 86400001"
         ))
         .is_err());
         assert!(CloudConfig::parse(
