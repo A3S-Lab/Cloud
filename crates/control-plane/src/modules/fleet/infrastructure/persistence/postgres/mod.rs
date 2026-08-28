@@ -7,6 +7,7 @@ mod nodes;
 mod queries;
 mod rows;
 mod schema;
+mod sessions;
 
 pub(crate) use control::require_current_inventory;
 pub(crate) use node_pools::node_pool_placement_is_eligible;
@@ -14,15 +15,18 @@ pub(crate) use node_pools::node_pool_placement_is_eligible;
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeAvailabilityRepository, INodeControlRepository,
-    INodePoolRepository, INodeRepository, INodeSchedulingRepository,
-    NodeAvailabilityReconciliationResult, NodeCertificateRotationCompletion,
-    NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
-    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
-    NodeLogChunkMetadata, NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult,
-    NodeLogGapMetadata, NodeLogRetentionTarget, NodePoolWrite, NodeResourceInventoryRecord,
-    NodeStateChange, ReconcileNodeAvailability, RuntimeObservationRecord,
+    INodePoolRepository, INodeProtocolSessionRepository, INodeRepository,
+    INodeSchedulingRepository, NodeAvailabilityReconciliationResult,
+    NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
+    NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
+    NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
+    NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogGapMetadata,
+    NodeLogRetentionTarget, NodePoolWrite, NodeResourceInventoryRecord, NodeStateChange,
+    ReconcileNodeAvailability, RuntimeObservationRecord,
 };
-use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
+use crate::modules::fleet::domain::value_objects::{
+    EnrollmentTokenCredential, NodeProtocolNegotiation, NodeProtocolNegotiationOutcome,
+};
 use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeId, NodePoolId,
     OrganizationId, RepositoryError,
@@ -44,6 +48,16 @@ pub struct PostgresNodeRepository {
 impl PostgresNodeRepository {
     pub const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
+    }
+}
+
+#[async_trait]
+impl INodeProtocolSessionRepository for PostgresNodeRepository {
+    async fn negotiate(
+        &self,
+        negotiation: NodeProtocolNegotiation,
+    ) -> Result<NodeProtocolNegotiationOutcome, RepositoryError> {
+        sessions::negotiate(&self.executor, negotiation).await
     }
 }
 

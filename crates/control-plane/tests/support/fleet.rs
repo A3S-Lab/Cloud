@@ -1,10 +1,11 @@
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
-    GatewayAckState, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse,
-    NodeGatewayAck, NodeHeartbeat, NodeHeartbeatV2, NodeInventoryReference, NodeObservationBatch,
-    NodeObservationBatchV2, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
-    ResourceKind, ResourceUnit, RuntimeObservationReport,
+    GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandLeaseRequest,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest,
+    NodeEnrollmentResponse, NodeGatewayAck, NodeHeartbeat, NodeHeartbeatV2, NodeInventoryReference,
+    NodeObservationBatch, NodeObservationBatchV2, NodeProtocolContractSet, NodeResourceInventory,
+    NodeResourceSlot, NodeSessionHello, ResourceAllocation, ResourceKind, ResourceUnit,
+    RuntimeObservationReport,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::{
     NodeCertificate, NodeCommandDraft, NodePool,
@@ -14,14 +15,16 @@ use a3s_cloud_control_plane::modules::fleet::domain::events::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
-    INodeRepository, INodeSchedulingRepository, NodeEvacuationCause, NodeHeartbeatUpdate,
-    NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery, NodeLogChunkReceiptDraft,
-    NodeLogGapReceiptDraft, NodePoolWrite,
+    INodeProtocolSessionRepository, INodeRepository, INodeSchedulingRepository,
+    NodeEvacuationCause, NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay,
+    NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogGapReceiptDraft, NodePoolWrite,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
+    NodeCapabilities, NodeProtocolNegotiation, NodeProtocolPolicy, NodeState,
+};
 use a3s_cloud_control_plane::modules::fleet::infrastructure::LocalCertificateAuthority;
 use a3s_cloud_control_plane::modules::fleet::{
     ChangeNodeState, ChangeNodeStateHandler, EnrollNode, EnrollNodeHandler, IssueEnrollmentToken,
@@ -177,6 +180,14 @@ pub async fn exercise_fleet(
         nodes.record_heartbeat(conflicting).await,
         Err(RepositoryError::Conflict(_))
     ));
+    exercise_protocol_sessions(
+        executor,
+        &nodes,
+        node_id,
+        enrollment_request.agent_instance_id,
+        now + Duration::seconds(3),
+    )
+    .await?;
 
     let mut pool = NodePool::create(
         NodePoolId::new(),
@@ -593,6 +604,102 @@ pub async fn exercise_fleet(
         4
     );
     Ok(pool.id)
+}
+
+async fn exercise_protocol_sessions(
+    executor: &PostgresExecutor,
+    nodes: &Arc<PostgresNodeRepository>,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+    offered_at: chrono::DateTime<Utc>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let contracts = NodeProtocolContractSet {
+        agent_readable: vec![NodeCommandEnvelope::SCHEMA.into()],
+        agent_writable: vec![
+            NodeCommandAck::SCHEMA.into(),
+            NodeObservationBatchV2::SCHEMA.into(),
+        ],
+    };
+    let policy = NodeProtocolPolicy::new(contracts.clone(), contracts.clone())?;
+    let hello = NodeSessionHello {
+        schema: NodeSessionHello::SCHEMA.into(),
+        node_id: node_id.as_uuid(),
+        agent_instance_id,
+        session_epoch: Uuid::now_v7(),
+        hello_sequence: 1,
+        offered_at,
+        agent_version: "0.1.0".into(),
+        contracts,
+        previous_selection: None,
+    };
+    let first = NodeProtocolNegotiation::new(
+        hello.clone(),
+        policy.clone(),
+        offered_at + Duration::milliseconds(1),
+        Duration::minutes(5),
+        Uuid::now_v7(),
+    )?;
+    let second = NodeProtocolNegotiation::new(
+        hello,
+        policy.clone(),
+        offered_at + Duration::milliseconds(1),
+        Duration::minutes(5),
+        Uuid::now_v7(),
+    )?;
+    let (first, second) = tokio::join!(nodes.negotiate(first), nodes.negotiate(second));
+    let first = first?;
+    let second = second?;
+    assert_ne!(first.replayed(), second.replayed());
+    assert_eq!(first.selection(), second.selection());
+
+    let head = if first.replayed() { second } else { first };
+    let successor_hello = NodeSessionHello {
+        schema: NodeSessionHello::SCHEMA.into(),
+        node_id: node_id.as_uuid(),
+        agent_instance_id,
+        session_epoch: head.record().hello().session_epoch,
+        hello_sequence: 2,
+        offered_at: offered_at + Duration::seconds(1),
+        agent_version: "0.1.0".into(),
+        contracts: head.selection().contracts.clone(),
+        previous_selection: Some(head.record().reference()?),
+    };
+    let successor = nodes
+        .negotiate(NodeProtocolNegotiation::new(
+            successor_hello.clone(),
+            policy.clone(),
+            offered_at + Duration::seconds(1) + Duration::milliseconds(1),
+            Duration::minutes(5),
+            Uuid::now_v7(),
+        )?)
+        .await?;
+    assert_eq!(successor.selection().generation, 2);
+
+    let restarted = PostgresNodeRepository::new(executor.clone());
+    let replay = restarted
+        .negotiate(NodeProtocolNegotiation::new(
+            successor_hello,
+            policy,
+            offered_at + Duration::seconds(1) + Duration::milliseconds(2),
+            Duration::minutes(5),
+            Uuid::now_v7(),
+        )?)
+        .await?;
+    assert!(replay.replayed());
+    assert_eq!(replay.selection(), successor.selection());
+
+    assert_eq!(
+        Database::new(PostgresDialect, executor.clone())
+            .fetch_one_as(
+                sql_query::<(i64, i64)>(
+                    "select count(*), max(generation) from node_protocol_session_heads where node_id = ",
+                )
+                .bind(node_id.as_uuid()),
+            )
+            .await?,
+        (1, 2)
+    );
+    Ok(())
 }
 
 async fn exercise_resource_inventory(

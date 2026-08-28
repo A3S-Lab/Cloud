@@ -206,8 +206,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 171;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "171";
+pub const CLOUD_MIGRATION_COUNT: i64 = 172;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "172";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1579,6 +1579,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/171_application_invocation_timeout_policy_owner.sql"
             )),
         ),
+        Migration::new(
+            "172",
+            "Fleet node protocol session heads",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/172_node_protocol_session_heads.sql"
+            )),
+        ),
     ]
 }
 
@@ -1589,6 +1597,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
 mod cloud_migration_manifest_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/node_protocol_session_migration.rs"]
+mod node_protocol_session_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/workflow_composite_failure_migration.rs"]
