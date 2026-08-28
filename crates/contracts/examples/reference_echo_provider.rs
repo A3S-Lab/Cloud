@@ -1,7 +1,8 @@
 use a3s_cloud_contracts::{
     AgentProviderCommandReceiptV1, AgentProviderCommandV1, AgentProviderEventPageRequestV1,
     AgentProviderEventPageV1, AgentProviderEventRecordV1, AgentProviderProfile,
-    AgentProviderRunIdentityV1, AgentProviderRunStateV1, AgentProviderSemanticEventV1,
+    AgentProviderRunIdentityV1, AgentProviderRunStartV1, AgentProviderRunStateV1,
+    AgentProviderSemanticEventV1, AgentProviderToolPayloadIdentityV1, HarnessToolBindingV1,
     AGENT_PROVIDER_COMMAND_HTTP_PATH_V1, AGENT_PROVIDER_EVENT_PAGE_HTTP_PATH_V1,
 };
 use std::collections::HashMap;
@@ -16,6 +17,7 @@ const REFERENCE_ECHO_PROVIDER_PROFILE_ACL: &str = include_str!(concat!(
 ));
 const MAX_HTTP_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_BODY_BYTES: usize = 2 * 1024 * 1024;
+const APPROVAL_PROMPT: &str = "Request one governed Tool approval.";
 
 type FixtureResult<T = ()> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -24,6 +26,14 @@ struct ReferenceRun {
     identity: AgentProviderRunIdentityV1,
     state: AgentProviderRunStateV1,
     event: AgentProviderEventRecordV1,
+    pending_approval: Option<PendingApproval>,
+}
+
+#[derive(Clone)]
+struct PendingApproval {
+    call_id: String,
+    tool: HarnessToolBindingV1,
+    request_digest: String,
 }
 
 #[derive(Clone)]
@@ -75,21 +85,18 @@ impl FixtureState {
                 if self.runs.contains_key(&request.identity.run_id) {
                     return Err(invalid("provider run already exists").into());
                 }
+                let (state, event, pending_approval) =
+                    reference_start_event(request, observed_at_ms)?;
                 self.runs.insert(
                     request.identity.run_id.clone(),
                     ReferenceRun {
                         identity: request.identity.clone(),
-                        state: AgentProviderRunStateV1::Executing,
-                        event: AgentProviderEventRecordV1 {
-                            sequence: 0,
-                            occurred_at_ms: observed_at_ms,
-                            event: AgentProviderSemanticEventV1::ModelOutput {
-                                text: "reference harness output".into(),
-                            },
-                        },
+                        state,
+                        event,
+                        pending_approval,
                     },
                 );
-                AgentProviderRunStateV1::Executing
+                state
             }
             AgentProviderCommandV1::Cancel { request } => {
                 let run = self
@@ -100,6 +107,7 @@ impl FixtureState {
                     return Err(invalid("provider cancellation changed its run identity").into());
                 }
                 run.state = AgentProviderRunStateV1::Cancelled;
+                run.pending_approval = None;
                 run.state
             }
             AgentProviderCommandV1::Resume { request } => {
@@ -112,7 +120,21 @@ impl FixtureState {
                 {
                     return Err(invalid("provider resume has no matching approval state").into());
                 }
+                let pending = run
+                    .pending_approval
+                    .as_ref()
+                    .ok_or_else(|| invalid("provider resume omitted its pending Tool request"))?;
+                if request.decision.call_id != pending.call_id
+                    || request.decision.tool != pending.tool
+                    || request.decision.request_digest != pending.request_digest
+                {
+                    return Err(invalid(
+                        "provider resume changed its exact pending Tool approval identity",
+                    )
+                    .into());
+                }
                 run.state = AgentProviderRunStateV1::Executing;
+                run.pending_approval = None;
                 run.state
             }
             AgentProviderCommandV1::Recover { .. } => {
@@ -177,6 +199,67 @@ impl FixtureState {
         page.validate_for(&self.profile).map_err(invalid)?;
         Ok(page)
     }
+}
+
+fn reference_start_event(
+    request: &AgentProviderRunStartV1,
+    occurred_at_ms: u64,
+) -> FixtureResult<(
+    AgentProviderRunStateV1,
+    AgentProviderEventRecordV1,
+    Option<PendingApproval>,
+)> {
+    if request.prompt != APPROVAL_PROMPT {
+        return Ok((
+            AgentProviderRunStateV1::Executing,
+            AgentProviderEventRecordV1 {
+                sequence: 0,
+                occurred_at_ms,
+                event: AgentProviderSemanticEventV1::ModelOutput {
+                    text: "reference harness output".into(),
+                },
+            },
+            None,
+        ));
+    }
+    let invocation = request
+        .invocation_profile
+        .as_ref()
+        .ok_or_else(|| invalid("governed reference run omitted its invocation profile"))?;
+    let mut approval_tools = invocation
+        .tools
+        .iter()
+        .filter(|tool| tool.approval_required);
+    let tool = approval_tools
+        .next()
+        .cloned()
+        .ok_or_else(|| invalid("governed reference run omitted its approval-required Tool"))?;
+    if approval_tools.next().is_some() {
+        return Err(invalid("governed reference run declared multiple approval Tools").into());
+    }
+    let call_id = "reference-governed-call".to_owned();
+    let request_identity = AgentProviderToolPayloadIdentityV1 {
+        digest: format!("sha256:{}", "f".repeat(64)),
+        size_bytes: 128,
+        media_type: "application/json".into(),
+    };
+    Ok((
+        AgentProviderRunStateV1::AwaitingApproval,
+        AgentProviderEventRecordV1 {
+            sequence: 0,
+            occurred_at_ms,
+            event: AgentProviderSemanticEventV1::ToolRequest {
+                call_id: call_id.clone(),
+                tool: tool.clone(),
+                request: request_identity.clone(),
+            },
+        },
+        Some(PendingApproval {
+            call_id,
+            tool,
+            request_digest: request_identity.digest,
+        }),
+    ))
 }
 
 fn main() -> FixtureResult {
@@ -292,3 +375,7 @@ fn now_ms() -> FixtureResult<u64> {
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
+
+#[cfg(test)]
+#[path = "reference_echo_provider/tests.rs"]
+mod tests;

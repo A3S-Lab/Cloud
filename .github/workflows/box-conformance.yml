@@ -508,7 +508,7 @@ jobs:
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-non-code-box-provider.log"
           grep --fixed-strings \
-            'A3S_CLOUD_A1_NON_CODE_BOX_PROVIDER_CERTIFIED provider=reference.echo protocol=common-http start=accepted event_page=exact provider_process_restarts=1 post_restart_run=rejected cleanup=removed ' \
+            'A3S_CLOUD_A1_NON_CODE_BOX_PROVIDER_CERTIFIED provider=reference.echo protocol=common-http start=accepted event_page=exact approvals=approved,denied,expired approval_resume=exact provider_cancel=accepted provider_process_restarts=1 pending_approval_restart=rejected cleanup=removed ' \
             "$EVIDENCE_DIR/agent-non-code-box-provider.log" \
             >"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt")" -eq 1
@@ -623,8 +623,12 @@ jobs:
                 nativeCodeRecovery: true,
                 realNonCodeProvider: true,
                 commonProviderHttp: true,
+                realProviderApprovalOutcomes: true,
+                realProviderApprovalResumeReplay: true,
+                realProviderApprovalCancellation: true,
                 providerProcessRestart: true,
                 nonRecoverableRunRejected: true,
+                realProviderPendingApprovalRestartRejected: true,
                 nonCodeProviderCleanup: true,
                 nonCodeProviderFallback: true,
                 unsupportedRecoveryNoCommand: true,

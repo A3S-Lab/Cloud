@@ -34,6 +34,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+#[path = "reference_echo_provider/approval.rs"]
+mod approval;
+
 const REFERENCE_ECHO_PROVIDER_PROFILE_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/a1.3/reference-echo-provider-profile.acl"
@@ -281,6 +284,18 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         return Err(invalid("Fleet journal changed the replayed provider receipt").into());
     }
 
+    let approval_matrix = approval::exercise_approval_matrix(
+        &executor,
+        provider_harness.as_ref(),
+        runtime.as_ref(),
+        &profile,
+        &binding,
+        node_id,
+        execution_id,
+        3,
+    )
+    .await?;
+
     kill_box_process(&home, &provider_resource_id).await?;
     let recovered_started_at_ms = wait_for_restarted_provider(
         runtime.as_ref(),
@@ -289,15 +304,21 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         first_started_at_ms,
     )
     .await?;
-    let recovered_endpoint =
-        agent_provider_harness::resolve_runtime_endpoint(runtime.as_ref(), &binding).await?;
+    let recovered_endpoint = agent_provider_harness::resolve_runtime_endpoint(
+        runtime.as_ref(),
+        &approval_matrix.pending_restart_binding,
+    )
+    .await?;
     match provider_harness
         .event_page(
             &recovered_endpoint,
-            &binding,
+            &approval_matrix.pending_restart_binding,
             &AgentProviderEventPageRequestV1 {
                 schema: AgentProviderEventPageRequestV1::SCHEMA.into(),
-                identity,
+                identity: approval_matrix
+                    .pending_restart_binding
+                    .provider_run_identity
+                    .clone(),
                 after_event_sequence: Some(0),
                 limit: 64,
             },
@@ -308,8 +329,8 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         Err(AgentProviderHarnessError::Rejected { status }) if status.as_u16() == 400 => {}
         result => {
             return Err(invalid(format!(
-                "restarted non-recoverable provider retained unexpected run state: {result:?}"
-            ))
+            "restarted non-recoverable provider retained unexpected pending approval: {result:?}"
+        ))
             .into())
         }
     }
@@ -318,7 +339,7 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         .execute(command(
             node_id,
             execution_id,
-            3,
+            approval_matrix.next_sequence,
             NodeCommandPayload::RuntimeStop {
                 request: action_request("stop", &spec),
             },
@@ -339,7 +360,7 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
         .execute(command(
             node_id,
             execution_id,
-            4,
+            approval_matrix.next_sequence + 1,
             NodeCommandPayload::RuntimeRemove {
                 request: action_request("remove", &spec),
             },
@@ -362,7 +383,7 @@ async fn real_box_hosts_restarts_and_cleans_the_reference_echo_provider() -> Gat
     }
 
     println!(
-        "A3S_CLOUD_A1_NON_CODE_BOX_PROVIDER_CERTIFIED provider=reference.echo protocol=common-http start=accepted event_page=exact provider_process_restarts=1 post_restart_run=rejected cleanup=removed first_started_at_ms={first_started_at_ms} recovered_started_at_ms={recovered_started_at_ms}"
+        "A3S_CLOUD_A1_NON_CODE_BOX_PROVIDER_CERTIFIED provider=reference.echo protocol=common-http start=accepted event_page=exact approvals=approved,denied,expired approval_resume=exact provider_cancel=accepted provider_process_restarts=1 pending_approval_restart=rejected cleanup=removed first_started_at_ms={first_started_at_ms} recovered_started_at_ms={recovered_started_at_ms}"
     );
     Ok(())
 }
