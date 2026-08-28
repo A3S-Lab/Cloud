@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 default-run = "a3s-cloud-control-plane"
 
+[features]
+persistence-conformance = []
+
 [dependencies]
 a3s-acl.workspace = true
 a3s-boot.workspace = true

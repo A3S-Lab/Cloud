@@ -53,7 +53,7 @@ The executable baseline on 2026-08-28 is deliberately explicit:
 | --- | --- | --- |
 | Cross-context outer-layer imports | 60 exact source sites | Zero; every collaboration uses an owner Application port or a committed versioned fact |
 | Duplicate physical ORM mappings | 11 mapping sites across `mcp_service_profiles`, `nodes`, `operation_requests`, `workloads`, and `workflow_runs` | One mapping authority per physical table |
-| Public outer-layer facade surfaces | 47 context/layer entries after treating declarations, re-exports, and aliases as the same exposure | Zero; only Published Language and deliberate Application contracts remain cross-context |
+| Public outer-layer facade surfaces | 46 context/layer entries after treating declarations, re-exports, and aliases as the same exposure | Zero; only Published Language and deliberate Application contracts remain cross-context |
 | Domain technical dependencies and Shared Kernel back-edges | Zero | Remain zero |
 
 The current hardening slice makes Files Presentation, the Data recovery runtime,
@@ -61,12 +61,13 @@ the Developer Workflows module assembly, and the Files in-memory repository
 crate-private. Files HTTP authorization now enters through the sole root
 Presentation adapter, and every Files lifecycle transition derives its
 canonical `file.user-file.*` audit action from the one Domain persistence-write
-mapping. Two Files concrete adapters remain temporarily public for the retained
-external PostgreSQL/object-store conformance fixture; they are allowlisted migration
-debt, not a supported architectural contract. No new entry may be added to any
-debt list. Public availability does not advance from architecture refactoring
-alone; the affected real-provider and recovery gates must pass again after
-each debt-removal wave.
+mapping. Every Files adapter is crate-private. The retained external
+PostgreSQL/object-store gate compiles a non-default conformance feature that
+returns only the existing owner ports and is absent from production
+builds; it does not add a repository or object-store mechanism. No new entry
+may be added to any debt list. Public availability does not advance from
+architecture refactoring alone; the affected real-provider and recovery gates
+must pass again after each debt-removal wave.
 
 ## 2. Product position
 

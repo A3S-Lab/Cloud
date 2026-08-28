@@ -2,6 +2,9 @@
 
 pub mod app;
 pub mod config;
+#[cfg(feature = "persistence-conformance")]
+#[doc(hidden)]
+pub mod conformance;
 pub mod infrastructure;
 pub mod modules;
 pub mod presentation;

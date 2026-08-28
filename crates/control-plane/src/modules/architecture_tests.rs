@@ -747,6 +747,61 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
     );
     assert!(production_app.contains(".subnamespace(\"user-files\")"));
 
+    let conformance = std::fs::read_to_string(src.join("conformance.rs"))
+        .expect("read non-default persistence conformance assembly");
+    for owner_port in [
+        "pub repository: Arc<dyn IUserFileRepository>",
+        "pub objects: Arc<dyn IUserFileObjectStore>",
+    ] {
+        assert!(
+            conformance.contains(owner_port),
+            "Files persistence conformance lost owner port {owner_port}"
+        );
+    }
+    for adapter in [
+        "PostgresUserFileRepository::new",
+        "SharedUserFileObjectStore::local",
+    ] {
+        assert_eq!(
+            conformance.matches(adapter).count(),
+            1,
+            "Files persistence conformance must compose the one production adapter {adapter}"
+        );
+    }
+    for line in conformance
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("pub "))
+    {
+        assert!(
+            !line.contains("PostgresUserFileRepository")
+                && !line.contains("SharedUserFileObjectStore")
+                && !line.starts_with("pub use "),
+            "Files persistence conformance exposed a concrete adapter: {line}"
+        );
+    }
+
+    let lib = std::fs::read_to_string(src.join("lib.rs")).expect("read crate facade");
+    assert!(lib.contains(
+        "#[cfg(feature = \"persistence-conformance\")]\n#[doc(hidden)]\npub mod conformance;"
+    ));
+    let manifest =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+            .expect("read control-plane manifest");
+    assert!(manifest.contains("persistence-conformance = []"));
+    assert!(!manifest.lines().any(|line| {
+        line.trim_start().starts_with("default") && line.contains("persistence-conformance")
+    }));
+    let ci = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml"),
+    )
+    .expect("read CI workflow");
+    assert_eq!(
+        ci.matches("--features persistence-conformance").count(),
+        1,
+        "the non-default Files conformance assembly must stay confined to its retained gate"
+    );
+
     let migration = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations/170_user_files.sql"),
     )
@@ -1967,7 +2022,6 @@ edge -> infrastructure
 edge -> presentation
 executions -> infrastructure
 executions -> presentation
-files -> infrastructure
 fleet -> infrastructure
 fleet -> presentation
 forms -> infrastructure

@@ -1,10 +1,10 @@
 use super::*;
+use a3s_cloud_control_plane::conformance::user_file_persistence_conformance;
 use a3s_cloud_control_plane::modules::files::{
-    IUserFileRepository, PostgresUserFileRepository, RecordUserFileScan, RecordUserFileUpload,
-    ReserveUserFileWrite, SharedUserFileObjectStore, UserFile, UserFileAdmissionContract,
-    UserFileAdmissionContractSpec, UserFileApplicationService, UserFileContentReference,
-    UserFileLifecycleChanged, UserFileScanDecision, UserFileScanPolicy, UserFileState,
-    UserFileTransition,
+    RecordUserFileScan, RecordUserFileUpload, ReserveUserFileWrite, UserFile,
+    UserFileAdmissionContract, UserFileAdmissionContractSpec, UserFileApplicationService,
+    UserFileContentReference, UserFileLifecycleChanged, UserFileScanDecision, UserFileScanPolicy,
+    UserFileState, UserFileTransition,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
@@ -13,7 +13,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     UserFileId, UserFileUploadId,
 };
 use a3s_orm::DatabaseError;
-use std::{io::Cursor, sync::Arc};
+use std::io::Cursor;
 
 const TEST_QUOTA_BYTES: i64 = 8_192;
 const RESERVATION_BYTES: u64 = 6_000;
@@ -95,7 +95,10 @@ pub(super) async fn exercise_user_file_persistence(
         )
         .await?;
 
-    let repository = PostgresUserFileRepository::new(executor.clone());
+    let object_directory = tempfile::tempdir()?;
+    let conformance = user_file_persistence_conformance(executor.clone(), object_directory.path())?;
+    let repository = conformance.repository;
+    let object_store = conformance.objects;
     let scope = format!("organizations/{organization_id}/projects/{project_id}/user-files");
 
     // Force the final audit insert to fail. Every earlier mutation in the
@@ -292,10 +295,7 @@ pub(super) async fn exercise_user_file_persistence(
         (1, 1, 1)
     );
 
-    let object_directory = tempfile::tempdir()?;
-    let object_store = SharedUserFileObjectStore::local(object_directory.path())?;
-    let service =
-        UserFileApplicationService::new(Arc::new(repository.clone()), Arc::new(object_store));
+    let service = UserFileApplicationService::new(repository.clone(), object_store);
 
     let upload_request_id = Uuid::now_v7();
     let upload_key = "postgres:user-file:upload";

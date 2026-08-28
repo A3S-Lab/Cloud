@@ -220,6 +220,7 @@ mod resource_grants_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[cfg(feature = "persistence-conformance")]
 #[path = "support/user_files.rs"]
 mod user_files_support;
 #[path = "support/workflow_node_catalog.rs"]
@@ -441,6 +442,7 @@ async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
     .expect("PostgreSQL project attribution authority gate");
 }
 
+#[cfg(feature = "persistence-conformance")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {

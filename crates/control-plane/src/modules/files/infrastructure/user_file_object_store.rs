@@ -8,9 +8,11 @@ use crate::modules::files::domain::{
     UserFileContentReference, UserFileObjectWrite, USER_FILE_MAX_BYTES,
 };
 use async_trait::async_trait;
+#[cfg(any(test, feature = "persistence-conformance"))]
 use std::path::PathBuf;
 
-pub const USER_FILE_OBJECT_NAMESPACE: &str = "user-files";
+#[cfg(any(test, feature = "persistence-conformance"))]
+const USER_FILE_OBJECT_NAMESPACE: &str = "user-files";
 
 /// Files' typed adapter over the process-wide immutable-object client.
 ///
@@ -22,7 +24,8 @@ pub struct SharedUserFileObjectStore {
 }
 
 impl SharedUserFileObjectStore {
-    pub fn local(root: impl Into<PathBuf>) -> Result<Self, UserFileObjectError> {
+    #[cfg(any(test, feature = "persistence-conformance"))]
+    pub(crate) fn local(root: impl Into<PathBuf>) -> Result<Self, UserFileObjectError> {
         let objects = ImmutableObjectClient::local(root, USER_FILE_OBJECT_NAMESPACE)
             .map_err(map_object_error)?;
         Ok(Self { objects })

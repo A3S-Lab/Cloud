@@ -363,7 +363,9 @@ already enforce that current debt can shrink but cannot spread:
 - Shared Kernel dependencies and public outer-layer facades cannot expand.
   The facade ratchet treats public declarations, re-exports, and aliases as the
   same exposure; Data recovery wiring, Developer Workflows module assembly,
-  Files Presentation, and the Files in-memory adapter are now crate-private.
+  Files Presentation, and every Files adapter are now crate-private. The
+  retained external Files persistence gate receives only owner ports through a
+  non-default conformance feature.
 
 The allowlists are a migration ratchet, not an architectural exemption. The
 optimization is complete only when they are empty and affected PostgreSQL,

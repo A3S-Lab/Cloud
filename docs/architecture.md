@@ -631,6 +631,12 @@ conformance test is not a reason to widen the product facade; it consumes a
 bounded contract or crate-private fixture. Architecture fitness tests ratchet
 all equivalent spellings together.
 
+A retained external persistence test may opt into the non-default
+`persistence-conformance` build feature. That feature is absent from production
+builds and may return only existing owner ports or Published Language values;
+it cannot expose a concrete adapter or introduce another persistence path. It
+is test assembly, not a fourth product surface.
+
 Artifacts applies this rule to node-artifact transport: its async byte reader,
 descriptor, error vocabulary, and store trait are an Application-owned port.
 The Domain contains admitted artifact semantics and immutable receipts, not a
