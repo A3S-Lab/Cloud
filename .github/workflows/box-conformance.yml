@@ -190,6 +190,11 @@ jobs:
             -p a3s-box-guest-init --target x86_64-unknown-linux-musl
           cargo build --manifest-path crates/oci-runtime/Cargo.toml --locked --release \
             -p a3s-oci-cli -p a3s-oci-agent
+          cargo build --manifest-path apps/cloud/Cargo.toml --locked --release \
+            -p a3s-cloud-contracts --example reference_echo_provider \
+            --target x86_64-unknown-linux-musl
+          test -x \
+            apps/cloud/target/x86_64-unknown-linux-musl/release/examples/reference_echo_provider
 
       - name: Build the pinned A3S Gateway for the joint Durable Cell gate
         if: ${{ inputs.run_cell_bundle_publication == true }}
@@ -469,6 +474,10 @@ jobs:
 
       - name: Certify Agent provider, checkpoint, and fork recovery
         env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_REFERENCE_ECHO_PROVIDER_PATH: ${{ github.workspace }}/apps/cloud/target/x86_64-unknown-linux-musl/release/examples/reference_echo_provider
+          A3S_CLOUD_TEST_BOX: "1"
           A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
@@ -478,6 +487,31 @@ jobs:
           rustup_home=$(rustup show home)
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)
           box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_CLOUD_REFERENCE_ECHO_PROVIDER_PATH="$A3S_CLOUD_REFERENCE_ECHO_PROVIDER_PATH" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_runtime::tests::reference_echo_provider::real_box_hosts_restarts_and_cleans_the_reference_echo_provider \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/agent-non-code-box-provider.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_A1_NON_CODE_BOX_PROVIDER_CERTIFIED provider=reference.echo protocol=common-http start=accepted event_page=exact provider_process_restarts=1 post_restart_run=rejected cleanup=removed ' \
+            "$EVIDENCE_DIR/agent-non-code-box-provider.log" \
+            >"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt")" -eq 1
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
@@ -540,6 +574,7 @@ jobs:
             --arg box "$box_revision" \
             --rawfile runtimeCertification "$EVIDENCE_DIR/agent-runtime-process-death-certification.txt" \
             --rawfile postgresCertification "$EVIDENCE_DIR/agent-code-postgres-recovery-certification.txt" \
+            --rawfile nonCodeBoxCertification "$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt" \
             --rawfile nonCodeFallbackCertification "$EVIDENCE_DIR/agent-non-code-postgres-fallback-certification.txt" \
             --rawfile checkpointCertification "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery-certification.txt" \
             '{
@@ -550,6 +585,7 @@ jobs:
               postgresImage: "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4",
               runtimeCertification: ($runtimeCertification | rtrimstr("\n")),
               postgresCertification: ($postgresCertification | rtrimstr("\n")),
+              nonCodeBoxCertification: ($nonCodeBoxCertification | rtrimstr("\n")),
               nonCodeFallbackCertification: ($nonCodeFallbackCertification | rtrimstr("\n")),
               checkpointCertification: ($checkpointCertification | rtrimstr("\n")),
               checks: {
@@ -564,6 +600,11 @@ jobs:
                 invocationProfileRestored: true,
                 invocationProfileImmutable: true,
                 nativeCodeRecovery: true,
+                realNonCodeProvider: true,
+                commonProviderHttp: true,
+                providerProcessRestart: true,
+                nonRecoverableRunRejected: true,
+                nonCodeProviderCleanup: true,
                 nonCodeProviderFallback: true,
                 unsupportedRecoveryNoCommand: true,
                 nonCodeTerminalReplayExact: true,
@@ -594,6 +635,8 @@ jobs:
               agent-runtime-process-death-certification.txt \
               agent-code-postgres-recovery.log \
               agent-code-postgres-recovery-certification.txt \
+              agent-non-code-box-provider.log \
+              agent-non-code-box-provider-certification.txt \
               agent-non-code-postgres-fallback.log \
               agent-non-code-postgres-fallback-certification.txt \
               agent-checkpoint-postgres-recovery.log \
