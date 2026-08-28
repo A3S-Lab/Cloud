@@ -106,7 +106,7 @@ pub(super) async fn exercise_user_file_persistence(
         .get()
         .await?
         .batch_execute(
-            "alter table audit_records add constraint user_file_audit_failure_probe check (action <> 'user-file.reserved')",
+            "alter table audit_records add constraint user_file_audit_failure_probe check (action <> 'file.user-file.reserved')",
         )
         .await?;
     let rollback_probe = reserve_write(

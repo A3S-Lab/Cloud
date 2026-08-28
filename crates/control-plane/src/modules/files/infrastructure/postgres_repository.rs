@@ -185,7 +185,7 @@ impl IUserFileRepository for PostgresUserFileRepository {
                         write.actor_principal_id,
                         write.request_id,
                         &write.idempotency,
-                        "user-file.reserved",
+                        write.audit_action(),
                         false,
                     )
                     .await?;

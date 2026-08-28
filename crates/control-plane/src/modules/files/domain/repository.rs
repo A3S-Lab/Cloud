@@ -3,8 +3,8 @@ use super::{
     UserFileScanReceipt, UserFileState,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    UserFileId,
+    validate_audit_action, IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId,
+    ProjectId, RepositoryError, UserFileId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -32,7 +32,12 @@ impl ReserveUserFileWrite {
         {
             return Err("initial UserFile persistence write is invalid".into());
         }
+        validate_audit_action(self.audit_action())?;
         validate_event(&self.event, &self.file, self.request_id)
+    }
+
+    pub const fn audit_action(&self) -> &'static str {
+        user_file_audit_action(self.file.state)
     }
 }
 
@@ -58,6 +63,7 @@ impl TransitionUserFileWrite {
         {
             return Err("UserFile lifecycle persistence write is invalid".into());
         }
+        validate_audit_action(self.audit_action())?;
         validate_event(&self.event, &self.file, self.request_id)
     }
 
@@ -75,14 +81,18 @@ impl TransitionUserFileWrite {
     }
 
     pub const fn audit_action(&self) -> &'static str {
-        match self.file.state {
-            UserFileState::AwaitingUpload => "user-file.reserved",
-            UserFileState::AwaitingScan => "user-file.upload-recorded",
-            UserFileState::Admitted => "user-file.admitted",
-            UserFileState::Rejected => "user-file.rejected",
-            UserFileState::Expired => "user-file.expired",
-            UserFileState::Tombstoned => "user-file.tombstoned",
-        }
+        user_file_audit_action(self.file.state)
+    }
+}
+
+const fn user_file_audit_action(state: UserFileState) -> &'static str {
+    match state {
+        UserFileState::AwaitingUpload => "file.user-file.reserved",
+        UserFileState::AwaitingScan => "file.user-file.upload-recorded",
+        UserFileState::Admitted => "file.user-file.admitted",
+        UserFileState::Rejected => "file.user-file.rejected",
+        UserFileState::Expired => "file.user-file.expired",
+        UserFileState::Tombstoned => "file.user-file.tombstoned",
     }
 }
 
