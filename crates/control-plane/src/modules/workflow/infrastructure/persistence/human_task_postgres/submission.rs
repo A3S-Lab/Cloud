@@ -1,107 +1,38 @@
-mod schema;
-
-use self::schema::FormSubmissions;
-use crate::infrastructure::{
-    execute, fetch_optional, require_one_row, transaction_error, PostgresPersistenceError,
-};
-use crate::modules::forms::domain::{FormSubmission, IFormSubmissionRepository};
+use super::schema::FormSubmissions;
+use crate::infrastructure::{execute, fetch_optional, require_one_row, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, FormSubmissionId, HumanTaskId, OrganizationId, RepositoryError,
+    canonical_json_bounded, FormSubmissionId, OrganizationId,
 };
+use crate::modules::workflow::domain::HumanTaskSubmission;
 use a3s_form_core::FormInteractionOutcome;
 use a3s_orm::expression::Selection;
-use a3s_orm::{
-    insert_into, select_from, DecodeError, Expression, FromRow, FromValue, PostgresExecutor, Row,
-};
-use async_trait::async_trait;
+use a3s_orm::{insert_into, select_from, DecodeError, Expression, FromRow, FromValue, Row};
 use uuid::Uuid;
 
-const FORM_SUBMISSION_RECORD_MAX_BYTES: usize = 2 * 1024 * 1024;
+const HUMAN_TASK_SUBMISSION_RECORD_MAX_BYTES: usize = 2 * 1024 * 1024;
 
-#[derive(Clone)]
-pub struct PostgresFormSubmissionRepository {
-    executor: PostgresExecutor,
-}
-
-impl PostgresFormSubmissionRepository {
-    pub const fn new(executor: PostgresExecutor) -> Self {
-        Self { executor }
-    }
-}
-
-#[async_trait]
-impl IFormSubmissionRepository for PostgresFormSubmissionRepository {
-    async fn find_submission(
-        &self,
-        organization_id: OrganizationId,
-        submission_id: FormSubmissionId,
-    ) -> Result<Option<FormSubmission>, RepositoryError> {
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    fetch_optional::<FormSubmissionRow, _>(
-                        transaction,
-                        submission_select()
-                            .filter(
-                                FormSubmissions::organization_id().eq(organization_id.as_uuid()),
-                            )
-                            .filter(FormSubmissions::id().eq(submission_id.as_uuid())),
-                    )
-                    .await?
-                    .map(decode_submission)
-                    .transpose()
-                })
-            })
-            .await
-            .map_err(transaction_error)
-    }
-
-    async fn find_task_submission(
-        &self,
-        organization_id: OrganizationId,
-        human_task_id: HumanTaskId,
-    ) -> Result<Option<FormSubmission>, RepositoryError> {
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    fetch_optional::<FormSubmissionRow, _>(
-                        transaction,
-                        submission_select()
-                            .filter(
-                                FormSubmissions::organization_id().eq(organization_id.as_uuid()),
-                            )
-                            .filter(FormSubmissions::human_task_id().eq(human_task_id.as_uuid())),
-                    )
-                    .await?
-                    .map(decode_submission)
-                    .transpose()
-                })
-            })
-            .await
-            .map_err(transaction_error)
-    }
-}
-
-pub(crate) async fn insert_form_submission(
+pub(super) async fn insert_human_task_submission(
     transaction: &a3s_orm::PostgresTransaction,
-    submission: &FormSubmission,
+    submission: &HumanTaskSubmission,
 ) -> Result<(), PostgresPersistenceError> {
     submission.validate().map_err(|error| {
-        PostgresPersistenceError::Invariant(format!("FormSubmission is invalid: {error}"))
+        PostgresPersistenceError::Invariant(format!("HumanTaskSubmission is invalid: {error}"))
     })?;
     let form_id = parse_form_uuid(&submission.form_release.form_id, "form")?;
     let form_release_id = parse_form_uuid(&submission.form_release.release_id, "release")?;
     let record_json = String::from_utf8(
         canonical_json_bounded(
             submission,
-            FORM_SUBMISSION_RECORD_MAX_BYTES,
-            "FormSubmission record",
+            HUMAN_TASK_SUBMISSION_RECORD_MAX_BYTES,
+            "HumanTaskSubmission record",
         )
         .map_err(PostgresPersistenceError::Invariant)?,
     )
-    .map_err(|_| PostgresPersistenceError::Invariant("FormSubmission JSON is not UTF-8".into()))?;
+    .map_err(|_| {
+        PostgresPersistenceError::Invariant("HumanTaskSubmission JSON is not UTF-8".into())
+    })?;
     require_one_row(
-        "FormSubmission",
+        "HumanTaskSubmission",
         execute(
             transaction,
             insert_into::<FormSubmissions>()
@@ -180,12 +111,12 @@ pub(crate) async fn insert_form_submission(
     )
 }
 
-pub(crate) async fn load_form_submission(
+pub(super) async fn load_human_task_submission(
     transaction: &a3s_orm::PostgresTransaction,
     organization_id: OrganizationId,
     submission_id: FormSubmissionId,
-) -> Result<Option<FormSubmission>, PostgresPersistenceError> {
-    fetch_optional::<FormSubmissionRow, _>(
+) -> Result<Option<HumanTaskSubmission>, PostgresPersistenceError> {
+    fetch_optional::<HumanTaskSubmissionRow, _>(
         transaction,
         submission_select()
             .filter(FormSubmissions::organization_id().eq(organization_id.as_uuid()))
@@ -196,14 +127,14 @@ pub(crate) async fn load_form_submission(
     .transpose()
 }
 
-fn submission_select() -> a3s_orm::query::SelectQuery<FormSubmissions, FormSubmissionRow> {
-    select_from::<FormSubmissions>().select(FormSubmissionSelection)
+fn submission_select() -> a3s_orm::query::SelectQuery<FormSubmissions, HumanTaskSubmissionRow> {
+    select_from::<FormSubmissions>().select(HumanTaskSubmissionSelection)
 }
 
-struct FormSubmissionSelection;
+struct HumanTaskSubmissionSelection;
 
-impl Selection for FormSubmissionSelection {
-    type Output = FormSubmissionRow;
+impl Selection for HumanTaskSubmissionSelection {
+    type Output = HumanTaskSubmissionRow;
 
     fn expressions(self) -> Vec<Expression> {
         vec![
@@ -215,11 +146,13 @@ impl Selection for FormSubmissionSelection {
     }
 }
 
-fn decode_submission(row: FormSubmissionRow) -> Result<FormSubmission, PostgresPersistenceError> {
-    let submission: FormSubmission = serde_json::from_str(&row.record_json)?;
+fn decode_submission(
+    row: HumanTaskSubmissionRow,
+) -> Result<HumanTaskSubmission, PostgresPersistenceError> {
+    let submission: HumanTaskSubmission = serde_json::from_str(&row.record_json)?;
     submission.validate().map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
-            "stored FormSubmission record is invalid: {error}"
+            "stored HumanTaskSubmission record is invalid: {error}"
         ))
     })?;
     if submission.organization_id.as_uuid() != row.organization_id
@@ -227,23 +160,23 @@ fn decode_submission(row: FormSubmissionRow) -> Result<FormSubmission, PostgresP
         || submission.human_task_id.as_uuid() != row.human_task_id
     {
         return Err(PostgresPersistenceError::Invariant(
-            "stored FormSubmission indexed authority drifted from its record".into(),
+            "stored HumanTaskSubmission indexed authority drifted from its record".into(),
         ));
     }
     let canonical = String::from_utf8(
         canonical_json_bounded(
             &submission,
-            FORM_SUBMISSION_RECORD_MAX_BYTES,
-            "stored FormSubmission record",
+            HUMAN_TASK_SUBMISSION_RECORD_MAX_BYTES,
+            "stored HumanTaskSubmission record",
         )
         .map_err(PostgresPersistenceError::Invariant)?,
     )
     .map_err(|_| {
-        PostgresPersistenceError::Invariant("stored FormSubmission JSON is not UTF-8".into())
+        PostgresPersistenceError::Invariant("stored HumanTaskSubmission JSON is not UTF-8".into())
     })?;
     if canonical != row.record_json {
         return Err(PostgresPersistenceError::Invariant(
-            "stored FormSubmission record is not canonical".into(),
+            "stored HumanTaskSubmission record is not canonical".into(),
         ));
     }
     Ok(submission)
@@ -252,7 +185,7 @@ fn decode_submission(row: FormSubmissionRow) -> Result<FormSubmission, PostgresP
 fn parse_form_uuid(value: &str, label: &str) -> Result<Uuid, PostgresPersistenceError> {
     Uuid::parse_str(value).map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
-            "FormSubmission {label} identity is not a Cloud UUID: {error}"
+            "HumanTaskSubmission {label} identity is not a Cloud UUID: {error}"
         ))
     })
 }
@@ -265,14 +198,14 @@ const fn outcome_name(outcome: FormInteractionOutcome) -> &'static str {
     }
 }
 
-struct FormSubmissionRow {
+struct HumanTaskSubmissionRow {
     organization_id: Uuid,
     id: Uuid,
     human_task_id: Uuid,
     record_json: String,
 }
 
-impl FromRow for FormSubmissionRow {
+impl FromRow for HumanTaskSubmissionRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
             organization_id: decode(row, 0)?,

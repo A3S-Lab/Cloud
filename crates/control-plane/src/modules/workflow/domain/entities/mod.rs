@@ -1,5 +1,6 @@
 mod human_task;
 mod human_task_interaction;
+mod human_task_submission;
 mod ontology;
 mod ontology_revision;
 mod plan_revision;
@@ -12,6 +13,9 @@ mod workflow_step_projection;
 
 pub use human_task::{HumanTask, HumanTaskStatus, NewHumanTask};
 pub use human_task_interaction::{HumanTaskInteractionSpec, HumanTaskRecord};
+pub use human_task_submission::{
+    AcceptedHumanTaskSubmission, HumanTaskSubmission, HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES,
+};
 pub use ontology::Ontology;
 pub use ontology_revision::{OntologyRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION};
 pub use plan_revision::{

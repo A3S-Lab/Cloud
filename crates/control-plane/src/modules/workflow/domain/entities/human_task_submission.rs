@@ -11,11 +11,11 @@ use a3s_form_core::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-const FORM_SUBMISSION_DIGEST_CONTENT_MAX_BYTES: usize = 64 * 1024;
-pub const CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES: u64 = DEFAULT_INTERACTION_MAX_VALUE_BYTES;
+const HUMAN_TASK_SUBMISSION_DIGEST_CONTENT_MAX_BYTES: usize = 64 * 1024;
+pub const HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES: u64 = DEFAULT_INTERACTION_MAX_VALUE_BYTES;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AcceptedFormSubmission {
+pub struct AcceptedHumanTaskSubmission {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub id: FormSubmissionId,
@@ -30,7 +30,7 @@ pub struct AcceptedFormSubmission {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FormSubmission {
+pub struct HumanTaskSubmission {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub id: FormSubmissionId,
@@ -67,7 +67,7 @@ pub struct FormSubmission {
 }
 
 #[derive(Serialize)]
-struct FormSubmissionDigestContent<'a> {
+struct HumanTaskSubmissionDigestContent<'a> {
     organization_id: OrganizationId,
     project_id: ProjectId,
     id: FormSubmissionId,
@@ -101,8 +101,8 @@ struct FormSubmissionDigestContent<'a> {
     accepted_at: DateTime<Utc>,
 }
 
-impl FormSubmission {
-    pub fn accept(input: AcceptedFormSubmission) -> Result<Self, String> {
+impl HumanTaskSubmission {
+    pub fn accept(input: AcceptedHumanTaskSubmission) -> Result<Self, String> {
         input
             .request
             .validate()
@@ -245,9 +245,9 @@ impl FormSubmission {
             || self.task_expires_at.is_some_and(|expires_at| {
                 self.submitted_at >= expires_at || self.accepted_at >= expires_at
             })
-            || !(1..=CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES).contains(&self.max_value_bytes)
+            || !(1..=HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES).contains(&self.max_value_bytes)
         {
-            return Err("stored FormSubmission identity or timestamps are invalid".into());
+            return Err("stored HumanTaskSubmission identity or timestamps are invalid".into());
         }
         self.form_release
             .validate()
@@ -264,13 +264,13 @@ impl FormSubmission {
                 != self.output_digest.as_str()
             || self.compute_digest()? != self.digest
         {
-            return Err("stored FormSubmission canonical content or digest is invalid".into());
+            return Err("stored HumanTaskSubmission canonical content or digest is invalid".into());
         }
         Ok(())
     }
 
     fn compute_digest(&self) -> Result<Sha256Digest, String> {
-        let content = FormSubmissionDigestContent {
+        let content = HumanTaskSubmissionDigestContent {
             organization_id: self.organization_id,
             project_id: self.project_id,
             id: self.id,
@@ -305,14 +305,14 @@ impl FormSubmission {
         };
         let canonical = canonical_json_bounded(
             &content,
-            FORM_SUBMISSION_DIGEST_CONTENT_MAX_BYTES,
-            "FormSubmission digest content",
+            HUMAN_TASK_SUBMISSION_DIGEST_CONTENT_MAX_BYTES,
+            "HumanTaskSubmission digest content",
         )?;
         Sha256Digest::parse(sha256_digest(&canonical))
     }
 }
 
-impl AcceptedFormSubmission {
+impl AcceptedHumanTaskSubmission {
     fn form_contract_matches(&self) -> Result<(), String> {
         let request = &self.request;
         let submission = &self.submission;
@@ -355,7 +355,7 @@ fn validate_output_mapping(mapping: &FormInteractionOutputMapping) -> Result<(),
     } = mapping
     {
         if !valid_external_identity(registry_key) || *revision == 0 {
-            return Err("stored FormSubmission output mapping is invalid".into());
+            return Err("stored HumanTaskSubmission output mapping is invalid".into());
         }
         Sha256Digest::parse(digest.clone())?;
     }

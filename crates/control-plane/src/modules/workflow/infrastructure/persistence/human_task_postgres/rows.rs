@@ -2,9 +2,9 @@ use super::schema::{
     FormReleases, HumanTasks, WorkflowDecisions, WorkflowHumanTaskInbox, WorkflowResumeOutbox,
     WorkflowResumeReceipts, WorkflowRuns,
 };
+use super::submission::load_human_task_submission;
 use super::HUMAN_TASK_RECORD_MAX_BYTES;
 use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
-use crate::modules::forms::infrastructure::persistence::load_form_submission;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, FormSubmissionId, HumanTaskId, OrganizationId, RepositoryError,
     WorkflowDecisionId,
@@ -247,7 +247,7 @@ pub(super) async fn decode_decision_record(
     .await?;
     let submission = match row.form_submission_id {
         Some(id) => Some(
-            load_form_submission(
+            load_human_task_submission(
                 transaction,
                 OrganizationId::from_uuid(row.organization_id),
                 FormSubmissionId::from_uuid(id),
@@ -255,7 +255,7 @@ pub(super) async fn decode_decision_record(
             .await?
             .ok_or_else(|| {
                 PostgresPersistenceError::Invariant(
-                    "WorkflowDecision is missing its FormSubmission".into(),
+                    "WorkflowDecision is missing its HumanTaskSubmission".into(),
                 )
             })?,
         ),

@@ -2492,8 +2492,9 @@ node.
   through the existing Form draft, then authorizes its canonical project
   before reads, revisions, publication, or idempotency replay across REST and
   Management MCP. Environment-only grants do not imply project-level Form
-  access. Releases inherit the draft's project identity; FormSubmission and
-  HumanTask remain Workflow-owned boundaries and do not borrow this resolver.
+  access. Releases inherit the draft's project identity; HumanTaskSubmission
+  evidence (with its historical FormSubmission identity) and HumanTask remain
+  Workflow-owned boundaries and do not borrow this resolver.
   The Assets vertical slice routes indirect catalog reads and mutations,
   release selection, hosted Git Smart HTTP, and MCP Service profile reads and
   bindings through one Assets-owned resolver backed by the existing Asset
@@ -5183,9 +5184,10 @@ CLI, and MCP role/tenant/lifecycle tests pass without copying the Form compiler
 or validator. Migration `080` persists the exact Goal/Plan-bound WorkflowRun,
 correlated Operation, semantic step projections, idempotency, audit, and Outbox
 atomically through A3S ORM. Migration `081` persists immutable accepted
-FormSubmission records, optimistic HumanTasks, immutable WorkflowDecisions,
-hook Inbox evidence, and a leased resume Outbox with immutable receipts through
-typed A3S ORM queries. The existing worker and reconciler execute Workflow-local
+HumanTaskSubmission evidence under its historical `form_submissions` table,
+optimistic HumanTasks, immutable WorkflowDecisions, hook Inbox evidence, and a
+leased resume Outbox with immutable receipts through typed A3S ORM queries. The
+existing worker and reconciler execute Workflow-local
 `input`, `transform`, `branch`, `human_decision`, and `output` steps through one
 A3S Flow run. They verify immutable plan, input, payload, FormRelease, and hook
 authority during replay, reject drift, create and activate the task, and resume
@@ -5195,7 +5197,12 @@ the same coordinator recomputes the exact Run/Plan deadline authority and
 atomically stores a deterministic expiry decision through the existing
 decision/Outbox path. Migration `097` adds exact parent-cancellation candidates,
 persists the cancelling Principal, makes cancellation preempt expiry, and stores
-the deterministic cancellation decision through that same transaction. The
+the deterministic cancellation decision through that same transaction.
+Migration `172` corrects the historical submission table's ownership
+description without rewriting IDs, canonical record JSON, URNs, or replay
+evidence. Forms owns definitions/releases and semantic evaluation; Workflow
+owns the evidence and enters Forms only through one consumer-owned port and one
+Infrastructure adapter. The
 same resume worker accepts exact `HookReceived` evidence, a matching parent
 `RunTimedOut` event for expiry, or exact `RunCancelled` terminal supersession
 evidence, closing both races without a timer service or a second queue.

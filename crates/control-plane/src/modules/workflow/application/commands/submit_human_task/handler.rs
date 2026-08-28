@@ -1,68 +1,38 @@
 use super::SubmitHumanTask;
-use crate::modules::forms::domain::{
-    AcceptedFormSubmission, FormSubmission, IFormRepository, IFormSemanticCore,
-};
 use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisionRepository;
 use crate::modules::identity::domain::services::ResourceAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    FormId, FormReleaseId, FormSubmissionId, IdempotencyRequest, WorkflowDecisionId,
+    FormSubmissionId, IdempotencyRequest, WorkflowDecisionId,
 };
 use crate::modules::workflow::application::{
-    human_task_access, resource_access, HumanTaskMutationResult,
+    human_task_access, resource_access, HumanTaskFormEvaluation, HumanTaskMutationResult,
+    IHumanTaskFormPort,
 };
 use crate::modules::workflow::domain::{
-    DecideHumanTaskWrite, FlowResumePayload, HumanTaskDecisionRecord, HumanTaskStateChanged,
-    IHumanTaskRepository, WorkflowDecision,
+    AcceptedHumanTaskSubmission, DecideHumanTaskWrite, FlowResumePayload, HumanTaskDecisionRecord,
+    HumanTaskStateChanged, HumanTaskSubmission, IHumanTaskRepository, WorkflowDecision,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
-use a3s_form_core::{
-    canonicalize_json, parse_json, EvaluateRequest, EvaluationOptions,
-    EVALUATE_REQUEST_API_VERSION, EVALUATE_RESPONSE_API_VERSION,
-};
-use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct EvaluationResponseEnvelope {
-    api_version: String,
-    compiler_revision: String,
-    ok: bool,
-    value: Option<a3s_form_core::CanonicalValue>,
-    #[serde(rename = "trace")]
-    _trace: Vec<serde_json::Value>,
-    errors: Vec<EvaluationErrorEnvelope>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EvaluationErrorEnvelope {
-    path: String,
-    code: String,
-    message: String,
-}
-
 pub struct SubmitHumanTaskHandler {
     human_tasks: Arc<dyn IHumanTaskRepository>,
-    forms: Arc<dyn IFormRepository>,
-    semantic_core: Arc<dyn IFormSemanticCore>,
+    forms: Arc<dyn IHumanTaskFormPort>,
     authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
 }
 
 impl SubmitHumanTaskHandler {
     pub fn new(
         human_tasks: Arc<dyn IHumanTaskRepository>,
-        forms: Arc<dyn IFormRepository>,
-        semantic_core: Arc<dyn IFormSemanticCore>,
+        forms: Arc<dyn IHumanTaskFormPort>,
         authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     ) -> Self {
         Self {
             human_tasks,
             forms,
-            semantic_core,
             authorization_decisions,
         }
     }
@@ -77,7 +47,6 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
     {
         let human_tasks = Arc::clone(&self.human_tasks);
         let forms = Arc::clone(&self.forms);
-        let semantic_core = Arc::clone(&self.semantic_core);
         let authorization_decisions = Arc::clone(&self.authorization_decisions);
         Box::pin(async move {
             let mut record = match resource_access::human_task(
@@ -148,16 +117,14 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                     )))
                 }
             };
-            let form_release = match find_exact_form_release(forms.as_ref(), &record).await {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error)),
-            };
-            let accepted_value = match evaluate_submission(
-                semantic_core,
-                form_release.content.form_plan_json(),
-                &command.submission.value,
-            )
-            .await
+            let accepted_value = match forms
+                .evaluate_submission(&HumanTaskFormEvaluation {
+                    organization_id: command.organization_id,
+                    project_id: record.task.project_id,
+                    form_release: record.task.form_release.clone(),
+                    candidate: command.submission.value.clone(),
+                })
+                .await
             {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
@@ -191,7 +158,7 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                     ))))
                 }
             };
-            let submission = match FormSubmission::accept(AcceptedFormSubmission {
+            let submission = match HumanTaskSubmission::accept(AcceptedHumanTaskSubmission {
                 organization_id: command.organization_id,
                 project_id: record.task.project_id,
                 id: submission_id,
@@ -258,89 +225,4 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
             }
         })
     }
-}
-
-async fn find_exact_form_release(
-    forms: &dyn IFormRepository,
-    record: &crate::modules::workflow::domain::HumanTaskRecord,
-) -> ApplicationResult<crate::modules::forms::domain::FormRelease> {
-    let form_id = Uuid::parse_str(&record.task.form_release.form_id)
-        .map(FormId::from_uuid)
-        .map_err(|_| ApplicationError::Internal("HumanTask Form identity is invalid".into()))?;
-    let release_id = Uuid::parse_str(&record.task.form_release.release_id)
-        .map(FormReleaseId::from_uuid)
-        .map_err(|_| {
-            ApplicationError::Internal("HumanTask Form release identity is invalid".into())
-        })?;
-    let release = forms
-        .find_release(record.task.organization_id, form_id, release_id)
-        .await
-        .map_err(ApplicationError::from)?
-        .ok_or_else(|| {
-            ApplicationError::Conflict("HumanTask Form release is unavailable".into())
-        })?;
-    if release.project_id != record.task.project_id
-        || release.release_ref().map_err(ApplicationError::Internal)? != record.task.form_release
-    {
-        return Err(ApplicationError::Conflict(
-            "HumanTask Form release authority drifted".into(),
-        ));
-    }
-    Ok(release)
-}
-
-async fn evaluate_submission(
-    semantic_core: Arc<dyn IFormSemanticCore>,
-    form_plan_json: &str,
-    candidate: &a3s_form_core::CanonicalValue,
-) -> ApplicationResult<a3s_form_core::CanonicalValue> {
-    let form_plan = parse_json(form_plan_json.as_bytes()).map_err(|error| {
-        ApplicationError::Internal(format!("stored Form plan could not be decoded: {error}"))
-    })?;
-    let request = EvaluateRequest {
-        api_version: EVALUATE_REQUEST_API_VERSION.into(),
-        form_plan,
-        value: candidate.clone(),
-        options: EvaluationOptions::default(),
-    };
-    let request = serde_json::to_vec(&request).map_err(|error| {
-        ApplicationError::Internal(format!("Form evaluation request failed: {error}"))
-    })?;
-    let request = canonicalize_json(&request).map_err(|error| {
-        ApplicationError::Internal(format!("Form evaluation request is not canonical: {error}"))
-    })?;
-    let expected_compiler_revision = semantic_core.compiler_revision();
-    let response = tokio::task::spawn_blocking(move || semantic_core.evaluate(&request))
-        .await
-        .map_err(|error| {
-            ApplicationError::Internal(format!("Form evaluator task failed: {error}"))
-        })?
-        .map_err(|error| ApplicationError::Unavailable(error.to_string()))?;
-    let response: EvaluationResponseEnvelope =
-        serde_json::from_slice(&response).map_err(|error| {
-            ApplicationError::Internal(format!("Form evaluator response is invalid JSON: {error}"))
-        })?;
-    if response.api_version != EVALUATE_RESPONSE_API_VERSION
-        || response.compiler_revision != expected_compiler_revision
-    {
-        return Err(ApplicationError::Internal(
-            "Form evaluator returned an incompatible protocol identity".into(),
-        ));
-    }
-    if !response.ok {
-        return Err(ApplicationError::Invalid(evaluation_failure(&response)));
-    }
-    response.value.ok_or_else(|| {
-        ApplicationError::Internal("successful Form evaluation omitted the accepted value".into())
-    })
-}
-
-fn evaluation_failure(response: &EvaluationResponseEnvelope) -> String {
-    let Some(error) = response.errors.first() else {
-        return "Form submission evaluation failed without a diagnostic".into();
-    };
-    format!(
-        "Form submission evaluation failed ({}) at {}: {}",
-        error.code, error.path, error.message
-    )
 }

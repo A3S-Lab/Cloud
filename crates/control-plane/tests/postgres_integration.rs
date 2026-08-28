@@ -4273,6 +4273,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(decision_submission_foreign_key, 1);
+    let human_task_submission_owner = database
+        .fetch_one_as(sql_query::<String>(
+            "select coalesce(obj_description('form_submissions'::regclass), '')",
+        ))
+        .await?;
+    assert!(human_task_submission_owner
+        .contains("Workflow-owned immutable HumanTaskSubmission evidence"));
+    assert!(human_task_submission_owner
+        .contains("Forms owns definitions, releases, and semantic evaluation"));
     let node_command_kind_constraint = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'node_commands'::regclass and conname = 'node_commands_command_kind_check'",

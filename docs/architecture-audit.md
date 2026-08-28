@@ -74,16 +74,16 @@ all boundaries are interface-only:
    trait and aggregate directly. The dependency is abstract in Rust, but it
    still bypasses the owning application boundary.
 3. Production code contains direct cross-context Infrastructure and
-   Presentation dependencies. The Artifacts-to-Assets persistence edge has
-   been removed; the most important remaining examples are Workflow to Forms
-   persistence, Durable Cells to Workloads/Edge implementation types, and
-   shared tenant guards defined under Identity presentation.
+   Presentation dependencies. The Artifacts-to-Assets persistence edge and
+   Workflow-to-Forms persistence edge have been removed; the most important
+   remaining examples are Durable Cells to Workloads/Edge implementation
+   types and shared tenant guards defined under Identity presentation.
 4. Multiple modules independently map the same physical tables. The source
    scan found duplicate mappings for operation_requests, workloads, nodes,
    mcp_service_profiles, and workflow_runs. The workflow_runs duplication is
-   internal to Workflow but still creates two schema authorities. Workflow also
-   maps Forms-owned release state, while
-   Forms still contains raw SQL for its own release records.
+   internal to Workflow but still creates two schema authorities. Forms still
+   contains raw SQL for its own release records; HumanTask submission evidence
+   now has one Workflow-owned mapper only.
 5. The architecture text says domain code has no Runtime or Flow imports, while
    several execution-plane domains use pure a3s-runtime contract types and the
    Workflow domain deliberately uses the pure Flow DAG compiler. The target
@@ -172,8 +172,8 @@ snapshot or an application port result.
 | --- | --- | --- | --- |
 | Agents | Conversation, AgentExecution, semantic event sequence, approvals/checkpoints/forks trajectory | Semantic state is separate from Runtime logs and generic Executions. Start, fork, and Workflow dispatch now consume one Agents-owned `IAgentReleaseAdmissionPort`; only the consumer-owned Infrastructure adapter may compose the Assets deployable-release and Artifacts OCI-location owner interfaces, and it returns one immutable `AgentReleaseBinding`. Application imports neither owner repository/query interface nor the foreign deployable read model. An architecture fitness test rejects a second adapter, concrete persistence, Outbox/projector, command handler, or worker in this boundary. | Keep provider-neutral Harness execution behind Agents-owned ports and the common Workloads/Fleet/Runtime path. Apply the same owner-port rule to remaining model/Tool producers; never add an Agent release repository, build query, scheduler, or retry mechanism. |
 | Applications | Application/release, session, invocation, message, variable, and delivery semantics | The Application layer now has no direct Workflow module dependency. Both invocation boundaries enter timeout admission through `IApplicationWorkflowRunPort`; its sole production adapter delegates to Workflow's owning rule, the copied 30-day Domain constant is removed, public schemas reference owner constants, and migration `171` removes migration `127`'s historical database copy. An architecture fitness test rejects a direct Workflow import, a second timeout-rule entry point, or another copied bound. | Preserve the anti-corruption layer: all Workflow compilation/run/effect interaction travels through Applications-owned ports and published snapshots. Keep Workflow repositories, timeout helpers, defaults, and maxima outside Applications Application and Domain code. |
-| Workflow | Ontology, WorkflowDefinition, Goal, Plan, WorkflowRun, HumanTask, decision, and semantic step projections | Rich invariants and strong Flow authority tests. Domain imports Forms submission types; persistence reads/writes Forms state directly. The module is also large enough that internal packages need explicit ownership. | Define internal subdomains for Definition/Planning, Run, and Human Interaction. Access Executions, Connectors, Applications, and Forms only through application ports. Flow remains the only durable execution history. |
-| Forms | Form draft/release schema and form semantic validation | Domain is isolated and already guarded. FormSubmission is declared Forms-owned while Workflow persists it inside the HumanTask transaction, so authority and storage disagree. | Make the ownership decision explicit. Recommended: Forms owns definitions/releases and validation; Workflow owns an immutable HumanTaskSubmission evidence value. If general standalone submissions are later required, they use a separate Forms command and aggregate. |
+| Workflow | Ontology, WorkflowDefinition, Goal, Plan, WorkflowRun, HumanTask, decision, and semantic step projections | Rich invariants and strong Flow authority tests. Workflow now owns immutable `HumanTaskSubmission` evidence and the sole historical `form_submissions` mapper. Its Application and Domain layers import no Forms internals; task coordination and submission evaluation share one consumer-owned `IHumanTaskFormPort`, implemented by one Infrastructure adapter. Migration `172` corrects the physical-table ownership description without rewriting historical bytes, IDs, URNs, or replay state. | Define internal subdomains for Definition/Planning, Run, and Human Interaction. Preserve the single Forms adapter and access Executions, Connectors, and Applications only through equivalent application ports. Flow remains the only durable execution history. |
+| Forms | Form draft/release schema and form semantic validation | Domain is isolated and guarded. Forms owns definitions, immutable releases, and the version-pinned semantic evaluator only; the former standalone submission entity/repository/mapper have been removed. | Keep general standalone submissions out of the HumanTask transaction. If later required, introduce a distinct Forms command and aggregate rather than reviving the removed repository or sharing Workflow evidence. |
 | Connectors | Reusable outbound profile/revision, egress policy, exact attempt fencing/evidence, and response-object reference | Provider-neutral attempt model and Workflow port are strong. Application services directly depend on Secrets application/domain types. | Publish a SecretVersionAccess port result and keep exact materialization in Secrets. Connector attempts remain the sole HTTP retry/evidence authority for consumers such as Notifications. |
 | Notifications | Personal inbox, subscriptions, alert policy, delivery facts, and terminal delivery receipts | Correctly reuses Connector and SMTP mechanisms, but domain types embed Connector outcomes and Identity email/evaluator types. | Consume versioned Connector and Identity published contracts. Alert sources arrive only as closed owner facts. Do not add provider retries, timers, or authorization stores. |
 | Plugins | Tenant registry enrollment and exact A3S Use package assignment intent | Small, port-oriented, and correctly excludes installation/reconciliation authority. | Narrow the module facade and preserve A3S Use as the only package lifecycle owner. |
@@ -511,8 +511,14 @@ reservation query and Published-Language-only projector imports.
 
 ### Wave 4: AI product boundaries
 
-1. Resolve FormSubmission ownership and migrate Workflow HumanTask persistence.
-2. Publish Connector attempt outcomes and Identity contact references.
+1. Publish Connector attempt outcomes and Identity contact references.
+
+HumanTask submission ownership is complete for this wave: Forms owns
+definitions, releases, and semantic evaluation; Workflow owns immutable
+`HumanTaskSubmission` evidence and the sole historical `form_submissions`
+mapper. Task coordination and submission share one Workflow-owned Forms port
+and one Infrastructure adapter. Migration `172` changes only the ownership
+comment, preserving all historical IDs, JSON bytes, URNs, and replay behavior.
 
 Agent release admission is complete for this wave: Start, Fork, and Workflow
 dispatch share one Agents-owned port and one consumer-side adapter, with a

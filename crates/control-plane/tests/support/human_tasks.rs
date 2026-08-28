@@ -1,19 +1,15 @@
 use crate::migrate_and_connect_for_test;
 use a3s_cloud_contracts::DomainEventEnvelope;
-use a3s_cloud_control_plane::modules::forms::{
-    AcceptedFormSubmission, FormSubmission, IFormSubmissionRepository,
-    PostgresFormSubmissionRepository,
-};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AuthorizationDecisionRef, FormId, FormReleaseId, FormSubmissionId, HumanTaskId,
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
     WorkflowDecisionId, WorkflowRunId,
 };
 use a3s_cloud_control_plane::modules::workflow::{
-    AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite, DecideHumanTaskWrite,
-    FlowResumePayload, FlowResumeReceipt, HumanTask, HumanTaskDecisionRecord,
-    HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStatus, IHumanTaskRepository, NewHumanTask,
-    PostgresHumanTaskRepository, WorkflowDecision,
+    AcceptedHumanTaskSubmission, AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite,
+    DecideHumanTaskWrite, FlowResumePayload, FlowResumeReceipt, HumanTask, HumanTaskDecisionRecord,
+    HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStatus, HumanTaskSubmission,
+    IHumanTaskRepository, NewHumanTask, PostgresHumanTaskRepository, WorkflowDecision,
 };
 use a3s_form_core::{
     digest_interaction_value, parse_json, FormInteractionOutcome, FormInteractionSubmission,
@@ -72,7 +68,6 @@ pub(super) async fn exercise_human_task_persistence(
     seed_authorities(&executor, authorities).await?;
 
     let repository = PostgresHumanTaskRepository::new(executor.clone());
-    let submissions = PostgresFormSubmissionRepository::new(executor.clone());
     let task_id = HumanTaskId::new();
     let record = task_record(
         authorities,
@@ -301,18 +296,6 @@ pub(super) async fn exercise_human_task_persistence(
         .await?
         .expect("persisted decision");
     assert_eq!(persisted, decision_record);
-    assert_eq!(
-        submissions
-            .find_submission(authorities.organization_id, submission.id)
-            .await?,
-        Some(submission.clone())
-    );
-    assert_eq!(
-        submissions
-            .find_task_submission(authorities.organization_id, task_id)
-            .await?,
-        Some(submission)
-    );
     assert_eq!(
         repository
             .list_tasks(
@@ -597,7 +580,7 @@ fn task_record(
 fn accepted_submission(
     record: &HumanTaskRecord,
     principal_id: PrincipalId,
-) -> Result<FormSubmission, String> {
+) -> Result<HumanTaskSubmission, String> {
     let request = record
         .interaction_request
         .clone()
@@ -626,7 +609,7 @@ fn accepted_submission(
         value_digest: digest_interaction_value(&value)
             .map_err(|error| format!("could not digest Form value: {error}"))?,
     };
-    FormSubmission::accept(AcceptedFormSubmission {
+    HumanTaskSubmission::accept(AcceptedHumanTaskSubmission {
         organization_id: record.task.organization_id,
         project_id: record.task.project_id,
         id,

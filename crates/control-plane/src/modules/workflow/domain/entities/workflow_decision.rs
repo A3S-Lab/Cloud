@@ -1,5 +1,4 @@
-use super::{HumanTask, HumanTaskStatus};
-use crate::modules::forms::domain::FormSubmission;
+use super::{HumanTask, HumanTaskStatus, HumanTaskSubmission};
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, AuthorizationDecisionRef,
     FormSubmissionId, HumanTaskId, OrganizationId, PrincipalId, ProjectId, Sha256Digest,
@@ -104,7 +103,7 @@ impl WorkflowDecision {
     pub fn from_submission(
         id: WorkflowDecisionId,
         task: &HumanTask,
-        submission: &FormSubmission,
+        submission: &HumanTaskSubmission,
         output: CanonicalValue,
         decided_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -126,7 +125,7 @@ impl WorkflowDecision {
             || submission.assignment_policy_revision != task.assignment_policy.revision
             || submission.assignment_policy_digest != task.assignment_policy.digest
         {
-            return Err("FormSubmission does not match the claimed HumanTask".into());
+            return Err("HumanTaskSubmission does not match the claimed HumanTask".into());
         }
         let decided_at = canonical_timestamp(decided_at);
         if decided_at < submission.accepted_at

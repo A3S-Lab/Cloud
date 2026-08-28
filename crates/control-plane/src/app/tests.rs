@@ -2067,6 +2067,12 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             github_connections.clone(),
             github_installation_tokens,
         ));
+    let forms: Arc<dyn IFormRepository> = Arc::new(InMemoryFormRepository::new());
+    let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
+    let human_task_forms: Arc<dyn IHumanTaskFormPort> = Arc::new(FormsHumanTaskFormAdapter::new(
+        Arc::clone(&forms),
+        Arc::clone(&form_semantic_core),
+    ));
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -2127,8 +2133,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             )),
             workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
             workflow_run_variables: Arc::new(InputWorkflowRunVariableReader),
-            forms: Arc::new(InMemoryFormRepository::new()),
-            form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
+            forms,
+            form_semantic_core,
+            human_task_forms,
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),

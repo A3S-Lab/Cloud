@@ -1,11 +1,10 @@
-use crate::modules::forms::domain::FormSubmission;
 use crate::modules::shared_kernel::domain::{
     HumanTaskId, IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId,
     RepositoryError, Sha256Digest, WorkflowDecisionId,
 };
 use crate::modules::workflow::domain::{
     FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, HumanTaskRecord, HumanTaskStatus,
-    WorkflowDecision, WorkflowDecisionOutcome,
+    HumanTaskSubmission, WorkflowDecision, WorkflowDecisionOutcome,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -19,7 +18,7 @@ use uuid::Uuid;
 pub struct HumanTaskDecisionRecord {
     pub task: HumanTaskRecord,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub submission: Option<FormSubmission>,
+    pub submission: Option<HumanTaskSubmission>,
     pub decision: WorkflowDecision,
     pub resume_payload: FlowResumePayload,
     #[serde(default, skip_serializing_if = "Option::is_none")]

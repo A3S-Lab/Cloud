@@ -257,7 +257,8 @@ observation retains its deterministic attempt identity, including deferred or
 indeterminate outcomes; a dispatch rejection without owning-context evidence
 retains no reference. A received HumanDecision resume retains the exact
 HumanTask and WorkflowDecision identities; interactive submit, approve, and
-reject outcomes also retain the accepted FormSubmission identity, while
+reject outcomes also retain the accepted HumanTaskSubmission evidence through
+its byte-compatible historical FormSubmission identity, while
 automatic expiry and cancellation have no synthetic submission reference.
 Each linked Subworkflow frame retains its exact child WorkflowRun and Operation
 identities. Iteration and Loop steps select the latest 16 linked frames by

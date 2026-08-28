@@ -2,6 +2,8 @@ mod capability_reference;
 pub mod entities;
 pub mod events;
 mod flow_resume;
+#[cfg(test)]
+mod human_task_submission_tests;
 mod ontology_contract;
 pub mod repositories;
 pub mod services;
@@ -60,12 +62,13 @@ pub(crate) use workflow_variable_aggregate_binding::validate_variable_aggregate_
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
-    flow_step_id, HumanTask, HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStatus,
-    NewHumanTask, Ontology, OntologyRevision, PlanRevision, WorkflowDecision,
-    WorkflowDecisionOutcome, WorkflowDefinition, WorkflowGoal, WorkflowPlan, WorkflowPlanStep,
-    WorkflowRevision, WorkflowRun, WorkflowRunFlowState, WorkflowRunStatus,
-    WorkflowStepDefaultOutputContract, WorkflowStepFlowState, WorkflowStepProjection,
-    WorkflowStepProjectionStatus, ONTOLOGY_COMPILER_SCHEMA_VERSION,
+    flow_step_id, AcceptedHumanTaskSubmission, HumanTask, HumanTaskInteractionSpec,
+    HumanTaskRecord, HumanTaskStatus, HumanTaskSubmission, NewHumanTask, Ontology,
+    OntologyRevision, PlanRevision, WorkflowDecision, WorkflowDecisionOutcome, WorkflowDefinition,
+    WorkflowGoal, WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WorkflowRun,
+    WorkflowRunFlowState, WorkflowRunStatus, WorkflowStepDefaultOutputContract,
+    WorkflowStepFlowState, WorkflowStepProjection, WorkflowStepProjectionStatus,
+    HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES, ONTOLOGY_COMPILER_SCHEMA_VERSION,
     WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_COMPILER_SCHEMA_VERSION_V2,
     WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V10,
     WORKFLOW_PLAN_COMPILER_REVISION_V11, WORKFLOW_PLAN_COMPILER_REVISION_V12,

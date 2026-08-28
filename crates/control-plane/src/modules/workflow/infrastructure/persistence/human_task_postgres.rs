@@ -1,5 +1,6 @@
 mod rows;
 mod schema;
+mod submission;
 mod writes;
 
 use self::rows::{
@@ -8,6 +9,7 @@ use self::rows::{
     task_select, HumanTaskRow, ResumeDeliveryClaimRow, ResumeDeliveryClaimSelection,
 };
 use self::schema::{HumanTasks, WorkflowResumeCandidates, WorkflowResumeOutbox, WorkflowRuns};
+use self::submission::insert_human_task_submission;
 use self::writes::{
     conflict_resume_delivery, insert_decision, insert_hook_inbox, insert_resume_outbox,
     insert_resume_receipt, insert_task, lock_resume_outbox, mark_resume_delivered, persist_task,
@@ -17,7 +19,6 @@ use crate::infrastructure::{
     fetch_all, idempotency_replay, is_foreign_key_violation, store_idempotency, store_outbox,
     transaction_error, PostgresPersistenceError,
 };
-use crate::modules::forms::infrastructure::persistence::insert_form_submission;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, HumanTaskId, IdempotencyRequest, IdempotentWrite, OrganizationId,
     PrincipalId, ProjectId, RepositoryError, WorkflowDecisionId,
@@ -425,7 +426,7 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                         write.actor_principal_id,
                     )?;
                     if let Some(submission) = &write.record.submission {
-                        insert_form_submission(transaction, submission).await?;
+                        insert_human_task_submission(transaction, submission).await?;
                     }
                     insert_decision(transaction, &write.record.decision).await?;
                     persist_task(transaction, &write.record.task, write.expected_version).await?;

@@ -1,4 +1,6 @@
-use super::{AcceptedFormSubmission, FormSubmission, CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES};
+use super::{
+    AcceptedHumanTaskSubmission, HumanTaskSubmission, HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES,
+};
 use crate::modules::shared_kernel::domain::{
     AuthorizationDecisionRef, FormSubmissionId, HumanTaskId, OrganizationId, PrincipalId,
     ProjectId, Sha256Digest, WorkflowRunId,
@@ -16,7 +18,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::Deserialize;
 
 struct SubmissionFixture {
-    input: AcceptedFormSubmission,
+    input: AcceptedHumanTaskSubmission,
     expected_output: String,
     expected_output_digest: String,
 }
@@ -77,7 +79,8 @@ fn consumes_the_owner_form_interaction_golden_fixture() {
 #[test]
 fn accepts_a_request_bound_immutable_submission() {
     let fixture = submission_fixture();
-    let submission = FormSubmission::accept(fixture.input).expect("submission should be accepted");
+    let submission =
+        HumanTaskSubmission::accept(fixture.input).expect("submission should be accepted");
 
     assert_eq!(submission.canonical_output, fixture.expected_output);
     assert_eq!(
@@ -94,7 +97,8 @@ fn accepts_a_request_bound_immutable_submission() {
 #[test]
 fn rejects_corrupted_persisted_submission_invariants() {
     let fixture = submission_fixture();
-    let submission = FormSubmission::accept(fixture.input).expect("submission should be accepted");
+    let submission =
+        HumanTaskSubmission::accept(fixture.input).expect("submission should be accepted");
 
     let mut expired = submission.clone();
     expired.task_expires_at = Some(expired.accepted_at);
@@ -113,29 +117,29 @@ fn rejects_corrupted_persisted_submission_invariants() {
 fn rejects_cross_request_identity_expiry_and_output_drift() {
     let mut fixture = submission_fixture();
     fixture.input.submission.request_digest = digest('0');
-    assert!(FormSubmission::accept(fixture.input).is_err());
+    assert!(HumanTaskSubmission::accept(fixture.input).is_err());
 
     let mut fixture = submission_fixture();
     fixture.input.workflow_run_id = WorkflowRunId::new();
-    assert!(FormSubmission::accept(fixture.input).is_err());
+    assert!(HumanTaskSubmission::accept(fixture.input).is_err());
 
     let mut fixture = submission_fixture();
     fixture.input.accepted_at = timestamp(10, 0);
-    assert!(FormSubmission::accept(fixture.input).is_err());
+    assert!(HumanTaskSubmission::accept(fixture.input).is_err());
 
     let mut fixture = submission_fixture();
     fixture.input.request.max_value_bytes = 8;
     fixture.input.request.digest = digest_interaction_request(&fixture.input.request)
         .expect("request digest should be recomputed");
     fixture.input.submission.request_digest = fixture.input.request.digest.clone();
-    assert!(FormSubmission::accept(fixture.input).is_err());
+    assert!(HumanTaskSubmission::accept(fixture.input).is_err());
 
     let mut fixture = submission_fixture();
-    fixture.input.request.max_value_bytes = CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES + 1;
+    fixture.input.request.max_value_bytes = HUMAN_TASK_SUBMISSION_MAX_VALUE_BYTES + 1;
     fixture.input.request.digest = digest_interaction_request(&fixture.input.request)
         .expect("request digest should be recomputed");
     fixture.input.submission.request_digest = fixture.input.request.digest.clone();
-    assert!(FormSubmission::accept(fixture.input).is_err());
+    assert!(HumanTaskSubmission::accept(fixture.input).is_err());
 }
 
 fn submission_fixture() -> SubmissionFixture {
@@ -220,7 +224,7 @@ fn submission_fixture() -> SubmissionFixture {
     submission.value_digest =
         digest_interaction_value(&submission.value).expect("candidate value should hash");
     SubmissionFixture {
-        input: AcceptedFormSubmission {
+        input: AcceptedHumanTaskSubmission {
             organization_id,
             project_id,
             id: form_submission_id,

@@ -6,6 +6,10 @@ fn postgres_human_task_persistence_uses_only_typed_a3s_orm_queries() {
             include_str!("human_task_postgres.rs"),
         ),
         ("rows.rs", include_str!("human_task_postgres/rows.rs")),
+        (
+            "submission.rs",
+            include_str!("human_task_postgres/submission.rs"),
+        ),
         ("writes.rs", include_str!("human_task_postgres/writes.rs")),
         (
             "writes/resume.rs",
@@ -28,8 +32,13 @@ fn postgres_human_task_persistence_uses_only_typed_a3s_orm_queries() {
     assert!(repository.contains(".from::<WorkflowResumeCandidates>()"));
     assert!(repository.contains(".returning(ResumeDeliveryClaimSelection)"));
 
+    let submission = include_str!("human_task_postgres/submission.rs");
+    assert!(submission.contains("select_from::<FormSubmissions>()"));
+    assert!(submission.contains("insert_into::<FormSubmissions>()"));
+
     let schema = include_str!("human_task_postgres/schema.rs");
     for table in [
+        "FormSubmissions",
         "HumanTasks",
         "WorkflowDecisions",
         "WorkflowHumanTaskInbox",

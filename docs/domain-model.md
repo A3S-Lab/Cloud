@@ -1477,14 +1477,21 @@ Supporting immutable records:
 - `PlanRevision`
 - `WorkflowStepProjection`
 - `WorkflowDecision`
-- `FormSubmission`
+- `HumanTaskSubmission` (the historical `FormSubmissionId`, table name, and
+  public evidence URN remain byte-compatible)
 
 The interaction boundary reuses A3S Form's exact `FormReleaseRef`, request,
-submission, canonicalization, and digest contracts. Forms owns an immutable
-accepted `FormSubmission`; Workflow owns the optimistically versioned
-HumanTask and immutable WorkflowDecision. Migration `081` persists those
-authorities, a deduplicating Flow-hook Inbox, and a leased resume Outbox through
-typed A3S ORM queries. Flow remains the sole hook-history authority. Cloud
+submission, canonicalization, and digest contracts. Forms owns definitions,
+immutable releases, and version-pinned semantic evaluation. Workflow owns the
+optimistically versioned HumanTask, immutable `HumanTaskSubmission` evidence,
+and immutable WorkflowDecision in one decision transaction. One
+Workflow-owned `IHumanTaskFormPort` resolves the exact interaction release and
+evaluates the candidate through one Forms Infrastructure adapter; Workflow
+Application and Domain import no Forms internals. Migration `081` persists the
+historical records, a deduplicating Flow-hook Inbox, and a leased resume Outbox
+through typed A3S ORM queries. Migration `172` corrects the historical
+`form_submissions` table description without rewriting rows, record JSON, IDs,
+or URNs. Flow remains the sole hook-history authority. Cloud
 creates a resume receipt only after observing exact matching `HookReceived`,
 `RunTimedOut`, or `RunCancelled` evidence, never from Outbox delivery alone.
 Migrations `096` and `097` reuse the same decision transaction, Outbox, and
@@ -3077,7 +3084,8 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   the canonical draft through Forms and authorize its exact project before
   idempotency replay or mutation. A project grant covers the Form; an
   environment-only grant does not. Releases inherit that draft scope, while
-  FormSubmission and HumanTask stay under their Workflow-owned authorization
+  HumanTaskSubmission evidence (including its historical FormSubmission
+  identity) and HumanTask stay under their Workflow-owned authorization
   boundary rather than introducing a second or inferred Form ownership path.
 - Indirect Ontology, WorkflowDefinition, WorkflowGoal, and WorkflowRun reads
   and mutations resolve the owning aggregate through Workflow and authorize

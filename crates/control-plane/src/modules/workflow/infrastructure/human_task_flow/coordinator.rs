@@ -1,8 +1,8 @@
-use crate::modules::forms::domain::IFormRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, HumanTaskId, IdempotencyRequest,
     RepositoryError, Sha256Digest, WorkflowDecisionId, WorkflowRunId,
 };
+use crate::modules::workflow::application::{HumanTaskFormReleaseAuthority, IHumanTaskFormPort};
 use crate::modules::workflow::domain::{
     expected_human_task_expiry, AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite,
     DecideHumanTaskWrite, FlowResumePayload, HumanTask, HumanTaskCancellationAuthority,
@@ -12,7 +12,6 @@ use crate::modules::workflow::domain::{
     WorkflowHumanDecisionHookMetadata, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepKind,
 };
 use a3s_flow::{FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, HookStatus};
-use a3s_form_core::FormReleaseMode;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,7 +81,7 @@ enum AutomaticDecisionCoordination {
 
 pub struct HumanTaskCoordinator {
     workflow_runs: Arc<dyn IWorkflowRunRepository>,
-    forms: Arc<dyn IFormRepository>,
+    forms: Arc<dyn IHumanTaskFormPort>,
     human_tasks: Arc<dyn IHumanTaskRepository>,
     engine: FlowEngine,
     interval: Duration,
@@ -92,7 +91,7 @@ pub struct HumanTaskCoordinator {
 impl HumanTaskCoordinator {
     pub fn new(
         workflow_runs: Arc<dyn IWorkflowRunRepository>,
-        forms: Arc<dyn IFormRepository>,
+        forms: Arc<dyn IHumanTaskFormPort>,
         human_tasks: Arc<dyn IHumanTaskRepository>,
         engine: FlowEngine,
         interval: Duration,
@@ -323,27 +322,17 @@ impl HumanTaskCoordinator {
                 ));
             }
 
-            let release = self
+            let release_ref = self
                 .forms
-                .find_release(
-                    expected.organization_id,
-                    expected.form_id,
-                    expected.form_release_id,
-                )
+                .resolve_interaction_release(&HumanTaskFormReleaseAuthority {
+                    organization_id: expected.organization_id,
+                    project_id: expected.project_id,
+                    form_id: expected.form_id,
+                    form_release_id: expected.form_release_id,
+                    form_release_digest: expected.form_release_digest.clone(),
+                })
                 .await
-                .map_err(|error| format!("could not load human hook FormRelease: {error}"))?
-                .ok_or_else(|| "human hook FormRelease does not exist".to_owned())?;
-            release.validate()?;
-            let release_ref = release.release_ref()?;
-            if release.organization_id != expected.organization_id
-                || release.project_id != expected.project_id
-                || release.form_id != expected.form_id
-                || release.id != expected.form_release_id
-                || release.content.digest() != &expected.form_release_digest
-                || release_ref.mode != FormReleaseMode::Interaction
-            {
-                return Err("human hook FormRelease authority drifted".into());
-            }
+                .map_err(|error| error.to_string())?;
 
             let created_at = canonical_timestamp(envelope.timestamp);
             let expires_at = expected_human_task_expiry(record, step, created_at)?;

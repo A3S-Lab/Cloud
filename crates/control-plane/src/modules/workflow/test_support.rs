@@ -1,4 +1,3 @@
-use crate::modules::forms::domain::{AcceptedFormSubmission, FormSubmission};
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, AssetId, AssetReleaseId, AuthorizationDecisionRef,
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, ExecutionTemplateId,
@@ -8,19 +7,20 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::entities::digest_payload_set;
 use crate::modules::workflow::domain::{
-    AssignmentPolicyRef, CapabilityOwner, CapabilityReference, CapabilityType, HumanTask,
-    NewHumanTask, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
-    ResolvedWorkflowVariableContract, WorkflowBranchRoute, WorkflowCancellationCompensation,
-    WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
-    WorkflowDataSchema, WorkflowDataType, WorkflowDefaultOutput, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
-    WorkflowRetryPolicy, WorkflowRunApplicationProjection, WorkflowRunInput,
-    WorkflowStepConfiguration, WorkflowStepDefaultOutputContract, WorkflowStepDescriptorBinding,
-    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepPort,
-    WorkflowStepPortCardinality, WorkflowStepRetryClassification, WorkflowVariableAssignment,
-    WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
-    WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
-    WorkflowVariableScope, WorkflowVariableStorageClass, WORKFLOW_PLAN_COMPILER_REVISION,
+    AcceptedHumanTaskSubmission, AssignmentPolicyRef, CapabilityOwner, CapabilityReference,
+    CapabilityType, HumanTask, HumanTaskSubmission, NewHumanTask, ResolvedWorkflowCompositeRegions,
+    ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, WorkflowBranchRoute,
+    WorkflowCancellationCompensation, WorkflowCompositeRegionPolicy, WorkflowCompositeRegions,
+    WorkflowCompositeRegionsSpec, WorkflowDataSchema, WorkflowDataType, WorkflowDefaultOutput,
+    WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep,
+    WorkflowPolicy, WorkflowPolicyMode, WorkflowRetryPolicy, WorkflowRunApplicationProjection,
+    WorkflowRunInput, WorkflowStepConfiguration, WorkflowStepDefaultOutputContract,
+    WorkflowStepDescriptorBinding, WorkflowStepFailureContract, WorkflowStepFallbackMode,
+    WorkflowStepKind, WorkflowStepPort, WorkflowStepPortCardinality,
+    WorkflowStepRetryClassification, WorkflowVariableAssignment, WorkflowVariableContract,
+    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
+    WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
+    WorkflowVariableStorageClass, WORKFLOW_PLAN_COMPILER_REVISION,
     WORKFLOW_PLAN_COMPILER_REVISION_V10, WORKFLOW_PLAN_COMPILER_REVISION_V11,
     WORKFLOW_PLAN_COMPILER_REVISION_V12, WORKFLOW_PLAN_COMPILER_REVISION_V2,
     WORKFLOW_PLAN_COMPILER_REVISION_V3, WORKFLOW_PLAN_COMPILER_REVISION_V4,
@@ -137,7 +137,10 @@ pub(crate) fn claimed_task() -> (HumanTask, PrincipalId) {
     (task, principal_id)
 }
 
-pub(crate) fn accepted_submission(task: &HumanTask, principal_id: PrincipalId) -> FormSubmission {
+pub(crate) fn accepted_submission(
+    task: &HumanTask,
+    principal_id: PrincipalId,
+) -> HumanTaskSubmission {
     let id = FormSubmissionId::new();
     let identity = WorkflowInteractionIdentity {
         workflow_run_id: task.workflow_run_id.to_string(),
@@ -195,7 +198,7 @@ pub(crate) fn accepted_submission(task: &HumanTask, principal_id: PrincipalId) -
         value: value.clone(),
         value_digest: digest_interaction_value(&value).expect("value digest"),
     };
-    FormSubmission::accept(AcceptedFormSubmission {
+    HumanTaskSubmission::accept(AcceptedHumanTaskSubmission {
         organization_id: task.organization_id,
         project_id: task.project_id,
         id,

@@ -60,8 +60,6 @@ sources/presentation/controllers/github_repository_subscription_queries_controll
 sources/presentation/controllers/github_repository_subscriptions_controller.rs -> identity/presentation
 sources/presentation/controllers/source_revision_queries_controller.rs -> identity/presentation
 sources/presentation/controllers/source_revisions_controller.rs -> identity/presentation
-workflow/infrastructure/persistence/human_task_postgres.rs -> forms/infrastructure
-workflow/infrastructure/persistence/human_task_postgres/rows.rs -> forms/infrastructure
 workflow/presentation/controllers/ontology_commands_controller.rs -> identity/presentation
 workflow/presentation/controllers/ontology_queries_controller.rs -> identity/presentation
 workflow/presentation/controllers/request.rs -> identity/presentation
@@ -2325,6 +2323,109 @@ fn applications_enter_workflow_timeout_admission_through_one_owner_adapter() {
         !management_workflow.contains("WORKFLOW_RUN_MAX_TIMEOUT_SECONDS"),
         "Management MCP copied Workflow's timeout-bound validation mechanism"
     );
+}
+
+#[test]
+fn workflow_owns_human_task_submission_through_one_forms_adapter_and_mapper() {
+    let port =
+        std::fs::read_to_string(module_root().join("workflow/application/human_task_form_port.rs"))
+            .expect("read Workflow HumanTask Form port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_port.contains("traitIHumanTaskFormPort:Send+Sync"),
+        "Workflow lost its consumer-owned HumanTask Form boundary"
+    );
+    assert!(
+        !production_source(&port).contains("crate::modules::forms"),
+        "the consumer-owned HumanTask Form port imported Forms internals"
+    );
+
+    let handler = std::fs::read_to_string(
+        module_root().join("workflow/application/commands/submit_human_task/handler.rs"),
+    )
+    .expect("read SubmitHumanTask handler");
+    let handler = production_source(&handler);
+    assert!(handler.contains("IHumanTaskFormPort"));
+    assert_eq!(handler.matches(".evaluate_submission(").count(), 1);
+    assert!(
+        !handler.contains("crate::modules::forms"),
+        "Workflow Application bypassed its Forms port"
+    );
+
+    let mut forms_import_sites = BTreeSet::new();
+    let mut port_implementations = BTreeSet::new();
+    let mut submission_mappers = BTreeSet::new();
+    let mut removed_mechanisms = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let source = production_source(source);
+        if context(relative) == Some("workflow") && source.contains("crate::modules::forms") {
+            forms_import_sites.insert(display(relative));
+        }
+        if source.contains("impl IHumanTaskFormPort for") {
+            port_implementations.insert(display(relative));
+        }
+        if source.contains("=> \"form_submissions\"") {
+            submission_mappers.insert(display(relative));
+        }
+        if source.contains("IFormSubmissionRepository")
+            || source.contains("PostgresFormSubmissionRepository")
+        {
+            removed_mechanisms.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        forms_import_sites,
+        BTreeSet::from(["workflow/infrastructure/human_task_form.rs".to_owned()]),
+        "all Workflow-to-Forms access must be confined to the sole consumer-side adapter"
+    );
+    assert_eq!(
+        port_implementations,
+        BTreeSet::from(["workflow/infrastructure/human_task_form.rs".to_owned()]),
+        "HumanTask Form access must have one consumer-side adapter"
+    );
+    assert_eq!(
+        submission_mappers,
+        BTreeSet::from([
+            "workflow/infrastructure/persistence/human_task_postgres/schema.rs".to_owned()
+        ]),
+        "HumanTask submission evidence must have one Workflow-owned table mapper"
+    );
+    assert!(
+        removed_mechanisms.is_empty(),
+        "the removed standalone Form submission repository returned:\n{}",
+        removed_mechanisms
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let forms_domain = module_root().join("forms/domain");
+    assert!(!forms_domain.join("entities/form_submission.rs").exists());
+    assert!(!forms_domain
+        .join("repositories/form_submission_repository.rs")
+        .exists());
+    let decision_record = std::fs::read_to_string(
+        module_root().join("workflow/domain/repositories/human_task_repository.rs"),
+    )
+    .expect("read Workflow HumanTask repository contract");
+    assert!(
+        production_source(&decision_record).contains("pub submission: Option<HumanTaskSubmission>"),
+        "Workflow no longer owns immutable HumanTaskSubmission evidence"
+    );
+
+    let coordinator = std::fs::read_to_string(
+        module_root().join("workflow/infrastructure/human_task_flow/coordinator.rs"),
+    )
+    .expect("read HumanTask coordinator");
+    let coordinator = production_source(&coordinator);
+    assert!(coordinator.contains("IHumanTaskFormPort"));
+    assert_eq!(
+        coordinator.matches(".resolve_interaction_release(").count(),
+        1
+    );
+    assert!(!coordinator.contains("IFormRepository"));
 }
 
 fn foreign_outer_layer_sites() -> BTreeSet<String> {

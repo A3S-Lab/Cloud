@@ -292,7 +292,8 @@ child Execution and Operation URNs. Agent terminal and cancellation projection
 retains exact conversation, Agent execution, and Operation URNs; received Connector observations retain
 exact attempt URNs. Received HumanDecision resumes retain exact HumanTask and
 WorkflowDecision URNs and, for interactive outcomes, the accepted
-FormSubmission URN. Automatic expiry and cancellation retain no synthetic
+HumanTaskSubmission evidence through its historical FormSubmission URN.
+Automatic expiry and cancellation retain no synthetic
 submission. Each linked Subworkflow frame retains its exact child WorkflowRun
 and Operation URNs. Iteration and Loop projections select the latest 16 linked
 frames by ordinal before canonical sorting, preserving the existing
@@ -356,8 +357,9 @@ executes Workflow-local `input`, `transform`, `branch`, `human_decision`, and
 `output` steps; the reconciler verifies immutable plan/input/payload authority,
 rejects replay drift, and projects cancellation, deadlines, waiting, terminal
 output, and bounded redacted history. Migration `081` stores immutable accepted
-FormSubmission records, optimistic HumanTasks, immutable WorkflowDecisions,
-hook-event Inbox evidence, and leased resume Outbox/receipt records through
+HumanTaskSubmission evidence under the historical `form_submissions` table,
+optimistic HumanTasks, immutable WorkflowDecisions, hook-event Inbox evidence,
+and leased resume Outbox/receipt records through
 typed A3S ORM queries. Worker-role coordination validates the exact published
 interaction-mode FormRelease and Flow hook authority, creates and activates the
 task, and resumes the same hook from the immutable decision with retry,
@@ -371,8 +373,11 @@ Management MCP tools now expose bounded protected task reads plus versioned
 claim/release/submission through the same Workflow repository, domain state machine,
 transaction-bound idempotency/Outbox/audit path, and shared Identity Resource
 Grant evaluator. Lists omit interaction payloads and only the current claimant
-receives the exact request-bound A3S Form interaction. Migration `096` reuses
-the same coordinator, immutable WorkflowDecision, and resume Outbox for
+receives the exact request-bound A3S Form interaction. Migration `172` records
+the corrected ownership without any DDL or evidence rewrite: Forms owns
+definitions/releases and semantic evaluation, while Workflow owns
+HumanTaskSubmission evidence through one Forms port/adapter and the sole table
+mapper. Migration `096` reuses the same coordinator, immutable WorkflowDecision, and resume Outbox for
 automatic expiry; it recomputes the exact Run/Plan deadline authority and
 settles only from matching `HookReceived` or parent `RunTimedOut` evidence.
 Migration `097` records the exact cancelling Principal and uses that same

@@ -637,6 +637,18 @@ builds and may return only existing owner ports or Published Language values;
 it cannot expose a concrete adapter or introduce another persistence path. It
 is test assembly, not a fourth product surface.
 
+The Workflow/Forms interaction boundary follows the same rule. Forms owns
+draft definitions, immutable releases, and version-pinned semantic evaluation.
+Workflow owns `HumanTask`, immutable `HumanTaskSubmission` evidence, the
+decision transaction, and the sole mapper for the byte-compatible historical
+`form_submissions` table. HumanTask coordination and submission evaluation
+cross one Workflow-owned `IHumanTaskFormPort`, implemented by one Forms
+Infrastructure adapter at the composition boundary. Workflow Application and
+Domain cannot import Forms internals, and Forms cannot persist or authorize a
+HumanTask submission. The historical `FormSubmissionId`, JSON record shape,
+table name, and evidence URN remain compatible; those names do not transfer
+business ownership.
+
 Artifacts applies this rule to node-artifact transport: its async byte reader,
 descriptor, error vocabulary, and store trait are an Application-owned port.
 The Domain contains admitted artifact semantics and immutable receipts, not a

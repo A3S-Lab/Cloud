@@ -272,13 +272,13 @@ use crate::modules::sources::{
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
     CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler,
-    FlowWorkflowRunCoordinator, GetHumanTaskHandler, GetOntologyHandler,
+    FlowWorkflowRunCoordinator, FormsHumanTaskFormAdapter, GetHumanTaskHandler, GetOntologyHandler,
     GetOntologyRevisionHandler, GetPlanRevisionHandler, GetWorkflowDefinitionHandler,
     GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunDiagnosticsHandler, GetWorkflowRunHandler, GetWorkflowRunHistoryHandler,
     GetWorkflowRunOutputHandler, GetWorkflowRunVariablesHandler, HumanTaskCoordinator,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
-    IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskFormPort, IHumanTaskRepository,
+    IOntologyRepository, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
     IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
     IWorkflowRunDiagnosticsReader, IWorkflowRunHistoryReader, IWorkflowRunRepository,
     IWorkflowRunVariableReader, ListHumanTasksHandler, ListOntologiesHandler,
@@ -573,6 +573,10 @@ async fn build_api_worker_application(
     let forms = adapters.workflow.forms;
     let human_tasks = adapters.workflow.human_tasks;
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
+    let human_task_forms: Arc<dyn IHumanTaskFormPort> = Arc::new(FormsHumanTaskFormAdapter::new(
+        Arc::clone(&forms),
+        Arc::clone(&form_semantic_core),
+    ));
     let search = adapters.search;
     let audit_records = adapters.audit_records;
     let audit_retention_repository = Arc::clone(&audit_records);
@@ -1173,7 +1177,7 @@ async fn build_api_worker_application(
         .map_err(ControlPlaneStartupError::WorkflowRun)?;
         let human_task_coordinator = HumanTaskCoordinator::new(
             Arc::clone(&workflow_runs),
-            Arc::clone(&forms),
+            Arc::clone(&human_task_forms),
             Arc::clone(&human_tasks),
             flow.engine(),
             Duration::from_millis(config.human_tasks.coordination_poll_interval_ms),
@@ -1760,6 +1764,7 @@ async fn build_api_worker_application(
                 })?,
                 forms,
                 form_semantic_core,
+                human_task_forms,
                 search,
                 audit_records,
                 audit_export_signer: audit_export_signer.ok_or_else(|| {
@@ -1999,6 +2004,7 @@ struct ManagementApplicationDependencies {
     workflow_run_variables: Arc<dyn IWorkflowRunVariableReader>,
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
+    human_task_forms: Arc<dyn IHumanTaskFormPort>,
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
     audit_export_signer: Arc<dyn IAuditExportSigner>,
@@ -2087,6 +2093,7 @@ fn build_management_application_with_health(
         workflow_run_variables,
         forms,
         form_semantic_core,
+        human_task_forms,
         search,
         audit_records,
         audit_export_signer,
@@ -2414,8 +2421,7 @@ fn build_management_application_with_health(
     let get_workflow_run_history_runs = workflow_runs;
     let change_human_task_assignments = Arc::clone(&human_tasks);
     let submit_human_tasks = Arc::clone(&human_tasks);
-    let submit_human_task_forms = Arc::clone(&forms);
-    let submit_human_task_semantic_core = Arc::clone(&form_semantic_core);
+    let submit_human_task_forms = human_task_forms;
     let get_human_tasks = Arc::clone(&human_tasks);
     let list_human_tasks = human_tasks;
     let create_form_projects = Arc::clone(&projects);
@@ -3011,7 +3017,6 @@ fn build_management_application_with_health(
                     SubmitHumanTaskHandler::new(
                         submit_human_tasks,
                         submit_human_task_forms,
-                        submit_human_task_semantic_core,
                         Arc::clone(&resource_authorization_decisions),
                     ),
                 )

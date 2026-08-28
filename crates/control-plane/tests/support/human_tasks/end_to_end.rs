@@ -2,9 +2,10 @@ use super::SeedTransaction;
 use crate::migrate_and_connect_for_test;
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::forms::{
-    AcceptedFormSubmission, CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged,
-    FormPublicationRecord, FormRelease, FormReleaseContent, FormReleasePublished, FormSubmission,
-    IFormRepository, InMemoryFormRepository, PostgresFormRepository, PublishFormReleaseWrite,
+    CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged, FormPublicationRecord,
+    FormRelease, FormReleaseContent, FormReleasePublished, IFormRepository, IFormSemanticCore,
+    InMemoryFormRepository, NativeFormSemanticCore, PostgresFormRepository,
+    PublishFormReleaseWrite,
 };
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationReconciler, PostgresOperationRepository,
@@ -18,15 +19,16 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::workflow::domain::ResolvedWorkflowPayload;
 use a3s_cloud_control_plane::modules::workflow::{
-    CancelWorkflowRunWrite, CapabilityOwner, CapabilityReference, CapabilityType,
-    ChangeHumanTaskWrite, CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumeDisposition,
-    FlowResumePayload, FlowWorkflowRunCoordinator, HumanTaskCoordinator, HumanTaskDecisionRecord,
+    AcceptedHumanTaskSubmission, CancelWorkflowRunWrite, CapabilityOwner, CapabilityReference,
+    CapabilityType, ChangeHumanTaskWrite, CreateWorkflowRunWrite, DecideHumanTaskWrite,
+    FlowResumeDisposition, FlowResumePayload, FlowWorkflowRunCoordinator,
+    FormsHumanTaskFormAdapter, HumanTaskCoordinator, HumanTaskDecisionRecord,
     HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, HumanTaskStateChanged, HumanTaskStatus,
-    IHumanTaskRepository, IWorkflowRunCoordinator, IWorkflowRunRepository,
-    PostgresHumanTaskRepository, PostgresWorkflowRunRepository, WorkflowDataSchema,
-    WorkflowDataType, WorkflowDecision, WorkflowDecisionOutcome, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowRun,
-    WorkflowRunCancellationRequested, WorkflowRunFlowRuntime, WorkflowRunInput,
+    HumanTaskSubmission, IHumanTaskFormPort, IHumanTaskRepository, IWorkflowRunCoordinator,
+    IWorkflowRunRepository, PostgresHumanTaskRepository, PostgresWorkflowRunRepository,
+    WorkflowDataSchema, WorkflowDataType, WorkflowDecision, WorkflowDecisionOutcome,
+    WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep,
+    WorkflowRun, WorkflowRunCancellationRequested, WorkflowRunFlowRuntime, WorkflowRunInput,
     WorkflowRunReconciler, WorkflowRunRecord, WorkflowRunRequested, WorkflowStepConfiguration,
     WorkflowStepKind, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
     WORKFLOW_PLAN_SCHEMA, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
@@ -49,6 +51,11 @@ use uuid::Uuid;
 const HUMAN_STEP_ID: &str = "human_review";
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+fn human_task_form_port(forms: Arc<dyn IFormRepository>) -> Arc<dyn IHumanTaskFormPort> {
+    let semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
+    Arc::new(FormsHumanTaskFormAdapter::new(forms, semantic_core))
+}
 
 #[path = "end_to_end/seed.rs"]
 mod seed;
@@ -147,7 +154,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
     let missing_release_forms: Arc<dyn IFormRepository> = Arc::new(InMemoryFormRepository::new());
     let missing_release_report = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        missing_release_forms,
+        human_task_form_port(missing_release_forms),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -170,7 +177,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
     .await?;
     let drifted_release_report = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        drifted_release_forms,
+        human_task_form_port(drifted_release_forms),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -194,7 +201,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
 
     let coordinator_a = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        Arc::clone(&forms),
+        human_task_form_port(Arc::clone(&forms)),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -202,7 +209,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
     )?;
     let coordinator_b = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        Arc::clone(&forms),
+        human_task_form_port(Arc::clone(&forms)),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -233,7 +240,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
 
     let restarted_coordinator = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        Arc::clone(&forms),
+        human_task_form_port(Arc::clone(&forms)),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -452,7 +459,7 @@ async fn exercise_parent_cancellation(
     .await?;
     let coordinator = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        Arc::clone(&forms),
+        human_task_form_port(Arc::clone(&forms)),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -537,7 +544,7 @@ async fn exercise_parent_cancellation(
     .await?;
     let coordinator_b = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        forms,
+        human_task_form_port(forms),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -674,7 +681,7 @@ async fn exercise_expiry_after_flow_timeout(
     .await?;
     let coordinator = HumanTaskCoordinator::new(
         Arc::clone(&workflow_runs),
-        forms,
+        human_task_form_port(forms),
         Arc::clone(&human_tasks),
         engine.clone(),
         Duration::from_millis(5),
@@ -973,7 +980,7 @@ fn accepted_submission(
     record: &a3s_cloud_control_plane::modules::workflow::HumanTaskRecord,
     principal_id: PrincipalId,
     submitted_at: DateTime<Utc>,
-) -> Result<FormSubmission, String> {
+) -> Result<HumanTaskSubmission, String> {
     let request = record
         .interaction_request
         .clone()
@@ -1001,7 +1008,7 @@ fn accepted_submission(
         value: value.clone(),
         value_digest: digest_interaction_value(&value).map_err(|error| error.to_string())?,
     };
-    FormSubmission::accept(AcceptedFormSubmission {
+    HumanTaskSubmission::accept(AcceptedHumanTaskSubmission {
         organization_id: record.task.organization_id,
         project_id: record.task.project_id,
         id: submission_id,
