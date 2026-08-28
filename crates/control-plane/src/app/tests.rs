@@ -1237,6 +1237,7 @@ fn config() -> CloudConfig {
         fleet: FleetConfig {
             heartbeat_interval_ms: 1_000,
             heartbeat_timeout_ms: 5_000,
+            protocol_session_ttl_ms: 300_000,
             command_long_poll_ms: 1_000,
             command_lease_ms: 5_000,
             certificate_ttl_ms: 3_600_000,

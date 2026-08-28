@@ -12,16 +12,20 @@ use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::IGatewayCertificateAuthority;
 use crate::modules::fleet::application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, LeaseNodeCommands,
-    LeaseNodeCommandsHandler, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
-    RecordNodeLogChunks, RecordNodeLogChunksHandler, RecordNodeObservations,
-    RecordNodeObservationsHandler, RecordNodeResourceInventory, RecordNodeResourceInventoryHandler,
-    RotateNodeCertificate, RotateNodeCertificateHandler,
+    LeaseNodeCommandsHandler, NegotiateNodeSession, NegotiateNodeSessionHandler,
+    RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler, RecordNodeLogChunks,
+    RecordNodeLogChunksHandler, RecordNodeObservations, RecordNodeObservationsHandler,
+    RecordNodeResourceInventory, RecordNodeResourceInventoryHandler, RotateNodeCertificate,
+    RotateNodeCertificateHandler,
 };
 use crate::modules::fleet::application::{
     IGatewayAcknowledgementProjector, NodeArtifactAuthorizer,
 };
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeProtocolSessionRepository, INodeRepository,
+};
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
+use crate::modules::fleet::domain::value_objects::NodeProtocolPolicy;
 use crate::modules::secrets::application::{ResolveSecretMaterial, ResolveSecretMaterialHandler};
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, RepositoryError};
@@ -31,9 +35,10 @@ use a3s_cloud_contracts::{
     artifact_uri, GatewayCertificateSigningRequest, NodeArtifactDownloadRequest,
     NodeArtifactUploadReceipt, NodeArtifactUploadRequest,
     NodeCertificate as NodeCertificateContract, NodeCertificateRotationRequest,
-    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt,
+    NodeCertificateRotationResponse, NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope,
     NodeCommandLeaseRequest, NodeGatewayAck, NodeLogChunkBatch, NodeObservationBatchEnvelope,
-    NodeResourceInventory, NodeSecretMaterialRequest, NodeSecretMaterialResponse,
+    NodeObservationBatchV2, NodeProtocolContractSet, NodeResourceInventory,
+    NodeSecretMaterialRequest, NodeSecretMaterialResponse, NodeSessionHello,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use axum::body::{to_bytes, Body};
@@ -74,6 +79,7 @@ pub(crate) struct NodeControlApi {
 struct NodeControlApiInner {
     nodes: Arc<dyn INodeRepository>,
     lease: LeaseNodeCommandsHandler,
+    negotiate_session: NegotiateNodeSessionHandler,
     acknowledge: AcknowledgeNodeCommandHandler,
     observations: RecordNodeObservationsHandler,
     code_agent_events: AcceptAgentCodeEventBatchHandler,
@@ -98,6 +104,7 @@ impl NodeControlApi {
     pub(crate) fn new(
         nodes: Arc<dyn INodeRepository>,
         commands: Arc<dyn INodeControlRepository>,
+        sessions: Arc<dyn INodeProtocolSessionRepository>,
         agents: Arc<dyn IAgentRepository>,
         artifacts: Arc<dyn INodeArtifactStore>,
         gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
@@ -111,6 +118,7 @@ impl NodeControlApi {
         gateway_certificate_ttl: Duration,
         certificate_ttl: Duration,
         certificate_rotation_window: Duration,
+        protocol_session_lifetime: Duration,
         lease_duration: Duration,
         maximum_wait: StdDuration,
         retry_interval: StdDuration,
@@ -140,6 +148,11 @@ impl NodeControlApi {
                     lease_duration,
                     maximum_wait,
                     retry_interval,
+                )?,
+                negotiate_session: NegotiateNodeSessionHandler::new(
+                    sessions,
+                    current_node_protocol_policy()?,
+                    protocol_session_lifetime,
                 )?,
                 acknowledge: AcknowledgeNodeCommandHandler::new(Arc::clone(&commands)),
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
@@ -184,6 +197,7 @@ impl NodeControlApi {
 
     pub(super) fn router(self) -> Router {
         Router::new()
+            .route("/v1/node-control/session:hello", post(negotiate_session))
             .route("/v1/node-control/commands:lease", post(lease_commands))
             .route(
                 "/v1/node-control/commands/{command_action}",
@@ -324,6 +338,18 @@ impl NodeControlApi {
             NodeControlHttpError::invalid(request_id, format!("invalid JSON body: {error}"))
         })
     }
+}
+
+fn current_node_protocol_policy() -> Result<NodeProtocolPolicy, String> {
+    let required = NodeProtocolContractSet {
+        agent_readable: vec![NodeCommandEnvelope::SCHEMA.into()],
+        agent_writable: vec![
+            NodeCommandAck::SCHEMA.into(),
+            NodeObservationBatchV2::SCHEMA.into(),
+            NodeResourceInventory::SCHEMA.into(),
+        ],
+    };
+    NodeProtocolPolicy::new(required.clone(), required).map_err(|error| error.to_string())
 }
 
 async fn download_artifact(
@@ -555,6 +581,36 @@ async fn lease_commands(
         .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
         .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
     json_response(request_id, StatusCode::OK, &result)
+}
+
+async fn negotiate_session(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node_id = api.authenticate(request_id, &peer).await?;
+    let hello: NodeSessionHello = api.body(request_id, request).await?;
+    let response_hello = hello.clone();
+    let result = api
+        .inner
+        .negotiate_session
+        .execute(
+            NegotiateNodeSession {
+                authenticated_node_id: node_id,
+                hello,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    result
+        .selection
+        .validate_for(&response_hello, result.selection.selected_at)
+        .map_err(|error| NodeControlHttpError::internal(request_id, error))?;
+    json_response(request_id, StatusCode::OK, &result.selection)
 }
 
 async fn acknowledge_command(

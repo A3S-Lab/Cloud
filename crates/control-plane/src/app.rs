@@ -590,6 +590,7 @@ async fn build_api_worker_application(
     let node_pools = adapters.fleet.node_pools;
     let draining_nodes = adapters.fleet.draining_nodes;
     let node_control = adapters.fleet.node_control;
+    let node_protocol_sessions = adapters.fleet.node_protocol_sessions;
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
         NodeArtifactObjectStore::from_client(
             object_storage
@@ -1326,6 +1327,7 @@ async fn build_api_worker_application(
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
+            Arc::clone(&node_protocol_sessions),
             Arc::clone(&agents),
             Arc::clone(&node_artifacts),
             Arc::clone(&management.gateway_projector),
@@ -1341,6 +1343,8 @@ async fn build_api_worker_application(
             chrono_duration(config.fleet.certificate_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono_duration(config.fleet.certificate_rotation_window_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+            chrono_duration(config.fleet.protocol_session_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono::Duration::try_milliseconds(
                 i64::try_from(config.fleet.command_lease_ms).map_err(|_| {

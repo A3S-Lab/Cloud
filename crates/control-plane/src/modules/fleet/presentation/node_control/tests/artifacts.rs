@@ -42,11 +42,13 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
     );
     let artifact_binding: Arc<dyn INodeArtifactStore> = artifact_store.clone();
     let commands: Arc<dyn INodeControlRepository> = nodes.clone();
+    let sessions: Arc<dyn INodeProtocolSessionRepository> = nodes.clone();
     let node_repository: Arc<dyn INodeRepository> = nodes.clone();
     let edge = Arc::new(InMemoryEdgeRepository::new());
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        sessions,
         agents,
         artifact_binding,
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
@@ -67,6 +69,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         ),
         Duration::days(30),
         Duration::hours(1),
+        Duration::minutes(5),
         Duration::minutes(5),
         Duration::seconds(30),
         StdDuration::from_millis(100),
