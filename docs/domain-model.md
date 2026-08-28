@@ -1391,13 +1391,14 @@ Planned supporting work:
 
 - production binding producers for exact model and Tool identities and any MCP
   identity not already supplied by the selected Agent Workload revision; and
-- retained real-provider approval and fork execution evidence, external HTTPS
-  S3-compatible namespace inventory/cleanup evidence, and provider/Box private
-  checkpoint capability certification. PostgreSQL 17 process-death evidence
-  already verifies logical checkpoint adoption, fork replay, and fenced orphan
-  cleanup through a process-shared object authority; checksum-pinned MinIO
-  evidence separately verifies the production S3 client over real list/delete
-  requests, cleanup replay, and empty namespace cleanup.
+- retained real-provider fork execution evidence, external HTTPS S3-compatible
+  namespace inventory/cleanup evidence, and provider/Box private checkpoint
+  capability certification. A retained PostgreSQL 17 and real Box gate already
+  verifies approval, resume, restart-fail-closed, and digest-only audit outcomes,
+  plus logical checkpoint adoption, fork replay, and fenced orphan cleanup
+  through a process-shared object authority; checksum-pinned MinIO evidence
+  separately verifies the production S3 client over real list/delete requests,
+  cleanup replay, and empty namespace cleanup.
 
 The context owns semantic Agent state but delegates long-running coordination
 to Flow and Operations, placement and rollout to Workloads, node delivery to
@@ -1443,8 +1444,15 @@ REST/client/CLI selection resolves that reference through the built-in registry;
 migration `164` makes the selected canonical profile creation-time state. Flow
 recovers by that exact profile, while the Node admits only the checked-in
 reference revision, reuses its command journal, and ships common event pages
-through the shared durable outbound-batch primitive. Additional providers and
-retained PostgreSQL/real-Box non-Code evidence remain open.
+through the shared durable outbound-batch primitive. A retained
+[PostgreSQL 17 and real Box reference-provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33164609764/job/98827188366)
+verifies exact common-HTTP execution and replay, provider-process replacement,
+approval resume/cancellation/fail-closed outcomes, terminal unsupported-Recovery
+fallback with zero Recover commands, and cleanup. Recovery capability is
+revalidated before consuming an already persisted recovery successor: a
+pre-upgrade invalid successor fails terminally without rotating the binding or
+enqueuing Recover, and repeated observation returns the same terminal result.
+Additional conforming providers remain open.
 
 ### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
