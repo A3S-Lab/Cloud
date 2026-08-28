@@ -653,11 +653,14 @@ creating their own control planes:
     transaction but before response delivery; fresh repositories adopt/replay
     both boundaries exactly once.
     The same gate inventories and removes an unreferenced valid object only
-    after PostgreSQL observation grace and an exact cleanup fence. Production
-    model and Tool binding producers, any additional independent MCP binding,
-    retained real-provider/Box Tool-audit and approval/fork execution, real S3
-    inventory/cleanup evidence, and provider/Box private checkpoint
-    certification remain open.
+    after PostgreSQL observation grace and an exact cleanup fence. A retained
+    [checksum-pinned MinIO S3-compatible reconciliation step](https://github.com/A3S-Lab/Cloud/actions/runs/33129678355/job/98716018308)
+    exercises the production S3 client over real list/delete requests and
+    verifies grace, exact cleanup leasing, idempotent removal, and empty
+    namespace cleanup. Production model and Tool binding producers, any
+    additional independent MCP binding, retained real-provider/Box Tool-audit
+    and approval/fork execution, external HTTPS S3-compatible evidence, and
+    provider/Box private checkpoint certification remain open.
 4. **AI Application Platform** composes Applications, Knowledge, plugins,
    automations, and governed delivery from exact Workflow/Agent revisions.
    `APP0.1` freezes one canonical immutable release across all six
