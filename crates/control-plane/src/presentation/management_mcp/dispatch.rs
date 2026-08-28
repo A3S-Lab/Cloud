@@ -72,6 +72,9 @@ use super::projects::{
 };
 use super::search::SearchArguments;
 use super::security::SecurityGatewayRoutePolicyTimelineArguments;
+use super::sources::{
+    GithubInstallationRepositoriesArguments, GithubRepositoryReferencesArguments,
+};
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
     HumanTaskArguments, HumanTaskMutationArguments, HumanTaskSubmissionArguments,
@@ -86,7 +89,7 @@ use super::workloads::{
 use super::{
     applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
     execution_templates, forms, identity, nodes, notifications, ontology, operations, plugins,
-    projects, search, security, workflow, workloads,
+    projects, search, security, sources, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -1161,6 +1164,23 @@ pub async fn execute(
                 request_id,
             )
             .await
+        }
+        ManagementTool::GithubInstallationRepositoriesList => {
+            let arguments =
+                arguments::parse::<GithubInstallationRepositoriesArguments>(arguments).ok()?;
+            sources::list_installation_repositories(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::GithubRepositoryReferencesList => {
+            let arguments =
+                arguments::parse::<GithubRepositoryReferencesArguments>(arguments).ok()?;
+            sources::list_repository_references(query_bus, organization_id, arguments, request_id)
+                .await
         }
         ManagementTool::PluginRegistriesList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

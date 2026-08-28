@@ -397,6 +397,18 @@ App JWT and persists only typed lifecycle/account observations plus generic
 check health. The same authority boundary is required immediately before any
 private-repository credential is issued.
 
+Pre-acceptance repository and ref discovery is an Application query model, not
+an aggregate. The query restores the current `GithubConnection`, applies the
+same `SourceRepositoryPolicy`, and asks one revalidating provider port for a
+bounded page of installation-accessible repositories or branch/tag names. Its
+opaque cursor is bound to organization, connection, installation, repository,
+kind, and page size as applicable. Provider results are revalidated before
+projection; repositories or ref names outside the existing safe-name value
+objects are omitted without weakening acceptance rules. A discovered name
+remains mutable provider information: it creates
+no subscription or `ExternalSourceRevision`, and only the existing acceptance
+authority may convert an exact selected ref into a full immutable commit.
+
 Migration `156` extends the single `source_webhook_inbox` with a typed event
 discriminator and exact PR evidence. The `(provider, delivery_id)` natural key
 remains the sole delivery deduplication authority; a repeated identical
@@ -3124,10 +3136,13 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   provider response bytes are transient and never enter the aggregate,
   PostgreSQL, event payload, response, or error.
 - A connection remains durable installation/account ownership only; it stores
-  no credential. Anonymous source failure may use that same tenant authority to
-  issue one short-lived, repository-bound, read-only installation token for
-  resolution or checkout only while status is `active`. Repository
-  subscriptions are separate environment-owned aggregates.
+  no credential. Resolution and checkout may use that same tenant authority to
+  issue one short-lived, repository-bound, read-only installation token only
+  while status is `active`. Pre-acceptance discovery may issue one
+  installation-wide read-only token to list accessible repositories, or the
+  same repository-bound form to list branches/tags, only after the identical
+  fresh authority check. Tokens and provider bodies remain transient.
+  Repository subscriptions are separate environment-owned aggregates.
 - Due active/suspended connections are inspected through
   `GET /app/installations/{installation_id}` using a fresh App JWT. Successful
   observations reconcile suspension, login, deletion, and exact numeric account
@@ -4521,6 +4536,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Personal in-app notification projection and unread/read state | PostgreSQL Notifications table through A3S ORM migration `106`; the committed transactional Outbox record remains authority for the source fact |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
 | Verified GitHub installation/account ownership, verifying-user identity, explicit status, provider-check health/backoff, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential or raw provider body |
+| GitHub installation-accessible repository and branch/tag discovery pages, cursors, provider bodies, and short-lived installation tokens | Transient Sources query/Infrastructure memory only; never an aggregate, table, cache, event, log, or accepted revision |
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |

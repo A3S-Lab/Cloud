@@ -39,6 +39,11 @@ history limit. Responses reuse the REST DTOs and expose behavioral policy and
 Preview state but never webhook delivery evidence, credentials, Secret material,
 projection receipts, or downstream owner lifecycle. MCP owns no parser,
 repository, evaluator, provider client, or Preview lifecycle.
+The Sources pre-acceptance slice adds two `source:write` read tools over the
+same `GithubSourceDiscoveryQueryService` and closed DTO projection used by
+REST. They list installation-accessible repositories and one canonical
+repository's branches or tags; MCP owns no connection, token, policy, provider
+client, accepted revision, cursor store, or lifecycle.
 The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
 tools over the same Workflow command/query handlers. It does not introduce an
 MCP-specific Ontology store, migration policy, ACL parser, or graph database.
@@ -843,6 +848,28 @@ reads or idempotency replay. Denied and missing Form IDs therefore return the
 same `404`, revocation applies on the next request, and an environment-only
 grant cannot authorize a project-scoped Form.
 
+## GitHub source discovery
+
+`a3s_cloud_github_installation_repositories_list` accepts only an optional
+opaque `cursor` and a `limit` from 1 through 100 (default 50). The authenticated
+organization is never an argument. It returns canonical repository identity,
+default branch, and private/fork/archived/disabled flags after Sources reapplies
+the configured repository policy and existing safe-reference admission rules.
+
+`a3s_cloud_github_repository_references_list` additionally requires canonical
+`repositoryUrl` and closed `kind` (`branch` or `tag`). It returns only names
+admitted by the existing Sources reference value object plus exact full commit
+SHAs; branch protection is boolean and tag protection is `null`.
+The opaque next cursor is bound to the tenant connection, installation,
+repository, kind, and page size, so it cannot be replayed across scopes.
+
+Both tools require `source:write`, remain annotated read-only, reject unknown
+arguments, and dispatch the same QueryBus contracts as REST. The production
+Sources provider revalidates connection authority immediately before issuing a
+short-lived read-only GitHub installation token. Tokens, provider bodies, and
+mutable refs are not persisted or returned, and discovery never creates an
+accepted `SourceRevision`.
+
 ## BuildPlan review and acceptance
 
 `a3s_cloud_build_plan_detections_create` accepts `projectId`, `environmentId`,
@@ -959,7 +986,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 150-tool administrator and 87-tool
+current focused source runner requires exact 152-tool administrator and 87-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -1000,7 +1027,8 @@ protected HumanTask read/claim/release/privacy, tenant/role boundary, determinis
 immutable Application release lifecycle, immutable Connector profile/revision lifecycle, Durable Cell application and
 deployment lifecycle with Secret-free responses, BuildPlan ACL-only review,
 WorkloadProfile ACL-only acceptance and immutable revision reads, Preview
-Management ACL-only policy lineage and exact behavioral reads,
+Management ACL-only policy lineage and exact behavioral reads, Sources-owned
+GitHub repository/reference discovery with `source:write`,
 strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun

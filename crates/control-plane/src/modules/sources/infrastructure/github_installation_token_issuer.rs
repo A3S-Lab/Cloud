@@ -1,6 +1,12 @@
-use crate::modules::shared_kernel::domain::canonical_timestamp;
+use crate::modules::shared_kernel::domain::{canonical_timestamp, GitCommitSha};
+use crate::modules::sources::application::{
+    GithubDiscoveredReference, GithubDiscoveredReferenceKind, GithubDiscoveredRepository,
+    GithubRepositoryDiscoveryProviderRequest, GithubRepositoryReferenceDiscoveryProviderRequest,
+    GithubSourceDiscoveryProviderError, GithubSourceDiscoveryProviderPage,
+    IGithubSourceDiscoveryProvider,
+};
 use crate::modules::sources::domain::{
-    GitProvider, GithubAccountId, GithubAccountKind, GithubInstallationAccount,
+    GitProvider, GitReference, GithubAccountId, GithubAccountKind, GithubInstallationAccount,
     GithubInstallationAuthorityError, GithubInstallationAuthorityRequest,
     GithubInstallationTokenError, GithubInstallationTokenRequest, GithubLogin,
     GithubProviderAuthority, IGithubInstallationAuthorityProvider, IGithubInstallationTokenService,
@@ -10,13 +16,13 @@ use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, LINK, RETRY_AFTER};
 use reqwest::{Client, StatusCode};
 use ring::rand::SystemRandom;
 use ring::signature::{RsaKeyPair, RSA_PKCS1_SHA256};
 use rustls::pki_types::PrivateKeyDer;
 use rustls_pemfile::Item;
-use serde::de::Deserializer;
+use serde::de::{DeserializeOwned, Deserializer};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::BufReader;
@@ -27,6 +33,8 @@ use zeroize::Zeroizing;
 const GITHUB_API_URL: &str = "https://api.github.com/";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 const MAX_RESPONSE_BYTES: u64 = 256 * 1024;
+const MAX_DISCOVERY_RESPONSE_BYTES: u64 = 1024 * 1024;
+const MAX_LINK_HEADER_BYTES: usize = 8 * 1024;
 const MAX_PRIVATE_KEY_BYTES: usize = 64 * 1024;
 const JWT_BACKDATE: ChronoDuration = ChronoDuration::minutes(1);
 const JWT_FUTURE_LIFETIME: ChronoDuration = ChronoDuration::minutes(9);
@@ -143,6 +151,14 @@ impl GithubInstallationTokenIssuer {
             .as_ref()
             .ok_or(GithubInstallationAuthorityError::NotConfigured)
     }
+
+    fn require_discovery_enabled(
+        &self,
+    ) -> Result<&EnabledGithubInstallationTokenIssuer, GithubSourceDiscoveryProviderError> {
+        self.enabled
+            .as_ref()
+            .ok_or(GithubSourceDiscoveryProviderError::NotConfigured)
+    }
 }
 
 #[async_trait]
@@ -160,68 +176,13 @@ impl IGithubInstallationTokenService for GithubInstallationTokenIssuer {
             .owner_and_name()
             .ok_or_else(|| protocol("canonical GitHub repository coordinates are unavailable"))?;
         let requested_at = canonical_timestamp(request.requested_at);
-        let jwt = enabled.app_jwt(requested_at)?;
-        let installation_id = request.installation_id.as_u64().to_string();
-        let mut url = enabled.api_base.clone();
-        url.path_segments_mut()
-            .map_err(|_| protocol("GitHub API URL cannot contain path segments"))?
-            .clear()
-            .extend(["app", "installations", &installation_id, "access_tokens"]);
-        let body = CreateInstallationTokenRequest {
-            repositories: [repository_name],
-            permissions: RequestedPermissions { contents: "read" },
-        };
-        let mut response = enabled
-            .client
-            .post(url)
-            .bearer_auth(jwt.as_str())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| GithubInstallationTokenError::Unavailable)?;
-        match response.status() {
-            StatusCode::CREATED => {}
-            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY => {
-                return Err(GithubInstallationTokenError::Forbidden)
-            }
-            StatusCode::UNAUTHORIZED => return Err(GithubInstallationTokenError::Unavailable),
-            status if status.is_redirection() => {
-                return Err(GithubInstallationTokenError::Forbidden)
-            }
-            status if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS => {
-                return Err(GithubInstallationTokenError::Unavailable)
-            }
-            status => {
-                return Err(protocol(format!(
-                    "GitHub installation-token endpoint returned unexpected HTTP {status}"
-                )))
-            }
-        }
-        let response_body = read_bounded_body(&mut response)
-            .await
-            .map_err(map_token_response_error)?;
-        let token_response: InstallationTokenResponse = serde_json::from_slice(&response_body)
-            .map_err(|_| protocol("GitHub installation-token response JSON is invalid"))?;
-        if token_response.repository_selection.as_deref() != Some("selected")
-            || !token_response
-                .permissions
-                .iter()
-                .all(|(permission, access)| {
-                    matches!(
-                        (permission.as_str(), access.as_str()),
-                        ("contents", "read") | ("metadata", "read")
-                    )
-                })
-            || token_response
-                .permissions
-                .get("contents")
-                .map(String::as_str)
-                != Some("read")
-        {
-            return Err(protocol(
-                "GitHub installation token did not preserve repository and read-only scope",
-            ));
-        }
+        let token_response = enabled
+            .issue_installation_token(
+                request.installation_id.as_u64(),
+                requested_at,
+                Some(repository_name),
+            )
+            .await?;
         SourceProviderCredential::new(
             &request.repository,
             token_response.token.0,
@@ -229,6 +190,119 @@ impl IGithubInstallationTokenService for GithubInstallationTokenIssuer {
             token_response.expires_at,
         )
         .map_err(|error| protocol(format!("GitHub installation token is invalid: {error}")))
+    }
+}
+
+#[async_trait]
+impl IGithubSourceDiscoveryProvider for GithubInstallationTokenIssuer {
+    async fn list_repositories(
+        &self,
+        request: GithubRepositoryDiscoveryProviderRequest,
+    ) -> Result<
+        GithubSourceDiscoveryProviderPage<GithubDiscoveredRepository>,
+        GithubSourceDiscoveryProviderError,
+    > {
+        request
+            .validate()
+            .map_err(GithubSourceDiscoveryProviderError::Protocol)?;
+        let enabled = self.require_discovery_enabled()?;
+        let requested_at = canonical_timestamp(request.scope.requested_at);
+        let token = enabled
+            .issue_installation_token(request.scope.installation_id.as_u64(), requested_at, None)
+            .await
+            .map_err(map_discovery_token_error)?;
+        let mut url = enabled.discovery_url(&["installation", "repositories"])?;
+        url.query_pairs_mut()
+            .append_pair("per_page", &request.limit.to_string())
+            .append_pair("page", &request.page.to_string());
+        let (response, has_next): (InstallationRepositoriesResponse, bool) = enabled
+            .get_discovery_json(url, token.token.0.as_str())
+            .await?;
+        if response.repositories.len() > request.limit {
+            return Err(discovery_protocol(
+                "GitHub repository discovery response exceeded the requested page size",
+            ));
+        }
+        let mut repositories = Vec::with_capacity(response.repositories.len());
+        for value in response.repositories {
+            if let Some(repository) = discovered_repository(value)? {
+                repositories.push(repository);
+            }
+        }
+        Ok(GithubSourceDiscoveryProviderPage {
+            entries: repositories,
+            has_next,
+        })
+    }
+
+    async fn list_references(
+        &self,
+        request: GithubRepositoryReferenceDiscoveryProviderRequest,
+    ) -> Result<
+        GithubSourceDiscoveryProviderPage<GithubDiscoveredReference>,
+        GithubSourceDiscoveryProviderError,
+    > {
+        request
+            .validate()
+            .map_err(GithubSourceDiscoveryProviderError::Protocol)?;
+        let enabled = self.require_discovery_enabled()?;
+        let (owner, repository_name) = request.repository.owner_and_name().ok_or_else(|| {
+            discovery_protocol("canonical GitHub repository coordinates are unavailable")
+        })?;
+        let requested_at = canonical_timestamp(request.scope.requested_at);
+        let token = enabled
+            .issue_installation_token(
+                request.scope.installation_id.as_u64(),
+                requested_at,
+                Some(repository_name),
+            )
+            .await
+            .map_err(map_discovery_token_error)?;
+        let endpoint = match request.kind {
+            GithubDiscoveredReferenceKind::Branch => "branches",
+            GithubDiscoveredReferenceKind::Tag => "tags",
+        };
+        let mut url = enabled.discovery_url(&["repos", owner, repository_name, endpoint])?;
+        url.query_pairs_mut()
+            .append_pair("per_page", &request.limit.to_string())
+            .append_pair("page", &request.page.to_string());
+        let (entries, has_next) = match request.kind {
+            GithubDiscoveredReferenceKind::Branch => {
+                let (response, has_next): (Vec<BranchResponse>, bool) = enabled
+                    .get_discovery_json(url, token.token.0.as_str())
+                    .await?;
+                if response.len() > request.limit {
+                    return Err(discovery_protocol(
+                        "GitHub branch discovery response exceeded the requested page size",
+                    ));
+                }
+                let mut entries = Vec::with_capacity(response.len());
+                for value in response {
+                    if let Some(reference) = discovered_branch(value)? {
+                        entries.push(reference);
+                    }
+                }
+                (entries, has_next)
+            }
+            GithubDiscoveredReferenceKind::Tag => {
+                let (response, has_next): (Vec<TagResponse>, bool) = enabled
+                    .get_discovery_json(url, token.token.0.as_str())
+                    .await?;
+                if response.len() > request.limit {
+                    return Err(discovery_protocol(
+                        "GitHub tag discovery response exceeded the requested page size",
+                    ));
+                }
+                let mut entries = Vec::with_capacity(response.len());
+                for value in response {
+                    if let Some(reference) = discovered_tag(value)? {
+                        entries.push(reference);
+                    }
+                }
+                (entries, has_next)
+            }
+        };
+        Ok(GithubSourceDiscoveryProviderPage { entries, has_next })
     }
 }
 
@@ -273,7 +347,7 @@ impl IGithubInstallationAuthorityProvider for GithubInstallationTokenIssuer {
                 )))
             }
         }
-        let response_body = read_bounded_body(&mut response)
+        let response_body = read_bounded_body(&mut response, MAX_RESPONSE_BYTES)
             .await
             .map_err(map_authority_response_error)?;
         let installation: InstallationAuthorityResponse = serde_json::from_slice(&response_body)
@@ -358,6 +432,146 @@ impl EnabledGithubInstallationTokenIssuer {
             URL_SAFE_NO_PAD.encode(signature.as_slice())
         )))
     }
+
+    async fn issue_installation_token(
+        &self,
+        installation_id: u64,
+        requested_at: DateTime<Utc>,
+        repository: Option<&str>,
+    ) -> Result<InstallationTokenResponse, GithubInstallationTokenError> {
+        let jwt = self.app_jwt(requested_at)?;
+        let installation_id = installation_id.to_string();
+        let mut url = self.api_base.clone();
+        url.path_segments_mut()
+            .map_err(|_| protocol("GitHub API URL cannot contain path segments"))?
+            .clear()
+            .extend(["app", "installations", &installation_id, "access_tokens"]);
+        let body = CreateInstallationTokenRequest {
+            repositories: repository.map(|repository| [repository]),
+            permissions: RequestedPermissions { contents: "read" },
+        };
+        let mut response = self
+            .client
+            .post(url)
+            .bearer_auth(jwt.as_str())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| GithubInstallationTokenError::Unavailable)?;
+        if github_response_is_rate_limited(&response) {
+            return Err(GithubInstallationTokenError::Unavailable);
+        }
+        match response.status() {
+            StatusCode::CREATED => {}
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY => {
+                return Err(GithubInstallationTokenError::Forbidden)
+            }
+            StatusCode::UNAUTHORIZED => return Err(GithubInstallationTokenError::Unavailable),
+            status if status.is_redirection() => {
+                return Err(GithubInstallationTokenError::Forbidden)
+            }
+            status if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS => {
+                return Err(GithubInstallationTokenError::Unavailable)
+            }
+            status => {
+                return Err(protocol(format!(
+                    "GitHub installation-token endpoint returned unexpected HTTP {status}"
+                )))
+            }
+        }
+        let response_body = read_bounded_body(&mut response, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(map_token_response_error)?;
+        let token_response: InstallationTokenResponse = serde_json::from_slice(&response_body)
+            .map_err(|_| protocol("GitHub installation-token response JSON is invalid"))?;
+        let repository_selection_valid = match repository {
+            Some(_) => token_response.repository_selection.as_deref() == Some("selected"),
+            None => matches!(
+                token_response.repository_selection.as_deref(),
+                Some("all" | "selected")
+            ),
+        };
+        if !repository_selection_valid
+            || SourceProviderCredential::validate_transient(
+                token_response.token.0.as_str(),
+                requested_at,
+                token_response.expires_at,
+            )
+            .is_err()
+            || !token_response
+                .permissions
+                .iter()
+                .all(|(permission, access)| {
+                    matches!(
+                        (permission.as_str(), access.as_str()),
+                        ("contents", "read") | ("metadata", "read")
+                    )
+                })
+            || token_response
+                .permissions
+                .get("contents")
+                .map(String::as_str)
+                != Some("read")
+        {
+            return Err(protocol(
+                "GitHub installation token did not preserve requested repository and read-only scope",
+            ));
+        }
+        Ok(token_response)
+    }
+
+    fn discovery_url(&self, segments: &[&str]) -> Result<Url, GithubSourceDiscoveryProviderError> {
+        let mut url = self.api_base.clone();
+        url.path_segments_mut()
+            .map_err(|_| discovery_protocol("GitHub API URL cannot contain path segments"))?
+            .clear()
+            .extend(segments);
+        Ok(url)
+    }
+
+    async fn get_discovery_json<T: DeserializeOwned>(
+        &self,
+        url: Url,
+        token: &str,
+    ) -> Result<(T, bool), GithubSourceDiscoveryProviderError> {
+        let mut response = self
+            .client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| GithubSourceDiscoveryProviderError::Unavailable)?;
+        if github_response_is_rate_limited(&response) {
+            return Err(GithubSourceDiscoveryProviderError::Unavailable);
+        }
+        match response.status() {
+            StatusCode::OK => {}
+            StatusCode::UNAUTHORIZED => {
+                return Err(GithubSourceDiscoveryProviderError::Unavailable)
+            }
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND => {
+                return Err(GithubSourceDiscoveryProviderError::Forbidden)
+            }
+            status if status.is_redirection() => {
+                return Err(GithubSourceDiscoveryProviderError::Forbidden)
+            }
+            status if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS => {
+                return Err(GithubSourceDiscoveryProviderError::Unavailable)
+            }
+            status => {
+                return Err(discovery_protocol(format!(
+                    "GitHub discovery endpoint returned unexpected HTTP {status}"
+                )))
+            }
+        }
+        let has_next = response_has_next_link(&response)?;
+        let body = read_bounded_body(&mut response, MAX_DISCOVERY_RESPONSE_BYTES)
+            .await
+            .map_err(map_discovery_response_error)?;
+        let value = serde_json::from_slice(&body)
+            .map_err(|_| discovery_protocol("GitHub discovery response JSON is invalid"))?;
+        Ok((value, has_next))
+    }
 }
 
 fn parse_private_key(
@@ -389,7 +603,8 @@ struct AppJwtClaims<'a> {
 
 #[derive(Serialize)]
 struct CreateInstallationTokenRequest<'a> {
-    repositories: [&'a str; 1],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repositories: Option<[&'a str; 1]>,
     permissions: RequestedPermissions<'a>,
 }
 
@@ -436,6 +651,127 @@ struct InstallationAccountResponse {
     kind: String,
 }
 
+#[derive(Deserialize)]
+struct InstallationRepositoriesResponse {
+    #[serde(rename = "total_count")]
+    _total_count: usize,
+    repositories: Vec<RepositoryResponse>,
+}
+
+#[derive(Deserialize)]
+struct RepositoryResponse {
+    name: String,
+    full_name: String,
+    html_url: String,
+    #[serde(default)]
+    default_branch: Option<String>,
+    private: bool,
+    fork: bool,
+    archived: bool,
+    disabled: bool,
+}
+
+#[derive(Deserialize)]
+struct BranchResponse {
+    name: String,
+    commit: ReferenceCommitResponse,
+    protected: bool,
+}
+
+#[derive(Deserialize)]
+struct TagResponse {
+    name: String,
+    commit: ReferenceCommitResponse,
+}
+
+#[derive(Deserialize)]
+struct ReferenceCommitResponse {
+    sha: String,
+}
+
+fn discovered_repository(
+    value: RepositoryResponse,
+) -> Result<Option<GithubDiscoveredRepository>, GithubSourceDiscoveryProviderError> {
+    let Ok(repository) =
+        crate::modules::sources::domain::GitRepository::parse(GitProvider::Github, &value.html_url)
+    else {
+        return Ok(None);
+    };
+    let (owner, name) = repository.owner_and_name().ok_or_else(|| {
+        discovery_protocol("GitHub repository discovery coordinates are unavailable")
+    })?;
+    let expected_full_name = format!("{owner}/{name}");
+    if !value.name.eq_ignore_ascii_case(name)
+        || !value.full_name.eq_ignore_ascii_case(&expected_full_name)
+    {
+        return Err(discovery_protocol(
+            "GitHub repository discovery response changed repository identity",
+        ));
+    }
+    let Some(default_branch) = value.default_branch else {
+        return Ok(None);
+    };
+    if GitReference::parse("branch", default_branch.clone()).is_err() {
+        return Ok(None);
+    }
+    let discovered = GithubDiscoveredRepository {
+        repository,
+        default_branch,
+        private: value.private,
+        fork: value.fork,
+        archived: value.archived,
+        disabled: value.disabled,
+    };
+    discovered
+        .validate()
+        .map_err(|_| discovery_protocol("GitHub repository discovery response is invalid"))?;
+    Ok(Some(discovered))
+}
+
+fn discovered_branch(
+    value: BranchResponse,
+) -> Result<Option<GithubDiscoveredReference>, GithubSourceDiscoveryProviderError> {
+    discovered_reference(
+        GithubDiscoveredReferenceKind::Branch,
+        value.name,
+        value.commit.sha,
+        Some(value.protected),
+    )
+}
+
+fn discovered_tag(
+    value: TagResponse,
+) -> Result<Option<GithubDiscoveredReference>, GithubSourceDiscoveryProviderError> {
+    discovered_reference(
+        GithubDiscoveredReferenceKind::Tag,
+        value.name,
+        value.commit.sha,
+        None,
+    )
+}
+
+fn discovered_reference(
+    kind: GithubDiscoveredReferenceKind,
+    name: String,
+    commit_sha: String,
+    protected: Option<bool>,
+) -> Result<Option<GithubDiscoveredReference>, GithubSourceDiscoveryProviderError> {
+    if GitReference::parse(kind.as_str(), name.clone()).is_err() {
+        return Ok(None);
+    }
+    let reference = GithubDiscoveredReference {
+        kind,
+        name,
+        commit_sha: GitCommitSha::parse(commit_sha)
+            .map_err(|_| discovery_protocol("GitHub discovered commit SHA is invalid"))?,
+        protected,
+    };
+    reference
+        .validate()
+        .map_err(|_| discovery_protocol("GitHub discovered reference is invalid"))?;
+    Ok(Some(reference))
+}
+
 enum GithubResponseReadError {
     Unavailable,
     TooLarge,
@@ -443,18 +779,16 @@ enum GithubResponseReadError {
 
 async fn read_bounded_body(
     response: &mut reqwest::Response,
+    maximum_bytes: u64,
 ) -> Result<Zeroizing<Vec<u8>>, GithubResponseReadError> {
     if response
         .content_length()
-        .is_some_and(|length| length > MAX_RESPONSE_BYTES)
+        .is_some_and(|length| length > maximum_bytes)
     {
         return Err(GithubResponseReadError::TooLarge);
     }
     let mut body = Zeroizing::new(Vec::with_capacity(
-        response
-            .content_length()
-            .unwrap_or(0)
-            .min(MAX_RESPONSE_BYTES) as usize,
+        response.content_length().unwrap_or(0).min(maximum_bytes) as usize,
     ));
     while let Some(chunk) = response
         .chunk()
@@ -464,13 +798,67 @@ async fn read_bounded_body(
         if body
             .len()
             .checked_add(chunk.len())
-            .is_none_or(|length| length as u64 > MAX_RESPONSE_BYTES)
+            .is_none_or(|length| length as u64 > maximum_bytes)
         {
             return Err(GithubResponseReadError::TooLarge);
         }
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+fn response_has_next_link(
+    response: &reqwest::Response,
+) -> Result<bool, GithubSourceDiscoveryProviderError> {
+    let Some(value) = response.headers().get(LINK) else {
+        return Ok(false);
+    };
+    let value = value
+        .to_str()
+        .map_err(|_| discovery_protocol("GitHub pagination Link header is invalid"))?;
+    if value.is_empty() || value.len() > MAX_LINK_HEADER_BYTES {
+        return Err(discovery_protocol(
+            "GitHub pagination Link header exceeded its bound",
+        ));
+    }
+    let mut has_next = false;
+    for link in value.split(',') {
+        let mut parts = link.trim().split(';');
+        let target = parts
+            .next()
+            .and_then(|value| value.strip_prefix('<'))
+            .and_then(|value| value.strip_suffix('>'))
+            .ok_or_else(|| discovery_protocol("GitHub pagination Link target is invalid"))?;
+        let target = Url::parse(target)
+            .map_err(|_| discovery_protocol("GitHub pagination Link target is invalid"))?;
+        if !matches!(target.scheme(), "https" | "http")
+            || target.host_str().is_none()
+            || !target.username().is_empty()
+            || target.password().is_some()
+            || target.fragment().is_some()
+        {
+            return Err(discovery_protocol(
+                "GitHub pagination Link target is invalid",
+            ));
+        }
+        for parameter in parts {
+            if parameter.trim() == "rel=\"next\"" {
+                has_next = true;
+            }
+        }
+    }
+    Ok(has_next)
+}
+
+fn github_response_is_rate_limited(response: &reqwest::Response) -> bool {
+    response.status() == StatusCode::TOO_MANY_REQUESTS
+        || (response.status() == StatusCode::FORBIDDEN
+            && (response.headers().contains_key(RETRY_AFTER)
+                || response
+                    .headers()
+                    .get("x-ratelimit-remaining")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("0")))
 }
 
 fn map_token_response_error(error: GithubResponseReadError) -> GithubInstallationTokenError {
@@ -487,6 +875,34 @@ fn map_authority_response_error(
         GithubResponseReadError::Unavailable => GithubInstallationAuthorityError::Unavailable,
         GithubResponseReadError::TooLarge => {
             authority_protocol("GitHub response exceeded the size limit")
+        }
+    }
+}
+
+fn map_discovery_response_error(
+    error: GithubResponseReadError,
+) -> GithubSourceDiscoveryProviderError {
+    match error {
+        GithubResponseReadError::Unavailable => GithubSourceDiscoveryProviderError::Unavailable,
+        GithubResponseReadError::TooLarge => {
+            discovery_protocol("GitHub discovery response exceeded the size limit")
+        }
+    }
+}
+
+fn map_discovery_token_error(
+    error: GithubInstallationTokenError,
+) -> GithubSourceDiscoveryProviderError {
+    match error {
+        GithubInstallationTokenError::NotConfigured => {
+            GithubSourceDiscoveryProviderError::NotConfigured
+        }
+        GithubInstallationTokenError::Forbidden => GithubSourceDiscoveryProviderError::Forbidden,
+        GithubInstallationTokenError::Unavailable => {
+            GithubSourceDiscoveryProviderError::Unavailable
+        }
+        GithubInstallationTokenError::Protocol(message) => {
+            GithubSourceDiscoveryProviderError::Protocol(message)
         }
     }
 }
@@ -537,6 +953,10 @@ fn protocol(message: impl Into<String>) -> GithubInstallationTokenError {
 
 fn authority_protocol(message: impl Into<String>) -> GithubInstallationAuthorityError {
     GithubInstallationAuthorityError::Protocol(message.into())
+}
+
+fn discovery_protocol(message: impl Into<String>) -> GithubSourceDiscoveryProviderError {
+    GithubSourceDiscoveryProviderError::Protocol(message.into())
 }
 
 #[cfg(test)]

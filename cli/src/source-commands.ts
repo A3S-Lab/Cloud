@@ -1,7 +1,17 @@
-import type { BuildPlatform, CloudApi, DockerfileBuildRecipe, GitReferenceKind } from '@a3s/cloud-client';
+import {
+  type BuildPlatform,
+  type CloudApi,
+  type DockerfileBuildRecipe,
+  encodeGithubSourceDiscoveryPageOptions,
+  type GithubDiscoveredReferenceKind,
+  type GithubSourceDiscoveryPageOptions,
+  type GitReferenceKind,
+  validateCanonicalGithubRepositoryUrl,
+} from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
+  rejectAgentProviderKindOption,
   rejectExpectedVersionOption,
   rejectFileOption,
   rejectGatewayRolloutOptions,
@@ -18,6 +28,8 @@ import type { CommandResult } from './results';
 import {
   githubConnectionInstallResult,
   githubConnectionResult,
+  githubRepositoryDiscoveryResult,
+  githubRepositoryReferenceDiscoveryResult,
   githubSubscriptionMutationResult,
   githubSubscriptionsResult,
   sourceRevisionMutationResult,
@@ -87,6 +99,30 @@ export async function executeSourceCommand(
       return githubConnectionInstallResult(
         await cloudApi().beginGithubConnection(requireOrganization(context))
       );
+    case 'source-repositories list': {
+      requireSourceDiscoveryListCommand(arguments_, 2, 'source-repositories list');
+      return githubRepositoryDiscoveryResult(
+        await cloudApi().listGithubInstallationRepositories(
+          requireOrganization(context),
+          sourceDiscoveryOptions(arguments_)
+        )
+      );
+    }
+    case 'source-references list': {
+      requireSourceDiscoveryListCommand(
+        arguments_,
+        4,
+        'source-references list <repository-url> <branch|tag>'
+      );
+      return githubRepositoryReferenceDiscoveryResult(
+        await cloudApi().listGithubRepositoryReferences(
+          requireOrganization(context),
+          canonicalGithubRepositoryUrl(positionals[2]),
+          sourceDiscoveryReferenceKind(positionals[3]),
+          sourceDiscoveryOptions(arguments_)
+        )
+      );
+    }
     case 'source-subscriptions list': {
       requireListCommand(arguments_);
       const scope = requireEnvironmentScope(context);
@@ -142,6 +178,59 @@ export async function executeSourceCommand(
     default:
       return undefined;
   }
+}
+
+function requireSourceDiscoveryListCommand(arguments_: ParsedArguments, arity: number, usage: string): void {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
+  if (arguments_.stream !== undefined) {
+    throw usageError('--stream is valid only for log commands');
+  }
+}
+
+function sourceDiscoveryOptions(arguments_: ParsedArguments): GithubSourceDiscoveryPageOptions {
+  let limit: number | undefined;
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError('GitHub source discovery limit must be an integer');
+    }
+    limit = Number(arguments_.limit);
+  }
+  const options = { cursor: arguments_.cursor, limit };
+  try {
+    encodeGithubSourceDiscoveryPageOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
+
+function canonicalGithubRepositoryUrl(value: string | undefined): string {
+  if (value === undefined) {
+    throw usageError('GitHub source discovery repository URL is required');
+  }
+  try {
+    return validateCanonicalGithubRepositoryUrl(value);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+}
+
+function sourceDiscoveryReferenceKind(value: string | undefined): GithubDiscoveredReferenceKind {
+  if (value !== 'branch' && value !== 'tag') {
+    throw usageError('GitHub source discovery reference kind must be branch or tag');
+  }
+  return value;
 }
 
 function requireSimpleCommand(arguments_: ParsedArguments, usage: string): void {

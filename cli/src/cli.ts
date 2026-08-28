@@ -198,6 +198,8 @@ Commands:
   pull-request-previews get SOURCE-SUBSCRIPTION PR-ID Get the current pull-request Preview
   source-connections get  Show the organization GitHub connection
   source-connections begin Start the no-store GitHub installation flow
+  source-repositories list List policy-admitted repositories visible to the GitHub installation
+  source-references list URL KIND List one repository's branches or tags
   source-subscriptions list List GitHub repository subscriptions
   source-subscriptions create URL BRANCH Create a GitHub subscription idempotently
   source-subscriptions deactivate ID Deactivate a GitHub subscription idempotently

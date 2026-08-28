@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud Sources discovery domain boundary</title>
+  <desc id="desc">REST, CLI, client, and Management MCP dispatch two read queries to one Sources application service. The service restores the authoritative GitHub connection, applies repository policy and scope-bound pagination, then calls a revalidating provider port. Infrastructure keeps the short-lived GitHub token private. Discovery pages are transient and do not create a database, event, queue, cache, or lifecycle.</desc>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#67b7ff"/></marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#b7f56a"/></marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#f2c66d"/></marker>
+  </defs>
+
+  <rect width="1200" height="760" rx="24" fill="#0a0f0c"/>
+  <rect x="1" y="1" width="1198" height="758" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
+  <text x="48" y="52" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="34" font-weight="760">Discover provider state without creating product state.</text>
+  <text x="48" y="82" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">SOURCES / TWO QUERIES / ONE APPLICATION AUTHORITY / TRANSIENT TOKEN</text>
+
+  <!-- Inbound adapters -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="48" y="132" width="186" height="190" rx="14" fill="#0d1720" stroke="#3e6e8d"/>
+    <text x="66" y="163" fill="#67b7ff" font-size="18" font-weight="700">INBOUND</text>
+    <text x="66" y="199" fill="#eff7f1" font-size="20" font-weight="700">REST / OpenAPI</text>
+    <text x="66" y="231" fill="#eff7f1" font-size="20" font-weight="700">TypeScript / CLI</text>
+    <text x="66" y="263" fill="#eff7f1" font-size="20" font-weight="700">Management MCP</text>
+    <text x="66" y="297" fill="#9fb2a8" font-size="18">source:write</text>
+  </g>
+
+  <!-- Sources bounded context -->
+  <rect x="266" y="112" width="682" height="516" rx="18" fill="#0e1712" stroke="#719b46" stroke-width="2"/>
+  <rect x="286" y="100" width="238" height="27" rx="6" fill="#0a0f0c"/>
+  <text x="300" y="120" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">SOURCES BOUNDED CONTEXT</text>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="294" y="146" width="626" height="66" rx="10" fill="#101812" stroke="#3e6e8d"/>
+    <text x="316" y="174" fill="#eff7f1" font-size="21" font-weight="700">Presentation</text>
+    <text x="316" y="199" fill="#9fb2a8" font-size="18">2 GET routes + 2 read-only MCP tools + one shared response projection</text>
+
+    <rect x="294" y="236" width="626" height="126" rx="10" fill="#101812" stroke="#719b46"/>
+    <text x="316" y="265" fill="#eff7f1" font-size="21" font-weight="700">Application / GithubSourceDiscoveryQueryService</text>
+    <text x="316" y="294" fill="#d7ff9f" font-size="18">restore authoritative connection  -  apply SourceRepositoryPolicy</text>
+    <text x="316" y="321" fill="#d7ff9f" font-size="18">bind cursor to org + connection + installation + repo + kind + limit</text>
+    <text x="316" y="348" fill="#d7ff9f" font-size="18">call provider port  -  revalidate identity, bounds, kind, uniqueness</text>
+
+    <rect x="294" y="386" width="296" height="214" rx="10" fill="#172118" stroke="#b7f56a" stroke-width="2"/>
+    <text x="316" y="416" fill="#eff7f1" font-size="21" font-weight="700">Domain and inward ports</text>
+    <text x="316" y="449" fill="#d7ff9f" font-size="18">Organization 1 -> 0..1 Connection</text>
+    <text x="316" y="477" fill="#d7ff9f" font-size="18">Connection -> Installation identity</text>
+    <text x="316" y="505" fill="#d7ff9f" font-size="18">Policy -> canonical GitRepository</text>
+    <text x="316" y="533" fill="#d7ff9f" font-size="18">Discovery kind = branch | tag</text>
+    <text x="316" y="566" fill="#9fb2a8" font-size="18">IGithubConnectionRepository</text>
+    <text x="316" y="590" fill="#9fb2a8" font-size="18">IGithubSourceDiscoveryProvider</text>
+
+    <rect x="614" y="386" width="306" height="214" rx="10" fill="#17160f" stroke="#806f39"/>
+    <text x="636" y="416" fill="#eff7f1" font-size="21" font-weight="700">Infrastructure adapters</text>
+    <text x="636" y="449" fill="#f2d99d" font-size="18">RevalidatingGithubSourceDiscovery</text>
+    <text x="636" y="477" fill="#f2d99d" font-size="18">connection authority recheck</text>
+    <text x="636" y="505" fill="#f2d99d" font-size="18">GithubInstallationTokenIssuer</text>
+    <text x="636" y="533" fill="#f2d99d" font-size="18">installation / repository scope</text>
+    <text x="636" y="561" fill="#f2d99d" font-size="18">bounded GET + Link parsing</text>
+    <text x="636" y="589" fill="#9fb2a8" font-size="18">Zeroizing token; never returned</text>
+  </g>
+
+  <!-- External provider -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <rect x="978" y="132" width="174" height="244" rx="14" fill="#0d1720" stroke="#3e6e8d"/>
+    <text x="996" y="163" fill="#67b7ff" font-size="18" font-weight="700">GITHUB API</text>
+    <text x="996" y="199" fill="#eff7f1" font-size="19" font-weight="700">Install token</text>
+    <text x="996" y="230" fill="#eff7f1" font-size="19" font-weight="700">Repositories</text>
+    <text x="996" y="261" fill="#eff7f1" font-size="19" font-weight="700">Branches</text>
+    <text x="996" y="292" fill="#eff7f1" font-size="19" font-weight="700">Tags</text>
+    <text x="996" y="329" fill="#9fb2a8" font-size="18">read-only</text>
+    <text x="996" y="354" fill="#9fb2a8" font-size="18">1..100 / page</text>
+  </g>
+
+  <!-- Flow arrows -->
+  <path d="M234 227h60" fill="none" stroke="#67b7ff" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <path d="M607 212v24M607 362v24" fill="none" stroke="#b7f56a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M614 493h-24" fill="none" stroke="#b7f56a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M920 493h30v-239h28" fill="none" stroke="#f2c66d" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
+
+  <!-- Transient result and exclusion rail -->
+  <rect x="48" y="660" width="1104" height="68" rx="12" fill="#101812" stroke="#53665b"/>
+  <text x="70" y="689" fill="#eff7f1" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="700">Transient projection:</text>
+  <text x="304" y="689" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">0..100 repositories OR 0..100 branches/tags + opaque next cursor</text>
+  <text x="70" y="716" fill="#9fb2a8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">NO TABLE / MIGRATION / OUTBOX / RELAY / QUEUE / WORKER / CACHE / PERSISTED TOKEN / NEW LIFECYCLE</text>
+</svg>

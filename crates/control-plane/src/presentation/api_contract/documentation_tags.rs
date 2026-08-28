@@ -29,7 +29,7 @@ pub(super) const TAGS: [(&str, &str); 24] = [
     ),
     (
         "Sources",
-        "Source connections, subscriptions, revisions, and signed webhook ingestion.",
+        "Source connections, transient provider discovery, subscriptions, revisions, and signed webhook ingestion.",
     ),
     (
         "Developer Workflows",

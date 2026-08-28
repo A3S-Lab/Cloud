@@ -12,6 +12,26 @@ pub struct GitRepository {
 }
 
 impl GitRepository {
+    const GITHUB_COORDINATE_PATTERN: &'static str = r"(?:[a-z0-9]|(?![a-z0-9-]*--)[a-z0-9][a-z0-9-]{0,37}[a-z0-9])/(?!\.{1,2}$)(?![a-z0-9._-]*\.git$)[a-z0-9._-]{1,100}";
+    pub const MAX_GITHUB_OWNER_BYTES: usize = 39;
+    pub const MAX_GITHUB_REPOSITORY_NAME_BYTES: usize = 100;
+    pub const MAX_CANONICAL_URL_BYTES: usize = "https://github.com/".len()
+        + Self::MAX_GITHUB_OWNER_BYTES
+        + 1
+        + Self::MAX_GITHUB_REPOSITORY_NAME_BYTES;
+    pub const MAX_IDENTITY_BYTES: usize = "github:github.com/".len()
+        + Self::MAX_GITHUB_OWNER_BYTES
+        + 1
+        + Self::MAX_GITHUB_REPOSITORY_NAME_BYTES;
+
+    pub fn github_canonical_url_pattern() -> String {
+        format!("^https://github\\.com/{}$", Self::GITHUB_COORDINATE_PATTERN)
+    }
+
+    pub fn github_identity_pattern() -> String {
+        format!("^github:github\\.com/{}$", Self::GITHUB_COORDINATE_PATTERN)
+    }
+
     pub fn parse(provider: GitProvider, value: &str) -> Result<Self, String> {
         match provider {
             GitProvider::Github => Self::parse_github(value),
@@ -98,7 +118,7 @@ impl GitRepository {
 
 fn validate_github_owner(value: &str) -> Result<(), String> {
     if value.is_empty()
-        || value.len() > 39
+        || value.len() > GitRepository::MAX_GITHUB_OWNER_BYTES
         || value.starts_with('-')
         || value.ends_with('-')
         || value.contains("--")
@@ -113,8 +133,9 @@ fn validate_github_owner(value: &str) -> Result<(), String> {
 
 fn validate_github_repository(value: &str) -> Result<(), String> {
     if value.is_empty()
-        || value.len() > 100
+        || value.len() > GitRepository::MAX_GITHUB_REPOSITORY_NAME_BYTES
         || matches!(value, "." | "..")
+        || value.ends_with(".git")
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))

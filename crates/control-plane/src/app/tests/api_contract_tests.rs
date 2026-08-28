@@ -16,6 +16,114 @@ mod workflow_response_schemas;
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
 
 #[test]
+fn github_source_discovery_contract_is_bounded_closed_and_credential_free() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let repositories_path =
+        "/organizations/{organization_id}/source-connections/github/repositories";
+    let references_path =
+        "/organizations/{organization_id}/source-connections/github/repository-references";
+    let repositories = &document["paths"][repositories_path]["get"];
+    let references = &document["paths"][references_path]["get"];
+
+    assert_eq!(repositories["tags"], json!(["Sources"]));
+    assert_eq!(references["tags"], json!(["Sources"]));
+    assert!(repositories.get("requestBody").is_none());
+    assert!(references.get("requestBody").is_none());
+    assert_eq!(
+        repositories["responses"]["200"]["$ref"],
+        "#/components/responses/GithubRepositoryDiscoveryPageSuccess200"
+    );
+    assert_eq!(
+        references["responses"]["200"]["$ref"],
+        "#/components/responses/GithubRepositoryReferenceDiscoveryPageSuccess200"
+    );
+
+    let repository_parameters = repositories["parameters"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("repository discovery parameters are missing".into()))?;
+    let repository_limit = repository_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "limit")
+        .ok_or_else(|| BootError::Internal("repository discovery limit is missing".into()))?;
+    assert_eq!(repository_limit["schema"]["minimum"], 1);
+    assert_eq!(
+        repository_limit["schema"]["maximum"],
+        crate::modules::sources::MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE
+    );
+
+    let reference_parameters = references["parameters"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("reference discovery parameters are missing".into()))?;
+    for name in ["repositoryUrl", "kind"] {
+        let parameter = reference_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .ok_or_else(|| BootError::Internal(format!("reference discovery {name} is missing")))?;
+        assert_eq!(parameter["required"], true);
+    }
+    let repository_url = reference_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "repositoryUrl")
+        .ok_or_else(|| {
+            BootError::Internal("reference discovery repository URL is missing".into())
+        })?;
+    assert_eq!(
+        repository_url["schema"]["pattern"],
+        crate::modules::sources::domain::GitRepository::github_canonical_url_pattern()
+    );
+    let repository_cursor = repository_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "cursor")
+        .ok_or_else(|| BootError::Internal("repository discovery cursor is missing".into()))?;
+    assert_eq!(
+        repository_cursor["schema"]["pattern"],
+        crate::modules::sources::GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN
+    );
+
+    let schemas = &document["components"]["schemas"];
+    assert_eq!(
+        schemas["GithubSourceRepository"]["properties"]["identity"]["pattern"],
+        crate::modules::sources::domain::GitRepository::github_identity_pattern()
+    );
+    assert_eq!(
+        schemas["GithubRepositoryDiscoveryPage"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        schemas["GithubRepositoryReferenceDiscoveryPage"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        schemas["GithubDiscoveredBranch"]["properties"]["protected"]["type"],
+        "boolean"
+    );
+    assert_eq!(
+        schemas["GithubDiscoveredTag"]["properties"]["protected"]["enum"],
+        json!([null])
+    );
+    let serialized = json!({
+        "paths": {
+            repositories_path: repositories,
+            references_path: references,
+        },
+        "schemas": {
+            "repository": schemas["GithubRepositoryDiscoveryPage"].clone(),
+            "reference": schemas["GithubRepositoryReferenceDiscoveryPage"].clone(),
+        }
+    })
+    .to_string()
+    .to_ascii_lowercase();
+    for forbidden in ["accesstoken", "credential", "privatekey", "authorization"] {
+        assert!(
+            !serialized.contains(forbidden),
+            "contract exposes {forbidden}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

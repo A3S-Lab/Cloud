@@ -10,6 +10,8 @@ pub enum GitReference {
 }
 
 impl GitReference {
+    pub const MAX_NAMED_REFERENCE_BYTES: usize = 255;
+
     pub fn parse(kind: &str, value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
         match kind {
@@ -38,7 +40,7 @@ impl GitReference {
 
 fn parse_named_reference(value: String) -> Result<String, String> {
     if value.is_empty()
-        || value.len() > 255
+        || value.len() > GitReference::MAX_NAMED_REFERENCE_BYTES
         || value == "@"
         || value.starts_with("refs/")
         || value.starts_with('/')

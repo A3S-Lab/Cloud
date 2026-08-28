@@ -262,6 +262,43 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     assert_eq!(found.status(), 200);
     assert_no_store(&found);
     assert_eq!(response_json(&found)?["data"]["installationId"], 42);
+
+    let repositories_path = format!("{path}/repositories?limit=25");
+    let unauthenticated_discovery = app
+        .call(BootRequest::new(HttpMethod::Get, &repositories_path))
+        .await?;
+    assert_eq!(unauthenticated_discovery.status(), 401);
+    assert_no_store(&unauthenticated_discovery);
+    let wrong_scope_discovery = app.call(get_as(&repositories_path, PROJECT_TOKEN)).await?;
+    assert_eq!(wrong_scope_discovery.status(), 403);
+    assert_no_store(&wrong_scope_discovery);
+    let disabled_discovery = app.call(get_as(&repositories_path, SOURCE_TOKEN)).await?;
+    assert_eq!(disabled_discovery.status(), 503);
+    assert_no_store(&disabled_discovery);
+    assert_eq!(
+        response_json(&disabled_discovery)?["statusCode"],
+        "SERVICE_UNAVAILABLE"
+    );
+
+    let missing_reference_query = app
+        .call(get_as(
+            format!("{path}/repository-references"),
+            SOURCE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing_reference_query.status(), 400);
+    assert_no_store(&missing_reference_query);
+    let noncanonical_reference = app
+        .call(get_as(
+            format!(
+                "{path}/repository-references?repositoryUrl=https%3A%2F%2Fgithub.com%2FA3S-Lab%2FCloud.git&kind=branch&limit=50"
+            ),
+            SOURCE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(noncanonical_reference.status(), 422);
+    assert_no_store(&noncanonical_reference);
+
     let duplicate_for_organization = app
         .call(
             BootRequest::new(HttpMethod::Post, &path)

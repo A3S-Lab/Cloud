@@ -29,8 +29,8 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
-it('pins the current Developer Workflows, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(150);
+it('pins the current Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
+  expect(ADMIN_TOOLS).toHaveLength(152);
   expect(READ_ONLY_TOOLS).toHaveLength(87);
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_workload_profiles_accept')).toEqual([
     'a3s_cloud_workload_profiles_accept',
@@ -50,6 +50,13 @@ it('pins the current Developer Workflows, signed-audit, and retention management
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_pull_request_preview_policies_accept')).toEqual([
     'a3s_cloud_pull_request_preview_policies_accept',
   ]);
+  for (const tool of [
+    'a3s_cloud_github_installation_repositories_list',
+    'a3s_cloud_github_repository_references_list',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+    expect(READ_ONLY_TOOLS).not.toContain(tool);
+  }
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);
@@ -257,6 +264,8 @@ conformanceIt(
       'a3s_cloud_application_sessions_replay',
       'a3s_cloud_application_invocations_get',
       'a3s_cloud_application_messages_list',
+      'a3s_cloud_github_installation_repositories_list',
+      'a3s_cloud_github_repository_references_list',
     ]);
     const destructiveToolSet = new Set<string>([
       'a3s_cloud_memberships_revoke',

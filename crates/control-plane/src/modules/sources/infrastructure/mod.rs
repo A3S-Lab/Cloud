@@ -8,6 +8,7 @@ mod github_webhook_verifier;
 pub mod persistence;
 mod pull_request_preview_source_projector;
 mod revalidating_github_installation_tokens;
+mod revalidating_github_source_discovery;
 
 pub use developer_workflow_source_layout::DeveloperWorkflowSourceLayoutAdapter;
 pub use external_build_archive::ExternalSourceBuildArchiveAdapter;
@@ -18,3 +19,4 @@ pub use github_source_resolver::GithubSourceResolver;
 pub use github_webhook_verifier::GithubWebhookVerifier;
 pub use pull_request_preview_source_projector::PullRequestPreviewSourceProjector;
 pub use revalidating_github_installation_tokens::RevalidatingGithubInstallationTokens;
+pub use revalidating_github_source_discovery::RevalidatingGithubSourceDiscovery;

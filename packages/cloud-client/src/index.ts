@@ -69,4 +69,13 @@ export {
 export * from './notifications';
 export * from './search';
 export * from './security';
+export {
+  DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+  encodeGithubSourceDiscoveryPageOptions,
+  MAXIMUM_GITHUB_REPOSITORY_CANONICAL_URL_BYTES,
+  MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES,
+  MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+  validateCanonicalGithubRepositoryUrl,
+  validateGithubSourceDiscoveryReferenceKind,
+} from './source';
 export * from './types';

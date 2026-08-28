@@ -1,12 +1,16 @@
 import type {
   GithubConnection,
   GithubConnectionInstall,
+  GithubDiscoveredReference,
+  GithubDiscoveredRepository,
+  GithubRepositoryDiscoveryPage,
+  GithubRepositoryReferenceDiscoveryPage,
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   SourceRevision,
   SourceRevisionMutationResult,
 } from '@a3s/cloud-client';
-import { renderTable, type TableColumn } from './output';
+import { renderTable, sanitizeCell, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
 const SOURCE_REVISION_COLUMNS: readonly TableColumn<SourceRevision>[] = [
@@ -49,6 +53,32 @@ export function githubConnectionInstallResult(row: GithubConnectionInstall): Com
   ]);
 }
 
+const GITHUB_DISCOVERED_REPOSITORY_COLUMNS: readonly TableColumn<GithubDiscoveredRepository>[] = [
+  { header: 'REPOSITORY', value: (row) => row.repository.identity },
+  { header: 'DEFAULT BRANCH', value: (row) => row.defaultBranch },
+  { header: 'PRIVATE', value: (row) => row.private },
+  { header: 'FORK', value: (row) => row.fork },
+  { header: 'ARCHIVED', value: (row) => row.archived },
+  { header: 'DISABLED', value: (row) => row.disabled },
+];
+
+export function githubRepositoryDiscoveryResult(page: GithubRepositoryDiscoveryPage): CommandResult {
+  return pageResult(page, page.repositories, GITHUB_DISCOVERED_REPOSITORY_COLUMNS);
+}
+
+const GITHUB_DISCOVERED_REFERENCE_COLUMNS: readonly TableColumn<GithubDiscoveredReference>[] = [
+  { header: 'KIND', value: (row) => row.kind },
+  { header: 'NAME', value: (row) => row.name },
+  { header: 'COMMIT', value: (row) => row.commitSha },
+  { header: 'PROTECTED', value: (row) => row.protected },
+];
+
+export function githubRepositoryReferenceDiscoveryResult(
+  page: GithubRepositoryReferenceDiscoveryPage
+): CommandResult {
+  return pageResult(page, page.references, GITHUB_DISCOVERED_REFERENCE_COLUMNS);
+}
+
 const GITHUB_SUBSCRIPTION_COLUMNS: readonly TableColumn<GithubRepositorySubscription>[] = [
   { header: 'ID', value: (row) => row.id },
   { header: 'REPOSITORY', value: (row) => row.repository.identity },
@@ -83,5 +113,17 @@ function listResult<Row>(rows: Row[], columns: readonly TableColumn<Row>[]): Com
   return {
     json: rows,
     table: renderTable(rows, columns),
+  };
+}
+
+function pageResult<Page extends { nextCursor: string | null }, Row>(
+  page: Page,
+  rows: Row[],
+  columns: readonly TableColumn<Row>[]
+): CommandResult {
+  const table = renderTable(rows, columns);
+  return {
+    json: page,
+    table: page.nextCursor ? `${table}Next cursor: ${sanitizeCell(page.nextCursor)}\n` : table,
   };
 }

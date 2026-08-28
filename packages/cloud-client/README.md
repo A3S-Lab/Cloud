@@ -130,10 +130,18 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.75.0`. It exposes Preview Policy acceptance,
-current revision, bounded revision history, exact revision reads, and one exact
-behavioral pull-request Preview read through the Developer Workflows Application
-boundary. `acceptPullRequestPreviewPolicy`,
+The client targets REST contract `1.76.0`. It exposes transient
+`listGithubInstallationRepositories` and `listGithubRepositoryReferences`
+queries through the sole Sources Application authority. The shared client
+validates canonical lowercase GitHub repository URLs, the closed `branch | tag`
+kind, `1..=100` limits, and bounded opaque cursors before transport. Typed pages
+contain provider projections and a continuation cursor, never an installation
+token, credential, persisted provider inventory, or accepted source lifecycle.
+
+It retains `1.75.0`'s Preview Policy acceptance, current revision, bounded
+revision history, exact revision reads, and one exact behavioral pull-request
+Preview read through the Developer Workflows Application boundary.
+`acceptPullRequestPreviewPolicy`,
 `getCurrentAcceptedPullRequestPreviewPolicyRevision`,
 `listAcceptedPullRequestPreviewPolicyRevisions`,
 `getAcceptedPullRequestPreviewPolicyRevision`, and `getPullRequestPreview`

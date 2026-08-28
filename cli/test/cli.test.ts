@@ -504,6 +504,45 @@ describe('a3s-cloud CLI', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it.each([
+    {
+      command: ['source-repositories', 'list', '--cursor=repository_cursor', '--limit=25'],
+      path:
+        `/organizations/${ORGANIZATION_ID}/source-connections/github/repositories` +
+        '?cursor=repository_cursor&limit=25',
+      response: sourceRepositoryDiscoveryPage(),
+      expected: 'github:github.com/a3s-lab/cloud',
+    },
+    {
+      command: ['source-references', 'list', 'https://github.com/a3s-lab/cloud', 'tag', '--limit=10'],
+      path:
+        `/organizations/${ORGANIZATION_ID}/source-connections/github/repository-references` +
+        '?repositoryUrl=https%3A%2F%2Fgithub.com%2Fa3s-lab%2Fcloud&kind=tag&limit=10',
+      response: sourceReferenceDiscoveryPage(),
+      expected: 'v1.0.0',
+    },
+  ])('discovers pre-acceptance Source choices without provider credentials %#', async (testCase) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(testCase.response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(testCase.command, {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${testCase.path}`);
+    expect(output.stdout()).toContain(testCase.expected);
+    expect(output.stdout()).toContain('Next cursor: next_cursor');
+    expect(output.stdout()).not.toContain('fixture-installation-token');
+    expect(output.stderr()).toBe('');
+  });
+
   it('starts the no-store GitHub connection flow without inventing an idempotency contract', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
@@ -671,6 +710,10 @@ describe('a3s-cloud CLI', () => {
         '--platforms=linux/amd64,linux/amd64',
         '--idempotency-key=cli:source-platform',
       ],
+      ['source-repositories', 'list', '--limit=101'],
+      ['source-repositories', 'list', '--cursor=invalid='],
+      ['source-references', 'list', 'https://github.com/A3S-Lab/Cloud', 'branch'],
+      ['source-references', 'list', 'https://github.com/a3s-lab/cloud', 'commit'],
       ['organizations', 'list', '--platforms=linux/amd64'],
     ];
 
@@ -1329,6 +1372,46 @@ function sourceResource(
     recipeDigest: 'sha256:recipe',
     aggregateVersion: 1,
     acceptedAt: '2026-07-27T00:00:00.000Z',
+  };
+}
+
+function sourceRepositoryDiscoveryPage(): Record<string, unknown> {
+  return {
+    repositories: [
+      {
+        repository: {
+          provider: 'github',
+          canonicalUrl: 'https://github.com/a3s-lab/cloud',
+          identity: 'github:github.com/a3s-lab/cloud',
+        },
+        defaultBranch: 'main',
+        private: true,
+        fork: false,
+        archived: false,
+        disabled: false,
+      },
+    ],
+    nextCursor: 'next_cursor',
+  };
+}
+
+function sourceReferenceDiscoveryPage(): Record<string, unknown> {
+  return {
+    repository: {
+      provider: 'github',
+      canonicalUrl: 'https://github.com/a3s-lab/cloud',
+      identity: 'github:github.com/a3s-lab/cloud',
+    },
+    kind: 'tag',
+    references: [
+      {
+        kind: 'tag',
+        name: 'v1.0.0',
+        commitSha: 'a'.repeat(40),
+        protected: null,
+      },
+    ],
+    nextCursor: 'next_cursor',
   };
 }
 

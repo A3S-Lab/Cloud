@@ -428,6 +428,8 @@ preview-policy-revisions get <source-subscription-id> <revision-id>
 pull-request-previews get <source-subscription-id> <pull-request-id>
 source-connections get
 source-connections begin
+source-repositories list [--cursor=<opaque>] [--limit=<1..100>]
+source-references list <canonical-repository-url> <branch|tag> [--cursor=<opaque>] [--limit=<1..100>]
 source-subscriptions list
 source-subscriptions create <repository-url> <branch> --context-path=<path> --dockerfile-path=<path> --platforms=<csv> [--target=<stage>]
 source-subscriptions deactivate <subscription-id>
@@ -729,6 +731,10 @@ Source revision resolution and repository-subscription create/deactivate output
 also includes the authoritative `replayed` value. `source-connections begin`
 returns a short-lived no-store installation URL; use `--output=json` when the
 complete URL must be copied because bounded table cells may abbreviate it.
+`source-repositories list` and `source-references list` show only transient,
+policy-admitted GitHub projections and a sanitized next cursor. They never print
+or persist the installation token, and they do not create a SourceRevision or
+subscription.
 Secret create, add-version, and revoke-version output includes only the safe
 metadata projection, changed version state, and authoritative `replayed`
 value. Plaintext is excluded even if an invalid upstream response attempts to

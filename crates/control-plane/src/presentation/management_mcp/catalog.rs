@@ -42,6 +42,11 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
 use crate::modules::security::{DEFAULT_SECURITY_TIMELINE_LIMIT, MAXIMUM_SECURITY_TIMELINE_LIMIT};
+use crate::modules::sources::domain::GitRepository;
+use crate::modules::sources::{
+    DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE, GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN,
+    MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES, MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+};
 use crate::modules::workflow::{
     WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
 };
@@ -200,6 +205,9 @@ pub const HUMAN_TASKS_SUBMIT: &str = "a3s_cloud_human_tasks_submit";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
+pub const GITHUB_INSTALLATION_REPOSITORIES_LIST: &str =
+    "a3s_cloud_github_installation_repositories_list";
+pub const GITHUB_REPOSITORY_REFERENCES_LIST: &str = "a3s_cloud_github_repository_references_list";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
 pub const PLUGIN_CATALOG_INSPECT: &str = "a3s_cloud_plugin_catalog_inspect";
@@ -311,6 +319,8 @@ pub enum ManagementTool {
     HumanTasksRelease,
     HumanTasksSubmit,
     Search,
+    GithubInstallationRepositoriesList,
+    GithubRepositoryReferencesList,
     PluginRegistriesList,
     PluginRegistriesGet,
     PluginCatalogSearch,
@@ -381,7 +391,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 150] = [
+    const ALL: [Self; 152] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -479,6 +489,8 @@ impl ManagementTool {
         Self::HumanTasksRelease,
         Self::HumanTasksSubmit,
         Self::Search,
+        Self::GithubInstallationRepositoriesList,
+        Self::GithubRepositoryReferencesList,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
         Self::PluginCatalogSearch,
@@ -657,6 +669,8 @@ impl ManagementTool {
             Self::HumanTasksRelease => HUMAN_TASKS_RELEASE,
             Self::HumanTasksSubmit => HUMAN_TASKS_SUBMIT,
             Self::Search => SEARCH,
+            Self::GithubInstallationRepositoriesList => GITHUB_INSTALLATION_REPOSITORIES_LIST,
+            Self::GithubRepositoryReferencesList => GITHUB_REPOSITORY_REFERENCES_LIST,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
             Self::PluginCatalogSearch => PLUGIN_CATALOG_SEARCH,
@@ -781,6 +795,9 @@ impl ManagementTool {
             | Self::PullRequestPreviewPoliciesAccept
             | Self::BuildRunsCancel
             | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
+            Self::GithubInstallationRepositoriesList | Self::GithubRepositoryReferencesList => {
+                Some(ApiTokenScope::SOURCE_WRITE)
+            }
             Self::MyMembershipInvitationsList
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
@@ -1648,6 +1665,18 @@ impl ManagementTool {
                 "Search Cloud resources",
                 "Search bounded tenant-authorized resource projections in the authenticated organization.",
                 search_schema(),
+                true,
+            ),
+            Self::GithubInstallationRepositoriesList => (
+                "List GitHub installation repositories",
+                "List one bounded Sources-policy-filtered page of repositories visible to the authoritative GitHub App installation without exposing its transient token.",
+                github_installation_repositories_schema(),
+                true,
+            ),
+            Self::GithubRepositoryReferencesList => (
+                "List GitHub repository references",
+                "List one bounded branch or tag page for an exact canonical Sources-policy-admitted repository without exposing its transient token.",
+                github_repository_references_schema(),
                 true,
             ),
             Self::PluginRegistriesList => (
@@ -3887,6 +3916,61 @@ fn search_schema() -> Value {
     })
 }
 
+fn github_installation_repositories_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": github_source_discovery_page_properties(),
+        "additionalProperties": false
+    })
+}
+
+fn github_repository_references_schema() -> Value {
+    let mut properties = github_source_discovery_page_properties();
+    properties.insert(
+        "repositoryUrl".into(),
+        json!({
+            "type": "string",
+            "format": "uri",
+            "minLength": 1,
+            "maxLength": GitRepository::MAX_CANONICAL_URL_BYTES,
+            "pattern": GitRepository::github_canonical_url_pattern()
+        }),
+    );
+    properties.insert(
+        "kind".into(),
+        json!({"type": "string", "enum": ["branch", "tag"]}),
+    );
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["repositoryUrl", "kind"],
+        "additionalProperties": false
+    })
+}
+
+fn github_source_discovery_page_properties() -> Map<String, Value> {
+    Map::from_iter([
+        (
+            "cursor".into(),
+            json!({
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES,
+                "pattern": GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN
+            }),
+        ),
+        (
+            "limit".into(),
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+                "default": DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE
+            }),
+        ),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3989,6 +4073,82 @@ mod tests {
         assert_eq!(ManagementTool::BuildPlansAccept.name(), BUILD_PLANS_ACCEPT);
         assert_eq!(ManagementTool::BuildPlansList.name(), BUILD_PLANS_LIST);
         assert_eq!(ManagementTool::BuildPlansGet.name(), BUILD_PLANS_GET);
+    }
+
+    #[test]
+    fn github_source_discovery_catalog_is_transient_bounded_and_scope_explicit() {
+        let source_principal =
+            AuthPrincipal::new("principal").with_scope(ApiTokenScope::SOURCE_WRITE);
+        let cloud_read_principal =
+            AuthPrincipal::new("principal").with_scope(ApiTokenScope::CLOUD_READ);
+
+        for tool in [
+            ManagementTool::GithubInstallationRepositoriesList,
+            ManagementTool::GithubRepositoryReferencesList,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::SOURCE_WRITE));
+            assert_eq!(tool.resource_binding(), None);
+            assert!(tool.visible_to(&source_principal));
+            assert!(!tool.visible_to(&cloud_read_principal));
+            let definition = tool.definition();
+            assert_eq!(
+                definition["annotations"]["readOnlyHint"].as_bool(),
+                Some(true)
+            );
+            let serialized_schema = definition["inputSchema"].to_string().to_ascii_lowercase();
+            for forbidden in ["token", "credential", "secret"] {
+                assert!(
+                    !serialized_schema.contains(forbidden),
+                    "{} input schema exposes {forbidden}",
+                    tool.name()
+                );
+            }
+        }
+
+        let repositories = ManagementTool::GithubInstallationRepositoriesList.definition();
+        let repository_properties = &repositories["inputSchema"]["properties"];
+        assert_eq!(
+            repository_properties["limit"]["maximum"].as_u64(),
+            Some(MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE as u64)
+        );
+        assert_eq!(
+            repository_properties["limit"]["default"].as_u64(),
+            Some(DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE as u64)
+        );
+        assert_eq!(
+            repository_properties["cursor"]["maxLength"].as_u64(),
+            Some(MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES as u64)
+        );
+        assert_eq!(
+            repository_properties["cursor"]["pattern"],
+            GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN
+        );
+
+        let references = ManagementTool::GithubRepositoryReferencesList.definition();
+        assert_eq!(
+            references["inputSchema"]["required"],
+            json!(["repositoryUrl", "kind"])
+        );
+        assert_eq!(
+            references["inputSchema"]["properties"]["repositoryUrl"]["maxLength"].as_u64(),
+            Some(GitRepository::MAX_CANONICAL_URL_BYTES as u64)
+        );
+        assert_eq!(
+            references["inputSchema"]["properties"]["repositoryUrl"]["pattern"],
+            GitRepository::github_canonical_url_pattern()
+        );
+        assert_eq!(
+            references["inputSchema"]["properties"]["kind"]["enum"],
+            json!(["branch", "tag"])
+        );
+        assert_eq!(
+            ManagementTool::GithubInstallationRepositoriesList.name(),
+            GITHUB_INSTALLATION_REPOSITORIES_LIST
+        );
+        assert_eq!(
+            ManagementTool::GithubRepositoryReferencesList.name(),
+            GITHUB_REPOSITORY_REFERENCES_LIST
+        );
     }
 
     #[test]

@@ -22,6 +22,7 @@ mod projects;
 mod protocol;
 mod search;
 mod security;
+mod sources;
 mod tool_result;
 mod workflow;
 mod workloads;

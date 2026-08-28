@@ -8,13 +8,20 @@ pub mod published;
 pub(crate) use application::publish_source_build_input;
 pub use application::{
     AuthorizedSourceCheckoutService, GithubConnectionAuthorityReconcileReport,
-    GithubConnectionAuthorityReconciler, IAuthorizedSourceCheckout,
+    GithubConnectionAuthorityReconciler, GithubDiscoveredReference, GithubDiscoveredReferenceKind,
+    GithubDiscoveredRepository, GithubRepositoryDiscoveryPage,
+    GithubRepositoryDiscoveryProviderRequest, GithubRepositoryReferenceDiscoveryPage,
+    GithubRepositoryReferenceDiscoveryProviderRequest, GithubSourceDiscoveryProviderError,
+    GithubSourceDiscoveryProviderPage, GithubSourceDiscoveryQueryService,
+    GithubSourceDiscoveryScope, IAuthorizedSourceCheckout, IGithubSourceDiscoveryProvider,
     IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
     ISourceRepositoryCredentialProvider, PreviewSourceRevisionDesiredState,
     PreviewSourceRevisionProjectionOutcome, PreviewSourceRevisionProjectionReceipt,
     ProjectPreviewSourceRevision, SourceBuildInputQueryError, SourceBuildInputQueryService,
     SourceRepositoryCredentialError, SourceRepositoryCredentialRequest,
-    SourceRepositoryCredentialService,
+    SourceRepositoryCredentialService, DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+    GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN, MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES,
+    MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{
@@ -49,6 +56,10 @@ pub use application::commands::resolve_external_source_revision::{
 pub use application::queries::get_github_connection::{
     GetGithubConnection, GetGithubConnectionHandler,
 };
+pub use application::queries::github_source_discovery::{
+    ListGithubInstallationRepositories, ListGithubInstallationRepositoriesHandler,
+    ListGithubRepositoryReferences, ListGithubRepositoryReferencesHandler,
+};
 pub use application::queries::list_github_repository_subscriptions::{
     ListGithubRepositorySubscriptions, ListGithubRepositorySubscriptionsHandler,
 };
@@ -64,5 +75,11 @@ pub use infrastructure::{
     DeveloperWorkflowSourceLayoutAdapter, ExternalSourceBuildArchiveAdapter, GitSourceCheckout,
     GithubAppClient, GithubInstallationTokenIssuer, GithubSourceResolver, GithubWebhookVerifier,
     PullRequestPreviewSourceProjector, RevalidatingGithubInstallationTokens,
+    RevalidatingGithubSourceDiscovery,
 };
 pub use presentation::SourcesModule;
+pub(crate) use presentation::{
+    GithubRepositoryDiscoveryPageResponse, GithubRepositoryReferenceDiscoveryPageResponse,
+    GITHUB_REPOSITORY_DISCOVERY_ROUTE, GITHUB_REPOSITORY_REFERENCE_DISCOVERY_ROUTE,
+    GITHUB_SOURCE_CONNECTION_ROUTE, SOURCES_CONTROLLER_PREFIX,
+};

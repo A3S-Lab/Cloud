@@ -2023,6 +2023,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 asset_git,
                 github_authorization,
                 source_resolver,
+                github_source_discovery: Arc::new(GithubInstallationTokenIssuer::disabled()),
                 source_repository_credentials,
                 developer_workflow_source_layouts: Arc::new(UnavailableBuildPlanSourceLayout),
                 source_webhook_verifier: Arc::new(

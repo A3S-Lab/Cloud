@@ -162,7 +162,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
-| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C6` production-compose canonical BuildPlan detection, immutable acceptance/reads, authorization, trusted exact-revision layout acquisition, and their REST/OpenAPI `1.72.0`, maintained client/CLI, and four Management MCP tools. `P0.2-C1` through `C6` production-compose canonical WorkloadProfile intent, immutable acceptance/reads, exact compilation, owner anti-corruption adapters, and their REST/OpenAPI `1.74.0`, maintained client/CLI, and four additional Management MCP tools over the same parser, repository, policy evaluator, and lifecycle authorities. `P0.3-C1` through `C7` production-compose the durable Preview foundations and expose ACL-only policy acceptance/current/history/exact reads plus one exact behavioral Preview read through REST/OpenAPI `1.75.0`, maintained client/CLI, and five Management MCP tools over the same authorities. Pre-acceptance discovery, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, imports, retained PostgreSQL Preview cross-surface evidence, and retained WorkloadProfile certification remain open |
+| `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | In progress; unavailable as a complete lane. `P0.1-C1` through `C6` production-compose canonical BuildPlan detection, immutable acceptance/reads, authorization, trusted exact-revision layout acquisition, and their REST/OpenAPI `1.72.0`, maintained client/CLI, and four Management MCP tools. `P0.2-C1` through `C6` production-compose canonical WorkloadProfile intent, immutable acceptance/reads, exact compilation, owner anti-corruption adapters, and their REST/OpenAPI `1.74.0`, maintained client/CLI, and four additional Management MCP tools over the same parser, repository, policy evaluator, and lifecycle authorities. `P0.3-C1` through `C7` production-compose the durable Preview foundations and expose ACL-only policy acceptance/current/history/exact reads plus one exact behavioral Preview read through REST/OpenAPI `1.75.0`, maintained client/CLI, and five Management MCP tools over the same authorities. The Sources-owned pre-acceptance discovery slice exposes installation-accessible repositories and exact branch/tag pages through REST/OpenAPI `1.76.0`, the maintained client/CLI, and two Management MCP tools over one transient Application query authority. Live GitHub evidence, Workload/Execution/Route/Operation/schedule handoffs, Environment cleanup/expiry execution, monorepos, imports, retained PostgreSQL Preview cross-surface evidence, and retained WorkloadProfile certification remain open |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
@@ -572,11 +572,12 @@ transport.
   at `/api/v1/openapi.json`. Contract `1.48.0` introduced complete documentation
   for all resolved operations, tags, authentication rules, parameters, closed
   mutation inputs, examples,
-  responses, envelopes, and compatibility metadata; current contract `1.75.0`
-  adds closed Preview Policy acceptance plus current, bounded-history, and
-  exact immutable revision reads and one exact behavioral pull-request Preview
-  read over two narrow Developer Workflows Application query authorities. It
-  retains `1.74.0`'s WorkloadProfile management boundary and `1.73.0`'s closed Agent execution checkpoint
+  responses, envelopes, and compatibility metadata; current contract `1.76.0`
+  adds bounded GitHub installation-repository and canonical repository
+  branch/tag discovery over one Sources Application query authority, while
+  retaining `1.75.0`'s closed Preview Policy acceptance, lineage, and exact
+  behavioral pull-request Preview reads, `1.74.0`'s WorkloadProfile management
+  boundary, and `1.73.0`'s closed Agent execution checkpoint
   capture/list/read/snapshot, semantic trajectory, and immutable fork APIs with
   exact object and telemetry evidence, `1.72.0`'s closed BuildPlan detection,
   acceptance, and exact accepted-plan reads, and `1.71.0`'s Agent
@@ -1315,6 +1316,21 @@ retained PostgreSQL cross-surface evidence remains pending. C7 adds no schema,
 table, migration, aggregate, parser, repository, evaluator, Inbox, Outbox,
 Relay, queue, worker, retry rail, provider client, lifecycle transition, owner
 handoff, timer, scheduler, or cleanup authority.
+
+The Sources-owned pre-acceptance discovery slice closes the selection boundary
+without creating mutable source authority. One `GithubSourceDiscoveryQueryService`
+restores the organization's current connection through the existing repository
+interface, applies the shared `SourceRepositoryPolicy`, decodes a scope-bound
+opaque cursor, and delegates repository or branch/tag listing to one
+`IGithubSourceDiscoveryProvider`. The production decorator reuses the sole
+`IGithubConnectionAuthorityService` immediately before provider access; the
+existing installation-token issuer creates only a short-lived read-only token
+for that request and returns no token, provider body, or provider URL. REST,
+OpenAPI `1.76.0`, the maintained TypeScript client, CLI, and two `source:write`
+Management MCP reads share one closed response projection. The slice adds no
+aggregate, accepted `SourceRevision`, table, migration, Inbox, Outbox, Relay,
+cache, queue, worker, retry rail, lifecycle, or durable credential. Focused
+cross-surface tests are local; retained live-GitHub evidence remains pending.
 
 Detection produces a reviewable proposal. Accepted build, route, storage, and
 deployment plans become explicit typed Cloud desired state; an external project

@@ -101,6 +101,8 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_human_tasks_release',
   'a3s_cloud_human_tasks_submit',
   'a3s_cloud_search',
+  'a3s_cloud_github_installation_repositories_list',
+  'a3s_cloud_github_repository_references_list',
   'a3s_cloud_plugin_registries_list',
   'a3s_cloud_plugin_registries_get',
   'a3s_cloud_plugin_catalog_search',

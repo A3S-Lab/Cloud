@@ -25,6 +25,7 @@ fn github_repository_identity_is_canonical_and_url_confusion_fails_closed() {
         "https://github.com/a3s-lab%2fother/cloud",
         "https://github.com/a3s-lab/cloud?token=secret",
         "https://github.com/a3s-lab/cloud/other",
+        "https://github.com/a3s-lab/cloud.git.git",
     ] {
         assert!(
             GitRepository::parse(GitProvider::Github, confused).is_err(),

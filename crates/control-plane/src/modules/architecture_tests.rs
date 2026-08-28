@@ -529,6 +529,104 @@ fn source_build_input_projection_is_used_only_behind_the_owner_query() {
 }
 
 #[test]
+fn github_source_discovery_has_one_transient_interface_boundary_and_no_second_mechanism() {
+    let application_path = "sources/application/github_source_discovery.rs";
+    let application = std::fs::read_to_string(module_root().join(application_path))
+        .expect("read Sources discovery Application service");
+    let production_application = production_source(&application);
+    let compact_application = production_application
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "Arc<dynIGithubConnectionRepository>",
+        "Arc<dynIGithubSourceDiscoveryProvider>",
+        "Arc<SourceRepositoryPolicy>",
+    ] {
+        assert!(
+            compact_application.contains(required),
+            "Sources discovery lost inward boundary {required}"
+        );
+    }
+    for forbidden in [
+        "::infrastructure",
+        "::presentation",
+        "reqwest",
+        "Postgres",
+        "IOutboxRepository",
+        "IEventPublisher",
+        "OutboxRelay",
+        "NatsProvider",
+        "tokio::spawn",
+        "SourceProviderCredential",
+        "GithubInstallationTokenIssuer",
+    ] {
+        assert!(
+            !production_application.contains(forbidden),
+            "Sources discovery Application acquired outer-layer or duplicate mechanism {forbidden}"
+        );
+    }
+
+    let decorator_path = "sources/infrastructure/revalidating_github_source_discovery.rs";
+    let decorator = std::fs::read_to_string(module_root().join(decorator_path))
+        .expect("read revalidating Sources discovery provider");
+    let compact_decorator = production_source(&decorator)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "Arc<dynIGithubConnectionAuthorityService>",
+        "Arc<dynIGithubSourceDiscoveryProvider>",
+    ] {
+        assert!(
+            compact_decorator.contains(required),
+            "Sources discovery provider decorator lost authority boundary {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("src directory")
+            .join("app.rs"),
+    )
+    .expect("read application composition");
+    assert_eq!(
+        app.matches("GithubSourceDiscoveryQueryService::new")
+            .count(),
+        1,
+        "all process roles must share one Sources discovery query composition"
+    );
+    assert_eq!(
+        app.matches("RevalidatingGithubSourceDiscovery::new")
+            .count(),
+        1,
+        "all process roles must share one discovery authority decorator"
+    );
+
+    for relative in [
+        "sources/presentation/controllers/github_connections_controller.rs",
+        "../presentation/management_mcp/sources.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        for forbidden in [
+            "IGithubConnectionRepository",
+            "IGithubSourceDiscoveryProvider",
+            "GithubInstallationTokenIssuer",
+            "SourceRepositoryPolicy",
+            "reqwest",
+            "a3s_acl",
+            "Postgres",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} bypassed the Sources discovery QueryBus boundary with {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn artifacts_application_and_presentation_do_not_import_fleet_authority() {
     let mut violations = BTreeSet::new();
 

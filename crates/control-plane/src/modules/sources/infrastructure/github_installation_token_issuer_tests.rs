@@ -5,11 +5,13 @@ use crate::modules::sources::domain::{
     GithubInstallationId, GithubInstallationTokenRequest, GithubProviderAuthorityState,
     IGithubInstallationAuthorityProvider, IGithubInstallationTokenService,
 };
-use axum::extract::State;
+use crate::modules::sources::GithubSourceDiscoveryScope;
+use axum::extract::{Query, State};
 use axum::http::HeaderMap as AxumHeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -126,6 +128,230 @@ async fn issues_one_repository_scoped_read_only_token_with_a_bounded_app_jwt() {
 }
 
 #[tokio::test]
+async fn discovers_installation_repositories_with_a_transient_installation_token() {
+    let capture = Arc::new(DiscoveryCapture::default());
+    let (address, server) = start_fixture(
+        Router::new()
+            .route(
+                "/app/installations/42/access_tokens",
+                post(issue_all_repositories_token),
+            )
+            .route(
+                "/installation/repositories",
+                get(list_installation_repositories),
+            )
+            .with_state(Arc::clone(&capture)),
+    )
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+
+    let page = fixture_issuer(address, private_key.name())
+        .list_repositories(repository_discovery_request())
+        .await
+        .expect("repository discovery");
+
+    assert!(page.has_next);
+    assert_eq!(page.entries.len(), 1);
+    let repository = &page.entries[0];
+    assert_eq!(
+        repository.repository.canonical_url(),
+        "https://github.com/a3s-lab/private-cloud"
+    );
+    assert_eq!(repository.default_branch, "main");
+    assert!(repository.private);
+    assert!(!repository.fork);
+    assert!(!repository.archived);
+    assert!(!repository.disabled);
+    assert_eq!(
+        capture
+            .token_bodies
+            .lock()
+            .expect("token bodies")
+            .as_slice(),
+        &[json!({"permissions": {"contents": "read"}})]
+    );
+    let requests = capture.requests.lock().expect("discovery requests");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].0.get("per_page").map(String::as_str),
+        Some("25")
+    );
+    assert_eq!(requests[0].0.get("page").map(String::as_str), Some("2"));
+    assert_eq!(
+        header(&requests[0].1, "authorization"),
+        format!("Bearer {FIXTURE_TOKEN}")
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn discovers_branches_and_tags_with_repository_scoped_tokens() {
+    let capture = Arc::new(DiscoveryCapture::default());
+    let (address, server) = start_fixture(
+        Router::new()
+            .route(
+                "/app/installations/42/access_tokens",
+                post(issue_selected_repository_token),
+            )
+            .route(
+                "/repos/a3s-lab/private-cloud/branches",
+                get(list_repository_branches),
+            )
+            .route(
+                "/repos/a3s-lab/private-cloud/tags",
+                get(list_repository_tags),
+            )
+            .with_state(Arc::clone(&capture)),
+    )
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+    let issuer = fixture_issuer(address, private_key.name());
+
+    let branches = issuer
+        .list_references(reference_discovery_request(
+            GithubDiscoveredReferenceKind::Branch,
+        ))
+        .await
+        .expect("branch discovery");
+    let tags = issuer
+        .list_references(reference_discovery_request(
+            GithubDiscoveredReferenceKind::Tag,
+        ))
+        .await
+        .expect("tag discovery");
+
+    assert!(!branches.has_next);
+    assert_eq!(branches.entries.len(), 1);
+    assert_eq!(branches.entries[0].name, "main");
+    assert_eq!(
+        branches.entries[0].commit_sha.as_str(),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert_eq!(branches.entries[0].protected, Some(true));
+    assert!(!tags.has_next);
+    assert_eq!(tags.entries.len(), 1);
+    assert_eq!(tags.entries[0].name, "v1.0.0");
+    assert_eq!(
+        tags.entries[0].commit_sha.as_str(),
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    );
+    assert_eq!(tags.entries[0].protected, None);
+    assert_eq!(
+        capture
+            .token_bodies
+            .lock()
+            .expect("token bodies")
+            .as_slice(),
+        &[
+            json!({
+                "repositories": ["private-cloud"],
+                "permissions": {"contents": "read"}
+            }),
+            json!({
+                "repositories": ["private-cloud"],
+                "permissions": {"contents": "read"}
+            }),
+        ]
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn discovery_rejects_an_unbounded_installation_token_before_provider_access() {
+    let capture = Arc::new(DiscoveryCapture::default());
+    let (address, server) = start_fixture(
+        Router::new()
+            .route(
+                "/app/installations/42/access_tokens",
+                post(issue_unbounded_installation_token),
+            )
+            .route(
+                "/installation/repositories",
+                get(list_installation_repositories),
+            )
+            .with_state(Arc::clone(&capture)),
+    )
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+
+    let error = fixture_issuer(address, private_key.name())
+        .list_repositories(repository_discovery_request())
+        .await
+        .expect_err("unbounded discovery token");
+
+    assert!(matches!(
+        error,
+        GithubSourceDiscoveryProviderError::Protocol(_)
+    ));
+    assert!(capture
+        .requests
+        .lock()
+        .expect("discovery requests")
+        .is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn discovery_maps_github_forbidden_rate_limits_to_redacted_unavailability() {
+    let capture = Arc::new(DiscoveryCapture::default());
+    let (address, server) = start_fixture(
+        Router::new()
+            .route(
+                "/app/installations/42/access_tokens",
+                post(issue_all_repositories_token),
+            )
+            .route("/installation/repositories", get(rate_limited_discovery))
+            .with_state(capture),
+    )
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+
+    let error = fixture_issuer(address, private_key.name())
+        .list_repositories(repository_discovery_request())
+        .await
+        .expect_err("rate-limited discovery");
+
+    assert_eq!(error, GithubSourceDiscoveryProviderError::Unavailable);
+    let rendered = format!("{error:?}: {error}");
+    assert!(!rendered.contains("fixture-provider-rate-limit-secret"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn discovery_authentication_rejection_stays_retryable_and_redacted() {
+    let capture = Arc::new(DiscoveryCapture::default());
+    let (address, server) = start_fixture(
+        Router::new()
+            .route(
+                "/app/installations/42/access_tokens",
+                post(issue_all_repositories_token),
+            )
+            .route(
+                "/installation/repositories",
+                get(|| async {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        "fixture-provider-authentication-secret",
+                    )
+                }),
+            )
+            .with_state(capture),
+    )
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+
+    let error = fixture_issuer(address, private_key.name())
+        .list_repositories(repository_discovery_request())
+        .await
+        .expect_err("authentication rejection");
+
+    assert_eq!(error, GithubSourceDiscoveryProviderError::Unavailable);
+    let rendered = format!("{error:?}: {error}");
+    assert!(!rendered.contains("fixture-provider-authentication-secret"));
+    server.abort();
+}
+
+#[tokio::test]
 async fn missing_keys_rejected_scope_and_provider_bodies_are_secretless() {
     let missing = GithubInstallationTokenIssuer::for_test(
         Duration::from_secs(1),
@@ -147,6 +373,12 @@ async fn missing_keys_rejected_scope_and_provider_bodies_are_secretless() {
             .await
             .expect_err("disabled issuer"),
         GithubInstallationTokenError::NotConfigured
+    );
+    assert_eq!(
+        GithubInstallationTokenIssuer::disabled()
+            .list_repositories(repository_discovery_request())
+            .await,
+        Err(GithubSourceDiscoveryProviderError::NotConfigured)
     );
 
     let secret_body = "fixture-provider-private-key fixture-provider-token";
@@ -193,6 +425,31 @@ async fn provider_cannot_broaden_permission_scope() {
 
     assert!(matches!(error, GithubInstallationTokenError::Protocol(_)));
     assert!(!format!("{error:?}: {error}").contains(broadened_token));
+    server.abort();
+}
+
+#[tokio::test]
+async fn installation_token_rate_limit_stays_retryable_and_redacted() {
+    let (address, server) = start_fixture(Router::new().route(
+        "/app/installations/42/access_tokens",
+        post(|| async {
+            (
+                StatusCode::FORBIDDEN,
+                [("retry-after", "60")],
+                "fixture-provider-token-rate-limit-secret",
+            )
+        }),
+    ))
+    .await;
+    let private_key = TestEnvironmentVariable::new(TEST_PRIVATE_KEY);
+
+    let error = fixture_issuer(address, private_key.name())
+        .issue(token_request())
+        .await
+        .expect_err("rate-limited token issuance");
+
+    assert_eq!(error, GithubInstallationTokenError::Unavailable);
+    assert!(!format!("{error:?}: {error}").contains("fixture-provider-token-rate-limit-secret"));
     server.abort();
 }
 
@@ -305,6 +562,12 @@ struct RequestCapture {
     body: Mutex<Option<Value>>,
 }
 
+#[derive(Default)]
+struct DiscoveryCapture {
+    token_bodies: Mutex<Vec<Value>>,
+    requests: Mutex<Vec<(BTreeMap<String, String>, AxumHeaderMap)>>,
+}
+
 async fn issue_token(
     State(capture): State<Arc<RequestCapture>>,
     headers: AxumHeaderMap,
@@ -321,6 +584,169 @@ async fn issue_token(
             "repository_selection": "selected"
         })),
     )
+}
+
+async fn issue_all_repositories_token(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    capture
+        .token_bodies
+        .lock()
+        .expect("token bodies")
+        .push(body);
+    installation_token_response("all")
+}
+
+async fn issue_selected_repository_token(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    capture
+        .token_bodies
+        .lock()
+        .expect("token bodies")
+        .push(body);
+    installation_token_response("selected")
+}
+
+async fn issue_unbounded_installation_token(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    capture
+        .token_bodies
+        .lock()
+        .expect("token bodies")
+        .push(body);
+    (
+        StatusCode::CREATED,
+        Json(json!({
+            "token": FIXTURE_TOKEN,
+            "expires_at": "2026-07-22T00:00:00Z",
+            "permissions": {"contents": "read", "metadata": "read"},
+            "repository_selection": "all"
+        })),
+    )
+}
+
+fn installation_token_response(selection: &str) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::CREATED,
+        Json(json!({
+            "token": FIXTURE_TOKEN,
+            "expires_at": "2026-07-21T01:00:00Z",
+            "permissions": {"contents": "read", "metadata": "read"},
+            "repository_selection": selection
+        })),
+    )
+}
+
+async fn list_installation_repositories(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: AxumHeaderMap,
+) -> ([(&'static str, &'static str); 1], Json<Value>) {
+    capture
+        .requests
+        .lock()
+        .expect("discovery requests")
+        .push((query, headers));
+    (
+        [(
+            "link",
+            "<http://127.0.0.1/installation/repositories?page=3>; rel=\"next\"",
+        )],
+        Json(json!({
+            "total_count": 3,
+            "repositories": [
+                {
+                    "name": "private-cloud",
+                    "full_name": "A3S-Lab/private-cloud",
+                    "html_url": "https://github.com/A3S-Lab/private-cloud",
+                    "default_branch": "main",
+                    "private": true,
+                    "fork": false,
+                    "archived": false,
+                    "disabled": false
+                },
+                {
+                    "name": "unsupported-default",
+                    "full_name": "A3S-Lab/unsupported-default",
+                    "html_url": "https://github.com/A3S-Lab/unsupported-default",
+                    "default_branch": "release@candidate",
+                    "private": true,
+                    "fork": false,
+                    "archived": false,
+                    "disabled": false
+                },
+                {
+                    "name": "empty-repository",
+                    "full_name": "A3S-Lab/empty-repository",
+                    "html_url": "https://github.com/A3S-Lab/empty-repository",
+                    "default_branch": null,
+                    "private": true,
+                    "fork": false,
+                    "archived": false,
+                    "disabled": false
+                }
+            ]
+        })),
+    )
+}
+
+async fn rate_limited_discovery() -> (StatusCode, [(&'static str, &'static str); 1], &'static str) {
+    (
+        StatusCode::FORBIDDEN,
+        [("x-ratelimit-remaining", "0")],
+        "fixture-provider-rate-limit-secret",
+    )
+}
+
+async fn list_repository_branches(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: AxumHeaderMap,
+) -> Json<Value> {
+    capture
+        .requests
+        .lock()
+        .expect("discovery requests")
+        .push((query, headers));
+    Json(json!([
+        {
+            "name": "main",
+            "commit": {"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            "protected": true
+        },
+        {
+            "name": "release@candidate",
+            "commit": {"sha": "cccccccccccccccccccccccccccccccccccccccc"},
+            "protected": false
+        }
+    ]))
+}
+
+async fn list_repository_tags(
+    State(capture): State<Arc<DiscoveryCapture>>,
+    Query(query): Query<BTreeMap<String, String>>,
+    headers: AxumHeaderMap,
+) -> Json<Value> {
+    capture
+        .requests
+        .lock()
+        .expect("discovery requests")
+        .push((query, headers));
+    Json(json!([
+        {
+            "name": "v1.0.0",
+            "commit": {"sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+        },
+        {
+            "name": "v1+build",
+            "commit": {"sha": "dddddddddddddddddddddddddddddddddddddddd"}
+        }
+    ]))
 }
 
 fn fixture_issuer(
@@ -354,6 +780,37 @@ fn authority_request() -> GithubInstallationAuthorityRequest {
         checked_at: DateTime::parse_from_rfc3339("2026-07-21T00:00:00Z")
             .expect("check time")
             .with_timezone(&Utc),
+    }
+}
+
+fn discovery_scope() -> GithubSourceDiscoveryScope {
+    GithubSourceDiscoveryScope {
+        organization_id: OrganizationId::new(),
+        connection_id: SourceConnectionId::new(),
+        installation_id: GithubInstallationId::parse(42).expect("installation ID"),
+        requested_at: DateTime::parse_from_rfc3339("2026-07-21T00:00:00Z")
+            .expect("request time")
+            .with_timezone(&Utc),
+    }
+}
+
+fn repository_discovery_request() -> GithubRepositoryDiscoveryProviderRequest {
+    GithubRepositoryDiscoveryProviderRequest {
+        scope: discovery_scope(),
+        page: 2,
+        limit: 25,
+    }
+}
+
+fn reference_discovery_request(
+    kind: GithubDiscoveredReferenceKind,
+) -> GithubRepositoryReferenceDiscoveryProviderRequest {
+    GithubRepositoryReferenceDiscoveryProviderRequest {
+        scope: discovery_scope(),
+        repository: repository(),
+        kind,
+        page: 1,
+        limit: 50,
     }
 }
 

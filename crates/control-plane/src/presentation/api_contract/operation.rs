@@ -8,6 +8,10 @@ use super::developer_workflow_operation::{
 };
 use super::documentation::describe_operation_documentation;
 use super::request_schema::closed_json_request_schema;
+use super::source_discovery_operation::{
+    query_parameters as source_discovery_query_parameters,
+    success_component as source_discovery_success_component,
+};
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
@@ -273,6 +277,9 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
     for parameter in developer_workflow_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
+    for parameter in source_discovery_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
     let is_audit_export_manifest = path.ends_with("/audit-records/export/manifest");
@@ -1263,6 +1270,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     for status in success_statuses(method, path) {
         let component = if is_security_gateway_route_policy_timeline_path(path) {
             "SecurityGatewayRoutePolicyTimelinePageSuccess200".to_owned()
+        } else if let Some(component) = source_discovery_success_component(method, path, status) {
+            component.to_owned()
         } else if let Some(component) = developer_workflow_success_component(method, path, status) {
             component
         } else if let Some(component) = recipient_contact_success_component(method, path, status) {

@@ -336,6 +336,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         None,
     )
     .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "mcp-source-writer",
+        "MCP source writer",
+        SOURCE_TOKEN,
+        &[ApiTokenScope::SOURCE_WRITE],
+        None,
+    )
+    .await?;
     let read_only = app
         .call(post_json_as(
             format!("/api/v1/organizations/{organization}/api-tokens"),
@@ -526,7 +536,54 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     }
     assert!(!tool_names(&build_writer_tools).contains(&"a3s_cloud_workloads_stop"));
 
-    let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 6).await?;
+    let source_writer_tools = list_tools(&app, SOURCE_TOKEN, 6).await?;
+    let source_writer_names = tool_names(&source_writer_tools);
+    for name in [
+        "a3s_cloud_github_installation_repositories_list",
+        "a3s_cloud_github_repository_references_list",
+    ] {
+        assert!(source_writer_names.contains(&name), "{name}");
+    }
+    for name in [
+        "a3s_cloud_projects_create",
+        "a3s_cloud_build_plans_accept",
+        "a3s_cloud_workloads_stop",
+    ] {
+        assert!(!source_writer_names.contains(&name), "{name}");
+    }
+    let missing_source_connection = app
+        .call(mcp_request(
+            Some(SOURCE_TOKEN),
+            tool_call(
+                7,
+                "a3s_cloud_github_installation_repositories_list",
+                json!({"limit": 25}),
+            ),
+        ))
+        .await?;
+    let missing_source_connection = response_json(&missing_source_connection)?;
+    assert_eq!(missing_source_connection["result"]["isError"], true);
+    assert_eq!(
+        missing_source_connection["result"]["structuredContent"]["code"],
+        404
+    );
+    assert!(!missing_source_connection.to_string().contains(SOURCE_TOKEN));
+    let missing_reference_kind = app
+        .call(mcp_request(
+            Some(SOURCE_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_github_repository_references_list",
+                json!({"repositoryUrl": "https://github.com/A3S-Lab/Cloud"}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&missing_reference_kind)?["error"]["code"],
+        -32602
+    );
+
+    let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 9).await?;
     for name in [
         "a3s_cloud_forms_create",
         "a3s_cloud_forms_revise",
@@ -536,7 +593,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     }
     assert!(!tool_names(&form_writer_tools).contains(&"a3s_cloud_ontologies_create"));
 
-    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 7).await?;
+    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 10).await?;
     assert_eq!(
         tool_names(&administrator_tools),
         vec![
@@ -637,6 +694,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_human_tasks_release",
             "a3s_cloud_human_tasks_submit",
             "a3s_cloud_search",
+            "a3s_cloud_github_installation_repositories_list",
+            "a3s_cloud_github_repository_references_list",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
             "a3s_cloud_plugin_catalog_search",

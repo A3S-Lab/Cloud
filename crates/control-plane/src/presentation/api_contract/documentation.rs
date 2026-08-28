@@ -6,6 +6,12 @@ use super::developer_workflow_documentation::{
 };
 use super::documentation_examples::{component_example, example_from_schema};
 use super::documentation_tags::TAGS;
+use super::source_discovery_documentation::{
+    component_description as source_discovery_component_description,
+    operation_description as source_discovery_operation_description,
+    operation_summary as source_discovery_operation_summary,
+    response_data_description as source_discovery_response_data_description,
+};
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
 
@@ -168,6 +174,9 @@ fn response_component_status(name: &str) -> Option<u16> {
 }
 
 fn component_schema_description(name: &str) -> String {
+    if let Some(description) = source_discovery_component_description(name) {
+        return description.into();
+    }
     if let Some(description) = developer_workflow_component_description(name) {
         return description.into();
     }
@@ -493,6 +502,9 @@ fn operation_description(
 }
 
 fn special_description(method: &str, path: &str) -> Option<&'static str> {
+    if let Some(description) = source_discovery_operation_description(method, path) {
+        return Some(description);
+    }
     if let Some(description) = developer_workflow_operation_description(method, path) {
         return Some(description);
     }
@@ -511,6 +523,9 @@ fn special_description(method: &str, path: &str) -> Option<&'static str> {
 }
 
 fn operation_summary(method: &str, path: &str) -> String {
+    if let Some(summary) = source_discovery_operation_summary(method, path) {
+        return summary.into();
+    }
     if let Some(summary) = developer_workflow_operation_summary(method, path) {
         return summary.into();
     }
@@ -992,6 +1007,9 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
 }
 
 fn response_data_description(method: &str, path: &str, summary: &str) -> String {
+    if let Some(description) = source_discovery_response_data_description(method, path) {
+        return description.into();
+    }
     if let Some(description) = developer_workflow_response_data_description(method, path) {
         return description.into();
     }

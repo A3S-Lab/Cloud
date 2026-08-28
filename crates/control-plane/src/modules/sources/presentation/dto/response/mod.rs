@@ -1,11 +1,16 @@
 mod github_connection_install_response;
 mod github_connection_response;
 mod github_repository_subscription_response;
+mod github_source_discovery_response;
 mod source_revision_response;
 mod source_webhook_response;
 
 pub use github_connection_install_response::GithubConnectionInstallResponse;
 pub use github_connection_response::GithubConnectionResponse;
 pub use github_repository_subscription_response::GithubRepositorySubscriptionResponse;
+pub use github_source_discovery_response::{
+    GithubRepositoryDiscoveryPageResponse, GithubRepositoryReferenceDiscoveryPageResponse,
+};
+pub(crate) use source_revision_response::GitRepositoryResponse;
 pub use source_revision_response::SourceRevisionResponse;
 pub use source_webhook_response::SourceWebhookResponse;

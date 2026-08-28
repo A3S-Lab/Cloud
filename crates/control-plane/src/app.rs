@@ -250,13 +250,16 @@ use crate::modules::sources::{
     CreateGithubRepositorySubscriptionHandler, DeactivateGithubRepositorySubscriptionHandler,
     DeveloperWorkflowSourceLayoutAdapter, ExternalSourceBuildArchiveAdapter,
     GetGithubConnectionHandler, GitSourceCheckout, GithubAppClient,
-    GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer, GithubSourceResolver,
-    GithubWebhookVerifier, IAuthorizedSourceCheckout, IPreviewSourceRevisionProjectionPort,
-    ISourceBuildInputQueryPort, ISourceRepositoryCredentialProvider,
-    ListGithubRepositorySubscriptionsHandler, ListSourceRevisionsHandler,
-    PrepareGithubConnectionOauthHandler, PullRequestPreviewSourceProjector,
-    ReconcileGithubConnectionLifecycleHandler, ResolveExternalSourceRevisionHandler,
-    RevalidatingGithubInstallationTokens, SourceBuildInputQueryService,
+    GithubConnectionAuthorityReconciler, GithubInstallationTokenIssuer,
+    GithubSourceDiscoveryQueryService, GithubSourceResolver, GithubWebhookVerifier,
+    IAuthorizedSourceCheckout, IGithubSourceDiscoveryProvider,
+    IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
+    ISourceRepositoryCredentialProvider, ListGithubInstallationRepositoriesHandler,
+    ListGithubRepositoryReferencesHandler, ListGithubRepositorySubscriptionsHandler,
+    ListSourceRevisionsHandler, PrepareGithubConnectionOauthHandler,
+    PullRequestPreviewSourceProjector, ReconcileGithubConnectionLifecycleHandler,
+    ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens,
+    RevalidatingGithubSourceDiscovery, SourceBuildInputQueryService,
     SourceRepositoryCredentialService, SourcesModule,
 };
 use crate::modules::workflow::{
@@ -786,6 +789,8 @@ async fn build_api_worker_application(
     });
     let github_installation_tokens_raw: Arc<dyn IGithubInstallationTokenService> =
         github_installation_client.clone();
+    let github_source_discovery_raw: Arc<dyn IGithubSourceDiscoveryProvider> =
+        github_installation_client.clone();
     let github_authority_provider: Arc<dyn IGithubInstallationAuthorityProvider> =
         github_installation_client;
     let github_authority_reconciler = GithubConnectionAuthorityReconciler::new(
@@ -800,6 +805,11 @@ async fn build_api_worker_application(
     .map_err(ControlPlaneStartupError::Sources)?;
     let github_authority: Arc<dyn IGithubConnectionAuthorityService> =
         Arc::new(github_authority_reconciler.clone());
+    let github_source_discovery: Arc<dyn IGithubSourceDiscoveryProvider> =
+        Arc::new(RevalidatingGithubSourceDiscovery::new(
+            Arc::clone(&github_authority),
+            github_source_discovery_raw,
+        ));
     let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> = Arc::new(
         RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
     );
@@ -1284,6 +1294,7 @@ async fn build_api_worker_application(
             asset_git,
             github_authorization,
             source_resolver,
+            github_source_discovery,
             source_repository_credentials: Arc::clone(&source_repository_credentials),
             developer_workflow_source_layouts,
             source_webhook_verifier,
@@ -1927,6 +1938,7 @@ struct ManagementSurfaceDependencies {
     asset_git: Arc<AssetGitApplicationService>,
     github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     source_resolver: Arc<dyn ISourceResolver>,
+    github_source_discovery: Arc<dyn IGithubSourceDiscoveryProvider>,
     source_repository_credentials: Arc<dyn ISourceRepositoryCredentialProvider>,
     developer_workflow_source_layouts: Arc<dyn IBuildPlanSourceLayoutPort>,
     source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
@@ -2114,6 +2126,7 @@ fn build_management_application_with_health(
         asset_git,
         github_authorization,
         source_resolver,
+        github_source_discovery,
         source_repository_credentials,
         developer_workflow_source_layouts,
         source_webhook_verifier,
@@ -2579,7 +2592,7 @@ fn build_management_application_with_health(
     let accept_webhook_connections = Arc::clone(&github_connections);
     let reconcile_github_connections = Arc::clone(&github_connections);
     let create_subscription_connections = Arc::clone(&github_connections);
-    let get_github_connections = github_connections;
+    let get_github_connections = Arc::clone(&github_connections);
     let begin_github_authorization = Arc::clone(&github_authorization);
     let prepare_github_authorization = Arc::clone(&github_authorization);
     let complete_github_authorization = github_authorization;
@@ -2591,6 +2604,11 @@ fn build_management_application_with_health(
         .map_err(BootError::Internal)?,
     );
     let subscription_source_policy = Arc::clone(&source_policy);
+    let github_source_discovery_queries = Arc::new(GithubSourceDiscoveryQueryService::new(
+        github_connections,
+        github_source_discovery,
+        Arc::clone(&source_policy),
+    ));
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = Arc::clone(&secret_encryption);
     let create_mcp_credential_encryption = Arc::clone(&secret_encryption);
@@ -3581,6 +3599,14 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::sources::GetGithubConnection, _>(
                     GetGithubConnectionHandler::new(get_github_connections),
+                )
+                .query_handler::<crate::modules::sources::ListGithubInstallationRepositories, _>(
+                    ListGithubInstallationRepositoriesHandler::new(Arc::clone(
+                        &github_source_discovery_queries,
+                    )),
+                )
+                .query_handler::<crate::modules::sources::ListGithubRepositoryReferences, _>(
+                    ListGithubRepositoryReferencesHandler::new(github_source_discovery_queries),
                 )
                 .query_handler::<crate::modules::sources::ListGithubRepositorySubscriptions, _>(
                     ListGithubRepositorySubscriptionsHandler::new(

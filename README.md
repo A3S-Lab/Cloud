@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.75.0" src="https://img.shields.io/badge/REST_contract-1.75.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.76.0" src="https://img.shields.io/badge/REST_contract-1.76.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -120,7 +120,7 @@ not imply availability.
 | Governance | Search | Rebuildable tenant-authorized search projection |
 | Platform | Integration Events | Transactional Outbox publication and consumer coordination |
 | Platform | Shared Kernel | Stable typed IDs, digest, timestamp, idempotency shapes; no business lifecycle or repository |
-| Supply | Sources | External connection, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
+| Supply | Sources | External connection, transient policy-filtered repository/reference discovery, subscription, authenticated webhook Inbox, exact SourceRevision, committed pull-request and Preview-SourceRevision Published Language |
 | Supply | Developer Workflows | Public authorization-first BuildPlan, WorkloadProfile, and Preview Management CQRS authorities; trusted SourceLayout acquisition, immutable policy revisions, durable PR projection, exact accepted-profile compilation, and owner-facing handoff intent |
 | Supply | Assets | Hosted Agent/MCP/Skill identity, immutable release, hosted Git binding |
 | Supply | Artifacts | BuildCandidate, sole BuildRun lifecycle, Preview build-admission/retirement fence, admitted output, successful external-source outcome Published Language, provenance, evidence, retention, node artifact transport |
@@ -162,6 +162,30 @@ Product intent
   -> owner projection
   -> Edge snapshot or committed integration fact
 ```
+
+### GitHub source discovery domain boundary
+
+<p align="center">
+  <img src="assets/readme/source-discovery-domain.svg" width="100%" alt="Sources DDD boundary for transient GitHub repository, branch, and tag discovery through one application service and revalidating provider port" />
+</p>
+
+Discovery answers a question about current provider state; it does not accept
+product state. Two `source:write` queries restore the sole authoritative
+`GithubConnection`, apply the existing `SourceRepositoryPolicy`, decode a
+scope-bound cursor, and call `IGithubSourceDiscoveryProvider`. The production
+adapter reuses `IGithubConnectionAuthorityService`, issues only a short-lived
+read-only installation or repository-scoped token, bounds the GitHub response,
+and destroys the token without returning, persisting, caching, or logging it.
+
+Repository pages silently omit policy-denied identities and default refs outside
+the existing Sources safe-name rules. Reference pages require one exact
+canonical policy-admitted `GitRepository` and return only safe-name closed
+branch-or-tag projections with exact commit SHAs. REST/OpenAPI `1.76.0`, the
+maintained client, two CLI commands, and two read-only Management MCP tools all
+dispatch the same CQRS queries and serialize the same response DTOs. Accepting a
+repository or reference remains the existing SourceRevision/subscription
+lifecycle; discovery adds no aggregate, repository, table, migration, Outbox,
+Relay, queue, worker, cache, or retry mechanism.
 
 ### Pull-request Preview domain boundary
 
@@ -233,6 +257,7 @@ parser, webhook payload, or downstream owner lifecycle.
 | Authorization | Identity policy + owner admission | Adapter-local roles, token parser, or foreign presentation guard |
 | Audit | Shared append-only audit path | Reconstructing domain truth from audit or a second audit store |
 | Product configuration | A3S ACL parsed by `a3s-acl` | Compatibility parsers or another product configuration language |
+| Source provider discovery | Sources query service + revalidating provider port | Adapter-owned authorization, persistent provider inventory/token/cache, or surface-specific provider calls |
 
 ### Durable Cells and a3s-runtime
 
@@ -297,9 +322,11 @@ already enforce that current debt can shrink but cannot spread:
   handlers; accepted-plan, accepted-profile, and Preview-policy reads each go
   through one Application query service, while current PR state uses its
   separate Preview projection query service. All perform the same authorization
-  and reject restored repository scope/order drift. They add no authorization, persistence,
-  delivery, or lifecycle
-  mechanism. Hosted-Asset
+  and reject restored repository scope/order drift. Sources discovery now uses
+  that context's authoritative connection, repository policy, authority service,
+  and installation-token client behind one Application provider port; REST,
+  client, CLI, and MCP share its bounded transient DTOs. It adds no authorization,
+  persistence, delivery, cache, retry, or lifecycle mechanism. Hosted-Asset
   staging and public Infrastructure remain frozen debt;
 - Runtime and Flow may enter domains only through named pure published
   contracts; and
@@ -319,7 +346,7 @@ capability.
 | --- | --- |
 | `F0` foundation | Verified PostgreSQL tenancy, identity, ORM-backed Flow operations, Outbox/projections, API, and migration authority |
 | Box/Runtime/node/deployment baseline | Historical evidence; current Box re-certification remains in progress |
-| Sources, builds, artifacts, developer workflows | In progress; BuildPlan, WorkloadProfile, and Preview Management REST/OpenAPI, client, CLI, and Management MCP surfaces are production-composed over authorization-first canonical acceptance and narrow immutable read authorities. Pre-acceptance source discovery, Workload/Execution/route/operation/schedule and Environment cleanup handoffs, monorepos, and import completion remain unavailable; retained PostgreSQL Preview cross-surface evidence and remote WorkloadProfile certification are pending |
+| Sources, builds, artifacts, developer workflows | In progress; transient policy-filtered GitHub repository/branch/tag discovery plus BuildPlan, WorkloadProfile, and Preview Management REST/OpenAPI, client, CLI, and Management MCP surfaces are production-composed over the existing Sources and authorization-first acceptance authorities. Live GitHub discovery evidence, Workload/Execution/route/operation/schedule and Environment cleanup handoffs, monorepos, and import completion remain unavailable; retained PostgreSQL Preview cross-surface evidence and remote WorkloadProfile certification are pending |
 | Control surfaces, collaboration, notifications, security | In progress; enterprise gates remain |
 | Agent/MCP releases and heterogeneous Agent execution | In progress; several component and provider gates remain |
 | Ontology-driven Workflow | In progress and unavailable as a complete product; W0.1 is implemented, W0.2 verified, and the component runtime now includes Plan v11/Run v19 composite failure routing, Run v20 Variable Aggregation, Run v21 List Operator execution, Run v23 Connector compensation, Run v24 exact AgentRelease lifecycle, and Plan v12/Run v25 descriptor-bound Agent failure routing |
@@ -400,6 +427,8 @@ export A3S_CLOUD_URL="http://127.0.0.1:8080/api/v1"
 bun run --cwd cli src/main.ts diagnostics status --output=json
 bun run --cwd cli src/main.ts organizations list --output=json
 bun run --cwd cli src/main.ts operations list --output=json
+bun run --cwd cli src/main.ts source-repositories list --limit=50 --output=json
+bun run --cwd cli src/main.ts source-references list https://github.com/a3s-lab/cloud branch --limit=50 --output=json
 ```
 
 Credentials come from environment variables or standard input and are never
@@ -527,8 +556,11 @@ creating their own control planes:
     WorkflowRun and Operation URNs; Iteration and Loop steps retain the latest
     16 linked frames within the existing 32-reference bound. These are
     authorization-neutral correlations reconstructed from Flow history, not
-    copied evidence bodies. REST/OpenAPI `1.75.0` is the current contract. It
-    adds closed Developer Workflows Preview Policy acceptance plus current,
+    copied evidence bodies. REST/OpenAPI `1.76.0` is the current contract. It
+    adds transient Sources-owned GitHub repository, branch, and tag discovery
+    through one policy-filtered, authority-revalidating Application port and
+    shared REST/client/CLI/MCP projections, without persisting provider state or
+    credentials. It retains `1.75.0`'s closed Developer Workflows Preview Policy acceptance plus current,
     bounded-history, and exact immutable revision reads, and one exact
     behavioral pull-request Preview read. The maintained client, CLI, and five
     additional Management MCP tools dispatch the same command and four queries

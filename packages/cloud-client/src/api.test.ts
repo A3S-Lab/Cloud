@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.75.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.76.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2441,6 +2441,13 @@ describe('CloudApi', () => {
     );
     await api.getGithubConnection('organization');
     await api.beginGithubConnection('organization');
+    await api.listGithubInstallationRepositories('organization', {
+      cursor: 'repository_cursor',
+      limit: 25,
+    });
+    await api.listGithubRepositoryReferences('organization', 'https://github.com/a3s-lab/cloud', 'branch', {
+      limit: 10,
+    });
     await api.listGithubRepositorySubscriptions('organization', 'project', 'environment');
     await api.createGithubRepositorySubscription(
       'organization',
@@ -2501,6 +2508,22 @@ describe('CloudApi', () => {
       },
       {
         input:
+          '/api/v1/organizations/organization/source-connections/github/repositories' +
+          '?cursor=repository_cursor&limit=25',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/source-connections/github/repository-references' +
+          '?repositoryUrl=https%3A%2F%2Fgithub.com%2Fa3s-lab%2Fcloud&kind=branch&limit=10',
+        method: 'GET',
+        idempotencyKey: undefined,
+        body: undefined,
+      },
+      {
+        input:
           '/api/v1/organizations/organization/projects/project/environments/environment/source-subscriptions/github',
         method: 'GET',
         idempotencyKey: undefined,
@@ -2525,6 +2548,32 @@ describe('CloudApi', () => {
         body: undefined,
       },
     ]);
+  });
+
+  it('rejects unbounded or non-canonical GitHub source discovery queries before transport', () => {
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => jsonResponse({}),
+    });
+
+    expect(() => api.listGithubInstallationRepositories('organization', { limit: 0 })).toThrow(
+      'GitHub source discovery limit must be between 1 and 100'
+    );
+    expect(() => api.listGithubInstallationRepositories('organization', { cursor: 'invalid=' })).toThrow(
+      'GitHub source discovery cursor is invalid'
+    );
+    expect(() =>
+      api.listGithubRepositoryReferences('organization', 'https://github.com/A3S-Lab/Cloud.git', 'branch')
+    ).toThrow('GitHub source discovery repository URL must be canonical');
+    expect(() =>
+      api.listGithubRepositoryReferences('organization', 'https://github.com/a3s-lab/cloud.git', 'branch')
+    ).toThrow('GitHub source discovery repository URL must be canonical');
+    expect(() =>
+      api.listGithubRepositoryReferences(
+        'organization',
+        'https://github.com/a3s-lab/cloud',
+        'commit' as never
+      )
+    ).toThrow('GitHub source discovery reference kind must be branch or tag');
   });
 
   it('exposes Secret queries and idempotent mutations without returning plaintext', async () => {

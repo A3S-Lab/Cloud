@@ -17,7 +17,21 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.75.0`.
+The current semantic contract version is `1.76.0`.
+
+Contract `1.76.0` adds two transient GitHub source-discovery reads under the
+authoritative Organization connection. A `source:write` caller can list a
+bounded page of installation-accessible repositories or list a bounded branch
+or tag page for one exact canonical, policy-admitted repository. Opaque cursors
+are limited to 128 bytes and bind the connection, installation, query scope,
+reference kind, repository when present, and page size; limits default to 50
+and cannot exceed 100. Repository results contain canonical credential-free
+identity, default branch, and private/fork/archived/disabled state. Reference
+results contain a closed branch-or-tag discriminator, safe name, exact commit
+SHA, and branch protection state. Sources revalidates installation authority
+and repository policy on every request. The provider token remains transient in
+Infrastructure, and discovery adds no accepted SourceRevision, subscription,
+provider inventory, cache, persistence, event, queue, worker, or lifecycle.
 
 Contract `1.75.0` adds the closed Developer Workflows pull-request Preview
 Management API. An authorized caller can accept one canonical

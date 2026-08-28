@@ -148,6 +148,11 @@ import {
   type SecurityTimelineQuery,
 } from './security';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
+import {
+  encodeGithubSourceDiscoveryPageOptions,
+  validateCanonicalGithubRepositoryUrl,
+  validateGithubSourceDiscoveryReferenceKind,
+} from './source';
 import type {
   AddNodePoolMembersInput,
   AgentApprovalCheckpoint,
@@ -212,8 +217,12 @@ import type {
   GatewayScopeMutationResult,
   GithubConnection,
   GithubConnectionInstall,
+  GithubDiscoveredReferenceKind,
+  GithubRepositoryDiscoveryPage,
+  GithubRepositoryReferenceDiscoveryPage,
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
+  GithubSourceDiscoveryPageOptions,
   HumanTask,
   HumanTaskInteractionSubmission,
   HumanTaskMutationResult,
@@ -360,7 +369,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.75.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.76.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -3759,6 +3768,39 @@ export class CloudApi {
       'POST',
       `/organizations/${encodeURIComponent(organizationId)}/source-connections/github`,
       { signal }
+    );
+  }
+
+  listGithubInstallationRepositories(
+    organizationId: string,
+    options: GithubSourceDiscoveryPageOptions = {},
+    signal?: AbortSignal
+  ): Promise<GithubRepositoryDiscoveryPage> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/source-connections/github/repositories${encodeGithubSourceDiscoveryPageOptions(options)}`,
+      signal
+    );
+  }
+
+  listGithubRepositoryReferences(
+    organizationId: string,
+    repositoryUrl: string,
+    kind: GithubDiscoveredReferenceKind,
+    options: GithubSourceDiscoveryPageOptions = {},
+    signal?: AbortSignal
+  ): Promise<GithubRepositoryReferenceDiscoveryPage> {
+    const canonicalRepositoryUrl = validateCanonicalGithubRepositoryUrl(repositoryUrl);
+    validateGithubSourceDiscoveryReferenceKind(kind);
+    const parameters = new URLSearchParams({ repositoryUrl: canonicalRepositoryUrl, kind });
+    const pageParameters = new URLSearchParams(encodeGithubSourceDiscoveryPageOptions(options).slice(1));
+    for (const [name, value] of pageParameters) {
+      parameters.set(name, value);
+    }
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/source-connections/github/repository-references?${parameters.toString()}`,
+      signal
     );
   }
 

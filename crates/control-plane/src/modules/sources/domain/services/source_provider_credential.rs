@@ -16,6 +16,26 @@ pub struct SourceProviderCredential {
 }
 
 impl SourceProviderCredential {
+    pub(crate) fn validate_transient(
+        token: &str,
+        issued_at: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        if token.is_empty()
+            || token.len() > 2048
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
+        {
+            return Err("source provider credential value is invalid".into());
+        }
+        let issued_at = canonical_timestamp(issued_at);
+        let expires_at = canonical_timestamp(expires_at);
+        let lifetime = expires_at.signed_duration_since(issued_at);
+        if lifetime < MINIMUM_LIFETIME || lifetime > MAXIMUM_LIFETIME {
+            return Err("source provider credential lifetime is invalid".into());
+        }
+        Ok(())
+    }
+
     pub fn new(
         repository: &GitRepository,
         token: Zeroizing<String>,
@@ -24,16 +44,7 @@ impl SourceProviderCredential {
     ) -> Result<Self, String> {
         let issued_at = canonical_timestamp(issued_at);
         let expires_at = canonical_timestamp(expires_at);
-        if token.is_empty()
-            || token.len() > 2048
-            || !token.bytes().all(|byte| byte.is_ascii_graphic())
-        {
-            return Err("source provider credential value is invalid".into());
-        }
-        let lifetime = expires_at.signed_duration_since(issued_at);
-        if lifetime < MINIMUM_LIFETIME || lifetime > MAXIMUM_LIFETIME {
-            return Err("source provider credential lifetime is invalid".into());
-        }
+        Self::validate_transient(token.as_str(), issued_at, expires_at)?;
         Ok(Self {
             provider: repository.provider(),
             repository_identity: repository.identity().into(),
