@@ -303,6 +303,8 @@ mod plugins_support;
 mod postgres_fixture;
 #[path = "support/privileged_authorization_decisions.rs"]
 mod privileged_authorization_decisions_support;
+#[path = "support/privileged_management_cross_surface.rs"]
+mod privileged_management_cross_surface_support;
 #[path = "support/project_attribution.rs"]
 mod project_attribution_support;
 #[path = "support/recipient_contacts.rs"]
@@ -962,6 +964,19 @@ async fn postgres_privileged_authorization_decisions_are_atomic_and_revocation_s
     )
     .await
     .expect("PostgreSQL privileged authorization decision authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_privileged_management_is_cross_surface_multi_replica_and_revocation_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        privileged_management_cross_surface_support::exercise_privileged_management_cross_surface,
+    )
+    .await
+    .expect("PostgreSQL privileged management cross-surface authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

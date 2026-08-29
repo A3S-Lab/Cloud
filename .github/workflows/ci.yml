@@ -137,6 +137,22 @@ jobs:
           echo "::error title=Privileged authorization decision gate failed::$detail"
           exit 1
 
+      - name: Certify privileged management cross-surface multi-replica consistency
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-privileged-management-cross-surface.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_privileged_management_is_cross_surface_multi_replica_and_revocation_safe \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Privileged management cross-surface gate failed::$detail"
+          exit 1
+
       - name: Certify fact-fed Artifacts build admission
         run: |
           log="$RUNNER_TEMP/a3s-cloud-artifact-build-candidates.log"
