@@ -2142,6 +2142,11 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
     assert_eq!(
         tool_names(&restricted_tools),
         vec![
+            "a3s_cloud_platform_role_policy_current_get",
+            "a3s_cloud_platform_role_policy_revisions_get",
+            "a3s_cloud_platform_role_bindings_get",
+            "a3s_cloud_principal_platform_role_binding_get",
+            "a3s_cloud_tenant_support_grants_get",
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_recipient_contacts_list",
             "a3s_cloud_recipient_contacts_get",

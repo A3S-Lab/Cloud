@@ -308,6 +308,8 @@ conformanceIt(
       'a3s_cloud_github_repository_references_list',
     ]);
     const destructiveToolSet = new Set<string>([
+      'a3s_cloud_platform_role_bindings_revoke',
+      'a3s_cloud_tenant_support_grants_revoke',
       'a3s_cloud_memberships_revoke',
       'a3s_cloud_membership_invitations_revoke',
       'a3s_cloud_resource_grants_revoke',
