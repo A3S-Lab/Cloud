@@ -2666,8 +2666,8 @@ async fn projects_and_environments_reject_cross_tenant_references() -> Result<()
         ))
         .await?;
     let rejected_body = response_json(&rejected)?;
-    assert_eq!(rejected.status(), 404);
-    assert_eq!(rejected_body["statusCode"], "NOT_FOUND");
+    assert_eq!(rejected.status(), 403);
+    assert_eq!(rejected_body["statusCode"], "FORBIDDEN");
 
     let environment = app
         .call(post_json(

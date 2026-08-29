@@ -152,11 +152,6 @@ conformanceIt(
       'C0 Isolated Tenant',
       'c0:isolation:organization'
     );
-    const isolationSentinel = await client.createProject(
-      isolatedOrganization.id,
-      'Isolation Sentinel',
-      'c0:isolation:sentinel'
-    );
     const restricted = await client.createApiToken(
       organizationId,
       {
@@ -187,7 +182,7 @@ conformanceIt(
     const deniedError = cliError(cliDenial.stderr, 'CLI tenant denial');
     expect(deniedError.status).toBe(403);
     expect(deniedError.statusCode).toBe('FORBIDDEN');
-    expect(cliDenial.stderr).not.toContain(isolationSentinel.name);
+    expect(cliDenial.stderr).not.toContain(isolatedOrganization.name);
 
     const revoked = await client.revokeApiToken(organizationId, restricted.id, 'c0:isolation:token-revoke');
     expect(revoked.replayed).toBe(false);

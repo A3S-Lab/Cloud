@@ -20,11 +20,8 @@ import {
   toolNames,
   uuidValue,
 } from './management-mcp-conformance-support';
+import { proveExecutionTemplateConformance } from './management-mcp-execution-template-conformance';
 import { proveFormConformance } from './management-mcp-form-conformance';
-import {
-  proveExecutionTemplateConformance,
-  proveExecutionTemplateNondisclosure,
-} from './management-mcp-execution-template-conformance';
 import { proveOntologyConformance } from './management-mcp-ontology-conformance';
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
@@ -965,106 +962,32 @@ workload "mcp-stop" {
       'REST foreign organization data'
     );
     const foreignOrganizationId = uuidValue(foreignOrganizationData.id, 'REST foreign organization ID');
-    const foreignProject = await restEnvelope(
-      `${environment.baseUrl}/organizations/${foreignOrganizationId}/projects`,
-      'POST',
-      authenticatedHeaders(environment.adminToken, 'c0:mcp:foreign-project'),
-      { name: 'MCP Foreign Project' },
-      201,
-      credentials,
-      'REST foreign project creation'
-    );
-    const foreignProjectData = objectValue(foreignProject.body.data, 'REST foreign project data');
-    const foreignProjectId = uuidValue(foreignProjectData.id, 'REST foreign project ID');
-    const executionTemplateNondisclosure = await proveExecutionTemplateNondisclosure(
-      environment,
-      foreignProjectId,
-      credentials
-    );
-
-    const foreignOntologyAcl = await Bun.file('../../contracts/w0.1/ontology.acl').text();
-    const foreignOntology = await restEnvelope(
-      `${environment.baseUrl}/organizations/${foreignOrganizationId}/projects/${foreignProjectId}/ontologies`,
-      'POST',
-      {
-        ...authenticatedHeaders(environment.adminToken, 'c0:mcp:foreign-ontology'),
-        'content-type': 'application/vnd.a3s.acl',
-      },
-      foreignOntologyAcl,
-      201,
-      credentials,
-      'REST foreign Ontology creation'
-    );
-    const foreignOntologyData = objectValue(foreignOntology.body.data, 'REST foreign Ontology data');
-    const foreignOntologyId = uuidValue(
-      objectValue(foreignOntologyData.ontology, 'REST foreign Ontology aggregate').id,
-      'REST foreign Ontology ID'
-    );
-
-    const foreignProjectResult = await callTool(
+    const missingOrganizationId = crypto.randomUUID();
+    const foreignTenant = await mcpRequest(
       environment,
       environment.adminToken,
-      7,
-      'a3s_cloud_environments_list',
-      { projectId: foreignProjectId },
-      credentials,
-      'MCP foreign-project lookup'
-    );
-    const missingProjectResult = await callTool(
-      environment,
-      environment.adminToken,
-      8,
-      'a3s_cloud_environments_list',
-      { projectId: crypto.randomUUID() },
-      credentials,
-      'MCP missing-project lookup'
-    );
-    expect(foreignProjectResult.result.isError).toBe(true);
-    expect(missingProjectResult.result.isError).toBe(true);
-    const foreignErrorContract = businessErrorContract(foreignProjectResult.structured);
-    expect(foreignErrorContract).toEqual(businessErrorContract(missingProjectResult.structured));
-    expect(foreignErrorContract.code).toBe(404);
-    expect(foreignErrorContract.statusCode).toBe('NOT_FOUND');
-    expect(JSON.stringify(foreignProjectResult.structured)).not.toContain(foreignProjectId);
-    expect(JSON.stringify(foreignProjectResult.structured)).not.toContain('MCP Foreign Project');
-
-    const foreignOntologyResult = await callTool(
-      environment,
-      environment.adminToken,
-      121,
-      'a3s_cloud_ontologies_get',
-      { ontologyId: foreignOntologyId },
-      credentials,
-      'MCP foreign-Ontology lookup'
-    );
-    const missingOntologyResult = await callTool(
-      environment,
-      environment.adminToken,
-      122,
-      'a3s_cloud_ontologies_get',
-      { ontologyId: crypto.randomUUID() },
-      credentials,
-      'MCP missing-Ontology lookup'
-    );
-    expect(foreignOntologyResult.result.isError).toBe(true);
-    expect(missingOntologyResult.result.isError).toBe(true);
-    const foreignOntologyErrorContract = businessErrorContract(foreignOntologyResult.structured);
-    expect(foreignOntologyErrorContract).toEqual(businessErrorContract(missingOntologyResult.structured));
-    expect(foreignOntologyErrorContract.code).toBe(404);
-    expect(foreignOntologyErrorContract.statusCode).toBe('NOT_FOUND');
-    expect(JSON.stringify(foreignOntologyResult.structured)).not.toContain(foreignOntologyId);
-    expect(JSON.stringify(foreignOntologyResult.structured)).not.toContain('Support');
-
-    const forgedTenant = await mcpRequest(
-      environment,
-      environment.adminToken,
-      toolCall(9, 'a3s_cloud_projects_list', { organizationId: foreignOrganizationId }),
+      toolCall(7, 'a3s_cloud_projects_list', { organizationId: foreignOrganizationId }),
       200,
       credentials,
-      'forged organization argument'
+      'existing foreign organization argument'
     );
-    const forgedTenantError = objectValue(forgedTenant.body.error, 'forged tenant JSON-RPC error');
-    expect(forgedTenantError.code).toBe(-32602);
+    const missingTenant = await mcpRequest(
+      environment,
+      environment.adminToken,
+      toolCall(8, 'a3s_cloud_projects_list', { organizationId: missingOrganizationId }),
+      200,
+      credentials,
+      'missing organization argument'
+    );
+    const foreignTenantError = objectValue(foreignTenant.body.error, 'foreign tenant JSON-RPC error');
+    const missingTenantError = objectValue(missingTenant.body.error, 'missing tenant JSON-RPC error');
+    expect(foreignTenantError.code).toBe(-32602);
+    expect(missingTenantError.code).toBe(-32602);
+    expect(foreignTenantError.message).toBe(missingTenantError.message);
+    const tenantDenials = JSON.stringify([foreignTenantError, missingTenantError]);
+    expect(tenantDenials).not.toContain(foreignOrganizationId);
+    expect(tenantDenials).not.toContain(missingOrganizationId);
+    expect(tenantDenials).not.toContain('C0 MCP Foreign Tenant');
 
     const revoked = await restEnvelope(
       `${environment.baseUrl}/organizations/${organizationId}/api-tokens/${readOnlyTokenId}`,
@@ -1089,7 +1012,7 @@ workload "mcp-stop" {
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v8',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v9',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -1109,8 +1032,6 @@ workload "mcp-stop" {
         environmentId,
         workloadId,
         foreignOrganizationId,
-        foreignProjectId,
-        foreignOntologyId,
         readOnlyTokenId,
       },
       catalogs: { administrator: adminToolNames, readOnly: readOnlyToolNames },
@@ -1143,18 +1064,6 @@ workload "mcp-stop" {
         operationalLists: operationalListRequestIds,
         missingOperationalResources: missingOperationalRequestIds,
         missingOperationalMutations: missingMutationRequestIds,
-        foreignProjectDenial: requestId(foreignProjectResult.structured, 'foreign-project denial request ID'),
-        missingProjectDenial: requestId(missingProjectResult.structured, 'missing-project denial request ID'),
-        foreignOntologyDenial: requestId(
-          foreignOntologyResult.structured,
-          'foreign-Ontology denial request ID'
-        ),
-        missingOntologyDenial: requestId(
-          missingOntologyResult.structured,
-          'missing-Ontology denial request ID'
-        ),
-        foreignExecutionTemplateProjectDenial: executionTemplateNondisclosure.foreignProjectDenial,
-        missingExecutionTemplateProjectDenial: executionTemplateNondisclosure.missingProjectDenial,
         tokenRevocation: requestId(revoked.body, 'token-revocation request ID'),
         revokedToken: requestId(revokedRequest.body, 'revoked-token request ID'),
       },
@@ -1172,7 +1081,6 @@ workload "mcp-stop" {
         'form-rest-to-mcp-replay-and-historical-replay',
         'immutable-execution-template-rest-to-mcp-replay',
         'execution-template-exact-read-and-acl-rejection',
-        'execution-template-cross-tenant-nondisclosure',
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
         'paged-log-and-evidence-query-boundaries',
@@ -1180,8 +1088,7 @@ workload "mcp-stop" {
         'strict-operational-mutation-arguments',
         'mcp-operational-mutation-idempotency-replay',
         'principal-derived-tenant-context',
-        'foreign-and-missing-resource-error-equivalence',
-        'ontology-cross-tenant-nondisclosure',
+        'tenant-bound-existing-and-missing-organization-nondisclosure',
         'immediate-token-revocation',
         'credential-free-evidence',
       ],

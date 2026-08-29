@@ -1,5 +1,12 @@
 use super::*;
+use a3s_boot::CommandHandler;
+use a3s_cloud_control_plane::modules::identity::domain::value_objects::ApiTokenScope;
+use a3s_cloud_control_plane::modules::identity::{
+    CreateApiToken, CreateApiTokenHandler, PostgresIdentityRepository,
+};
+use a3s_cloud_control_plane::modules::shared_kernel::domain::PrincipalId;
 use a3s_cloud_control_plane::ControlPlane;
+use std::collections::BTreeSet;
 
 const POSTGRES_URL_ENV: &str = "A3S_CLOUD_MI_POSTGRES_URL";
 const BOOTSTRAP_TOKEN_ENV: &str = "A3S_CLOUD_MI_BOOTSTRAP_TOKEN";
@@ -9,11 +16,14 @@ const INVITEE_READ_ONLY_TOKEN: &str =
     "a3s_7777777777777777777777777777777777777777777777777777777777777777";
 const REVOKED_INVITEE_TOKEN: &str =
     "a3s_8888888888888888888888888888888888888888888888888888888888888888";
+const PRINCIPAL_ORGANIZATION_OWNER_TOKEN: &str =
+    "a3s_9999999999999999999999999999999999999999999999999999999999999999";
 
 pub async fn exercise_membership_invitation_persistence(
     postgres_url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
+    let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let database = Database::new(PostgresDialect, executor);
     let _postgres_url = EnvironmentOverride::set(POSTGRES_URL_ENV, &postgres_url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_TOKEN_ENV, BOOTSTRAP_TOKEN_VALUE);
@@ -24,9 +34,16 @@ pub async fn exercise_membership_invitation_persistence(
     configure_ephemeral_application_state(&mut application_config, state.path());
     let app = build_application(application_config).await?;
 
-    let target_organization = bootstrap(&app).await?;
+    let (target_organization, owner_principal_id) = bootstrap(&app).await?;
     let principal_organization = create_organization(&app).await?;
-    let principal_id = create_invited_principal(&app, &principal_organization, "accepted").await?;
+    issue_organization_owner_token(identity, &principal_organization, &owner_principal_id).await?;
+    let principal_id = create_invited_principal(
+        &app,
+        &principal_organization,
+        "accepted",
+        PRINCIPAL_ORGANIZATION_OWNER_TOKEN,
+    )
+    .await?;
     create_invitee_token(
         &app,
         &principal_organization,
@@ -34,6 +51,7 @@ pub async fn exercise_membership_invitation_persistence(
         INVITEE_TOKEN,
         &["cloud:read", "identity:write"],
         "mi:invitee-token",
+        PRINCIPAL_ORGANIZATION_OWNER_TOKEN,
     )
     .await?;
     create_invitee_token(
@@ -43,6 +61,7 @@ pub async fn exercise_membership_invitation_persistence(
         INVITEE_READ_ONLY_TOKEN,
         &["cloud:read"],
         "mi:invitee-read-only-token",
+        PRINCIPAL_ORGANIZATION_OWNER_TOKEN,
     )
     .await?;
 
@@ -197,8 +216,13 @@ pub async fn exercise_membership_invitation_persistence(
         .await?;
     assert_eq!(duplicate_membership.status(), 409);
 
-    let revoked_principal_id =
-        create_invited_principal(&app, &principal_organization, "revoked").await?;
+    let revoked_principal_id = create_invited_principal(
+        &app,
+        &principal_organization,
+        "revoked",
+        PRINCIPAL_ORGANIZATION_OWNER_TOKEN,
+    )
+    .await?;
     create_invitee_token(
         &app,
         &principal_organization,
@@ -206,6 +230,7 @@ pub async fn exercise_membership_invitation_persistence(
         REVOKED_INVITEE_TOKEN,
         &["identity:write"],
         "mi:revoked-invitee-token",
+        PRINCIPAL_ORGANIZATION_OWNER_TOKEN,
     )
     .await?;
     let revoked_created = app
@@ -363,7 +388,7 @@ pub async fn exercise_membership_invitation_persistence(
     Ok(())
 }
 
-async fn bootstrap(app: &ControlPlane) -> Result<String, Box<dyn std::error::Error>> {
+async fn bootstrap(app: &ControlPlane) -> Result<(String, String), Box<dyn std::error::Error>> {
     let response = app
         .call(
             post_json(
@@ -380,10 +405,17 @@ async fn bootstrap(app: &ControlPlane) -> Result<String, Box<dyn std::error::Err
         )
         .await?;
     assert_eq!(response.status(), 201);
-    required_string(
-        &response_json(&response)?["data"]["organization"]["id"],
-        "bootstrap organization ID",
-    )
+    let body = response_json(&response)?;
+    Ok((
+        required_string(
+            &body["data"]["organization"]["id"],
+            "bootstrap organization ID",
+        )?,
+        required_string(
+            &body["data"]["apiToken"]["principalId"],
+            "bootstrap principal ID",
+        )?,
+    ))
 }
 
 async fn create_organization(app: &ControlPlane) -> Result<String, Box<dyn std::error::Error>> {
@@ -402,12 +434,14 @@ async fn create_invited_principal(
     app: &ControlPlane,
     organization: &str,
     suffix: &str,
+    owner_token: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let response = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{organization}/memberships"),
             &format!("mi:principal-membership-{suffix}"),
             json!({"name": format!("Invited automation {suffix}"), "role": "member"}),
+            owner_token,
         ))
         .await?;
     assert_eq!(response.status(), 201);
@@ -424,9 +458,10 @@ async fn create_invitee_token(
     token: &str,
     scopes: &[&str],
     idempotency_key: &str,
+    owner_token: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{organization}/api-tokens"),
             idempotency_key,
             json!({
@@ -436,9 +471,45 @@ async fn create_invitee_token(
                 "principalId": principal_id,
                 "expiresAt": null
             }),
+            owner_token,
         ))
         .await?;
     assert_eq!(response.status(), 201);
+    Ok(())
+}
+
+async fn issue_organization_owner_token(
+    repository: Arc<PostgresIdentityRepository>,
+    organization_id: &str,
+    principal_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(Uuid::parse_str(organization_id)?);
+    let principal_id = PrincipalId::from_uuid(Uuid::parse_str(principal_id)?);
+    let issuer_scopes = [ApiTokenScope::CLOUD_READ, ApiTokenScope::IDENTITY_WRITE]
+        .into_iter()
+        .map(ApiTokenScope::parse)
+        .collect::<Result<BTreeSet<_>, _>>()
+        .map_err(std::io::Error::other)?;
+    CreateApiTokenHandler::new(repository)
+        .execute(
+            CreateApiToken {
+                organization_id,
+                principal_id,
+                issuer_principal_id: principal_id,
+                name: "membership-invitation-principal-owner".into(),
+                token_secret: PRINCIPAL_ORGANIZATION_OWNER_TOKEN.into(),
+                scopes: issuer_scopes
+                    .iter()
+                    .map(|scope| scope.as_str().to_owned())
+                    .collect(),
+                issuer_scopes,
+                expires_at: None,
+                idempotency_key: "mi:principal-owner-token".into(),
+                request_id: Uuid::new_v4(),
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await??;
     Ok(())
 }
 
