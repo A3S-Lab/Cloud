@@ -298,7 +298,7 @@ create a second tenancy milestone or authorization engine.
 | `C0.5-MT1` | Freeze installation versus Organization/Project/Environment scope, closed platform permissions, `PlatformRoleBinding`, canonical `TenantSupportGrant` intent, digest-bound effective-decision evidence, and one scope-aware audit/Outbox contract |
 | `C0.5-MT2-C1` | **Verified:** persist immutable policy revisions, one exact current head and versioned bindings through the sole Identity repository; serialize replicas on the canonical Installation row and atomically enforce idempotency, self-escalation denial, owner-only owner administration, recoverable-owner/Principal liveness, Audit and Outbox |
 | `C0.5-MT2-C2` | **Verified:** persist support proposals, exact approver actions and accepted/revoked grants; caller-supplied approver IDs are intent, never proof, and no platform record uses a synthetic tenant |
-| `C0.5-MT2-C3` | **Atomic core implemented; interfaces pending:** load and share-lock the active Principal, exact API-token version, current policy/binding and applicable exact grant in one Identity transaction; issue and audit one digest-bound decision, then consume it only through concrete maintained Application interfaces fed by verified request context |
+| `C0.5-MT2-C3` | **Verified:** load and share-lock the active Principal, exact API-token version, current policy/binding and applicable exact grant in one Identity transaction; issue and audit one digest-bound decision; consume it through closed REST/OpenAPI, TypeScript client, CLI, and Management MCP use cases fed by verified request context; authorize installation-wide organization catalog reads through `TenantLifecycleRead` and otherwise narrow a valid exact `cloud:read` credential to its own Organization |
 | `C0.5-MT3` | Enforce system-admin, organization-owner/admin, member/restricted and service-Principal matrices through one Identity decision port across REST/client/CLI/Management MCP |
 | `C0.5-MT4` | Ratchet every tenant aggregate, repository, composite foreign key, Outbox/audit/idempotency/object reference and cursor to exact scope; zero presentation-only or browser-side tenant filtering |
 | `H0.5-MT5` | Prove hierarchical CPU/GPU/storage/request quotas, fair admission, autoscaling caps and noisy-neighbor bounds under concurrent Organizations without another queue or scheduler |
@@ -312,15 +312,21 @@ bindings through one Identity/PostgreSQL authority. The canonical Installation
 row is the distributed write fence; the existing idempotency, Audit and Outbox
 tables remain the only commit rail, and deferred database constraints preserve
 one active owner even against direct SQL. Verified `MT2-C2` persists actual
-approver actions and terminal grants. The `MT2-C3` atomic core now share-locks
+approver actions and terminal grants. Verified `MT2-C3` share-locks
 the current Principal/API token/policy/binding/exact optional grant and commits
 one complete decision through shared Audit while conflicting with every
-revocation path. Concrete REST/client/CLI/Management MCP consumers remain and
-must derive identity from verified context rather than expose a generic
-authorization evaluator. `MT3` replaces legacy
-boolean administrator bypasses across REST, MCP, queries, streams and internal
-owner ports. Neither persisted intent nor a component contract is permission
-to skip those gates.
+revocation path. Concrete REST/OpenAPI, TypeScript client, CLI, and Management
+MCP consumers derive Principal and exact credential identity from verified
+context and expose no generic authorization evaluator. Organization catalog
+reads use an Identity-owned `ReadOrganizationCatalog` port: a PostgreSQL
+transaction issues the sole `TenantLifecycleRead` decision before returning
+the installation catalog, otherwise narrows a valid exact `cloud:read`
+credential to its own Organization, and denies an invalid credential. The
+token verifier and controllers no longer project an ambient platform role.
+`MT3` remains the wider system/organization-role matrix across REST, MCP,
+queries, streams and internal owner ports, plus adversarial cross-tenant
+evidence. Neither persisted intent nor a component contract is permission to
+skip those gates.
 
 Production multi-tenancy is not complete until every product lane also proves
 its own scope-specific failure and cleanup cases. Passing Identity unit tests

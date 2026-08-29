@@ -3935,11 +3935,14 @@ node.
   `IPlatformRbacRepository`; shared facts and one idempotent result commit or
   roll back with the entire root. The retained failure-injection gate rejects
   partial rows and the concurrency gate requires one commit plus one replay.
-  Main PostgreSQL recertification and a controlled recovery transition for
-  older installations without this root remain open. The retained [PostgreSQL 17 H0
-  job](https://github.com/A3S-Lab/Cloud/actions/runs/33220123607/job/99012267599)
-  races bootstrap, policy-head advancement and owner revocation across two
-  repository instances and rejects direct-SQL bypass.
+  The [complete main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/33249012696) and its
+  [PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33249012696/job/99091360732)
+  recertify atomic fresh bootstrap, racing bootstrap, policy-head advancement
+  and owner revocation across two repository instances, and direct-SQL bypass
+  rejection. Only a controlled operator transition for older installations
+  without this root remains open.
   Verified `MT2-C2` adds migration `178` and the sole
   `ITenantSupportGrantRepository`: immutable support intent, declared
   requirements, actual human approvals, activated grants, and terminal
@@ -3951,8 +3954,8 @@ node.
   [PostgreSQL 17 H0
   job](https://github.com/A3S-Lab/Cloud/actions/runs/33224399567/job/99025035853)
   prove concurrent dual approval, forged/incomplete evidence rejection,
-  disabled final-approver rollback, terminal history, and replay. The
-  `MT2-C3` atomic core adds the sole
+  disabled final-approver rollback, terminal history, and replay. Verified
+  `MT2-C3` adds the sole
   `IPrivilegedAuthorizationDecisionRepository` and registered
   `AuthorizePrivilegedAccess` Application command. One PostgreSQL transaction
   share-locks the active Principal, exact API-token version, current
@@ -3973,10 +3976,23 @@ node.
   business fact plus its decision reference in the same transaction. A new
   PostgreSQL gate races a binding write with exact-token revocation and
   requires authorization and business Audit facts to commit or roll back
-  together. `MT2-C3` remains open for maintained concrete interfaces, which
-  must derive actor/credential from verified request context rather than expose
-  a generic client-authored evaluator. `MT3` replaces every boolean
-  platform-administrator bypass with that single Identity decision port.
+  together. Maintained REST/OpenAPI, TypeScript client, CLI, and Management MCP
+  interfaces derive actor and exact credential identity from verified request
+  context and expose no generic client-authored evaluator. The organization
+  catalog is also an exact Identity owner port: `ReadOrganizationCatalog`
+  carries Installation/Principal/credential/request identity, the PostgreSQL
+  transaction issues `TenantLifecycleRead` before returning the installation
+  catalog, and a still-active exact `cloud:read` credential without that allow
+  is narrowed to its own Organization. Invalid credentials fail closed; token
+  verification and controllers no longer mint or inspect an ambient platform
+  role. The [complete main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/33251290420) and its
+  [PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33251290420/job/99097293875)
+  pass the concurrent catalog-read/binding-revocation and cross-surface
+  multi-replica gates. `MT3` remains open for the broader system/organization
+  role matrix, owner-port cleanup, complete scope enforcement, and adversarial
+  tenant evidence.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
   Knowledge-granular Resource Grants over the same Principal, Membership,

@@ -61,11 +61,23 @@ reference. A denied decision rolls back with the attempted write and emits no
 partial evidence.
 
 This command is an internal Application authority, not a public generic policy
-evaluator. Maintained REST, client, CLI, and Management MCP use cases must
-select their closed permission, action, scope, and resource themselves and
-must obtain Principal and credential identity from verified request context.
-They cannot accept those authority fields from an untrusted request body or
+evaluator. Maintained REST/OpenAPI, TypeScript client, CLI, and Management MCP
+use cases select their closed permission, action, scope, and resource and
+obtain Principal and exact credential identity from verified request context.
+They do not accept those authority fields from an untrusted request body or
 tool argument.
+
+The organization catalog is the first installation-wide read composed through
+the same authority. `ReadOrganizationCatalog` carries the immutable
+Installation, actor Principal, exact credential, and request identity. The
+PostgreSQL adapter evaluates `TenantLifecycleRead` in its Identity transaction:
+a persisted allow returns the installation catalog; otherwise a still-active
+matching credential with exact `cloud:read` authority is narrowed to its own
+Organization, and an invalid, expired, revoked, mismatched, or under-scoped
+credential is denied. The in-memory adapter exposes only that tenant-local
+result because it has no transactional privileged authority. API-token
+verification no longer projects a platform role into `AuthPrincipal`, and the
+controller never interprets an ambient role string.
 
 ## Consequences
 
@@ -86,7 +98,15 @@ tool argument.
   revocation of its exact API token. Either the decision and protected business
   fact both commit before revocation, or both are absent; after revocation even
   an otherwise replayable request is denied.
-- `C0.5-MT2-C3` remains in progress until maintained concrete interfaces use
-  this authority. `MT3` must then remove every
-  `actor_is_platform_admin`/ambient-role bypass and route cross-surface
-  enforcement through the same Identity decision port.
+- The [complete main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/33251290420) and its
+  [PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33251290420/job/99097293875)
+  also race an installation catalog read with exact role-binding revocation.
+  It admits only a full catalog plus one replayable `TenantLifecycleRead`
+  decision before revocation, or a tenant-local catalog with no privileged
+  decision after revocation.
+- `C0.5-MT2-C3` is verified across Application, REST/OpenAPI, TypeScript client,
+  CLI, Management MCP, and the organization catalog. `MT3` remains the broader
+  system/organization-role matrix, internal owner-port cleanup, complete scope
+  enforcement, and adversarial cross-tenant evidence gate.

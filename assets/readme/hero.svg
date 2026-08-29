@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
   <title id="title">A3S Cloud — Agent-first services on one governed runtime</title>
-  <desc id="desc">A3S Cloud composes Agent, Workflow, Function, Durable Cell, inference, and Web product semantics over A3S Runtime Task and Service, A3S Box, and operator-owned CPU and GPU infrastructure.</desc>
+  <desc id="desc">A3S Cloud composes Agent, Workflow, Function, Durable Cell, inference, and Web product semantics through A3S Flow, A3S Runtime Task and Service, A3S Box, and A3S Gateway on operator-owned CPU and GPU infrastructure.</desc>
   <defs>
     <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#142019"/>
@@ -25,8 +25,8 @@
   <g transform="translate(54 118)" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
     <text x="0" y="58" fill="#f4faf6" font-size="54" font-weight="760" letter-spacing="-2.2">Agent-first services.</text>
     <text x="0" y="124" fill="#b7f56a" font-size="54" font-weight="760" letter-spacing="-2.2">One governed runtime.</text>
-    <text x="2" y="169" fill="#b4c3ba" font-size="21">Durable control, unified execution, exact evidence.</text>
-    <text x="2" y="199" fill="#b4c3ba" font-size="21">Run on infrastructure you own.</text>
+    <text x="2" y="169" fill="#b4c3ba" font-size="21">Flow coordinates durable work. Gateway owns public traffic.</text>
+    <text x="2" y="199" fill="#b4c3ba" font-size="21">Runtime runs on Box across infrastructure you own.</text>
 
     <g transform="translate(0 235)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" text-anchor="middle">
       <rect width="92" height="42" rx="8" fill="#132019" stroke="#3b5543"/>
@@ -38,6 +38,7 @@
       <rect x="312" width="156" height="42" rx="8" fill="#132019" stroke="#3b5543"/>
       <text x="390" y="27" fill="#d8ffa3">DURABLE CELL</text>
     </g>
+    <text x="2" y="310" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" letter-spacing="1.4">MULTI-TENANT · API-FIRST · SELF-HOSTED</text>
   </g>
 
   <g transform="translate(665 34)">
