@@ -485,11 +485,15 @@ async fn issue_organization_owner_token(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(Uuid::parse_str(organization_id)?);
     let principal_id = PrincipalId::from_uuid(Uuid::parse_str(principal_id)?);
-    let issuer_scopes = [ApiTokenScope::CLOUD_READ, ApiTokenScope::IDENTITY_WRITE]
-        .into_iter()
-        .map(ApiTokenScope::parse)
-        .collect::<Result<BTreeSet<_>, _>>()
-        .map_err(std::io::Error::other)?;
+    let issuer_scopes = [
+        ApiTokenScope::CLOUD_READ,
+        ApiTokenScope::IDENTITY_WRITE,
+        ApiTokenScope::TOKEN_WRITE,
+    ]
+    .into_iter()
+    .map(ApiTokenScope::parse)
+    .collect::<Result<BTreeSet<_>, _>>()
+    .map_err(std::io::Error::other)?;
     CreateApiTokenHandler::new(repository)
         .execute(
             CreateApiToken {
