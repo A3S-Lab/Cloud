@@ -1,15 +1,21 @@
 use super::InMemoryIdentityRepository;
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
+    AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
+    AcceptedWorkloadIdentityPolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
     TenantSupportGrant, TenantSupportGrantApproval, TenantSupportGrantApprovalOutcome,
     TenantSupportGrantProposal,
 };
 use crate::modules::identity::domain::repositories::{
-    AcceptPlatformRolePolicyRevisionWrite, ApproveTenantSupportGrantWrite,
+    AcceptPlatformRolePolicyRevisionWrite, AcceptTrustDomainRevisionWrite,
+    AcceptWorkloadIdentityPolicyRevisionWrite, ApproveTenantSupportGrantWrite,
     BootstrapPlatformRbacWrite, ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite,
-    IPlatformRbacRepository, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
-    ReadCurrentPlatformRolePolicy, ReadPlatformRoleBinding, ReadPlatformRolePolicyRevision,
-    ReadPrincipalPlatformRoleBinding, ReadTenantSupportGrant, RevokePlatformRoleBindingWrite,
+    IPlatformRbacRepository, ITenantSupportGrantRepository, ITrustDomainRepository,
+    IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
+    ListWorkloadIdentityPolicyRevisions, ProposeTenantSupportGrantWrite,
+    ReadCurrentPlatformRolePolicy, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
+    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadPlatformRoleBinding,
+    ReadPlatformRolePolicyRevision, ReadPrincipalPlatformRoleBinding, ReadTenantSupportGrant,
+    ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision, RevokePlatformRoleBindingWrite,
     RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
 };
 use crate::modules::shared_kernel::domain::{
@@ -22,6 +28,75 @@ fn unavailable<T>() -> Result<T, RepositoryError> {
     Err(RepositoryError::Forbidden(
         "privileged management requires the PostgreSQL Identity authority".into(),
     ))
+}
+
+#[async_trait]
+impl ITrustDomainRepository for InMemoryIdentityRepository {
+    async fn accept(
+        &self,
+        _write: AcceptTrustDomainRevisionWrite,
+    ) -> Result<IdempotentWrite<AcceptedTrustDomainRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read_revision(
+        &self,
+        _read: ReadTrustDomainRevision,
+    ) -> Result<Option<AcceptedTrustDomainRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read_current(
+        &self,
+        _read: ReadCurrentTrustDomain,
+    ) -> Result<Option<AcceptedTrustDomainRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn list_revisions(
+        &self,
+        _read: ListTrustDomainRevisions,
+    ) -> Result<Vec<AcceptedTrustDomainRevision>, RepositoryError> {
+        unavailable()
+    }
+}
+
+#[async_trait]
+impl IWorkloadIdentityPolicyRepository for InMemoryIdentityRepository {
+    async fn accept(
+        &self,
+        _write: AcceptWorkloadIdentityPolicyRevisionWrite,
+    ) -> Result<IdempotentWrite<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read_revision(
+        &self,
+        _read: ReadWorkloadIdentityPolicyRevision,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read_current(
+        &self,
+        _read: ReadCurrentWorkloadIdentityPolicy,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read_current_for_workload(
+        &self,
+        _read: ReadCurrentWorkloadIdentityPolicyForWorkload,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn list_revisions(
+        &self,
+        _read: ListWorkloadIdentityPolicyRevisions,
+    ) -> Result<Vec<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
 }
 
 /// The in-memory Identity adapter deliberately implements no privileged

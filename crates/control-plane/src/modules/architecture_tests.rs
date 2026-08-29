@@ -1765,6 +1765,132 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
 }
 
 #[test]
+fn workload_trust_persistence_reuses_one_atomic_identity_authority() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repository = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/repositories/workload_identity_repository.rs"),
+    )
+    .expect("read workload trust repository ports");
+    let contract = std::fs::read_to_string(
+        manifest
+            .join("src/modules/identity/domain/value_objects/workload_identity_policy_contract.rs"),
+    )
+    .expect("read workload identity policy contract");
+    let persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres_workload_trust.rs"),
+    )
+    .expect("read workload trust PostgreSQL adapter");
+    let compact_persistence = persistence
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>();
+    let in_memory = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/infrastructure/persistence/in_memory_privileged_management.rs",
+    ))
+    .expect("read fail-closed in-memory privileged adapter");
+    let migration =
+        std::fs::read_to_string(manifest.join("../../migrations/179_workload_trust_authority.sql"))
+            .expect("read workload trust authority migration");
+
+    assert!(contract.contains("pub trust_domain_revision_id: TrustDomainRevisionId"));
+    for required in [
+        "pub actor_principal_id: PrincipalId",
+        "pub credential_id: ApiTokenId",
+        "pub request_id: Uuid",
+        "ReadCurrentTrustDomain",
+        "ReadCurrentWorkloadIdentityPolicyForWorkload",
+    ] {
+        assert!(
+            repository.contains(required),
+            "workload trust port lost closed authority context {required}"
+        );
+    }
+    assert!(!repository.contains("actor_is_platform_admin"));
+
+    assert_eq!(
+        persistence.matches("impl ITrustDomainRepository").count(),
+        1
+    );
+    assert_eq!(
+        persistence
+            .matches("impl IWorkloadIdentityPolicyRepository")
+            .count(),
+        1
+    );
+    for required in [
+        "lock_installation(transaction",
+        "issue_privileged_authorization(",
+        "PlatformPermission::WorkloadTrustManage",
+        "PlatformPermission::WorkloadTrustRead",
+        "store_outbox(",
+        "store_audit(",
+        "store_idempotency(",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "workload trust persistence lost atomic shared rail {required}"
+        );
+    }
+    for required in [
+        "idempotency_replay::<AcceptedTrustDomainRevision",
+        "idempotency_replay::<AcceptedWorkloadIdentityPolicyRevision",
+    ] {
+        assert!(
+            compact_persistence.contains(required),
+            "workload trust persistence lost formatting-independent atomic rail {required}"
+        );
+    }
+    for forbidden in [
+        "actor_is_platform_admin",
+        "create table",
+        "redis",
+        "a3s_lane",
+        "distributed_lock",
+        "new Authorization",
+    ] {
+        assert!(
+            !production_source(&persistence).contains(forbidden),
+            "workload trust adapter introduced a parallel authority through {forbidden}"
+        );
+    }
+
+    assert!(in_memory.contains("impl ITrustDomainRepository for InMemoryIdentityRepository"));
+    assert!(
+        in_memory.contains("impl IWorkloadIdentityPolicyRepository for InMemoryIdentityRepository")
+    );
+    assert!(in_memory.contains("privileged management requires the PostgreSQL Identity authority"));
+
+    for required in [
+        "create table trust_domain_revisions",
+        "create table trust_domain_heads",
+        "create table workload_identity_policy_revisions",
+        "create table workload_identity_policy_heads",
+        "for update of installation",
+        "references organizations",
+        "references workloads",
+        "references node_pools",
+    ] {
+        assert!(
+            migration.contains(required),
+            "workload trust migration lost invariant {required}"
+        );
+    }
+    for forbidden in [
+        "workload_trust_audit",
+        "workload_trust_outbox",
+        "workload_trust_idempotency",
+        "workload_trust_locks",
+        "redis",
+        "a3s_lane",
+    ] {
+        assert!(
+            !migration.contains(forbidden),
+            "workload trust migration duplicated a shared mechanism through {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrows_scope() {
     let root = module_root();
     let scope = std::fs::read_to_string(root.join("shared_kernel/domain/scope_context.rs"))

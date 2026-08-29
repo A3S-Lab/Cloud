@@ -6190,18 +6190,26 @@ factory contains no connection, migration, query, cache, or domain mechanism,
 and a source gate prevents a direct process-root constructor or second
 constructor rule.
 
-Component-only `H0.4-WI1-C1` establishes the first production workload-trust
-contract inside Identity. Strong installation, trust-domain, policy and
-revision identities bind two canonical A3S ACL contracts. Exact A3S Runtime
+`H0.4-WI1-C1` and the locally implemented `WI1-C2` persistence core establish
+the first production workload-trust contract inside Identity; main PostgreSQL
+verification is pending. Strong installation, trust-domain, policy and revision
+identities bind two canonical A3S ACL contracts. Exact A3S Runtime
 `Task`/`Service` and isolation types are reused across closed Agent, Workflow,
 Function, MCP, Durable Cell, inference, build, Gateway and Cloud system roles;
 deterministic immutable revisions and predecessor-fenced repository ports
 prevent mutable or competing policy heads. One replaceable provider port can
 inspect only non-secret capability and trust-bundle evidence. It cannot issue
-credentials before `WI2` supplies exact Fleet/Runtime attestation. Persistence,
-authorization, Outbox/audit, public interfaces, real provider composition and
-`WI2` through `WI7` remain open, so no workload identity availability is
-claimed.
+credentials before `WI2` supplies exact Fleet/Runtime attestation. Migration
+`179` persists immutable TrustDomain and WorkloadIdentityPolicy histories plus
+one CAS head per aggregate; the policy ACL binds the exact trust revision and
+database FKs preserve Installation/tenant/Environment/Workload/revision/NodePool
+lineage. The PostgreSQL adapter reuses the Installation lock, sole privileged
+decision issuer and shared idempotency/Audit/Outbox transaction; in-memory
+privileged composition fails closed. A retained two-replica H0 gate covers
+competing successors, replay drift, stable names, one current policy per
+Workload, stale trust, immutable history and token-revocation races. Main-gate
+proof, public interfaces, real provider composition and `WI2` through `WI7`
+remain open, so no workload identity availability is claimed.
 
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same

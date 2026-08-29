@@ -3218,7 +3218,8 @@ With this authority in place,
 no path may use a synthetic Organization or `actor_is_platform_admin` as
 authority.
 
-Component-only `H0.4-WI1-C1` is implemented. Identity now owns canonical
+`H0.4-WI1-C1` and the `WI1-C2` persistence core are implemented locally;
+main-branch PostgreSQL verification is pending. Identity now owns canonical
 `cloud.identity.trust-domain.v1` and
 `cloud.identity.workload-policy.v1` ACL contracts, strong installation,
 trust-domain, policy, and deterministic revision identities, predecessor-fenced
@@ -3226,9 +3227,17 @@ repository ports, and one capability-inspection provider port. The policy
 reuses A3S Runtime's exact `Task`/`Service` and isolation types and covers the
 closed Agent, Workflow worker, Function, MCP, Durable Cell, inference, build,
 Gateway, and Cloud system-service roles without adding a runtime subtype.
-`H0.4-WI1` remains unavailable until persistence, authorization, atomic
-Outbox/audit, maintained interfaces, and provider evidence land; `WI2` through
-`WI7` remain planned.
+Migration `179` adds only immutable TrustDomain and WorkloadIdentityPolicy
+revision histories plus one strongly consistent head per aggregate. Every
+policy ACL now binds the exact TrustDomain revision. The PostgreSQL adapters
+serialize on the canonical Installation, reuse the sole transaction-local
+privileged authorization issuer for `WorkloadTrustRead/Manage`, and commit CAS,
+shared idempotency, Audit and Outbox together; the in-memory adapter fails
+closed. The retained H0 gate covers two-replica CAS, exact owner/FK lineage,
+stable names, one policy per Workload, stale trust, replay drift, immutable
+history, and API-token revocation races. `H0.4-WI1` remains unavailable until
+that gate passes on main and maintained REST/OpenAPI/client/CLI/MCP plus real
+provider evidence land; `WI2` through `WI7` remain planned.
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,

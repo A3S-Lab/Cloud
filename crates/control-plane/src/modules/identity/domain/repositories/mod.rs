@@ -57,6 +57,8 @@ pub use tenant_support_grant_repository::{
 };
 pub use workload_identity_repository::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,
-    ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
-    MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+    ITrustDomainRepository, IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
+    ListWorkloadIdentityPolicyRevisions, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
+    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadTrustDomainRevision,
+    ReadWorkloadIdentityPolicyRevision, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };

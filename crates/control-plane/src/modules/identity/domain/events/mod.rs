@@ -9,6 +9,7 @@ mod principal_created;
 mod recipient_contact_changed;
 mod resource_grant_changed;
 mod tenant_support_grant_changed;
+mod workload_trust_changed;
 
 pub use api_token_created::ApiTokenCreated;
 pub use api_token_revoked::ApiTokenRevoked;
@@ -22,4 +23,7 @@ pub use recipient_contact_changed::RecipientContactChanged;
 pub use resource_grant_changed::ResourceGrantChanged;
 pub use tenant_support_grant_changed::{
     TenantSupportGrantApproved, TenantSupportGrantChanged, TenantSupportGrantProposed,
+};
+pub use workload_trust_changed::{
+    TrustDomainRevisionAccepted, WorkloadIdentityPolicyRevisionAccepted,
 };

@@ -332,6 +332,8 @@ mod workflow_semantic_contracts_support;
 mod workload_rollback_support;
 #[path = "support/workload_rollout_health.rs"]
 mod workload_rollout_health_support;
+#[path = "support/workload_trust.rs"]
+mod workload_trust_support;
 #[path = "support/workload_writer_fences.rs"]
 mod workload_writer_fences_support;
 #[path = "support/workloads.rs"]
@@ -938,6 +940,19 @@ async fn postgres_platform_rbac_is_atomic_recoverable_and_multi_replica_safe() {
     )
     .await
     .expect("PostgreSQL platform RBAC authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_workload_trust_is_revisioned_atomic_and_revocation_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        workload_trust_support::exercise_workload_trust_authority,
+    )
+    .await
+    .expect("PostgreSQL workload trust authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -6,6 +6,7 @@ use crate::modules::shared_kernel::domain::{
     WorkloadIdentityPolicyId, WorkloadIdentityPolicyRevisionId,
 };
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const MAX_PORTABLE_REVISION_NUMBER: u64 = 9_007_199_254_740_991;
@@ -16,7 +17,7 @@ const WORKLOAD_POLICY_REVISION_NAMESPACE: Uuid = Uuid::from_bytes([
     0x0e, 0x6f, 0x35, 0xbb, 0x93, 0x6f, 0x45, 0x23, 0x8a, 0xb3, 0x69, 0xf1, 0xa9, 0x78, 0x29, 0x63,
 ]);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcceptedTrustDomainRevision {
     pub installation_id: InstallationId,
     pub trust_domain_id: TrustDomainId,
@@ -119,7 +120,7 @@ impl AcceptedTrustDomainRevision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcceptedWorkloadIdentityPolicyRevision {
     pub installation_id: InstallationId,
     pub policy_id: WorkloadIdentityPolicyId,
@@ -225,6 +226,11 @@ impl AcceptedWorkloadIdentityPolicyRevision {
     ) -> Result<(), String> {
         self.validate()?;
         trust_domain.validate()?;
+        if self.contract.spec().trust_domain_revision_id != trust_domain.id {
+            return Err(
+                "workload identity policy does not bind the exact trust-domain revision".into(),
+            );
+        }
         self.contract
             .spec()
             .validate_against_trust_domain(&trust_domain.contract)
@@ -286,9 +292,13 @@ mod tests {
             federation_bundle_digests: vec![],
         })
         .expect("trust");
+        let trust_domain_revision_id =
+            AcceptedTrustDomainRevision::revision_id_for(trust_domain_id, 1, &trust)
+                .expect("trust revision id");
         let policy = WorkloadIdentityPolicyContract::from_spec(WorkloadIdentityPolicySpec {
             installation_id,
             trust_domain_id,
+            trust_domain_revision_id,
             organization_id: OrganizationId::new(),
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),

@@ -235,7 +235,7 @@ Cloud Dashboard or private identity-provider UI is required.
 
 | Gate | Outcome | Current state |
 | --- | --- | --- |
-| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | Component foundation in progress: `WI1-C1` implements strong installation/trust/policy/revision identities, canonical `cloud.identity.trust-domain.v1` and `cloud.identity.workload-policy.v1` ACL contracts, deterministic immutable revisions, optimistic predecessor-fenced repository ports, and one capability-only replaceable identity-provider port. Persistence, authorization, Outbox/audit, public interfaces, and retained provider evidence remain open. |
+| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | `WI1-C1` and the `WI1-C2` persistence core are implemented locally; main verification is pending. Canonical ACLs and deterministic revisions now feed migration `179`'s immutable histories and sole heads. Workload policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. The retained two-replica/revocation gate is registered. Maintained public interfaces and real provider evidence remain open, so WI1 is not yet available. |
 | `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | Planned |
 | `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
 | `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
@@ -243,16 +243,18 @@ Cloud Dashboard or private identity-provider UI is required.
 | `H0.4-WI6` | Revocation, expiry, clock, process/node loss, partition and upgrade evidence | Planned |
 | `H0.4-WI7` | Optional trust-domain federation, region isolation and exact-provider conformance | Planned |
 
-`C0.5-MT1-C3` now establishes the canonical persisted Installation identity and
-explicit scope-aware Audit/Outbox evidence. `WI1-C2` persistence remains ordered
-after `MT2` establishes the Application/persistence authority behind the single
-Identity platform-permission decision. Trust-domain state is installation state: it
-cannot be placed under a synthetic Organization, and a legacy
-`actor_is_platform_admin` boolean cannot authorize it. Component-only
-`MT1-C1/C2/C3` already supply shared scope identity, canonical fact persistence,
-canonical platform-role and support-grant intent, and replayable privileged
-decision evidence; they do not yet supply current-head loading, durable
-revocation or an authorization port.
+`C0.5-MT1-C3` establishes the canonical persisted Installation identity and
+explicit scope-aware Audit/Outbox evidence, and verified `MT2` supplies the sole
+Identity platform-permission decision. `WI1-C2` now builds only on those
+authorities: trust-domain state is installation state, never a synthetic
+Organization; mutation and reads carry the exact Principal, API token and
+request; and no `actor_is_platform_admin` boolean is admitted. Migration `179`
+stores immutable predecessor-linked history and one CAS head for each aggregate.
+The protected transaction locks the Installation, issues the exact
+`WorkloadTrustRead` or `WorkloadTrustManage` decision, validates canonical owner
+lineage and current TrustDomain revision, then commits the business fact,
+idempotency result, Audit and Outbox together. Redis, Lane, caches and a second
+authorization/audit/lock table are not correctness authorities.
 
 `WI1-C1` deliberately exposes only provider capability inspection. Credential
 issuance is unavailable until `WI2` can prove the exact Fleet Claim, Node,

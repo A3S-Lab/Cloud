@@ -7,7 +7,7 @@ use super::trust_domain_contract::{
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InstallationId, NodePoolId, OrganizationId, ProjectId, Sha256Digest,
-    TrustDomainId, WorkloadId, WorkloadIdentityPolicyId, WorkloadRevisionId,
+    TrustDomainId, TrustDomainRevisionId, WorkloadId, WorkloadIdentityPolicyId, WorkloadRevisionId,
 };
 use a3s_acl::builder::{boolean, list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Document};
@@ -163,6 +163,7 @@ impl WorkloadProductRole {
 pub struct WorkloadIdentityPolicySpec {
     pub installation_id: InstallationId,
     pub trust_domain_id: TrustDomainId,
+    pub trust_domain_revision_id: TrustDomainRevisionId,
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
@@ -215,6 +216,7 @@ impl WorkloadIdentityPolicySpec {
         if [
             self.installation_id.as_uuid(),
             self.trust_domain_id.as_uuid(),
+            self.trust_domain_revision_id.as_uuid(),
             self.organization_id.as_uuid(),
             self.project_id.as_uuid(),
             self.environment_id.as_uuid(),
@@ -475,6 +477,10 @@ fn contract_document(spec: &WorkloadIdentityPolicySpec) -> Result<Document, Stri
                 string(spec.semantics_profile_digest.as_str()),
             )
             .attr("trust_domain_id", string(&spec.trust_domain_id.to_string()))
+            .attr(
+                "trust_domain_revision_id",
+                string(&spec.trust_domain_revision_id.to_string()),
+            )
             .attr("workload_id", string(&spec.workload_id.to_string()))
             .attr(
                 "workload_revision_id",
@@ -505,6 +511,7 @@ fn parse_contract(document: &Document) -> Result<WorkloadIdentityPolicySpec, Str
             "schema",
             "semantics_profile_digest",
             "trust_domain_id",
+            "trust_domain_revision_id",
             "workload_id",
             "workload_revision_id",
         ],
@@ -549,6 +556,10 @@ fn parse_contract(document: &Document) -> Result<WorkloadIdentityPolicySpec, Str
     Ok(WorkloadIdentityPolicySpec {
         installation_id: InstallationId::from_uuid(required_uuid(root, "installation_id")?),
         trust_domain_id: TrustDomainId::from_uuid(required_uuid(root, "trust_domain_id")?),
+        trust_domain_revision_id: TrustDomainRevisionId::from_uuid(required_uuid(
+            root,
+            "trust_domain_revision_id",
+        )?),
         organization_id: OrganizationId::from_uuid(required_uuid(root, "organization_id")?),
         project_id: ProjectId::from_uuid(required_uuid(root, "project_id")?),
         environment_id: EnvironmentId::from_uuid(required_uuid(root, "environment_id")?),
@@ -713,10 +724,12 @@ mod tests {
     fn service_spec(
         installation_id: InstallationId,
         trust_domain_id: TrustDomainId,
+        trust_domain_revision_id: TrustDomainRevisionId,
     ) -> WorkloadIdentityPolicySpec {
         WorkloadIdentityPolicySpec {
             installation_id,
             trust_domain_id,
+            trust_domain_revision_id,
             organization_id: OrganizationId::new(),
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),
@@ -749,9 +762,11 @@ mod tests {
         let installation_id = InstallationId::new();
         let trust_domain_id = TrustDomainId::new();
         let trust = trust(installation_id, trust_domain_id);
+        let trust_domain_revision_id = TrustDomainRevisionId::new();
         let contract = WorkloadIdentityPolicyContract::from_spec(service_spec(
             installation_id,
             trust_domain_id,
+            trust_domain_revision_id,
         ))
         .expect("policy");
         contract
@@ -771,16 +786,20 @@ mod tests {
         let installation_id = InstallationId::new();
         let trust_domain_id = TrustDomainId::new();
         let trust = trust(installation_id, trust_domain_id);
+        let trust_domain_revision_id = TrustDomainRevisionId::new();
 
-        let mut wrong_class = service_spec(installation_id, trust_domain_id);
+        let mut wrong_class =
+            service_spec(installation_id, trust_domain_id, trust_domain_revision_id);
         wrong_class.runtime_class = RuntimeUnitClass::Task;
         assert!(WorkloadIdentityPolicyContract::from_spec(wrong_class).is_err());
 
-        let mut no_service_name = service_spec(installation_id, trust_domain_id);
+        let mut no_service_name =
+            service_spec(installation_id, trust_domain_id, trust_domain_revision_id);
         no_service_name.service_names.clear();
         assert!(WorkloadIdentityPolicyContract::from_spec(no_service_name).is_err());
 
-        let mut untrusted_attestation = service_spec(installation_id, trust_domain_id);
+        let mut untrusted_attestation =
+            service_spec(installation_id, trust_domain_id, trust_domain_revision_id);
         untrusted_attestation.attestation_profile_digest = digest('9');
         let policy = WorkloadIdentityPolicyContract::from_spec(untrusted_attestation)
             .expect("locally valid policy");
@@ -791,7 +810,11 @@ mod tests {
     fn task_policy_cannot_publish_service_names() {
         let installation_id = InstallationId::new();
         let trust_domain_id = TrustDomainId::new();
-        let mut task = service_spec(installation_id, trust_domain_id);
+        let mut task = service_spec(
+            installation_id,
+            trust_domain_id,
+            TrustDomainRevisionId::new(),
+        );
         task.product_role = WorkloadProductRole::FunctionTask;
         task.runtime_class = RuntimeUnitClass::Task;
         assert!(WorkloadIdentityPolicyContract::from_spec(task.clone()).is_err());
@@ -808,6 +831,7 @@ mod tests {
         let contract = WorkloadIdentityPolicyContract::from_spec(service_spec(
             InstallationId::new(),
             TrustDomainId::new(),
+            TrustDomainRevisionId::new(),
         ))
         .expect("policy");
         assert!(

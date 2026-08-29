@@ -45,6 +45,17 @@ cannot substitute for the canonical observed federation-bundle digest set.
 Issuance is added only after Fleet and Runtime provide an exact admitted Node,
 Claim, Unit, and generation attestation in `WI2`.
 
+`WI1-C2` persists this decision with migration `179`: two immutable,
+predecessor-linked revision histories and one current head per aggregate. A
+Workload Identity Policy carries the exact `TrustDomainRevisionId` in its
+canonical ACL, so its digest and deterministic revision ID cannot drift with a
+later trust-head change. Identity serializes protected reads and writes against
+the canonical Installation and reuses the sole transaction-local privileged
+authorization decision, shared idempotency, Audit and Outbox rails. Tenant
+lineage, Workload revision and NodePool ownership remain foreign-key references
+to their existing owners; no second authorization, lock, cache or event store is
+introduced.
+
 ## Consequences
 
 - All Runtime profiles share one identity policy abstraction; there is no
@@ -58,7 +69,7 @@ Claim, Unit, and generation attestation in `WI2`.
   cannot substitute for the consuming domain's peer authorization.
 - Redis, DNS, proxies, and provider registration databases may carry
   projections but cannot become policy truth.
-- `WI1-C1` is a component foundation, not an availability claim. Persistence,
-  authorization, Outbox/audit, public interfaces, attestation, issuance,
-  discovery, enforcement, revocation drills, and exact-provider evidence
-  remain required.
+- `WI1-C1/C2` remain a component foundation, not an availability claim. Main
+  PostgreSQL proof, public interfaces, attestation, issuance, discovery,
+  enforcement, provider revocation drills, and exact-provider evidence remain
+  required.
