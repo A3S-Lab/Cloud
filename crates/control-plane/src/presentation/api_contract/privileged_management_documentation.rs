@@ -4,7 +4,10 @@ use super::privileged_management_operation::{
     PLATFORM_ROLE_POLICY_REVISIONS_PATH, PLATFORM_ROLE_POLICY_REVISION_PATH,
     PRINCIPAL_PLATFORM_ROLE_BINDING_PATH, TENANT_SUPPORT_GRANTS_PATH,
     TENANT_SUPPORT_GRANT_APPROVALS_PATH, TENANT_SUPPORT_GRANT_PATH,
-    TENANT_SUPPORT_GRANT_REVOCATION_PATH,
+    TENANT_SUPPORT_GRANT_REVOCATION_PATH, TRUST_DOMAIN_PATH, TRUST_DOMAIN_REVISIONS_PATH,
+    TRUST_DOMAIN_REVISION_PATH, WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH,
+    WORKLOAD_IDENTITY_POLICY_PATH, WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH,
+    WORKLOAD_IDENTITY_POLICY_REVISION_PATH,
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
@@ -78,6 +81,42 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "TenantSupportGrantMutationSuccessResponse" => Some(
             "Standard success envelope containing a tenant-support lifecycle mutation and replay state.",
         ),
+        "TrustDomainRevision" => Some(
+            "One immutable Identity-owned installation TrustDomain revision with canonical A3S ACL and digest.",
+        ),
+        "TrustDomainRevisionList" => Some(
+            "Bounded reverse-ordered immutable revision history for one exact TrustDomain.",
+        ),
+        "TrustDomainRevisionMutation" => Some(
+            "Accepted TrustDomain revision plus caller-owned idempotency replay state.",
+        ),
+        "WorkloadIdentityPolicyRevision" => Some(
+            "One immutable Identity-owned Workload policy revision bound to exact owner lineage and TrustDomain revision.",
+        ),
+        "WorkloadIdentityPolicyRevisionList" => Some(
+            "Bounded reverse-ordered immutable revision history for one exact Workload Identity Policy.",
+        ),
+        "WorkloadIdentityPolicyRevisionMutation" => Some(
+            "Accepted Workload Identity Policy revision plus caller-owned idempotency replay state.",
+        ),
+        "TrustDomainRevisionSuccessResponse" => Some(
+            "Standard success envelope containing one immutable TrustDomain revision.",
+        ),
+        "TrustDomainRevisionListSuccessResponse" => Some(
+            "Standard success envelope containing bounded TrustDomain revision history.",
+        ),
+        "TrustDomainRevisionMutationSuccessResponse" => Some(
+            "Standard success envelope containing TrustDomain acceptance and replay state.",
+        ),
+        "WorkloadIdentityPolicyRevisionSuccessResponse" => Some(
+            "Standard success envelope containing one immutable Workload Identity Policy revision.",
+        ),
+        "WorkloadIdentityPolicyRevisionListSuccessResponse" => Some(
+            "Standard success envelope containing bounded Workload Identity Policy revision history.",
+        ),
+        "WorkloadIdentityPolicyRevisionMutationSuccessResponse" => Some(
+            "Standard success envelope containing Workload Identity Policy acceptance and replay state.",
+        ),
         _ => None,
     }
 }
@@ -100,6 +139,25 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         ("get", TENANT_SUPPORT_GRANT_PATH) => Some("Get a tenant-support grant"),
         ("post", TENANT_SUPPORT_GRANT_APPROVALS_PATH) => Some("Approve a tenant-support grant"),
         ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH) => Some("Revoke a tenant-support grant"),
+        ("get", TRUST_DOMAIN_PATH) => Some("Get the current TrustDomain revision"),
+        ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some("List TrustDomain revisions"),
+        ("get", TRUST_DOMAIN_REVISION_PATH) => Some("Get a TrustDomain revision"),
+        ("post", TRUST_DOMAIN_REVISIONS_PATH) => Some("Accept a TrustDomain revision"),
+        ("get", WORKLOAD_IDENTITY_POLICY_PATH) => {
+            Some("Get the current Workload Identity Policy revision")
+        }
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("List Workload Identity Policy revisions")
+        }
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISION_PATH) => {
+            Some("Get a Workload Identity Policy revision")
+        }
+        ("post", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("Accept a Workload Identity Policy revision")
+        }
+        ("get", WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH) => {
+            Some("Get a Workload's current identity policy")
+        }
         _ => None,
     }
 }
@@ -142,6 +200,33 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH) => Some(
             "Terminally revokes an accepted tenant-support grant with aggregate-version fencing, exact credential authorization, immutable audit evidence, and caller-owned idempotency.",
         ),
+        ("get", TRUST_DOMAIN_PATH) => Some(
+            "Authorizes the exact verified Principal and API Token, then reads the strongly consistent current revision of one installation-scoped TrustDomain through the sole Identity authority.",
+        ),
+        ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some(
+            "Authorizes the exact verified credential and returns a bounded reverse-ordered immutable history for one TrustDomain; no cache or provider projection is policy truth.",
+        ),
+        ("get", TRUST_DOMAIN_REVISION_PATH) => Some(
+            "Authorizes the exact verified credential and returns one exact immutable TrustDomain revision identified by both aggregate and revision IDs.",
+        ),
+        ("post", TRUST_DOMAIN_REVISIONS_PATH) => Some(
+            "Parses one canonical `cloud.identity.trust-domain.v1` A3S ACL, checks the path and canonical Installation identities, then atomically accepts the exact predecessor-fenced revision with authorization, Audit, Outbox, and idempotency.",
+        ),
+        ("get", WORKLOAD_IDENTITY_POLICY_PATH) => Some(
+            "Authorizes the exact verified credential and reads the strongly consistent current revision of one Organization-owned Workload Identity Policy.",
+        ),
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => Some(
+            "Authorizes the exact verified credential and returns bounded immutable policy history under the exact Organization and policy identities.",
+        ),
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISION_PATH) => Some(
+            "Authorizes the exact verified credential and returns one immutable Workload Identity Policy revision including its exact TrustDomain-revision and owner-lineage bindings.",
+        ),
+        ("post", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => Some(
+            "Parses one canonical `cloud.identity.workload-policy.v1` A3S ACL, rejects path, Installation, Organization, policy, owner, or current TrustDomain drift, then atomically accepts its exact predecessor-fenced revision.",
+        ),
+        ("get", WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH) => Some(
+            "Authorizes the exact verified credential and resolves the sole current identity policy for one logical Workload without copying policy truth into the Workloads context.",
+        ),
         _ => None,
     }
 }
@@ -177,6 +262,27 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         }
         ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH) => {
             Some("The terminally revoked tenant-support lifecycle and replay state.")
+        }
+        ("get", TRUST_DOMAIN_PATH | TRUST_DOMAIN_REVISION_PATH) => {
+            Some("The authoritative immutable TrustDomain revision.")
+        }
+        ("get", TRUST_DOMAIN_REVISIONS_PATH) => {
+            Some("The bounded authoritative TrustDomain revision history.")
+        }
+        ("post", TRUST_DOMAIN_REVISIONS_PATH) => {
+            Some("The accepted immutable TrustDomain revision and replay state.")
+        }
+        (
+            "get",
+            WORKLOAD_IDENTITY_POLICY_PATH
+            | WORKLOAD_IDENTITY_POLICY_REVISION_PATH
+            | WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH,
+        ) => Some("The authoritative immutable Workload Identity Policy revision."),
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("The bounded authoritative Workload Identity Policy revision history.")
+        }
+        ("post", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("The accepted immutable Workload Identity Policy revision and replay state.")
         }
         _ => None,
     }
@@ -222,6 +328,18 @@ mod tests {
             "TenantSupportGrantProposalMutationSuccessResponse",
             "TenantSupportGrantApprovalMutationSuccessResponse",
             "TenantSupportGrantMutationSuccessResponse",
+            "TrustDomainRevision",
+            "TrustDomainRevisionList",
+            "TrustDomainRevisionMutation",
+            "WorkloadIdentityPolicyRevision",
+            "WorkloadIdentityPolicyRevisionList",
+            "WorkloadIdentityPolicyRevisionMutation",
+            "TrustDomainRevisionSuccessResponse",
+            "TrustDomainRevisionListSuccessResponse",
+            "TrustDomainRevisionMutationSuccessResponse",
+            "WorkloadIdentityPolicyRevisionSuccessResponse",
+            "WorkloadIdentityPolicyRevisionListSuccessResponse",
+            "WorkloadIdentityPolicyRevisionMutationSuccessResponse",
         ] {
             assert!(component_description(name).is_some(), "missing {name}");
         }

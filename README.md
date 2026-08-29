@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.78.0" src="https://img.shields.io/badge/REST_contract-1.78.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.79.0" src="https://img.shields.io/badge/REST_contract-1.79.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -239,6 +239,11 @@ written to a CLI context file.
   <code>cloud:read</code> credential without
   <code>TenantLifecycleRead</code> sees only its own Organization; revoked,
   expired, mismatched, or under-scoped credentials fail closed.
+- Workload trust uses immutable TrustDomain and WorkloadIdentityPolicy
+  revisions in the same Identity authority. Current, exact, bounded-history,
+  and workload-indexed reads plus CAS-fenced acceptance are exposed through
+  REST/OpenAPI, the TypeScript client, and CLI without caller-authored actor,
+  credential, or Installation overrides.
 - OpenShift-class outcomes—reconciliation, scheduling, isolation, rollout,
   policy, observability, and day-two operations—and TokenHub-class
   outcomes—governed model/provider/key access, routing, quotas, diagnostics,
@@ -291,7 +296,7 @@ imports and duplicate mechanisms from spreading while known debt is removed.
 
 ## Delivery status
 
-The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
+The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 
 | Lane | Evidence state |
 | --- | --- |
@@ -301,7 +306,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation.** Workload identity has a component-only WI1 contract; persistence, attestation, issuance, enforcement, and provider evidence remain |
+| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation.** Workload identity now has immutable PostgreSQL-backed trust-domain and policy revision maintenance plus REST/OpenAPI, TypeScript client, and CLI evidence; attestation, issuance, enforcement, Management MCP parity, and provider evidence remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
 analysis](docs/platform-gap-analysis.md), and [ecosystem project

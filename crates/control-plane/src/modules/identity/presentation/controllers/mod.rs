@@ -22,6 +22,7 @@ pub use organizations_query_controller::organizations_query_controller;
 pub use privileged_management_controller::{
     platform_rbac_commands_controller, platform_rbac_queries_controller,
     tenant_support_commands_controller, tenant_support_query_controller,
+    workload_trust_commands_controller, workload_trust_queries_controller,
 };
 pub use recipient_contact_controller::{
     recipient_contact_commands_controller, recipient_contact_queries_controller,

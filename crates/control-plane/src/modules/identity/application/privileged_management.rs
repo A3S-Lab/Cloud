@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding, TenantSupportGrant,
+    AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
+    AcceptedWorkloadIdentityPolicyRevision, PlatformRoleBinding, TenantSupportGrant,
     TenantSupportGrantApprovalOutcome, TenantSupportGrantProposal,
 };
 use crate::modules::identity::domain::repositories::IIdentityBootstrapRepository;
@@ -36,6 +37,18 @@ pub struct TenantSupportGrantApprovalMutationResult {
 #[derive(Debug, Clone, Serialize)]
 pub struct TenantSupportGrantMutationResult {
     pub grant: TenantSupportGrant,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TrustDomainRevisionMutationResult {
+    pub revision: AcceptedTrustDomainRevision,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkloadIdentityPolicyRevisionMutationResult {
+    pub revision: AcceptedWorkloadIdentityPolicyRevision,
     pub replayed: bool,
 }
 

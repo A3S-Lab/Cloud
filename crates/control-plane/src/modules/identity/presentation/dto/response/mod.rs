@@ -24,6 +24,8 @@ pub use privileged_management_response::{
     PlatformRolePolicyMutationResponse, PlatformRolePolicyResponse,
     TenantSupportGrantApprovalMutationResponse, TenantSupportGrantMutationResponse,
     TenantSupportGrantProposalMutationResponse, TenantSupportGrantResponse,
+    TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
+    WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
 };
 pub use recipient_contact_response::{RecipientContactMutationResponse, RecipientContactResponse};
 pub use resource_grant_response::{ResourceGrantMutationResponse, ResourceGrantResponse};

@@ -6,6 +6,7 @@ use super::controllers::{
     platform_rbac_queries_controller, recipient_contact_commands_controller,
     recipient_contact_queries_controller, resource_grant_controller,
     tenant_support_commands_controller, tenant_support_query_controller,
+    workload_trust_commands_controller, workload_trust_queries_controller,
 };
 use super::BootstrapGuard;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
@@ -55,6 +56,8 @@ impl Module for IdentityModule {
             platform_rbac_commands_controller(module_ref.get::<CommandBus>()?)?,
             tenant_support_query_controller(module_ref.get::<QueryBus>()?)?,
             tenant_support_commands_controller(module_ref.get::<CommandBus>()?)?,
+            workload_trust_queries_controller(module_ref.get::<QueryBus>()?)?,
+            workload_trust_commands_controller(module_ref.get::<CommandBus>()?)?,
         ])
     }
 }

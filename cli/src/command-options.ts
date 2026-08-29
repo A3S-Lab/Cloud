@@ -23,6 +23,35 @@ export function requireReadCommand(arguments_: ParsedArguments, usage: string, a
   rejectAgentProviderKindOption(arguments_);
 }
 
+export function requireBoundedListReadCommand(
+  arguments_: ParsedArguments,
+  usage: string,
+  arity: number,
+  defaultLimit: number,
+  maximumLimit: number,
+  label: string
+): number {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectCursorAndStreamOptions(arguments_);
+  rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
+  const rawLimit = arguments_.limit;
+  if (rawLimit === undefined) {
+    return defaultLimit;
+  }
+  if (!/^[0-9]+$/u.test(rawLimit)) {
+    throw usageError(`--limit must be between 1 and ${maximumLimit} for ${label}`);
+  }
+  const limit = Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > maximumLimit) {
+    throw usageError(`--limit must be between 1 and ${maximumLimit} for ${label}`);
+  }
+  return limit;
+}
+
 export function requireMutationCommand(
   arguments_: ParsedArguments,
   arity: number,
@@ -109,6 +138,25 @@ export function positionalPositiveSafeInteger(
   return value;
 }
 
+export function positionalImmutableRevisionPredecessor(
+  positionals: readonly string[],
+  index: number,
+  revisionNumber: number,
+  label: string
+): string | null {
+  const value = positionals[index];
+  if (revisionNumber === 1) {
+    if (value !== 'none') {
+      throw usageError(`${label} revision 1 must use none for its previous revision ID`);
+    }
+    return null;
+  }
+  if (value === 'none') {
+    throw usageError(`${label} revision ${revisionNumber} requires a previous revision ID`);
+  }
+  return positionalUuid(positionals, index, `previous ${label} revision ID`);
+}
+
 export function positionalResourceName(positionals: readonly string[], index: number): string {
   const name = positionals[index]?.trim();
   if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {
@@ -118,11 +166,15 @@ export function positionalResourceName(positionals: readonly string[], index: nu
 }
 
 export function rejectLogOptions(arguments_: ParsedArguments): void {
-  if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
-    throw usageError('cursor and stream options are valid only for log commands');
-  }
+  rejectCursorAndStreamOptions(arguments_);
   if (arguments_.limit !== undefined) {
     throw usageError('--limit is valid only for search and log commands');
+  }
+}
+
+function rejectCursorAndStreamOptions(arguments_: ParsedArguments): void {
+  if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+    throw usageError('cursor and stream options are valid only for log commands');
   }
 }
 

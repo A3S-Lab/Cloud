@@ -54,6 +54,10 @@ pub use application::commands::manage_tenant_support::{
     ApproveTenantSupportGrant, ApproveTenantSupportGrantHandler, ProposeTenantSupportGrant,
     ProposeTenantSupportGrantHandler, RevokeTenantSupportGrant, RevokeTenantSupportGrantHandler,
 };
+pub use application::commands::manage_workload_trust::{
+    AcceptTrustDomainRevision, AcceptTrustDomainRevisionHandler,
+    AcceptWorkloadIdentityPolicyRevision, AcceptWorkloadIdentityPolicyRevisionHandler,
+};
 pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,
 };
@@ -99,6 +103,15 @@ pub use application::queries::read_platform_rbac::{
 };
 pub use application::queries::read_tenant_support::{
     GetTenantSupportGrant, GetTenantSupportGrantHandler,
+};
+pub use application::queries::read_workload_trust::{
+    GetCurrentTrustDomain, GetCurrentTrustDomainHandler, GetCurrentWorkloadIdentityPolicy,
+    GetCurrentWorkloadIdentityPolicyForWorkload,
+    GetCurrentWorkloadIdentityPolicyForWorkloadHandler, GetCurrentWorkloadIdentityPolicyHandler,
+    GetTrustDomainRevision, GetTrustDomainRevisionHandler, GetWorkloadIdentityPolicyRevision,
+    GetWorkloadIdentityPolicyRevisionHandler, ListTrustDomainRevisions,
+    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisions,
+    ListWorkloadIdentityPolicyRevisionsHandler,
 };
 pub use domain::repositories::{
     IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,

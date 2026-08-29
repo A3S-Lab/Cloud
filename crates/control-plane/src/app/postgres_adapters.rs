@@ -48,7 +48,7 @@ use crate::modules::identity::domain::repositories::{
     IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
     IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
     IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
-    ITenantSupportGrantRepository,
+    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
 use crate::modules::identity::PostgresIdentityRepository;
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
@@ -340,6 +340,8 @@ pub(super) struct IdentityPostgresAdapters {
         Arc<dyn IPrivilegedAuthorizationDecisionRepository>,
     pub(super) platform_rbac: Arc<dyn IPlatformRbacRepository>,
     pub(super) tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
+    pub(super) trust_domains: Arc<dyn ITrustDomainRepository>,
+    pub(super) workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
 }
 
 impl IdentityPostgresAdapters {
@@ -358,7 +360,9 @@ impl IdentityPostgresAdapters {
             resource_authorization_decisions: repository.clone(),
             privileged_authorization_decisions: repository.clone(),
             platform_rbac: repository.clone(),
-            tenant_support_grants: repository,
+            tenant_support_grants: repository.clone(),
+            trust_domains: repository.clone(),
+            workload_identity_policies: repository,
         }
     }
 }

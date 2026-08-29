@@ -9,6 +9,7 @@ use super::developer_workflow_operation::{
 use super::documentation::describe_operation_documentation;
 use super::privileged_management_operation::{
     is_privileged_management_mutation, is_privileged_management_path,
+    query_parameters as privileged_management_query_parameters,
     success_component as privileged_management_success_component,
 };
 use super::request_schema::closed_json_request_schema;
@@ -292,6 +293,9 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         upsert_parameter(parameters, parameter);
     }
     for parameter in user_file_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
+    for parameter in privileged_management_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
     let is_audit_export_manifest = path.ends_with("/audit-records/export/manifest");

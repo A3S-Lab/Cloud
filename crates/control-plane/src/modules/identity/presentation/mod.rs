@@ -13,7 +13,8 @@ pub use dto::{
     RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
     ResourceGrantResponse, ResourceGrantScopeDto, TenantSupportGrantApprovalMutationResponse,
     TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
-    TenantSupportGrantResponse,
+    TenantSupportGrantResponse, TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
+    WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
 };
 pub use guards::{
     with_deferred_resource_scope, BootstrapGuard, DeferredResourceScope,

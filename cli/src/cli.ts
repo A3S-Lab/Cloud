@@ -19,6 +19,15 @@ Commands:
   platform-role-policy current Get the current accepted installation platform-role policy
   platform-role-policy get ID Get one exact immutable platform-role policy revision
   platform-role-policy accept REV EXPECTED Accept the next platform-role policy from A3S ACL
+  trust-domains current DOMAIN Get the current accepted installation trust-domain revision
+  trust-domains get DOMAIN REV Get one exact immutable trust-domain revision
+  trust-domains list DOMAIN List bounded immutable trust-domain revisions
+  trust-domains accept DOMAIN REV PREVIOUS Accept a trust-domain revision from A3S ACL; use none for REV 1
+  workload-identity-policies current ORG POLICY Get the current accepted workload identity policy
+  workload-identity-policies get ORG POLICY REV Get one exact immutable workload identity policy revision
+  workload-identity-policies list ORG POLICY List bounded workload identity policy revisions
+  workload-identity-policies get-workload ORG WORKLOAD Get the current policy for one workload
+  workload-identity-policies accept ORG POLICY REV PREVIOUS Accept a policy revision; use none for REV 1
   platform-role-bindings get ID Get one installation platform-role binding
   platform-role-bindings get-principal PRINCIPAL Get one Principal's active platform-role binding
   platform-role-bindings create PRINCIPAL ROLE POLICY Create a policy-fenced platform-role binding

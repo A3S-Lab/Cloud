@@ -9,6 +9,10 @@ import type {
   TenantSupportGrantProposal,
   TenantSupportGrantProposalMutationResult,
   TenantSupportScope,
+  TrustDomainRevision,
+  TrustDomainRevisionMutationResult,
+  WorkloadIdentityPolicyRevision,
+  WorkloadIdentityPolicyRevisionMutationResult,
 } from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
@@ -33,6 +37,68 @@ export function platformRolePolicyMutationResult(row: PlatformRolePolicyMutation
     table: renderTable(
       [row],
       [...PLATFORM_ROLE_POLICY_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const TRUST_DOMAIN_REVISION_COLUMNS: readonly TableColumn<TrustDomainRevision>[] = [
+  { header: 'TRUST DOMAIN', value: (row) => row.trustDomainId },
+  { header: 'REVISION ID', value: (row) => row.revisionId },
+  { header: 'REVISION', value: (row) => row.revisionNumber },
+  { header: 'NAME', value: (row) => row.name },
+  { header: 'DIGEST', value: (row) => row.digest },
+  { header: 'ACCEPTED BY', value: (row) => row.acceptedBy },
+  { header: 'ACCEPTED AT', value: (row) => row.acceptedAt },
+];
+
+export function trustDomainRevisionResult(row: TrustDomainRevision): CommandResult {
+  return { json: row, table: renderTable([row], TRUST_DOMAIN_REVISION_COLUMNS) };
+}
+
+export function trustDomainRevisionListResult(rows: TrustDomainRevision[]): CommandResult {
+  return { json: rows, table: renderTable(rows, TRUST_DOMAIN_REVISION_COLUMNS) };
+}
+
+export function trustDomainRevisionMutationResult(row: TrustDomainRevisionMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...TRUST_DOMAIN_REVISION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const WORKLOAD_IDENTITY_POLICY_REVISION_COLUMNS: readonly TableColumn<WorkloadIdentityPolicyRevision>[] = [
+  { header: 'ORGANIZATION', value: (row) => row.organizationId },
+  { header: 'POLICY', value: (row) => row.policyId },
+  { header: 'REVISION ID', value: (row) => row.revisionId },
+  { header: 'REVISION', value: (row) => row.revisionNumber },
+  { header: 'WORKLOAD', value: (row) => row.workloadId },
+  { header: 'NODE POOL', value: (row) => row.nodePoolId },
+  { header: 'TRUST DOMAIN', value: (row) => row.trustDomainId },
+  { header: 'DIGEST', value: (row) => row.digest },
+  { header: 'ACCEPTED AT', value: (row) => row.acceptedAt },
+];
+
+export function workloadIdentityPolicyRevisionResult(row: WorkloadIdentityPolicyRevision): CommandResult {
+  return { json: row, table: renderTable([row], WORKLOAD_IDENTITY_POLICY_REVISION_COLUMNS) };
+}
+
+export function workloadIdentityPolicyRevisionListResult(
+  rows: WorkloadIdentityPolicyRevision[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, WORKLOAD_IDENTITY_POLICY_REVISION_COLUMNS) };
+}
+
+export function workloadIdentityPolicyRevisionMutationResult(
+  row: WorkloadIdentityPolicyRevisionMutationResult
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...WORKLOAD_IDENTITY_POLICY_REVISION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
 }

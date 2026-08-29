@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 pub const MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE: usize = 100;
+pub const DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE: usize = 50;
 
 #[derive(Debug, Clone)]
 pub struct AcceptTrustDomainRevisionWrite {

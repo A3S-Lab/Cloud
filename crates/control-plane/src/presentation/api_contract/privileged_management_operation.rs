@@ -1,9 +1,14 @@
 use super::privileged_management_components::{
-    accept_platform_role_policy_request_schema, approve_tenant_support_grant_request_schema,
-    change_platform_role_binding_request_schema, create_platform_role_binding_request_schema,
-    expected_version_request_schema, propose_tenant_support_grant_request_schema,
+    accept_platform_role_policy_request_schema, accept_trust_domain_revision_request_schema,
+    accept_workload_identity_policy_revision_request_schema,
+    approve_tenant_support_grant_request_schema, change_platform_role_binding_request_schema,
+    create_platform_role_binding_request_schema, expected_version_request_schema,
+    propose_tenant_support_grant_request_schema,
 };
-use serde_json::Value;
+use crate::modules::identity::domain::repositories::{
+    DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+};
+use serde_json::{json, Value};
 
 pub(super) const PLATFORM_ROLE_POLICY_PATH: &str = "/platform/role-policy";
 pub(super) const PLATFORM_ROLE_POLICY_REVISIONS_PATH: &str = "/platform/role-policy/revisions";
@@ -23,8 +28,21 @@ pub(super) const TENANT_SUPPORT_GRANT_APPROVALS_PATH: &str =
     "/platform/tenant-support-grants/{grant_id}/approvals";
 pub(super) const TENANT_SUPPORT_GRANT_REVOCATION_PATH: &str =
     "/platform/tenant-support-grants/{grant_id}/revocation";
+pub(super) const TRUST_DOMAIN_PATH: &str = "/platform/trust-domains/{trust_domain_id}";
+pub(super) const TRUST_DOMAIN_REVISIONS_PATH: &str =
+    "/platform/trust-domains/{trust_domain_id}/revisions";
+pub(super) const TRUST_DOMAIN_REVISION_PATH: &str =
+    "/platform/trust-domains/{trust_domain_id}/revisions/{revision_id}";
+pub(super) const WORKLOAD_IDENTITY_POLICY_PATH: &str =
+    "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}";
+pub(super) const WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH: &str =
+    "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions";
+pub(super) const WORKLOAD_IDENTITY_POLICY_REVISION_PATH: &str =
+    "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions/{revision_id}";
+pub(super) const WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH: &str =
+    "/platform/organizations/{organization_id}/workloads/{workload_id}/identity-policy";
 
-pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 12] = [
+pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 21] = [
     ("get", PLATFORM_ROLE_POLICY_PATH),
     ("get", PLATFORM_ROLE_POLICY_REVISION_PATH),
     ("post", PLATFORM_ROLE_POLICY_REVISIONS_PATH),
@@ -37,6 +55,15 @@ pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 12] = [
     ("get", TENANT_SUPPORT_GRANT_PATH),
     ("post", TENANT_SUPPORT_GRANT_APPROVALS_PATH),
     ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH),
+    ("get", TRUST_DOMAIN_PATH),
+    ("get", TRUST_DOMAIN_REVISIONS_PATH),
+    ("get", TRUST_DOMAIN_REVISION_PATH),
+    ("post", TRUST_DOMAIN_REVISIONS_PATH),
+    ("get", WORKLOAD_IDENTITY_POLICY_PATH),
+    ("get", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH),
+    ("get", WORKLOAD_IDENTITY_POLICY_REVISION_PATH),
+    ("post", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH),
+    ("get", WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH),
 ];
 
 pub(super) fn is_privileged_management_path(path: &str) -> bool {
@@ -64,6 +91,10 @@ pub(super) fn request_schema(path: &str) -> Option<Value> {
         }
         TENANT_SUPPORT_GRANTS_PATH => Some(propose_tenant_support_grant_request_schema()),
         TENANT_SUPPORT_GRANT_APPROVALS_PATH => Some(approve_tenant_support_grant_request_schema()),
+        TRUST_DOMAIN_REVISIONS_PATH => Some(accept_trust_domain_revision_request_schema()),
+        WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH => {
+            Some(accept_workload_identity_policy_revision_request_schema())
+        }
         _ => None,
     }
 }
@@ -98,8 +129,48 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH) => {
             Some("TenantSupportGrantMutationSuccess200")
         }
+        ("get", TRUST_DOMAIN_PATH | TRUST_DOMAIN_REVISION_PATH) => {
+            Some("TrustDomainRevisionSuccess200")
+        }
+        ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some("TrustDomainRevisionListSuccess200"),
+        ("post", TRUST_DOMAIN_REVISIONS_PATH) => Some("TrustDomainRevisionMutationSuccess200"),
+        (
+            "get",
+            WORKLOAD_IDENTITY_POLICY_PATH
+            | WORKLOAD_IDENTITY_POLICY_REVISION_PATH
+            | WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH,
+        ) => Some("WorkloadIdentityPolicyRevisionSuccess200"),
+        ("get", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("WorkloadIdentityPolicyRevisionListSuccess200")
+        }
+        ("post", WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH) => {
+            Some("WorkloadIdentityPolicyRevisionMutationSuccess200")
+        }
         _ => None,
     }
+}
+
+pub(super) fn query_parameters(method: &str, path: &str) -> Vec<Value> {
+    if method == "get"
+        && matches!(
+            path,
+            TRUST_DOMAIN_REVISIONS_PATH | WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH
+        )
+    {
+        return vec![json!({
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum immutable revisions to return in reverse revision order.",
+            "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+                "default": DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE
+            }
+        })];
+    }
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -109,7 +180,7 @@ mod tests {
 
     #[test]
     fn privileged_management_route_contract_is_exact_and_closed() {
-        assert_eq!(PRIVILEGED_MANAGEMENT_OPERATIONS.len(), 12);
+        assert_eq!(PRIVILEGED_MANAGEMENT_OPERATIONS.len(), 21);
         for (method, path) in PRIVILEGED_MANAGEMENT_OPERATIONS {
             assert!(is_privileged_management_path(path));
             assert_eq!(
@@ -136,5 +207,9 @@ mod tests {
             json!(["expectedContractDigest"])
         );
         assert!(request_schema(PLATFORM_ROLE_POLICY_PATH).is_none());
+        assert_eq!(
+            query_parameters("get", TRUST_DOMAIN_REVISIONS_PATH)[0]["schema"]["maximum"],
+            MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE
+        );
     }
 }

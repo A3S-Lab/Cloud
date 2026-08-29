@@ -15,7 +15,8 @@ pub use membership_result::MembershipMutationResult;
 pub use privileged_management::{
     PlatformRoleBindingMutationResult, PlatformRolePolicyMutationResult,
     TenantSupportGrantApprovalMutationResult, TenantSupportGrantMutationResult,
-    TenantSupportGrantProposalMutationResult,
+    TenantSupportGrantProposalMutationResult, TrustDomainRevisionMutationResult,
+    WorkloadIdentityPolicyRevisionMutationResult,
 };
 pub use recipient_contact_result::{
     RecipientContactMutationResult, RecipientContactVerificationRequestResult,

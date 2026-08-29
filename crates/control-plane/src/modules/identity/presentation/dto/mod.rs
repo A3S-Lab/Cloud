@@ -3,8 +3,9 @@ mod resource_grant_scope;
 pub mod response;
 
 pub use request::{
-    AcceptPlatformRolePolicyRequest, ApproveTenantSupportGrantRequest, BootstrapIdentityRequest,
-    ChangeMembershipRoleRequest, ChangePlatformRoleBindingRequest,
+    AcceptPlatformRolePolicyRequest, AcceptTrustDomainRevisionRequest,
+    AcceptWorkloadIdentityPolicyRevisionRequest, ApproveTenantSupportGrantRequest,
+    BootstrapIdentityRequest, ChangeMembershipRoleRequest, ChangePlatformRoleBindingRequest,
     CompleteRecipientContactVerificationRequest, CreateApiTokenRequest,
     CreateMembershipInvitationRequest, CreateMembershipRequest, CreateOrganizationRequest,
     CreatePlatformRoleBindingRequest, CreateResourceGrantRequest, ExpectedVersionRequest,
@@ -22,5 +23,6 @@ pub use response::{
     RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
     ResourceGrantResponse, TenantSupportGrantApprovalMutationResponse,
     TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
-    TenantSupportGrantResponse,
+    TenantSupportGrantResponse, TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
+    WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
 };

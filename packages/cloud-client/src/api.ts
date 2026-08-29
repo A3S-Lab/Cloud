@@ -141,7 +141,9 @@ import {
   validateOutboundNotificationSubscriptionId,
 } from './notifications';
 import {
+  type AcceptTrustDomainRevisionInput,
   type AcceptPlatformRolePolicyInput,
+  type AcceptWorkloadIdentityPolicyRevisionInput,
   type ApproveTenantSupportGrantInput,
   type ChangePlatformRoleBindingInput,
   type CreatePlatformRoleBindingInput,
@@ -154,7 +156,15 @@ import {
   type TenantSupportGrantApprovalMutationResult,
   type TenantSupportGrantMutationResult,
   type TenantSupportGrantProposalMutationResult,
+  type TrustDomainRevision,
+  type TrustDomainRevisionMutationResult,
+  type WorkloadIdentityPolicyRevision,
+  type WorkloadIdentityPolicyRevisionMutationResult,
+  type WorkloadTrustRevisionListOptions,
+  encodeWorkloadTrustRevisionListOptions,
   validateAcceptPlatformRolePolicyInput,
+  validateAcceptTrustDomainRevisionInput,
+  validateAcceptWorkloadIdentityPolicyRevisionInput,
   validateApproveTenantSupportGrantInput,
   validateChangePlatformRoleBindingInput,
   validateCreatePlatformRoleBindingInput,
@@ -400,7 +410,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.78.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.79.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -548,6 +558,125 @@ export class CloudApi {
   ): Promise<PlatformRolePolicyMutationResult> {
     validateAcceptPlatformRolePolicyInput(input);
     return this.postJson('/platform/role-policy/revisions', idempotencyKey, input, signal);
+  }
+
+  getCurrentTrustDomain(trustDomainId: string, signal?: AbortSignal): Promise<TrustDomainRevision> {
+    validateNonNilUuid(trustDomainId, 'trust-domain ID');
+    return this.get(`/platform/trust-domains/${encodeURIComponent(trustDomainId)}`, signal);
+  }
+
+  getTrustDomainRevision(
+    trustDomainId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<TrustDomainRevision> {
+    validateNonNilUuid(trustDomainId, 'trust-domain ID');
+    validateNonNilUuid(revisionId, 'trust-domain revision ID');
+    return this.get(
+      `/platform/trust-domains/${encodeURIComponent(trustDomainId)}/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  listTrustDomainRevisions(
+    trustDomainId: string,
+    options: WorkloadTrustRevisionListOptions = {},
+    signal?: AbortSignal
+  ): Promise<TrustDomainRevision[]> {
+    validateNonNilUuid(trustDomainId, 'trust-domain ID');
+    return this.get(
+      `/platform/trust-domains/${encodeURIComponent(trustDomainId)}/revisions${encodeWorkloadTrustRevisionListOptions(options)}`,
+      signal
+    );
+  }
+
+  acceptTrustDomainRevision(
+    trustDomainId: string,
+    input: AcceptTrustDomainRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<TrustDomainRevisionMutationResult> {
+    validateNonNilUuid(trustDomainId, 'trust-domain ID');
+    validateAcceptTrustDomainRevisionInput(input);
+    return this.postJson(
+      `/platform/trust-domains/${encodeURIComponent(trustDomainId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getCurrentWorkloadIdentityPolicy(
+    organizationId: string,
+    policyId: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityPolicyRevision> {
+    validateNonNilUuid(organizationId, 'workload identity policy Organization ID');
+    validateNonNilUuid(policyId, 'workload identity policy ID');
+    return this.get(
+      `/platform/organizations/${encodeURIComponent(organizationId)}/workload-identity-policies/${encodeURIComponent(policyId)}`,
+      signal
+    );
+  }
+
+  getCurrentWorkloadIdentityPolicyForWorkload(
+    organizationId: string,
+    workloadId: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityPolicyRevision> {
+    validateNonNilUuid(organizationId, 'workload identity policy Organization ID');
+    validateNonNilUuid(workloadId, 'workload identity policy Workload ID');
+    return this.get(
+      `/platform/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/identity-policy`,
+      signal
+    );
+  }
+
+  getWorkloadIdentityPolicyRevision(
+    organizationId: string,
+    policyId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityPolicyRevision> {
+    validateNonNilUuid(organizationId, 'workload identity policy Organization ID');
+    validateNonNilUuid(policyId, 'workload identity policy ID');
+    validateNonNilUuid(revisionId, 'workload identity policy revision ID');
+    return this.get(
+      `/platform/organizations/${encodeURIComponent(organizationId)}/workload-identity-policies/${encodeURIComponent(policyId)}/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  listWorkloadIdentityPolicyRevisions(
+    organizationId: string,
+    policyId: string,
+    options: WorkloadTrustRevisionListOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityPolicyRevision[]> {
+    validateNonNilUuid(organizationId, 'workload identity policy Organization ID');
+    validateNonNilUuid(policyId, 'workload identity policy ID');
+    return this.get(
+      `/platform/organizations/${encodeURIComponent(organizationId)}/workload-identity-policies/${encodeURIComponent(policyId)}/revisions${encodeWorkloadTrustRevisionListOptions(options)}`,
+      signal
+    );
+  }
+
+  acceptWorkloadIdentityPolicyRevision(
+    organizationId: string,
+    policyId: string,
+    input: AcceptWorkloadIdentityPolicyRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityPolicyRevisionMutationResult> {
+    validateNonNilUuid(organizationId, 'workload identity policy Organization ID');
+    validateNonNilUuid(policyId, 'workload identity policy ID');
+    validateAcceptWorkloadIdentityPolicyRevisionInput(input);
+    return this.postJson(
+      `/platform/organizations/${encodeURIComponent(organizationId)}/workload-identity-policies/${encodeURIComponent(policyId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal
+    );
   }
 
   getPlatformRoleBinding(bindingId: string, signal?: AbortSignal): Promise<PlatformRoleBinding> {

@@ -42,3 +42,19 @@ pub struct ProposeTenantSupportGrantRequest {
 pub struct ApproveTenantSupportGrantRequest {
     pub expected_contract_digest: String,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptTrustDomainRevisionRequest {
+    pub canonical_acl: String,
+    pub revision_number: u64,
+    pub expected_previous_revision_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptWorkloadIdentityPolicyRevisionRequest {
+    pub canonical_acl: String,
+    pub revision_number: u64,
+    pub expected_previous_revision_id: Option<Uuid>,
+}

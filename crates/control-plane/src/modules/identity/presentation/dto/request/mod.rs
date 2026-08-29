@@ -20,7 +20,8 @@ pub use membership_invitation_request::{
     CreateMembershipInvitationRequest, MembershipInvitationVersionRequest,
 };
 pub use privileged_management_request::{
-    AcceptPlatformRolePolicyRequest, ApproveTenantSupportGrantRequest,
+    AcceptPlatformRolePolicyRequest, AcceptTrustDomainRevisionRequest,
+    AcceptWorkloadIdentityPolicyRevisionRequest, ApproveTenantSupportGrantRequest,
     ChangePlatformRoleBindingRequest, CreatePlatformRoleBindingRequest, ExpectedVersionRequest,
     ProposeTenantSupportGrantRequest,
 };

@@ -2,6 +2,10 @@ import { validateNonNilUuid } from './validation';
 
 export const PLATFORM_ROLE_POLICY_MAX_ACL_BYTES = 64 * 1024;
 export const TENANT_SUPPORT_GRANT_MAX_ACL_BYTES = 64 * 1024;
+export const TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES = 32 * 1024;
+export const WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES = 64 * 1024;
+export const DEFAULT_WORKLOAD_TRUST_REVISION_LIST_LIMIT = 50;
+export const MAX_WORKLOAD_TRUST_REVISION_LIST_LIMIT = 100;
 
 export type PlatformRole = 'platform_owner' | 'platform_admin' | 'platform_operator' | 'security_auditor';
 
@@ -85,6 +89,61 @@ export interface AcceptPlatformRolePolicyInput {
   canonicalAcl: string;
   revisionNumber: number;
   expectedCurrentRevisionId: string;
+}
+
+export interface TrustDomainRevision {
+  installationId: string;
+  trustDomainId: string;
+  revisionId: string;
+  revisionNumber: number;
+  name: string;
+  canonicalAcl: string;
+  digest: string;
+  acceptedBy: string;
+  acceptedAt: string;
+}
+
+export interface TrustDomainRevisionMutationResult extends TrustDomainRevision {
+  replayed: boolean;
+}
+
+export interface WorkloadIdentityPolicyRevision {
+  installationId: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  policyId: string;
+  revisionId: string;
+  revisionNumber: number;
+  trustDomainId: string;
+  trustDomainRevisionId: string;
+  workloadId: string;
+  workloadRevisionId: string;
+  nodePoolId: string;
+  canonicalAcl: string;
+  digest: string;
+  acceptedBy: string;
+  acceptedAt: string;
+}
+
+export interface WorkloadIdentityPolicyRevisionMutationResult extends WorkloadIdentityPolicyRevision {
+  replayed: boolean;
+}
+
+export interface AcceptTrustDomainRevisionInput {
+  canonicalAcl: string;
+  revisionNumber: number;
+  expectedPreviousRevisionId?: string | null;
+}
+
+export interface AcceptWorkloadIdentityPolicyRevisionInput {
+  canonicalAcl: string;
+  revisionNumber: number;
+  expectedPreviousRevisionId?: string | null;
+}
+
+export interface WorkloadTrustRevisionListOptions {
+  limit?: number;
 }
 
 export interface CreatePlatformRoleBindingInput {
@@ -227,6 +286,38 @@ export function validateAcceptPlatformRolePolicyInput(input: AcceptPlatformRoleP
   validateNonNilUuid(input?.expectedCurrentRevisionId, 'expected current platform role policy revision ID');
 }
 
+export function validateAcceptTrustDomainRevisionInput(input: AcceptTrustDomainRevisionInput): void {
+  validateCanonicalAcl(input?.canonicalAcl, TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, 'trust-domain ACL');
+  validateImmutableRevisionControl(input?.revisionNumber, input?.expectedPreviousRevisionId, 'trust-domain');
+}
+
+export function validateAcceptWorkloadIdentityPolicyRevisionInput(
+  input: AcceptWorkloadIdentityPolicyRevisionInput
+): void {
+  validateCanonicalAcl(
+    input?.canonicalAcl,
+    WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+    'workload identity policy ACL'
+  );
+  validateImmutableRevisionControl(
+    input?.revisionNumber,
+    input?.expectedPreviousRevisionId,
+    'workload identity policy'
+  );
+}
+
+export function encodeWorkloadTrustRevisionListOptions(
+  options: WorkloadTrustRevisionListOptions = {}
+): string {
+  const limit = options.limit ?? DEFAULT_WORKLOAD_TRUST_REVISION_LIST_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_WORKLOAD_TRUST_REVISION_LIST_LIMIT) {
+    throw new RangeError(
+      `workload trust revision list limit must be between 1 and ${MAX_WORKLOAD_TRUST_REVISION_LIST_LIMIT}`
+    );
+  }
+  return `?limit=${limit}`;
+}
+
 export function validateCreatePlatformRoleBindingInput(input: CreatePlatformRoleBindingInput): void {
   validateNonNilUuid(input?.principalId, 'platform role binding Principal ID');
   validatePlatformRole(input?.role);
@@ -276,4 +367,22 @@ function validatePositiveSafeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new RangeError(`${label} must be a positive safe integer`);
   }
+}
+
+function validateImmutableRevisionControl(
+  revisionNumber: number,
+  expectedPreviousRevisionId: string | null | undefined,
+  label: string
+): void {
+  validatePositiveSafeInteger(revisionNumber, `${label} revision number`);
+  if (revisionNumber === 1) {
+    if (expectedPreviousRevisionId !== undefined && expectedPreviousRevisionId !== null) {
+      throw new RangeError(`${label} revision 1 must not declare an expected previous revision ID`);
+    }
+    return;
+  }
+  if (expectedPreviousRevisionId === undefined || expectedPreviousRevisionId === null) {
+    throw new TypeError(`expected previous ${label} revision ID must be a non-nil UUID`);
+  }
+  validateNonNilUuid(expectedPreviousRevisionId, `expected previous ${label} revision ID`);
 }

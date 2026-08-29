@@ -1,10 +1,12 @@
 use crate::modules::identity::application::{
     PlatformRoleBindingMutationResult, PlatformRolePolicyMutationResult,
     TenantSupportGrantApprovalMutationResult, TenantSupportGrantMutationResult,
-    TenantSupportGrantProposalMutationResult,
+    TenantSupportGrantProposalMutationResult, TrustDomainRevisionMutationResult,
+    WorkloadIdentityPolicyRevisionMutationResult,
 };
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding, TenantSupportGrant,
+    AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
+    AcceptedWorkloadIdentityPolicyRevision, PlatformRoleBinding, TenantSupportGrant,
     TenantSupportGrantApproval, TenantSupportGrantApprovalOutcome, TenantSupportGrantProposal,
 };
 use crate::modules::identity::domain::repositories::TenantSupportGrantRecord;
@@ -362,6 +364,117 @@ impl From<TenantSupportGrantMutationResult> for TenantSupportGrantMutationRespon
     fn from(result: TenantSupportGrantMutationResult) -> Self {
         Self {
             grant: result.grant.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustDomainRevisionResponse {
+    pub installation_id: Uuid,
+    pub trust_domain_id: Uuid,
+    pub revision_id: Uuid,
+    pub revision_number: u64,
+    pub name: String,
+    pub canonical_acl: String,
+    pub digest: String,
+    pub accepted_by: Uuid,
+    pub accepted_at: DateTime<Utc>,
+}
+
+impl From<AcceptedTrustDomainRevision> for TrustDomainRevisionResponse {
+    fn from(revision: AcceptedTrustDomainRevision) -> Self {
+        Self {
+            installation_id: revision.installation_id.as_uuid(),
+            trust_domain_id: revision.trust_domain_id.as_uuid(),
+            revision_id: revision.id.as_uuid(),
+            revision_number: revision.revision_number,
+            name: revision.contract.spec().name.as_str().into(),
+            canonical_acl: revision.contract.canonical_acl().into(),
+            digest: revision.contract.digest().as_str().into(),
+            accepted_by: revision.accepted_by.as_uuid(),
+            accepted_at: revision.accepted_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustDomainRevisionMutationResponse {
+    #[serde(flatten)]
+    pub revision: TrustDomainRevisionResponse,
+    pub replayed: bool,
+}
+
+impl From<TrustDomainRevisionMutationResult> for TrustDomainRevisionMutationResponse {
+    fn from(result: TrustDomainRevisionMutationResult) -> Self {
+        Self {
+            revision: result.revision.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadIdentityPolicyRevisionResponse {
+    pub installation_id: Uuid,
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub policy_id: Uuid,
+    pub revision_id: Uuid,
+    pub revision_number: u64,
+    pub trust_domain_id: Uuid,
+    pub trust_domain_revision_id: Uuid,
+    pub workload_id: Uuid,
+    pub workload_revision_id: Uuid,
+    pub node_pool_id: Uuid,
+    pub canonical_acl: String,
+    pub digest: String,
+    pub accepted_by: Uuid,
+    pub accepted_at: DateTime<Utc>,
+}
+
+impl From<AcceptedWorkloadIdentityPolicyRevision> for WorkloadIdentityPolicyRevisionResponse {
+    fn from(revision: AcceptedWorkloadIdentityPolicyRevision) -> Self {
+        let spec = revision.contract.spec();
+        Self {
+            installation_id: revision.installation_id.as_uuid(),
+            organization_id: spec.organization_id.as_uuid(),
+            project_id: spec.project_id.as_uuid(),
+            environment_id: spec.environment_id.as_uuid(),
+            policy_id: revision.policy_id.as_uuid(),
+            revision_id: revision.id.as_uuid(),
+            revision_number: revision.revision_number,
+            trust_domain_id: spec.trust_domain_id.as_uuid(),
+            trust_domain_revision_id: spec.trust_domain_revision_id.as_uuid(),
+            workload_id: spec.workload_id.as_uuid(),
+            workload_revision_id: spec.workload_revision_id.as_uuid(),
+            node_pool_id: spec.node_pool_id.as_uuid(),
+            canonical_acl: revision.contract.canonical_acl().into(),
+            digest: revision.contract.digest().as_str().into(),
+            accepted_by: revision.accepted_by.as_uuid(),
+            accepted_at: revision.accepted_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadIdentityPolicyRevisionMutationResponse {
+    #[serde(flatten)]
+    pub revision: WorkloadIdentityPolicyRevisionResponse,
+    pub replayed: bool,
+}
+
+impl From<WorkloadIdentityPolicyRevisionMutationResult>
+    for WorkloadIdentityPolicyRevisionMutationResponse
+{
+    fn from(result: WorkloadIdentityPolicyRevisionMutationResult) -> Self {
+        Self {
+            revision: result.revision.into(),
             replayed: result.replayed,
         }
     }

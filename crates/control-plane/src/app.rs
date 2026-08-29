@@ -175,7 +175,8 @@ use crate::modules::identity::domain::repositories::{
     IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
     IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
     IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
-    IResourceGrantRepository, ITenantSupportGrantRepository,
+    IResourceGrantRepository, ITenantSupportGrantRepository, ITrustDomainRepository,
+    IWorkloadIdentityPolicyRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, IRecipientContactProofService,
@@ -188,19 +189,24 @@ use crate::modules::identity::infrastructure::{
 };
 use crate::modules::identity::{
     A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
-    AcceptPlatformRolePolicyHandler, ApproveTenantSupportGrantHandler,
+    AcceptPlatformRolePolicyHandler, AcceptTrustDomainRevisionHandler,
+    AcceptWorkloadIdentityPolicyRevisionHandler, ApproveTenantSupportGrantHandler,
     AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
     BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
     ChangeMembershipRoleHandler, ChangePlatformRoleBindingHandler, CompleteOidcFlowHandler,
     CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
     CreateMembershipInvitationHandler, CreateOrganizationHandler, CreatePlatformRoleBindingHandler,
     CreateResourceGrantHandler, GetApiTokenHandler, GetCurrentPlatformRolePolicyHandler,
-    GetMembershipHandler, GetMembershipInvitationHandler, GetPlatformRoleBindingHandler,
-    GetPlatformRolePolicyRevisionHandler, GetPrincipalPlatformRoleBindingHandler,
-    GetRecipientContactHandler, GetResourceGrantHandler, GetTenantSupportGrantHandler,
-    IdentityModule, ListApiTokensHandler, ListMembershipInvitationsHandler, ListMembershipsHandler,
-    ListMyMembershipInvitationsHandler, ListOrganizationsHandler, ListRecipientContactsHandler,
-    ListResourceGrantsHandler, OpenIdConnectProviderService, ProposeTenantSupportGrantHandler,
+    GetCurrentTrustDomainHandler, GetCurrentWorkloadIdentityPolicyForWorkloadHandler,
+    GetCurrentWorkloadIdentityPolicyHandler, GetMembershipHandler, GetMembershipInvitationHandler,
+    GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
+    GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
+    GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
+    GetWorkloadIdentityPolicyRevisionHandler, IdentityModule, ListApiTokensHandler,
+    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
+    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
+    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
+    OpenIdConnectProviderService, ProposeTenantSupportGrantHandler,
     RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler, RevokeMembershipHandler,
     RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
     RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
@@ -575,6 +581,8 @@ async fn build_api_worker_application(
     let privileged_authorization_decisions = adapters.identity.privileged_authorization_decisions;
     let platform_rbac = adapters.identity.platform_rbac;
     let tenant_support_grants = adapters.identity.tenant_support_grants;
+    let trust_domains = adapters.identity.trust_domains;
+    let workload_identity_policies = adapters.identity.workload_identity_policies;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -1759,6 +1767,8 @@ async fn build_api_worker_application(
                 privileged_authorization_decisions,
                 platform_rbac,
                 tenant_support_grants,
+                trust_domains,
+                workload_identity_policies,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2015,6 +2025,8 @@ struct ManagementApplicationDependencies {
     privileged_authorization_decisions: Arc<dyn IPrivilegedAuthorizationDecisionRepository>,
     platform_rbac: Arc<dyn IPlatformRbacRepository>,
     tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
+    trust_domains: Arc<dyn ITrustDomainRepository>,
+    workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2108,6 +2120,8 @@ fn build_management_application_with_health(
         privileged_authorization_decisions,
         platform_rbac,
         tenant_support_grants,
+        trust_domains,
+        workload_identity_policies,
         projects,
         environments,
         ontologies,
@@ -2793,6 +2807,21 @@ fn build_management_application_with_health(
                         Arc::clone(&platform_rbac),
                     ),
                 )
+                .command_handler::<crate::modules::identity::AcceptTrustDomainRevision, _>(
+                    AcceptTrustDomainRevisionHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&trust_domains),
+                    ),
+                )
+                .command_handler::<
+                    crate::modules::identity::AcceptWorkloadIdentityPolicyRevision,
+                    _,
+                >(
+                    AcceptWorkloadIdentityPolicyRevisionHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&workload_identity_policies),
+                    ),
+                )
                 .command_handler::<crate::modules::identity::CreatePlatformRoleBinding, _>(
                     CreatePlatformRoleBindingHandler::new(
                         Arc::clone(&identity_bootstrap),
@@ -3476,6 +3505,51 @@ fn build_management_application_with_health(
                     GetPrincipalPlatformRoleBindingHandler::new(
                         Arc::clone(&identity_bootstrap),
                         Arc::clone(&platform_rbac),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetCurrentTrustDomain, _>(
+                    GetCurrentTrustDomainHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&trust_domains),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetTrustDomainRevision, _>(
+                    GetTrustDomainRevisionHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&trust_domains),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::ListTrustDomainRevisions, _>(
+                    ListTrustDomainRevisionsHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&trust_domains),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetCurrentWorkloadIdentityPolicy, _>(
+                    GetCurrentWorkloadIdentityPolicyHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&workload_identity_policies),
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::identity::GetCurrentWorkloadIdentityPolicyForWorkload,
+                    _,
+                >(
+                    GetCurrentWorkloadIdentityPolicyForWorkloadHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&workload_identity_policies),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetWorkloadIdentityPolicyRevision, _>(
+                    GetWorkloadIdentityPolicyRevisionHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&workload_identity_policies),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::ListWorkloadIdentityPolicyRevisions, _>(
+                    ListWorkloadIdentityPolicyRevisionsHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&workload_identity_policies),
                     ),
                 )
                 .query_handler::<crate::modules::identity::GetTenantSupportGrant, _>(

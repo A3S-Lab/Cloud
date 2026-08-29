@@ -5,13 +5,18 @@ use super::workflow_components::{
 use crate::modules::identity::domain::value_objects::{
     PlatformPermission, PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,
     TenantSupportApprovalRequirement, TenantSupportGrantContract, TenantSupportGrantContractSpec,
-    TenantSupportGrantMode, TenantSupportPermission, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES,
-    TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
+    TenantSupportGrantMode, TenantSupportPermission, TrustDomainContract, TrustDomainContractSpec,
+    TrustDomainName, WorkloadIdentityAudience, WorkloadIdentityFormat,
+    WorkloadIdentityPolicyContract, WorkloadIdentityPolicySpec, WorkloadIdentityRevocationMode,
+    WorkloadProductRole, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES, TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
+    TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
-    InstallationId, OrganizationId, PlatformRolePolicyId, PrincipalId, ScopeContext, Sha256Digest,
-    TenantSupportGrantId,
+    EnvironmentId, InstallationId, NodePoolId, OrganizationId, PlatformRolePolicyId, PrincipalId,
+    ProjectId, ScopeContext, Sha256Digest, TenantSupportGrantId, TrustDomainId,
+    TrustDomainRevisionId, WorkloadId, WorkloadIdentityPolicyId, WorkloadRevisionId,
 };
+use a3s_cloud_contracts::{RuntimeIsolationLevel, RuntimeUnitClass};
 use chrono::{Duration, TimeZone, Utc};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
@@ -41,6 +46,27 @@ pub(super) const PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] 
     (
         "TenantSupportGrantMutationSuccessResponse",
         "TenantSupportGrantMutation",
+    ),
+    ("TrustDomainRevisionSuccessResponse", "TrustDomainRevision"),
+    (
+        "TrustDomainRevisionListSuccessResponse",
+        "TrustDomainRevisionList",
+    ),
+    (
+        "TrustDomainRevisionMutationSuccessResponse",
+        "TrustDomainRevisionMutation",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionSuccessResponse",
+        "WorkloadIdentityPolicyRevision",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionListSuccessResponse",
+        "WorkloadIdentityPolicyRevisionList",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionMutationSuccessResponse",
+        "WorkloadIdentityPolicyRevisionMutation",
     ),
 ];
 
@@ -84,6 +110,36 @@ pub(super) const PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, 
         "TenantSupportGrantMutationSuccess200",
         200,
         "TenantSupportGrantMutationSuccessResponse",
+    ),
+    (
+        "TrustDomainRevisionSuccess200",
+        200,
+        "TrustDomainRevisionSuccessResponse",
+    ),
+    (
+        "TrustDomainRevisionListSuccess200",
+        200,
+        "TrustDomainRevisionListSuccessResponse",
+    ),
+    (
+        "TrustDomainRevisionMutationSuccess200",
+        200,
+        "TrustDomainRevisionMutationSuccessResponse",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionSuccess200",
+        200,
+        "WorkloadIdentityPolicyRevisionSuccessResponse",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionListSuccess200",
+        200,
+        "WorkloadIdentityPolicyRevisionListSuccessResponse",
+    ),
+    (
+        "WorkloadIdentityPolicyRevisionMutationSuccess200",
+        200,
+        "WorkloadIdentityPolicyRevisionMutationSuccessResponse",
     ),
 ];
 
@@ -130,6 +186,27 @@ pub(super) fn install_privileged_management_component_schemas(schemas: &mut Map<
         (
             "TenantSupportGrantMutation",
             tenant_support_grant_mutation_schema(),
+        ),
+        ("TrustDomainRevision", trust_domain_revision_schema()),
+        (
+            "TrustDomainRevisionList",
+            revision_list_schema("TrustDomainRevision"),
+        ),
+        (
+            "TrustDomainRevisionMutation",
+            with_replay(trust_domain_revision_schema()),
+        ),
+        (
+            "WorkloadIdentityPolicyRevision",
+            workload_identity_policy_revision_schema(),
+        ),
+        (
+            "WorkloadIdentityPolicyRevisionList",
+            revision_list_schema("WorkloadIdentityPolicyRevision"),
+        ),
+        (
+            "WorkloadIdentityPolicyRevisionMutation",
+            with_replay(workload_identity_policy_revision_schema()),
         ),
     ] {
         schemas.insert(name.into(), schema);
@@ -195,6 +272,34 @@ pub(super) fn approve_tenant_support_grant_request_schema() -> Value {
     object_schema(
         &["expectedContractDigest"],
         json!({ "expectedContractDigest": digest_schema() }),
+    )
+}
+
+pub(super) fn accept_trust_domain_revision_request_schema() -> Value {
+    object_schema(
+        &["canonicalAcl", "revisionNumber"],
+        json!({
+            "canonicalAcl": canonical_acl_schema(
+                TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES,
+                &trust_domain_acl_example(),
+            ),
+            "revisionNumber": revision_number_schema(),
+            "expectedPreviousRevisionId": nullable_uuid_schema()
+        }),
+    )
+}
+
+pub(super) fn accept_workload_identity_policy_revision_request_schema() -> Value {
+    object_schema(
+        &["canonicalAcl", "revisionNumber"],
+        json!({
+            "canonicalAcl": canonical_acl_schema(
+                WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+                &workload_identity_policy_acl_example(),
+            ),
+            "revisionNumber": revision_number_schema(),
+            "expectedPreviousRevisionId": nullable_uuid_schema()
+        }),
     )
 }
 
@@ -487,6 +592,93 @@ fn tenant_support_grant_mutation_schema() -> Value {
     )
 }
 
+fn trust_domain_revision_schema() -> Value {
+    object_schema(
+        &[
+            "installationId",
+            "trustDomainId",
+            "revisionId",
+            "revisionNumber",
+            "name",
+            "canonicalAcl",
+            "digest",
+            "acceptedBy",
+            "acceptedAt",
+        ],
+        json!({
+            "installationId": uuid_schema(),
+            "trustDomainId": uuid_schema(),
+            "revisionId": uuid_schema(),
+            "revisionNumber": revision_number_schema(),
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+            },
+            "canonicalAcl": canonical_acl_schema(
+                TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES,
+                &trust_domain_acl_example(),
+            ),
+            "digest": digest_schema(),
+            "acceptedBy": uuid_schema(),
+            "acceptedAt": timestamp_schema()
+        }),
+    )
+}
+
+fn workload_identity_policy_revision_schema() -> Value {
+    object_schema(
+        &[
+            "installationId",
+            "organizationId",
+            "projectId",
+            "environmentId",
+            "policyId",
+            "revisionId",
+            "revisionNumber",
+            "trustDomainId",
+            "trustDomainRevisionId",
+            "workloadId",
+            "workloadRevisionId",
+            "nodePoolId",
+            "canonicalAcl",
+            "digest",
+            "acceptedBy",
+            "acceptedAt",
+        ],
+        json!({
+            "installationId": uuid_schema(),
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "environmentId": uuid_schema(),
+            "policyId": uuid_schema(),
+            "revisionId": uuid_schema(),
+            "revisionNumber": revision_number_schema(),
+            "trustDomainId": uuid_schema(),
+            "trustDomainRevisionId": uuid_schema(),
+            "workloadId": uuid_schema(),
+            "workloadRevisionId": uuid_schema(),
+            "nodePoolId": uuid_schema(),
+            "canonicalAcl": canonical_acl_schema(
+                WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+                &workload_identity_policy_acl_example(),
+            ),
+            "digest": digest_schema(),
+            "acceptedBy": uuid_schema(),
+            "acceptedAt": timestamp_schema()
+        }),
+    )
+}
+
+fn revision_list_schema(item: &str) -> Value {
+    json!({
+        "type": "array",
+        "maxItems": crate::modules::identity::domain::repositories::MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+        "items": schema_ref(item)
+    })
+}
+
 fn with_replay(mut schema: Value) -> Value {
     schema["required"]
         .as_array_mut()
@@ -592,6 +784,70 @@ fn tenant_support_grant_acl_example() -> String {
     .into()
 }
 
+fn trust_domain_acl_example() -> String {
+    example_trust_domain_contract().canonical_acl().into()
+}
+
+fn example_trust_domain_contract() -> TrustDomainContract {
+    TrustDomainContract::from_spec(TrustDomainContractSpec {
+        installation_id: InstallationId::from_uuid(example_uuid(1)),
+        trust_domain_id: TrustDomainId::from_uuid(example_uuid(7)),
+        name: TrustDomainName::parse("prod.a3s.internal").expect("fixed OpenAPI trust-domain name"),
+        provider_profile_digest: example_digest('b'),
+        trust_bundle_digest: example_digest('c'),
+        node_attestation_profile_digests: vec![example_digest('d')],
+        identity_formats: vec![WorkloadIdentityFormat::X509Svid],
+        max_credential_lifetime_seconds: 600,
+        rotation_overlap_seconds: 60,
+        revocation_mode: WorkloadIdentityRevocationMode::EpochAndExpiry,
+        federation_bundle_digests: vec![],
+    })
+    .expect("fixed OpenAPI trust-domain example")
+}
+
+fn workload_identity_policy_acl_example() -> String {
+    WorkloadIdentityPolicyContract::from_spec(WorkloadIdentityPolicySpec {
+        installation_id: InstallationId::from_uuid(example_uuid(1)),
+        trust_domain_id: TrustDomainId::from_uuid(example_uuid(7)),
+        trust_domain_revision_id: TrustDomainRevisionId::from_uuid(example_uuid(8)),
+        organization_id: OrganizationId::from_uuid(example_uuid(9)),
+        project_id: ProjectId::from_uuid(example_uuid(10)),
+        environment_id: EnvironmentId::from_uuid(example_uuid(11)),
+        policy_id: WorkloadIdentityPolicyId::from_uuid(example_uuid(12)),
+        workload_id: WorkloadId::from_uuid(example_uuid(13)),
+        workload_revision_id: WorkloadRevisionId::from_uuid(example_uuid(14)),
+        product_role: WorkloadProductRole::AgentService,
+        runtime_class: RuntimeUnitClass::Service,
+        semantics_profile_digest: example_digest('e'),
+        node_pool_id: NodePoolId::from_uuid(example_uuid(15)),
+        isolation_level: RuntimeIsolationLevel::Container,
+        attestation_profile_digest: example_digest('d'),
+        confidential_compute: false,
+        identity_formats: vec![WorkloadIdentityFormat::X509Svid],
+        credential_lifetime_seconds: 300,
+        rotate_before_expiry_seconds: 60,
+        drain_on_rotation_failure: true,
+        revoke_on_stop: true,
+        audiences: vec![WorkloadIdentityAudience::parse("model.internal")
+            .expect("fixed OpenAPI workload identity audience")],
+        service_names: vec![
+            crate::modules::identity::domain::value_objects::PrivateServiceName::parse(
+                "agent.prod.a3s.internal",
+            )
+            .expect("fixed OpenAPI private service name"),
+        ],
+        peer_policy_revision_digests: vec![],
+    })
+    .expect("fixed OpenAPI workload identity policy example")
+    .canonical_acl()
+    .into()
+}
+
+fn example_digest(value: char) -> Sha256Digest {
+    Sha256Digest::parse(format!("sha256:{}", value.to_string().repeat(64)))
+        .expect("fixed OpenAPI digest")
+}
+
 fn example_uuid(value: u128) -> Uuid {
     Uuid::from_u128(value)
 }
@@ -602,11 +858,11 @@ mod tests {
 
     #[test]
     fn privileged_management_components_are_closed_bounded_and_domain_generated() {
-        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS.len(), 8);
-        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS.len(), 8);
+        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS.len(), 14);
+        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS.len(), 14);
         let mut schemas = Map::new();
         install_privileged_management_component_schemas(&mut schemas);
-        assert_eq!(schemas.len(), 15);
+        assert_eq!(schemas.len(), 21);
         for (name, schema) in &schemas {
             assert_eq!(schema["additionalProperties"], false, "{name}");
         }
@@ -622,6 +878,10 @@ mod tests {
             .expect("policy example remains a valid domain contract");
         TenantSupportGrantContract::parse_acl(&tenant_support_grant_acl_example())
             .expect("support example remains a valid domain contract");
+        TrustDomainContract::parse_acl(&trust_domain_acl_example())
+            .expect("trust-domain example remains a valid domain contract");
+        WorkloadIdentityPolicyContract::parse_acl(&workload_identity_policy_acl_example())
+            .expect("workload identity policy example remains a valid domain contract");
 
         for request in [
             accept_platform_role_policy_request_schema(),
@@ -630,6 +890,8 @@ mod tests {
             expected_version_request_schema(),
             propose_tenant_support_grant_request_schema(),
             approve_tenant_support_grant_request_schema(),
+            accept_trust_domain_revision_request_schema(),
+            accept_workload_identity_policy_revision_request_schema(),
         ] {
             assert_eq!(request["additionalProperties"], false);
             let encoded = request.to_string();

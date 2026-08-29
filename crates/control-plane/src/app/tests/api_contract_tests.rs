@@ -19,8 +19,8 @@ const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../op
 fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
-    assert_eq!(document["info"]["version"], "1.78.0");
-    assert_eq!(document["x-a3s-api-contract-version"], "1.78.0");
+    assert_eq!(document["info"]["version"], "1.79.0");
+    assert_eq!(document["x-a3s-api-contract-version"], "1.79.0");
 
     for (method, path, success) in [
         (
@@ -83,6 +83,51 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
             "/platform/tenant-support-grants/{grant_id}/revocation",
             "#/components/responses/TenantSupportGrantMutationSuccess200",
         ),
+        (
+            "get",
+            "/platform/trust-domains/{trust_domain_id}",
+            "#/components/responses/TrustDomainRevisionSuccess200",
+        ),
+        (
+            "get",
+            "/platform/trust-domains/{trust_domain_id}/revisions",
+            "#/components/responses/TrustDomainRevisionListSuccess200",
+        ),
+        (
+            "get",
+            "/platform/trust-domains/{trust_domain_id}/revisions/{revision_id}",
+            "#/components/responses/TrustDomainRevisionSuccess200",
+        ),
+        (
+            "post",
+            "/platform/trust-domains/{trust_domain_id}/revisions",
+            "#/components/responses/TrustDomainRevisionMutationSuccess200",
+        ),
+        (
+            "get",
+            "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}",
+            "#/components/responses/WorkloadIdentityPolicyRevisionSuccess200",
+        ),
+        (
+            "get",
+            "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions",
+            "#/components/responses/WorkloadIdentityPolicyRevisionListSuccess200",
+        ),
+        (
+            "get",
+            "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions/{revision_id}",
+            "#/components/responses/WorkloadIdentityPolicyRevisionSuccess200",
+        ),
+        (
+            "post",
+            "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions",
+            "#/components/responses/WorkloadIdentityPolicyRevisionMutationSuccess200",
+        ),
+        (
+            "get",
+            "/platform/organizations/{organization_id}/workloads/{workload_id}/identity-policy",
+            "#/components/responses/WorkloadIdentityPolicyRevisionSuccess200",
+        ),
     ] {
         let operation = &document["paths"][path][method];
         assert_eq!(operation["tags"], json!(["Platform"]), "{method} {path}");
@@ -144,6 +189,53 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         support_request["properties"]["canonicalAcl"]["maxLength"],
         crate::modules::identity::domain::value_objects::TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
     );
+    let trust_domain_request = &document["paths"]
+        ["/platform/trust-domains/{trust_domain_id}/revisions"]["post"]["requestBody"]["content"]
+        ["application/json"]["schema"];
+    assert_eq!(
+        trust_domain_request["required"],
+        json!(["canonicalAcl", "revisionNumber"])
+    );
+    assert_eq!(
+        trust_domain_request["properties"]["canonicalAcl"]["maxLength"],
+        crate::modules::identity::domain::value_objects::TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        trust_domain_request["properties"]["expectedPreviousRevisionId"]["nullable"],
+        true
+    );
+    let workload_policy_path =
+        "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions";
+    let workload_policy_request = &document["paths"][workload_policy_path]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
+    assert_eq!(
+        workload_policy_request["required"],
+        json!(["canonicalAcl", "revisionNumber"])
+    );
+    assert_eq!(
+        workload_policy_request["properties"]["canonicalAcl"]["maxLength"],
+        crate::modules::identity::domain::value_objects::WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
+    );
+    for path in [
+        "/platform/trust-domains/{trust_domain_id}/revisions",
+        workload_policy_path,
+    ] {
+        let parameters = document["paths"][path]["get"]["parameters"]
+            .as_array()
+            .ok_or_else(|| BootError::Internal(format!("GET {path} has no parameters")))?;
+        let limit = parameters
+            .iter()
+            .find(|parameter| parameter["name"] == "limit")
+            .ok_or_else(|| BootError::Internal(format!("GET {path} has no limit")))?;
+        assert_eq!(
+            limit["schema"]["default"],
+            crate::modules::identity::domain::repositories::DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE
+        );
+        assert_eq!(
+            limit["schema"]["maximum"],
+            crate::modules::identity::domain::repositories::MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE
+        );
+    }
 
     let schemas = &document["components"]["schemas"];
     for name in [
@@ -155,8 +247,31 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         "TenantSupportGrantApproval",
         "TenantSupportGrantLifecycle",
         "TenantSupportGrant",
+        "TrustDomainRevision",
+        "TrustDomainRevisionMutation",
+        "WorkloadIdentityPolicyRevision",
+        "WorkloadIdentityPolicyRevisionMutation",
     ] {
         assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
+    }
+    for (name, item) in [
+        ("TrustDomainRevisionList", "TrustDomainRevision"),
+        (
+            "WorkloadIdentityPolicyRevisionList",
+            "WorkloadIdentityPolicyRevision",
+        ),
+    ] {
+        assert_eq!(schemas[name]["type"], "array", "{name}");
+        assert_eq!(
+            schemas[name]["maxItems"],
+            crate::modules::identity::domain::repositories::MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+            "{name}"
+        );
+        assert_eq!(
+            schemas[name]["items"]["$ref"],
+            format!("#/components/schemas/{item}"),
+            "{name}"
+        );
     }
     assert_eq!(
         schemas["TenantSupportScope"]["properties"]["kind"]["enum"],

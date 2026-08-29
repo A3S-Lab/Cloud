@@ -12,3 +12,4 @@ pub mod list_recipient_contacts;
 pub mod list_resource_grants;
 pub mod read_platform_rbac;
 pub mod read_tenant_support;
+pub mod read_workload_trust;
