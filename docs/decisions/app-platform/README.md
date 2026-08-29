@@ -89,6 +89,7 @@ AI application platform parity manifest.
 | [0082](0082-one-installation-scoped-fact-rail.md) | Persist one immutable Installation identity and reuse one exact scope-aware Audit/Outbox fact rail |
 | [0083](0083-one-platform-rbac-persistence-authority.md) | Serialize policy heads and role bindings through one Identity/PostgreSQL authority with recoverable-owner invariants |
 | [0084](0084-one-tenant-support-approval-authority.md) | Persist actual human approval evidence and activate terminal tenant-support grants through one Identity/PostgreSQL authority |
+| [0085](0085-one-atomic-privileged-authorization-authority.md) | Issue exact current-snapshot privileged allows through one revocation-fenced Identity/PostgreSQL authority and shared Audit |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

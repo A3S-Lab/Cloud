@@ -59,9 +59,10 @@ introduced.
 - Grant acceptance is evidence-derived, immutable, non-renewing, and terminal
   after revocation.
 - This slice establishes persisted support authority, not a public privileged
-  allow interface. The next slice must atomically snapshot the active
-  Principal, verified credential, current policy/binding, and exact optional
-  grant into the one privileged decision model.
+  allow interface. ADR 0085 now atomically snapshots the active Principal,
+  exact credential, current policy/binding, and exact optional grant into the
+  one privileged decision model. Maintained concrete consumers remain before
+  C3 completes; no generic public evaluator is introduced.
 - The retained PostgreSQL 17 gate races actual dual approvals across two
   repository instances and exercises forged, incomplete, disabled, replayed,
   and direct-SQL paths. It passed in [CI run

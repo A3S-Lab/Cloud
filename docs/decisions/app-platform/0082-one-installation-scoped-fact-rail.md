@@ -93,12 +93,12 @@ deserialize a committed row directly as an uncommitted domain envelope.
 - Historical facts outlive tenant aggregate lifecycle. Referential validity is
   established under key-share locks at insert rather than by cascade-capable or
   deletion-blocking tenant foreign keys.
-- `C0.5-MT1-C3` establishes persistence identity and fact scope only. ADR 0083
-  and verified `MT2-C1` now add the platform-policy/binding repository,
-  current-head, version/idempotency, self-escalation, last-owner and
-  multi-replica rules on this same fact rail. `MT2-C2/C3` still own actual
-  support approval/grant persistence and current-snapshot decisions; MT3 still
-  owns cross-surface enforcement and removal of boolean administrator bypasses.
+- `C0.5-MT1-C3` establishes persistence identity and fact scope only. ADRs
+  0083-0084 and verified `MT2-C1/C2` now add the platform-policy/binding and
+  actual support-approval/grant repositories on this same fact rail. ADR 0085
+  adds the `MT2-C3` atomic current-snapshot decision core through shared Audit;
+  maintained concrete consumers still complete C3, and MT3 still owns
+  cross-surface enforcement and removal of boolean administrator bypasses.
 - Hosting more than one logical Installation in one database would require a
   superseding decision and migration; callers cannot opt into it by supplying
   another UUID.

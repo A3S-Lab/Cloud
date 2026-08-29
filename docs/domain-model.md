@@ -295,11 +295,15 @@ and one closed non-sensitive support permission. Grants are bounded,
   and versioned bindings under the canonical Installation-row lock. Initial
   policy/owner visibility, idempotency, self-escalation and last-owner recovery,
   Audit and Outbox commit atomically and database triggers reject direct-SQL
-  bypass. `MT2-C2/C3` still supply evidence-backed support approval/grant
-  persistence and one current-snapshot privileged decision/Application
-  interface; `MT3` then removes the legacy boolean administrator bypass. Until
-  that decision surface is consumed, persisted RBAC is not general production
-  authority.
+  bypass. Migration `178` and the sole support repository now persist actual
+  approval evidence and terminal grants. The `MT2-C3` core also provides one
+  registered Application command and one Identity/PostgreSQL decision port:
+  it share-locks the current Principal, API token, policy/binding and optional
+  exact grant, then commits the complete digest-bound allow through shared
+  scoped Audit. Maintained concrete surfaces still need to consume that
+  authority from verified request context; `MT3` then removes the legacy
+  boolean administrator bypass. Until that cross-surface work lands, persisted
+  RBAC is not general production authority.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

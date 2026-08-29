@@ -297,8 +297,8 @@ create a second tenancy milestone or authorization engine.
 | --- | --- |
 | `C0.5-MT1` | Freeze installation versus Organization/Project/Environment scope, closed platform permissions, `PlatformRoleBinding`, canonical `TenantSupportGrant` intent, digest-bound effective-decision evidence, and one scope-aware audit/Outbox contract |
 | `C0.5-MT2-C1` | **Verified:** persist immutable policy revisions, one exact current head and versioned bindings through the sole Identity repository; serialize replicas on the canonical Installation row and atomically enforce idempotency, self-escalation denial, owner-only owner administration, recoverable-owner/Principal liveness, Audit and Outbox |
-| `C0.5-MT2-C2` | Persist support proposals, exact approver actions and accepted/revoked grants; caller-supplied approver IDs are intent, never proof, and no platform record uses a synthetic tenant |
-| `C0.5-MT2-C3` | Load active Principal, credential evidence, current policy/binding and applicable grant in one Identity transaction; issue and audit the one digest-bound privileged decision through maintained Application interfaces |
+| `C0.5-MT2-C2` | **Verified:** persist support proposals, exact approver actions and accepted/revoked grants; caller-supplied approver IDs are intent, never proof, and no platform record uses a synthetic tenant |
+| `C0.5-MT2-C3` | **Atomic core implemented; interfaces pending:** load and share-lock the active Principal, exact API-token version, current policy/binding and applicable exact grant in one Identity transaction; issue and audit one digest-bound decision, then consume it only through concrete maintained Application interfaces fed by verified request context |
 | `C0.5-MT3` | Enforce system-admin, organization-owner/admin, member/restricted and service-Principal matrices through one Identity decision port across REST/client/CLI/Management MCP |
 | `C0.5-MT4` | Ratchet every tenant aggregate, repository, composite foreign key, Outbox/audit/idempotency/object reference and cursor to exact scope; zero presentation-only or browser-side tenant filtering |
 | `H0.5-MT5` | Prove hierarchical CPU/GPU/storage/request quotas, fair admission, autoscaling caps and noisy-neighbor bounds under concurrent Organizations without another queue or scheduler |
@@ -311,9 +311,13 @@ foundation. Verified `MT2-C1` persists policy history, its exact head and
 bindings through one Identity/PostgreSQL authority. The canonical Installation
 row is the distributed write fence; the existing idempotency, Audit and Outbox
 tables remain the only commit rail, and deferred database constraints preserve
-one active owner even against direct SQL. `MT2-C2/C3` next persist actual
-approver actions and grants, then capture a current Principal/policy/binding/
-grant snapshot and issue one privileged decision. `MT3` replaces legacy
+one active owner even against direct SQL. Verified `MT2-C2` persists actual
+approver actions and terminal grants. The `MT2-C3` atomic core now share-locks
+the current Principal/API token/policy/binding/exact optional grant and commits
+one complete decision through shared Audit while conflicting with every
+revocation path. Concrete REST/client/CLI/Management MCP consumers remain and
+must derive identity from verified context rather than expose a generic
+authorization evaluator. `MT3` replaces legacy
 boolean administrator bypasses across REST, MCP, queries, streams and internal
 owner ports. Neither persisted intent nor a component contract is permission
 to skip those gates.

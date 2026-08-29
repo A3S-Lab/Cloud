@@ -59,9 +59,10 @@ format.
 - A role cache may accelerate reads only after it is fenced by persisted
   revision/version evidence; revocation truth remains PostgreSQL.
 - `C0.5-MT2-C1` establishes policy/binding persistence, not a public
-  authorization surface. The next slice must capture active Principal,
-  credential evidence, current policy, and binding in one Identity decision
-  transaction before consumers may replace the legacy boolean bypass.
+  authorization surface. ADR 0085 now captures the active Principal, exact
+  credential, current policy, and binding in one Identity decision transaction.
+  Maintained concrete consumers and MT3 must still replace the legacy boolean
+  bypass; the internal decision command is not a generic public evaluator.
 - Tenant support remains separate. Its approval records must prove exact
   approver actions and liveness; caller-supplied approver IDs alone are not
   acceptance evidence.
