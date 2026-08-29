@@ -2,9 +2,10 @@ use crate::modules::identity::domain::entities::{
     TenantSupportGrant, TenantSupportGrantApproval, TenantSupportGrantApprovalOutcome,
     TenantSupportGrantProposal,
 };
+use crate::modules::identity::domain::value_objects::TenantSupportGrantContract;
 use crate::modules::shared_kernel::domain::{
-    DecisionEvidenceRef, IdempotencyRequest, IdempotentWrite, InstallationId, PrincipalId,
-    RepositoryError, Sha256Digest, TenantSupportGrantId,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, InstallationId, PrincipalId, RepositoryError,
+    Sha256Digest, TenantSupportGrantId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -12,8 +13,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct ProposeTenantSupportGrantWrite {
-    pub proposal: TenantSupportGrantProposal,
+    pub contract: TenantSupportGrantContract,
     pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub requested_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -24,7 +27,7 @@ pub struct ApproveTenantSupportGrantWrite {
     pub grant_id: TenantSupportGrantId,
     pub expected_contract_digest: Sha256Digest,
     pub actor_principal_id: PrincipalId,
-    pub authentication: DecisionEvidenceRef,
+    pub credential_id: ApiTokenId,
     pub approved_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
@@ -36,7 +39,7 @@ pub struct RevokeTenantSupportGrantWrite {
     pub grant_id: TenantSupportGrantId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub authentication: DecisionEvidenceRef,
+    pub credential_id: ApiTokenId,
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,

@@ -1,4 +1,5 @@
 use super::postgres::{decode_column, decode_principal, PostgresIdentityRepository, PrincipalRow};
+use super::postgres_privileged_authorization_decisions::issue_privileged_authorization;
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
     store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
@@ -15,10 +16,11 @@ use crate::modules::identity::domain::repositories::{
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
     PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
 };
+use crate::modules::identity::domain::services::PrivilegedAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::{PlatformPermission, PlatformRole};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, InstallationId, PlatformRoleBindingId, PlatformRolePolicyId,
-    PlatformRolePolicyRevisionId, PrincipalId, RepositoryError,
+    ApiTokenId, AuthorizationDecisionRef, IdempotentWrite, InstallationId, PlatformRoleBindingId,
+    PlatformRolePolicyId, PlatformRolePolicyRevisionId, PrincipalId, RepositoryError, ScopeContext,
 };
 use a3s_cloud_contracts::CloudScopeRef;
 use a3s_orm::{sql_query, Database, DecodeError, FromRow, PostgresDialect, Row};
@@ -474,6 +476,7 @@ async fn insert_binding(
 async fn store_policy_facts(
     transaction: &a3s_orm::PostgresTransaction,
     revision: &AcceptedPlatformRolePolicyRevision,
+    authorization: Option<&AuthorizationDecisionRef>,
     request_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
     let event = PlatformRolePolicyAccepted::envelope(revision, request_id)?;
@@ -494,6 +497,7 @@ async fn store_policy_facts(
                 "revisionId": revision.id,
                 "revisionNumber": revision.revision_number,
                 "digest": revision.contract.digest(),
+                "authorizationDecision": authorization,
             }),
         },
     )
@@ -505,6 +509,7 @@ async fn store_binding_facts(
     binding: &PlatformRoleBinding,
     previous_role: Option<PlatformRole>,
     action: &'static str,
+    authorization: Option<&AuthorizationDecisionRef>,
     request_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
     let event = match action {
@@ -546,10 +551,35 @@ async fn store_binding_facts(
                 "previousRole": previous_role,
                 "aggregateVersion": binding.aggregate_version,
                 "revokedAt": binding.revoked_at,
+                "authorizationDecision": authorization,
             }),
         },
     )
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+fn platform_mutation_authorization_request(
+    installation_id: InstallationId,
+    principal_id: PrincipalId,
+    credential_id: ApiTokenId,
+    permission: PlatformPermission,
+    action: &'static str,
+    resource_id: Uuid,
+    request_id: Uuid,
+) -> Result<PrivilegedAuthorizationDecisionRequest, PostgresPersistenceError> {
+    Ok(PrivilegedAuthorizationDecisionRequest {
+        principal_id,
+        credential_id,
+        platform_permission: permission,
+        support_permission: None,
+        support_grant_id: None,
+        action: action.into(),
+        scope: ScopeContext::installation(installation_id)
+            .map_err(PostgresPersistenceError::Invariant)?,
+        resource_id,
+        request_id,
+    })
 }
 
 fn can_assign_owner(actor: &PlatformRoleBinding) -> bool {
@@ -675,13 +705,19 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         }
                         return Err(error);
                     }
-                    store_policy_facts(transaction, &write.bootstrap.policy, write.request_id)
-                        .await?;
+                    store_policy_facts(
+                        transaction,
+                        &write.bootstrap.policy,
+                        None,
+                        write.request_id,
+                    )
+                    .await?;
                     store_binding_facts(
                         transaction,
                         &write.bootstrap.owner_binding,
                         None,
                         "identity.platform-role-binding.created",
+                        None,
                         write.request_id,
                     )
                     .await?;
@@ -709,16 +745,22 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         .map_err(PostgresPersistenceError::Invariant)?;
                     let installation_id = write.revision.installation_id;
                     lock_installation(transaction, installation_id).await?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        platform_mutation_authorization_request(
+                            installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            PlatformPermission::RolePolicyManage,
+                            "identity.platform-role-policy.accepted",
+                            write.revision.policy_id.as_uuid(),
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let current = load_current_policy_for_update(transaction, installation_id)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
-                    let actor = load_active_actor_binding(
-                        transaction,
-                        installation_id,
-                        write.actor_principal_id,
-                    )
-                    .await?;
-                    require_permission(&current, &actor, PlatformPermission::RolePolicyManage)?;
                     if let Some(replayed) =
                         idempotency_replay::<AcceptedPlatformRolePolicyRevision>(
                             transaction,
@@ -782,7 +824,13 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         )
                         .into());
                     }
-                    store_policy_facts(transaction, &write.revision, write.request_id).await?;
+                    store_policy_facts(
+                        transaction,
+                        &write.revision,
+                        Some(&authorization.reference),
+                        write.request_id,
+                    )
+                    .await?;
                     store_idempotency(transaction, &write.idempotency, &write.revision).await?;
                     Ok(IdempotentWrite {
                         value: write.revision,
@@ -842,6 +890,19 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         .map_err(PostgresPersistenceError::Invariant)?;
                     let installation_id = write.binding.installation_id;
                     lock_installation(transaction, installation_id).await?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        platform_mutation_authorization_request(
+                            installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            PlatformPermission::RoleBindingManage,
+                            "identity.platform-role-binding.created",
+                            write.binding.id.as_uuid(),
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let policy = load_current_policy_for_update(transaction, installation_id)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
@@ -851,7 +912,6 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         write.actor_principal_id,
                     )
                     .await?;
-                    require_permission(&policy, &actor, PlatformPermission::RoleBindingManage)?;
                     if let Some(replayed) =
                         idempotency_replay::<PlatformRoleBinding>(transaction, &write.idempotency)
                             .await?
@@ -898,6 +958,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         &write.binding,
                         None,
                         "identity.platform-role-binding.created",
+                        Some(&authorization.reference),
                         write.request_id,
                     )
                     .await?;
@@ -920,6 +981,19 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
             .transaction(move |transaction| {
                 Box::pin(async move {
                     lock_installation(transaction, write.installation_id).await?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        platform_mutation_authorization_request(
+                            write.installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            PlatformPermission::RoleBindingManage,
+                            "identity.platform-role-binding.role-changed",
+                            write.binding_id.as_uuid(),
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let policy = load_current_policy_for_update(transaction, write.installation_id)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
@@ -929,7 +1003,6 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         write.actor_principal_id,
                     )
                     .await?;
-                    require_permission(&policy, &actor, PlatformPermission::RoleBindingManage)?;
                     if let Some(replayed) =
                         idempotency_replay::<PlatformRoleBinding>(transaction, &write.idempotency)
                             .await?
@@ -1023,6 +1096,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         &binding,
                         Some(previous_role),
                         "identity.platform-role-binding.role-changed",
+                        Some(&authorization.reference),
                         write.request_id,
                     )
                     .await?;
@@ -1045,16 +1119,25 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
             .transaction(move |transaction| {
                 Box::pin(async move {
                     lock_installation(transaction, write.installation_id).await?;
-                    let policy = load_current_policy_for_update(transaction, write.installation_id)
-                        .await?
-                        .ok_or(RepositoryError::NotFound)?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        platform_mutation_authorization_request(
+                            write.installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            PlatformPermission::RoleBindingManage,
+                            "identity.platform-role-binding.revoked",
+                            write.binding_id.as_uuid(),
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let actor = load_active_actor_binding(
                         transaction,
                         write.installation_id,
                         write.actor_principal_id,
                     )
                     .await?;
-                    require_permission(&policy, &actor, PlatformPermission::RoleBindingManage)?;
                     if let Some(replayed) =
                         idempotency_replay::<PlatformRoleBinding>(transaction, &write.idempotency)
                             .await?
@@ -1121,6 +1204,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         &binding,
                         None,
                         "identity.platform-role-binding.revoked",
+                        Some(&authorization.reference),
                         write.request_id,
                     )
                     .await?;

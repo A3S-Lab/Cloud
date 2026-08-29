@@ -3,7 +3,7 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::value_objects::PlatformRole;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, InstallationId, PlatformRoleBindingId,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, InstallationId, PlatformRoleBindingId,
     PlatformRolePolicyRevisionId, PrincipalId, RepositoryError,
 };
 use async_trait::async_trait;
@@ -49,6 +49,7 @@ pub struct AcceptPlatformRolePolicyRevisionWrite {
     pub revision: AcceptedPlatformRolePolicyRevision,
     pub expected_current_revision_id: PlatformRolePolicyRevisionId,
     pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -57,6 +58,7 @@ pub struct AcceptPlatformRolePolicyRevisionWrite {
 pub struct CreatePlatformRoleBindingWrite {
     pub binding: PlatformRoleBinding,
     pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -68,6 +70,7 @@ pub struct ChangePlatformRoleBindingWrite {
     pub expected_version: u64,
     pub role: PlatformRole,
     pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
     pub changed_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
@@ -79,6 +82,7 @@ pub struct RevokePlatformRoleBindingWrite {
     pub binding_id: PlatformRoleBindingId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,

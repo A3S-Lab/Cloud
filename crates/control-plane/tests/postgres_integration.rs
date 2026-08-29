@@ -148,6 +148,69 @@ async fn migrate_and_connect_for_test(
     connect_postgres(url, max_connections).await
 }
 
+fn test_api_token(
+    organization_id: OrganizationId,
+    principal_id: a3s_cloud_control_plane::modules::shared_kernel::domain::PrincipalId,
+    name: &str,
+    scopes: std::collections::BTreeSet<
+        a3s_cloud_control_plane::modules::identity::domain::value_objects::ApiTokenScope,
+    >,
+    created_at: chrono::DateTime<Utc>,
+    expires_at: Option<chrono::DateTime<Utc>>,
+) -> Result<
+    a3s_cloud_control_plane::modules::identity::domain::entities::ApiToken,
+    Box<dyn std::error::Error>,
+> {
+    use a3s_cloud_control_plane::modules::identity::domain::entities::ApiToken;
+    use a3s_cloud_control_plane::modules::identity::domain::value_objects::ApiTokenName;
+    use a3s_cloud_control_plane::modules::shared_kernel::domain::ApiTokenId;
+
+    Ok(ApiToken::issue(
+        ApiTokenId::new(),
+        organization_id,
+        principal_id,
+        ApiTokenName::parse(name)?,
+        scopes,
+        created_at,
+        expires_at,
+    )?)
+}
+
+async fn persist_test_api_token(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    token: &a3s_cloud_control_plane::modules::identity::domain::entities::ApiToken,
+    hash_seed: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    database
+        .execute(
+            sql_query::<()>("insert into api_tokens (id, organization_id, principal_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (")
+                .bind(token.id.as_uuid())
+                .append(", ")
+                .bind(token.organization_id.as_uuid())
+                .append(", ")
+                .bind(token.principal_id.as_uuid())
+                .append(", ")
+                .bind(token.name.as_str())
+                .append(", ")
+                .bind(token.name.key())
+                .append(", ")
+                .bind(format!("sha256:{hash_seed:064x}"))
+                .append(", ")
+                .bind(serde_json::to_value(&token.scopes)?)
+                .append(", ")
+                .bind(token.aggregate_version)
+                .append(", ")
+                .bind(token.created_at)
+                .append(", ")
+                .bind(token.expires_at)
+                .append(", ")
+                .bind(token.revoked_at)
+                .append(")"),
+        )
+        .await?;
+    Ok(())
+}
+
 async fn migrate_for_test(
     url: &str,
     max_connections: usize,

@@ -2,13 +2,15 @@ use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
     AcceptedPlatformRolePolicyRevision, PlatformRoleBinding,
 };
+use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
-    ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
-    PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
+    ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IApiTokenRepository,
+    IPlatformRbacRepository, PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
-    PlatformPermission, PlatformRole, PlatformRolePolicyContract, PlatformRolePolicySpec,
+    ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,
+    PlatformRolePolicySpec,
 };
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -28,11 +30,27 @@ pub async fn exercise_platform_rbac_authority(
             ))
             .await?,
     );
+    let organization_id = OrganizationId::new();
     let owner_a = PrincipalId::new();
     let owner_b = PrincipalId::new();
     let admin = PrincipalId::new();
     let operator = PrincipalId::new();
     let spare = PrincipalId::new();
+    let now = chrono::DateTime::from_timestamp_micros(Utc::now().timestamp_micros())
+        .ok_or("platform RBAC test timestamp exceeds PostgreSQL precision")?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", 'MT2 platform RBAC', ")
+            .bind(format!("mt2-platform-rbac-{organization_id}"))
+            .append(", 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
     for (principal, suffix) in [
         (owner_a, "owner-a"),
         (owner_b, "owner-b"),
@@ -47,10 +65,53 @@ pub async fn exercise_platform_rbac_authority(
                     .append(", 'human', ")
                     .bind(format!("MT2 {suffix}"))
                     .append(", 1, ")
-                    .bind(Utc::now())
+                    .bind(now - ChronoDuration::hours(1))
                     .append(", null)"),
             )
             .await?;
+    }
+    let owner_a_credential = test_api_token(
+        organization_id,
+        owner_a,
+        "platform owner a",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(30),
+        None,
+    )?;
+    let owner_b_credential = test_api_token(
+        organization_id,
+        owner_b,
+        "platform owner b",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(30),
+        None,
+    )?;
+    let admin_credential = test_api_token(
+        organization_id,
+        admin,
+        "platform admin",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(30),
+        None,
+    )?;
+    let operator_credential = test_api_token(
+        organization_id,
+        operator,
+        "platform operator",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(30),
+        None,
+    )?;
+    for (seed, credential) in [
+        &owner_a_credential,
+        &owner_b_credential,
+        &admin_credential,
+        &operator_credential,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        persist_test_api_token(&database, credential, 100 + seed).await?;
     }
 
     let repository_a = PostgresIdentityRepository::new(executor.clone());
@@ -115,6 +176,11 @@ pub async fn exercise_platform_rbac_authority(
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: second_owner_binding.clone(),
             actor_principal_id: initial_owner,
+            credential_id: if initial_owner == owner_a {
+                owner_a_credential.id
+            } else {
+                owner_b_credential.id
+            },
             request_id: Uuid::now_v7(),
             idempotency: idempotency("platform-role-bindings", "mt2:create-second-owner")?,
         })
@@ -133,6 +199,11 @@ pub async fn exercise_platform_rbac_authority(
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: admin_binding.clone(),
             actor_principal_id: initial_owner,
+            credential_id: if initial_owner == owner_a {
+                owner_a_credential.id
+            } else {
+                owner_b_credential.id
+            },
             request_id: Uuid::now_v7(),
             idempotency: idempotency("platform-role-bindings", "mt2:create-admin")?,
         })
@@ -152,6 +223,7 @@ pub async fn exercise_platform_rbac_authority(
             .create_platform_role_binding(CreatePlatformRoleBindingWrite {
                 binding: forged_owner,
                 actor_principal_id: admin,
+                credential_id: admin_credential.id,
                 request_id: Uuid::now_v7(),
                 idempotency: idempotency("platform-role-bindings", "mt2:admin-create-owner")?,
             })
@@ -166,6 +238,7 @@ pub async fn exercise_platform_rbac_authority(
                 expected_version: 1,
                 role: PlatformRole::PlatformOwner,
                 actor_principal_id: admin,
+                credential_id: admin_credential.id,
                 changed_at: Utc::now(),
                 request_id: Uuid::now_v7(),
                 idempotency: idempotency("platform-role-bindings", "mt2:self-escalation")?,
@@ -187,6 +260,7 @@ pub async fn exercise_platform_rbac_authority(
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: operator_binding.clone(),
             actor_principal_id: admin,
+            credential_id: admin_credential.id,
             request_id: Uuid::now_v7(),
             idempotency: idempotency("platform-role-bindings", "mt2:create-operator")?,
         })
@@ -199,6 +273,7 @@ pub async fn exercise_platform_rbac_authority(
                 expected_version: 1,
                 role: PlatformRole::PlatformAdmin,
                 actor_principal_id: operator,
+                credential_id: operator_credential.id,
                 changed_at: Utc::now(),
                 request_id: Uuid::now_v7(),
                 idempotency: idempotency("platform-role-bindings", "mt2:operator-escalation")?,
@@ -216,6 +291,11 @@ pub async fn exercise_platform_rbac_authority(
         binding_id: initial_owner_binding.id,
         expected_version: 1,
         actor_principal_id: initial_owner,
+        credential_id: if initial_owner == owner_a {
+            owner_a_credential.id
+        } else {
+            owner_b_credential.id
+        },
         revoked_at: Utc::now() + ChronoDuration::seconds(1),
         request_id: Uuid::now_v7(),
         idempotency: idempotency("platform-role-bindings", "mt2:revoke-owner-a")?,
@@ -225,6 +305,11 @@ pub async fn exercise_platform_rbac_authority(
         binding_id: second_owner_binding.id,
         expected_version: 1,
         actor_principal_id: second_owner,
+        credential_id: if second_owner == owner_a {
+            owner_a_credential.id
+        } else {
+            owner_b_credential.id
+        },
         revoked_at: Utc::now() + ChronoDuration::seconds(1),
         request_id: Uuid::now_v7(),
         idempotency: idempotency("platform-role-bindings", "mt2:revoke-owner-b")?,
@@ -248,6 +333,11 @@ pub async fn exercise_platform_rbac_authority(
         .current_platform_role_policy(installation_id)
         .await?
         .ok_or("current policy disappeared")?;
+    let remaining_owner_credential_id = if remaining_owner == owner_a {
+        owner_a_credential.id
+    } else {
+        owner_b_credential.id
+    };
     let policy_a = successor_policy(
         &current,
         remaining_owner,
@@ -264,6 +354,7 @@ pub async fn exercise_platform_rbac_authority(
         revision: policy_a.clone(),
         expected_current_revision_id: current.id,
         actor_principal_id: remaining_owner,
+        credential_id: remaining_owner_credential_id,
         request_id: Uuid::now_v7(),
         idempotency: idempotency("platform-role-policy", "mt2:policy-a")?,
     };
@@ -271,6 +362,7 @@ pub async fn exercise_platform_rbac_authority(
         revision: policy_b.clone(),
         expected_current_revision_id: current.id,
         actor_principal_id: remaining_owner,
+        credential_id: remaining_owner_credential_id,
         request_id: Uuid::now_v7(),
         idempotency: idempotency("platform-role-policy", "mt2:policy-b")?,
     };
@@ -318,6 +410,83 @@ pub async fn exercise_platform_rbac_authority(
         )
         .await?
         .is_none());
+
+    let credential_race_binding = PlatformRoleBinding::create(
+        PlatformRoleBindingId::new(),
+        installation_id,
+        spare,
+        PlatformRole::PlatformOperator,
+        &accepted,
+        remaining_owner,
+        Utc::now(),
+    )?;
+    let credential_race_request_id = Uuid::now_v7();
+    let credential_race_write = CreatePlatformRoleBindingWrite {
+        binding: credential_race_binding.clone(),
+        actor_principal_id: remaining_owner,
+        credential_id: remaining_owner_credential_id,
+        request_id: credential_race_request_id,
+        idempotency: idempotency(
+            "platform-role-bindings",
+            "mt2:create-during-credential-revocation",
+        )?,
+    };
+    let mut revoked_owner_credential = if remaining_owner == owner_a {
+        owner_a_credential.clone()
+    } else {
+        owner_b_credential.clone()
+    };
+    assert!(revoked_owner_credential.revoke(Utc::now()));
+    let credential_revocation_event =
+        ApiTokenRevoked::envelope(&revoked_owner_credential, Uuid::now_v7())?;
+    let (credential_race_write_result, credential_revocation_result) = tokio::join!(
+        repository_a.create_platform_role_binding(credential_race_write.clone()),
+        repository_b.revoke(
+            revoked_owner_credential,
+            Some(credential_revocation_event),
+            idempotency("api-token-revocation", "credential-race")?,
+        )
+    );
+    credential_revocation_result?;
+    let credential_race_committed = match credential_race_write_result {
+        Ok(result) => {
+            assert_eq!(result.value, credential_race_binding);
+            true
+        }
+        Err(RepositoryError::Forbidden(_)) => false,
+        Err(error) => {
+            return Err(format!(
+                "business mutation and exact credential revocation were not serialized: {error:?}"
+            )
+            .into())
+        }
+    };
+    assert!(matches!(
+        repository_b
+            .create_platform_role_binding(credential_race_write)
+            .await,
+        Err(RepositoryError::Forbidden(_))
+    ));
+    let credential_race_facts = database
+        .fetch_one_as(
+            sql_query::<(i64, i64)>(
+                "select (select count(*) from audit_records where request_id = ",
+            )
+            .bind(credential_race_request_id)
+            .append(" and action = 'identity.privileged-access.authorize'), (select count(*) from audit_records where request_id = ")
+            .bind(credential_race_request_id)
+            .append(" and action = 'identity.platform-role-binding.created')"),
+        )
+        .await?;
+    assert_eq!(
+        credential_race_facts,
+        if credential_race_committed {
+            (1, 1)
+        } else {
+            (0, 0)
+        },
+        "authorization decision and protected business fact must commit or roll back together"
+    );
 
     let direct_last_owner_revocation = database
         .execute(
@@ -369,7 +538,11 @@ pub async fn exercise_platform_rbac_authority(
         .await?;
     assert_eq!(
         evidence,
-        (1, 2, 4, 1, 7, 7, 6),
+        if credential_race_committed {
+            (1, 2, 5, 1, 8, 8, 7)
+        } else {
+            (1, 2, 4, 1, 7, 7, 6)
+        },
         "policy head/history, bindings, recovery owner, facts, and idempotency must commit exactly once"
     );
     Ok(())

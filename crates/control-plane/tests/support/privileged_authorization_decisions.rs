@@ -1,7 +1,6 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, ApiToken, PlatformRoleBinding, TenantSupportGrant,
-    TenantSupportGrantProposal,
+    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding, TenantSupportGrant,
 };
 use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
@@ -14,17 +13,16 @@ use a3s_cloud_control_plane::modules::identity::domain::services::{
     PrivilegedAuthorizationDecision, PrivilegedAuthorizationDecisionRequest,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
-    ApiTokenName, ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,
+    ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,
     TenantNotificationRequirement, TenantSupportApprovalRequirement, TenantSupportGrantContract,
     TenantSupportGrantContractSpec, TenantSupportGrantMode, TenantSupportPermission,
 };
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ApiTokenId, AuthorizationDecisionRef, DecisionEvidenceRef, PlatformRoleBindingId,
-    PlatformRolePolicyId, PrincipalId, Sha256Digest, TenantSupportGrantId,
+    ApiTokenId, AuthorizationDecisionRef, PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId,
+    Sha256Digest, TenantSupportGrantId,
 };
 use chrono::Duration as ChronoDuration;
-use std::collections::BTreeSet;
 
 const IDEMPOTENCY_SCOPE: &str = "tests/privileged-authorization-decisions";
 const DECISION_AUDIT_ACTION: &str = "identity.privileged-access.authorize";
@@ -113,6 +111,36 @@ pub async fn exercise_privileged_authorization_decision_authority(
             idempotency: idempotency("bootstrap-rbac")?,
         })
         .await?;
+    let owner_token = test_api_token(
+        organization_id,
+        owner,
+        "platform owner",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::hours(1),
+        None,
+    )?;
+    let approver_a_token = test_api_token(
+        organization_id,
+        approver_a,
+        "support approver a",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::hours(1),
+        None,
+    )?;
+    let approver_b_token = test_api_token(
+        organization_id,
+        approver_b,
+        "support approver b",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::hours(1),
+        None,
+    )?;
+    for (seed, credential) in [&owner_token, &approver_a_token, &approver_b_token]
+        .into_iter()
+        .enumerate()
+    {
+        persist_test_api_token(&database, credential, 200 + seed).await?;
+    }
     let role_race_binding = create_binding(
         &repository_a,
         installation_id,
@@ -120,6 +148,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         role_race_principal,
         PlatformRole::PlatformOperator,
         owner,
+        owner_token.id,
         "bind-role-race",
         now,
     )
@@ -131,6 +160,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         token_race_principal,
         PlatformRole::PlatformOperator,
         owner,
+        owner_token.id,
         "bind-token-race",
         now,
     )
@@ -142,6 +172,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         grant_race_principal,
         PlatformRole::PlatformOperator,
         owner,
+        owner_token.id,
         "bind-grant-race",
         now,
     )
@@ -153,6 +184,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         approver_a,
         PlatformRole::PlatformAdmin,
         owner,
+        owner_token.id,
         "bind-approver-a",
         now,
     )
@@ -164,12 +196,13 @@ pub async fn exercise_privileged_authorization_decision_authority(
         approver_b,
         PlatformRole::PlatformAdmin,
         owner,
+        owner_token.id,
         "bind-approver-b",
         now,
     )
     .await?;
 
-    let role_race_token = token(
+    let role_race_token = test_api_token(
         organization_id,
         role_race_principal,
         "role race",
@@ -177,7 +210,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(1),
         None,
     )?;
-    let token_race_token = token(
+    let token_race_token = test_api_token(
         organization_id,
         token_race_principal,
         "token race",
@@ -185,7 +218,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(1),
         None,
     )?;
-    let grant_race_token = token(
+    let grant_race_token = test_api_token(
         organization_id,
         grant_race_principal,
         "grant race",
@@ -193,7 +226,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(1),
         None,
     )?;
-    let read_only_token = token(
+    let read_only_token = test_api_token(
         organization_id,
         token_race_principal,
         "read only",
@@ -203,7 +236,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(1),
         None,
     )?;
-    let expired_token = token(
+    let expired_token = test_api_token(
         organization_id,
         token_race_principal,
         "expired",
@@ -211,7 +244,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(2),
         Some(now - ChronoDuration::minutes(1)),
     )?;
-    let mut revoked_token = token(
+    let mut revoked_token = test_api_token(
         organization_id,
         token_race_principal,
         "revoked",
@@ -220,14 +253,6 @@ pub async fn exercise_privileged_authorization_decision_authority(
         None,
     )?;
     assert!(revoked_token.revoke(now - ChronoDuration::minutes(1)));
-    let owner_token = token(
-        organization_id,
-        owner,
-        "wrong principal",
-        ApiTokenScope::bootstrap_scopes(),
-        now - ChronoDuration::hours(1),
-        None,
-    )?;
     for (index, value) in [
         &role_race_token,
         &token_race_token,
@@ -235,12 +260,11 @@ pub async fn exercise_privileged_authorization_decision_authority(
         &read_only_token,
         &expired_token,
         &revoked_token,
-        &owner_token,
     ]
     .into_iter()
     .enumerate()
     {
-        persist_token(&database, value, index).await?;
+        persist_test_api_token(&database, value, 210 + index).await?;
     }
 
     let grant = create_support_grant(
@@ -249,8 +273,11 @@ pub async fn exercise_privileged_authorization_decision_authority(
         organization_id,
         grant_race_principal,
         owner,
+        owner_token.id,
         approver_a,
+        approver_a_token.id,
         approver_b,
+        approver_b_token.id,
         now,
     )
     .await?;
@@ -367,6 +394,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
             binding_id: role_race_binding.id,
             expected_version: role_race_binding.aggregate_version,
             actor_principal_id: owner,
+            credential_id: owner_token.id,
             revoked_at: Utc::now(),
             request_id: Uuid::now_v7(),
             idempotency: idempotency("revoke-role-race")?,
@@ -445,7 +473,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
             grant_id: grant.id,
             expected_version: grant.aggregate_version,
             actor_principal_id: owner,
-            authentication: authentication("revoke-grant", 'f')?,
+            credential_id: owner_token.id,
             revoked_at: Utc::now(),
             request_id: Uuid::now_v7(),
             idempotency: idempotency("revoke-grant-race")?,
@@ -499,6 +527,7 @@ async fn create_binding(
     principal_id: PrincipalId,
     role: PlatformRole,
     actor: PrincipalId,
+    actor_credential_id: ApiTokenId,
     key: &str,
     created_at: chrono::DateTime<Utc>,
 ) -> Result<PlatformRoleBinding, Box<dyn std::error::Error>> {
@@ -515,65 +544,12 @@ async fn create_binding(
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: binding.clone(),
             actor_principal_id: actor,
+            credential_id: actor_credential_id,
             request_id: Uuid::now_v7(),
             idempotency: idempotency(key)?,
         })
         .await?;
     Ok(binding)
-}
-
-fn token(
-    organization_id: OrganizationId,
-    principal_id: PrincipalId,
-    name: &str,
-    scopes: BTreeSet<ApiTokenScope>,
-    created_at: chrono::DateTime<Utc>,
-    expires_at: Option<chrono::DateTime<Utc>>,
-) -> Result<ApiToken, Box<dyn std::error::Error>> {
-    Ok(ApiToken::issue(
-        ApiTokenId::new(),
-        organization_id,
-        principal_id,
-        ApiTokenName::parse(name)?,
-        scopes,
-        created_at,
-        expires_at,
-    )?)
-}
-
-async fn persist_token(
-    database: &Database<PostgresDialect, PostgresExecutor>,
-    token: &ApiToken,
-    index: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
-    database
-        .execute(
-            sql_query::<()>("insert into api_tokens (id, organization_id, principal_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (")
-                .bind(token.id.as_uuid())
-                .append(", ")
-                .bind(token.organization_id.as_uuid())
-                .append(", ")
-                .bind(token.principal_id.as_uuid())
-                .append(", ")
-                .bind(token.name.as_str())
-                .append(", ")
-                .bind(token.name.key())
-                .append(", ")
-                .bind(format!("sha256:{index:064x}"))
-                .append(", ")
-                .bind(serde_json::to_value(&token.scopes)?)
-                .append(", ")
-                .bind(token.aggregate_version)
-                .append(", ")
-                .bind(token.created_at)
-                .append(", ")
-                .bind(token.expires_at)
-                .append(", ")
-                .bind(token.revoked_at)
-                .append(")"),
-        )
-        .await?;
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -583,8 +559,11 @@ async fn create_support_grant(
     organization_id: OrganizationId,
     subject: PrincipalId,
     requester: PrincipalId,
+    requester_credential_id: ApiTokenId,
     approver_a: PrincipalId,
+    approver_a_credential_id: ApiTokenId,
     approver_b: PrincipalId,
+    approver_b_credential_id: ApiTokenId,
     now: chrono::DateTime<Utc>,
 ) -> Result<TenantSupportGrant, Box<dyn std::error::Error>> {
     let contract = TenantSupportGrantContract::from_spec(TenantSupportGrantContractSpec {
@@ -603,23 +582,30 @@ async fn create_support_grant(
         starts_at: now - ChronoDuration::minutes(1),
         expires_at: now + ChronoDuration::hours(1),
     })?;
-    let proposal = TenantSupportGrantProposal::propose(
-        contract,
-        requester,
-        authentication("propose-grant", 'b')?,
-        now - ChronoDuration::seconds(10),
-    )?;
-    repository
+    let proposal = repository
         .propose_tenant_support_grant(ProposeTenantSupportGrantWrite {
-            proposal: proposal.clone(),
+            contract,
             actor_principal_id: requester,
+            credential_id: requester_credential_id,
+            requested_at: now - ChronoDuration::seconds(10),
             request_id: Uuid::now_v7(),
             idempotency: idempotency("propose-grant")?,
         })
-        .await?;
-    for (approver, key, byte, offset) in [
-        (approver_a, "approve-grant-a", 'c', -8_i64),
-        (approver_b, "approve-grant-b", 'd', -7_i64),
+        .await?
+        .value;
+    for (approver, credential_id, key, offset) in [
+        (
+            approver_a,
+            approver_a_credential_id,
+            "approve-grant-a",
+            -8_i64,
+        ),
+        (
+            approver_b,
+            approver_b_credential_id,
+            "approve-grant-b",
+            -7_i64,
+        ),
     ] {
         repository
             .approve_tenant_support_grant(ApproveTenantSupportGrantWrite {
@@ -627,7 +613,7 @@ async fn create_support_grant(
                 grant_id: proposal.id,
                 expected_contract_digest: proposal.contract.digest().clone(),
                 actor_principal_id: approver,
-                authentication: authentication(key, byte)?,
+                credential_id,
                 approved_at: now + ChronoDuration::seconds(offset),
                 request_id: Uuid::now_v7(),
                 idempotency: idempotency(key)?,
@@ -729,16 +715,6 @@ async fn decision_audit_count(
         query = query.append(" and request_id = ").bind(request_id);
     }
     Ok(database.fetch_one_as(query).await?)
-}
-
-fn authentication(
-    key: &str,
-    digest_byte: char,
-) -> Result<DecisionEvidenceRef, Box<dyn std::error::Error>> {
-    Ok(DecisionEvidenceRef::new(
-        format!("urn:a3s:test:authentication:{key}"),
-        digest(digest_byte)?,
-    )?)
 }
 
 fn digest(byte: char) -> Result<Sha256Digest, Box<dyn std::error::Error>> {

@@ -2066,6 +2066,11 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
 
     assert_eq!(port.matches("pub trait IPlatformRbacRepository").count(), 1);
     assert_eq!(
+        port.matches("pub credential_id: ApiTokenId").count(),
+        4,
+        "every non-bootstrap platform RBAC write must carry the exact verified credential identity"
+    );
+    assert_eq!(
         persistence
             .matches("impl IPlatformRbacRepository for PostgresIdentityRepository")
             .count(),
@@ -2088,6 +2093,14 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
             "platform RBAC persistence lost authority rule {required}"
         );
     }
+    assert_eq!(
+        persistence
+            .matches("let authorization = issue_privileged_authorization(")
+            .count(),
+        4,
+        "every non-bootstrap platform RBAC mutation must authorize inside its PostgreSQL transaction"
+    );
+    assert!(persistence.contains("\"authorizationDecision\": authorization"));
     for forbidden in [
         "actor_is_platform_admin",
         "Redis",
@@ -2128,6 +2141,11 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     assert!(provider_gate.contains("concurrent platform RBAC bootstrap"));
     assert!(provider_gate.contains("concurrent owner revocation"));
     assert!(provider_gate.contains("concurrent policy CAS"));
+    assert!(provider_gate
+        .contains("business mutation and exact credential revocation were not serialized"));
+    assert!(provider_gate.contains(
+        "authorization decision and protected business fact must commit or roll back together"
+    ));
     assert!(provider_gate.contains("database trigger must reject last-owner bypasses"));
     assert!(
         workflow.contains("postgres_platform_rbac_is_atomic_recoverable_and_multi_replica_safe")
@@ -2326,6 +2344,12 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
         1
     );
     assert_eq!(
+        port.matches("pub credential_id: ApiTokenId").count(),
+        3,
+        "support proposal, approval, and revocation must carry exact verified credential identity"
+    );
+    assert!(!port.contains("pub authentication: DecisionEvidenceRef"));
+    assert_eq!(
         persistence
             .matches("impl ITenantSupportGrantRepository for PostgresIdentityRepository")
             .count(),
@@ -2348,6 +2372,15 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
             "tenant support persistence lost authority rule {required}"
         );
     }
+    assert_eq!(
+        persistence
+            .matches("let authorization = issue_privileged_authorization(")
+            .count(),
+        3,
+        "each support management mutation must authorize inside its PostgreSQL transaction"
+    );
+    assert!(persistence.contains("authorization.authentication"));
+    assert!(persistence.contains("\"authorizationDecision\": authorization"));
     for forbidden in [
         "actor_is_platform_admin",
         "Redis",

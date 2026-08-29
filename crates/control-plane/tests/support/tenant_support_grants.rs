@@ -8,13 +8,13 @@ use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     ProposeTenantSupportGrantWrite, RevokeTenantSupportGrantWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
-    PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,
+    ApiTokenScope, PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,
     TenantSupportApprovalRequirement, TenantSupportGrantContract, TenantSupportGrantContractSpec,
     TenantSupportGrantMode, TenantSupportPermission,
 };
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DecisionEvidenceRef, PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId, Sha256Digest,
+    ApiTokenId, PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId, Sha256Digest,
     TenantSupportGrantId,
 };
 use chrono::Duration as ChronoDuration;
@@ -104,6 +104,50 @@ pub async fn exercise_tenant_support_grant_authority(
         })
         .await?;
 
+    let requester_credential = test_api_token(
+        organization_id,
+        requester,
+        "support requester",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(4),
+        None,
+    )?;
+    let approver_a_credential = test_api_token(
+        organization_id,
+        approver_a,
+        "support approver a",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(4),
+        None,
+    )?;
+    let approver_b_credential = test_api_token(
+        organization_id,
+        approver_b,
+        "support approver b",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(4),
+        None,
+    )?;
+    let outsider_credential = test_api_token(
+        organization_id,
+        outsider,
+        "support outsider",
+        ApiTokenScope::bootstrap_scopes(),
+        now - ChronoDuration::minutes(4),
+        None,
+    )?;
+    for (seed, credential) in [
+        &requester_credential,
+        &approver_a_credential,
+        &approver_b_credential,
+        &outsider_credential,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        persist_test_api_token(&database, credential, 300 + seed).await?;
+    }
+
     create_binding(
         &repository_a,
         installation_id,
@@ -111,6 +155,7 @@ pub async fn exercise_tenant_support_grant_authority(
         approver_a,
         PlatformRole::PlatformAdmin,
         requester,
+        requester_credential.id,
         "bind-approver-a",
     )
     .await?;
@@ -121,6 +166,7 @@ pub async fn exercise_tenant_support_grant_authority(
         approver_b,
         PlatformRole::PlatformAdmin,
         requester,
+        requester_credential.id,
         "bind-approver-b",
     )
     .await?;
@@ -131,15 +177,15 @@ pub async fn exercise_tenant_support_grant_authority(
         outsider,
         PlatformRole::PlatformOperator,
         requester,
+        requester_credential.id,
         "bind-outsider",
     )
     .await?;
 
-    let proposal = support_proposal(
+    let contract = support_contract(
         installation_id,
         organization_id,
         subject,
-        requester,
         approver_a,
         approver_b,
         "INC-MT2-C2-1",
@@ -147,8 +193,10 @@ pub async fn exercise_tenant_support_grant_authority(
         now,
     )?;
     let proposal_write = ProposeTenantSupportGrantWrite {
-        proposal: proposal.clone(),
+        contract: contract.clone(),
         actor_principal_id: requester,
+        credential_id: requester_credential.id,
+        requested_at: now,
         request_id: Uuid::now_v7(),
         idempotency: idempotency("propose-main")?,
     };
@@ -156,7 +204,9 @@ pub async fn exercise_tenant_support_grant_authority(
         .propose_tenant_support_grant(proposal_write.clone())
         .await?;
     assert!(!proposed.replayed);
-    assert_eq!(proposed.value, proposal);
+    let proposal = proposed.value;
+    assert_eq!(proposal.contract, contract);
+    proposal.validate()?;
     assert!(
         repository_b
             .propose_tenant_support_grant(proposal_write)
@@ -216,7 +266,7 @@ pub async fn exercise_tenant_support_grant_authority(
         grant_id: proposal.id,
         expected_contract_digest: proposal.contract.digest().clone(),
         actor_principal_id: outsider,
-        authentication: authentication("outsider", 'd')?,
+        credential_id: outsider_credential.id,
         approved_at: now + ChronoDuration::seconds(1),
         request_id: Uuid::now_v7(),
         idempotency: idempotency("outsider-approval")?,
@@ -232,16 +282,16 @@ pub async fn exercise_tenant_support_grant_authority(
         installation_id,
         &proposal,
         approver_a,
+        approver_a_credential.id,
         "approver-a-main",
-        'e',
         now + ChronoDuration::seconds(2),
     )?;
     let approval_b = approval_write(
         installation_id,
         &proposal,
         approver_b,
+        approver_b_credential.id,
         "approver-b-main",
-        'f',
         now + ChronoDuration::seconds(3),
     )?;
     let (approved_a, approved_b) = tokio::join!(
@@ -286,7 +336,7 @@ pub async fn exercise_tenant_support_grant_authority(
         grant_id: proposal.id,
         expected_version: 1,
         actor_principal_id: requester,
-        authentication: authentication("revoke", 'a')?,
+        credential_id: requester_credential.id,
         revoked_at: now + ChronoDuration::seconds(4),
         request_id: Uuid::now_v7(),
         idempotency: idempotency("revoke-main")?,
@@ -328,32 +378,34 @@ pub async fn exercise_tenant_support_grant_authority(
         "actual approval evidence must be immutable"
     );
 
-    let blocked = support_proposal(
+    let blocked_contract = support_contract(
         installation_id,
         organization_id,
         subject,
-        requester,
         approver_a,
         approver_b,
         "INC-MT2-C2-2",
         'b',
         now + ChronoDuration::seconds(10),
     )?;
-    repository_a
+    let blocked = repository_a
         .propose_tenant_support_grant(ProposeTenantSupportGrantWrite {
-            proposal: blocked.clone(),
+            contract: blocked_contract,
             actor_principal_id: requester,
+            credential_id: requester_credential.id,
+            requested_at: now + ChronoDuration::seconds(10),
             request_id: Uuid::now_v7(),
             idempotency: idempotency("propose-blocked")?,
         })
-        .await?;
+        .await?
+        .value;
     repository_a
         .approve_tenant_support_grant(approval_write(
             installation_id,
             &blocked,
             approver_a,
+            approver_a_credential.id,
             "approver-a-blocked",
-            'c',
             now + ChronoDuration::seconds(11),
         )?)
         .await?;
@@ -371,8 +423,8 @@ pub async fn exercise_tenant_support_grant_authority(
                 installation_id,
                 &blocked,
                 approver_b,
+                approver_b_credential.id,
                 "approver-b-blocked",
-                'd',
                 now + ChronoDuration::seconds(13),
             )?)
             .await,
@@ -419,41 +471,36 @@ pub async fn exercise_tenant_support_grant_authority(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn support_proposal(
+fn support_contract(
     installation_id: InstallationId,
     organization_id: OrganizationId,
     subject: PrincipalId,
-    requester: PrincipalId,
     approver_a: PrincipalId,
     approver_b: PrincipalId,
     case_reference: &str,
     digest_byte: char,
     requested_at: chrono::DateTime<Utc>,
-) -> Result<TenantSupportGrantProposal, Box<dyn std::error::Error>> {
-    let contract = TenantSupportGrantContract::from_spec(TenantSupportGrantContractSpec {
-        grant_id: TenantSupportGrantId::new(),
-        principal_id: subject,
-        scope: ScopeContext::organization(installation_id, organization_id)?,
-        permissions: vec![
-            TenantSupportPermission::HealthRead,
-            TenantSupportPermission::ResourceMetadataRead,
-        ],
-        case_reference: case_reference.into(),
-        justification_digest: digest(digest_byte)?,
-        mode: TenantSupportGrantMode::Standard,
-        approval_requirement: TenantSupportApprovalRequirement::Dual,
-        approver_ids: vec![approver_a, approver_b],
-        tenant_notification: TenantNotificationRequirement::Required,
-        security_alert_required: false,
-        post_incident_review_required: false,
-        starts_at: requested_at - ChronoDuration::minutes(1),
-        expires_at: requested_at + ChronoDuration::hours(1),
-    })?;
-    Ok(TenantSupportGrantProposal::propose(
-        contract,
-        requester,
-        authentication(case_reference, digest_byte)?,
-        requested_at,
+) -> Result<TenantSupportGrantContract, Box<dyn std::error::Error>> {
+    Ok(TenantSupportGrantContract::from_spec(
+        TenantSupportGrantContractSpec {
+            grant_id: TenantSupportGrantId::new(),
+            principal_id: subject,
+            scope: ScopeContext::organization(installation_id, organization_id)?,
+            permissions: vec![
+                TenantSupportPermission::HealthRead,
+                TenantSupportPermission::ResourceMetadataRead,
+            ],
+            case_reference: case_reference.into(),
+            justification_digest: digest(digest_byte)?,
+            mode: TenantSupportGrantMode::Standard,
+            approval_requirement: TenantSupportApprovalRequirement::Dual,
+            approver_ids: vec![approver_a, approver_b],
+            tenant_notification: TenantNotificationRequirement::Required,
+            security_alert_required: false,
+            post_incident_review_required: false,
+            starts_at: requested_at - ChronoDuration::minutes(1),
+            expires_at: requested_at + ChronoDuration::hours(1),
+        },
     )?)
 }
 
@@ -461,8 +508,8 @@ fn approval_write(
     installation_id: InstallationId,
     proposal: &TenantSupportGrantProposal,
     actor_principal_id: PrincipalId,
+    credential_id: ApiTokenId,
     key: &str,
-    digest_byte: char,
     approved_at: chrono::DateTime<Utc>,
 ) -> Result<ApproveTenantSupportGrantWrite, Box<dyn std::error::Error>> {
     Ok(ApproveTenantSupportGrantWrite {
@@ -470,13 +517,14 @@ fn approval_write(
         grant_id: proposal.id,
         expected_contract_digest: proposal.contract.digest().clone(),
         actor_principal_id,
-        authentication: authentication(key, digest_byte)?,
+        credential_id,
         approved_at,
         request_id: Uuid::now_v7(),
         idempotency: idempotency(key)?,
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_binding(
     repository: &PostgresIdentityRepository,
     installation_id: InstallationId,
@@ -484,6 +532,7 @@ async fn create_binding(
     principal_id: PrincipalId,
     role: PlatformRole,
     actor: PrincipalId,
+    actor_credential_id: ApiTokenId,
     key: &str,
 ) -> Result<PlatformRoleBinding, Box<dyn std::error::Error>> {
     let binding = PlatformRoleBinding::create(
@@ -499,21 +548,12 @@ async fn create_binding(
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: binding.clone(),
             actor_principal_id: actor,
+            credential_id: actor_credential_id,
             request_id: Uuid::now_v7(),
             idempotency: idempotency(key)?,
         })
         .await?;
     Ok(binding)
-}
-
-fn authentication(
-    key: &str,
-    digest_byte: char,
-) -> Result<DecisionEvidenceRef, Box<dyn std::error::Error>> {
-    Ok(DecisionEvidenceRef::new(
-        format!("urn:a3s:test:authentication:{key}"),
-        digest(digest_byte)?,
-    )?)
 }
 
 fn digest(byte: char) -> Result<Sha256Digest, Box<dyn std::error::Error>> {

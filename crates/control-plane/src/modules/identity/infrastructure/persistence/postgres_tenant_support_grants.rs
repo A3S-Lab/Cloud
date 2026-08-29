@@ -3,6 +3,7 @@ use super::postgres_platform_rbac::{
     load_active_actor_binding, load_active_principal_for_share, load_current_policy_for_update,
     lock_installation, require_permission,
 };
+use super::postgres_privileged_authorization_decisions::issue_privileged_authorization;
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, store_audit, store_idempotency, store_outbox, transaction_error,
@@ -19,12 +20,14 @@ use crate::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
     RevokeTenantSupportGrantWrite,
 };
+use crate::modules::identity::domain::services::PrivilegedAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::{
     PlatformPermission, TenantSupportGrantContract,
 };
 use crate::modules::shared_kernel::domain::{
-    DecisionEvidenceRef, IdempotentWrite, InstallationId, PlatformRoleBindingId,
-    PlatformRolePolicyRevisionId, PrincipalId, RepositoryError, Sha256Digest, TenantSupportGrantId,
+    ApiTokenId, AuthorizationDecisionRef, DecisionEvidenceRef, IdempotentWrite, InstallationId,
+    PlatformRoleBindingId, PlatformRolePolicyRevisionId, PrincipalId, RepositoryError,
+    ScopeContext, Sha256Digest, TenantSupportGrantId,
 };
 use a3s_orm::{sql_query, Database, DecodeError, FromRow, PostgresDialect, Row};
 use async_trait::async_trait;
@@ -501,6 +504,7 @@ async fn insert_grant(
 async fn store_proposal_facts(
     transaction: &a3s_orm::PostgresTransaction,
     proposal: &TenantSupportGrantProposal,
+    authorization: &AuthorizationDecisionRef,
     request_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
     store_outbox(
@@ -523,6 +527,7 @@ async fn store_proposal_facts(
                 "contractDigest": proposal.contract.digest(),
                 "requiredApproverIds": proposal.contract.spec().approver_ids,
                 "authentication": proposal.authentication,
+                "authorizationDecision": authorization,
             }),
         },
     )
@@ -534,6 +539,7 @@ async fn store_approval_facts(
     proposal: &TenantSupportGrantProposal,
     approval: &TenantSupportGrantApproval,
     ordinal: u64,
+    authorization: &AuthorizationDecisionRef,
     request_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
     store_outbox(
@@ -558,6 +564,7 @@ async fn store_approval_facts(
                 "bindingVersion": approval.binding_version,
                 "approvalEvidenceDigest": approval.digest,
                 "authentication": approval.authentication,
+                "authorizationDecision": authorization,
                 "approvalOrdinal": ordinal,
             }),
         },
@@ -571,6 +578,7 @@ async fn store_grant_facts(
     action: &'static str,
     actor_id: PrincipalId,
     authentication: Option<&DecisionEvidenceRef>,
+    authorization: Option<&AuthorizationDecisionRef>,
     request_id: Uuid,
 ) -> Result<(), PostgresPersistenceError> {
     let event = match action {
@@ -604,10 +612,42 @@ async fn store_grant_facts(
                 "revocationGeneration": grant.revocation_generation,
                 "revokedBy": grant.revoked_by,
                 "authentication": authentication,
+                "authorizationDecision": authorization,
             }),
         },
     )
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+fn tenant_support_management_authorization_request(
+    installation_id: InstallationId,
+    principal_id: PrincipalId,
+    credential_id: ApiTokenId,
+    action: &'static str,
+    scope: ScopeContext,
+    grant_id: TenantSupportGrantId,
+    request_id: Uuid,
+) -> Result<PrivilegedAuthorizationDecisionRequest, PostgresPersistenceError> {
+    scope
+        .validate()
+        .map_err(PostgresPersistenceError::Invariant)?;
+    if scope.installation_id() != installation_id {
+        return Err(PostgresPersistenceError::Invariant(
+            "tenant support authorization crossed Installation scope".into(),
+        ));
+    }
+    Ok(PrivilegedAuthorizationDecisionRequest {
+        principal_id,
+        credential_id,
+        platform_permission: PlatformPermission::TenantSupportManage,
+        support_permission: None,
+        support_grant_id: None,
+        action: action.into(),
+        scope,
+        resource_id: grant_id.as_uuid(),
+        request_id,
+    })
 }
 
 fn validate_replayed_proposal(
@@ -668,26 +708,34 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
             .transaction(move |transaction| {
                 Box::pin(async move {
                     write
-                        .proposal
+                        .contract
                         .validate()
                         .map_err(PostgresPersistenceError::Invariant)?;
-                    let installation_id = write.proposal.contract.spec().installation_id();
-                    if write.actor_principal_id != write.proposal.requested_by {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "tenant support proposal actor does not match its requester".into(),
-                        ));
-                    }
+                    let installation_id = write.contract.spec().installation_id();
                     lock_installation(transaction, installation_id).await?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        tenant_support_management_authorization_request(
+                            installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            "identity.tenant-support-grant.proposed",
+                            write.contract.spec().scope,
+                            write.contract.spec().grant_id,
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let policy = load_current_policy_for_update(transaction, installation_id)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
-                    let actor = load_active_actor_binding(
-                        transaction,
-                        installation_id,
+                    let proposal = TenantSupportGrantProposal::propose(
+                        write.contract,
                         write.actor_principal_id,
+                        authorization.authentication,
+                        write.requested_at,
                     )
-                    .await?;
-                    require_permission(&policy, &actor, PlatformPermission::TenantSupportManage)?;
+                    .map_err(PostgresPersistenceError::Invariant)?;
                     if let Some(replayed) = idempotency_replay::<TenantSupportGrantProposal>(
                         transaction,
                         &write.idempotency,
@@ -698,11 +746,11 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                     }
                     require_active_human(
                         transaction,
-                        write.proposal.contract.spec().principal_id,
+                        proposal.contract.spec().principal_id,
                         "subject",
                     )
                     .await?;
-                    for approver_id in &write.proposal.contract.spec().approver_ids {
+                    for approver_id in &proposal.contract.spec().approver_ids {
                         require_current_support_manager(
                             transaction,
                             installation_id,
@@ -711,7 +759,7 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                         )
                         .await?;
                     }
-                    match insert_proposal(transaction, &write.proposal).await {
+                    match insert_proposal(transaction, &proposal).await {
                         Ok(()) => {}
                         Err(error) if is_unique_violation(&error) => {
                             return Err(RepositoryError::Conflict(
@@ -724,10 +772,16 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                         }
                         Err(error) => return Err(error),
                     }
-                    store_proposal_facts(transaction, &write.proposal, write.request_id).await?;
-                    store_idempotency(transaction, &write.idempotency, &write.proposal).await?;
+                    store_proposal_facts(
+                        transaction,
+                        &proposal,
+                        &authorization.reference,
+                        write.request_id,
+                    )
+                    .await?;
+                    store_idempotency(transaction, &write.idempotency, &proposal).await?;
                     Ok(IdempotentWrite {
-                        value: write.proposal,
+                        value: proposal,
                         replayed: false,
                     })
                 })
@@ -743,21 +797,37 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    write
-                        .authentication
-                        .validate()
-                        .map_err(PostgresPersistenceError::Invariant)?;
                     Sha256Digest::parse(write.expected_contract_digest.as_str())
                         .map_err(PostgresPersistenceError::Invariant)?;
                     lock_installation(transaction, write.installation_id).await?;
+                    let proposal = load_proposal_for_update(
+                        transaction,
+                        write.installation_id,
+                        write.grant_id,
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        tenant_support_management_authorization_request(
+                            write.installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            "identity.tenant-support-grant.approved",
+                            proposal.contract.spec().scope,
+                            write.grant_id,
+                            write.request_id,
+                        )?,
+                    )
+                    .await?;
                     let policy = load_current_policy_for_update(transaction, write.installation_id)
                         .await?
                         .ok_or(RepositoryError::NotFound)?;
-                    let actor = require_current_support_manager(
+                    require_active_human(transaction, write.actor_principal_id, "approver").await?;
+                    let actor = load_active_actor_binding(
                         transaction,
                         write.installation_id,
                         write.actor_principal_id,
-                        &policy,
                     )
                     .await?;
                     if let Some(replayed) = idempotency_replay::<TenantSupportGrantApprovalOutcome>(
@@ -768,13 +838,6 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                     {
                         return validate_replayed_approval(replayed, write.installation_id);
                     }
-                    let proposal = load_proposal_for_update(
-                        transaction,
-                        write.installation_id,
-                        write.grant_id,
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)?;
                     if proposal.contract.digest() != &write.expected_contract_digest {
                         return Err(RepositoryError::Conflict(
                             "tenant support grant intent digest changed before approval".into(),
@@ -801,7 +864,7 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                     let approval = TenantSupportGrantApproval::record(
                         &proposal,
                         write.actor_principal_id,
-                        write.authentication,
+                        authorization.authentication,
                         &policy,
                         &actor,
                         write.approved_at,
@@ -831,6 +894,7 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                         &proposal,
                         &approval,
                         approval_ordinal,
+                        &authorization.reference,
                         write.request_id,
                     )
                     .await?;
@@ -879,6 +943,7 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                             "identity.tenant-support-grant.accepted",
                             write.actor_principal_id,
                             Some(&approval.authentication),
+                            Some(&authorization.reference),
                             write.request_id,
                         )
                         .await?;
@@ -912,31 +977,30 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    write
-                        .authentication
-                        .validate()
-                        .map_err(PostgresPersistenceError::Invariant)?;
                     lock_installation(transaction, write.installation_id).await?;
-                    let policy = load_current_policy_for_update(transaction, write.installation_id)
-                        .await?
-                        .ok_or(RepositoryError::NotFound)?;
-                    let actor = load_active_actor_binding(
+                    let mut grant =
+                        load_grant_for_update(transaction, write.installation_id, write.grant_id)
+                            .await?
+                            .ok_or(RepositoryError::NotFound)?;
+                    let authorization = issue_privileged_authorization(
                         transaction,
-                        write.installation_id,
-                        write.actor_principal_id,
+                        tenant_support_management_authorization_request(
+                            write.installation_id,
+                            write.actor_principal_id,
+                            write.credential_id,
+                            "identity.tenant-support-grant.revoked",
+                            grant.contract.spec().scope,
+                            write.grant_id,
+                            write.request_id,
+                        )?,
                     )
                     .await?;
-                    require_permission(&policy, &actor, PlatformPermission::TenantSupportManage)?;
                     if let Some(replayed) =
                         idempotency_replay::<TenantSupportGrant>(transaction, &write.idempotency)
                             .await?
                     {
                         return validate_replayed_grant(replayed, write.installation_id);
                     }
-                    let mut grant =
-                        load_grant_for_update(transaction, write.installation_id, write.grant_id)
-                            .await?
-                            .ok_or(RepositoryError::NotFound)?;
                     if grant.revoked_at.is_some()
                         || grant.aggregate_version != write.expected_version
                     {
@@ -976,7 +1040,8 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                         &grant,
                         "identity.tenant-support-grant.revoked",
                         write.actor_principal_id,
-                        Some(&write.authentication),
+                        Some(&authorization.authentication),
+                        Some(&authorization.reference),
                         write.request_id,
                     )
                     .await?;
