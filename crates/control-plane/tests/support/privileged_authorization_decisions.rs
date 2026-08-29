@@ -26,6 +26,8 @@ use chrono::Duration as ChronoDuration;
 
 const IDEMPOTENCY_SCOPE: &str = "tests/privileged-authorization-decisions";
 const DECISION_AUDIT_ACTION: &str = "identity.privileged-access.authorize";
+const TEST_AUTHORIZED_ACTION: &str = "identity.privileged-access.test";
+const EXPECTED_PROTECTED_MUTATION_DECISIONS: i64 = 10;
 
 pub async fn exercise_privileged_authorization_decision_authority(
     postgres_url: String,
@@ -501,9 +503,14 @@ pub async fn exercise_privileged_authorization_decision_authority(
     ));
 
     assert_eq!(
-        decision_audit_count(&database, None).await?,
+        authorized_action_decision_audit_count(&database, TEST_AUTHORIZED_ACTION).await?,
         successful_decisions,
-        "every successful allow and only a successful allow must persist one shared Audit fact"
+        "every successful standalone allow and only a successful standalone allow must persist one shared Audit fact"
+    );
+    assert_eq!(
+        decision_audit_count(&database, None).await? - successful_decisions,
+        EXPECTED_PROTECTED_MUTATION_DECISIONS,
+        "each protected RBAC/support mutation must persist one decision in its business transaction"
     );
     assert_eq!(
         database
@@ -638,7 +645,7 @@ fn platform_request(
         platform_permission: permission,
         support_permission: None,
         support_grant_id: None,
-        action: "identity.privileged-access.test".into(),
+        action: TEST_AUTHORIZED_ACTION.into(),
         scope: ScopeContext::installation(installation_id)?,
         resource_id: Uuid::now_v7(),
         request_id: Uuid::now_v7(),
@@ -658,7 +665,7 @@ fn support_request(
         platform_permission: PlatformPermission::TenantSupportUse,
         support_permission: Some(TenantSupportPermission::HealthRead),
         support_grant_id: Some(grant_id),
-        action: "identity.privileged-access.test".into(),
+        action: TEST_AUTHORIZED_ACTION.into(),
         scope: ScopeContext::organization(installation_id, organization_id)?,
         resource_id: Uuid::now_v7(),
         request_id: Uuid::now_v7(),
@@ -715,6 +722,20 @@ async fn decision_audit_count(
         query = query.append(" and request_id = ").bind(request_id);
     }
     Ok(database.fetch_one_as(query).await?)
+}
+
+async fn authorized_action_decision_audit_count(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    authorized_action: &str,
+) -> Result<i64, Box<dyn std::error::Error>> {
+    Ok(database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from audit_records where action = ")
+                .bind(DECISION_AUDIT_ACTION)
+                .append(" and details ->> 'action' = ")
+                .bind(authorized_action),
+        )
+        .await?)
 }
 
 fn digest(byte: char) -> Result<Sha256Digest, Box<dyn std::error::Error>> {

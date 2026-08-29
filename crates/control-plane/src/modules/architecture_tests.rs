@@ -2567,7 +2567,8 @@ fn privileged_authorization_uses_one_atomic_identity_decision_and_shared_audit_a
         "revoke_platform_role_binding",
         "repository_b.revoke(",
         "revoke_tenant_support_grant",
-        "every successful allow and only a successful allow",
+        "every successful standalone allow and only a successful standalone allow",
+        "each protected RBAC/support mutation must persist one decision",
         "a request-time allow must not introduce a second event mechanism",
     ] {
         assert!(
