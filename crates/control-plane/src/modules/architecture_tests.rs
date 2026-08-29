@@ -2301,15 +2301,15 @@ fn privileged_tenant_support_reuses_one_decision_evidence_mechanism_and_never_im
 fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authorities() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(
-        manifest.join(
-            "src/modules/identity/domain/repositories/tenant_support_grant_repository.rs",
-        ),
+        manifest
+            .join("src/modules/identity/domain/repositories/tenant_support_grant_repository.rs"),
     )
     .expect("read tenant support grant repository port");
-    let persistence = std::fs::read_to_string(manifest.join(
-        "src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs",
-    ))
-    .expect("read tenant support grant PostgreSQL adapter");
+    let persistence =
+        std::fs::read_to_string(manifest.join(
+            "src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs",
+        ))
+        .expect("read tenant support grant PostgreSQL adapter");
     let migration = std::fs::read_to_string(
         manifest.join("../../migrations/178_tenant_support_grant_approvals.sql"),
     )
@@ -2401,9 +2401,8 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
             "tenant support provider gate lost proof {required}"
         );
     }
-    assert!(workflow.contains(
-        "postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"
-    ));
+    assert!(workflow
+        .contains("postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"));
 }
 
 #[test]
