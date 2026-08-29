@@ -285,6 +285,24 @@ pub(super) async fn load_api_token_for_update(
     .map_err(Into::into)
 }
 
+pub(super) async fn load_api_token_by_id_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    token_id: ApiTokenId,
+) -> Result<Option<ApiToken>, PostgresPersistenceError> {
+    fetch_optional::<ApiTokenRow, _>(
+        transaction,
+        sql_query::<ApiTokenRow>(
+            "select id, organization_id, principal_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where id = ",
+        )
+        .bind(token_id.as_uuid())
+        .append(" for share"),
+    )
+    .await?
+    .map(decode_token)
+    .transpose()
+    .map_err(Into::into)
+}
+
 pub(super) type PrincipalRow = (
     Uuid,
     String,

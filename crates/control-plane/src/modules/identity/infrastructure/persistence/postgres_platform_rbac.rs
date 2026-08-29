@@ -131,13 +131,33 @@ pub(super) async fn lock_installation(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
 ) -> Result<(), PostgresPersistenceError> {
+    lock_installation_with(transaction, installation_id, " for update of installation").await
+}
+
+pub(super) async fn lock_installation_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+) -> Result<(), PostgresPersistenceError> {
+    lock_installation_with(
+        transaction,
+        installation_id,
+        " for key share of installation",
+    )
+    .await
+}
+
+async fn lock_installation_with(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    lock_clause: &'static str,
+) -> Result<(), PostgresPersistenceError> {
     let locked = fetch_optional::<Uuid, _>(
         transaction,
         sql_query::<Uuid>(
             "select installation.id from cloud_installations installation where installation.singleton_key and installation.id = ",
         )
         .bind(installation_id.as_uuid())
-        .append(" for update of installation"),
+        .append(lock_clause),
     )
     .await?;
     if locked.is_none() {
@@ -157,6 +177,24 @@ pub(super) async fn load_active_principal_for_share(
         )
         .bind(principal_id.as_uuid())
         .append(" and principal.disabled_at is null for key share of principal"),
+    )
+    .await?
+    .map(decode_principal)
+    .transpose()
+    .map_err(Into::into)
+}
+
+pub(super) async fn load_active_principal_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    principal_id: PrincipalId,
+) -> Result<Option<IdentityPrincipal>, PostgresPersistenceError> {
+    fetch_optional::<PrincipalRow, _>(
+        transaction,
+        sql_query::<PrincipalRow>(
+            "select id, kind, name, aggregate_version, created_at, disabled_at from identity_principals principal where principal.id = ",
+        )
+        .bind(principal_id.as_uuid())
+        .append(" and principal.disabled_at is null for share of principal"),
     )
     .await?
     .map(decode_principal)
@@ -184,12 +222,27 @@ pub(super) async fn load_current_policy_for_update(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
 ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, PostgresPersistenceError> {
+    load_current_policy_with_lock(transaction, installation_id, " for update of head").await
+}
+
+pub(super) async fn load_current_policy_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+) -> Result<Option<AcceptedPlatformRolePolicyRevision>, PostgresPersistenceError> {
+    load_current_policy_with_lock(transaction, installation_id, " for share of head").await
+}
+
+async fn load_current_policy_with_lock(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    lock_clause: &'static str,
+) -> Result<Option<AcceptedPlatformRolePolicyRevision>, PostgresPersistenceError> {
     fetch_optional::<PlatformRolePolicyRevisionRow, _>(
         transaction,
         sql_query::<PlatformRolePolicyRevisionRow>(SELECT_PLATFORM_ROLE_POLICY_REVISION)
             .append(" join platform_role_policy_heads head on head.installation_id = revision.installation_id and head.policy_id = revision.policy_id and head.revision_id = revision.id and head.revision_number = revision.revision_number where head.installation_id = ")
             .bind(installation_id.as_uuid())
-            .append(" for update of head"),
+            .append(lock_clause),
     )
     .await?
     .map(decode_platform_role_policy_revision)
@@ -222,6 +275,35 @@ pub(super) async fn load_active_actor_binding(
     installation_id: InstallationId,
     principal_id: PrincipalId,
 ) -> Result<PlatformRoleBinding, PostgresPersistenceError> {
+    load_active_actor_binding_with_lock(
+        transaction,
+        installation_id,
+        principal_id,
+        " and binding.revoked_at is null for update of binding for key share of principal",
+    )
+    .await
+}
+
+pub(super) async fn load_active_actor_binding_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    principal_id: PrincipalId,
+) -> Result<PlatformRoleBinding, PostgresPersistenceError> {
+    load_active_actor_binding_with_lock(
+        transaction,
+        installation_id,
+        principal_id,
+        " and binding.revoked_at is null for share of binding, principal",
+    )
+    .await
+}
+
+async fn load_active_actor_binding_with_lock(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    principal_id: PrincipalId,
+    lock_clause: &'static str,
+) -> Result<PlatformRoleBinding, PostgresPersistenceError> {
     fetch_optional::<PlatformRoleBindingRow, _>(
         transaction,
         sql_query::<PlatformRoleBindingRow>(SELECT_PLATFORM_ROLE_BINDING)
@@ -229,7 +311,7 @@ pub(super) async fn load_active_actor_binding(
             .bind(installation_id.as_uuid())
             .append(" and binding.principal_id = ")
             .bind(principal_id.as_uuid())
-            .append(" and binding.revoked_at is null for update of binding for key share of principal"),
+            .append(lock_clause),
     )
     .await?
     .map(decode_platform_role_binding)

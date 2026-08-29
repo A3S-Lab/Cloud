@@ -1,13 +1,13 @@
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, IdentityPrincipal, IdentityPrincipalKind,
+    AcceptedPlatformRolePolicyRevision, ApiToken, IdentityPrincipal, IdentityPrincipalKind,
     PlatformRoleBinding, TenantSupportGrant,
 };
 use crate::modules::identity::domain::value_objects::{
-    PlatformPermission, PlatformRole, PlatformRolePolicyContract, TenantSupportGrantContract,
-    TenantSupportPermission,
+    ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,
+    TenantSupportGrantContract, TenantSupportPermission,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, canonical_timestamp, sha256_digest, validate_audit_action,
+    canonical_json_bounded, canonical_timestamp, sha256_digest, validate_audit_action, ApiTokenId,
     AuthorizationDecisionRef, DecisionEvidenceRef, InstallationId, PlatformRoleBindingId,
     PlatformRolePolicyId, PlatformRolePolicyRevisionId, PrincipalId,
     PrivilegedAuthorizationDecisionId, ScopeContext, Sha256Digest, TenantSupportGrantId,
@@ -21,7 +21,10 @@ const PRIVILEGED_AUTHORIZATION_DECISION_API_VERSION: &str =
     "a3s.dev/cloud/privileged-authorization-decision/v1";
 const PRIVILEGED_AUTHORIZATION_DECISION_REFERENCE_PREFIX: &str =
     "urn:a3s:cloud:identity:privileged-authorization-decision:";
+const PRIVILEGED_AUTHENTICATION_REFERENCE_PREFIX: &str =
+    "urn:a3s:cloud:identity:api-token-authentication:";
 const PRIVILEGED_AUTHORIZATION_DECISION_MAX_BYTES: usize = 256 * 1024;
+const PRIVILEGED_CREDENTIAL_EVIDENCE_MAX_BYTES: usize = 32 * 1024;
 const MAX_BINDING_EVIDENCE: usize = 16;
 const MAX_PORTABLE_VERSION: u64 = 9_007_199_254_740_991;
 
@@ -29,8 +32,10 @@ const MAX_PORTABLE_VERSION: u64 = 9_007_199_254_740_991;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrivilegedAuthorizationDecisionRequest {
     pub principal_id: PrincipalId,
-    pub authentication: DecisionEvidenceRef,
+    pub credential_id: ApiTokenId,
     pub platform_permission: PlatformPermission,
+    pub support_permission: Option<TenantSupportPermission>,
+    pub support_grant_id: Option<TenantSupportGrantId>,
     pub action: String,
     pub scope: ScopeContext,
     pub resource_id: Uuid,
@@ -39,16 +44,83 @@ pub struct PrivilegedAuthorizationDecisionRequest {
 
 impl PrivilegedAuthorizationDecisionRequest {
     pub fn validate(&self) -> Result<(), String> {
-        self.authentication.validate()?;
         self.scope.validate()?;
         if self.principal_id.as_uuid().is_nil()
+            || self.credential_id.as_uuid().is_nil()
             || self.resource_id.is_nil()
             || self.request_id.is_nil()
             || validate_audit_action(&self.action).is_err()
+            || (self.support_permission.is_some() != self.support_grant_id.is_some())
+            || (self.support_permission.is_some()
+                != (self.platform_permission == PlatformPermission::TenantSupportUse))
         {
             return Err("privileged authorization request is invalid".into());
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrivilegedCredentialDecisionEvidence {
+    pub id: ApiTokenId,
+    pub organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+    pub principal_id: PrincipalId,
+    pub aggregate_version: u64,
+    pub scopes: Vec<ApiTokenScope>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl PrivilegedCredentialDecisionEvidence {
+    fn from_token(value: &ApiToken) -> Self {
+        Self {
+            id: value.id,
+            organization_id: value.organization_id,
+            principal_id: value.principal_id,
+            aggregate_version: value.aggregate_version,
+            scopes: value.scopes.iter().cloned().collect(),
+            created_at: value.created_at,
+            expires_at: value.expires_at,
+            revoked_at: value.revoked_at,
+        }
+    }
+
+    fn validate(&self, principal_id: PrincipalId, decided_at: DateTime<Utc>) -> Result<(), String> {
+        if self.id.as_uuid().is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.principal_id != principal_id
+            || self.aggregate_version == 0
+            || self.aggregate_version > MAX_PORTABLE_VERSION
+            || self.scopes.is_empty()
+            || self.scopes.windows(2).any(|pair| pair[0] >= pair[1])
+            || self.created_at != canonical_timestamp(self.created_at)
+            || self.expires_at.is_some_and(|value| {
+                value != canonical_timestamp(value) || value <= self.created_at
+            })
+            || self.revoked_at.is_some()
+            || decided_at < self.created_at
+            || self.expires_at.is_some_and(|value| decided_at >= value)
+        {
+            return Err("privileged credential decision evidence is invalid".into());
+        }
+        Ok(())
+    }
+
+    fn authentication(&self) -> Result<DecisionEvidenceRef, String> {
+        let canonical = canonical_json_bounded(
+            self,
+            PRIVILEGED_CREDENTIAL_EVIDENCE_MAX_BYTES,
+            "privileged credential decision evidence",
+        )?;
+        DecisionEvidenceRef::new(
+            format!(
+                "{PRIVILEGED_AUTHENTICATION_REFERENCE_PREFIX}{}:v{}",
+                self.id, self.aggregate_version
+            ),
+            Sha256Digest::parse(sha256_digest(&canonical))?,
+        )
     }
 }
 
@@ -150,6 +222,7 @@ pub struct PrivilegedAuthorizationDecision {
     pub principal_id: PrincipalId,
     pub principal_version: u64,
     pub principal_kind: IdentityPrincipalKind,
+    pub credential: PrivilegedCredentialDecisionEvidence,
     pub authentication: DecisionEvidenceRef,
     pub platform_permission: PlatformPermission,
     pub support_permission: Option<TenantSupportPermission>,
@@ -173,6 +246,7 @@ struct PrivilegedAuthorizationDecisionDigestContent<'a> {
     principal_id: PrincipalId,
     principal_version: u64,
     principal_kind: IdentityPrincipalKind,
+    credential: &'a PrivilegedCredentialDecisionEvidence,
     authentication: &'a DecisionEvidenceRef,
     platform_permission: PlatformPermission,
     support_permission: Option<TenantSupportPermission>,
@@ -191,12 +265,13 @@ impl PrivilegedAuthorizationDecision {
         id: PrivilegedAuthorizationDecisionId,
         request: PrivilegedAuthorizationDecisionRequest,
         principal: &IdentityPrincipal,
+        credential: &ApiToken,
         policy: &AcceptedPlatformRolePolicyRevision,
         bindings: &[PlatformRoleBinding],
         decided_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         Self::issue(
-            id, request, principal, policy, bindings, None, None, decided_at,
+            id, request, principal, credential, policy, bindings, None, decided_at,
         )
     }
 
@@ -205,28 +280,32 @@ impl PrivilegedAuthorizationDecision {
         id: PrivilegedAuthorizationDecisionId,
         request: PrivilegedAuthorizationDecisionRequest,
         principal: &IdentityPrincipal,
+        credential: &ApiToken,
         policy: &AcceptedPlatformRolePolicyRevision,
         bindings: &[PlatformRoleBinding],
         grant: &TenantSupportGrant,
-        support_permission: TenantSupportPermission,
         decided_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         Self::issue(
             id,
             request,
             principal,
+            credential,
             policy,
             bindings,
             Some(grant),
-            Some(support_permission),
             decided_at,
         )
     }
 
     pub fn validate(&self) -> Result<(), String> {
         self.authentication.validate()?;
+        self.credential
+            .validate(self.principal_id, self.decided_at)?;
         self.scope.validate()?;
         let policy = self.policy.validate(self.installation_id)?;
+        let required_credential_scope =
+            required_credential_scope(self.platform_permission, self.support_permission)?;
         if self.api_version != PRIVILEGED_AUTHORIZATION_DECISION_API_VERSION
             || self.id.as_uuid().is_nil()
             || self.installation_id.as_uuid().is_nil()
@@ -234,6 +313,8 @@ impl PrivilegedAuthorizationDecision {
             || self.principal_version == 0
             || self.principal_version > MAX_PORTABLE_VERSION
             || (self.support_grant.is_some() && self.principal_kind != IdentityPrincipalKind::Human)
+            || self.authentication != self.credential.authentication()?
+            || !self.credential.scopes.contains(&required_credential_scope)
             || self.scope.installation_id() != self.installation_id
             || self.resource_id.is_nil()
             || self.request_id.is_nil()
@@ -281,10 +362,10 @@ impl PrivilegedAuthorizationDecision {
         id: PrivilegedAuthorizationDecisionId,
         request: PrivilegedAuthorizationDecisionRequest,
         principal: &IdentityPrincipal,
+        credential: &ApiToken,
         policy: &AcceptedPlatformRolePolicyRevision,
         bindings: &[PlatformRoleBinding],
         support_grant: Option<&TenantSupportGrant>,
-        support_permission: Option<TenantSupportPermission>,
         decided_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         request.validate()?;
@@ -295,30 +376,51 @@ impl PrivilegedAuthorizationDecision {
         {
             return Err("privileged authorization identity evidence is invalid".into());
         }
+        let credential_evidence = PrivilegedCredentialDecisionEvidence::from_token(credential);
+        credential_evidence.validate(request.principal_id, decided_at)?;
+        if credential.id != request.credential_id
+            || !credential.scopes.contains(&required_credential_scope(
+                request.platform_permission,
+                request.support_permission,
+            )?)
+            || !credential.is_active_at(decided_at)
+        {
+            return Err("privileged authorization credential is invalid".into());
+        }
+        let authentication = credential_evidence.authentication()?;
         let binding_evidence = supporting_bindings(
             bindings,
             policy,
             request.principal_id,
             request.platform_permission,
         )?;
-        match (support_grant, support_permission) {
-            (None, None) => {
+        match (
+            support_grant,
+            request.support_permission,
+            request.support_grant_id,
+        ) {
+            (None, None, None) => {
                 if request.platform_permission == PlatformPermission::TenantSupportUse
                     || !platform_permission_allows_scope(request.platform_permission, request.scope)
                 {
                     return Err("platform role alone cannot authorize the requested scope".into());
                 }
             }
-            (Some(grant), Some(permission)) => {
+            (Some(grant), Some(permission), Some(grant_id)) => {
                 if request.platform_permission != PlatformPermission::TenantSupportUse
                     || !request.scope.is_tenant_scope()
+                    || grant.id != grant_id
                     || grant.contract.spec().principal_id != request.principal_id
                     || !grant.admits(request.scope, permission, decided_at)?
                 {
                     return Err("tenant support evidence does not authorize the request".into());
                 }
             }
-            _ => return Err("tenant support permission and grant evidence must be paired".into()),
+            _ => {
+                return Err(
+                    "tenant support permission, grant identity and evidence must be paired".into(),
+                )
+            }
         }
         let mut value = Self {
             api_version: PRIVILEGED_AUTHORIZATION_DECISION_API_VERSION.into(),
@@ -327,9 +429,10 @@ impl PrivilegedAuthorizationDecision {
             principal_id: principal.id,
             principal_version: principal.aggregate_version,
             principal_kind: principal.kind,
-            authentication: request.authentication,
+            credential: credential_evidence,
+            authentication,
             platform_permission: request.platform_permission,
-            support_permission,
+            support_permission: request.support_permission,
             action: request.action,
             scope: request.scope,
             resource_id: request.resource_id,
@@ -387,6 +490,7 @@ impl PrivilegedAuthorizationDecision {
             principal_id: self.principal_id,
             principal_version: self.principal_version,
             principal_kind: self.principal_kind,
+            credential: &self.credential,
             authentication: &self.authentication,
             platform_permission: self.platform_permission,
             support_permission: self.support_permission,
@@ -475,6 +579,20 @@ fn platform_permission_allows_scope(permission: PlatformPermission, scope: Scope
     }
 }
 
+fn required_credential_scope(
+    platform_permission: PlatformPermission,
+    support_permission: Option<TenantSupportPermission>,
+) -> Result<ApiTokenScope, String> {
+    let required = if platform_permission.is_mutating()
+        || support_permission.is_some_and(TenantSupportPermission::is_recovery)
+    {
+        ApiTokenScope::PLATFORM_WRITE
+    } else {
+        ApiTokenScope::CLOUD_READ
+    };
+    ApiTokenScope::parse(required)
+}
+
 fn zero_digest() -> Result<Sha256Digest, String> {
     Sha256Digest::parse(format!("sha256:{}", "0".repeat(64)))
 }
@@ -483,7 +601,7 @@ fn zero_digest() -> Result<Sha256Digest, String> {
 mod tests {
     use super::*;
     use crate::modules::identity::domain::value_objects::{
-        PlatformRolePolicyContract, TenantNotificationRequirement,
+        ApiTokenName, PlatformRolePolicyContract, TenantNotificationRequirement,
         TenantSupportApprovalRequirement, TenantSupportGrantContractSpec, TenantSupportGrantMode,
     };
     use crate::modules::shared_kernel::domain::{
@@ -539,20 +657,46 @@ mod tests {
         .expect("binding")
     }
 
-    fn authentication() -> DecisionEvidenceRef {
-        DecisionEvidenceRef::new("urn:a3s:cloud:identity:authentication:test", digest('b'))
-            .expect("authentication")
+    fn credential(principal_id: PrincipalId) -> ApiToken {
+        scoped_credential(
+            principal_id,
+            ApiTokenScope::bootstrap_scopes(),
+            timestamp() - Duration::hours(1),
+            None,
+        )
+    }
+
+    fn scoped_credential(
+        principal_id: PrincipalId,
+        scopes: BTreeSet<ApiTokenScope>,
+        created_at: DateTime<Utc>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> ApiToken {
+        ApiToken::issue(
+            ApiTokenId::new(),
+            OrganizationId::new(),
+            principal_id,
+            ApiTokenName::parse("privileged test").expect("name"),
+            scopes,
+            created_at,
+            expires_at,
+        )
+        .expect("credential")
     }
 
     fn request(
         principal_id: PrincipalId,
+        credential_id: ApiTokenId,
         permission: PlatformPermission,
         scope: ScopeContext,
+        support: Option<(TenantSupportPermission, TenantSupportGrantId)>,
     ) -> PrivilegedAuthorizationDecisionRequest {
         PrivilegedAuthorizationDecisionRequest {
             principal_id,
-            authentication: authentication(),
+            credential_id,
             platform_permission: permission,
+            support_permission: support.map(|value| value.0),
+            support_grant_id: support.map(|value| value.1),
             action: "identity.privileged-access.test".into(),
             scope,
             resource_id: Uuid::now_v7(),
@@ -564,6 +708,7 @@ mod tests {
     fn platform_decision_binds_current_policy_principal_and_role_evidence() {
         let installation_id = InstallationId::new();
         let principal = principal();
+        let credential = credential(principal.id);
         let policy = policy(installation_id);
         let binding = binding(
             installation_id,
@@ -575,10 +720,13 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 principal.id,
+                credential.id,
                 PlatformPermission::OperationsExecute,
                 ScopeContext::installation(installation_id).expect("scope"),
+                None,
             ),
             &principal,
+            &credential,
             &policy,
             &[binding],
             timestamp(),
@@ -600,6 +748,7 @@ mod tests {
     fn platform_role_alone_cannot_cross_into_tenant_operations() {
         let installation_id = InstallationId::new();
         let principal = principal();
+        let credential = credential(principal.id);
         let policy = policy(installation_id);
         let binding = binding(
             installation_id,
@@ -611,10 +760,13 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 principal.id,
+                credential.id,
                 PlatformPermission::OperationsRead,
                 ScopeContext::organization(installation_id, OrganizationId::new()).expect("scope"),
+                None,
             ),
             &principal,
+            &credential,
             &policy,
             &[binding],
             timestamp(),
@@ -623,9 +775,143 @@ mod tests {
     }
 
     #[test]
+    fn credential_identity_lifecycle_scope_and_snapshot_are_part_of_the_allow() {
+        let installation_id = InstallationId::new();
+        let principal = principal();
+        let policy = policy(installation_id);
+        let binding = binding(
+            installation_id,
+            principal.id,
+            &policy,
+            PlatformRole::PlatformOperator,
+        );
+        let credential = credential(principal.id);
+        let decision = PrivilegedAuthorizationDecision::issue_platform(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                credential.id,
+                PlatformPermission::OperationsExecute,
+                ScopeContext::installation(installation_id).expect("scope"),
+                None,
+            ),
+            &principal,
+            &credential,
+            &policy,
+            std::slice::from_ref(&binding),
+            timestamp(),
+        )
+        .expect("decision");
+
+        let mut forged = decision;
+        forged.credential.aggregate_version += 1;
+        assert!(forged.validate().is_err());
+        assert!(PrivilegedAuthorizationDecision::issue_platform(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                ApiTokenId::new(),
+                PlatformPermission::OperationsExecute,
+                ScopeContext::installation(installation_id).expect("scope"),
+                None,
+            ),
+            &principal,
+            &credential,
+            &policy,
+            std::slice::from_ref(&binding),
+            timestamp(),
+        )
+        .is_err());
+
+        let read_only = scoped_credential(
+            principal.id,
+            [ApiTokenScope::parse(ApiTokenScope::CLOUD_READ).expect("scope")]
+                .into_iter()
+                .collect(),
+            timestamp() - Duration::hours(1),
+            None,
+        );
+        assert!(PrivilegedAuthorizationDecision::issue_platform(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                read_only.id,
+                PlatformPermission::OperationsExecute,
+                ScopeContext::installation(installation_id).expect("scope"),
+                None,
+            ),
+            &principal,
+            &read_only,
+            &policy,
+            std::slice::from_ref(&binding),
+            timestamp(),
+        )
+        .is_err());
+
+        let expired = scoped_credential(
+            principal.id,
+            ApiTokenScope::bootstrap_scopes(),
+            timestamp() - Duration::hours(2),
+            Some(timestamp() - Duration::hours(1)),
+        );
+        assert!(PrivilegedAuthorizationDecision::issue_platform(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                expired.id,
+                PlatformPermission::OperationsExecute,
+                ScopeContext::installation(installation_id).expect("scope"),
+                None,
+            ),
+            &principal,
+            &expired,
+            &policy,
+            std::slice::from_ref(&binding),
+            timestamp(),
+        )
+        .is_err());
+
+        let mut revoked = credential;
+        assert!(revoked.revoke(timestamp() - Duration::minutes(1)));
+        assert!(PrivilegedAuthorizationDecision::issue_platform(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                revoked.id,
+                PlatformPermission::OperationsExecute,
+                ScopeContext::installation(installation_id).expect("scope"),
+                None,
+            ),
+            &principal,
+            &revoked,
+            &policy,
+            &[binding],
+            timestamp(),
+        )
+        .is_err());
+
+        assert_eq!(
+            required_credential_scope(PlatformPermission::OperationsRead, None)
+                .expect("scope")
+                .as_str(),
+            ApiTokenScope::CLOUD_READ
+        );
+        assert_eq!(
+            required_credential_scope(
+                PlatformPermission::TenantSupportUse,
+                Some(TenantSupportPermission::RuntimeRestart),
+            )
+            .expect("scope")
+            .as_str(),
+            ApiTokenScope::PLATFORM_WRITE
+        );
+    }
+
+    #[test]
     fn inactive_principals_and_roles_without_the_permission_never_issue_evidence() {
         let installation_id = InstallationId::new();
         let mut disabled = principal();
+        let disabled_credential = credential(disabled.id);
         disabled.disabled_at = Some(timestamp() - Duration::minutes(1));
         let policy = policy(installation_id);
         let operator = binding(
@@ -638,10 +924,13 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 disabled.id,
+                disabled_credential.id,
                 PlatformPermission::OperationsExecute,
                 ScopeContext::installation(installation_id).expect("scope"),
+                None,
             ),
             &disabled,
+            &disabled_credential,
             &policy,
             &[operator],
             timestamp(),
@@ -649,6 +938,7 @@ mod tests {
         .is_err());
 
         let auditor = principal();
+        let auditor_credential = credential(auditor.id);
         let auditor_binding = binding(
             installation_id,
             auditor.id,
@@ -659,10 +949,13 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 auditor.id,
+                auditor_credential.id,
                 PlatformPermission::TenantSupportUse,
                 ScopeContext::installation(installation_id).expect("scope"),
+                None,
             ),
             &auditor,
+            &auditor_credential,
             &policy,
             &[auditor_binding],
             timestamp(),
@@ -676,6 +969,7 @@ mod tests {
         let organization_id = OrganizationId::new();
         let project_id = ProjectId::new();
         let principal = principal();
+        let credential = credential(principal.id);
         let policy = policy(installation_id);
         let binding = binding(
             installation_id,
@@ -714,18 +1008,58 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 principal.id,
+                credential.id,
                 PlatformPermission::TenantSupportUse,
                 environment_scope,
+                Some((TenantSupportPermission::HealthRead, grant.id)),
             ),
             &principal,
+            &credential,
             &policy,
             std::slice::from_ref(&binding),
             &grant,
-            TenantSupportPermission::HealthRead,
             timestamp(),
         )
         .expect("support decision");
         decision.validate().expect("valid");
+
+        assert!(PrivilegedAuthorizationDecision::issue_tenant_support(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                credential.id,
+                PlatformPermission::TenantSupportUse,
+                environment_scope,
+                Some((
+                    TenantSupportPermission::HealthRead,
+                    TenantSupportGrantId::new()
+                )),
+            ),
+            &principal,
+            &credential,
+            &policy,
+            std::slice::from_ref(&binding),
+            &grant,
+            timestamp(),
+        )
+        .is_err());
+        assert!(PrivilegedAuthorizationDecision::issue_tenant_support(
+            PrivilegedAuthorizationDecisionId::new(),
+            request(
+                principal.id,
+                credential.id,
+                PlatformPermission::TenantSupportUse,
+                environment_scope,
+                Some((TenantSupportPermission::AuditRead, grant.id)),
+            ),
+            &principal,
+            &credential,
+            &policy,
+            std::slice::from_ref(&binding),
+            &grant,
+            timestamp(),
+        )
+        .is_err());
 
         let mut service_principal = principal.clone();
         service_principal.kind = IdentityPrincipalKind::Service;
@@ -733,14 +1067,16 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 service_principal.id,
+                credential.id,
                 PlatformPermission::TenantSupportUse,
                 environment_scope,
+                Some((TenantSupportPermission::HealthRead, grant.id)),
             ),
             &service_principal,
+            &credential,
             &policy,
             std::slice::from_ref(&binding),
             &grant,
-            TenantSupportPermission::HealthRead,
             timestamp(),
         )
         .is_err());
@@ -752,14 +1088,16 @@ mod tests {
             PrivilegedAuthorizationDecisionId::new(),
             request(
                 principal.id,
+                credential.id,
                 PlatformPermission::TenantSupportUse,
                 environment_scope,
+                Some((TenantSupportPermission::HealthRead, grant.id)),
             ),
             &principal,
+            &credential,
             &policy,
             &[binding],
             &grant,
-            TenantSupportPermission::HealthRead,
             timestamp() + Duration::minutes(2),
         )
         .is_err());

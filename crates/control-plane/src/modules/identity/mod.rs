@@ -11,6 +11,9 @@ pub use application::{
 pub use application::commands::accept_membership_invitation::{
     AcceptMembershipInvitation, AcceptMembershipInvitationHandler,
 };
+pub use application::commands::authorize_privileged_access::{
+    AuthorizePrivilegedAccess, AuthorizePrivilegedAccessHandler,
+};
 pub use application::commands::begin_oidc_flow::{
     BeginOidcFlow, BeginOidcFlowHandler, BeginOidcFlowResult,
 };
@@ -80,9 +83,10 @@ pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
 pub use domain::repositories::{
-    IOidcIdentityRepository, IPlatformRbacRepository, IRecipientContactRepository,
-    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
-    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
+    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
+    IResourceAuthorizationDecisionRepository, ITenantSupportGrantRepository,
+    ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,

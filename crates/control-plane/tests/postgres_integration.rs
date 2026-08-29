@@ -238,6 +238,8 @@ mod platform_rbac_support;
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
+#[path = "support/privileged_authorization_decisions.rs"]
+mod privileged_authorization_decisions_support;
 #[path = "support/project_attribution.rs"]
 mod project_attribution_support;
 #[path = "support/recipient_contacts.rs"]
@@ -884,6 +886,19 @@ async fn postgres_tenant_support_grants_require_actual_multi_replica_approval_ev
     )
     .await
     .expect("PostgreSQL tenant support grant approval authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        privileged_authorization_decisions_support::exercise_privileged_authorization_decision_authority,
+    )
+    .await
+    .expect("PostgreSQL privileged authorization decision authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

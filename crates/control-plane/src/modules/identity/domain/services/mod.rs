@@ -13,7 +13,7 @@ pub use oidc_provider::{
 pub use privileged_authorization_decision::{
     PlatformRoleBindingDecisionEvidence, PlatformRolePolicyDecisionEvidence,
     PrivilegedAuthorizationDecision, PrivilegedAuthorizationDecisionRequest,
-    TenantSupportGrantDecisionEvidence,
+    PrivilegedCredentialDecisionEvidence, TenantSupportGrantDecisionEvidence,
 };
 pub use recipient_contact_proof::{IRecipientContactProofService, RecipientContactProofError};
 pub use recipient_contact_verification_delivery::{

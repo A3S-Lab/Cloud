@@ -2120,7 +2120,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 )
                 .map_err(BootError::Internal)?,
             ),
-            resource_authorization_decisions: identity,
+            resource_authorization_decisions: identity.clone(),
+            privileged_authorization_decisions: identity,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),

@@ -280,10 +280,39 @@ async fn load_approvals(
     .map_err(Into::into)
 }
 
-async fn load_grant_for_update(
+pub(super) async fn load_grant_for_update(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
     grant_id: TenantSupportGrantId,
+) -> Result<Option<TenantSupportGrant>, PostgresPersistenceError> {
+    load_grant_with_lock(
+        transaction,
+        installation_id,
+        grant_id,
+        " for update of accepted_grant",
+    )
+    .await
+}
+
+pub(super) async fn load_grant_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    grant_id: TenantSupportGrantId,
+) -> Result<Option<TenantSupportGrant>, PostgresPersistenceError> {
+    load_grant_with_lock(
+        transaction,
+        installation_id,
+        grant_id,
+        " for share of accepted_grant",
+    )
+    .await
+}
+
+async fn load_grant_with_lock(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    grant_id: TenantSupportGrantId,
+    lock_clause: &'static str,
 ) -> Result<Option<TenantSupportGrant>, PostgresPersistenceError> {
     fetch_optional::<TenantSupportGrantRow, _>(
         transaction,
@@ -292,7 +321,7 @@ async fn load_grant_for_update(
             .bind(installation_id.as_uuid())
             .append(" and accepted_grant.id = ")
             .bind(grant_id.as_uuid())
-            .append(" for update of accepted_grant"),
+            .append(lock_clause),
     )
     .await?
     .map(decode_tenant_support_grant)

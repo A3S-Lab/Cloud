@@ -172,8 +172,9 @@ use crate::modules::forms::{
 };
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOidcIdentityRepository, IOrganizationRepository, IRecipientContactRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IOidcIdentityRepository, IOrganizationRepository, IPrivilegedAuthorizationDecisionRepository,
+    IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, IRecipientContactProofService,
@@ -186,7 +187,8 @@ use crate::modules::identity::infrastructure::{
 };
 use crate::modules::identity::{
     A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
-    BeginOidcFlowHandler, BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
+    AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
+    BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
     ChangeMembershipRoleHandler, CompleteOidcFlowHandler,
     CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
     CreateMembershipInvitationHandler, CreateOrganizationHandler, CreateResourceGrantHandler,
@@ -564,6 +566,7 @@ async fn build_api_worker_application(
     let recipient_contact_verification_deliveries =
         adapters.identity.recipient_contact_verification_deliveries;
     let resource_authorization_decisions = adapters.identity.resource_authorization_decisions;
+    let privileged_authorization_decisions = adapters.identity.privileged_authorization_decisions;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -1744,6 +1747,7 @@ async fn build_api_worker_application(
                 recipient_contacts,
                 recipient_contact_proof,
                 resource_authorization_decisions,
+                privileged_authorization_decisions,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -1996,6 +2000,7 @@ struct ManagementApplicationDependencies {
     recipient_contacts: Arc<dyn IRecipientContactRepository>,
     recipient_contact_proof: Arc<dyn IRecipientContactProofService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
+    privileged_authorization_decisions: Arc<dyn IPrivilegedAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2085,6 +2090,7 @@ fn build_management_application_with_health(
         recipient_contacts,
         recipient_contact_proof,
         resource_authorization_decisions,
+        privileged_authorization_decisions,
         projects,
         environments,
         ontologies,
@@ -2509,6 +2515,7 @@ fn build_management_application_with_health(
     let revoke_resource_grants = Arc::clone(&resource_grants);
     let list_resource_grants = Arc::clone(&resource_grants);
     let get_resource_grants = Arc::clone(&resource_grants);
+    let authorize_privileged_access = privileged_authorization_decisions;
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let get_project_attributions = Arc::clone(&projects);
@@ -2759,6 +2766,9 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeResourceGrant, _>(
                     RevokeResourceGrantHandler::new(revoke_resource_grants),
+                )
+                .command_handler::<crate::modules::identity::AuthorizePrivilegedAccess, _>(
+                    AuthorizePrivilegedAccessHandler::new(authorize_privileged_access),
                 )
                 .command_handler::<crate::modules::identity::BeginOidcFlow, _>(
                     BeginOidcFlowHandler::new(

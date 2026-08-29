@@ -4,6 +4,7 @@ mod membership_repository;
 mod oidc_identity_repository;
 mod organization_repository;
 mod platform_rbac_repository;
+mod privileged_authorization_decision_repository;
 mod recipient_contact_repository;
 mod recipient_contact_verification_delivery_repository;
 mod resource_authorization_decision_repository;
@@ -30,6 +31,7 @@ pub use platform_rbac_repository::{
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
     PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
 };
+pub use privileged_authorization_decision_repository::IPrivilegedAuthorizationDecisionRepository;
 pub use recipient_contact_repository::{
     BeginRecipientContactVerificationResult, BeginRecipientContactVerificationWrite,
     CompleteRecipientContactVerificationWrite, IRecipientContactRepository,

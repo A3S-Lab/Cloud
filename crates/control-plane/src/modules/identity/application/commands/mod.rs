@@ -1,4 +1,5 @@
 pub mod accept_membership_invitation;
+pub mod authorize_privileged_access;
 pub mod begin_oidc_flow;
 pub mod begin_recipient_contact_verification;
 pub mod bootstrap_identity;

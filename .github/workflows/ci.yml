@@ -121,6 +121,22 @@ jobs:
           echo "::error title=Tenant support approval evidence gate failed::$detail"
           exit 1
 
+      - name: Certify atomic privileged authorization and revocation fencing
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-privileged-authorization.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Privileged authorization decision gate failed::$detail"
+          exit 1
+
       - name: Certify fact-fed Artifacts build admission
         run: |
           log="$RUNNER_TEMP/a3s-cloud-artifact-build-candidates.log"

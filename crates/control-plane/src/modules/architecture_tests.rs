@@ -2406,6 +2406,147 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
 }
 
 #[test]
+fn privileged_authorization_uses_one_atomic_identity_decision_and_shared_audit_authority() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let port = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/domain/repositories/privileged_authorization_decision_repository.rs",
+    ))
+    .expect("read privileged authorization repository port");
+    let decision = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/services/privileged_authorization_decision.rs"),
+    )
+    .expect("read privileged authorization decision");
+    let persistence = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/infrastructure/persistence/postgres_privileged_authorization_decisions.rs",
+    ))
+    .expect("read privileged authorization PostgreSQL adapter");
+    let identity_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Identity PostgreSQL adapter");
+    let rbac_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs"),
+    )
+    .expect("read platform RBAC PostgreSQL adapter");
+    let support_persistence =
+        std::fs::read_to_string(manifest.join(
+            "src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs",
+        ))
+        .expect("read tenant support PostgreSQL adapter");
+    let application =
+        std::fs::read_to_string(manifest.join(
+            "src/modules/identity/application/commands/authorize_privileged_access/handler.rs",
+        ))
+        .expect("read privileged authorization application handler");
+    let provider_gate = std::fs::read_to_string(
+        manifest.join("tests/support/privileged_authorization_decisions.rs"),
+    )
+    .expect("read privileged authorization PostgreSQL provider gate");
+    let workflow = std::fs::read_to_string(manifest.join("../../.github/workflows/ci.yml"))
+        .expect("read CI workflow");
+
+    assert_eq!(
+        port.matches("pub trait IPrivilegedAuthorizationDecisionRepository")
+            .count(),
+        1
+    );
+    assert_eq!(
+        persistence
+            .matches(
+                "impl IPrivilegedAuthorizationDecisionRepository for PostgresIdentityRepository",
+            )
+            .count(),
+        1
+    );
+    for required in [
+        ".transaction(",
+        "lock_installation_for_authorization",
+        "load_active_principal_for_authorization",
+        "load_api_token_by_id_for_authorization",
+        "load_current_policy_for_authorization",
+        "load_active_actor_binding_for_authorization",
+        "load_grant_for_authorization",
+        "store_audit",
+        "PrivilegedAuthorizationDecision::issue_platform",
+        "PrivilegedAuthorizationDecision::issue_tenant_support",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "privileged authorization persistence lost atomic authority rule {required}"
+        );
+    }
+    assert!(!persistence.contains("_for_update"));
+    for required in [
+        "for key share of installation",
+        "for share of principal",
+        "for share of head",
+        "for share of binding, principal",
+    ] {
+        assert!(
+            rbac_persistence.contains(required),
+            "privileged authorization lost shared revocation fence {required}"
+        );
+    }
+    assert!(identity_persistence.contains(".append(\" for share\")"));
+    assert!(support_persistence.contains("for share of accepted_grant"));
+    for forbidden in [
+        "actor_is_platform_admin",
+        "store_outbox",
+        "store_idempotency",
+        "Redis",
+        "a3s_lane",
+        "insert into privileged_authorization",
+        "privileged_authorization_distributed_lock",
+    ] {
+        assert!(
+            !production_source(&persistence).contains(forbidden),
+            "privileged authorization introduced duplicate or ambient authority {forbidden}"
+        );
+    }
+
+    for required in [
+        "pub credential_id: ApiTokenId",
+        "PrivilegedCredentialDecisionEvidence",
+        "credential.is_active_at(decided_at)",
+        "required_credential_scope",
+        "self.authentication != self.credential.authentication()?",
+        "grant.id != grant_id",
+    ] {
+        assert!(
+            decision.contains(required),
+            "privileged decision lost credential or exact-grant evidence {required}"
+        );
+    }
+    let request_fields = decision
+        .split_once("pub struct PrivilegedAuthorizationDecisionRequest {")
+        .expect("privileged request declaration")
+        .1
+        .split_once('}')
+        .expect("privileged request fields")
+        .0;
+    assert!(request_fields.contains("pub credential_id: ApiTokenId"));
+    assert!(!request_fields.contains("authentication"));
+    assert!(application.contains("IPrivilegedAuthorizationDecisionRepository"));
+    assert!(application.contains("request.validate()"));
+
+    assert_eq!(provider_gate.matches("tokio::join!").count(), 3);
+    for required in [
+        "revoke_platform_role_binding",
+        "repository_b.revoke(",
+        "revoke_tenant_support_grant",
+        "every successful allow and only a successful allow",
+        "a request-time allow must not introduce a second event mechanism",
+    ] {
+        assert!(
+            provider_gate.contains(required),
+            "privileged authorization provider gate lost concurrency proof {required}"
+        );
+    }
+    assert!(workflow
+        .contains("postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe"));
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))
