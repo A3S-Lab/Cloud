@@ -91,7 +91,7 @@ pub async fn exercise_deployment_cancellation(
             admin_token,
         ))
         .await?;
-    assert_eq!(cross_tenant_cancellation.status(), 404);
+    assert_eq!(cross_tenant_cancellation.status(), 403);
 
     let cancellation = app
         .call(delete_as(
