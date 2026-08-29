@@ -2335,6 +2335,47 @@ fn runtime_capabilities() -> Value {
 }
 
 #[tokio::test]
+async fn privileged_management_routes_exist_and_fail_closed_without_postgres_authority(
+) -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    bootstrap_organization(&app, "bootstrap-privileged-routes", "Root").await?;
+    let principal_id = Uuid::now_v7();
+
+    let unauthenticated = app
+        .call(BootRequest::new(
+            HttpMethod::Get,
+            "/api/v1/platform/role-policy",
+        ))
+        .await?;
+    assert_eq!(unauthenticated.status(), 401);
+
+    for request in [
+        get_as("/api/v1/platform/role-policy", ADMIN_TOKEN),
+        get_as(
+            format!("/api/v1/platform/tenant-support-grants/{}", Uuid::now_v7()),
+            ADMIN_TOKEN,
+        ),
+        post_json(
+            "/api/v1/platform/role-bindings",
+            "privileged-route-create-binding",
+            json!({
+                "principalId": principal_id,
+                "role": "platform_operator",
+                "expectedPolicyRevisionId": Uuid::now_v7(),
+            }),
+        ),
+    ] {
+        let response = app.call(request).await?;
+        assert_eq!(response.status(), 403);
+        assert!(String::from_utf8_lossy(response.body())
+            .contains("privileged management requires the PostgreSQL Identity authority"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
     let repository = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());

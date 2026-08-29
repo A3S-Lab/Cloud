@@ -5,6 +5,7 @@ mod membership_invitation_response;
 mod membership_response;
 mod organization_list_item_response;
 mod organization_response;
+mod privileged_management_response;
 mod recipient_contact_response;
 mod resource_grant_response;
 
@@ -18,5 +19,11 @@ pub use membership_invitation_response::{
 pub use membership_response::{MembershipMutationResponse, MembershipResponse};
 pub use organization_list_item_response::OrganizationListItemResponse;
 pub use organization_response::OrganizationResponse;
+pub use privileged_management_response::{
+    PlatformRoleBindingMutationResponse, PlatformRoleBindingResponse,
+    PlatformRolePolicyMutationResponse, PlatformRolePolicyResponse,
+    TenantSupportGrantApprovalMutationResponse, TenantSupportGrantMutationResponse,
+    TenantSupportGrantProposalMutationResponse, TenantSupportGrantResponse,
+};
 pub use recipient_contact_response::{RecipientContactMutationResponse, RecipientContactResponse};
 pub use resource_grant_response::{ResourceGrantMutationResponse, ResourceGrantResponse};

@@ -3,10 +3,12 @@ mod resource_grant_scope;
 pub mod response;
 
 pub use request::{
-    BootstrapIdentityRequest, ChangeMembershipRoleRequest,
+    AcceptPlatformRolePolicyRequest, ApproveTenantSupportGrantRequest, BootstrapIdentityRequest,
+    ChangeMembershipRoleRequest, ChangePlatformRoleBindingRequest,
     CompleteRecipientContactVerificationRequest, CreateApiTokenRequest,
     CreateMembershipInvitationRequest, CreateMembershipRequest, CreateOrganizationRequest,
-    CreateResourceGrantRequest, MembershipInvitationVersionRequest,
+    CreatePlatformRoleBindingRequest, CreateResourceGrantRequest, ExpectedVersionRequest,
+    MembershipInvitationVersionRequest, ProposeTenantSupportGrantRequest,
     RequestRecipientContactVerificationRequest, RevokeMembershipRequest,
     RevokeRecipientContactRequest, RevokeResourceGrantRequest,
 };
@@ -15,6 +17,10 @@ pub use response::{
     ApiTokenReadResponse, ApiTokenResponse, BootstrapIdentityResponse,
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
-    OrganizationListItemResponse, OrganizationResponse, RecipientContactMutationResponse,
-    RecipientContactResponse, ResourceGrantMutationResponse, ResourceGrantResponse,
+    OrganizationListItemResponse, OrganizationResponse, PlatformRoleBindingMutationResponse,
+    PlatformRoleBindingResponse, PlatformRolePolicyMutationResponse, PlatformRolePolicyResponse,
+    RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
+    ResourceGrantResponse, TenantSupportGrantApprovalMutationResponse,
+    TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
+    TenantSupportGrantResponse,
 };

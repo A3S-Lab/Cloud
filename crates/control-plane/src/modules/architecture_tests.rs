@@ -2357,6 +2357,89 @@ fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter()
 }
 
 #[test]
+fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_cases() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let controller =
+        std::fs::read_to_string(manifest.join(
+            "src/modules/identity/presentation/controllers/privileged_management_controller.rs",
+        ))
+        .expect("read privileged management REST controller");
+    let requests = std::fs::read_to_string(
+        manifest
+            .join("src/modules/identity/presentation/dto/request/privileged_management_request.rs"),
+    )
+    .expect("read privileged management request DTOs");
+    let responses =
+        std::fs::read_to_string(manifest.join(
+            "src/modules/identity/presentation/dto/response/privileged_management_response.rs",
+        ))
+        .expect("read privileged management response DTOs");
+    let module = std::fs::read_to_string(
+        manifest.join("src/modules/identity/presentation/identity_module.rs"),
+    )
+    .expect("read Identity module");
+
+    for route in [
+        "/role-policy",
+        "/role-policy/revisions/{revision_id}",
+        "/role-policy/revisions",
+        "/role-bindings",
+        "/role-bindings/{binding_id}",
+        "/role-bindings/{binding_id}/role",
+        "/role-bindings/{binding_id}/revocation",
+        "/principals/{principal_id}/role-binding",
+        "/tenant-support-grants",
+        "/tenant-support-grants/{grant_id}",
+        "/tenant-support-grants/{grant_id}/approvals",
+        "/tenant-support-grants/{grant_id}/revocation",
+    ] {
+        assert_eq!(
+            controller.matches(&format!("\"{route}\"")).count(),
+            1,
+            "privileged REST route {route} must be unique"
+        );
+    }
+    assert_eq!(
+        controller
+            .matches("authenticated_credential_actor(&")
+            .count(),
+        12,
+        "every privileged REST route must derive the exact verified Principal and API Token"
+    );
+    assert_eq!(controller.matches("ApiTokenScope::CLOUD_READ").count(), 2);
+    assert_eq!(
+        controller.matches("ApiTokenScope::PLATFORM_WRITE").count(),
+        2
+    );
+    for forbidden in [
+        "actor_is_platform_admin",
+        ".has_role(",
+        "AuthorizePrivilegedAccess",
+        "platform_permission",
+        "support_permission",
+    ] {
+        assert!(
+            !controller.contains(forbidden),
+            "privileged REST surface introduced ambient or caller-authored authority {forbidden}"
+        );
+    }
+    assert_eq!(requests.matches("deny_unknown_fields").count(), 6);
+    assert!(responses.matches("rename_all = \"camelCase\"").count() >= 10);
+    for controller_name in [
+        "platform_rbac_queries_controller",
+        "platform_rbac_commands_controller",
+        "tenant_support_query_controller",
+        "tenant_support_commands_controller",
+    ] {
+        assert_eq!(
+            module.matches(&format!("{controller_name}(")).count(),
+            1,
+            "Identity module must register {controller_name} exactly once"
+        );
+    }
+}
+
+#[test]
 fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(

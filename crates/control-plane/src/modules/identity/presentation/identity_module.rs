@@ -2,8 +2,10 @@ use super::controllers::{
     api_token_controller, bootstrap_controller, membership_controller,
     membership_invitation_acceptance_controller, membership_invitation_administration_controller,
     membership_invitation_self_query_controller, oidc_link_controller, oidc_public_controller,
-    organization_controller, organizations_query_controller, recipient_contact_commands_controller,
+    organization_controller, organizations_query_controller, platform_rbac_commands_controller,
+    platform_rbac_queries_controller, recipient_contact_commands_controller,
     recipient_contact_queries_controller, resource_grant_controller,
+    tenant_support_commands_controller, tenant_support_query_controller,
 };
 use super::BootstrapGuard;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
@@ -49,6 +51,10 @@ impl Module for IdentityModule {
             recipient_contact_commands_controller(module_ref.get::<CommandBus>()?)?,
             oidc_public_controller(module_ref.get::<CommandBus>()?)?,
             oidc_link_controller(module_ref.get::<CommandBus>()?)?,
+            platform_rbac_queries_controller(module_ref.get::<QueryBus>()?)?,
+            platform_rbac_commands_controller(module_ref.get::<CommandBus>()?)?,
+            tenant_support_query_controller(module_ref.get::<QueryBus>()?)?,
+            tenant_support_commands_controller(module_ref.get::<CommandBus>()?)?,
         ])
     }
 }
