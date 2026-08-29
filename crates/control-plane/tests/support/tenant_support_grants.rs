@@ -39,7 +39,8 @@ pub async fn exercise_tenant_support_grant_authority(
     let approver_b = PrincipalId::new();
     let subject = PrincipalId::new();
     let outsider = PrincipalId::new();
-    let now = Utc::now();
+    let now = chrono::DateTime::from_timestamp_micros(Utc::now().timestamp_micros())
+        .ok_or("tenant-support test timestamp exceeds PostgreSQL precision")?;
 
     database
         .execute(
@@ -405,7 +406,7 @@ pub async fn exercise_tenant_support_grant_authority(
     let evidence = database
         .fetch_one_as(
             sql_query::<(i64, i64, i64, i64, i64, i64)>(
-                "select (select count(*) from tenant_support_grant_intents), (select count(*) from tenant_support_grant_approvals), (select count(*) from tenant_support_grants), (select count(*) from outbox_events where event_key like 'identity.tenant-support-grant.%'), (select count(*) from audit_records where action like 'identity.tenant-support-grant.%'), (select count(*) from idempotency_records where scope_key = 'tests/tenant-support-grants')",
+                "select (select count(*) from tenant_support_grant_intents), (select count(*) from tenant_support_grant_approvals), (select count(*) from tenant_support_grants), (select count(*) from outbox_events where event_key like 'identity.tenant-support-grant.%'), (select count(*) from audit_records where action like 'identity.tenant-support-grant.%'), (select count(*) from idempotency_records where scope_key = 'tests/tenant-support-grants' and idempotency_key in ('propose-main', 'approver-a-main', 'approver-b-main', 'revoke-main', 'propose-blocked', 'approver-a-blocked'))",
             ),
         )
         .await?;
