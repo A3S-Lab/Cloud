@@ -67,6 +67,20 @@ exact command with the same key to receive the durable replay result.
 API starts a short-lived no-store browser installation flow instead of a
 replayable resource mutation.
 
+REST contract `1.78.0` exposes installation-scoped privileged management
+without requiring Organization, Project, or Environment context.
+`platform-role-policy current|get|accept` reads immutable revisions or accepts
+the exact next revision from `--file=<policy.acl>` with expected-current
+revision fencing. `platform-role-bindings get|get-principal|create|change-role|revoke`
+uses only the four closed platform roles; create and change-role also bind the
+expected policy revision, while change-role and revoke require
+`--expected-version`. `tenant-support-grants get|propose|approve|revoke` keeps
+the proposal in `--file=<grant.acl>`, requires the exact canonical contract
+digest for approval, and version-fences terminal revocation. Every mutation
+requires a caller-owned idempotency key. The CLI only validates bounded
+transport intent and delegates authorization, approval evidence, persistence,
+audit, replay, and concurrency to Cloud through the maintained client.
+
 Node `ready`, `drain`, and `revoke` additionally require
 `--expected-version=<current-aggregate-version>`. The positive safe integer is
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale

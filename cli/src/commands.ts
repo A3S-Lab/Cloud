@@ -40,6 +40,7 @@ import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands'
 import { executeNotificationCommand, rejectMisplacedNotificationOptions } from './notification-commands';
 import { executeOntologyCommand } from './ontology-commands';
 import { executePluginCommand } from './plugin-commands';
+import { executePrivilegedManagementCommand } from './privileged-management-commands';
 import {
   executeRecipientContactCommand,
   rejectMisplacedRecipientContactOptions,
@@ -245,6 +246,12 @@ export async function executeCommand(
   });
   if (identityResult !== undefined) {
     return identityResult;
+  }
+  const privilegedManagementResult = await executePrivilegedManagementCommand(command, arguments_, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (privilegedManagementResult !== undefined) {
+    return privilegedManagementResult;
   }
   const secretResult = await executeSecretCommand(command, arguments_, context, cloudApi, {
     readStdin: dependencies.readStdin,

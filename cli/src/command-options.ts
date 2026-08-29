@@ -93,6 +93,22 @@ export function positionalUuid(positionals: readonly string[], index: number, la
   return parseUuid(value, label);
 }
 
+export function positionalPositiveSafeInteger(
+  positionals: readonly string[],
+  index: number,
+  label: string
+): number {
+  const rawValue = positionals[index];
+  if (!rawValue || !/^[0-9]+$/u.test(rawValue)) {
+    throw usageError(`${label} must be a positive safe integer`);
+  }
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw usageError(`${label} must be a positive safe integer`);
+  }
+  return value;
+}
+
 export function positionalResourceName(positionals: readonly string[], index: number): string {
   const name = positionals[index]?.trim();
   if (!name || [...name].length > 63 || /[\0\r\n]/.test(name)) {

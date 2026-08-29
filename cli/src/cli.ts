@@ -16,6 +16,18 @@ Usage:
 Commands:
   context show          Show resolved non-secret context
   diagnostics status    Show public platform and health diagnostics
+  platform-role-policy current Get the current accepted installation platform-role policy
+  platform-role-policy get ID Get one exact immutable platform-role policy revision
+  platform-role-policy accept REV EXPECTED Accept the next platform-role policy from A3S ACL
+  platform-role-bindings get ID Get one installation platform-role binding
+  platform-role-bindings get-principal PRINCIPAL Get one Principal's active platform-role binding
+  platform-role-bindings create PRINCIPAL ROLE POLICY Create a policy-fenced platform-role binding
+  platform-role-bindings change-role ID ROLE POLICY Change a binding with policy and version fencing
+  platform-role-bindings revoke ID Revoke a binding with optimistic concurrency
+  tenant-support-grants get ID Get one bounded tenant-support grant and approval evidence
+  tenant-support-grants propose Propose a tenant-support grant from A3S ACL
+  tenant-support-grants approve ID DIGEST Approve the exact tenant-support contract
+  tenant-support-grants revoke ID Revoke an accepted tenant-support grant with optimistic concurrency
   organizations list   List authorized organizations
   organizations create NAME Create an organization idempotently
   api-tokens list       List API token metadata in the selected organization

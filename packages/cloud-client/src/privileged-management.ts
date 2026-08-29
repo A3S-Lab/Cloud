@@ -244,10 +244,11 @@ export function validateProposeTenantSupportGrantInput(input: ProposeTenantSuppo
 }
 
 export function validateApproveTenantSupportGrantInput(input: ApproveTenantSupportGrantInput): void {
-  if (
-    typeof input?.expectedContractDigest !== 'string' ||
-    !/^sha256:[0-9a-f]{64}$/.test(input.expectedContractDigest)
-  ) {
+  validateTenantSupportContractDigest(input?.expectedContractDigest);
+}
+
+export function validateTenantSupportContractDigest(value: unknown): asserts value is string {
+  if (typeof value !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value)) {
     throw new TypeError('expected tenant-support contract digest must be a canonical SHA-256 digest');
   }
 }
@@ -256,8 +257,8 @@ export function validatePrivilegedExpectedVersion(value: number): void {
   validatePositiveSafeInteger(value, 'expected privileged aggregate version');
 }
 
-function validatePlatformRole(value: PlatformRole): void {
-  if (!PLATFORM_ROLES.has(value)) {
+export function validatePlatformRole(value: unknown): asserts value is PlatformRole {
+  if (typeof value !== 'string' || !PLATFORM_ROLES.has(value as PlatformRole)) {
     throw new TypeError('platform role must be one of the closed platform roles');
   }
 }
