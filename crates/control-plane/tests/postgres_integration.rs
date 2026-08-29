@@ -5885,7 +5885,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                         and binding.revoked_at is null
                       where revision.accepted_by = ",
             )
-            .bind(Uuid::parse_str(&owner_principal_id)?),
+            .bind(Uuid::parse_str(&owner_principal_id)?)
+            .append(")"),
         )
         .await?;
     assert_eq!(
