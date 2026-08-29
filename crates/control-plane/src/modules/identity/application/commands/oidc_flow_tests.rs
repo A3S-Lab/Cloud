@@ -10,7 +10,8 @@ use crate::modules::identity::application::commands::create_membership::{
 };
 use crate::modules::identity::domain::entities::OidcFlowPurpose;
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
+    IApiTokenRepository, IIdentityBootstrapRepository, IMembershipRepository,
+    IOidcIdentityRepository, IOrganizationRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
@@ -186,8 +187,8 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let repository = Arc::new(InMemoryIdentityRepository::new());
-        let api_tokens: Arc<dyn IApiTokenRepository> = repository.clone();
-        let bootstrapped = BootstrapIdentityHandler::new(api_tokens)
+        let identity_bootstrap: Arc<dyn IIdentityBootstrapRepository> = repository.clone();
+        let bootstrapped = BootstrapIdentityHandler::new(identity_bootstrap)
             .execute(
                 BootstrapIdentity {
                     organization_name: "OIDC Test".into(),

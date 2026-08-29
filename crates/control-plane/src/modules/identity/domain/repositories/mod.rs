@@ -1,4 +1,5 @@
 mod api_token_repository;
+mod identity_bootstrap_repository;
 mod membership_invitation_repository;
 mod membership_repository;
 mod oidc_identity_repository;
@@ -13,6 +14,7 @@ mod tenant_support_grant_repository;
 mod workload_identity_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
+pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstrapRepository};
 pub use membership_invitation_repository::{
     AcceptMembershipInvitationWrite, CreateMembershipInvitationWrite,
     IMembershipInvitationRepository, MembershipInvitationAcceptance,
@@ -29,7 +31,7 @@ pub use organization_repository::{CreateOrganizationWrite, IOrganizationReposito
 pub use platform_rbac_repository::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
-    PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
+    RevokePlatformRoleBindingWrite,
 };
 pub use privileged_authorization_decision_repository::IPrivilegedAuthorizationDecisionRepository;
 pub use recipient_contact_repository::{

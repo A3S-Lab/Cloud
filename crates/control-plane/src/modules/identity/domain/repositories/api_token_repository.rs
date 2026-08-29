@@ -1,6 +1,4 @@
-use crate::modules::identity::domain::entities::{
-    ApiToken, AuthenticatedApiToken, IdentityBootstrap,
-};
+use crate::modules::identity::domain::entities::{ApiToken, AuthenticatedApiToken};
 use crate::modules::identity::domain::value_objects::ApiTokenDigest;
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, RepositoryError,
@@ -21,14 +19,6 @@ pub struct CreateApiTokenWrite {
 
 #[async_trait]
 pub trait IApiTokenRepository: Send + Sync {
-    async fn bootstrap(
-        &self,
-        bootstrap: IdentityBootstrap,
-        digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 4],
-        idempotency: IdempotencyRequest,
-    ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError>;
-
     async fn create(
         &self,
         write: CreateApiTokenWrite,

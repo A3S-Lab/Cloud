@@ -1,5 +1,6 @@
 mod api_token;
 mod external_identity_link;
+mod identity_bootstrap;
 mod identity_principal;
 mod membership;
 mod membership_invitation;
@@ -15,10 +16,10 @@ mod tenant_support_grant_approval;
 mod workload_identity;
 
 pub use api_token::{
-    ApiToken, AuthenticatedApiToken, IdentityBootstrap, MAX_OIDC_LOGIN_TOKEN_LIFETIME,
-    MIN_OIDC_LOGIN_TOKEN_LIFETIME,
+    ApiToken, AuthenticatedApiToken, MAX_OIDC_LOGIN_TOKEN_LIFETIME, MIN_OIDC_LOGIN_TOKEN_LIFETIME,
 };
 pub use external_identity_link::ExternalIdentityLink;
+pub use identity_bootstrap::IdentityBootstrap;
 pub use identity_principal::{IdentityPrincipal, IdentityPrincipalKind};
 pub use membership::Membership;
 pub use membership_invitation::{
@@ -28,7 +29,9 @@ pub use oidc_flow::{
     OidcFlow, OidcFlowError, OidcFlowPurpose, MAX_OIDC_FLOW_LIFETIME, MIN_OIDC_FLOW_LIFETIME,
 };
 pub use organization::Organization;
-pub use platform_rbac::{AcceptedPlatformRolePolicyRevision, PlatformRoleBinding};
+pub use platform_rbac::{
+    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
+};
 pub use recipient_contact::{RecipientContact, RecipientContactRecord, RecipientContactStatus};
 pub use recipient_contact_verification::{
     RecipientContactVerification, RecipientContactVerificationClaims,

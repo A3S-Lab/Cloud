@@ -43,10 +43,11 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::forms::{IFormRepository, PostgresFormRepository};
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOidcIdentityRepository, IOrganizationRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
+    IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository,
 };
 use crate::modules::identity::PostgresIdentityRepository;
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
@@ -323,6 +324,7 @@ impl ArtifactPostgresAdapters {
 }
 
 pub(super) struct IdentityPostgresAdapters {
+    pub(super) identity_bootstrap: Arc<dyn IIdentityBootstrapRepository>,
     pub(super) organizations: Arc<dyn IOrganizationRepository>,
     pub(super) api_tokens: Arc<dyn IApiTokenRepository>,
     pub(super) memberships: Arc<dyn IMembershipRepository>,
@@ -341,6 +343,7 @@ impl IdentityPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         let repository = Arc::new(PostgresIdentityRepository::new(executor));
         Self {
+            identity_bootstrap: repository.clone(),
             organizations: repository.clone(),
             api_tokens: repository.clone(),
             memberships: repository.clone(),

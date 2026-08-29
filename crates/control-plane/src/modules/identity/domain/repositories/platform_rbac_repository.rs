@@ -1,5 +1,5 @@
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding,
+    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
 };
 use crate::modules::identity::domain::value_objects::PlatformRole;
 use crate::modules::shared_kernel::domain::{
@@ -8,33 +8,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlatformRbacBootstrap {
-    pub policy: AcceptedPlatformRolePolicyRevision,
-    pub owner_binding: PlatformRoleBinding,
-}
-
-impl PlatformRbacBootstrap {
-    pub fn validate(&self) -> Result<(), String> {
-        self.policy.validate()?;
-        self.owner_binding.validate_against_policy(&self.policy)?;
-        if self.policy.revision_number != 1
-            || self.owner_binding.role != PlatformRole::PlatformOwner
-            || !self.owner_binding.is_active()
-            || self.owner_binding.aggregate_version != 1
-            || self.owner_binding.installation_id != self.policy.installation_id
-            || self.owner_binding.principal_id != self.policy.accepted_by
-            || self.owner_binding.created_by != self.policy.accepted_by
-            || self.owner_binding.updated_by != self.policy.accepted_by
-        {
-            return Err("initial platform RBAC authority is invalid".into());
-        }
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct BootstrapPlatformRbacWrite {

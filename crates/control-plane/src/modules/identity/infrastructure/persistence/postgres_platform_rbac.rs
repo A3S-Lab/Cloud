@@ -6,7 +6,8 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, IdentityPrincipal, PlatformRoleBinding,
+    AcceptedPlatformRolePolicyRevision, IdentityPrincipal, PlatformRbacBootstrap,
+    PlatformRoleBinding,
 };
 use crate::modules::identity::domain::events::{
     PlatformRoleBindingChanged, PlatformRolePolicyAccepted,
@@ -14,7 +15,7 @@ use crate::modules::identity::domain::events::{
 use crate::modules::identity::domain::repositories::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
-    PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
+    RevokePlatformRoleBindingWrite,
 };
 use crate::modules::identity::domain::services::PrivilegedAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::{PlatformPermission, PlatformRole};
@@ -609,6 +610,73 @@ async fn active_owner_count(
     .unwrap_or_default())
 }
 
+/// Persists the one initial platform policy and owner binding while the caller
+/// holds the canonical Installation row lock. Both the public Identity
+/// bootstrap and the internal platform-RBAC bootstrap use this exact
+/// transaction-local writer.
+pub(super) async fn persist_platform_rbac_bootstrap_under_installation_lock(
+    transaction: &a3s_orm::PostgresTransaction,
+    bootstrap: &PlatformRbacBootstrap,
+    request_id: Uuid,
+) -> Result<(), PostgresPersistenceError> {
+    bootstrap
+        .validate()
+        .map_err(PostgresPersistenceError::Invariant)?;
+    require_active_principal(transaction, bootstrap.policy.accepted_by).await?;
+    if load_current_policy_for_update(transaction, bootstrap.policy.installation_id)
+        .await?
+        .is_some()
+    {
+        return Err(RepositoryError::Conflict(
+            "platform RBAC has already been bootstrapped".into(),
+        )
+        .into());
+    }
+    let any_binding = fetch_optional::<i32, _>(
+        transaction,
+        sql_query::<i32>("select 1 from platform_role_bindings where installation_id = ")
+            .bind(bootstrap.policy.installation_id.as_uuid())
+            .append(" limit 1"),
+    )
+    .await?
+    .is_some();
+    if any_binding {
+        return Err(PostgresPersistenceError::Invariant(
+            "platform RBAC bindings exist without a current policy head".into(),
+        ));
+    }
+
+    if let Err(error) = insert_policy_revision(transaction, &bootstrap.policy).await {
+        if is_unique_violation(&error) {
+            return Err(RepositoryError::Conflict(
+                "initial platform role policy already exists".into(),
+            )
+            .into());
+        }
+        return Err(error);
+    }
+    insert_policy_head(transaction, &bootstrap.policy).await?;
+    if let Err(error) = insert_binding(transaction, &bootstrap.owner_binding).await {
+        if is_unique_violation(&error) {
+            return Err(RepositoryError::Conflict(
+                "initial platform owner binding already exists".into(),
+            )
+            .into());
+        }
+        return Err(error);
+    }
+    store_policy_facts(transaction, &bootstrap.policy, None, request_id).await?;
+    store_binding_facts(
+        transaction,
+        &bootstrap.owner_binding,
+        None,
+        "identity.platform-role-binding.created",
+        None,
+        request_id,
+    )
+    .await
+}
+
 #[async_trait]
 impl IPlatformRbacRepository for PostgresIdentityRepository {
     async fn bootstrap_platform_rbac(
@@ -660,64 +728,9 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                         }
                         return Ok(replayed);
                     }
-                    if current.is_some() {
-                        return Err(RepositoryError::Conflict(
-                            "platform RBAC has already been bootstrapped".into(),
-                        )
-                        .into());
-                    }
-                    let any_binding = fetch_optional::<i32, _>(
+                    persist_platform_rbac_bootstrap_under_installation_lock(
                         transaction,
-                        sql_query::<i32>(
-                            "select 1 from platform_role_bindings where installation_id = ",
-                        )
-                        .bind(installation_id.as_uuid())
-                        .append(" limit 1"),
-                    )
-                    .await?
-                    .is_some();
-                    if any_binding {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "platform RBAC bindings exist without a current policy head".into(),
-                        ));
-                    }
-
-                    if let Err(error) =
-                        insert_policy_revision(transaction, &write.bootstrap.policy).await
-                    {
-                        if is_unique_violation(&error) {
-                            return Err(RepositoryError::Conflict(
-                                "initial platform role policy already exists".into(),
-                            )
-                            .into());
-                        }
-                        return Err(error);
-                    }
-                    insert_policy_head(transaction, &write.bootstrap.policy).await?;
-                    if let Err(error) =
-                        insert_binding(transaction, &write.bootstrap.owner_binding).await
-                    {
-                        if is_unique_violation(&error) {
-                            return Err(RepositoryError::Conflict(
-                                "initial platform owner binding already exists".into(),
-                            )
-                            .into());
-                        }
-                        return Err(error);
-                    }
-                    store_policy_facts(
-                        transaction,
-                        &write.bootstrap.policy,
-                        None,
-                        write.request_id,
-                    )
-                    .await?;
-                    store_binding_facts(
-                        transaction,
-                        &write.bootstrap.owner_binding,
-                        None,
-                        "identity.platform-role-binding.created",
-                        None,
+                        &write.bootstrap,
                         write.request_id,
                     )
                     .await?;

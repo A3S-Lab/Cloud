@@ -1,13 +1,14 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding, TenantSupportGrant,
+    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
+    TenantSupportGrant,
 };
 use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, BootstrapPlatformRbacWrite, CreatePlatformRoleBindingWrite,
     IApiTokenRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    ITenantSupportGrantRepository, PlatformRbacBootstrap, ProposeTenantSupportGrantWrite,
-    RevokePlatformRoleBindingWrite, RevokeTenantSupportGrantWrite,
+    ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite, RevokePlatformRoleBindingWrite,
+    RevokeTenantSupportGrantWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::{
     PrivilegedAuthorizationDecision, PrivilegedAuthorizationDecisionRequest,

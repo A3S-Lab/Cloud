@@ -5758,6 +5758,66 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .with_header("x-a3s-bootstrap-token", BOOTSTRAP_TOKEN)
     };
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "create function reject_identity_bootstrap_platform_fact()
+             returns trigger language plpgsql as $$
+             begin
+                 if new.event_key = 'identity.platform-role-policy.accepted' then
+                     raise exception 'injected platform authority fact failure';
+                 end if;
+                 return new;
+             end
+             $$;
+             create trigger reject_identity_bootstrap_platform_fact
+             before insert on outbox_events
+             for each row execute function reject_identity_bootstrap_platform_fact();",
+        )
+        .await?;
+    let rejected_bootstrap = app
+        .call(
+            post_json(
+                "/api/v1/bootstrap",
+                "organization-bootstrap-rollback",
+                json!({
+                    "organizationName": "Rollback",
+                    "tokenName": "rollback-admin",
+                    "token": ADMIN_TOKEN,
+                    "expiresAt": null
+                }),
+            )
+            .with_header("x-a3s-bootstrap-token", BOOTSTRAP_TOKEN),
+        )
+        .await?;
+    assert_eq!(rejected_bootstrap.status(), 500);
+    let rejected_bootstrap_rows = database
+        .fetch_one_as(sql_query::<i64>(
+            "select (select count(*) from organizations)
+                  + (select count(*) from identity_principals)
+                  + (select count(*) from organization_memberships)
+                  + (select count(*) from api_tokens)
+                  + (select count(*) from platform_role_policy_revisions)
+                  + (select count(*) from platform_role_policy_heads)
+                  + (select count(*) from platform_role_bindings)
+                  + (select count(*) from idempotency_records where idempotency_key = 'organization-bootstrap-rollback')",
+        ))
+        .await?;
+    assert_eq!(
+        rejected_bootstrap_rows, 0,
+        "identity and platform authorization bootstrap must roll back as one authority"
+    );
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "drop trigger reject_identity_bootstrap_platform_fact on outbox_events;
+             drop function reject_identity_bootstrap_platform_fact();",
+        )
+        .await?;
     let (first, replay) = tokio::join!(
         app.call(organization_request()),
         app.call(organization_request())
@@ -5804,6 +5864,35 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .as_str()
         .ok_or("bootstrap membership has no principal ID")?
         .to_owned();
+    let platform_authority = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>(
+                "select
+                    (select count(*) from platform_role_policy_heads),
+                    (select count(*) from platform_role_policy_revisions),
+                    (select count(*) from platform_role_bindings where role = 'platform_owner' and revoked_at is null),
+                    (select count(*)
+                       from platform_role_policy_heads head
+                       join platform_role_policy_revisions revision
+                         on revision.installation_id = head.installation_id
+                        and revision.policy_id = head.policy_id
+                        and revision.id = head.revision_id
+                        and revision.revision_number = head.revision_number
+                       join platform_role_bindings binding
+                         on binding.installation_id = head.installation_id
+                        and binding.principal_id = revision.accepted_by
+                        and binding.role = 'platform_owner'
+                        and binding.revoked_at is null
+                      where revision.accepted_by = ",
+            )
+            .bind(Uuid::parse_str(&owner_principal_id)?),
+        )
+        .await?;
+    assert_eq!(
+        platform_authority,
+        (1, 1, 1, 1),
+        "concurrent/replayed Identity bootstrap must elect exactly one matching platform authority root"
+    );
 
     let plugin_registry_id = Uuid::now_v7();
     let plugin_registry_request_id = Uuid::now_v7();
@@ -6938,8 +7027,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     );
     assert_eq!(
         (outbox_events, idempotency_records),
-        (65, 45),
-        "hosted build requests and committed pull-request fanout must update only their owned Outbox evidence"
+        (67, 45),
+        "the two platform authority facts plus hosted build and pull-request fanout must update only their owned Outbox evidence"
     );
 
     let operation_id = OperationId::new();

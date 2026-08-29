@@ -129,6 +129,31 @@ pub struct PlatformRoleBinding {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlatformRbacBootstrap {
+    pub policy: AcceptedPlatformRolePolicyRevision,
+    pub owner_binding: PlatformRoleBinding,
+}
+
+impl PlatformRbacBootstrap {
+    pub fn validate(&self) -> Result<(), String> {
+        self.policy.validate()?;
+        self.owner_binding.validate_against_policy(&self.policy)?;
+        if self.policy.revision_number != 1
+            || self.owner_binding.role != PlatformRole::PlatformOwner
+            || !self.owner_binding.is_active()
+            || self.owner_binding.aggregate_version != 1
+            || self.owner_binding.installation_id != self.policy.installation_id
+            || self.owner_binding.principal_id != self.policy.accepted_by
+            || self.owner_binding.created_by != self.policy.accepted_by
+            || self.owner_binding.updated_by != self.policy.accepted_by
+        {
+            return Err("initial platform RBAC authority is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 impl PlatformRoleBinding {
     #[allow(clippy::too_many_arguments)]
     pub fn create(

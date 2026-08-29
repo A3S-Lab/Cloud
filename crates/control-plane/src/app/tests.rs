@@ -2105,6 +2105,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 bootstrap_credential: BootstrapCredential::new(BOOTSTRAP_TOKEN)
                     .map_err(BootError::Internal)?,
             },
+            identity_bootstrap: identity.clone(),
             organizations: identity.clone(),
             api_tokens: identity.clone(),
             memberships: identity.clone(),

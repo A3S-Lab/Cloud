@@ -1,12 +1,12 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding,
+    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
 };
 use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IApiTokenRepository,
-    IPlatformRbacRepository, PlatformRbacBootstrap, RevokePlatformRoleBindingWrite,
+    IPlatformRbacRepository, RevokePlatformRoleBindingWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,

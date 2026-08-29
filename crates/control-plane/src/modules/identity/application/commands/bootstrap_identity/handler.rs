@@ -1,28 +1,33 @@
 use super::{BootstrapIdentity, BootstrapIdentityResult};
 use crate::modules::identity::domain::entities::{
-    ApiToken, IdentityBootstrap, IdentityPrincipal, IdentityPrincipalKind, Membership, Organization,
+    AcceptedPlatformRolePolicyRevision, ApiToken, IdentityBootstrap, IdentityPrincipal,
+    IdentityPrincipalKind, Membership, Organization, PlatformRbacBootstrap, PlatformRoleBinding,
 };
 use crate::modules::identity::domain::events::{
     ApiTokenCreated, MembershipChanged, OrganizationCreated, PrincipalCreated,
 };
-use crate::modules::identity::domain::repositories::IApiTokenRepository;
+use crate::modules::identity::domain::repositories::{
+    BootstrapIdentityWrite, IIdentityBootstrapRepository,
+};
 use crate::modules::identity::domain::value_objects::{
-    ApiTokenName, ApiTokenScope, ApiTokenSecret, MembershipRole, OrganizationName,
+    ApiTokenName, ApiTokenScope, ApiTokenSecret, MembershipRole, OrganizationName, PlatformRole,
+    PlatformRolePolicyContract,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, MembershipId, OrganizationId, PrincipalId, ResourceName,
+    ApiTokenId, IdempotencyRequest, MembershipId, OrganizationId, PlatformRoleBindingId,
+    PlatformRolePolicyId, PrincipalId, ResourceName,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
 use std::sync::Arc;
 
 pub struct BootstrapIdentityHandler {
-    repository: Arc<dyn IApiTokenRepository>,
+    repository: Arc<dyn IIdentityBootstrapRepository>,
 }
 
 impl BootstrapIdentityHandler {
-    pub fn new(repository: Arc<dyn IApiTokenRepository>) -> Self {
+    pub fn new(repository: Arc<dyn IIdentityBootstrapRepository>) -> Self {
         Self { repository }
     }
 }
@@ -64,6 +69,10 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            let installation_id = match repository.installation_id().await {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error.into())),
+            };
             let now = Utc::now();
             let organization = Organization::create(OrganizationId::new(), organization_name, now);
             let principal = IdentityPrincipal::create(
@@ -91,6 +100,35 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            let platform_policy = AcceptedPlatformRolePolicyRevision::accept(
+                PlatformRolePolicyContract::baseline(installation_id, PlatformRolePolicyId::new())
+                    .map_err(BootError::Internal)?,
+                1,
+                principal.id,
+                now,
+            )
+            .map_err(BootError::Internal)?;
+            let platform_owner = PlatformRoleBinding::create(
+                PlatformRoleBindingId::new(),
+                installation_id,
+                principal.id,
+                PlatformRole::PlatformOwner,
+                &platform_policy,
+                principal.id,
+                now,
+            )
+            .map_err(BootError::Internal)?;
+            let bootstrap = IdentityBootstrap::create(
+                organization.clone(),
+                principal.clone(),
+                membership.clone(),
+                token.clone(),
+                PlatformRbacBootstrap {
+                    policy: platform_policy,
+                    owner_binding: platform_owner,
+                },
+            )
+            .map_err(BootError::Internal)?;
             let organization_event =
                 OrganizationCreated::envelope(&organization, command.request_id)
                     .map_err(|error| BootError::Internal(error.to_string()))?;
@@ -102,22 +140,18 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
             let token_event = ApiTokenCreated::envelope(&token, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
             let result = match repository
-                .bootstrap(
-                    IdentityBootstrap {
-                        organization,
-                        principal,
-                        membership,
-                        api_token: token,
-                    },
-                    digest,
-                    [
+                .bootstrap_identity(BootstrapIdentityWrite {
+                    bootstrap,
+                    token_digest: digest,
+                    identity_events: [
                         organization_event,
                         principal_event,
                         membership_event,
                         token_event,
                     ],
+                    request_id: command.request_id,
                     idempotency,
-                )
+                })
                 .await
             {
                 Ok(value) => value,

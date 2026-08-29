@@ -1,17 +1,23 @@
 use crate::modules::identity::domain::entities::{
     ApiToken, AuthenticatedApiToken, ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal,
-    Membership, MembershipInvitation, OidcFlow, Organization, RecipientContact,
-    RecipientContactVerification, RecipientContactVerificationDeliveryRecord, ResourceGrant,
+    Membership, MembershipInvitation, OidcFlow, Organization, PlatformRbacBootstrap,
+    RecipientContact, RecipientContactVerification, RecipientContactVerificationDeliveryRecord,
+    ResourceGrant,
+};
+use crate::modules::identity::domain::events::{
+    PlatformRoleBindingChanged, PlatformRolePolicyAccepted,
 };
 use crate::modules::identity::domain::repositories::{
-    CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
+    BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
+    IIdentityBootstrapRepository, IOrganizationRepository,
 };
 use crate::modules::identity::domain::services::ResourceAuthorizationDecision;
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, MembershipId,
-    MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId, RecipientContactId,
-    RecipientContactVerificationId, RepositoryError, ResourceGrantId, Sha256Digest,
+    ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, InstallationId,
+    MembershipId, MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId,
+    RecipientContactId, RecipientContactVerificationId, RepositoryError, ResourceGrantId,
+    Sha256Digest,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -25,6 +31,7 @@ use uuid::Uuid;
 
 #[derive(Default)]
 pub struct InMemoryIdentityRepository {
+    installation_id: InstallationId,
     pub(super) state: RwLock<State>,
 }
 
@@ -52,6 +59,7 @@ pub(super) struct State {
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
     pub(super) token_digests: BTreeMap<String, ApiTokenId>,
+    pub(super) platform_rbac: Option<PlatformRbacBootstrap>,
     pub(super) idempotency: BTreeMap<(String, String), (String, Value)>,
     pub(super) outbox: Vec<DomainEventEnvelope>,
 }
@@ -196,19 +204,39 @@ impl IOrganizationRepository for InMemoryIdentityRepository {
 }
 
 #[async_trait]
-impl IApiTokenRepository for InMemoryIdentityRepository {
-    async fn bootstrap(
+impl IIdentityBootstrapRepository for InMemoryIdentityRepository {
+    async fn installation_id(&self) -> Result<InstallationId, RepositoryError> {
+        Ok(self.installation_id)
+    }
+
+    async fn bootstrap_identity(
         &self,
-        bootstrap: IdentityBootstrap,
-        digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 4],
-        idempotency: IdempotencyRequest,
+        write: BootstrapIdentityWrite,
     ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError> {
+        let BootstrapIdentityWrite {
+            bootstrap,
+            token_digest,
+            identity_events,
+            request_id,
+            idempotency,
+        } = write;
+        bootstrap.validate().map_err(RepositoryError::Storage)?;
+        if bootstrap.platform_rbac.policy.installation_id != self.installation_id {
+            return Err(RepositoryError::Storage(
+                "identity bootstrap crossed the in-memory Installation boundary".into(),
+            ));
+        }
+        let platform_events = [
+            PlatformRolePolicyAccepted::envelope(&bootstrap.platform_rbac.policy, request_id)
+                .map_err(|error| RepositoryError::Storage(error.to_string()))?,
+            PlatformRoleBindingChanged::created(&bootstrap.platform_rbac.owner_binding, request_id)
+                .map_err(|error| RepositoryError::Storage(error.to_string()))?,
+        ];
         let mut state = self.state.write().await;
         if let Some(existing) = replay(&state, &idempotency)? {
             return Ok(existing);
         }
-        if !state.organizations.is_empty() {
+        if !state.organizations.is_empty() || state.platform_rbac.is_some() {
             return Err(RepositoryError::Conflict(
                 "Cloud identity has already been bootstrapped".into(),
             ));
@@ -233,16 +261,21 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
         );
         state
             .token_digests
-            .insert(digest.as_str().to_owned(), token.id);
+            .insert(token_digest.as_str().to_owned(), token.id);
         state.tokens.insert(token.id, token);
+        state.platform_rbac = Some(bootstrap.platform_rbac.clone());
         remember(&mut state, idempotency, &bootstrap)?;
-        state.outbox.extend(events);
+        state.outbox.extend(identity_events);
+        state.outbox.extend(platform_events);
         Ok(IdempotentWrite {
             value: bootstrap,
             replayed: false,
         })
     }
+}
 
+#[async_trait]
+impl IApiTokenRepository for InMemoryIdentityRepository {
     async fn create(
         &self,
         write: CreateApiTokenWrite,

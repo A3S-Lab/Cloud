@@ -1,22 +1,24 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    IdentityBootstrap, IdentityPrincipal, IdentityPrincipalKind, Membership, OidcFlow,
-    OidcFlowPurpose, Organization,
+    AcceptedPlatformRolePolicyRevision, IdentityBootstrap, IdentityPrincipal,
+    IdentityPrincipalKind, Membership, OidcFlow, OidcFlowPurpose, Organization,
+    PlatformRbacBootstrap, PlatformRoleBinding,
 };
 use a3s_cloud_control_plane::modules::identity::domain::events::{
     MembershipChanged, OrganizationCreated, PrincipalCreated,
 };
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
-    CompleteOidcLinkWrite, CompleteOidcLoginWrite, IApiTokenRepository, IOidcIdentityRepository,
+    BootstrapIdentityWrite, CompleteOidcLinkWrite, CompleteOidcLoginWrite,
+    IIdentityBootstrapRepository, IOidcIdentityRepository,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenDigest, ApiTokenName, ExternalIdentitySubject, MembershipRole, OidcIssuer,
-    OidcProviderKey, OrganizationName,
+    OidcProviderKey, OrganizationName, PlatformRole, PlatformRolePolicyContract,
 };
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, MembershipId, OidcFlowId, OrganizationId, PrincipalId,
-    ResourceName, Sha256Digest,
+    ApiTokenId, IdempotencyRequest, MembershipId, OidcFlowId, OrganizationId,
+    PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId, ResourceName, Sha256Digest,
 };
 
 fn oidc_digest(byte: char) -> Sha256Digest {
@@ -27,6 +29,7 @@ async fn exercise_oidc_repository_authority(
     executor: &PostgresExecutor,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let repository = PostgresIdentityRepository::new(executor.clone());
+    let installation_id = repository.installation_id().await?;
     let now = Utc::now();
     let organization = Organization::create(
         OrganizationId::new(),
@@ -56,16 +59,35 @@ async fn exercise_oidc_repository_authority(
         None,
     )?;
     let correlation_id = Uuid::now_v7();
+    let platform_policy = AcceptedPlatformRolePolicyRevision::accept(
+        PlatformRolePolicyContract::baseline(installation_id, PlatformRolePolicyId::new())?,
+        1,
+        principal.id,
+        now,
+    )?;
+    let platform_owner = PlatformRoleBinding::create(
+        PlatformRoleBindingId::new(),
+        installation_id,
+        principal.id,
+        PlatformRole::PlatformOwner,
+        &platform_policy,
+        principal.id,
+        now,
+    )?;
     repository
-        .bootstrap(
-            IdentityBootstrap {
-                organization: organization.clone(),
-                principal: principal.clone(),
-                membership: membership.clone(),
-                api_token: bootstrap_token.clone(),
-            },
-            ApiTokenDigest::parse(format!("sha256:{}", "8".repeat(64)))?,
-            [
+        .bootstrap_identity(BootstrapIdentityWrite {
+            bootstrap: IdentityBootstrap::create(
+                organization.clone(),
+                principal.clone(),
+                membership.clone(),
+                bootstrap_token.clone(),
+                PlatformRbacBootstrap {
+                    policy: platform_policy,
+                    owner_binding: platform_owner,
+                },
+            )?,
+            token_digest: ApiTokenDigest::parse(format!("sha256:{}", "8".repeat(64)))?,
+            identity_events: [
                 OrganizationCreated::envelope(&organization, correlation_id)?,
                 PrincipalCreated::envelope(organization.id, &principal, correlation_id)?,
                 MembershipChanged::created(&membership, correlation_id)?,
@@ -74,12 +96,13 @@ async fn exercise_oidc_repository_authority(
                     correlation_id,
                 )?,
             ],
-            IdempotencyRequest::new(
+            request_id: correlation_id,
+            idempotency: IdempotencyRequest::new(
                 "tests/oidc-repository/bootstrap",
                 "create",
                 b"create",
             )?,
-        )
+        })
         .await?;
     let provider = OidcProviderKey::parse("repository")?;
     let issuer = OidcIssuer::parse("https://identity.example.test/repository")?;

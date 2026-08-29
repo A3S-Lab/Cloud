@@ -22,14 +22,6 @@ pub struct ApiToken {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IdentityBootstrap {
-    pub organization: super::Organization,
-    pub principal: super::IdentityPrincipal,
-    pub membership: super::Membership,
-    pub api_token: ApiToken,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedApiToken {
     pub api_token: ApiToken,

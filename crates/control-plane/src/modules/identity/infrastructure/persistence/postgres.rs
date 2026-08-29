@@ -1,4 +1,7 @@
 use super::postgres_memberships::{load_active_membership_for_update, lock_membership_set};
+use super::postgres_platform_rbac::{
+    lock_installation, persist_platform_rbac_bootstrap_under_installation_lock,
+};
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
@@ -8,14 +11,15 @@ use crate::modules::identity::domain::entities::{
     Membership, Organization,
 };
 use crate::modules::identity::domain::repositories::{
-    CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
+    BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
+    IIdentityBootstrapRepository, IOrganizationRepository,
 };
 use crate::modules::identity::domain::value_objects::{
     ApiTokenDigest, ApiTokenName, ApiTokenScope, MembershipRole, OrganizationName,
 };
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, OrganizationId, PrincipalId,
-    RepositoryError, ResourceName,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, InstallationId, MembershipId, OrganizationId,
+    PrincipalId, RepositoryError, ResourceName,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::{
@@ -477,22 +481,34 @@ pub(super) async fn insert_token(
 }
 
 #[async_trait]
-impl IApiTokenRepository for PostgresIdentityRepository {
-    async fn bootstrap(
+impl IIdentityBootstrapRepository for PostgresIdentityRepository {
+    async fn installation_id(&self) -> Result<InstallationId, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_one_as(sql_query::<Uuid>(
+                "select installation.id from cloud_installations installation where installation.singleton_key",
+            ))
+            .await
+            .map(InstallationId::from_uuid)
+            .map_err(|error| RepositoryError::Storage(error.to_string()))
+    }
+
+    async fn bootstrap_identity(
         &self,
-        bootstrap: IdentityBootstrap,
-        digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 4],
-        idempotency: IdempotencyRequest,
+        write: BootstrapIdentityWrite,
     ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    if let Some(replayed) =
-                        idempotency_replay::<IdentityBootstrap>(transaction, &idempotency).await?
-                    {
-                        return Ok(replayed);
-                    }
+                    let BootstrapIdentityWrite {
+                        bootstrap,
+                        token_digest,
+                        identity_events,
+                        request_id,
+                        idempotency,
+                    } = write;
+                    bootstrap
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
                     let locked = fetch_optional::<i32, _>(
                         transaction,
                         sql_query::<i32>(
@@ -507,6 +523,20 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                             "identity bootstrap lock did not return a row".into(),
                         ));
                     }
+                    lock_installation(
+                        transaction,
+                        bootstrap.platform_rbac.policy.installation_id,
+                    )
+                    .await?;
+                    if let Some(replayed) =
+                        idempotency_replay::<IdentityBootstrap>(transaction, &idempotency).await?
+                    {
+                        replayed
+                            .value
+                            .validate()
+                            .map_err(PostgresPersistenceError::Invariant)?;
+                        return Ok(replayed);
+                    }
                     let organization_count = fetch_optional::<i64, _>(
                         transaction,
                         sql_query::<i64>("select count(*) from organizations"),
@@ -520,16 +550,6 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                         .into());
                     }
                     let organization = &bootstrap.organization;
-                    if bootstrap.membership.organization_id != organization.id
-                        || bootstrap.membership.principal_id != bootstrap.principal.id
-                        || bootstrap.membership.role != MembershipRole::Owner
-                        || bootstrap.api_token.organization_id != organization.id
-                        || bootstrap.api_token.principal_id != bootstrap.principal.id
-                    {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "identity bootstrap does not bind one owner principal".into(),
-                        ));
-                    }
                     let organization_rows = execute(
                         transaction,
                         sql_query::<()>(
@@ -554,8 +574,14 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                     }
                     insert_principal(transaction, &bootstrap.principal).await?;
                     insert_membership(transaction, &bootstrap.membership).await?;
-                    insert_token(transaction, &bootstrap.api_token, &digest).await?;
-                    for event in &events {
+                    insert_token(transaction, &bootstrap.api_token, &token_digest).await?;
+                    persist_platform_rbac_bootstrap_under_installation_lock(
+                        transaction,
+                        &bootstrap.platform_rbac,
+                        request_id,
+                    )
+                    .await?;
+                    for event in &identity_events {
                         store_outbox(transaction, event).await?;
                     }
                     store_idempotency(transaction, &idempotency, &bootstrap).await?;
@@ -568,7 +594,10 @@ impl IApiTokenRepository for PostgresIdentityRepository {
             .await
             .map_err(transaction_error)
     }
+}
 
+#[async_trait]
+impl IApiTokenRepository for PostgresIdentityRepository {
     async fn create(
         &self,
         write: CreateApiTokenWrite,

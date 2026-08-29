@@ -1,11 +1,12 @@
 use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding, TenantSupportGrantProposal,
+    AcceptedPlatformRolePolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
+    TenantSupportGrantProposal,
 };
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, BootstrapPlatformRbacWrite, CreatePlatformRoleBindingWrite,
-    IPlatformRbacRepository, ITenantSupportGrantRepository, PlatformRbacBootstrap,
-    ProposeTenantSupportGrantWrite, RevokeTenantSupportGrantWrite,
+    IPlatformRbacRepository, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
+    RevokeTenantSupportGrantWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenScope, PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,

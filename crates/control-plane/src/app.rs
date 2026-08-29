@@ -171,10 +171,10 @@ use crate::modules::forms::{
     NativeFormSemanticCore, PublishFormReleaseHandler, ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOidcIdentityRepository, IOrganizationRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
-    IResourceGrantRepository,
+    IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
+    IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, IRecipientContactProofService,
@@ -556,6 +556,7 @@ async fn build_api_worker_application(
     let preview_source_revision_projection =
         run_relay.then(|| postgres_adapters.preview_source_revision_projection());
     let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
+    let identity_bootstrap = adapters.identity.identity_bootstrap;
     let organizations = adapters.identity.organizations;
     let api_tokens = adapters.identity.api_tokens;
     let memberships = adapters.identity.memberships;
@@ -1738,6 +1739,7 @@ async fn build_api_worker_application(
             config.clone(),
             ManagementApplicationDependencies {
                 management,
+                identity_bootstrap,
                 organizations,
                 api_tokens,
                 memberships,
@@ -1991,6 +1993,7 @@ struct WorkerGatewayDependencies {
 
 struct ManagementApplicationDependencies {
     management: ManagementSurfaceDependencies,
+    identity_bootstrap: Arc<dyn IIdentityBootstrapRepository>,
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
@@ -2081,6 +2084,7 @@ fn build_management_application_with_health(
 
     let ManagementApplicationDependencies {
         management,
+        identity_bootstrap,
         organizations,
         api_tokens,
         memberships,
@@ -2727,7 +2731,7 @@ fn build_management_application_with_health(
         .import(
             CqrsModule::new("cloud-cqrs")
                 .command_handler::<crate::modules::identity::BootstrapIdentity, _>(
-                    BootstrapIdentityHandler::new(Arc::clone(&api_tokens)),
+                    BootstrapIdentityHandler::new(identity_bootstrap),
                 )
                 .command_handler::<crate::modules::identity::CreateApiToken, _>(
                     CreateApiTokenHandler::new(Arc::clone(&api_tokens)),

@@ -2046,6 +2046,153 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
 }
 
 #[test]
+fn identity_bootstrap_is_one_atomic_tenant_and_platform_authority() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let bootstrap_port = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/repositories/identity_bootstrap_repository.rs"),
+    )
+    .expect("read Identity bootstrap repository port");
+    let token_port = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/repositories/api_token_repository.rs"),
+    )
+    .expect("read API token repository port");
+    let aggregate = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/entities/identity_bootstrap.rs"),
+    )
+    .expect("read Identity bootstrap aggregate");
+    let handler = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/commands/bootstrap_identity/handler.rs"),
+    )
+    .expect("read Identity bootstrap handler");
+    let identity_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Identity PostgreSQL adapter");
+    let platform_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs"),
+    )
+    .expect("read platform RBAC PostgreSQL adapter");
+    let adapters = std::fs::read_to_string(manifest.join("src/app/postgres_adapters.rs"))
+        .expect("read PostgreSQL composition adapters");
+    let provider_gate = std::fs::read_to_string(manifest.join("tests/postgres_integration.rs"))
+        .expect("read PostgreSQL integration gate");
+
+    assert_eq!(
+        bootstrap_port
+            .matches("pub trait IIdentityBootstrapRepository")
+            .count(),
+        1
+    );
+    assert!(bootstrap_port.contains("async fn installation_id"));
+    assert!(bootstrap_port.contains("async fn bootstrap_identity"));
+    assert!(
+        !token_port.contains("bootstrap"),
+        "API token persistence reacquired the cross-aggregate bootstrap transaction"
+    );
+    for required in [
+        "pub platform_rbac: PlatformRbacBootstrap",
+        "self.platform_rbac.validate()",
+        "self.platform_rbac.policy.accepted_by != self.principal.id",
+    ] {
+        assert!(
+            aggregate.contains(required),
+            "Identity bootstrap aggregate lost invariant {required}"
+        );
+    }
+    for required in [
+        "PlatformRolePolicyContract::baseline",
+        "PlatformRole::PlatformOwner",
+        "IdentityBootstrap::create",
+        ".bootstrap_identity(BootstrapIdentityWrite {",
+    ] {
+        assert!(
+            handler.contains(required),
+            "Identity bootstrap handler lost authority composition {required}"
+        );
+    }
+    assert!(!handler.contains("IApiTokenRepository"));
+
+    let bootstrap_transaction = identity_persistence
+        .split("impl IIdentityBootstrapRepository for PostgresIdentityRepository")
+        .nth(1)
+        .and_then(|source| source.split("impl IApiTokenRepository").next())
+        .expect("Identity bootstrap persistence implementation");
+    assert_eq!(bootstrap_transaction.matches(".transaction(").count(), 1);
+    for required in [
+        "a3s-cloud.identity.bootstrap",
+        "lock_installation(",
+        "insert_principal(",
+        "insert_membership(",
+        "insert_token(",
+        "persist_platform_rbac_bootstrap_under_installation_lock(",
+        "store_idempotency(",
+    ] {
+        assert!(
+            bootstrap_transaction.contains(required),
+            "Identity bootstrap transaction lost atomic write {required}"
+        );
+    }
+    assert!(
+        bootstrap_transaction
+            .find("a3s-cloud.identity.bootstrap")
+            .expect("bootstrap lock")
+            < bootstrap_transaction
+                .find("idempotency_replay::<IdentityBootstrap>")
+                .expect("bootstrap idempotency replay"),
+        "bootstrap idempotency must be checked after acquiring its transaction lock"
+    );
+    assert_eq!(
+        platform_persistence
+            .matches("persist_platform_rbac_bootstrap_under_installation_lock(")
+            .count(),
+        2,
+        "one transaction-local platform bootstrap writer must serve its definition and internal caller"
+    );
+    for required in [
+        "insert_policy_revision(",
+        "insert_policy_head(",
+        "insert_binding(",
+        "store_policy_facts(",
+        "store_binding_facts(",
+    ] {
+        assert!(
+            platform_persistence.contains(required),
+            "shared platform bootstrap writer lost {required}"
+        );
+    }
+    assert_eq!(
+        adapters
+            .matches("identity_bootstrap: repository.clone()")
+            .count(),
+        1,
+        "process composition must expose one typed Identity bootstrap adapter"
+    );
+    for proof in [
+        "reject_identity_bootstrap_platform_fact",
+        "identity and platform authorization bootstrap must roll back as one authority",
+        "concurrent/replayed Identity bootstrap must elect exactly one matching platform authority root",
+    ] {
+        assert!(
+            provider_gate.contains(proof),
+            "PostgreSQL provider gate lost bootstrap proof {proof}"
+        );
+    }
+    for forbidden in [
+        "Redis",
+        "a3s_lane",
+        "bootstrap_outbox",
+        "bootstrap_audit",
+        "bootstrap_idempotency",
+        "bootstrap_distributed_lock",
+    ] {
+        assert!(
+            !bootstrap_transaction.contains(forbidden),
+            "Identity bootstrap introduced duplicate mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(

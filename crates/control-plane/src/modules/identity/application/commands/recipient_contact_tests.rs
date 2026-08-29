@@ -16,7 +16,7 @@ use crate::modules::identity::application::queries::list_recipient_contacts::{
 };
 use crate::modules::identity::domain::entities::RecipientContactStatus;
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
+    IIdentityBootstrapRepository, IMembershipRepository, IOrganizationRepository,
     IRecipientContactRepository,
 };
 use crate::modules::identity::domain::services::IRecipientContactProofService;
@@ -42,8 +42,8 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let repository = Arc::new(InMemoryIdentityRepository::new());
-        let api_tokens: Arc<dyn IApiTokenRepository> = repository.clone();
-        let bootstrap = BootstrapIdentityHandler::new(api_tokens)
+        let identity_bootstrap: Arc<dyn IIdentityBootstrapRepository> = repository.clone();
+        let bootstrap = BootstrapIdentityHandler::new(identity_bootstrap)
             .execute(
                 BootstrapIdentity {
                     organization_name: "Recipient Contact Test".into(),
