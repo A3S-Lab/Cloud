@@ -10,3 +10,5 @@ pub mod list_my_membership_invitations;
 pub mod list_organizations;
 pub mod list_recipient_contacts;
 pub mod list_resource_grants;
+pub mod read_platform_rbac;
+pub mod read_tenant_support;

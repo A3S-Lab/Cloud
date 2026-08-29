@@ -45,6 +45,15 @@ pub use application::commands::create_organization::{
 pub use application::commands::create_resource_grant::{
     CreateResourceGrant, CreateResourceGrantHandler,
 };
+pub use application::commands::manage_platform_rbac::{
+    AcceptPlatformRolePolicy, AcceptPlatformRolePolicyHandler, ChangePlatformRoleBinding,
+    ChangePlatformRoleBindingHandler, CreatePlatformRoleBinding, CreatePlatformRoleBindingHandler,
+    RevokePlatformRoleBinding, RevokePlatformRoleBindingHandler,
+};
+pub use application::commands::manage_tenant_support::{
+    ApproveTenantSupportGrant, ApproveTenantSupportGrantHandler, ProposeTenantSupportGrant,
+    ProposeTenantSupportGrantHandler, RevokeTenantSupportGrant, RevokeTenantSupportGrantHandler,
+};
 pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,
 };
@@ -81,6 +90,15 @@ pub use application::queries::list_recipient_contacts::{
 };
 pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
+};
+pub use application::queries::read_platform_rbac::{
+    GetCurrentPlatformRolePolicy, GetCurrentPlatformRolePolicyHandler, GetPlatformRoleBinding,
+    GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevision,
+    GetPlatformRolePolicyRevisionHandler, GetPrincipalPlatformRoleBinding,
+    GetPrincipalPlatformRoleBindingHandler,
+};
+pub use application::queries::read_tenant_support::{
+    GetTenantSupportGrant, GetTenantSupportGrantHandler,
 };
 pub use domain::repositories::{
     IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,

@@ -11,6 +11,8 @@ pub mod create_membership;
 pub mod create_membership_invitation;
 pub mod create_organization;
 pub mod create_resource_grant;
+pub mod manage_platform_rbac;
+pub mod manage_tenant_support;
 pub mod revoke_api_token;
 pub mod revoke_membership;
 pub mod revoke_membership_invitation;

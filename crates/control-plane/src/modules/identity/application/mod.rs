@@ -1,6 +1,7 @@
 pub mod commands;
 mod membership_invitation_result;
 mod membership_result;
+mod privileged_management;
 pub mod queries;
 mod recipient_contact_result;
 mod recipient_contact_verification_delivery;
@@ -11,6 +12,11 @@ pub use membership_invitation_result::{
     MembershipInvitationAcceptanceResult, MembershipInvitationMutationResult,
 };
 pub use membership_result::MembershipMutationResult;
+pub use privileged_management::{
+    PlatformRoleBindingMutationResult, PlatformRolePolicyMutationResult,
+    TenantSupportGrantApprovalMutationResult, TenantSupportGrantMutationResult,
+    TenantSupportGrantProposalMutationResult,
+};
 pub use recipient_contact_result::{
     RecipientContactMutationResult, RecipientContactVerificationRequestResult,
 };

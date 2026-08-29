@@ -2193,6 +2193,83 @@ fn identity_bootstrap_is_one_atomic_tenant_and_platform_authority() {
 }
 
 #[test]
+fn privileged_management_application_surface_is_closed_and_installation_derived() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let platform_commands = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/commands/manage_platform_rbac/commands.rs"),
+    )
+    .expect("read platform RBAC application commands");
+    let support_commands = std::fs::read_to_string(
+        manifest
+            .join("src/modules/identity/application/commands/manage_tenant_support/commands.rs"),
+    )
+    .expect("read tenant support application commands");
+    let platform_queries = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/queries/read_platform_rbac/queries.rs"),
+    )
+    .expect("read platform RBAC application queries");
+    let support_query = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/queries/read_tenant_support/query.rs"),
+    )
+    .expect("read tenant support application query");
+    let platform_handlers = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/commands/manage_platform_rbac/handlers.rs"),
+    )
+    .expect("read platform RBAC application handlers");
+    let support_handlers = std::fs::read_to_string(
+        manifest
+            .join("src/modules/identity/application/commands/manage_tenant_support/handlers.rs"),
+    )
+    .expect("read tenant support application handlers");
+    let platform_query_handlers = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/queries/read_platform_rbac/handlers.rs"),
+    )
+    .expect("read platform RBAC query handlers");
+    let support_query_handler = std::fs::read_to_string(
+        manifest.join("src/modules/identity/application/queries/read_tenant_support/handler.rs"),
+    )
+    .expect("read tenant support query handler");
+
+    let commands = format!("{platform_commands}\n{support_commands}");
+    let queries = format!("{platform_queries}\n{support_query}");
+    let handlers = format!(
+        "{platform_handlers}\n{support_handlers}\n{platform_query_handlers}\n{support_query_handler}"
+    );
+    assert_eq!(commands.matches("pub credential_id: ApiTokenId").count(), 7);
+    assert_eq!(queries.matches("pub credential_id: ApiTokenId").count(), 5);
+    for forbidden in [
+        "installation_id:",
+        "actor_is_platform_admin",
+        "platform_permission:",
+        "support_permission:",
+        "action:",
+        "scope:",
+        "resource_id:",
+    ] {
+        assert!(
+            !commands.contains(forbidden) && !queries.contains(forbidden),
+            "privileged Application input exposed ambient or caller-authored authority {forbidden}"
+        );
+    }
+    assert_eq!(handlers.matches("installation_id(&bootstrap)").count(), 12);
+    assert_eq!(handlers.matches("::parse_acl(").count(), 2);
+    assert!(platform_handlers.contains("deterministic_id("));
+    for closed_read in [
+        "read_current_platform_role_policy(",
+        "read_platform_role_policy_revision(",
+        "read_platform_role_binding(",
+        "read_principal_platform_role_binding(",
+        "read_tenant_support_grant(",
+    ] {
+        assert!(
+            handlers.contains(closed_read),
+            "privileged Application query bypassed closed atomic read {closed_read}"
+        );
+    }
+    assert!(!handlers.contains("AuthorizePrivilegedAccess"));
+}
+
+#[test]
 fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(
