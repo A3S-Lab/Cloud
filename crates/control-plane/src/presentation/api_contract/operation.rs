@@ -7,6 +7,10 @@ use super::developer_workflow_operation::{
     success_component as developer_workflow_success_component,
 };
 use super::documentation::describe_operation_documentation;
+use super::privileged_management_operation::{
+    is_privileged_management_mutation, is_privileged_management_path,
+    success_component as privileged_management_success_component,
+};
 use super::request_schema::closed_json_request_schema;
 use super::source_discovery_operation::{
     query_parameters as source_discovery_query_parameters,
@@ -1284,6 +1288,10 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             component.to_owned()
         } else if let Some(component) = developer_workflow_success_component(method, path, status) {
             component
+        } else if let Some(component) =
+            privileged_management_success_component(method, path, status)
+        {
+            component.to_owned()
         } else if let Some(component) = recipient_contact_success_component(method, path, status) {
             component
         } else if let Some(component) =
@@ -1330,6 +1338,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_agent_execution_checkpoint_collection_path(path)
                 || is_agent_execution_fork_path(path)
                 || is_developer_workflow_request_body_path(path)
+                || is_privileged_management_mutation(method, path)
                 || is_user_file_path(path)))
     {
         error_statuses.extend([413, 415]);
@@ -1434,7 +1443,7 @@ fn operation_id(method: &str, path: &str) -> String {
 }
 
 fn operation_tag(path: &str) -> &'static str {
-    if path.starts_with("/health") || path == "/platform" {
+    if path.starts_with("/health") || path == "/platform" || is_privileged_management_path(path) {
         "Platform"
     } else if path.contains("security-investigations") {
         "Security"
@@ -1514,17 +1523,18 @@ fn operation_tag(path: &str) -> &'static str {
 }
 
 fn requires_idempotency_key(method: &str, path: &str) -> bool {
-    matches!(method, "delete" | "patch" | "post" | "put")
-        && (path == "/bootstrap"
-            || path == "/organizations"
-            || path.starts_with("/organizations/")
-            || path.ends_with("/membership-invitations/{invitation_id}/acceptance"))
-        && !path.ends_with("/source-connections/github")
-        && !path.ends_with("/identity/oidc/{provider_key}/link")
-        && !is_human_task_submission_path(path)
-        && !is_plugin_catalog_read_path(path)
-        && !is_asset_git_path(path)
-        && !is_build_plan_detection_path(path)
+    is_privileged_management_mutation(method, path)
+        || (matches!(method, "delete" | "patch" | "post" | "put")
+            && (path == "/bootstrap"
+                || path == "/organizations"
+                || path.starts_with("/organizations/")
+                || path.ends_with("/membership-invitations/{invitation_id}/acceptance"))
+            && !path.ends_with("/source-connections/github")
+            && !path.ends_with("/identity/oidc/{provider_key}/link")
+            && !is_human_task_submission_path(path)
+            && !is_plugin_catalog_read_path(path)
+            && !is_asset_git_path(path)
+            && !is_build_plan_detection_path(path))
 }
 
 fn is_plugin_catalog_read_path(path: &str) -> bool {

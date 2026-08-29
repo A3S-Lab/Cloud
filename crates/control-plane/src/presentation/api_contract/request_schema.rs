@@ -1,10 +1,14 @@
 use super::developer_workflow_operation::request_schema as developer_workflow_request_schema;
+use super::privileged_management_operation::request_schema as privileged_management_request_schema;
 use super::source_components::build_recipe_request_schema;
 use crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES;
 use serde_json::{json, Value};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
     if let Some(schema) = developer_workflow_request_schema(path) {
+        return Some(schema);
+    }
+    if let Some(schema) = privileged_management_request_schema(path) {
         return Some(schema);
     }
     let schema = match path {

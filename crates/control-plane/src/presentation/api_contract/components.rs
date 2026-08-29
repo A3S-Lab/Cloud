@@ -7,6 +7,10 @@ use super::preview_management_components::{
     install_preview_management_component_schemas, PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS,
     PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
 };
+use super::privileged_management_components::{
+    install_privileged_management_component_schemas,
+    PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
+};
 use super::source_components::{
     install_source_discovery_component_schemas, SOURCE_DISCOVERY_SUCCESS_RESPONSE_BINDINGS,
     SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS,
@@ -362,6 +366,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     install_developer_workflow_component_schemas(&mut schema_components);
     install_workload_profile_component_schemas(&mut schema_components);
     install_preview_management_component_schemas(&mut schema_components);
+    install_privileged_management_component_schemas(&mut schema_components);
     install_source_discovery_component_schemas(&mut schema_components);
     install_user_file_component_schemas(&mut schema_components);
     install_workflow_component_schemas(&mut schema_components);
@@ -383,6 +388,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     for &(name, data_schema) in PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS {
+        schema_components.insert(
+            name.into(),
+            typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
+        );
+    }
+    for &(name, data_schema) in PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS {
         schema_components.insert(
             name.into(),
             typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
@@ -549,6 +560,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     for &(name, status, schema) in PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS {
+        response_components.insert(
+            name.into(),
+            response_component(status, &format!("#/components/schemas/{schema}")),
+        );
+    }
+    for &(name, status, schema) in PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS {
         response_components.insert(
             name.into(),
             response_component(status, &format!("#/components/schemas/{schema}")),

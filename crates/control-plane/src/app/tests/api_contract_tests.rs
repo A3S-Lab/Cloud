@@ -16,6 +16,156 @@ mod workflow_response_schemas;
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
 
 #[test]
+fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    assert_eq!(document["info"]["version"], "1.78.0");
+    assert_eq!(document["x-a3s-api-contract-version"], "1.78.0");
+
+    for (method, path, success) in [
+        (
+            "get",
+            "/platform/role-policy",
+            "#/components/responses/PlatformRolePolicySuccess200",
+        ),
+        (
+            "get",
+            "/platform/role-policy/revisions/{revision_id}",
+            "#/components/responses/PlatformRolePolicySuccess200",
+        ),
+        (
+            "post",
+            "/platform/role-policy/revisions",
+            "#/components/responses/PlatformRolePolicyMutationSuccess200",
+        ),
+        (
+            "post",
+            "/platform/role-bindings",
+            "#/components/responses/PlatformRoleBindingMutationSuccess200",
+        ),
+        (
+            "get",
+            "/platform/role-bindings/{binding_id}",
+            "#/components/responses/PlatformRoleBindingSuccess200",
+        ),
+        (
+            "post",
+            "/platform/role-bindings/{binding_id}/role",
+            "#/components/responses/PlatformRoleBindingMutationSuccess200",
+        ),
+        (
+            "post",
+            "/platform/role-bindings/{binding_id}/revocation",
+            "#/components/responses/PlatformRoleBindingMutationSuccess200",
+        ),
+        (
+            "get",
+            "/platform/principals/{principal_id}/role-binding",
+            "#/components/responses/PlatformRoleBindingSuccess200",
+        ),
+        (
+            "post",
+            "/platform/tenant-support-grants",
+            "#/components/responses/TenantSupportGrantProposalMutationSuccess200",
+        ),
+        (
+            "get",
+            "/platform/tenant-support-grants/{grant_id}",
+            "#/components/responses/TenantSupportGrantSuccess200",
+        ),
+        (
+            "post",
+            "/platform/tenant-support-grants/{grant_id}/approvals",
+            "#/components/responses/TenantSupportGrantApprovalMutationSuccess200",
+        ),
+        (
+            "post",
+            "/platform/tenant-support-grants/{grant_id}/revocation",
+            "#/components/responses/TenantSupportGrantMutationSuccess200",
+        ),
+    ] {
+        let operation = &document["paths"][path][method];
+        assert_eq!(operation["tags"], json!(["Platform"]), "{method} {path}");
+        assert_eq!(
+            operation["security"],
+            json!([{ "bearerAuth": [] }]),
+            "{method} {path}"
+        );
+        assert_eq!(operation["responses"]["200"]["$ref"], success);
+        assert!(operation["responses"].get("401").is_some());
+        assert!(operation["responses"].get("403").is_some());
+        if method == "post" {
+            assert_eq!(operation["x-a3s-idempotent-replay"], true);
+            assert!(operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                })));
+            assert!(operation["responses"].get("413").is_some());
+            assert!(operation["responses"].get("415").is_some());
+            let content = operation["requestBody"]["content"]
+                .as_object()
+                .ok_or_else(|| BootError::Internal(format!("{method} {path} has no content")))?;
+            assert_eq!(content.keys().collect::<Vec<_>>(), vec!["application/json"]);
+            let request = &content["application/json"]["schema"];
+            assert_eq!(request["additionalProperties"], false);
+            for forbidden in ["actorPrincipalId", "credentialId", "permission"] {
+                assert!(
+                    request["properties"].get(forbidden).is_none(),
+                    "{method} {path} exposes caller-authored {forbidden}"
+                );
+            }
+        } else {
+            assert_eq!(operation["x-a3s-idempotent-replay"], false);
+            assert!(operation.get("requestBody").is_none());
+        }
+    }
+
+    let policy_request = &document["paths"]["/platform/role-policy/revisions"]["post"]
+        ["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        policy_request["required"],
+        json!([
+            "canonicalAcl",
+            "revisionNumber",
+            "expectedCurrentRevisionId"
+        ])
+    );
+    assert_eq!(
+        policy_request["properties"]["canonicalAcl"]["maxLength"],
+        crate::modules::identity::domain::value_objects::PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
+    );
+    let support_request = &document["paths"]["/platform/tenant-support-grants"]["post"]
+        ["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(support_request["required"], json!(["canonicalAcl"]));
+    assert_eq!(
+        support_request["properties"]["canonicalAcl"]["maxLength"],
+        crate::modules::identity::domain::value_objects::TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
+    );
+
+    let schemas = &document["components"]["schemas"];
+    for name in [
+        "PlatformRolePolicy",
+        "PlatformRolePolicyMutation",
+        "PlatformRoleBinding",
+        "PlatformRoleBindingMutation",
+        "TenantSupportGrantProposal",
+        "TenantSupportGrantApproval",
+        "TenantSupportGrantLifecycle",
+        "TenantSupportGrant",
+    ] {
+        assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
+    }
+    assert_eq!(
+        schemas["TenantSupportScope"]["properties"]["kind"]["enum"],
+        json!(["organization", "project", "environment"])
+    );
+    Ok(())
+}
+
+#[test]
 fn github_source_discovery_contract_is_bounded_closed_and_credential_free() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

@@ -1,7 +1,7 @@
 pub(super) const TAGS: [(&str, &str); 25] = [
     (
         "Platform",
-        "Public platform metadata, liveness, and readiness diagnostics.",
+        "Public diagnostics plus installation-scoped platform RBAC and tenant-support administration.",
     ),
     (
         "Identity",

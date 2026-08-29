@@ -6,6 +6,12 @@ use super::developer_workflow_documentation::{
 };
 use super::documentation_examples::{component_example, example_from_schema};
 use super::documentation_tags::TAGS;
+use super::privileged_management_documentation::{
+    component_description as privileged_management_component_description,
+    operation_description as privileged_management_operation_description,
+    operation_summary as privileged_management_operation_summary,
+    response_data_description as privileged_management_response_data_description,
+};
 use super::source_discovery_documentation::{
     component_description as source_discovery_component_description,
     operation_description as source_discovery_operation_description,
@@ -187,6 +193,9 @@ fn component_schema_description(name: &str) -> String {
         return description.into();
     }
     if let Some(description) = user_file_component_description(name) {
+        return description.into();
+    }
+    if let Some(description) = privileged_management_component_description(name) {
         return description.into();
     }
     match name {
@@ -520,6 +529,9 @@ fn special_description(method: &str, path: &str) -> Option<&'static str> {
     if let Some(description) = user_file_operation_description(method, path) {
         return Some(description);
     }
+    if let Some(description) = privileged_management_operation_description(method, path) {
+        return Some(description);
+    }
     match (method, path) {
         ("get", "/identity/oidc/{provider_key}/login") => Some(
             "Starts a public OIDC login and redirects to the configured provider. State, nonce, and S256 PKCE bind the one-time flow; nonce and verifier are held only in Secure HttpOnly callback cookies.",
@@ -542,6 +554,9 @@ fn operation_summary(method: &str, path: &str) -> String {
         return summary.into();
     }
     if let Some(summary) = user_file_operation_summary(method, path) {
+        return summary.into();
+    }
+    if let Some(summary) = privileged_management_operation_summary(method, path) {
         return summary.into();
     }
     match (method, path) {
@@ -1029,6 +1044,9 @@ fn response_data_description(method: &str, path: &str, summary: &str) -> String 
         return description.into();
     }
     if let Some(description) = user_file_response_data_description(method, path) {
+        return description.into();
+    }
+    if let Some(description) = privileged_management_response_data_description(method, path) {
         return description.into();
     }
     if method == "get" && path.ends_with("/audit-records/export") {
