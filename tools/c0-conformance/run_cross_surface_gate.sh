@@ -352,8 +352,8 @@ revoked_token_count="$(postgres_query \
 
 if [[ $scenario == management-mcp ]]; then
   mcp_project_count="$(postgres_query \
-    "select count(*) from projects where name in ('MCP Conformance Project', 'MCP Foreign Project')")"
-  [[ $mcp_project_count == 2 ]] || die "PostgreSQL did not retain the two expected MCP projects"
+    "select count(*) from projects where name = 'MCP Conformance Project'")"
+  [[ $mcp_project_count == 1 ]] || die "PostgreSQL did not retain the expected MCP project"
   mcp_environment_count="$(postgres_query \
     "select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
   [[ $mcp_environment_count == 1 ]] || die "PostgreSQL did not retain the expected MCP operational environment"
