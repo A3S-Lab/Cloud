@@ -2322,6 +2322,41 @@ fn membership_administration_is_one_tenant_scoped_domain_service_without_platfor
         14,
             "both adapters must reuse the one domain service for membership, invitation, and Resource Grant administration"
     );
+    let mut token_issuance_consumers = String::new();
+    let mut token_issuance_boundaries = String::new();
+    for relative in [
+        "src/modules/identity/domain/repositories/api_token_repository.rs",
+        "src/modules/identity/application/commands/create_api_token/command.rs",
+        "src/modules/identity/application/commands/create_api_token/handler.rs",
+        "src/modules/identity/presentation/controllers/api_token_controller.rs",
+        "src/modules/identity/infrastructure/persistence/in_memory.rs",
+        "src/modules/identity/infrastructure/persistence/postgres.rs",
+    ] {
+        let source = std::fs::read_to_string(manifest.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let source = production_source(&source);
+        token_issuance_consumers.push_str(&source);
+        token_issuance_consumers.push('\n');
+        if !relative.contains("/persistence/") {
+            token_issuance_boundaries.push_str(&source);
+            token_issuance_boundaries.push('\n');
+        }
+    }
+    assert_eq!(
+        token_issuance_consumers
+            .matches("MembershipAdministration::authorize(")
+            .count(),
+        2,
+        "both API token adapters must reuse the one tenant-scoped domain service"
+    );
+    assert!(
+        !token_issuance_consumers.contains("issuer_is_platform_admin"),
+        "API token issuance retained a caller-authored platform administrator bypass"
+    );
+    assert!(
+        !token_issuance_boundaries.contains("is_platform_admin"),
+        "API token issuance derived authority from a presentation-layer platform role"
+    );
     for forbidden in [
         "actor_is_platform_admin",
         "issuer_is_platform_admin",

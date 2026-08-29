@@ -102,7 +102,6 @@ impl CommandHandler<CreateApiToken> for CreateApiTokenHandler {
                     digest,
                     event,
                     issuer_principal_id: command.issuer_principal_id,
-                    issuer_is_platform_admin: command.issuer_is_platform_admin,
                     idempotency,
                 })
                 .await

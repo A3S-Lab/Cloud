@@ -13,7 +13,6 @@ pub struct CreateApiToken {
     pub organization_id: OrganizationId,
     pub principal_id: PrincipalId,
     pub issuer_principal_id: PrincipalId,
-    pub issuer_is_platform_admin: bool,
     pub name: String,
     pub token_secret: String,
     pub scopes: Vec<String>,

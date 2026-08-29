@@ -96,7 +96,6 @@ pub fn api_token_controller(
                                 .map(crate::modules::shared_kernel::domain::PrincipalId::from_uuid)
                                 .unwrap_or(actor.principal_id),
                             issuer_principal_id: actor.principal_id,
-                            issuer_is_platform_admin: actor.is_platform_admin,
                             name: body.name,
                             token_secret: body.token,
                             scopes: body.scopes,

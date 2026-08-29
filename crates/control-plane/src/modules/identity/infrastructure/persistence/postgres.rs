@@ -14,6 +14,7 @@ use crate::modules::identity::domain::repositories::{
     BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
     IIdentityBootstrapRepository, IOrganizationRepository,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::{
     ApiTokenDigest, ApiTokenName, ApiTokenScope, MembershipRole, OrganizationName,
 };
@@ -607,7 +608,6 @@ impl IApiTokenRepository for PostgresIdentityRepository {
             digest,
             event,
             issuer_principal_id,
-            issuer_is_platform_admin,
             idempotency,
         } = write;
         self.executor
@@ -626,24 +626,20 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                         )
                         .into());
                     };
-                    if token.principal_id != issuer_principal_id && !issuer_is_platform_admin {
+                    if token.principal_id != issuer_principal_id {
                         let issuer = load_active_membership_for_update(
                             transaction,
                             token.organization_id,
                             issuer_principal_id,
                         )
                         .await?;
-                        if !issuer.is_some_and(|membership| {
-                            membership.is_active()
-                                && membership.role.can_manage_memberships()
-                                && membership.role.can_manage_role(target_membership.role)
-                        }) {
-                            return Err(RepositoryError::Forbidden(
-                                "issuer role cannot manage credentials for the target membership"
-                                    .into(),
-                            )
-                            .into());
-                        }
+                        MembershipAdministration::authorize(
+                            issuer.as_ref(),
+                            token.organization_id,
+                            target_membership.role,
+                            None,
+                        )
+                        .map_err(RepositoryError::Forbidden)?;
                     }
                     if let Some(replayed) =
                         idempotency_replay::<ApiToken>(transaction, &idempotency).await?

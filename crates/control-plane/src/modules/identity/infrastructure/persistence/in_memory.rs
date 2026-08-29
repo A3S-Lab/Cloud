@@ -11,7 +11,9 @@ use crate::modules::identity::domain::repositories::{
     BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
     IIdentityBootstrapRepository, IOrganizationRepository,
 };
-use crate::modules::identity::domain::services::ResourceAuthorizationDecision;
+use crate::modules::identity::domain::services::{
+    MembershipAdministration, ResourceAuthorizationDecision,
+};
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, InstallationId,
@@ -285,7 +287,6 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
             digest,
             event,
             issuer_principal_id,
-            issuer_is_platform_admin,
             idempotency,
         } = write;
         let mut state = self.state.write().await;
@@ -309,21 +310,19 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
                 "API token principal is not an active organization member".into(),
             ));
         }
-        if token.principal_id != issuer_principal_id && !issuer_is_platform_admin {
-            let issuer_can_manage_target = state
+        if token.principal_id != issuer_principal_id {
+            let issuer = state
                 .membership_subjects
                 .get(&(token.organization_id, issuer_principal_id))
                 .and_then(|id| state.memberships.get(id))
-                .is_some_and(|membership| {
-                    membership.is_active()
-                        && membership.role.can_manage_memberships()
-                        && membership.role.can_manage_role(target_membership.role)
-                });
-            if !issuer_can_manage_target {
-                return Err(RepositoryError::Forbidden(
-                    "issuer role cannot manage credentials for the target membership".into(),
-                ));
-            }
+                .cloned();
+            MembershipAdministration::authorize(
+                issuer.as_ref(),
+                token.organization_id,
+                target_membership.role,
+                None,
+            )
+            .map_err(RepositoryError::Forbidden)?;
         }
         if let Some(existing) = replay(&state, &idempotency)? {
             return Ok(existing);

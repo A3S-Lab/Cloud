@@ -258,6 +258,10 @@ const PRIVILEGE_ESCALATION_TOKEN: &str =
     "a3s_0000000000000000000000000000000000000000000000000000000000000000";
 const AUDIT_MEMBER_TOKEN: &str =
     "a3s_2222222222222222222222222222222222222222222222222222222222222222";
+const PLATFORM_DELEGATE_TOKEN: &str =
+    "a3s_3333333333333333333333333333333333333333333333333333333333333333";
+const CROSS_TENANT_FORGED_TOKEN: &str =
+    "a3s_4444444444444444444444444444444444444444444444444444444444444444";
 const GITHUB_WEBHOOK_SECRET: &str = "github-webhook-test-secret-0123456789abcdef";
 
 struct TestCertificateAuthority;
@@ -2648,6 +2652,82 @@ async fn bearer_tokens_are_scoped_to_one_organization_and_never_echoed() -> Resu
         ))
         .await?;
     assert_eq!(scope_escalation.status(), 403);
+    Ok(())
+}
+
+#[tokio::test]
+async fn platform_scoped_token_cannot_mint_credentials_without_tenant_membership() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let home_organization =
+        bootstrap_organization(&app, "platform-delegate-bootstrap", "Home").await?;
+    let target_organization =
+        create_organization(&app, "platform-delegate-target", "Target").await?;
+
+    let service_membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{home_organization}/memberships"),
+            "platform-delegate-membership",
+            json!({
+                "principalKind": "service",
+                "name": "platform delegate",
+                "role": "member"
+            }),
+        ))
+        .await?;
+    assert_eq!(service_membership.status(), 201);
+    let service_principal_id = response_json(&service_membership)?["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("service membership has no principal ID".into()))?
+        .to_owned();
+
+    let platform_credential = app
+        .call(post_json(
+            format!("/api/v1/organizations/{home_organization}/api-tokens"),
+            "platform-delegate-credential",
+            json!({
+                "name": "platform delegate",
+                "token": PLATFORM_DELEGATE_TOKEN,
+                "scopes": [
+                    ApiTokenScope::CLOUD_READ,
+                    ApiTokenScope::PLATFORM_WRITE,
+                    ApiTokenScope::TOKEN_WRITE
+                ],
+                "principalId": service_principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(platform_credential.status(), 201);
+
+    let target_memberships = app
+        .call(get_as(
+            format!("/api/v1/organizations/{target_organization}/memberships"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(target_memberships.status(), 200);
+    let target_owner_id = response_json(&target_memberships)?["data"][0]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("target owner has no principal ID".into()))?
+        .to_owned();
+
+    let rejected = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{target_organization}/api-tokens"),
+            "platform-delegate-cross-tenant-forgery",
+            json!({
+                "name": "cross-tenant forgery",
+                "token": CROSS_TENANT_FORGED_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ],
+                "principalId": target_owner_id,
+                "expiresAt": null
+            }),
+            PLATFORM_DELEGATE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 403);
     Ok(())
 }
 

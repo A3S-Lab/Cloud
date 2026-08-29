@@ -13,7 +13,6 @@ pub struct CreateApiTokenWrite {
     pub digest: ApiTokenDigest,
     pub event: DomainEventEnvelope,
     pub issuer_principal_id: PrincipalId,
-    pub issuer_is_platform_admin: bool,
     pub idempotency: IdempotencyRequest,
 }
 
