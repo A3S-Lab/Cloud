@@ -15,7 +15,6 @@ pub struct CreateResourceGrantWrite {
     pub grant: ResourceGrant,
     pub event: DomainEventEnvelope,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -26,7 +25,6 @@ pub struct RevokeResourceGrantWrite {
     pub resource_grant_id: ResourceGrantId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,

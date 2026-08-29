@@ -5,6 +5,7 @@ use crate::modules::identity::domain::repositories::{
     ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
     RevokeMembershipWrite,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, OrganizationId, PrincipalId, RepositoryError,
@@ -34,29 +35,6 @@ pub(super) fn actor_membership(
         .and_then(|id| state.memberships.get(id))
         .filter(|membership| membership.is_active())
         .cloned()
-}
-
-pub(super) fn authorize_management(
-    actor: Option<&Membership>,
-    actor_is_platform_admin: bool,
-    current_role: MembershipRole,
-    next_role: Option<MembershipRole>,
-) -> Result<(), RepositoryError> {
-    if actor_is_platform_admin {
-        return Ok(());
-    }
-    let actor = actor.ok_or_else(|| {
-        RepositoryError::Forbidden("actor is not an active organization member".into())
-    })?;
-    if !actor.role.can_manage_memberships()
-        || !actor.role.can_manage_role(current_role)
-        || next_role.is_some_and(|role| !actor.role.can_manage_role(role))
-    {
-        return Err(RepositoryError::Forbidden(
-            "membership role does not permit this administration action".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn require_another_owner(state: &State, membership: &Membership) -> Result<(), RepositoryError> {
@@ -92,12 +70,13 @@ impl IMembershipRepository for InMemoryIdentityRepository {
             write.membership.organization_id,
             write.actor_principal_id,
         );
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.membership.organization_id,
             write.membership.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(existing) = replay(&state, &write.idempotency)? {
             return Ok(existing);
         }
@@ -207,12 +186,13 @@ impl IMembershipRepository for InMemoryIdentityRepository {
             .filter(|membership| membership.organization_id == write.organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.organization_id,
             membership.role,
             Some(write.role),
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(existing) = replay(&state, &write.idempotency)? {
             return Ok(existing);
         }
@@ -252,12 +232,13 @@ impl IMembershipRepository for InMemoryIdentityRepository {
             .filter(|membership| membership.organization_id == write.organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.organization_id,
             membership.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(existing) = replay(&state, &write.idempotency)? {
             return Ok(existing);
         }

@@ -12,6 +12,7 @@ use crate::modules::identity::domain::repositories::{
     ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
     RevokeMembershipWrite,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, OrganizationId, PrincipalId, RepositoryError,
@@ -165,31 +166,6 @@ pub(super) async fn load_principal(
     .map_err(Into::into)
 }
 
-pub(super) fn authorize_management(
-    actor: Option<&Membership>,
-    actor_is_platform_admin: bool,
-    current_role: MembershipRole,
-    next_role: Option<MembershipRole>,
-) -> Result<(), RepositoryError> {
-    if actor_is_platform_admin {
-        return Ok(());
-    }
-    let actor = actor
-        .filter(|membership| membership.is_active())
-        .ok_or_else(|| {
-            RepositoryError::Forbidden("actor is not an active organization member".into())
-        })?;
-    if !actor.role.can_manage_memberships()
-        || !actor.role.can_manage_role(current_role)
-        || next_role.is_some_and(|role| !actor.role.can_manage_role(role))
-    {
-        return Err(RepositoryError::Forbidden(
-            "membership role does not permit this administration action".into(),
-        ));
-    }
-    Ok(())
-}
-
 async fn require_another_owner(
     transaction: &a3s_orm::PostgresTransaction,
     membership: &Membership,
@@ -259,12 +235,13 @@ impl IMembershipRepository for PostgresIdentityRepository {
                         write.actor_principal_id,
                     )
                     .await?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        organization_id,
                         write.membership.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<MembershipRecord>(transaction, &write.idempotency)
                             .await?
@@ -412,12 +389,13 @@ impl IMembershipRepository for PostgresIdentityRepository {
                     )
                     .await?
                     .ok_or(RepositoryError::NotFound)?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        write.organization_id,
                         membership.role,
                         Some(write.role),
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<MembershipRecord>(transaction, &write.idempotency)
                             .await?
@@ -517,12 +495,13 @@ impl IMembershipRepository for PostgresIdentityRepository {
                     )
                     .await?
                     .ok_or(RepositoryError::NotFound)?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        write.organization_id,
                         membership.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<MembershipRecord>(transaction, &write.idempotency)
                             .await?

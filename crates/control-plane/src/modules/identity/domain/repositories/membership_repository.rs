@@ -21,7 +21,6 @@ pub struct CreateMembershipWrite {
     pub membership: Membership,
     pub events: [DomainEventEnvelope; 2],
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -33,7 +32,6 @@ pub struct ChangeMembershipRoleWrite {
     pub role: MembershipRole,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub changed_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
@@ -45,7 +43,6 @@ pub struct RevokeMembershipWrite {
     pub membership_id: MembershipId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,

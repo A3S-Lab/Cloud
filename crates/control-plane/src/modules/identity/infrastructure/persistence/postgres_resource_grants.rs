@@ -1,7 +1,6 @@
 use super::postgres::{decode_column, PostgresIdentityRepository};
 use super::postgres_memberships::{
-    authorize_management, load_active_membership_for_update, load_membership_for_update,
-    lock_membership_set,
+    load_active_membership_for_update, load_membership_for_update, lock_membership_set,
 };
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
@@ -14,6 +13,7 @@ use crate::modules::identity::domain::repositories::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
     MAX_ACTIVE_RESOURCE_GRANTS_PER_MEMBERSHIP,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotentWrite, MembershipId, NodeId, OrganizationId, ProjectId,
@@ -250,12 +250,13 @@ impl IResourceGrantRepository for PostgresIdentityRepository {
                     )
                     .await?
                     .ok_or(RepositoryError::NotFound)?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        write.grant.organization_id,
                         target.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<ResourceGrant>(transaction, &write.idempotency).await?
                     {
@@ -426,12 +427,13 @@ impl IResourceGrantRepository for PostgresIdentityRepository {
                             "Resource Grant membership is missing".into(),
                         )
                     })?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        write.organization_id,
                         target.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<ResourceGrant>(transaction, &write.idempotency).await?
                     {

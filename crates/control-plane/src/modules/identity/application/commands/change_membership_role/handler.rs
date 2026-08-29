@@ -63,7 +63,6 @@ impl CommandHandler<ChangeMembershipRole> for ChangeMembershipRoleHandler {
                     role,
                     expected_version: command.expected_version,
                     actor_principal_id: command.actor_principal_id,
-                    actor_is_platform_admin: command.actor_is_platform_admin,
                     changed_at: Utc::now(),
                     request_id: command.request_id,
                     idempotency,

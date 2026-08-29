@@ -1,3 +1,4 @@
+mod membership_administration;
 mod oidc_provider;
 mod privileged_authorization_decision;
 mod recipient_contact_proof;
@@ -6,6 +7,7 @@ mod resource_access_evaluator;
 mod resource_authorization_decision;
 mod workload_identity_provider;
 
+pub use membership_administration::MembershipAdministration;
 pub use oidc_provider::{
     IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
     OidcProviderError, VerifiedOidcIdentity,

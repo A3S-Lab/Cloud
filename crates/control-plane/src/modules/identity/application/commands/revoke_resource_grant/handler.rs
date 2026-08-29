@@ -58,7 +58,6 @@ impl CommandHandler<RevokeResourceGrant> for RevokeResourceGrantHandler {
                     resource_grant_id: command.resource_grant_id,
                     expected_version: command.expected_version,
                     actor_principal_id: command.actor_principal_id,
-                    actor_is_platform_admin: command.actor_is_platform_admin,
                     revoked_at: Utc::now(),
                     request_id: command.request_id,
                     idempotency,

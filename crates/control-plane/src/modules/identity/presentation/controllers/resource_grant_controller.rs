@@ -103,7 +103,6 @@ pub fn resource_grant_controller(
                             membership_id,
                             scope,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })
@@ -139,7 +138,6 @@ pub fn resource_grant_controller(
                             resource_grant_id,
                             expected_version: body.expected_version,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })

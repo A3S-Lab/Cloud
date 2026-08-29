@@ -95,7 +95,6 @@ pub fn membership_controller(
                             name: body.name,
                             role: body.role,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })
@@ -132,7 +131,6 @@ pub fn membership_controller(
                             role: body.role,
                             expected_version: body.expected_version,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })
@@ -162,7 +160,6 @@ pub fn membership_controller(
                             membership_id,
                             expected_version: body.expected_version,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })

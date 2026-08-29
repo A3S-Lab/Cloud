@@ -21,7 +21,6 @@ pub struct MembershipInvitationAcceptance {
 pub struct CreateMembershipInvitationWrite {
     pub invitation: MembershipInvitation,
     pub event: DomainEventEnvelope,
-    pub actor_is_platform_admin: bool,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
 }
@@ -43,7 +42,6 @@ pub struct RevokeMembershipInvitationWrite {
     pub invitation_id: MembershipInvitationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,

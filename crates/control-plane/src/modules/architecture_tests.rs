@@ -2270,6 +2270,78 @@ fn privileged_management_application_surface_is_closed_and_installation_derived(
 }
 
 #[test]
+fn membership_administration_is_one_tenant_scoped_domain_service_without_platform_bypass() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let policy = std::fs::read_to_string(
+        manifest.join("src/modules/identity/domain/services/membership_administration.rs"),
+    )
+    .expect("read membership administration domain service");
+    let mut consumers = String::new();
+    for relative in [
+        "src/modules/identity/domain/repositories/membership_repository.rs",
+        "src/modules/identity/domain/repositories/membership_invitation_repository.rs",
+        "src/modules/identity/domain/repositories/resource_grant_repository.rs",
+        "src/modules/identity/application/commands/create_membership/command.rs",
+        "src/modules/identity/application/commands/change_membership_role/command.rs",
+        "src/modules/identity/application/commands/revoke_membership/command.rs",
+        "src/modules/identity/application/commands/create_membership_invitation/command.rs",
+        "src/modules/identity/application/commands/revoke_membership_invitation/command.rs",
+        "src/modules/identity/application/commands/create_resource_grant/command.rs",
+        "src/modules/identity/application/commands/revoke_resource_grant/command.rs",
+        "src/modules/identity/infrastructure/persistence/in_memory_memberships.rs",
+        "src/modules/identity/infrastructure/persistence/in_memory_membership_invitations.rs",
+        "src/modules/identity/infrastructure/persistence/in_memory_resource_grants.rs",
+        "src/modules/identity/infrastructure/persistence/postgres_memberships.rs",
+        "src/modules/identity/infrastructure/persistence/postgres_membership_invitations.rs",
+        "src/modules/identity/infrastructure/persistence/postgres_resource_grants.rs",
+        "src/modules/identity/presentation/controllers/membership_controller.rs",
+        "src/modules/identity/presentation/controllers/membership_invitation_controller.rs",
+        "src/modules/identity/presentation/controllers/resource_grant_controller.rs",
+        "src/presentation/management_mcp/identity.rs",
+    ] {
+        let source = std::fs::read_to_string(manifest.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        consumers.push_str(&production_source(&source));
+        consumers.push('\n');
+    }
+
+    let policy = production_source(&policy);
+    assert_eq!(
+        policy
+            .matches("pub struct MembershipAdministration;")
+            .count(),
+        1
+    );
+    assert!(policy.contains("membership.organization_id == organization_id"));
+    assert!(policy.contains("membership.is_active()"));
+    assert!(policy.contains("can_manage_memberships()"));
+    assert_eq!(
+        consumers
+            .matches("MembershipAdministration::authorize(")
+            .count(),
+        14,
+            "both adapters must reuse the one domain service for membership, invitation, and Resource Grant administration"
+    );
+    for forbidden in [
+        "actor_is_platform_admin",
+        "issuer_is_platform_admin",
+        "has_role(\"platform_admin\")",
+        "fn authorize_management(",
+    ] {
+        assert!(
+            !consumers.contains(forbidden),
+            "tenant administration retained a platform-role bypass via {forbidden}"
+        );
+    }
+    for forbidden in ["PlatformRole", "TenantSupportGrant", "ApiTokenScope"] {
+        assert!(
+            !policy.contains(forbidden),
+            "membership administration acquired unrelated authorization authority {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let composition = std::fs::read_to_string(manifest.join("src/app.rs"))

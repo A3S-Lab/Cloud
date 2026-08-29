@@ -705,7 +705,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -717,7 +716,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -729,7 +727,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -752,7 +749,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -765,7 +761,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -806,7 +801,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )
@@ -818,7 +812,6 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
-                actor_is_platform_admin,
                 arguments,
                 request_id,
             )

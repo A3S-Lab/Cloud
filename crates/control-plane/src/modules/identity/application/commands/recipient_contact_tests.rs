@@ -139,7 +139,6 @@ async fn create_human(
                 name: name.into(),
                 role: "member".into(),
                 actor_principal_id,
-                actor_is_platform_admin: false,
                 idempotency_key: format!("test:{}", Uuid::new_v4()),
                 request_id: Uuid::new_v4(),
             },

@@ -10,7 +10,6 @@ pub struct RevokeMembershipInvitation {
     pub invitation_id: MembershipInvitationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }

@@ -12,7 +12,6 @@ pub struct CreateMembershipInvitation {
     pub role: String,
     pub expires_at: DateTime<Utc>,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }

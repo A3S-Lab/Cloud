@@ -171,7 +171,6 @@ pub async fn create_membership(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: CreateMembershipArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -182,7 +181,6 @@ pub async fn create_membership(
             name: arguments.name,
             role: arguments.role,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -200,7 +198,6 @@ pub async fn change_membership_role(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: ChangeMembershipRoleArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -211,7 +208,6 @@ pub async fn change_membership_role(
             role: arguments.role,
             expected_version: arguments.expected_version,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -228,7 +224,6 @@ pub async fn revoke_membership(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: RevokeMembershipArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -238,7 +233,6 @@ pub async fn revoke_membership(
             membership_id: MembershipId::from_uuid(arguments.membership_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -299,7 +293,6 @@ pub async fn create_membership_invitation(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: CreateMembershipInvitationArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -310,7 +303,6 @@ pub async fn create_membership_invitation(
             role: arguments.role,
             expires_at: arguments.expires_at,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -332,7 +324,6 @@ pub async fn revoke_membership_invitation(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: MembershipInvitationMutationArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -342,7 +333,6 @@ pub async fn revoke_membership_invitation(
             invitation_id: MembershipInvitationId::from_uuid(arguments.invitation_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -456,7 +446,6 @@ pub async fn create_resource_grant(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: CreateResourceGrantArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -472,7 +461,6 @@ pub async fn create_resource_grant(
             membership_id: MembershipId::from_uuid(arguments.membership_id),
             scope,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -494,7 +482,6 @@ pub async fn revoke_resource_grant(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
-    actor_is_platform_admin: bool,
     arguments: RevokeResourceGrantArguments,
     request_id: Uuid,
 ) -> Result<Value> {
@@ -504,7 +491,6 @@ pub async fn revoke_resource_grant(
             resource_grant_id: ResourceGrantId::from_uuid(arguments.resource_grant_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            actor_is_platform_admin,
             idempotency_key: arguments.idempotency_key,
             request_id,
         })

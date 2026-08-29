@@ -114,7 +114,6 @@ impl CommandHandler<CreateResourceGrant> for CreateResourceGrantHandler {
                     grant,
                     event,
                     actor_principal_id: command.actor_principal_id,
-                    actor_is_platform_admin: command.actor_is_platform_admin,
                     request_id: command.request_id,
                     idempotency,
                 })

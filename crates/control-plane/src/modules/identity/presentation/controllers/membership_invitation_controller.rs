@@ -103,7 +103,6 @@ pub fn membership_invitation_administration_controller(
                             role: body.role,
                             expires_at: body.expires_at,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })
@@ -141,7 +140,6 @@ pub fn membership_invitation_administration_controller(
                             invitation_id,
                             expected_version: body.expected_version,
                             actor_principal_id: actor.principal_id,
-                            actor_is_platform_admin: actor.is_platform_admin,
                             idempotency_key,
                             request_id,
                         })

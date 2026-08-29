@@ -1,5 +1,5 @@
 use super::in_memory::{remember, replay, InMemoryIdentityRepository};
-use super::in_memory_memberships::{actor_membership, authorize_management};
+use super::in_memory_memberships::actor_membership;
 use crate::modules::identity::domain::entities::{Membership, MembershipInvitation};
 use crate::modules::identity::domain::events::{MembershipChanged, MembershipInvitationChanged};
 use crate::modules::identity::domain::repositories::{
@@ -7,6 +7,7 @@ use crate::modules::identity::domain::repositories::{
     IMembershipInvitationRepository, MembershipInvitationAcceptance, MembershipRecord,
     RevokeMembershipInvitationWrite,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipInvitationId, OrganizationId, PrincipalId, RepositoryError,
 };
@@ -24,12 +25,13 @@ impl IMembershipInvitationRepository for InMemoryIdentityRepository {
             write.invitation.organization_id,
             write.invitation.invited_by_principal_id,
         );
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.invitation.organization_id,
             write.invitation.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(replayed) = replay(&state, &write.idempotency)? {
             return Ok(replayed);
         }
@@ -215,12 +217,13 @@ impl IMembershipInvitationRepository for InMemoryIdentityRepository {
             .filter(|invitation| invitation.organization_id == write.organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.organization_id,
             invitation.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(replayed) = replay(&state, &write.idempotency)? {
             return Ok(replayed);
         }

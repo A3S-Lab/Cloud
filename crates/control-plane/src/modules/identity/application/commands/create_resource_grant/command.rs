@@ -11,7 +11,6 @@ pub struct CreateResourceGrant {
     pub membership_id: MembershipId,
     pub scope: ResourceGrantScope,
     pub actor_principal_id: PrincipalId,
-    pub actor_is_platform_admin: bool,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }

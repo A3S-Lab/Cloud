@@ -1,10 +1,11 @@
 use super::in_memory::{remember, replay, InMemoryIdentityRepository};
-use super::in_memory_memberships::{actor_membership, authorize_management};
+use super::in_memory_memberships::actor_membership;
 use crate::modules::identity::domain::events::ResourceGrantChanged;
 use crate::modules::identity::domain::repositories::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
     MAX_ACTIVE_RESOURCE_GRANTS_PER_MEMBERSHIP,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, OrganizationId, RepositoryError, ResourceGrantId,
@@ -32,12 +33,13 @@ impl IResourceGrantRepository for InMemoryIdentityRepository {
             write.grant.organization_id,
             write.actor_principal_id,
         );
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.grant.organization_id,
             target.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(existing) = replay(&state, &write.idempotency)? {
             return Ok(existing);
         }
@@ -167,12 +169,13 @@ impl IResourceGrantRepository for InMemoryIdentityRepository {
                 RepositoryError::Storage("Resource Grant membership is missing".into())
             })?;
         let actor = actor_membership(&state, write.organization_id, write.actor_principal_id);
-        authorize_management(
+        MembershipAdministration::authorize(
             actor.as_ref(),
-            write.actor_is_platform_admin,
+            write.organization_id,
             target.role,
             None,
-        )?;
+        )
+        .map_err(RepositoryError::Forbidden)?;
         if let Some(existing) = replay(&state, &write.idempotency)? {
             return Ok(existing);
         }
@@ -255,7 +258,6 @@ mod tests {
             event: ResourceGrantChanged::created(&grant, request_id).expect("event"),
             grant,
             actor_principal_id,
-            actor_is_platform_admin: false,
             request_id,
             idempotency: IdempotencyRequest::new("resource-grants", key, b"canonical")
                 .expect("idempotency"),
@@ -296,7 +298,6 @@ mod tests {
                 resource_grant_id: created.value.id,
                 expected_version: 1,
                 actor_principal_id,
-                actor_is_platform_admin: false,
                 revoked_at: Utc::now(),
                 request_id: Uuid::now_v7(),
                 idempotency: IdempotencyRequest::new(
@@ -400,7 +401,6 @@ mod tests {
                 resource_grant_id: first.id,
                 expected_version: 1,
                 actor_principal_id,
-                actor_is_platform_admin: false,
                 revoked_at: Utc::now(),
                 request_id: Uuid::now_v7(),
                 idempotency: IdempotencyRequest::new("revocation", "first", b"canonical")

@@ -1,7 +1,6 @@
 use super::postgres::{decode_column, PostgresIdentityRepository};
 use super::postgres_memberships::{
-    authorize_management, load_active_membership_for_update, load_principal, lock_membership_set,
-    store_membership_audit,
+    load_active_membership_for_update, load_principal, lock_membership_set, store_membership_audit,
 };
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, store_audit, store_idempotency, store_outbox,
@@ -14,6 +13,7 @@ use crate::modules::identity::domain::repositories::{
     IMembershipInvitationRepository, MembershipInvitationAcceptance, MembershipRecord,
     RevokeMembershipInvitationWrite,
 };
+use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, MembershipInvitationId, OrganizationId, PrincipalId,
@@ -192,12 +192,13 @@ impl IMembershipInvitationRepository for PostgresIdentityRepository {
                         invitation.invited_by_principal_id,
                     )
                     .await?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        invitation.organization_id,
                         invitation.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<MembershipInvitation>(transaction, &write.idempotency)
                             .await?
@@ -483,12 +484,13 @@ impl IMembershipInvitationRepository for PostgresIdentityRepository {
                     )
                     .await?
                     .ok_or(RepositoryError::NotFound)?;
-                    authorize_management(
+                    MembershipAdministration::authorize(
                         actor.as_ref(),
-                        write.actor_is_platform_admin,
+                        write.organization_id,
                         invitation.role,
                         None,
-                    )?;
+                    )
+                    .map_err(RepositoryError::Forbidden)?;
                     if let Some(replayed) =
                         idempotency_replay::<MembershipInvitation>(transaction, &write.idempotency)
                             .await?
