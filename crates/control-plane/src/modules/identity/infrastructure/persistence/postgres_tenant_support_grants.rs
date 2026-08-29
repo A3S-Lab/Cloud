@@ -33,7 +33,7 @@ use uuid::Uuid;
 
 const SELECT_TENANT_SUPPORT_PROPOSAL: &str = "select intent.id, intent.installation_id, intent.scope_kind, intent.organization_id, intent.project_id, intent.environment_id, intent.principal_id, intent.canonical_acl, intent.digest, intent.required_approval_count, intent.requested_by, intent.authentication_id, intent.authentication_digest, intent.requested_at, intent.starts_at, intent.expires_at from tenant_support_grant_intents intent";
 const SELECT_TENANT_SUPPORT_APPROVAL: &str = "select approval.grant_id, approval.approver_id, approval.contract_digest, approval.authentication_id, approval.authentication_digest, approval.policy_revision_id, approval.policy_digest, approval.binding_id, approval.binding_version, approval.approved_at, approval.evidence_digest from tenant_support_grant_approvals approval";
-const SELECT_TENANT_SUPPORT_GRANT: &str = "select intent.id, intent.installation_id, intent.scope_kind, intent.organization_id, intent.project_id, intent.environment_id, intent.principal_id, intent.canonical_acl, intent.digest, intent.required_approval_count, intent.requested_by, intent.authentication_id, intent.authentication_digest, intent.requested_at, intent.starts_at, intent.expires_at, grant.aggregate_version, grant.revocation_generation, grant.accepted_at, grant.revoked_at, grant.revoked_by from tenant_support_grants grant join tenant_support_grant_intents intent on intent.id = grant.id";
+const SELECT_TENANT_SUPPORT_GRANT: &str = "select intent.id, intent.installation_id, intent.scope_kind, intent.organization_id, intent.project_id, intent.environment_id, intent.principal_id, intent.canonical_acl, intent.digest, intent.required_approval_count, intent.requested_by, intent.authentication_id, intent.authentication_digest, intent.requested_at, intent.starts_at, intent.expires_at, accepted_grant.aggregate_version, accepted_grant.revocation_generation, accepted_grant.accepted_at, accepted_grant.revoked_at, accepted_grant.revoked_by from tenant_support_grants accepted_grant join tenant_support_grant_intents intent on intent.id = accepted_grant.id";
 
 struct TenantSupportProposalRow {
     id: Uuid,
@@ -290,9 +290,9 @@ async fn load_grant_for_update(
         sql_query::<TenantSupportGrantRow>(SELECT_TENANT_SUPPORT_GRANT)
             .append(" where intent.installation_id = ")
             .bind(installation_id.as_uuid())
-            .append(" and grant.id = ")
+            .append(" and accepted_grant.id = ")
             .bind(grant_id.as_uuid())
-            .append(" for update of grant"),
+            .append(" for update of accepted_grant"),
     )
     .await?
     .map(decode_tenant_support_grant)
@@ -1015,7 +1015,7 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                 sql_query::<TenantSupportGrantRow>(SELECT_TENANT_SUPPORT_GRANT)
                     .append(" where intent.installation_id = ")
                     .bind(installation_id.as_uuid())
-                    .append(" and grant.id = ")
+                    .append(" and accepted_grant.id = ")
                     .bind(grant_id.as_uuid()),
             )
             .await
