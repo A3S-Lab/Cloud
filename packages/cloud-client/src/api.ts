@@ -140,6 +140,27 @@ import {
   validateOutboundNotificationSubscriptionAcl,
   validateOutboundNotificationSubscriptionId,
 } from './notifications';
+import {
+  type AcceptPlatformRolePolicyInput,
+  type ApproveTenantSupportGrantInput,
+  type ChangePlatformRoleBindingInput,
+  type CreatePlatformRoleBindingInput,
+  type PlatformRoleBinding,
+  type PlatformRoleBindingMutationResult,
+  type PlatformRolePolicy,
+  type PlatformRolePolicyMutationResult,
+  type ProposeTenantSupportGrantInput,
+  type TenantSupportGrant,
+  type TenantSupportGrantApprovalMutationResult,
+  type TenantSupportGrantMutationResult,
+  type TenantSupportGrantProposalMutationResult,
+  validateAcceptPlatformRolePolicyInput,
+  validateApproveTenantSupportGrantInput,
+  validateChangePlatformRoleBindingInput,
+  validateCreatePlatformRoleBindingInput,
+  validatePrivilegedExpectedVersion,
+  validateProposeTenantSupportGrantInput,
+} from './privileged-management';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import {
@@ -379,7 +400,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.77.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.78.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -509,6 +530,121 @@ export class CloudApi {
       this.getReadiness(signal),
     ]);
     return { platform, liveness, readiness };
+  }
+
+  getCurrentPlatformRolePolicy(signal?: AbortSignal): Promise<PlatformRolePolicy> {
+    return this.get('/platform/role-policy', signal);
+  }
+
+  getPlatformRolePolicyRevision(revisionId: string, signal?: AbortSignal): Promise<PlatformRolePolicy> {
+    validateNonNilUuid(revisionId, 'platform role policy revision ID');
+    return this.get(`/platform/role-policy/revisions/${encodeURIComponent(revisionId)}`, signal);
+  }
+
+  acceptPlatformRolePolicy(
+    input: AcceptPlatformRolePolicyInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PlatformRolePolicyMutationResult> {
+    validateAcceptPlatformRolePolicyInput(input);
+    return this.postJson('/platform/role-policy/revisions', idempotencyKey, input, signal);
+  }
+
+  getPlatformRoleBinding(bindingId: string, signal?: AbortSignal): Promise<PlatformRoleBinding> {
+    validateNonNilUuid(bindingId, 'platform role binding ID');
+    return this.get(`/platform/role-bindings/${encodeURIComponent(bindingId)}`, signal);
+  }
+
+  getPrincipalPlatformRoleBinding(principalId: string, signal?: AbortSignal): Promise<PlatformRoleBinding> {
+    validateNonNilUuid(principalId, 'platform role binding Principal ID');
+    return this.get(`/platform/principals/${encodeURIComponent(principalId)}/role-binding`, signal);
+  }
+
+  createPlatformRoleBinding(
+    input: CreatePlatformRoleBindingInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PlatformRoleBindingMutationResult> {
+    validateCreatePlatformRoleBindingInput(input);
+    return this.postJson('/platform/role-bindings', idempotencyKey, input, signal);
+  }
+
+  changePlatformRoleBinding(
+    bindingId: string,
+    input: ChangePlatformRoleBindingInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PlatformRoleBindingMutationResult> {
+    validateNonNilUuid(bindingId, 'platform role binding ID');
+    validateChangePlatformRoleBindingInput(input);
+    return this.postJson(
+      `/platform/role-bindings/${encodeURIComponent(bindingId)}/role`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokePlatformRoleBinding(
+    bindingId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PlatformRoleBindingMutationResult> {
+    validateNonNilUuid(bindingId, 'platform role binding ID');
+    validatePrivilegedExpectedVersion(expectedVersion);
+    return this.postJson(
+      `/platform/role-bindings/${encodeURIComponent(bindingId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  getTenantSupportGrant(grantId: string, signal?: AbortSignal): Promise<TenantSupportGrant> {
+    validateNonNilUuid(grantId, 'tenant-support grant ID');
+    return this.get(`/platform/tenant-support-grants/${encodeURIComponent(grantId)}`, signal);
+  }
+
+  proposeTenantSupportGrant(
+    input: ProposeTenantSupportGrantInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<TenantSupportGrantProposalMutationResult> {
+    validateProposeTenantSupportGrantInput(input);
+    return this.postJson('/platform/tenant-support-grants', idempotencyKey, input, signal);
+  }
+
+  approveTenantSupportGrant(
+    grantId: string,
+    input: ApproveTenantSupportGrantInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<TenantSupportGrantApprovalMutationResult> {
+    validateNonNilUuid(grantId, 'tenant-support grant ID');
+    validateApproveTenantSupportGrantInput(input);
+    return this.postJson(
+      `/platform/tenant-support-grants/${encodeURIComponent(grantId)}/approvals`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokeTenantSupportGrant(
+    grantId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<TenantSupportGrantMutationResult> {
+    validateNonNilUuid(grantId, 'tenant-support grant ID');
+    validatePrivilegedExpectedVersion(expectedVersion);
+    return this.postJson(
+      `/platform/tenant-support-grants/${encodeURIComponent(grantId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
   }
 
   listOrganizations(signal?: AbortSignal): Promise<Organization[]> {

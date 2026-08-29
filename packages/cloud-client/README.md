@@ -30,6 +30,16 @@ client returns that report as diagnostics. A `503` error envelope remains a
 `CloudApiError`. Authenticated methods still require server-authorized
 credentials.
 
+REST contract `1.78.0` adds the installation-scoped privileged management
+surface. Platform role-policy and role-binding reads plus tenant-support reads
+use the exact authenticated credential carried by the shared transport. The
+seven corresponding mutations require caller-owned idempotency and expose only
+closed domain inputs: canonical A3S ACL, exact UUIDs, closed roles, optimistic
+versions, and expected digests. The client bounds those values but does not
+parse ACL, choose permissions, accept an actor or installation override, or
+create a second authorization authority; Cloud Identity authorizes, audits,
+reads, and writes through its PostgreSQL transaction.
+
 The package currently exposes the `C0.1` tenant,
 operational-resource, evidence, and bounded paged-log queries. Its Workload,
 deployment, and route types match the current replica/member and Gateway scope
@@ -130,7 +140,7 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.77.0`. It exposes `reserveUserFile`,
+The client targets REST contract `1.78.0`. It exposes `reserveUserFile`,
 `listUserFiles`, `getUserFile`, `tombstoneUserFile`, and
 `getUserFileQuota` through the sole Files Application authority. It validates
 ACL byte, list, and optimistic-version transport bounds without parsing or

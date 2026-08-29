@@ -68,6 +68,7 @@ export {
   validateRecipientContactProof,
 } from './identity';
 export * from './notifications';
+export * from './privileged-management';
 export * from './search';
 export * from './security';
 export {
