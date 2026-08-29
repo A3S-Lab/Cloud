@@ -18,8 +18,21 @@ pub async fn exercise_privileged_management_cross_surface(
 
     let first_state = tempfile::tempdir()?;
     let second_state = tempfile::tempdir()?;
-    let first = build_instance(first_state.path()).await?;
-    let second = build_instance(second_state.path()).await?;
+    let shared_infrastructure = tempfile::tempdir()?;
+    let shared_object_dir = shared_infrastructure.path().join("immutable-objects");
+    let shared_asset_repository_dir = shared_infrastructure.path().join("asset-repositories");
+    let first = build_instance(
+        first_state.path(),
+        &shared_object_dir,
+        &shared_asset_repository_dir,
+    )
+    .await?;
+    let second = build_instance(
+        second_state.path(),
+        &shared_object_dir,
+        &shared_asset_repository_dir,
+    )
+    .await?;
     let organization_id = bootstrap(&first).await?;
 
     let rest_policy = first
@@ -178,11 +191,15 @@ pub async fn exercise_privileged_management_cross_surface(
 
 async fn build_instance(
     root: &std::path::Path,
+    shared_object_dir: &std::path::Path,
+    shared_asset_repository_dir: &std::path::Path,
 ) -> Result<ControlPlane, Box<dyn std::error::Error>> {
     let mut application_config = config();
     application_config.postgres.serving_url_env = POSTGRES_URL_ENV.into();
     application_config.auth.bootstrap_token_env = BOOTSTRAP_TOKEN_ENV.into();
     configure_ephemeral_application_state(&mut application_config, root);
+    application_config.objects.local_dir = shared_object_dir.display().to_string();
+    application_config.assets.repository_dir = shared_asset_repository_dir.display().to_string();
     Ok(build_application(application_config).await?)
 }
 
