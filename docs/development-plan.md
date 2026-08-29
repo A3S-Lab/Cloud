@@ -3928,9 +3928,21 @@ node.
   shared Audit/Outbox transaction. The retained [PostgreSQL 17 H0
   job](https://github.com/A3S-Lab/Cloud/actions/runs/33220123607/job/99012267599)
   races bootstrap, policy-head advancement and owner revocation across two
-  repository instances and rejects direct-SQL bypass. `MT2-C2/C3` next add
-  evidence-backed approver/grant persistence and one atomic current-snapshot
-  privileged-decision Application interface. `MT3` replaces every boolean
+  repository instances and rejects direct-SQL bypass.
+  Verified `MT2-C2` adds migration `178` and the sole
+  `ITenantSupportGrantRepository`: immutable support intent, declared
+  requirements, actual human approvals, activated grants, and terminal
+  revocation. Every approval binds exact authentication, current policy and
+  role-binding evidence; the threshold-crossing transaction uses the maximum
+  persisted approval time and reuses shared Installation locking,
+  idempotency, Audit, and Outbox. The [complete main CI
+  run](https://github.com/A3S-Lab/Cloud/actions/runs/33224399567) and its
+  [PostgreSQL 17 H0
+  job](https://github.com/A3S-Lab/Cloud/actions/runs/33224399567/job/99025035853)
+  prove concurrent dual approval, forged/incomplete evidence rejection,
+  disabled final-approver rollback, terminal history, and replay. `MT2-C3`
+  next adds one atomic current-snapshot privileged-decision Application
+  interface. `MT3` replaces every boolean
   platform-administrator bypass with that single Identity decision port.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
