@@ -6693,7 +6693,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             json!({"name": "Rejected"}),
         ))
         .await?;
-    assert_eq!(cross_tenant.status(), 404);
+    assert_eq!(cross_tenant.status(), 403);
 
     let source_path = format!(
         "/api/v1/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-revisions"
