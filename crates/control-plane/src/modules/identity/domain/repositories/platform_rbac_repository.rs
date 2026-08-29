@@ -64,6 +64,41 @@ pub struct RevokePlatformRoleBindingWrite {
     pub idempotency: IdempotencyRequest,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReadCurrentPlatformRolePolicy {
+    pub installation_id: InstallationId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadPlatformRolePolicyRevision {
+    pub installation_id: InstallationId,
+    pub revision_id: PlatformRolePolicyRevisionId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadPlatformRoleBinding {
+    pub installation_id: InstallationId,
+    pub binding_id: PlatformRoleBindingId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadPrincipalPlatformRoleBinding {
+    pub installation_id: InstallationId,
+    pub principal_id: PrincipalId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
 #[async_trait]
 pub trait IPlatformRbacRepository: Send + Sync {
     async fn bootstrap_platform_rbac(
@@ -112,5 +147,33 @@ pub trait IPlatformRbacRepository: Send + Sync {
         &self,
         installation_id: InstallationId,
         principal_id: PrincipalId,
+    ) -> Result<Option<PlatformRoleBinding>, RepositoryError>;
+
+    /// Authorizes the closed `RolePolicyRead` capability and reads the head in
+    /// the same storage transaction and Installation lock interval.
+    async fn read_current_platform_role_policy(
+        &self,
+        read: ReadCurrentPlatformRolePolicy,
+    ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, RepositoryError>;
+
+    /// Authorizes the closed `RolePolicyRead` capability and reads one
+    /// immutable revision in the same storage transaction.
+    async fn read_platform_role_policy_revision(
+        &self,
+        read: ReadPlatformRolePolicyRevision,
+    ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, RepositoryError>;
+
+    /// Authorizes the closed `RoleBindingRead` capability and reads one
+    /// binding in the same storage transaction.
+    async fn read_platform_role_binding(
+        &self,
+        read: ReadPlatformRoleBinding,
+    ) -> Result<Option<PlatformRoleBinding>, RepositoryError>;
+
+    /// Authorizes the closed `RoleBindingRead` capability and reads the
+    /// Principal's active binding in the same storage transaction.
+    async fn read_principal_platform_role_binding(
+        &self,
+        read: ReadPrincipalPlatformRoleBinding,
     ) -> Result<Option<PlatformRoleBinding>, RepositoryError>;
 }

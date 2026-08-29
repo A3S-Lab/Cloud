@@ -6,7 +6,7 @@ use a3s_cloud_control_plane::modules::identity::domain::entities::{
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, BootstrapPlatformRbacWrite, CreatePlatformRoleBindingWrite,
     IPlatformRbacRepository, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
-    RevokeTenantSupportGrantWrite,
+    ReadTenantSupportGrant, RevokeTenantSupportGrantWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenScope, PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,
@@ -319,6 +319,31 @@ pub async fn exercise_tenant_support_grant_authority(
             .len(),
         2
     );
+    let readable = repository_a
+        .read_tenant_support_grant(ReadTenantSupportGrant {
+            installation_id,
+            grant_id: proposal.id,
+            actor_principal_id: requester,
+            credential_id: requester_credential.id,
+            request_id: Uuid::now_v7(),
+        })
+        .await?
+        .ok_or("authorized tenant support record disappeared")?;
+    assert_eq!(readable.proposal, proposal);
+    assert_eq!(readable.approvals.len(), 2);
+    assert_eq!(readable.grant, Some(accepted.clone()));
+    assert!(matches!(
+        repository_b
+            .read_tenant_support_grant(ReadTenantSupportGrant {
+                installation_id,
+                grant_id: proposal.id,
+                actor_principal_id: requester,
+                credential_id: outsider_credential.id,
+                request_id: Uuid::now_v7(),
+            })
+            .await,
+        Err(RepositoryError::Forbidden(_))
+    ));
     assert!(
         repository_a
             .approve_tenant_support_grant(approval_a)
@@ -346,6 +371,20 @@ pub async fn exercise_tenant_support_grant_authority(
         .revoke_tenant_support_grant(revoke_write.clone())
         .await?;
     assert_eq!(revoked.value.aggregate_version, 2);
+    assert_eq!(
+        repository_b
+            .read_tenant_support_grant(ReadTenantSupportGrant {
+                installation_id,
+                grant_id: proposal.id,
+                actor_principal_id: requester,
+                credential_id: requester_credential.id,
+                request_id: Uuid::now_v7(),
+            })
+            .await?
+            .ok_or("revoked tenant support record disappeared")?
+            .grant,
+        Some(revoked.value.clone())
+    );
     assert!(
         repository_b
             .revoke_tenant_support_grant(revoke_write)

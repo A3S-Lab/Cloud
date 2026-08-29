@@ -31,7 +31,8 @@ pub use organization_repository::{CreateOrganizationWrite, IOrganizationReposito
 pub use platform_rbac_repository::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
-    RevokePlatformRoleBindingWrite,
+    ReadCurrentPlatformRolePolicy, ReadPlatformRoleBinding, ReadPlatformRolePolicyRevision,
+    ReadPrincipalPlatformRoleBinding, RevokePlatformRoleBindingWrite,
 };
 pub use privileged_authorization_decision_repository::IPrivilegedAuthorizationDecisionRepository;
 pub use recipient_contact_repository::{
@@ -50,7 +51,7 @@ pub use resource_grant_repository::{
 };
 pub use tenant_support_grant_repository::{
     ApproveTenantSupportGrantWrite, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
-    RevokeTenantSupportGrantWrite,
+    ReadTenantSupportGrant, RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
 };
 pub use workload_identity_repository::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,

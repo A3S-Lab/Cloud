@@ -1,7 +1,7 @@
 use super::postgres::{decode_column, PostgresIdentityRepository};
 use super::postgres_platform_rbac::{
     load_active_actor_binding, load_active_principal_for_share, load_current_policy_for_update,
-    lock_installation, require_permission,
+    lock_installation, lock_installation_for_authorization, require_permission,
 };
 use super::postgres_privileged_authorization_decisions::issue_privileged_authorization;
 use crate::infrastructure::{
@@ -18,7 +18,7 @@ use crate::modules::identity::domain::events::{
 };
 use crate::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
-    RevokeTenantSupportGrantWrite,
+    ReadTenantSupportGrant, RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
 };
 use crate::modules::identity::domain::services::PrivilegedAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::{
@@ -250,6 +250,35 @@ async fn load_proposal_for_update(
     installation_id: InstallationId,
     grant_id: TenantSupportGrantId,
 ) -> Result<Option<TenantSupportGrantProposal>, PostgresPersistenceError> {
+    load_proposal_with_lock(
+        transaction,
+        installation_id,
+        grant_id,
+        " for update of intent",
+    )
+    .await
+}
+
+async fn load_proposal_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    grant_id: TenantSupportGrantId,
+) -> Result<Option<TenantSupportGrantProposal>, PostgresPersistenceError> {
+    load_proposal_with_lock(
+        transaction,
+        installation_id,
+        grant_id,
+        " for share of intent",
+    )
+    .await
+}
+
+async fn load_proposal_with_lock(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    grant_id: TenantSupportGrantId,
+    lock_clause: &'static str,
+) -> Result<Option<TenantSupportGrantProposal>, PostgresPersistenceError> {
     fetch_optional::<TenantSupportProposalRow, _>(
         transaction,
         sql_query::<TenantSupportProposalRow>(SELECT_TENANT_SUPPORT_PROPOSAL)
@@ -257,7 +286,7 @@ async fn load_proposal_for_update(
             .bind(installation_id.as_uuid())
             .append(" and intent.id = ")
             .bind(grant_id.as_uuid())
-            .append(" for update of intent"),
+            .append(lock_clause),
     )
     .await?
     .map(decode_tenant_support_proposal)
@@ -620,10 +649,11 @@ async fn store_grant_facts(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn tenant_support_management_authorization_request(
+fn tenant_support_authorization_request(
     installation_id: InstallationId,
     principal_id: PrincipalId,
     credential_id: ApiTokenId,
+    permission: PlatformPermission,
     action: &'static str,
     scope: ScopeContext,
     grant_id: TenantSupportGrantId,
@@ -640,7 +670,7 @@ fn tenant_support_management_authorization_request(
     Ok(PrivilegedAuthorizationDecisionRequest {
         principal_id,
         credential_id,
-        platform_permission: PlatformPermission::TenantSupportManage,
+        platform_permission: permission,
         support_permission: None,
         support_grant_id: None,
         action: action.into(),
@@ -715,10 +745,11 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                     lock_installation(transaction, installation_id).await?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        tenant_support_management_authorization_request(
+                        tenant_support_authorization_request(
                             installation_id,
                             write.actor_principal_id,
                             write.credential_id,
+                            PlatformPermission::TenantSupportManage,
                             "identity.tenant-support-grant.proposed",
                             write.contract.spec().scope,
                             write.contract.spec().grant_id,
@@ -809,10 +840,11 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                     .ok_or(RepositoryError::NotFound)?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        tenant_support_management_authorization_request(
+                        tenant_support_authorization_request(
                             write.installation_id,
                             write.actor_principal_id,
                             write.credential_id,
+                            PlatformPermission::TenantSupportManage,
                             "identity.tenant-support-grant.approved",
                             proposal.contract.spec().scope,
                             write.grant_id,
@@ -984,10 +1016,11 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
                             .ok_or(RepositoryError::NotFound)?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        tenant_support_management_authorization_request(
+                        tenant_support_authorization_request(
                             write.installation_id,
                             write.actor_principal_id,
                             write.credential_id,
+                            PlatformPermission::TenantSupportManage,
                             "identity.tenant-support-grant.revoked",
                             grant.contract.spec().scope,
                             write.grant_id,
@@ -1116,5 +1149,59 @@ impl ITenantSupportGrantRepository for PostgresIdentityRepository {
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
             .map(decode_tenant_support_grant)
             .transpose()
+    }
+
+    async fn read_tenant_support_grant(
+        &self,
+        read: ReadTenantSupportGrant,
+    ) -> Result<Option<TenantSupportGrantRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    let proposal = load_proposal_for_authorization(
+                        transaction,
+                        read.installation_id,
+                        read.grant_id,
+                    )
+                    .await?;
+                    let scope = match proposal.as_ref() {
+                        Some(proposal) => proposal.contract.spec().scope,
+                        None => ScopeContext::installation(read.installation_id)
+                            .map_err(PostgresPersistenceError::Invariant)?,
+                    };
+                    issue_privileged_authorization(
+                        transaction,
+                        tenant_support_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::TenantSupportRead,
+                            "identity.tenant-support-grant.read",
+                            scope,
+                            read.grant_id,
+                            read.request_id,
+                        )?,
+                    )
+                    .await?;
+                    let Some(proposal) = proposal else {
+                        return Ok(None);
+                    };
+                    let approvals = load_approvals(transaction, &proposal).await?;
+                    let grant = load_grant_for_authorization(
+                        transaction,
+                        read.installation_id,
+                        read.grant_id,
+                    )
+                    .await?;
+                    Ok(Some(TenantSupportGrantRecord {
+                        proposal,
+                        approvals,
+                        grant,
+                    }))
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 }

@@ -2214,8 +2214,8 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     assert_eq!(port.matches("pub trait IPlatformRbacRepository").count(), 1);
     assert_eq!(
         port.matches("pub credential_id: ApiTokenId").count(),
-        4,
-        "every non-bootstrap platform RBAC write must carry the exact verified credential identity"
+        8,
+        "every non-bootstrap platform RBAC write and closed read must carry the exact verified credential identity"
     );
     assert_eq!(
         port.matches("pub expected_policy_revision_id: PlatformRolePolicyRevisionId")
@@ -2238,6 +2238,13 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
         "store_audit",
         "PlatformPermission::RolePolicyManage",
         "PlatformPermission::RoleBindingManage",
+        "PlatformPermission::RolePolicyRead",
+        "PlatformPermission::RoleBindingRead",
+        "lock_installation_for_authorization",
+        "read_current_platform_role_policy",
+        "read_platform_role_policy_revision",
+        "read_platform_role_binding",
+        "read_principal_platform_role_binding",
         "a Principal cannot escalate its own platform permissions",
         "the last active platform owner cannot be revoked",
         "platform role policy changed before binding creation",
@@ -2256,6 +2263,17 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
         "every non-bootstrap platform RBAC mutation must authorize inside its PostgreSQL transaction"
     );
     assert!(persistence.contains("\"authorizationDecision\": authorization"));
+    for forbidden in [
+        "pub permission:",
+        "pub action:",
+        "pub scope:",
+        "pub resource_id:",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "platform RBAC public storage port exposed caller-authored authorization input {forbidden}"
+        );
+    }
     for forbidden in [
         "actor_is_platform_admin",
         "Redis",
@@ -2500,8 +2518,8 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
     );
     assert_eq!(
         port.matches("pub credential_id: ApiTokenId").count(),
-        3,
-        "support proposal, approval, and revocation must carry exact verified credential identity"
+        4,
+        "support mutations and the closed record read must carry exact verified credential identity"
     );
     assert!(!port.contains("pub authentication: DecisionEvidenceRef"));
     assert_eq!(
@@ -2515,6 +2533,9 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
         "load_current_policy_for_update",
         "require_current_support_manager",
         "PlatformPermission::TenantSupportManage",
+        "PlatformPermission::TenantSupportRead",
+        "lock_installation_for_authorization",
+        "read_tenant_support_grant",
         "idempotency_replay",
         "store_idempotency",
         "store_outbox",
@@ -2536,6 +2557,17 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
     );
     assert!(persistence.contains("authorization.authentication"));
     assert!(persistence.contains("\"authorizationDecision\": authorization"));
+    for forbidden in [
+        "pub permission:",
+        "pub action:",
+        "pub scope:",
+        "pub resource_id:",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "tenant support public storage port exposed caller-authored authorization input {forbidden}"
+        );
+    }
     for forbidden in [
         "actor_is_platform_admin",
         "Redis",

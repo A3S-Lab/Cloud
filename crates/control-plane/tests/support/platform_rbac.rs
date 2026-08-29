@@ -6,7 +6,9 @@ use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IApiTokenRepository,
-    IPlatformRbacRepository, RevokePlatformRoleBindingWrite,
+    IPlatformRbacRepository, ReadCurrentPlatformRolePolicy, ReadPlatformRoleBinding,
+    ReadPlatformRolePolicyRevision, ReadPrincipalPlatformRoleBinding,
+    RevokePlatformRoleBindingWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenScope, PlatformPermission, PlatformRole, PlatformRolePolicyContract,
@@ -210,6 +212,70 @@ pub async fn exercise_platform_rbac_authority(
             idempotency: idempotency("platform-role-bindings", "mt2:create-admin")?,
         })
         .await?;
+    let initial_owner_credential_id = if initial_owner == owner_a {
+        owner_a_credential.id
+    } else {
+        owner_b_credential.id
+    };
+    assert_eq!(
+        repository_a
+            .read_current_platform_role_policy(ReadCurrentPlatformRolePolicy {
+                installation_id,
+                actor_principal_id: initial_owner,
+                credential_id: initial_owner_credential_id,
+                request_id: Uuid::now_v7(),
+            })
+            .await?,
+        Some(current_policy.clone())
+    );
+    assert_eq!(
+        repository_b
+            .read_platform_role_policy_revision(ReadPlatformRolePolicyRevision {
+                installation_id,
+                revision_id: current_policy.id,
+                actor_principal_id: initial_owner,
+                credential_id: initial_owner_credential_id,
+                request_id: Uuid::now_v7(),
+            })
+            .await?,
+        Some(current_policy.clone())
+    );
+    assert_eq!(
+        repository_a
+            .read_platform_role_binding(ReadPlatformRoleBinding {
+                installation_id,
+                binding_id: admin_binding.id,
+                actor_principal_id: initial_owner,
+                credential_id: initial_owner_credential_id,
+                request_id: Uuid::now_v7(),
+            })
+            .await?,
+        Some(admin_binding.clone())
+    );
+    assert_eq!(
+        repository_b
+            .read_principal_platform_role_binding(ReadPrincipalPlatformRoleBinding {
+                installation_id,
+                principal_id: admin,
+                actor_principal_id: initial_owner,
+                credential_id: initial_owner_credential_id,
+                request_id: Uuid::now_v7(),
+            })
+            .await?,
+        Some(admin_binding.clone())
+    );
+    assert!(matches!(
+        repository_a
+            .read_platform_role_binding(ReadPlatformRoleBinding {
+                installation_id,
+                binding_id: admin_binding.id,
+                actor_principal_id: initial_owner,
+                credential_id: admin_credential.id,
+                request_id: Uuid::now_v7(),
+            })
+            .await,
+        Err(RepositoryError::Forbidden(_))
+    ));
 
     let forged_owner = PlatformRoleBinding::create(
         PlatformRoleBindingId::new(),

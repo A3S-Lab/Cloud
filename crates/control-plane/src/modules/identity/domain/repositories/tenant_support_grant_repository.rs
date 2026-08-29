@@ -9,7 +9,15 @@ use crate::modules::shared_kernel::domain::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TenantSupportGrantRecord {
+    pub proposal: TenantSupportGrantProposal,
+    pub approvals: Vec<TenantSupportGrantApproval>,
+    pub grant: Option<TenantSupportGrant>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ProposeTenantSupportGrantWrite {
@@ -43,6 +51,15 @@ pub struct RevokeTenantSupportGrantWrite {
     pub revoked_at: DateTime<Utc>,
     pub request_id: Uuid,
     pub idempotency: IdempotencyRequest,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadTenantSupportGrant {
+    pub installation_id: InstallationId,
+    pub grant_id: TenantSupportGrantId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
 }
 
 #[async_trait]
@@ -79,4 +96,12 @@ pub trait ITenantSupportGrantRepository: Send + Sync {
         installation_id: InstallationId,
         grant_id: TenantSupportGrantId,
     ) -> Result<Option<TenantSupportGrant>, RepositoryError>;
+
+    /// Authorizes the closed `TenantSupportRead` capability and returns the
+    /// proposal, approval evidence, and accepted lifecycle under one storage
+    /// transaction and Installation lock interval.
+    async fn read_tenant_support_grant(
+        &self,
+        read: ReadTenantSupportGrant,
+    ) -> Result<Option<TenantSupportGrantRecord>, RepositoryError>;
 }

@@ -15,7 +15,8 @@ use crate::modules::identity::domain::events::{
 use crate::modules::identity::domain::repositories::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,
-    RevokePlatformRoleBindingWrite,
+    ReadCurrentPlatformRolePolicy, ReadPlatformRoleBinding, ReadPlatformRolePolicyRevision,
+    ReadPrincipalPlatformRoleBinding, RevokePlatformRoleBindingWrite,
 };
 use crate::modules::identity::domain::services::PrivilegedAuthorizationDecisionRequest;
 use crate::modules::identity::domain::value_objects::{PlatformPermission, PlatformRole};
@@ -266,6 +267,66 @@ async fn load_binding_for_update(
             .append(" and binding.id = ")
             .bind(binding_id.as_uuid())
             .append(" for update of binding"),
+    )
+    .await?
+    .map(decode_platform_role_binding)
+    .transpose()
+    .map_err(Into::into)
+}
+
+async fn load_policy_revision_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    revision_id: PlatformRolePolicyRevisionId,
+) -> Result<Option<AcceptedPlatformRolePolicyRevision>, PostgresPersistenceError> {
+    fetch_optional::<PlatformRolePolicyRevisionRow, _>(
+        transaction,
+        sql_query::<PlatformRolePolicyRevisionRow>(SELECT_PLATFORM_ROLE_POLICY_REVISION)
+            .append(" where revision.installation_id = ")
+            .bind(installation_id.as_uuid())
+            .append(" and revision.id = ")
+            .bind(revision_id.as_uuid())
+            .append(" for share of revision"),
+    )
+    .await?
+    .map(decode_platform_role_policy_revision)
+    .transpose()
+    .map_err(Into::into)
+}
+
+async fn load_binding_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    binding_id: PlatformRoleBindingId,
+) -> Result<Option<PlatformRoleBinding>, PostgresPersistenceError> {
+    fetch_optional::<PlatformRoleBindingRow, _>(
+        transaction,
+        sql_query::<PlatformRoleBindingRow>(SELECT_PLATFORM_ROLE_BINDING)
+            .append(" where binding.installation_id = ")
+            .bind(installation_id.as_uuid())
+            .append(" and binding.id = ")
+            .bind(binding_id.as_uuid())
+            .append(" for share of binding"),
+    )
+    .await?
+    .map(decode_platform_role_binding)
+    .transpose()
+    .map_err(Into::into)
+}
+
+async fn load_principal_binding_for_authorization(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    principal_id: PrincipalId,
+) -> Result<Option<PlatformRoleBinding>, PostgresPersistenceError> {
+    fetch_optional::<PlatformRoleBindingRow, _>(
+        transaction,
+        sql_query::<PlatformRoleBindingRow>(SELECT_PLATFORM_ROLE_BINDING)
+            .append(" join identity_principals principal on principal.id = binding.principal_id and principal.disabled_at is null where binding.installation_id = ")
+            .bind(installation_id.as_uuid())
+            .append(" and binding.principal_id = ")
+            .bind(principal_id.as_uuid())
+            .append(" and binding.revoked_at is null for share of binding, principal"),
     )
     .await?
     .map(decode_platform_role_binding)
@@ -560,7 +621,7 @@ async fn store_binding_facts(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn platform_mutation_authorization_request(
+fn platform_authorization_request(
     installation_id: InstallationId,
     principal_id: PrincipalId,
     credential_id: ApiTokenId,
@@ -760,7 +821,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                     lock_installation(transaction, installation_id).await?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        platform_mutation_authorization_request(
+                        platform_authorization_request(
                             installation_id,
                             write.actor_principal_id,
                             write.credential_id,
@@ -905,7 +966,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                     lock_installation(transaction, installation_id).await?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        platform_mutation_authorization_request(
+                        platform_authorization_request(
                             installation_id,
                             write.actor_principal_id,
                             write.credential_id,
@@ -1002,7 +1063,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                     lock_installation(transaction, write.installation_id).await?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        platform_mutation_authorization_request(
+                        platform_authorization_request(
                             write.installation_id,
                             write.actor_principal_id,
                             write.credential_id,
@@ -1146,7 +1207,7 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                     lock_installation(transaction, write.installation_id).await?;
                     let authorization = issue_privileged_authorization(
                         transaction,
-                        platform_mutation_authorization_request(
+                        platform_authorization_request(
                             write.installation_id,
                             write.actor_principal_id,
                             write.credential_id,
@@ -1281,5 +1342,132 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
             .map(decode_platform_role_binding)
             .transpose()
+    }
+
+    async fn read_current_platform_role_policy(
+        &self,
+        read: ReadCurrentPlatformRolePolicy,
+    ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    issue_privileged_authorization(
+                        transaction,
+                        platform_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::RolePolicyRead,
+                            "identity.platform-role-policy.current-read",
+                            read.installation_id.as_uuid(),
+                            read.request_id,
+                        )?,
+                    )
+                    .await?;
+                    load_current_policy_for_authorization(transaction, read.installation_id).await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn read_platform_role_policy_revision(
+        &self,
+        read: ReadPlatformRolePolicyRevision,
+    ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    issue_privileged_authorization(
+                        transaction,
+                        platform_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::RolePolicyRead,
+                            "identity.platform-role-policy.revision-read",
+                            read.revision_id.as_uuid(),
+                            read.request_id,
+                        )?,
+                    )
+                    .await?;
+                    load_policy_revision_for_authorization(
+                        transaction,
+                        read.installation_id,
+                        read.revision_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn read_platform_role_binding(
+        &self,
+        read: ReadPlatformRoleBinding,
+    ) -> Result<Option<PlatformRoleBinding>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    issue_privileged_authorization(
+                        transaction,
+                        platform_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::RoleBindingRead,
+                            "identity.platform-role-binding.read",
+                            read.binding_id.as_uuid(),
+                            read.request_id,
+                        )?,
+                    )
+                    .await?;
+                    load_binding_for_authorization(
+                        transaction,
+                        read.installation_id,
+                        read.binding_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn read_principal_platform_role_binding(
+        &self,
+        read: ReadPrincipalPlatformRoleBinding,
+    ) -> Result<Option<PlatformRoleBinding>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    issue_privileged_authorization(
+                        transaction,
+                        platform_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::RoleBindingRead,
+                            "identity.platform-role-binding.principal-read",
+                            read.principal_id.as_uuid(),
+                            read.request_id,
+                        )?,
+                    )
+                    .await?;
+                    load_principal_binding_for_authorization(
+                        transaction,
+                        read.installation_id,
+                        read.principal_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
     }
 }
