@@ -2440,6 +2440,105 @@ fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_c
 }
 
 #[test]
+fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let adapter = std::fs::read_to_string(
+        manifest.join("src/presentation/management_mcp/privileged_management.rs"),
+    )
+    .expect("read privileged management MCP adapter");
+    let dispatch =
+        std::fs::read_to_string(manifest.join("src/presentation/management_mcp/dispatch.rs"))
+            .expect("read Management MCP dispatch");
+    let catalog =
+        std::fs::read_to_string(manifest.join("src/presentation/management_mcp/catalog.rs"))
+            .expect("read Management MCP catalog");
+    let handler =
+        std::fs::read_to_string(manifest.join("src/presentation/management_mcp/handler.rs"))
+            .expect("read Management MCP handler");
+
+    for use_case in [
+        "GetCurrentPlatformRolePolicy",
+        "GetPlatformRolePolicyRevision",
+        "AcceptPlatformRolePolicy",
+        "GetPlatformRoleBinding",
+        "GetPrincipalPlatformRoleBinding",
+        "CreatePlatformRoleBinding",
+        "ChangePlatformRoleBinding",
+        "RevokePlatformRoleBinding",
+        "GetTenantSupportGrant",
+        "ProposeTenantSupportGrant",
+        "ApproveTenantSupportGrant",
+        "RevokeTenantSupportGrant",
+    ] {
+        assert!(
+            adapter.contains(&format!(".execute({use_case} {{")),
+            "privileged MCP stopped dispatching the Application use case {use_case}"
+        );
+    }
+    for operation in [
+        "get_current_platform_role_policy",
+        "get_platform_role_policy_revision",
+        "accept_platform_role_policy",
+        "get_platform_role_binding",
+        "get_principal_platform_role_binding",
+        "create_platform_role_binding",
+        "change_platform_role_binding",
+        "revoke_platform_role_binding",
+        "get_tenant_support_grant",
+        "propose_tenant_support_grant",
+        "approve_tenant_support_grant",
+        "revoke_tenant_support_grant",
+    ] {
+        assert_eq!(
+            dispatch
+                .matches(&format!("privileged_management::{operation}("))
+                .count(),
+            1,
+            "privileged MCP operation {operation} must have one dispatch path"
+        );
+    }
+    for name in [
+        "a3s_cloud_platform_role_policy_current_get",
+        "a3s_cloud_platform_role_policy_revisions_get",
+        "a3s_cloud_platform_role_policy_revisions_accept",
+        "a3s_cloud_platform_role_bindings_get",
+        "a3s_cloud_principal_platform_role_binding_get",
+        "a3s_cloud_platform_role_bindings_create",
+        "a3s_cloud_platform_role_bindings_change_role",
+        "a3s_cloud_platform_role_bindings_revoke",
+        "a3s_cloud_tenant_support_grants_get",
+        "a3s_cloud_tenant_support_grants_propose",
+        "a3s_cloud_tenant_support_grants_approve",
+        "a3s_cloud_tenant_support_grants_revoke",
+    ] {
+        assert_eq!(
+            catalog.matches(&format!("\"{name}\"")).count(),
+            1,
+            "privileged MCP tool {name} must be unique"
+        );
+    }
+    assert!(catalog.contains("Some(ManagementResourceBinding::Installation)"));
+    assert!(handler.contains("Some(ManagementResourceBinding::Installation) => Ok(true)"));
+    for forbidden in [
+        "Repository",
+        "postgres",
+        "sqlx",
+        "Redis",
+        "a3s_lane",
+        "actor_is_platform_admin",
+        ".has_role(",
+        "AuthorizePrivilegedAccess",
+        "PlatformRolePolicyContract",
+        "TenantSupportGrantContract",
+    ] {
+        assert!(
+            !adapter.contains(forbidden),
+            "privileged MCP introduced a second authority via {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(

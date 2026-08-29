@@ -34,7 +34,9 @@ use crate::modules::files::{
 };
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::domain::value_objects::{
+    ApiTokenScope, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES, TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
+};
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
@@ -121,6 +123,20 @@ pub const DURABLE_CELL_ROUTES_PUBLISH: &str = "a3s_cloud_durable_cell_routes_pub
 pub const EXECUTION_TEMPLATES_CREATE: &str = "a3s_cloud_execution_templates_create";
 pub const EXECUTION_TEMPLATES_GET: &str = "a3s_cloud_execution_templates_get";
 pub const EXECUTION_TEMPLATES_LIST: &str = "a3s_cloud_execution_templates_list";
+pub const PLATFORM_ROLE_POLICY_CURRENT_GET: &str = "a3s_cloud_platform_role_policy_current_get";
+pub const PLATFORM_ROLE_POLICY_REVISIONS_GET: &str = "a3s_cloud_platform_role_policy_revisions_get";
+pub const PLATFORM_ROLE_POLICY_REVISIONS_ACCEPT: &str =
+    "a3s_cloud_platform_role_policy_revisions_accept";
+pub const PLATFORM_ROLE_BINDINGS_GET: &str = "a3s_cloud_platform_role_bindings_get";
+pub const PRINCIPAL_PLATFORM_ROLE_BINDING_GET: &str =
+    "a3s_cloud_principal_platform_role_binding_get";
+pub const PLATFORM_ROLE_BINDINGS_CREATE: &str = "a3s_cloud_platform_role_bindings_create";
+pub const PLATFORM_ROLE_BINDINGS_CHANGE_ROLE: &str = "a3s_cloud_platform_role_bindings_change_role";
+pub const PLATFORM_ROLE_BINDINGS_REVOKE: &str = "a3s_cloud_platform_role_bindings_revoke";
+pub const TENANT_SUPPORT_GRANTS_GET: &str = "a3s_cloud_tenant_support_grants_get";
+pub const TENANT_SUPPORT_GRANTS_PROPOSE: &str = "a3s_cloud_tenant_support_grants_propose";
+pub const TENANT_SUPPORT_GRANTS_APPROVE: &str = "a3s_cloud_tenant_support_grants_approve";
+pub const TENANT_SUPPORT_GRANTS_REVOKE: &str = "a3s_cloud_tenant_support_grants_revoke";
 pub const FORMS_CREATE: &str = "a3s_cloud_forms_create";
 pub const FORMS_GET: &str = "a3s_cloud_forms_get";
 pub const FORMS_LIST: &str = "a3s_cloud_forms_list";
@@ -266,6 +282,18 @@ pub enum ManagementTool {
     ExecutionTemplatesCreate,
     ExecutionTemplatesGet,
     ExecutionTemplatesList,
+    PlatformRolePolicyCurrentGet,
+    PlatformRolePolicyRevisionsGet,
+    PlatformRolePolicyRevisionsAccept,
+    PlatformRoleBindingsGet,
+    PrincipalPlatformRoleBindingGet,
+    PlatformRoleBindingsCreate,
+    PlatformRoleBindingsChangeRole,
+    PlatformRoleBindingsRevoke,
+    TenantSupportGrantsGet,
+    TenantSupportGrantsPropose,
+    TenantSupportGrantsApprove,
+    TenantSupportGrantsRevoke,
     MembershipsList,
     MembershipsGet,
     MembershipsCreate,
@@ -392,6 +420,7 @@ pub enum ManagementTool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ManagementResourceBinding {
+    Installation,
     ProjectArgument,
     EnvironmentArguments,
     NodeArgument,
@@ -405,7 +434,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 157] = [
+    const ALL: [Self; 169] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -441,6 +470,18 @@ impl ManagementTool {
         Self::ExecutionTemplatesCreate,
         Self::ExecutionTemplatesGet,
         Self::ExecutionTemplatesList,
+        Self::PlatformRolePolicyCurrentGet,
+        Self::PlatformRolePolicyRevisionsGet,
+        Self::PlatformRolePolicyRevisionsAccept,
+        Self::PlatformRoleBindingsGet,
+        Self::PrincipalPlatformRoleBindingGet,
+        Self::PlatformRoleBindingsCreate,
+        Self::PlatformRoleBindingsChangeRole,
+        Self::PlatformRoleBindingsRevoke,
+        Self::TenantSupportGrantsGet,
+        Self::TenantSupportGrantsPropose,
+        Self::TenantSupportGrantsApprove,
+        Self::TenantSupportGrantsRevoke,
         Self::MembershipsList,
         Self::MembershipsGet,
         Self::MembershipsCreate,
@@ -626,6 +667,18 @@ impl ManagementTool {
             Self::ExecutionTemplatesCreate => EXECUTION_TEMPLATES_CREATE,
             Self::ExecutionTemplatesGet => EXECUTION_TEMPLATES_GET,
             Self::ExecutionTemplatesList => EXECUTION_TEMPLATES_LIST,
+            Self::PlatformRolePolicyCurrentGet => PLATFORM_ROLE_POLICY_CURRENT_GET,
+            Self::PlatformRolePolicyRevisionsGet => PLATFORM_ROLE_POLICY_REVISIONS_GET,
+            Self::PlatformRolePolicyRevisionsAccept => PLATFORM_ROLE_POLICY_REVISIONS_ACCEPT,
+            Self::PlatformRoleBindingsGet => PLATFORM_ROLE_BINDINGS_GET,
+            Self::PrincipalPlatformRoleBindingGet => PRINCIPAL_PLATFORM_ROLE_BINDING_GET,
+            Self::PlatformRoleBindingsCreate => PLATFORM_ROLE_BINDINGS_CREATE,
+            Self::PlatformRoleBindingsChangeRole => PLATFORM_ROLE_BINDINGS_CHANGE_ROLE,
+            Self::PlatformRoleBindingsRevoke => PLATFORM_ROLE_BINDINGS_REVOKE,
+            Self::TenantSupportGrantsGet => TENANT_SUPPORT_GRANTS_GET,
+            Self::TenantSupportGrantsPropose => TENANT_SUPPORT_GRANTS_PROPOSE,
+            Self::TenantSupportGrantsApprove => TENANT_SUPPORT_GRANTS_APPROVE,
+            Self::TenantSupportGrantsRevoke => TENANT_SUPPORT_GRANTS_REVOKE,
             Self::MembershipsList => MEMBERSHIPS_LIST,
             Self::MembershipsGet => MEMBERSHIPS_GET,
             Self::MembershipsCreate => MEMBERSHIPS_CREATE,
@@ -782,6 +835,13 @@ impl ManagementTool {
             | Self::DurableCellDeploymentsCreate => Some(ApiTokenScope::WORKLOAD_WRITE),
             Self::DurableCellRoutesPublish => Some(ApiTokenScope::ROUTE_WRITE),
             Self::ExecutionTemplatesCreate => Some(ApiTokenScope::EXECUTION_WRITE),
+            Self::PlatformRolePolicyRevisionsAccept
+            | Self::PlatformRoleBindingsCreate
+            | Self::PlatformRoleBindingsChangeRole
+            | Self::PlatformRoleBindingsRevoke
+            | Self::TenantSupportGrantsPropose
+            | Self::TenantSupportGrantsApprove
+            | Self::TenantSupportGrantsRevoke => Some(ApiTokenScope::PLATFORM_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
             | Self::MembershipsCreate
@@ -824,6 +884,11 @@ impl ManagementTool {
             }
             Self::UserFilesReserve | Self::UserFilesTombstone => Some(ApiTokenScope::FILE_WRITE),
             Self::MyMembershipInvitationsList
+            | Self::PlatformRolePolicyCurrentGet
+            | Self::PlatformRolePolicyRevisionsGet
+            | Self::PlatformRoleBindingsGet
+            | Self::PrincipalPlatformRoleBindingGet
+            | Self::TenantSupportGrantsGet
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
@@ -950,6 +1015,18 @@ impl ManagementTool {
 
     pub(super) const fn resource_binding(self) -> Option<ManagementResourceBinding> {
         match self {
+            Self::PlatformRolePolicyCurrentGet
+            | Self::PlatformRolePolicyRevisionsGet
+            | Self::PlatformRolePolicyRevisionsAccept
+            | Self::PlatformRoleBindingsGet
+            | Self::PrincipalPlatformRoleBindingGet
+            | Self::PlatformRoleBindingsCreate
+            | Self::PlatformRoleBindingsChangeRole
+            | Self::PlatformRoleBindingsRevoke
+            | Self::TenantSupportGrantsGet
+            | Self::TenantSupportGrantsPropose
+            | Self::TenantSupportGrantsApprove
+            | Self::TenantSupportGrantsRevoke => Some(ManagementResourceBinding::Installation),
             Self::EnvironmentsCreate
             | Self::ProjectAttributionGet
             | Self::ProjectAttributionUpdate
@@ -1093,6 +1170,7 @@ impl ManagementTool {
             return false;
         };
         match self.resource_binding() {
+            Some(ManagementResourceBinding::Installation) => true,
             Some(ManagementResourceBinding::ProjectArgument) => evaluator.has_project_authority(),
             Some(ManagementResourceBinding::EnvironmentArguments) => {
                 evaluator.has_project_visibility()
@@ -1326,6 +1404,78 @@ impl ManagementTool {
                 "List a bounded set of immutable ExecutionTemplate revisions in one tenant-authorized project.",
                 list_execution_templates_schema(),
                 true,
+            ),
+            Self::PlatformRolePolicyCurrentGet => (
+                "Get current platform-role policy",
+                "Read the current accepted installation-scoped platform-role policy through Identity's sole atomic authorization authority.",
+                empty_schema(),
+                true,
+            ),
+            Self::PlatformRolePolicyRevisionsGet => (
+                "Get platform-role policy revision",
+                "Read one exact immutable platform-role policy revision through Identity's sole atomic authorization authority.",
+                uuid_id_schema("revisionId"),
+                true,
+            ),
+            Self::PlatformRolePolicyRevisionsAccept => (
+                "Accept platform-role policy revision",
+                "Accept one exact next canonical A3S ACL revision with expected-current revision fencing and caller-owned idempotency.",
+                accept_platform_role_policy_schema(),
+                false,
+            ),
+            Self::PlatformRoleBindingsGet => (
+                "Get platform-role binding",
+                "Read one exact installation-scoped platform-role binding through Identity's sole atomic authorization authority.",
+                uuid_id_schema("bindingId"),
+                true,
+            ),
+            Self::PrincipalPlatformRoleBindingGet => (
+                "Get Principal platform-role binding",
+                "Read the active installation-scoped platform-role binding for one exact Principal.",
+                uuid_id_schema("principalId"),
+                true,
+            ),
+            Self::PlatformRoleBindingsCreate => (
+                "Create platform-role binding",
+                "Create one binding from a closed platform role with exact accepted-policy fencing and caller-owned idempotency.",
+                create_platform_role_binding_schema(),
+                false,
+            ),
+            Self::PlatformRoleBindingsChangeRole => (
+                "Change platform-role binding",
+                "Change one binding through aggregate-version and accepted-policy revision fencing with caller-owned idempotency.",
+                change_platform_role_binding_schema(),
+                false,
+            ),
+            Self::PlatformRoleBindingsRevoke => (
+                "Revoke platform-role binding",
+                "Terminally revoke one binding through optimistic concurrency, last-owner protection, and caller-owned idempotency.",
+                revoke_platform_role_binding_schema(),
+                false,
+            ),
+            Self::TenantSupportGrantsGet => (
+                "Get tenant-support grant",
+                "Read one exact bounded tenant-support proposal, immutable approvals, and optional accepted lifecycle.",
+                uuid_id_schema("grantId"),
+                true,
+            ),
+            Self::TenantSupportGrantsPropose => (
+                "Propose tenant-support grant",
+                "Propose one canonical time-bounded tenant-support A3S ACL contract with caller-owned idempotency.",
+                propose_tenant_support_grant_schema(),
+                false,
+            ),
+            Self::TenantSupportGrantsApprove => (
+                "Approve tenant-support grant",
+                "Approve one exact tenant-support contract digest and persist credential-bound human evidence.",
+                approve_tenant_support_grant_schema(),
+                false,
+            ),
+            Self::TenantSupportGrantsRevoke => (
+                "Revoke tenant-support grant",
+                "Terminally revoke one accepted grant through optimistic concurrency and caller-owned idempotency.",
+                revoke_tenant_support_grant_schema(),
+                false,
             ),
             Self::MembershipsList => (
                 "List memberships",
@@ -2062,7 +2212,9 @@ impl ManagementTool {
         };
         let destructive = matches!(
             self,
-            Self::MembershipsRevoke
+            Self::PlatformRoleBindingsRevoke
+                | Self::TenantSupportGrantsRevoke
+                | Self::MembershipsRevoke
                 | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsRevoke
                 | Self::RecipientContactsRevoke
@@ -2093,6 +2245,121 @@ fn empty_schema() -> Value {
     json!({
         "type": "object",
         "properties": {},
+        "additionalProperties": false
+    })
+}
+
+fn platform_role_schema() -> Value {
+    json!({
+        "type": "string",
+        "enum": [
+            "platform_owner",
+            "platform_admin",
+            "platform_operator",
+            "security_auditor"
+        ]
+    })
+}
+
+fn accept_platform_role_policy_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "canonicalAcl": canonical_acl_input_schema(PLATFORM_ROLE_POLICY_MAX_ACL_BYTES, None),
+            "revisionNumber": expected_version_schema(),
+            "expectedCurrentRevisionId": {"type": "string", "format": "uuid"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "canonicalAcl",
+            "revisionNumber",
+            "expectedCurrentRevisionId",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn create_platform_role_binding_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "principalId": {"type": "string", "format": "uuid"},
+            "role": platform_role_schema(),
+            "expectedPolicyRevisionId": {"type": "string", "format": "uuid"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["principalId", "role", "expectedPolicyRevisionId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn change_platform_role_binding_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "bindingId": {"type": "string", "format": "uuid"},
+            "role": platform_role_schema(),
+            "expectedVersion": expected_version_schema(),
+            "expectedPolicyRevisionId": {"type": "string", "format": "uuid"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "bindingId",
+            "role",
+            "expectedVersion",
+            "expectedPolicyRevisionId",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_platform_role_binding_schema() -> Value {
+    versioned_idempotent_identity_schema("bindingId")
+}
+
+fn propose_tenant_support_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "canonicalAcl": canonical_acl_input_schema(TENANT_SUPPORT_GRANT_MAX_ACL_BYTES, None),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["canonicalAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn approve_tenant_support_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "grantId": {"type": "string", "format": "uuid"},
+            "expectedContractDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["grantId", "expectedContractDigest", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_tenant_support_grant_schema() -> Value {
+    versioned_idempotent_identity_schema("grantId")
+}
+
+fn versioned_idempotent_identity_schema(property: &str) -> Value {
+    let mut properties = Map::new();
+    properties.insert(property.into(), json!({"type": "string", "format": "uuid"}));
+    properties.insert("expectedVersion".into(), expected_version_schema());
+    properties.insert("idempotencyKey".into(), idempotency_key_schema());
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": [property, "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }
@@ -2501,7 +2768,7 @@ fn accept_build_plan_schema() -> Value {
         "proposalAcl".into(),
         canonical_acl_input_schema(
             BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
-            include_str!("../../../../../contracts/p0.1/build-plan.acl"),
+            Some(include_str!("../../../../../contracts/p0.1/build-plan.acl")),
         ),
     );
     properties.insert("idempotencyKey".into(), idempotency_key_schema());
@@ -2562,7 +2829,9 @@ fn accept_workload_profile_schema() -> Value {
         "profileAcl".into(),
         canonical_acl_input_schema(
             WORKLOAD_PROFILE_MAX_ACL_BYTES,
-            include_str!("../../../../../contracts/p0.2/workload-profile.acl"),
+            Some(include_str!(
+                "../../../../../contracts/p0.2/workload-profile.acl"
+            )),
         ),
     );
     properties.insert("idempotencyKey".into(), idempotency_key_schema());
@@ -2652,7 +2921,9 @@ fn accept_pull_request_preview_policy_schema() -> Value {
         "policyAcl".into(),
         canonical_acl_input_schema(
             PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES,
-            include_str!("../../../../../contracts/p0.3/pull-request-preview-policy.acl"),
+            Some(include_str!(
+                "../../../../../contracts/p0.3/pull-request-preview-policy.acl"
+            )),
         ),
     );
     properties.insert("idempotencyKey".into(), idempotency_key_schema());
@@ -2740,15 +3011,18 @@ fn get_pull_request_preview_schema() -> Value {
     })
 }
 
-fn canonical_acl_input_schema(maximum_bytes: usize, example: &str) -> Value {
-    json!({
+fn canonical_acl_input_schema(maximum_bytes: usize, example: Option<&str>) -> Value {
+    let mut schema = json!({
         "type": "string",
         "minLength": 1,
         "maxLength": maximum_bytes,
         "x-a3s-max-utf8-bytes": maximum_bytes,
-        "description": "Canonical A3S ACL parsed and generated only through a3s-acl.",
-        "example": example
-    })
+        "description": "Canonical A3S ACL parsed and generated only through a3s-acl."
+    });
+    if let Some(example) = example {
+        schema["example"] = Value::String(example.into());
+    }
+    schema
 }
 
 fn build_run_list_schema() -> Value {
@@ -4142,6 +4416,80 @@ mod tests {
                 "{} destructive annotation",
                 tool.name()
             );
+        }
+    }
+
+    #[test]
+    fn privileged_management_catalog_is_installation_bound_closed_and_scope_explicit() {
+        let read_tools = [
+            ManagementTool::PlatformRolePolicyCurrentGet,
+            ManagementTool::PlatformRolePolicyRevisionsGet,
+            ManagementTool::PlatformRoleBindingsGet,
+            ManagementTool::PrincipalPlatformRoleBindingGet,
+            ManagementTool::TenantSupportGrantsGet,
+        ];
+        let mutation_tools = [
+            ManagementTool::PlatformRolePolicyRevisionsAccept,
+            ManagementTool::PlatformRoleBindingsCreate,
+            ManagementTool::PlatformRoleBindingsChangeRole,
+            ManagementTool::PlatformRoleBindingsRevoke,
+            ManagementTool::TenantSupportGrantsPropose,
+            ManagementTool::TenantSupportGrantsApprove,
+            ManagementTool::TenantSupportGrantsRevoke,
+        ];
+        let read_principal = AuthPrincipal::new("reader").with_scope(ApiTokenScope::CLOUD_READ);
+        let write_principal =
+            AuthPrincipal::new("writer").with_scope(ApiTokenScope::PLATFORM_WRITE);
+
+        for tool in read_tools {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::Installation)
+            );
+            assert!(tool.visible_to(&read_principal), "{}", tool.name());
+            assert!(!tool.visible_to(&write_principal), "{}", tool.name());
+            let definition = tool.definition();
+            assert_eq!(definition["annotations"]["readOnlyHint"], true);
+            assert_eq!(definition["annotations"]["destructiveHint"], false);
+            assert_eq!(definition["inputSchema"]["additionalProperties"], false);
+        }
+        for tool in mutation_tools {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::PLATFORM_WRITE));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::Installation)
+            );
+            assert!(tool.visible_to(&write_principal), "{}", tool.name());
+            assert!(!tool.visible_to(&read_principal), "{}", tool.name());
+            let definition = tool.definition();
+            assert_eq!(definition["annotations"]["readOnlyHint"], false);
+            assert_eq!(definition["inputSchema"]["additionalProperties"], false);
+        }
+
+        let policy_acceptance = ManagementTool::PlatformRolePolicyRevisionsAccept.definition();
+        assert_eq!(
+            policy_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
+            PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
+        );
+        assert!(policy_acceptance["inputSchema"]["properties"]
+            .get("organizationId")
+            .is_none());
+        let support_proposal = ManagementTool::TenantSupportGrantsPropose.definition();
+        assert_eq!(
+            support_proposal["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
+            TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
+        );
+        assert_eq!(
+            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]
+                ["expectedContractDigest"]["pattern"],
+            "^sha256:[0-9a-f]{64}$"
+        );
+        for tool in [
+            ManagementTool::PlatformRoleBindingsRevoke,
+            ManagementTool::TenantSupportGrantsRevoke,
+        ] {
+            assert_eq!(tool.definition()["annotations"]["destructiveHint"], true);
         }
     }
 

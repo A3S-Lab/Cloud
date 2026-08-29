@@ -390,6 +390,11 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_durable_cell_revisions_get",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
+            "a3s_cloud_platform_role_policy_current_get",
+            "a3s_cloud_platform_role_policy_revisions_get",
+            "a3s_cloud_platform_role_bindings_get",
+            "a3s_cloud_principal_platform_role_binding_get",
+            "a3s_cloud_tenant_support_grants_get",
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_recipient_contacts_list",
             "a3s_cloud_recipient_contacts_get",
@@ -635,6 +640,18 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_execution_templates_create",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
+            "a3s_cloud_platform_role_policy_current_get",
+            "a3s_cloud_platform_role_policy_revisions_get",
+            "a3s_cloud_platform_role_policy_revisions_accept",
+            "a3s_cloud_platform_role_bindings_get",
+            "a3s_cloud_principal_platform_role_binding_get",
+            "a3s_cloud_platform_role_bindings_create",
+            "a3s_cloud_platform_role_bindings_change_role",
+            "a3s_cloud_platform_role_bindings_revoke",
+            "a3s_cloud_tenant_support_grants_get",
+            "a3s_cloud_tenant_support_grants_propose",
+            "a3s_cloud_tenant_support_grants_approve",
+            "a3s_cloud_tenant_support_grants_revoke",
             "a3s_cloud_memberships_list",
             "a3s_cloud_memberships_get",
             "a3s_cloud_memberships_create",
@@ -1096,6 +1113,75 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         .await?;
     assert_eq!(hidden_call.status(), 200);
     assert_eq!(response_json(&hidden_call)?["error"]["code"], -32602);
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgres_authority(
+) -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    bootstrap_organization(&app, "mcp-privileged", "Root").await?;
+    let binding_id = Uuid::now_v7();
+    let principal_id = Uuid::now_v7();
+    let grant_id = Uuid::now_v7();
+
+    for (id, name, arguments) in [
+        (1, "a3s_cloud_platform_role_policy_current_get", json!({})),
+        (
+            2,
+            "a3s_cloud_platform_role_bindings_create",
+            json!({
+                "principalId": principal_id,
+                "role": "platform_operator",
+                "expectedPolicyRevisionId": Uuid::now_v7(),
+                "idempotencyKey": "mcp:platform-binding:create"
+            }),
+        ),
+        (
+            3,
+            "a3s_cloud_tenant_support_grants_get",
+            json!({"grantId": grant_id}),
+        ),
+        (
+            4,
+            "a3s_cloud_tenant_support_grants_approve",
+            json!({
+                "grantId": grant_id,
+                "expectedContractDigest": format!("sha256:{}", "a".repeat(64)),
+                "idempotencyKey": "mcp:tenant-support:approve"
+            }),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        assert_eq!(response.status(), 200);
+        let body = response_json(&response)?;
+        assert_eq!(body["result"]["isError"], true, "{name}");
+        assert_eq!(body["result"]["structuredContent"]["code"], 403, "{name}");
+        assert!(
+            body.to_string()
+                .contains("privileged management requires the PostgreSQL Identity authority"),
+            "{name}"
+        );
+    }
+
+    let rejected = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_platform_role_bindings_get",
+                json!({"bindingId": binding_id, "organizationId": Uuid::now_v7()}),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&rejected)?["error"]["code"], -32602);
     Ok(())
 }
 

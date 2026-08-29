@@ -8,8 +8,12 @@ mod resource_access;
 pub use dto::{
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
+    PlatformRoleBindingMutationResponse, PlatformRoleBindingResponse,
+    PlatformRolePolicyMutationResponse, PlatformRolePolicyResponse,
     RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
-    ResourceGrantResponse, ResourceGrantScopeDto,
+    ResourceGrantResponse, ResourceGrantScopeDto, TenantSupportGrantApprovalMutationResponse,
+    TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
+    TenantSupportGrantResponse,
 };
 pub use guards::{
     with_deferred_resource_scope, BootstrapGuard, DeferredResourceScope,

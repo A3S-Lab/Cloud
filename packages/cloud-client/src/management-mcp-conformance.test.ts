@@ -29,9 +29,31 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
-it('pins the current Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(157);
-  expect(READ_ONLY_TOOLS).toHaveLength(90);
+it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
+  expect(ADMIN_TOOLS).toHaveLength(169);
+  expect(READ_ONLY_TOOLS).toHaveLength(95);
+  for (const tool of [
+    'a3s_cloud_platform_role_policy_current_get',
+    'a3s_cloud_platform_role_policy_revisions_get',
+    'a3s_cloud_platform_role_bindings_get',
+    'a3s_cloud_principal_platform_role_binding_get',
+    'a3s_cloud_tenant_support_grants_get',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+    expect(READ_ONLY_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+  }
+  for (const tool of [
+    'a3s_cloud_platform_role_policy_revisions_accept',
+    'a3s_cloud_platform_role_bindings_create',
+    'a3s_cloud_platform_role_bindings_change_role',
+    'a3s_cloud_platform_role_bindings_revoke',
+    'a3s_cloud_tenant_support_grants_propose',
+    'a3s_cloud_tenant_support_grants_approve',
+    'a3s_cloud_tenant_support_grants_revoke',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+    expect(READ_ONLY_TOOLS).not.toContain(tool);
+  }
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_workload_profiles_accept')).toEqual([
     'a3s_cloud_workload_profiles_accept',
   ]);

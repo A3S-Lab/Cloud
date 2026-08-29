@@ -19,6 +19,7 @@ mod notifications;
 mod ontology;
 mod operations;
 mod plugins;
+mod privileged_management;
 mod projects;
 mod protocol;
 mod search;

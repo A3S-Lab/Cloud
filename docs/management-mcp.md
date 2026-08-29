@@ -125,6 +125,18 @@ list/get and optimistic revoke over Identity's existing CQRS. Its reads require
 completion are intentionally absent so mailbox and proof never become
 model-visible arguments.
 
+The installation-scoped privileged-management slice adds twelve tools over
+Identity's existing platform-role-policy, platform-role-binding, and bounded
+tenant-support CQRS. Five reads require `cloud:read`; seven mutations require
+`platform:write`, caller-owned idempotency, and the same policy-revision,
+aggregate-version, or contract-digest fences as REST contract `1.78.0`.
+Canonical ACL arguments retain the owning 64 KiB domain bounds. The MCP
+catalog uses an explicit Installation resource binding instead of a sentinel
+Organization or legacy administrator-role shortcut; every call passes the
+exact authenticated Principal and credential ID to Identity's sole atomic
+PostgreSQL authorization authority. MCP owns no role evaluator, grant
+approver, ACL parser, repository, cache, lock, or audit path.
+
 ## Transport contract
 
 The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
@@ -1015,7 +1027,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused runner requires exact 157-tool administrator and 90-tool
+current focused runner requires exact 169-tool administrator and 95-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

@@ -314,6 +314,7 @@ fn management_resource_is_authorized(
             .ok_or(ManagementResourceAuthorizationError::InvalidArguments)
     };
     match tool.resource_binding() {
+        Some(ManagementResourceBinding::Installation) => Ok(true),
         Some(ManagementResourceBinding::ProjectArgument) => {
             Ok(evaluator.allows(ResourceGrantScope::Project {
                 project_id: ProjectId::from_uuid(uuid_argument("projectId")?),

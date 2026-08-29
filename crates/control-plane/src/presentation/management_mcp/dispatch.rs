@@ -69,6 +69,14 @@ use super::ontology::{
 use super::plugins::{
     PluginCatalogInspectArguments, PluginCatalogSearchArguments, PluginRegistryArguments,
 };
+use super::privileged_management::{
+    AcceptPlatformRolePolicyArguments, ApproveTenantSupportGrantArguments,
+    ChangePlatformRoleBindingArguments, CreatePlatformRoleBindingArguments,
+    PlatformRoleBindingArguments, PlatformRolePolicyRevisionArguments,
+    PrincipalPlatformRoleBindingArguments, ProposeTenantSupportGrantArguments,
+    RevokePlatformRoleBindingArguments, RevokeTenantSupportGrantArguments,
+    TenantSupportGrantArguments,
+};
 use super::projects::{
     CreateEnvironmentArguments, CreateProjectArguments, GetProjectAttributionArguments,
     ProjectArguments, UpdateProjectAttributionArguments,
@@ -92,7 +100,7 @@ use super::workloads::{
 use super::{
     applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
     execution_templates, files, forms, identity, nodes, notifications, ontology, operations,
-    plugins, projects, search, security, sources, workflow, workloads,
+    plugins, privileged_management, projects, search, security, sources, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -539,6 +547,146 @@ pub async fn execute(
                 organization_id,
                 arguments,
                 resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRolePolicyCurrentGet => {
+            arguments::parse::<EmptyArguments>(arguments).ok()?;
+            privileged_management::get_current_platform_role_policy(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRolePolicyRevisionsGet => {
+            let arguments =
+                arguments::parse::<PlatformRolePolicyRevisionArguments>(arguments).ok()?;
+            privileged_management::get_platform_role_policy_revision(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRolePolicyRevisionsAccept => {
+            let arguments =
+                arguments::parse::<AcceptPlatformRolePolicyArguments>(arguments).ok()?;
+            privileged_management::accept_platform_role_policy(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRoleBindingsGet => {
+            let arguments = arguments::parse::<PlatformRoleBindingArguments>(arguments).ok()?;
+            privileged_management::get_platform_role_binding(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PrincipalPlatformRoleBindingGet => {
+            let arguments =
+                arguments::parse::<PrincipalPlatformRoleBindingArguments>(arguments).ok()?;
+            privileged_management::get_principal_platform_role_binding(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRoleBindingsCreate => {
+            let arguments =
+                arguments::parse::<CreatePlatformRoleBindingArguments>(arguments).ok()?;
+            privileged_management::create_platform_role_binding(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRoleBindingsChangeRole => {
+            let arguments =
+                arguments::parse::<ChangePlatformRoleBindingArguments>(arguments).ok()?;
+            privileged_management::change_platform_role_binding(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PlatformRoleBindingsRevoke => {
+            let arguments =
+                arguments::parse::<RevokePlatformRoleBindingArguments>(arguments).ok()?;
+            privileged_management::revoke_platform_role_binding(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TenantSupportGrantsGet => {
+            let arguments = arguments::parse::<TenantSupportGrantArguments>(arguments).ok()?;
+            privileged_management::get_tenant_support_grant(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TenantSupportGrantsPropose => {
+            let arguments =
+                arguments::parse::<ProposeTenantSupportGrantArguments>(arguments).ok()?;
+            privileged_management::propose_tenant_support_grant(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TenantSupportGrantsApprove => {
+            let arguments =
+                arguments::parse::<ApproveTenantSupportGrantArguments>(arguments).ok()?;
+            privileged_management::approve_tenant_support_grant(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TenantSupportGrantsRevoke => {
+            let arguments =
+                arguments::parse::<RevokeTenantSupportGrantArguments>(arguments).ok()?;
+            privileged_management::revoke_tenant_support_grant(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
                 request_id,
             )
             .await
