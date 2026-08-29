@@ -1,11 +1,11 @@
-use super::postgres::{decode_column, PostgresIdentityRepository};
+use super::postgres::{decode_column, decode_principal, PostgresIdentityRepository, PrincipalRow};
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
     store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
     PostgresPersistenceError,
 };
 use crate::modules::identity::domain::entities::{
-    AcceptedPlatformRolePolicyRevision, PlatformRoleBinding,
+    AcceptedPlatformRolePolicyRevision, IdentityPrincipal, PlatformRoleBinding,
 };
 use crate::modules::identity::domain::events::{
     PlatformRoleBindingChanged, PlatformRolePolicyAccepted,
@@ -127,7 +127,7 @@ fn decode_platform_role_binding(
     })
 }
 
-async fn lock_installation(
+pub(super) async fn lock_installation(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
 ) -> Result<(), PostgresPersistenceError> {
@@ -146,19 +146,32 @@ async fn lock_installation(
     Ok(())
 }
 
+pub(super) async fn load_active_principal_for_share(
+    transaction: &a3s_orm::PostgresTransaction,
+    principal_id: PrincipalId,
+) -> Result<Option<IdentityPrincipal>, PostgresPersistenceError> {
+    fetch_optional::<PrincipalRow, _>(
+        transaction,
+        sql_query::<PrincipalRow>(
+            "select id, kind, name, aggregate_version, created_at, disabled_at from identity_principals principal where principal.id = ",
+        )
+        .bind(principal_id.as_uuid())
+        .append(" and principal.disabled_at is null for key share of principal"),
+    )
+    .await?
+    .map(decode_principal)
+    .transpose()
+    .map_err(Into::into)
+}
+
 async fn require_active_principal(
     transaction: &a3s_orm::PostgresTransaction,
     principal_id: PrincipalId,
 ) -> Result<(), PostgresPersistenceError> {
-    let active = fetch_optional::<i32, _>(
-        transaction,
-        sql_query::<i32>("select 1 from identity_principals principal where principal.id = ")
-            .bind(principal_id.as_uuid())
-            .append(" and principal.disabled_at is null for key share of principal"),
-    )
-    .await?
-    .is_some();
-    if !active {
+    if load_active_principal_for_share(transaction, principal_id)
+        .await?
+        .is_none()
+    {
         return Err(RepositoryError::Forbidden(
             "platform RBAC requires an active identity Principal".into(),
         )
@@ -167,7 +180,7 @@ async fn require_active_principal(
     Ok(())
 }
 
-async fn load_current_policy_for_update(
+pub(super) async fn load_current_policy_for_update(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
 ) -> Result<Option<AcceptedPlatformRolePolicyRevision>, PostgresPersistenceError> {
@@ -204,7 +217,7 @@ async fn load_binding_for_update(
     .map_err(Into::into)
 }
 
-async fn load_active_actor_binding(
+pub(super) async fn load_active_actor_binding(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
     principal_id: PrincipalId,
@@ -229,7 +242,7 @@ async fn load_active_actor_binding(
     })
 }
 
-fn require_permission(
+pub(super) fn require_permission(
     policy: &AcceptedPlatformRolePolicyRevision,
     actor: &PlatformRoleBinding,
     permission: PlatformPermission,

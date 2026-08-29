@@ -105,6 +105,22 @@ jobs:
           echo "::error title=Platform RBAC multi-replica authority gate failed::$detail"
           exit 1
 
+      - name: Certify actual tenant-support approval evidence
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-tenant-support-grants.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Tenant support approval evidence gate failed::$detail"
+          exit 1
+
       - name: Certify fact-fed Artifacts build admission
         run: |
           log="$RUNNER_TEMP/a3s-cloud-artifact-build-candidates.log"

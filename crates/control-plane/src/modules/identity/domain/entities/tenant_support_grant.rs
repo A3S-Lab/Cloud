@@ -5,13 +5,14 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, PrincipalId, ScopeContext, TenantSupportGrantId,
 };
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 const MAX_PORTABLE_VERSION: u64 = 9_007_199_254_740_991;
 
 /// One non-renewing, time-bounded privileged tenant-support authorization.
 /// Its immutable ACL carries intent; this aggregate owns only acceptance and
 /// terminal revocation state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TenantSupportGrant {
     pub id: TenantSupportGrantId,
     pub contract: TenantSupportGrantContract,

@@ -8,6 +8,7 @@ mod platform_rbac_changed;
 mod principal_created;
 mod recipient_contact_changed;
 mod resource_grant_changed;
+mod tenant_support_grant_changed;
 
 pub use api_token_created::ApiTokenCreated;
 pub use api_token_revoked::ApiTokenRevoked;
@@ -19,3 +20,6 @@ pub use platform_rbac_changed::{PlatformRoleBindingChanged, PlatformRolePolicyAc
 pub use principal_created::PrincipalCreated;
 pub use recipient_contact_changed::RecipientContactChanged;
 pub use resource_grant_changed::ResourceGrantChanged;
+pub use tenant_support_grant_changed::{
+    TenantSupportGrantApproved, TenantSupportGrantChanged, TenantSupportGrantProposed,
+};

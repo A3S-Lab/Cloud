@@ -82,7 +82,7 @@ pub use application::queries::list_resource_grants::{
 pub use domain::repositories::{
     IOidcIdentityRepository, IPlatformRbacRepository, IRecipientContactRepository,
     IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
-    ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,

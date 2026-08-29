@@ -11,6 +11,7 @@ mod recipient_contact_verification;
 mod recipient_contact_verification_delivery;
 mod resource_grant;
 mod tenant_support_grant;
+mod tenant_support_grant_approval;
 mod workload_identity;
 
 pub use api_token::{
@@ -41,4 +42,7 @@ pub use recipient_contact_verification_delivery::{
 };
 pub use resource_grant::ResourceGrant;
 pub use tenant_support_grant::TenantSupportGrant;
+pub use tenant_support_grant_approval::{
+    TenantSupportGrantApproval, TenantSupportGrantApprovalOutcome, TenantSupportGrantProposal,
+};
 pub use workload_identity::{AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision};

@@ -2298,6 +2298,115 @@ fn privileged_tenant_support_reuses_one_decision_evidence_mechanism_and_never_im
 }
 
 #[test]
+fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authorities() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let port = std::fs::read_to_string(
+        manifest.join(
+            "src/modules/identity/domain/repositories/tenant_support_grant_repository.rs",
+        ),
+    )
+    .expect("read tenant support grant repository port");
+    let persistence = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs",
+    ))
+    .expect("read tenant support grant PostgreSQL adapter");
+    let migration = std::fs::read_to_string(
+        manifest.join("../../migrations/178_tenant_support_grant_approvals.sql"),
+    )
+    .expect("read tenant support approval migration");
+    let provider_gate =
+        std::fs::read_to_string(manifest.join("tests/support/tenant_support_grants.rs"))
+            .expect("read tenant support PostgreSQL provider gate");
+    let workflow = std::fs::read_to_string(manifest.join("../../.github/workflows/ci.yml"))
+        .expect("read CI workflow");
+
+    assert_eq!(
+        port.matches("pub trait ITenantSupportGrantRepository")
+            .count(),
+        1
+    );
+    assert_eq!(
+        persistence
+            .matches("impl ITenantSupportGrantRepository for PostgresIdentityRepository")
+            .count(),
+        1
+    );
+    for required in [
+        "lock_installation",
+        "load_current_policy_for_update",
+        "require_current_support_manager",
+        "PlatformPermission::TenantSupportManage",
+        "idempotency_replay",
+        "store_idempotency",
+        "store_outbox",
+        "store_audit",
+        ".map(|recorded| recorded.approved_at)",
+        ".max()",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "tenant support persistence lost authority rule {required}"
+        );
+    }
+    for forbidden in [
+        "actor_is_platform_admin",
+        "Redis",
+        "a3s_lane",
+        "tenant_support_outbox",
+        "tenant_support_audit",
+        "tenant_support_idempotency",
+        "tenant_support_distributed_lock",
+    ] {
+        assert!(
+            !production_source(&persistence).contains(forbidden),
+            "tenant support persistence introduced duplicate or ambient authority {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        migration
+            .matches("create table tenant_support_grant_approvals")
+            .count(),
+        1
+    );
+    assert_eq!(
+        migration
+            .matches("execute function validate_cloud_fact_scope_lineage_at_insert()")
+            .count(),
+        1
+    );
+    assert!(migration.contains("deferrable initially deferred"));
+    assert!(migration.contains("for update of installation"));
+    assert!(migration.contains("select max(approval.approved_at)"));
+    for duplicate in [
+        "create table tenant_support_outbox",
+        "create table tenant_support_audit",
+        "create table tenant_support_idempotency",
+        "create table tenant_support_locks",
+    ] {
+        assert!(
+            !migration.contains(duplicate),
+            "tenant support migration introduced second mechanism {duplicate}"
+        );
+    }
+
+    for required in [
+        "tokio::join!",
+        "declared approver IDs alone must never activate a grant",
+        "failed threshold revalidation must roll back the final approval",
+        "actual approval evidence must be immutable",
+    ] {
+        assert!(
+            provider_gate.contains(required),
+            "tenant support provider gate lost proof {required}"
+        );
+    }
+    assert!(workflow.contains(
+        "postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"
+    ));
+}
+
+#[test]
 fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
     let adapter_path = "sources/infrastructure/developer_workflow_source_layout.rs";
     let adapter = std::fs::read_to_string(module_root().join(adapter_path))

@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 177;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "177";
+pub const CLOUD_MIGRATION_COUNT: i64 = 178;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "178";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1625,6 +1625,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/177_platform_rbac_authority.sql"
             )),
         ),
+        Migration::new(
+            "178",
+            "tenant support grant approvals",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/178_tenant_support_grant_approvals.sql"
+            )),
+        ),
     ]
 }
 
@@ -1643,6 +1651,10 @@ mod installation_scoped_facts_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/platform_rbac_authority_migration.rs"]
 mod platform_rbac_authority_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/tenant_support_grant_approvals_migration.rs"]
+mod tenant_support_grant_approvals_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/node_protocol_session_migration.rs"]

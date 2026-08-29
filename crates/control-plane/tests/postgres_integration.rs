@@ -250,6 +250,8 @@ mod resource_grants_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[path = "support/tenant_support_grants.rs"]
+mod tenant_support_grants_support;
 #[cfg(feature = "persistence-conformance")]
 #[path = "support/user_files.rs"]
 mod user_files_support;
@@ -869,6 +871,19 @@ async fn postgres_platform_rbac_is_atomic_recoverable_and_multi_replica_safe() {
     )
     .await
     .expect("PostgreSQL platform RBAC authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        tenant_support_grants_support::exercise_tenant_support_grant_authority,
+    )
+    .await
+    .expect("PostgreSQL tenant support grant approval authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

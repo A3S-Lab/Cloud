@@ -8,6 +8,7 @@ mod recipient_contact_repository;
 mod recipient_contact_verification_delivery_repository;
 mod resource_authorization_decision_repository;
 mod resource_grant_repository;
+mod tenant_support_grant_repository;
 mod workload_identity_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
@@ -42,6 +43,10 @@ pub use resource_authorization_decision_repository::IResourceAuthorizationDecisi
 pub use resource_grant_repository::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
     MAX_ACTIVE_RESOURCE_GRANTS_PER_MEMBERSHIP,
+};
+pub use tenant_support_grant_repository::{
+    ApproveTenantSupportGrantWrite, ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite,
+    RevokeTenantSupportGrantWrite,
 };
 pub use workload_identity_repository::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,
