@@ -64,6 +64,12 @@ impl ApiToken {
         self.revoked_at.is_none() && self.expires_at.is_none_or(|expires_at| expires_at > now)
     }
 
+    pub fn grants_scope(&self, required_scope: &str) -> bool {
+        self.scopes
+            .iter()
+            .any(|scope| scope.as_str() == required_scope)
+    }
+
     pub fn revoke(&mut self, revoked_at: DateTime<Utc>) -> bool {
         if self.revoked_at.is_some() {
             return false;

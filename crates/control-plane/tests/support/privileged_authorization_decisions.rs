@@ -6,8 +6,9 @@ use a3s_cloud_control_plane::modules::identity::domain::entities::{
 use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     ApproveTenantSupportGrantWrite, BootstrapPlatformRbacWrite, CreatePlatformRoleBindingWrite,
-    IApiTokenRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    ITenantSupportGrantRepository, ProposeTenantSupportGrantWrite, RevokePlatformRoleBindingWrite,
+    IApiTokenRepository, IOrganizationRepository, IPlatformRbacRepository,
+    IPrivilegedAuthorizationDecisionRepository, ITenantSupportGrantRepository,
+    ProposeTenantSupportGrantWrite, ReadOrganizationCatalog, RevokePlatformRoleBindingWrite,
     RevokeTenantSupportGrantWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::{
@@ -28,6 +29,7 @@ use chrono::Duration as ChronoDuration;
 const IDEMPOTENCY_SCOPE: &str = "tests/privileged-authorization-decisions";
 const DECISION_AUDIT_ACTION: &str = "identity.privileged-access.authorize";
 const TEST_AUTHORIZED_ACTION: &str = "identity.privileged-access.test";
+const ORGANIZATION_CATALOG_READ_ACTION: &str = "identity.organization-catalog.read";
 const EXPECTED_PROTECTED_MUTATION_DECISIONS: i64 = 10;
 
 pub async fn exercise_privileged_authorization_decision_authority(
@@ -43,6 +45,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
             .await?,
     );
     let organization_id = OrganizationId::new();
+    let catalog_organization_id = OrganizationId::new();
     let owner = PrincipalId::new();
     let role_race_principal = PrincipalId::new();
     let token_race_principal = PrincipalId::new();
@@ -60,6 +63,19 @@ pub async fn exercise_privileged_authorization_decision_authority(
             .bind(organization_id.as_uuid())
             .append(", 'MT2 privileged authorization', ")
             .bind(format!("mt2-privileged-{organization_id}"))
+            .append(", 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(catalog_organization_id.as_uuid())
+            .append(", 'MT2 organization catalog', ")
+            .bind(format!("mt2-catalog-{catalog_organization_id}"))
             .append(", 1, ")
             .bind(now)
             .append(")"),
@@ -180,7 +196,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now,
     )
     .await?;
-    create_binding(
+    let approver_a_binding = create_binding(
         &repository_a,
         installation_id,
         &policy,
@@ -239,6 +255,16 @@ pub async fn exercise_privileged_authorization_decision_authority(
         now - ChronoDuration::hours(1),
         None,
     )?;
+    let catalog_without_read_token = test_api_token(
+        organization_id,
+        token_race_principal,
+        "catalog without read",
+        [ApiTokenScope::parse(ApiTokenScope::PROJECT_WRITE)?]
+            .into_iter()
+            .collect(),
+        now - ChronoDuration::hours(1),
+        None,
+    )?;
     let expired_token = test_api_token(
         organization_id,
         token_race_principal,
@@ -261,6 +287,7 @@ pub async fn exercise_privileged_authorization_decision_authority(
         &token_race_token,
         &grant_race_token,
         &read_only_token,
+        &catalog_without_read_token,
         &expired_token,
         &revoked_token,
     ]
@@ -512,6 +539,138 @@ pub async fn exercise_privileged_authorization_decision_authority(
         decision_audit_count(&database, None).await? - successful_decisions,
         EXPECTED_PROTECTED_MUTATION_DECISIONS,
         "each protected RBAC/support mutation must persist one decision in its business transaction"
+    );
+
+    let catalog_request_id = Uuid::now_v7();
+    let catalog = repository_a
+        .list_visible(ReadOrganizationCatalog {
+            installation_id,
+            actor_principal_id: owner,
+            credential_id: owner_token.id,
+            request_id: catalog_request_id,
+        })
+        .await?;
+    assert_eq!(
+        catalog
+            .iter()
+            .map(|organization| organization.id)
+            .collect::<std::collections::BTreeSet<_>>(),
+        [organization_id, catalog_organization_id]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+    let catalog_decision = serde_json::from_value::<PrivilegedAuthorizationDecision>(
+        database
+            .fetch_one_as(
+                sql_query::<Value>(
+                    "select details from audit_records where action = 'identity.privileged-access.authorize' and request_id = ",
+                )
+                .bind(catalog_request_id),
+            )
+            .await?,
+    )?;
+    catalog_decision.validate()?;
+    assert_eq!(catalog_decision.credential.id, owner_token.id);
+    assert_eq!(
+        catalog_decision.platform_permission,
+        PlatformPermission::TenantLifecycleRead
+    );
+    assert_eq!(catalog_decision.action, ORGANIZATION_CATALOG_READ_ACTION);
+
+    let tenant_catalog_request_id = Uuid::now_v7();
+    let tenant_catalog = repository_b
+        .list_visible(ReadOrganizationCatalog {
+            installation_id,
+            actor_principal_id: token_race_principal,
+            credential_id: read_only_token.id,
+            request_id: tenant_catalog_request_id,
+        })
+        .await?;
+    assert_eq!(
+        tenant_catalog
+            .iter()
+            .map(|organization| organization.id)
+            .collect::<Vec<_>>(),
+        vec![organization_id]
+    );
+    assert_eq!(
+        decision_audit_count(&database, Some(tenant_catalog_request_id)).await?,
+        0,
+        "tenant-only catalog fallback must not manufacture privileged allow evidence"
+    );
+
+    let missing_read_scope_request_id = Uuid::now_v7();
+    assert!(matches!(
+        repository_a
+            .list_visible(ReadOrganizationCatalog {
+                installation_id,
+                actor_principal_id: token_race_principal,
+                credential_id: catalog_without_read_token.id,
+                request_id: missing_read_scope_request_id,
+            })
+            .await,
+        Err(RepositoryError::Forbidden(_))
+    ));
+    assert_eq!(
+        decision_audit_count(&database, Some(missing_read_scope_request_id)).await?,
+        0,
+        "a credential without cloud:read must not receive tenant or Installation catalog access"
+    );
+
+    let catalog_race_request_id = Uuid::now_v7();
+    let (catalog_race, catalog_role_revocation) = tokio::join!(
+        repository_a.list_visible(ReadOrganizationCatalog {
+            installation_id,
+            actor_principal_id: approver_a,
+            credential_id: approver_a_token.id,
+            request_id: catalog_race_request_id,
+        }),
+        repository_b.revoke_platform_role_binding(RevokePlatformRoleBindingWrite {
+            installation_id,
+            binding_id: approver_a_binding.id,
+            expected_version: approver_a_binding.aggregate_version,
+            actor_principal_id: owner,
+            credential_id: owner_token.id,
+            revoked_at: Utc::now(),
+            request_id: Uuid::now_v7(),
+            idempotency: idempotency("revoke-catalog-race")?,
+        })
+    );
+    catalog_role_revocation?;
+    let catalog_race = catalog_race?;
+    let catalog_race_decisions =
+        decision_audit_count(&database, Some(catalog_race_request_id)).await?;
+    match catalog_race.len() {
+        2 => assert_eq!(
+            catalog_race_decisions, 1,
+            "a catalog read serialized before revocation must retain its allow evidence"
+        ),
+        1 => assert_eq!(
+            catalog_race_decisions, 0,
+            "a catalog read serialized after revocation must use tenant-only fallback"
+        ),
+        count => panic!("catalog/revocation race exposed {count} organizations"),
+    }
+    let post_revocation_request_id = Uuid::now_v7();
+    let post_revocation_catalog = repository_a
+        .list_visible(ReadOrganizationCatalog {
+            installation_id,
+            actor_principal_id: approver_a,
+            credential_id: approver_a_token.id,
+            request_id: post_revocation_request_id,
+        })
+        .await?;
+    assert_eq!(
+        post_revocation_catalog
+            .iter()
+            .map(|organization| organization.id)
+            .collect::<Vec<_>>(),
+        vec![organization_id],
+        "a revoked platform binding must never retain Installation catalog access"
+    );
+    assert_eq!(
+        decision_audit_count(&database, Some(post_revocation_request_id)).await?,
+        0
     );
     assert_eq!(
         database

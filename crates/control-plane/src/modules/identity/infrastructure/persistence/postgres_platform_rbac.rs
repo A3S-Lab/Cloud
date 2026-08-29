@@ -621,7 +621,7 @@ async fn store_binding_facts(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn platform_authorization_request(
+pub(super) fn platform_authorization_request(
     installation_id: InstallationId,
     principal_id: PrincipalId,
     credential_id: ApiTokenId,

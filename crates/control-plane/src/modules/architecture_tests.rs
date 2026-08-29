@@ -2429,6 +2429,127 @@ fn tenant_resource_authorization_requires_membership_without_platform_role_bypas
 }
 
 #[test]
+fn organization_catalog_has_one_atomic_credential_bound_authority() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read = |relative: &str| {
+        std::fs::read_to_string(manifest.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"))
+    };
+    let port = read("src/modules/identity/domain/repositories/organization_repository.rs");
+    let handler = read("src/modules/identity/application/queries/list_organizations/handler.rs");
+    let controller = production_source(&read(
+        "src/modules/identity/presentation/controllers/organizations_query_controller.rs",
+    ));
+    let verifier = production_source(&read(
+        "src/modules/identity/infrastructure/api_token_verifier.rs",
+    ));
+    let postgres = production_source(&read(
+        "src/modules/identity/infrastructure/persistence/postgres.rs",
+    ));
+    let in_memory = production_source(&read(
+        "src/modules/identity/infrastructure/persistence/in_memory.rs",
+    ));
+    let provider_gate = read("tests/support/privileged_authorization_decisions.rs");
+
+    for required in [
+        "pub struct ReadOrganizationCatalog",
+        "pub installation_id: InstallationId",
+        "pub actor_principal_id: PrincipalId",
+        "pub credential_id: ApiTokenId",
+        "pub request_id: Uuid",
+        "async fn list_visible(",
+    ] {
+        assert!(
+            port.contains(required),
+            "organization catalog port lost exact authority input {required}"
+        );
+    }
+    assert!(
+        !port.contains("async fn list(&self)"),
+        "organization repository regained an unguarded global list mechanism"
+    );
+    for required in [
+        "installation_id(&bootstrap)",
+        "ReadOrganizationCatalog",
+        "actor_principal_id: query.actor_principal_id",
+        "credential_id: query.credential_id",
+    ] {
+        assert!(
+            handler.contains(required),
+            "organization catalog application boundary lost {required}"
+        );
+    }
+    for required in [
+        "authenticated_credential_actor",
+        "request_id(&request)",
+        "AUTH_SCOPES_METADATA",
+        "ApiTokenScope::CLOUD_READ",
+    ] {
+        assert!(
+            controller.contains(required),
+            "organization catalog controller lost trusted request input {required}"
+        );
+    }
+    for forbidden in [
+        "has_role(\"platform_admin\")",
+        "with_role(\"platform_admin\")",
+        "actor_is_platform_admin",
+    ] {
+        assert!(
+            !format!("{controller}\n{verifier}").contains(forbidden),
+            "organization catalog regained ambient platform authority via {forbidden}"
+        );
+    }
+    for required in [
+        ".transaction(",
+        "lock_installation_for_authorization",
+        "issue_privileged_authorization",
+        "platform_authorization_request",
+        "PlatformPermission::TenantLifecycleRead",
+        "load_active_principal_for_authorization",
+        "load_api_token_by_id_for_authorization",
+        "credential.principal_id == principal.id",
+        "credential.is_active_at(decided_at)",
+        "credential.grants_scope(ApiTokenScope::CLOUD_READ)",
+        "identity.organization-catalog.read",
+    ] {
+        assert!(
+            postgres.contains(required),
+            "PostgreSQL organization catalog lost atomic authority rule {required}"
+        );
+    }
+    for required in [
+        "credential.principal_id == principal.id",
+        "credential.is_active_at(Utc::now())",
+        "credential.grants_scope(ApiTokenScope::CLOUD_READ)",
+        "Ok(vec![organization])",
+    ] {
+        assert!(
+            in_memory.contains(required),
+            "in-memory organization catalog lost fail-closed rule {required}"
+        );
+    }
+    for required in [
+        "IOrganizationRepository",
+        "ReadOrganizationCatalog",
+        "PlatformPermission::TenantLifecycleRead",
+        "a credential without cloud:read must not receive tenant or Installation catalog access",
+        "tenant-only catalog fallback must not manufacture privileged allow evidence",
+    ] {
+        assert!(
+            provider_gate.contains(required),
+            "organization catalog provider proof lost {required}"
+        );
+    }
+    for forbidden in ["Redis", "a3s_lane", "distributed_lock"] {
+        assert!(
+            !postgres.contains(forbidden),
+            "organization catalog introduced duplicate coordination mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let composition = std::fs::read_to_string(manifest.join("src/app.rs"))
@@ -3254,11 +3375,12 @@ fn privileged_authorization_uses_one_atomic_identity_decision_and_shared_audit_a
     assert!(application.contains("IPrivilegedAuthorizationDecisionRepository"));
     assert!(application.contains("request.validate()"));
 
-    assert_eq!(provider_gate.matches("tokio::join!").count(), 3);
+    assert_eq!(provider_gate.matches("tokio::join!").count(), 4);
     for required in [
         "revoke_platform_role_binding",
         "repository_b.revoke(",
         "revoke_tenant_support_grant",
+        "a revoked platform binding must never retain Installation catalog access",
         "every successful standalone allow and only a successful standalone allow",
         "each protected RBAC/support mutation must persist one decision",
         "a request-time allow must not introduce a second event mechanism",

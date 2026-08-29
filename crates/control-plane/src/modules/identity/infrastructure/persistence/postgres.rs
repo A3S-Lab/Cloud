@@ -1,9 +1,12 @@
 use super::postgres_memberships::{load_active_membership_for_update, lock_membership_set};
 use super::postgres_platform_rbac::{
-    lock_installation, persist_platform_rbac_bootstrap_under_installation_lock,
+    load_active_principal_for_authorization, lock_installation,
+    lock_installation_for_authorization, persist_platform_rbac_bootstrap_under_installation_lock,
+    platform_authorization_request,
 };
+use super::postgres_privileged_authorization_decisions::issue_privileged_authorization;
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::identity::domain::entities::{
@@ -12,11 +15,12 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
-    IIdentityBootstrapRepository, IOrganizationRepository,
+    IIdentityBootstrapRepository, IOrganizationRepository, ReadOrganizationCatalog,
 };
 use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::{
     ApiTokenDigest, ApiTokenName, ApiTokenScope, MembershipRole, OrganizationName,
+    PlatformPermission,
 };
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, IdempotencyRequest, IdempotentWrite, InstallationId, MembershipId, OrganizationId,
@@ -40,6 +44,22 @@ impl PostgresIdentityRepository {
     pub const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
     }
+}
+
+const ORGANIZATION_CATALOG_READ_ACTION: &str = "identity.organization-catalog.read";
+type OrganizationRow = (Uuid, String, u64, DateTime<Utc>);
+
+fn decode_organization(row: OrganizationRow) -> Result<Organization, RepositoryError> {
+    let (id, name, aggregate_version, created_at) = row;
+    let name = OrganizationName::parse(name).map_err(|error| {
+        RepositoryError::Storage(format!("stored organization name is invalid: {error}"))
+    })?;
+    Ok(Organization {
+        id: OrganizationId::from_uuid(id),
+        name,
+        aggregate_version,
+        created_at,
+    })
 }
 
 #[async_trait]
@@ -166,43 +186,95 @@ impl IOrganizationRepository for PostgresIdentityRepository {
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
-        row.map(|(id, name, aggregate_version, created_at)| {
-            let name = OrganizationName::parse(name).map_err(|error| {
-                RepositoryError::Storage(format!("stored organization name is invalid: {error}"))
-            })?;
-            Ok(Organization {
-                id: OrganizationId::from_uuid(id),
-                name,
-                aggregate_version,
-                created_at,
-            })
-        })
-        .transpose()
+        row.map(decode_organization).transpose()
     }
 
-    async fn list(&self) -> Result<Vec<Organization>, RepositoryError> {
-        Database::new(PostgresDialect, self.executor.clone())
-            .fetch_all_as(sql_query::<(Uuid, String, u64, DateTime<Utc>)>(
-                "select id, name, aggregate_version, created_at from organizations order by created_at asc, id asc",
-            ))
-            .await
-            .map_err(|error| RepositoryError::Storage(error.to_string()))?
-            .rows
-            .into_iter()
-            .map(|(id, name, aggregate_version, created_at)| {
-                let name = OrganizationName::parse(name).map_err(|error| {
-                    RepositoryError::Storage(format!(
-                        "stored organization name is invalid: {error}"
-                    ))
-                })?;
-                Ok(Organization {
-                    id: OrganizationId::from_uuid(id),
-                    name,
-                    aggregate_version,
-                    created_at,
+    async fn list_visible(
+        &self,
+        read: ReadOrganizationCatalog,
+    ) -> Result<Vec<Organization>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    lock_installation_for_authorization(transaction, read.installation_id).await?;
+                    let authorization = issue_privileged_authorization(
+                        transaction,
+                        platform_authorization_request(
+                            read.installation_id,
+                            read.actor_principal_id,
+                            read.credential_id,
+                            PlatformPermission::TenantLifecycleRead,
+                            ORGANIZATION_CATALOG_READ_ACTION,
+                            read.installation_id.as_uuid(),
+                            read.request_id,
+                        )?,
+                    )
+                    .await;
+                    let credential_organization_id = match authorization {
+                        Ok(_) => None,
+                        Err(PostgresPersistenceError::Repository(
+                            RepositoryError::Forbidden(_),
+                        )) => {
+                            let decided_at = Utc::now();
+                            let principal = load_active_principal_for_authorization(
+                                transaction,
+                                read.actor_principal_id,
+                            )
+                            .await?
+                            .ok_or_else(|| {
+                                RepositoryError::Forbidden(
+                                    "organization catalog principal is not active".into(),
+                                )
+                            })?;
+                            let credential = load_api_token_by_id_for_authorization(
+                                transaction,
+                                read.credential_id,
+                            )
+                            .await?
+                            .filter(|credential| {
+                                credential.principal_id == principal.id
+                                    && credential.is_active_at(decided_at)
+                                    && credential.grants_scope(ApiTokenScope::CLOUD_READ)
+                            })
+                            .ok_or_else(|| {
+                                RepositoryError::Forbidden(
+                                    "organization catalog credential is not active or lacks cloud:read"
+                                        .into(),
+                                )
+                            })?;
+                            Some(credential.organization_id)
+                        }
+                        Err(error) => return Err(error),
+                    };
+                    let rows = match credential_organization_id {
+                        Some(organization_id) => {
+                            fetch_all::<OrganizationRow, _>(
+                                transaction,
+                                sql_query::<OrganizationRow>(
+                                    "select id, name, aggregate_version, created_at from organizations where id = ",
+                                )
+                                .bind(organization_id.as_uuid()),
+                            )
+                            .await?
+                        }
+                        None => {
+                            fetch_all::<OrganizationRow, _>(
+                                transaction,
+                                sql_query::<OrganizationRow>(
+                                    "select id, name, aggregate_version, created_at from organizations order by created_at asc, id asc",
+                                ),
+                            )
+                            .await?
+                        }
+                    };
+                    rows.into_iter()
+                        .map(decode_organization)
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(Into::into)
                 })
             })
-            .collect()
+            .await
+            .map_err(transaction_error)
     }
 }
 

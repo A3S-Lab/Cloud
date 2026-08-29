@@ -13,7 +13,7 @@ use crate::modules::assets::domain::{
 };
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::repositories::{
-    CreateOrganizationWrite, IOrganizationRepository,
+    CreateOrganizationWrite, IOrganizationRepository, ReadOrganizationCatalog,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::{OrganizationName, ResourceGrantScope};
@@ -53,7 +53,10 @@ impl IOrganizationRepository for TestOrganizations {
         Ok((self.organization.id == organization_id).then(|| self.organization.clone()))
     }
 
-    async fn list(&self) -> Result<Vec<Organization>, RepositoryError> {
+    async fn list_visible(
+        &self,
+        _read: ReadOrganizationCatalog,
+    ) -> Result<Vec<Organization>, RepositoryError> {
         Ok(vec![self.organization.clone()])
     }
 }

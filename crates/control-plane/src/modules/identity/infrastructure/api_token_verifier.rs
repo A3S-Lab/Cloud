@@ -80,13 +80,6 @@ impl BearerTokenVerifier for ApiTokenVerifier {
                     .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, granted_scopes)?
                     .with_role(format!("organization_{}", membership.role.as_str()));
             }
-            if token
-                .scopes
-                .iter()
-                .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE)
-            {
-                principal = principal.with_role("platform_admin");
-            }
             Ok(Some(principal))
         })
     }

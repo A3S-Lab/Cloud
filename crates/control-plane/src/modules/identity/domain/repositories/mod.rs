@@ -27,7 +27,9 @@ pub use membership_repository::{
 pub use oidc_identity_repository::{
     CompleteOidcLinkWrite, CompleteOidcLoginWrite, IOidcIdentityRepository,
 };
-pub use organization_repository::{CreateOrganizationWrite, IOrganizationRepository};
+pub use organization_repository::{
+    CreateOrganizationWrite, IOrganizationRepository, ReadOrganizationCatalog,
+};
 pub use platform_rbac_repository::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,
     ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite, IPlatformRbacRepository,

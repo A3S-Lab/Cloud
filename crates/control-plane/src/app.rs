@@ -3416,7 +3416,10 @@ fn build_management_application_with_health(
                     ),
                 )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
-                    ListOrganizationsHandler::new(query_organizations),
+                    ListOrganizationsHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        query_organizations,
+                    ),
                 )
                 .query_handler::<crate::modules::identity::ListApiTokens, _>(
                     ListApiTokensHandler::new(list_api_tokens),

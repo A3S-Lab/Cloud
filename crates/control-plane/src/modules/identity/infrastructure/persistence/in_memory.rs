@@ -9,7 +9,7 @@ use crate::modules::identity::domain::events::{
 };
 use crate::modules::identity::domain::repositories::{
     BootstrapIdentityWrite, CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository,
-    IIdentityBootstrapRepository, IOrganizationRepository,
+    IIdentityBootstrapRepository, IOrganizationRepository, ReadOrganizationCatalog,
 };
 use crate::modules::identity::domain::services::{
     MembershipAdministration, ResourceAuthorizationDecision,
@@ -193,15 +193,50 @@ impl IOrganizationRepository for InMemoryIdentityRepository {
             .cloned())
     }
 
-    async fn list(&self) -> Result<Vec<Organization>, RepositoryError> {
-        Ok(self
-            .state
-            .read()
-            .await
+    async fn list_visible(
+        &self,
+        read: ReadOrganizationCatalog,
+    ) -> Result<Vec<Organization>, RepositoryError> {
+        if read.installation_id != self.installation_id {
+            return Err(RepositoryError::Forbidden(
+                "organization catalog crossed the Installation boundary".into(),
+            ));
+        }
+        let state = self.state.read().await;
+        let principal = state
+            .principals
+            .get(&read.actor_principal_id)
+            .filter(|principal| principal.is_active())
+            .ok_or_else(|| {
+                RepositoryError::Forbidden("organization catalog principal is not active".into())
+            })?;
+        let credential = state
+            .tokens
+            .get(&read.credential_id)
+            .filter(|credential| {
+                credential.principal_id == principal.id
+                    && credential.is_active_at(Utc::now())
+                    && credential.grants_scope(ApiTokenScope::CLOUD_READ)
+            })
+            .ok_or_else(|| {
+                RepositoryError::Forbidden(
+                    "organization catalog credential is not active or lacks cloud:read".into(),
+                )
+            })?;
+        let organization = state
             .organizations
-            .values()
+            .get(&credential.organization_id)
             .cloned()
-            .collect())
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "organization catalog credential has no tenant authority".into(),
+                )
+            })?;
+
+        // The in-memory adapter has no transactional privileged decision
+        // authority. It deliberately exposes only the exact credential's
+        // tenant instead of emulating Installation-wide access.
+        Ok(vec![organization])
     }
 }
 

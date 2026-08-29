@@ -1,6 +1,7 @@
 use crate::modules::identity::domain::entities::{Membership, Organization};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, RepositoryError,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, InstallationId, OrganizationId, PrincipalId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -16,6 +17,14 @@ pub struct CreateOrganizationWrite {
     pub idempotency: IdempotencyRequest,
 }
 
+#[derive(Debug, Clone)]
+pub struct ReadOrganizationCatalog {
+    pub installation_id: InstallationId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
 #[async_trait]
 pub trait IOrganizationRepository: Send + Sync {
     async fn create(
@@ -28,5 +37,11 @@ pub trait IOrganizationRepository: Send + Sync {
         organization_id: OrganizationId,
     ) -> Result<Option<Organization>, RepositoryError>;
 
-    async fn list(&self) -> Result<Vec<Organization>, RepositoryError>;
+    /// Returns the exact credential's tenant or, when the canonical
+    /// Installation policy atomically grants `TenantLifecycleRead`, the whole
+    /// Installation catalog.
+    async fn list_visible(
+        &self,
+        read: ReadOrganizationCatalog,
+    ) -> Result<Vec<Organization>, RepositoryError>;
 }

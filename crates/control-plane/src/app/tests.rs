@@ -2471,6 +2471,56 @@ async fn privileged_management_routes_exist_and_fail_closed_without_postgres_aut
 }
 
 #[tokio::test]
+async fn in_memory_organization_catalog_is_exact_credential_bound() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(Arc::clone(&identity), projects)?;
+    let root = bootstrap_organization(&app, "bootstrap-catalog-root", "Root").await?;
+    let (tenant, tenant_token) = create_organization_with_owner_token(
+        &app,
+        &identity,
+        "organization-catalog-tenant",
+        "Tenant",
+    )
+    .await?;
+
+    let root_catalog = app
+        .call(get_as("/api/v1/organizations", ADMIN_TOKEN))
+        .await?;
+    assert_eq!(root_catalog.status(), 200);
+    let root_catalog = response_json(&root_catalog)?;
+    assert_eq!(root_catalog["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(root_catalog["data"][0]["id"].as_str(), Some(root.as_str()));
+
+    let tenant_catalog = app
+        .call(get_as("/api/v1/organizations", &tenant_token))
+        .await?;
+    assert_eq!(tenant_catalog.status(), 200);
+    let tenant_catalog = response_json(&tenant_catalog)?;
+    assert_eq!(tenant_catalog["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        tenant_catalog["data"][0]["id"].as_str(),
+        Some(tenant.as_str())
+    );
+
+    create_api_token(
+        &app,
+        &root,
+        "organization-catalog-without-read",
+        "catalog without read",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::PROJECT_WRITE],
+        None,
+    )
+    .await?;
+    let missing_read_scope = app
+        .call(get_as("/api/v1/organizations", PROJECT_TOKEN))
+        .await?;
+    assert_eq!(missing_read_scope.status(), 403);
+    Ok(())
+}
+
+#[tokio::test]
 async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
     let repository = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
