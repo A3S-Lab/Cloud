@@ -38,7 +38,14 @@ use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMa
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::domain::entities::ApiToken;
+use crate::modules::identity::domain::events::ApiTokenCreated;
+use crate::modules::identity::domain::repositories::{
+    CreateApiTokenWrite, IApiTokenRepository, IMembershipRepository,
+};
+use crate::modules::identity::domain::value_objects::{
+    ApiTokenName, ApiTokenScope, ApiTokenSecret, MembershipRole,
+};
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
@@ -54,7 +61,7 @@ use crate::modules::secrets::{
 };
 use crate::modules::security::InMemoryGatewayRoutePolicyTimelineRepository;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GatewayScopeId, HumanTaskId, IdempotencyRequest, IdempotentWrite,
+    ApiTokenId, EnvironmentId, GatewayScopeId, HumanTaskId, IdempotencyRequest, IdempotentWrite,
     OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId, RepositoryError, RouteId,
     WorkflowDecisionId,
 };
@@ -2252,6 +2259,79 @@ async fn create_organization(
     response_id(&response)
 }
 
+async fn create_organization_with_owner_token(
+    app: &BootApplication,
+    identity: &InMemoryIdentityRepository,
+    idempotency_key: &str,
+    name: &str,
+) -> Result<(String, String)> {
+    let organization_id = create_organization(app, idempotency_key, name).await?;
+    let token = seed_organization_owner_token(identity, &organization_id, idempotency_key).await?;
+    Ok((organization_id, token))
+}
+
+async fn seed_organization_owner_token(
+    identity: &InMemoryIdentityRepository,
+    organization_id: &str,
+    fixture_id: &str,
+) -> Result<String> {
+    let organization_id =
+        OrganizationId::from_uuid(organization_id.parse::<Uuid>().map_err(|error| {
+            BootError::Internal(format!("invalid fixture organization: {error}"))
+        })?);
+    let owner = IMembershipRepository::list_memberships(identity, organization_id)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .into_iter()
+        .find(|record| {
+            record.membership.is_active() && record.membership.role == MembershipRole::Owner
+        })
+        .ok_or_else(|| BootError::Internal("fixture organization has no active owner".into()))?;
+    let secret = format!(
+        "a3s_{:x}",
+        Sha256::digest(format!("a3s-cloud-test-owner:{organization_id}:{fixture_id}").as_bytes())
+    );
+    let parsed_secret = ApiTokenSecret::parse(secret.clone()).map_err(BootError::Internal)?;
+    let digest = parsed_secret.digest();
+    let scopes = ApiTokenScope::bootstrap_scopes()
+        .into_iter()
+        .filter(|scope| scope.as_str() != ApiTokenScope::PLATFORM_WRITE)
+        .collect();
+    let created_at = Utc::now();
+    let token = ApiToken::issue(
+        ApiTokenId::new(),
+        organization_id,
+        owner.principal.id,
+        ApiTokenName::parse("test organization owner").map_err(BootError::Internal)?,
+        scopes,
+        created_at,
+        None,
+    )
+    .map_err(BootError::Internal)?;
+    let request_id = Uuid::now_v7();
+    let event = ApiTokenCreated::envelope(&token, request_id)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let idempotency = IdempotencyRequest::new(
+        format!("tests/organizations/{organization_id}/owner-token"),
+        fixture_id,
+        digest.as_str().as_bytes(),
+    )
+    .map_err(BootError::Internal)?;
+    IApiTokenRepository::create(
+        identity,
+        CreateApiTokenWrite {
+            token,
+            digest,
+            event,
+            issuer_principal_id: owner.principal.id,
+            idempotency,
+        },
+    )
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+    Ok(secret)
+}
+
 async fn bootstrap_organization(
     app: &BootApplication,
     idempotency_key: &str,
@@ -2285,11 +2365,22 @@ async fn create_project(
     idempotency_key: &str,
     name: &str,
 ) -> Result<String> {
+    create_project_as(app, organization_id, idempotency_key, name, ADMIN_TOKEN).await
+}
+
+async fn create_project_as(
+    app: &BootApplication,
+    organization_id: &str,
+    idempotency_key: &str,
+    name: &str,
+    credential: &str,
+) -> Result<String> {
     let response = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{organization_id}/projects"),
             idempotency_key,
             json!({"name": name}),
+            credential,
         ))
         .await?;
     assert_eq!(response.status(), 201);
@@ -2446,9 +2537,11 @@ async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
 async fn project_writes_are_idempotent_and_names_are_organization_scoped() -> Result<()> {
     let organizations = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(organizations, projects.clone())?;
+    let app = build_test_application(Arc::clone(&organizations), projects.clone())?;
     let acme = bootstrap_organization(&app, "organization-acme", "Acme").await?;
-    let beta = create_organization(&app, "organization-beta", "Beta").await?;
+    let (beta, beta_token) =
+        create_organization_with_owner_token(&app, &organizations, "organization-beta", "Beta")
+            .await?;
     let path = format!("/api/v1/organizations/{acme}/projects");
     let request = || post_json(&path, "project-cloud", json!({"name": "Cloud"}));
 
@@ -2474,10 +2567,11 @@ async fn project_writes_are_idempotent_and_names_are_organization_scoped() -> Re
     assert_eq!(duplicate.status(), 409);
 
     let other_scope = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{beta}/projects"),
             "project-cloud",
             json!({"name": "Cloud"}),
+            &beta_token,
         ))
         .await?;
     assert_eq!(other_scope.status(), 201);
@@ -2701,16 +2795,16 @@ async fn platform_scoped_token_cannot_mint_credentials_without_tenant_membership
         .await?;
     assert_eq!(platform_credential.status(), 201);
 
-    let target_memberships = app
+    let home_memberships = app
         .call(get_as(
-            format!("/api/v1/organizations/{target_organization}/memberships"),
+            format!("/api/v1/organizations/{home_organization}/memberships"),
             ADMIN_TOKEN,
         ))
         .await?;
-    assert_eq!(target_memberships.status(), 200);
-    let target_owner_id = response_json(&target_memberships)?["data"][0]["principalId"]
+    assert_eq!(home_memberships.status(), 200);
+    let target_owner_id = response_json(&home_memberships)?["data"][0]["principalId"]
         .as_str()
-        .ok_or_else(|| BootError::Internal("target owner has no principal ID".into()))?
+        .ok_or_else(|| BootError::Internal("organization creator has no principal ID".into()))?
         .to_owned();
 
     let rejected = app
@@ -3587,7 +3681,9 @@ async fn membership_invitations_bind_exact_principals_and_accept_atomically() ->
     )?;
     let source_organization =
         bootstrap_organization(&app, "invitation-bootstrap", "Source").await?;
-    let target_organization = create_organization(&app, "invitation-target", "Target").await?;
+    let (target_organization, target_token) =
+        create_organization_with_owner_token(&app, &identity, "invitation-target", "Target")
+            .await?;
 
     let service = app
         .call(post_json(
@@ -3625,10 +3721,11 @@ async fn membership_invitations_bind_exact_principals_and_accept_atomically() ->
         "expiresAt": Utc::now() + chrono::Duration::days(7),
     });
     let created = app
-        .call(post_json(
+        .call(post_json_as(
             &invitation_path,
             "invitation:create",
             invitation_body.clone(),
+            &target_token,
         ))
         .await?;
     assert_eq!(created.status(), 201);
@@ -3640,10 +3737,11 @@ async fn membership_invitations_bind_exact_principals_and_accept_atomically() ->
     assert_eq!(created["data"]["aggregateVersion"], 1);
 
     let replayed = app
-        .call(post_json(
+        .call(post_json_as(
             &invitation_path,
             "invitation:create",
             invitation_body,
+            &target_token,
         ))
         .await?;
     assert_eq!(replayed.status(), 200);
@@ -3697,7 +3795,7 @@ async fn membership_invitations_bind_exact_principals_and_accept_atomically() ->
     assert_eq!(response_json(&accepted_replay)?["data"]["replayed"], true);
 
     let duplicate = app
-        .call(post_json(
+        .call(post_json_as(
             &invitation_path,
             "invitation:duplicate-membership",
             json!({
@@ -3705,6 +3803,7 @@ async fn membership_invitations_bind_exact_principals_and_accept_atomically() ->
                 "role": "member",
                 "expiresAt": Utc::now() + chrono::Duration::days(7),
             }),
+            &target_token,
         ))
         .await?;
     assert_eq!(duplicate.status(), 409);

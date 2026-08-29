@@ -5,14 +5,12 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct IdentityActor {
     pub principal_id: PrincipalId,
-    pub is_platform_admin: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AuthenticatedCredentialActor {
     pub principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
-    pub is_platform_admin: bool,
 }
 
 pub(super) fn actor(request: &BootRequest) -> Result<IdentityActor> {
@@ -28,7 +26,6 @@ pub(crate) fn authenticated_actor(principal: &AuthPrincipal) -> Result<IdentityA
     })?;
     Ok(IdentityActor {
         principal_id: PrincipalId::from_uuid(principal_id),
-        is_platform_admin: principal.has_role("platform_admin"),
     })
 }
 
@@ -50,7 +47,6 @@ pub(crate) fn authenticated_credential_actor(
     Ok(AuthenticatedCredentialActor {
         principal_id: actor.principal_id,
         credential_id,
-        is_platform_admin: actor.is_platform_admin,
     })
 }
 
@@ -90,7 +86,6 @@ mod tests {
 
         assert_eq!(actor.principal_id, principal_id);
         assert_eq!(actor.credential_id, credential_id);
-        assert!(actor.is_platform_admin);
     }
 
     #[test]

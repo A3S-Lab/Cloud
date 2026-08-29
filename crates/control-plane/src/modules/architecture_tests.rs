@@ -2377,6 +2377,58 @@ fn membership_administration_is_one_tenant_scoped_domain_service_without_platfor
 }
 
 #[test]
+fn tenant_resource_authorization_requires_membership_without_platform_role_bypass() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut sources = String::new();
+    for relative in [
+        "src/modules/identity/domain/services/resource_authorization_decision.rs",
+        "src/modules/identity/infrastructure/persistence/in_memory_resource_authorization_decisions.rs",
+        "src/modules/identity/infrastructure/persistence/postgres_resource_authorization_decisions.rs",
+        "src/modules/identity/presentation/guards.rs",
+        "src/modules/identity/presentation/request_context.rs",
+        "src/modules/identity/presentation/resource_access.rs",
+        "src/modules/agents/application/commands/decide_agent_approval_checkpoint/command.rs",
+        "src/modules/agents/application/commands/decide_agent_approval_checkpoint/handler.rs",
+        "src/modules/agents/presentation/controllers/agent_commands_controller.rs",
+        "src/modules/workflow/application/commands/submit_human_task/command.rs",
+        "src/modules/workflow/application/commands/submit_human_task/handler.rs",
+        "src/modules/workflow/presentation/controllers/workflow_commands_controller.rs",
+        "src/presentation/management_mcp/catalog.rs",
+        "src/presentation/management_mcp/dispatch.rs",
+        "src/presentation/management_mcp/handler.rs",
+        "src/presentation/management_mcp/workflow.rs",
+    ] {
+        let source = std::fs::read_to_string(manifest.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        sources.push_str(&production_source(&source));
+        sources.push('\n');
+    }
+
+    for forbidden in [
+        "actor_is_platform_admin",
+        "issuer_is_platform_admin",
+        "is_platform_admin",
+        "issue_platform_administrator",
+        "PlatformAdministrator",
+        "has_role(\"platform_admin\")",
+    ] {
+        assert!(
+            !sources.contains(forbidden),
+            "tenant resource authorization retained ambient platform authority via {forbidden}"
+        );
+    }
+    assert_eq!(
+        sources
+            .matches("ResourceAuthorizationDecision::issue_membership(")
+            .count(),
+        2,
+        "both resource-authorization adapters must issue the one membership-based decision"
+    );
+    assert!(sources.contains("requested != authenticated"));
+    assert!(sources.contains("claim(\"organization_role\")"));
+}
+
+#[test]
 fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let composition = std::fs::read_to_string(manifest.join("src/app.rs"))

@@ -34,44 +34,34 @@ impl IResourceAuthorizationDecisionRepository for InMemoryIdentityRepository {
             .ok_or_else(|| {
                 RepositoryError::Forbidden("authorization credential is not active".into())
             })?;
-        let decision = if request.actor_is_platform_admin {
-            ResourceAuthorizationDecision::issue_platform_administrator(
-                Uuid::now_v7(),
-                request,
-                &credential,
-                Utc::now(),
-            )
+        let membership = actor_membership(&state, request.organization_id, request.principal_id)
+            .ok_or_else(|| {
+                RepositoryError::Forbidden(
+                    "authorization principal is not an active organization member".into(),
+                )
+            })?;
+        let grants = if membership.role == MembershipRole::Restricted {
+            state
+                .resource_grants
+                .values()
+                .filter(|grant| {
+                    grant.organization_id == membership.organization_id
+                        && grant.membership_id == membership.id
+                        && grant.is_active()
+                })
+                .cloned()
+                .collect::<Vec<_>>()
         } else {
-            let membership =
-                actor_membership(&state, request.organization_id, request.principal_id)
-                    .ok_or_else(|| {
-                        RepositoryError::Forbidden(
-                            "authorization principal is not an active organization member".into(),
-                        )
-                    })?;
-            let grants = if membership.role == MembershipRole::Restricted {
-                state
-                    .resource_grants
-                    .values()
-                    .filter(|grant| {
-                        grant.organization_id == membership.organization_id
-                            && grant.membership_id == membership.id
-                            && grant.is_active()
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            ResourceAuthorizationDecision::issue_membership(
-                Uuid::now_v7(),
-                request,
-                &credential,
-                &membership,
-                grants,
-                Utc::now(),
-            )
-        }
+            Vec::new()
+        };
+        let decision = ResourceAuthorizationDecision::issue_membership(
+            Uuid::now_v7(),
+            request,
+            &credential,
+            &membership,
+            grants,
+            Utc::now(),
+        )
         .map_err(RepositoryError::Forbidden)?;
         let reference = decision.reference().map_err(RepositoryError::Storage)?;
         if state

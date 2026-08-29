@@ -20,7 +20,6 @@ pub struct DecideAgentApprovalCheckpoint {
     pub resource_access: ResourceAccessEvaluator,
     pub actor_principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
-    pub actor_is_platform_admin: bool,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

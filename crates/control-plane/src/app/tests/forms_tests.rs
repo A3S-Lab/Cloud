@@ -187,12 +187,20 @@ async fn form_publication_rejects_invalid_documents_without_mutating_the_draft()
 async fn form_routes_enforce_write_scope_and_organization_tenancy() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let acme = bootstrap_organization(&app, "form-authority-bootstrap", "Acme").await?;
-    let beta = create_organization(&app, "form-authority-beta", "Beta").await?;
+    let (beta, beta_token) =
+        create_organization_with_owner_token(&app, &identity, "form-authority-beta", "Beta")
+            .await?;
     let acme_project = create_project(&app, &acme, "form-authority-acme", "Acme Forms").await?;
-    let beta_project =
-        create_project(&app, &beta, "form-authority-beta-project", "Beta Forms").await?;
+    let beta_project = create_project_as(
+        &app,
+        &beta,
+        "form-authority-beta-project",
+        "Beta Forms",
+        &beta_token,
+    )
+    .await?;
     create_api_token(
         &app,
         &acme,

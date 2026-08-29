@@ -783,7 +783,6 @@ pub async fn submit_human_task(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     credential_id: ApiTokenId,
-    actor_is_platform_admin: bool,
     arguments: HumanTaskSubmissionArguments,
     resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
@@ -796,7 +795,6 @@ pub async fn submit_human_task(
             submission: arguments.submission,
             actor_principal_id,
             credential_id,
-            actor_is_platform_admin,
             request_id,
             requested_at: chrono::Utc::now(),
         })

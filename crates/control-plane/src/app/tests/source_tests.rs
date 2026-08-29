@@ -46,7 +46,7 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let connections = Arc::new(InMemoryGithubConnectionRepository::new());
     let app = build_test_application_with_github_connections(
-        identity,
+        Arc::clone(&identity),
         projects,
         Arc::clone(&connections),
     )?;
@@ -308,8 +308,13 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     assert_eq!(duplicate_for_organization.status(), 409);
     assert_no_store(&duplicate_for_organization);
 
-    let other_organization =
-        create_organization(&app, "github-connection-other-org", "Other").await?;
+    let (other_organization, other_token) = create_organization_with_owner_token(
+        &app,
+        &identity,
+        "github-connection-other-org",
+        "Other",
+    )
+    .await?;
     let other_path =
         format!("/api/v1/organizations/{other_organization}/source-connections/github");
     let cross_tenant = app
@@ -323,7 +328,7 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     let other_started = app
         .call(
             BootRequest::new(HttpMethod::Post, &other_path)
-                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}")),
+                .with_header("authorization", format!("Bearer {other_token}")),
         )
         .await?;
     let other_started_body = response_json(&other_started)?;
@@ -361,7 +366,7 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     assert_eq!(duplicate_installation.status(), 409);
     assert_no_store(&duplicate_installation);
     assert_eq!(
-        app.call(get_as(&other_path, ADMIN_TOKEN)).await?.status(),
+        app.call(get_as(&other_path, &other_token)).await?.status(),
         404
     );
     Ok(())

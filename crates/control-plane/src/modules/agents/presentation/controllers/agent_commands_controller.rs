@@ -266,7 +266,6 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 resource_access,
                                 actor_principal_id: actor.principal_id,
                                 credential_id: actor.credential_id,
-                                actor_is_platform_admin: actor.is_platform_admin,
                                 idempotency_key,
                                 request_id,
                                 requested_at: Utc::now(),

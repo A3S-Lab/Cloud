@@ -276,7 +276,6 @@ impl ManagementMcpHandler {
                 organization_id,
                 actor.principal_id,
                 actor.credential_id,
-                actor.is_platform_admin,
                 request_id,
                 evaluator,
             ),

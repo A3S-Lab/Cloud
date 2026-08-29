@@ -131,7 +131,6 @@ impl CommandHandler<DecideAgentApprovalCheckpoint> for DecideAgentApprovalCheckp
                     organization_id: command.organization_id,
                     principal_id: command.actor_principal_id,
                     credential_id: command.credential_id,
-                    actor_is_platform_admin: command.actor_is_platform_admin,
                     required_scope: ApiTokenScope::parse(ApiTokenScope::EXECUTION_WRITE)
                         .map_err(BootError::Internal)?,
                     action: "agent.execution.approval.decide".into(),

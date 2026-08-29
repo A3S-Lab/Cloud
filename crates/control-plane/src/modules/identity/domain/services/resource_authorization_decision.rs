@@ -24,7 +24,6 @@ pub struct ResourceAuthorizationDecisionRequest {
     pub organization_id: OrganizationId,
     pub principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
-    pub actor_is_platform_admin: bool,
     pub required_scope: ApiTokenScope,
     pub action: String,
     pub resource: ResourceGrantScope,
@@ -50,7 +49,6 @@ pub struct ResourceAuthorizationCredentialEvidence {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResourceAuthorizationBasis {
-    PlatformAdministrator,
     Membership {
         membership_id: MembershipId,
         membership_version: u64,
@@ -110,24 +108,6 @@ impl ResourceAuthorizationDecisionRequest {
 }
 
 impl ResourceAuthorizationDecision {
-    pub fn issue_platform_administrator(
-        id: Uuid,
-        request: ResourceAuthorizationDecisionRequest,
-        credential: &ApiToken,
-        decided_at: DateTime<Utc>,
-    ) -> Result<Self, String> {
-        if !request.actor_is_platform_admin {
-            return Err("platform authorization evidence requires platform authority".into());
-        }
-        Self::issue(
-            id,
-            request,
-            credential,
-            ResourceAuthorizationBasis::PlatformAdministrator,
-            decided_at,
-        )
-    }
-
     pub fn issue_membership(
         id: Uuid,
         request: ResourceAuthorizationDecisionRequest,
@@ -137,8 +117,7 @@ impl ResourceAuthorizationDecision {
         decided_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         request.validate()?;
-        if request.actor_is_platform_admin
-            || !membership.is_active()
+        if !membership.is_active()
             || membership.organization_id != request.organization_id
             || membership.principal_id != request.principal_id
         {
@@ -188,14 +167,6 @@ impl ResourceAuthorizationDecision {
                 .windows(2)
                 .any(|pair| pair[0] >= pair[1])
             || !self.credential.scopes.contains(&self.required_scope)
-            || (matches!(
-                self.basis,
-                ResourceAuthorizationBasis::PlatformAdministrator
-            ) && !self
-                .credential
-                .scopes
-                .iter()
-                .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE))
             || self.request_id.is_nil()
             || self.decided_at != canonical_timestamp(self.decided_at)
             || validate_audit_action(&self.action).is_err()
@@ -245,11 +216,6 @@ impl ResourceAuthorizationDecision {
             || decided_at < credential.created_at
             || !credential.is_active_at(decided_at)
             || !credential.scopes.contains(&request.required_scope)
-            || (request.actor_is_platform_admin
-                != credential
-                    .scopes
-                    .iter()
-                    .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE))
         {
             return Err("authorization credential evidence does not match the request".into());
         }
@@ -304,9 +270,6 @@ impl ResourceAuthorizationDecision {
 
 fn basis_evaluator(basis: &ResourceAuthorizationBasis) -> Result<ResourceAccessEvaluator, String> {
     match basis {
-        ResourceAuthorizationBasis::PlatformAdministrator => {
-            Ok(ResourceAccessEvaluator::organization_wide())
-        }
         ResourceAuthorizationBasis::Membership {
             membership_id,
             membership_version,
@@ -354,7 +317,6 @@ mod tests {
             organization_id,
             principal_id,
             credential_id: ApiTokenId::new(),
-            actor_is_platform_admin: false,
             required_scope: ApiTokenScope::parse(ApiTokenScope::WORKFLOW_WRITE).expect("scope"),
             action: "workflow.human-task.submit".into(),
             resource: ResourceGrantScope::Project { project_id },
@@ -448,6 +410,46 @@ mod tests {
     }
 
     #[test]
+    fn platform_scope_does_not_expand_restricted_membership_authority() {
+        let organization_id = OrganizationId::new();
+        let principal_id = PrincipalId::new();
+        let project_id = ProjectId::new();
+        let membership = Membership::create(
+            MembershipId::new(),
+            organization_id,
+            principal_id,
+            MembershipRole::Restricted,
+            timestamp(),
+        );
+        let request = request(organization_id, principal_id, project_id);
+        let credential = ApiToken::issue(
+            request.credential_id,
+            organization_id,
+            principal_id,
+            ApiTokenName::parse("restricted platform operator").expect("name"),
+            BTreeSet::from([
+                request.required_scope.clone(),
+                ApiTokenScope::parse(ApiTokenScope::PLATFORM_WRITE).expect("platform scope"),
+            ]),
+            timestamp(),
+            None,
+        )
+        .expect("credential");
+
+        let error = ResourceAuthorizationDecision::issue_membership(
+            Uuid::now_v7(),
+            request,
+            &credential,
+            &membership,
+            [],
+            timestamp(),
+        )
+        .expect_err("platform scope cannot replace a Resource Grant");
+
+        assert_eq!(error, "resource authorization decision was not allowed");
+    }
+
+    #[test]
     fn digest_detects_membership_evidence_drift() {
         let organization_id = OrganizationId::new();
         let principal_id = PrincipalId::new();
@@ -469,12 +471,10 @@ mod tests {
             timestamp(),
         )
         .expect("decision");
-        if let ResourceAuthorizationBasis::Membership {
+        let ResourceAuthorizationBasis::Membership {
             membership_version, ..
-        } = &mut decision.basis
-        {
-            *membership_version += 1;
-        }
+        } = &mut decision.basis;
+        *membership_version += 1;
 
         assert!(decision.validate().is_err());
     }

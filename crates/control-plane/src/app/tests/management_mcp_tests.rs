@@ -1486,17 +1486,23 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
 async fn management_mcp_reuses_principal_bound_membership_invitations() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let invited_organization =
         bootstrap_organization(&app, "mcp-invitation-target", "Invitation target").await?;
-    let principal_organization =
-        create_organization(&app, "mcp-invitation-principal", "Principal home").await?;
+    let (principal_organization, principal_owner_token) = create_organization_with_owner_token(
+        &app,
+        &identity,
+        "mcp-invitation-principal",
+        "Principal home",
+    )
+    .await?;
 
     let service = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{principal_organization}/memberships"),
             "mcp-invitation-service",
             json!({"name": "Invited automation", "role": "member"}),
+            &principal_owner_token,
         ))
         .await?;
     assert_eq!(service.status(), 201);
@@ -1506,7 +1512,7 @@ async fn management_mcp_reuses_principal_bound_membership_invitations() -> Resul
         .ok_or_else(|| BootError::Internal("invited service has no Principal ID".into()))?
         .to_owned();
     let credential = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{principal_organization}/api-tokens"),
             "mcp-invitation-token",
             json!({
@@ -1516,6 +1522,7 @@ async fn management_mcp_reuses_principal_bound_membership_invitations() -> Resul
                 "principalId": principal_id,
                 "expiresAt": null
             }),
+            &principal_owner_token,
         ))
         .await?;
     assert_eq!(credential.status(), 201);
@@ -2176,7 +2183,7 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
 async fn management_mcp_reuses_project_commands_queries_and_idempotency() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let organization = bootstrap_organization(&app, "mcp-parity", "Acme").await?;
 
     let rest = app
@@ -2280,12 +2287,14 @@ async fn management_mcp_reuses_project_commands_queries_and_idempotency() -> Res
         .await?;
     assert_eq!(response_json(&forged_tenant)?["error"]["code"], -32602);
 
-    let foreign_organization = create_organization(&app, "mcp-foreign", "Foreign").await?;
-    let foreign_project = create_project(
+    let (foreign_organization, foreign_token) =
+        create_organization_with_owner_token(&app, &identity, "mcp-foreign", "Foreign").await?;
+    let foreign_project = create_project_as(
         &app,
         &foreign_organization,
         "mcp-foreign-project",
         "Foreign",
+        &foreign_token,
     )
     .await?;
     let foreign = app
@@ -3000,7 +3009,7 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
 async fn management_mcp_reuses_the_execution_template_lifecycle() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let organization = bootstrap_organization(&app, "mcp-execution-template", "Acme").await?;
     let project = create_project(
         &app,
@@ -3109,13 +3118,19 @@ async fn management_mcp_reuses_the_execution_template_lifecycle() -> Result<()> 
     assert_eq!(missing["result"]["isError"], true);
     assert_eq!(missing["result"]["structuredContent"]["code"], 404);
 
-    let foreign_organization =
-        create_organization(&app, "mcp-execution-template-foreign", "Foreign").await?;
-    let foreign_project = create_project(
+    let (foreign_organization, foreign_token) = create_organization_with_owner_token(
+        &app,
+        &identity,
+        "mcp-execution-template-foreign",
+        "Foreign automation",
+    )
+    .await?;
+    let foreign_project = create_project_as(
         &app,
         &foreign_organization,
         "mcp-execution-template-foreign-project",
         "Foreign automation",
+        &foreign_token,
     )
     .await?;
     for (id, project_id) in [(6, foreign_project), (7, Uuid::now_v7().to_string())] {
@@ -4620,11 +4635,20 @@ async fn management_mcp_reuses_the_form_draft_and_release_lifecycle() -> Result<
 async fn management_mcp_form_tools_do_not_cross_tenant_boundaries() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let acme = bootstrap_organization(&app, "mcp-form-tenant", "Acme").await?;
-    let beta = create_organization(&app, "mcp-form-tenant-beta", "Beta").await?;
+    let (beta, beta_token) =
+        create_organization_with_owner_token(&app, &identity, "mcp-form-tenant-beta", "Beta")
+            .await?;
     let acme_project = create_project(&app, &acme, "mcp-form-acme-project", "Acme Forms").await?;
-    let beta_project = create_project(&app, &beta, "mcp-form-beta-project", "Beta Forms").await?;
+    let beta_project = create_project_as(
+        &app,
+        &beta,
+        "mcp-form-beta-project",
+        "Beta Forms",
+        &beta_token,
+    )
+    .await?;
     create_api_token(
         &app,
         &acme,
@@ -4637,10 +4661,11 @@ async fn management_mcp_form_tools_do_not_cross_tenant_boundaries() -> Result<()
     .await?;
 
     let beta_form = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{beta}/projects/{beta_project}/forms"),
             "mcp-form-beta-create",
             super::forms_tests::form_draft("Beta approval", "Foreign Form", false),
+            &beta_token,
         ))
         .await?;
     assert_eq!(beta_form.status(), 201);

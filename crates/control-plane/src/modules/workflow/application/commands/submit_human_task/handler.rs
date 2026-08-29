@@ -134,7 +134,6 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                     organization_id: command.organization_id,
                     principal_id: command.actor_principal_id,
                     credential_id: command.credential_id,
-                    actor_is_platform_admin: command.actor_is_platform_admin,
                     required_scope: crate::modules::identity::domain::value_objects::ApiTokenScope::parse(
                         crate::modules::identity::domain::value_objects::ApiTokenScope::WORKFLOW_WRITE,
                     )

@@ -4,9 +4,6 @@ use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGr
 use a3s_boot::{AuthPrincipal, BootError, Result};
 
 pub fn resource_access_evaluator(principal: &AuthPrincipal) -> Result<ResourceAccessEvaluator> {
-    if principal.has_role("platform_admin") {
-        return Ok(ResourceAccessEvaluator::organization_wide());
-    }
     let role = principal
         .claim("organization_role")
         .and_then(serde_json::Value::as_str)
@@ -72,10 +69,20 @@ mod tests {
     }
 
     #[test]
-    fn platform_administrator_does_not_require_membership_claims() {
-        let evaluator =
-            resource_access_evaluator(&AuthPrincipal::new("principal").with_role("platform_admin"))
-                .expect("evaluator");
-        assert!(evaluator.is_organization_wide());
+    fn platform_role_does_not_bypass_restricted_membership() {
+        let principal = AuthPrincipal::new("principal")
+            .with_role("platform_admin")
+            .with_claim("organization_role", "restricted")
+            .expect("role");
+        let evaluator = resource_access_evaluator(&principal).expect("evaluator");
+        assert!(!evaluator.has_any_visible_resource());
+    }
+
+    #[test]
+    fn platform_role_without_membership_fails_closed() {
+        assert!(resource_access_evaluator(
+            &AuthPrincipal::new("principal").with_role("platform_admin")
+        )
+        .is_err());
     }
 }

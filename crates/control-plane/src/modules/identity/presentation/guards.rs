@@ -73,9 +73,6 @@ impl Guard for OrganizationTenantGuard {
                 return Ok(true);
             };
             let principal = context.request.require_auth_principal()?;
-            if principal.has_role("platform_admin") {
-                return Ok(true);
-            }
             let authenticated = principal
                 .claim("organization_id")
                 .and_then(serde_json::Value::as_str)
@@ -202,9 +199,7 @@ impl Guard for OrganizationAdministratorGuard {
     fn can_activate(&self, context: ExecutionContext) -> BoxFuture<'static, Result<bool>> {
         Box::pin(async move {
             let principal = context.request.require_auth_principal()?;
-            if principal.has_role("platform_admin")
-                || principal.has_role("organization_owner")
-                || principal.has_role("organization_admin")
+            if principal.has_role("organization_owner") || principal.has_role("organization_admin")
             {
                 return Ok(true);
             }

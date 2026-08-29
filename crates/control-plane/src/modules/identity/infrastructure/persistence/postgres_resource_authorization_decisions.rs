@@ -48,45 +48,35 @@ impl IResourceAuthorizationDecisionRepository for PostgresIdentityRepository {
                         )
                         .into());
                     }
-                    let decision = if request.actor_is_platform_admin {
-                        ResourceAuthorizationDecision::issue_platform_administrator(
-                            Uuid::now_v7(),
-                            request,
-                            &credential,
-                            Utc::now(),
+                    let membership = load_active_membership_for_update(
+                        transaction,
+                        request.organization_id,
+                        request.principal_id,
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        RepositoryError::Forbidden(
+                            "authorization principal is not an active organization member".into(),
                         )
-                    } else {
-                        let membership = load_active_membership_for_update(
+                    })?;
+                    let grants = if membership.role == MembershipRole::Restricted {
+                        load_active_resource_grants_for_membership(
                             transaction,
-                            request.organization_id,
-                            request.principal_id,
+                            membership.organization_id,
+                            membership.id,
                         )
                         .await?
-                        .ok_or_else(|| {
-                            RepositoryError::Forbidden(
-                                "authorization principal is not an active organization member"
-                                    .into(),
-                            )
-                        })?;
-                        let grants = if membership.role == MembershipRole::Restricted {
-                            load_active_resource_grants_for_membership(
-                                transaction,
-                                membership.organization_id,
-                                membership.id,
-                            )
-                            .await?
-                        } else {
-                            Vec::new()
-                        };
-                        ResourceAuthorizationDecision::issue_membership(
-                            Uuid::now_v7(),
-                            request,
-                            &credential,
-                            &membership,
-                            grants,
-                            Utc::now(),
-                        )
-                    }
+                    } else {
+                        Vec::new()
+                    };
+                    let decision = ResourceAuthorizationDecision::issue_membership(
+                        Uuid::now_v7(),
+                        request,
+                        &credential,
+                        &membership,
+                        grants,
+                        Utc::now(),
+                    )
                     .map_err(RepositoryError::Forbidden)?;
                     let reference = decision.reference().map_err(|error| {
                         crate::infrastructure::PostgresPersistenceError::Invariant(error)

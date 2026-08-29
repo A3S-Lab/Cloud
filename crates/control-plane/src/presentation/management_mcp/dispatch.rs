@@ -115,7 +115,6 @@ pub(super) struct ManagementExecutionContext {
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     credential_id: ApiTokenId,
-    actor_is_platform_admin: bool,
     request_id: Uuid,
     resource_access: ResourceAccessEvaluator,
 }
@@ -125,7 +124,6 @@ impl ManagementExecutionContext {
         organization_id: OrganizationId,
         actor_principal_id: PrincipalId,
         credential_id: ApiTokenId,
-        actor_is_platform_admin: bool,
         request_id: Uuid,
         resource_access: ResourceAccessEvaluator,
     ) -> Self {
@@ -133,7 +131,6 @@ impl ManagementExecutionContext {
             organization_id,
             actor_principal_id,
             credential_id,
-            actor_is_platform_admin,
             request_id,
             resource_access,
         }
@@ -151,7 +148,6 @@ pub async fn execute(
         organization_id,
         actor_principal_id,
         credential_id,
-        actor_is_platform_admin,
         request_id,
         resource_access,
     } = context;
@@ -1280,7 +1276,6 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 credential_id,
-                actor_is_platform_admin,
                 arguments,
                 resource_access,
                 request_id,

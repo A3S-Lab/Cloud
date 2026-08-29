@@ -15,7 +15,6 @@ pub struct SubmitHumanTask {
     pub submission: FormInteractionSubmission,
     pub actor_principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
-    pub actor_is_platform_admin: bool,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
 }

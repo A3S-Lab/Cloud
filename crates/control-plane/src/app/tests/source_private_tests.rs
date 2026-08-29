@@ -108,7 +108,7 @@ async fn private_source_uses_verified_installation_authority_without_persisting_
     let resolver = Arc::new(PrivateSourceResolver::new(AuthenticatedResolution::Success));
     let tokens = Arc::new(TestGithubInstallationTokens::new(false));
     let app = private_source_application(
-        identity,
+        Arc::clone(&identity),
         projects,
         Arc::clone(&sources),
         resolver.clone(),
@@ -203,14 +203,17 @@ async fn cross_tenant_connection_cannot_authorize_private_source_resolution() ->
     let connected_organization =
         bootstrap_organization(&app, "private-connected-org", "Connected").await?;
     connect_github_installation(&app, &connected_organization).await?;
-    let other_organization = create_organization(&app, "private-other-org", "Other").await?;
-    let path = create_source_path(&app, &other_organization, "private-other").await?;
+    let (other_organization, other_token) =
+        create_organization_with_owner_token(&app, &identity, "private-other-org", "Other").await?;
+    let path =
+        create_source_path_as(&app, &other_organization, "private-other", &other_token).await?;
 
     let response = app
-        .call(post_json(
+        .call(post_json_as(
             &path,
             "private-cross-tenant",
             source_request("private-cross-tenant-delivery"),
+            &other_token,
         ))
         .await?;
     assert_eq!(response.status(), 404);
@@ -341,13 +344,29 @@ async fn create_source_path(
     organization: &str,
     key_prefix: &str,
 ) -> Result<String> {
-    let project =
-        create_project(app, organization, &format!("{key_prefix}-project"), "Cloud").await?;
+    create_source_path_as(app, organization, key_prefix, ADMIN_TOKEN).await
+}
+
+async fn create_source_path_as(
+    app: &a3s_boot::BootApplication,
+    organization: &str,
+    key_prefix: &str,
+    credential: &str,
+) -> Result<String> {
+    let project = create_project_as(
+        app,
+        organization,
+        &format!("{key_prefix}-project"),
+        "Cloud",
+        credential,
+    )
+    .await?;
     let environment = app
-        .call(post_json(
+        .call(post_json_as(
             format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
             &format!("{key_prefix}-environment"),
             json!({"name": "Production"}),
+            credential,
         ))
         .await?;
     Ok(format!(

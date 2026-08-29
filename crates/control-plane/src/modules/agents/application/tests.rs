@@ -90,7 +90,6 @@ async fn approval_checkpoint_decision_rejects_an_invalid_reason_before_authoriza
                 resource_access: ResourceAccessEvaluator::organization_wide(),
                 actor_principal_id: PrincipalId::new(),
                 credential_id: ApiTokenId::new(),
-                actor_is_platform_admin: false,
                 idempotency_key: "agent-approval:invalid-reason".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: canonical_timestamp(Utc::now()),

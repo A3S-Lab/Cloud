@@ -289,7 +289,6 @@ async fn approval_checkpoint_resumes_only_after_one_exact_durable_decision() {
         resource_access: ResourceAccessEvaluator::organization_wide(),
         actor_principal_id: PrincipalId::new(),
         credential_id: ApiTokenId::new(),
-        actor_is_platform_admin: false,
         idempotency_key: "approve-publish-1".into(),
         request_id: Uuid::now_v7(),
         requested_at: requested_decision_at,

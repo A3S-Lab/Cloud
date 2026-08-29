@@ -610,7 +610,6 @@ impl ManagementTool {
         self.required_scope()
             .is_none_or(|scope| principal.has_scope(scope))
             && (!self.requires_identity_administrator()
-                || principal.has_role("platform_admin")
                 || principal.has_role("organization_owner")
                 || principal.has_role("organization_admin"))
             && self.resource_binding_is_visible(principal)
