@@ -3,6 +3,7 @@ mod in_memory_membership_invitations;
 mod in_memory_memberships;
 mod in_memory_oidc_identity;
 mod in_memory_privileged_authorization_decisions;
+mod in_memory_privileged_management;
 mod in_memory_recipient_contact_verification_deliveries;
 mod in_memory_recipient_contacts;
 mod in_memory_resource_authorization_decisions;

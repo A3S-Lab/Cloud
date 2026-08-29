@@ -2270,6 +2270,93 @@ fn privileged_management_application_surface_is_closed_and_installation_derived(
 }
 
 #[test]
+fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let composition = std::fs::read_to_string(manifest.join("src/app.rs"))
+        .expect("read control-plane composition root");
+    let adapters = std::fs::read_to_string(manifest.join("src/app/postgres_adapters.rs"))
+        .expect("read PostgreSQL adapter factory");
+    let in_memory = std::fs::read_to_string(manifest.join(
+        "src/modules/identity/infrastructure/persistence/in_memory_privileged_management.rs",
+    ))
+    .expect("read fail-closed in-memory privileged management adapter");
+
+    for command in [
+        "AcceptPlatformRolePolicy",
+        "CreatePlatformRoleBinding",
+        "ChangePlatformRoleBinding",
+        "RevokePlatformRoleBinding",
+        "ProposeTenantSupportGrant",
+        "ApproveTenantSupportGrant",
+        "RevokeTenantSupportGrant",
+    ] {
+        assert_eq!(
+            composition
+                .matches(&format!(
+                    ".command_handler::<crate::modules::identity::{command}, _>"
+                ))
+                .count(),
+            1,
+            "privileged command {command} must have one CQRS registration"
+        );
+    }
+    for query in [
+        "GetCurrentPlatformRolePolicy",
+        "GetPlatformRolePolicyRevision",
+        "GetPlatformRoleBinding",
+        "GetPrincipalPlatformRoleBinding",
+        "GetTenantSupportGrant",
+    ] {
+        assert_eq!(
+            composition
+                .matches(&format!(
+                    ".query_handler::<crate::modules::identity::{query}, _>"
+                ))
+                .count(),
+            1,
+            "privileged query {query} must have one CQRS registration"
+        );
+    }
+    for required in [
+        "pub(super) platform_rbac: Arc<dyn IPlatformRbacRepository>",
+        "pub(super) tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>",
+        "platform_rbac: repository.clone()",
+        "tenant_support_grants: repository",
+    ] {
+        assert!(
+            adapters.contains(required),
+            "Identity PostgreSQL adapter family lost {required}"
+        );
+    }
+    assert!(in_memory.contains("privileged management requires the PostgreSQL Identity authority"));
+    assert_eq!(
+        in_memory
+            .matches("impl IPlatformRbacRepository for InMemoryIdentityRepository")
+            .count(),
+        1
+    );
+    assert_eq!(
+        in_memory
+            .matches("impl ITenantSupportGrantRepository for InMemoryIdentityRepository")
+            .count(),
+        1
+    );
+    for forbidden in [
+        "PlatformRolePolicyContract",
+        "TenantSupportGrantContract",
+        "issue_privileged_authorization",
+        "actor_is_platform_admin",
+        "Redis",
+        "a3s_lane",
+    ] {
+        assert!(
+            !in_memory.contains(forbidden),
+            "fail-closed test composition became a duplicate authority via {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let port = std::fs::read_to_string(

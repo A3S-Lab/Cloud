@@ -45,9 +45,10 @@ use crate::modules::forms::{IFormRepository, PostgresFormRepository};
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
     IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
-    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
-    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
-    IResourceGrantRepository,
+    IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
+    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
+    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    ITenantSupportGrantRepository,
 };
 use crate::modules::identity::PostgresIdentityRepository;
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
@@ -337,6 +338,8 @@ pub(super) struct IdentityPostgresAdapters {
     pub(super) resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     pub(super) privileged_authorization_decisions:
         Arc<dyn IPrivilegedAuthorizationDecisionRepository>,
+    pub(super) platform_rbac: Arc<dyn IPlatformRbacRepository>,
+    pub(super) tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
 }
 
 impl IdentityPostgresAdapters {
@@ -353,7 +356,9 @@ impl IdentityPostgresAdapters {
             recipient_contacts: repository.clone(),
             recipient_contact_verification_deliveries: repository.clone(),
             resource_authorization_decisions: repository.clone(),
-            privileged_authorization_decisions: repository,
+            privileged_authorization_decisions: repository.clone(),
+            platform_rbac: repository.clone(),
+            tenant_support_grants: repository,
         }
     }
 }

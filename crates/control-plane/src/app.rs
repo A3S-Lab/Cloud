@@ -173,8 +173,9 @@ use crate::modules::forms::{
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
     IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
-    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
+    IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository, ITenantSupportGrantRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, IRecipientContactProofService,
@@ -187,18 +188,22 @@ use crate::modules::identity::infrastructure::{
 };
 use crate::modules::identity::{
     A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
+    AcceptPlatformRolePolicyHandler, ApproveTenantSupportGrantHandler,
     AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
     BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
-    ChangeMembershipRoleHandler, CompleteOidcFlowHandler,
+    ChangeMembershipRoleHandler, ChangePlatformRoleBindingHandler, CompleteOidcFlowHandler,
     CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
-    CreateMembershipInvitationHandler, CreateOrganizationHandler, CreateResourceGrantHandler,
-    GetApiTokenHandler, GetMembershipHandler, GetMembershipInvitationHandler,
-    GetRecipientContactHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
-    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
-    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
-    OpenIdConnectProviderService, RecipientContactVerificationDeliveryDispatcher,
-    RevokeApiTokenHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
-    RevokeRecipientContactHandler, RevokeResourceGrantHandler,
+    CreateMembershipInvitationHandler, CreateOrganizationHandler, CreatePlatformRoleBindingHandler,
+    CreateResourceGrantHandler, GetApiTokenHandler, GetCurrentPlatformRolePolicyHandler,
+    GetMembershipHandler, GetMembershipInvitationHandler, GetPlatformRoleBindingHandler,
+    GetPlatformRolePolicyRevisionHandler, GetPrincipalPlatformRoleBindingHandler,
+    GetRecipientContactHandler, GetResourceGrantHandler, GetTenantSupportGrantHandler,
+    IdentityModule, ListApiTokensHandler, ListMembershipInvitationsHandler, ListMembershipsHandler,
+    ListMyMembershipInvitationsHandler, ListOrganizationsHandler, ListRecipientContactsHandler,
+    ListResourceGrantsHandler, OpenIdConnectProviderService, ProposeTenantSupportGrantHandler,
+    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler, RevokeMembershipHandler,
+    RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
+    RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
     SmtpRecipientContactVerificationDeliveryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
@@ -568,6 +573,8 @@ async fn build_api_worker_application(
         adapters.identity.recipient_contact_verification_deliveries;
     let resource_authorization_decisions = adapters.identity.resource_authorization_decisions;
     let privileged_authorization_decisions = adapters.identity.privileged_authorization_decisions;
+    let platform_rbac = adapters.identity.platform_rbac;
+    let tenant_support_grants = adapters.identity.tenant_support_grants;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -1750,6 +1757,8 @@ async fn build_api_worker_application(
                 recipient_contact_proof,
                 resource_authorization_decisions,
                 privileged_authorization_decisions,
+                platform_rbac,
+                tenant_support_grants,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2004,6 +2013,8 @@ struct ManagementApplicationDependencies {
     recipient_contact_proof: Arc<dyn IRecipientContactProofService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     privileged_authorization_decisions: Arc<dyn IPrivilegedAuthorizationDecisionRepository>,
+    platform_rbac: Arc<dyn IPlatformRbacRepository>,
+    tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2095,6 +2106,8 @@ fn build_management_application_with_health(
         recipient_contact_proof,
         resource_authorization_decisions,
         privileged_authorization_decisions,
+        platform_rbac,
+        tenant_support_grants,
         projects,
         environments,
         ontologies,
@@ -2731,7 +2744,7 @@ fn build_management_application_with_health(
         .import(
             CqrsModule::new("cloud-cqrs")
                 .command_handler::<crate::modules::identity::BootstrapIdentity, _>(
-                    BootstrapIdentityHandler::new(identity_bootstrap),
+                    BootstrapIdentityHandler::new(Arc::clone(&identity_bootstrap)),
                 )
                 .command_handler::<crate::modules::identity::CreateApiToken, _>(
                     CreateApiTokenHandler::new(Arc::clone(&api_tokens)),
@@ -2773,6 +2786,48 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::AuthorizePrivilegedAccess, _>(
                     AuthorizePrivilegedAccessHandler::new(authorize_privileged_access),
+                )
+                .command_handler::<crate::modules::identity::AcceptPlatformRolePolicy, _>(
+                    AcceptPlatformRolePolicyHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::CreatePlatformRoleBinding, _>(
+                    CreatePlatformRoleBindingHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::ChangePlatformRoleBinding, _>(
+                    ChangePlatformRoleBindingHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RevokePlatformRoleBinding, _>(
+                    RevokePlatformRoleBindingHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::ProposeTenantSupportGrant, _>(
+                    ProposeTenantSupportGrantHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&tenant_support_grants),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::ApproveTenantSupportGrant, _>(
+                    ApproveTenantSupportGrantHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&tenant_support_grants),
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RevokeTenantSupportGrant, _>(
+                    RevokeTenantSupportGrantHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&tenant_support_grants),
+                    ),
                 )
                 .command_handler::<crate::modules::identity::BeginOidcFlow, _>(
                     BeginOidcFlowHandler::new(
@@ -3395,6 +3450,33 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::GetRecipientContact, _>(
                     GetRecipientContactHandler::new(get_recipient_contacts),
+                )
+                .query_handler::<crate::modules::identity::GetCurrentPlatformRolePolicy, _>(
+                    GetCurrentPlatformRolePolicyHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetPlatformRolePolicyRevision, _>(
+                    GetPlatformRolePolicyRevisionHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetPlatformRoleBinding, _>(
+                    GetPlatformRoleBindingHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetPrincipalPlatformRoleBinding, _>(
+                    GetPrincipalPlatformRoleBindingHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&platform_rbac),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::GetTenantSupportGrant, _>(
+                    GetTenantSupportGrantHandler::new(identity_bootstrap, tenant_support_grants),
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),
