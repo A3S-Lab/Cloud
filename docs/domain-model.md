@@ -216,6 +216,9 @@ Primary aggregates:
 - `Membership`
 - `MembershipInvitation`
 - `ApiToken`
+- `IdentityBootstrap` (fresh-install transaction result joining the initial
+  tenant identity, credential, accepted platform-role policy, and matching
+  `PlatformOwner`; it is persisted only through the dedicated bootstrap port)
 - `ResourceGrant`
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
@@ -295,7 +298,16 @@ and one closed non-sensitive support permission. Grants are bounded,
   and versioned bindings under the canonical Installation-row lock. Initial
   policy/owner visibility, idempotency, self-escalation and last-owner recovery,
   Audit and Outbox commit atomically and database triggers reject direct-SQL
-  bypass. Migration `178` and the sole support repository now persist actual
+  bypass. The public fresh-install path now uses the sole
+  `IIdentityBootstrapRepository`, not `IApiTokenRepository`: after obtaining
+  the immutable Installation ID, the Application composes the initial tenant
+  owner and baseline `PlatformOwner` as one validated `IdentityBootstrap`.
+  Its PostgreSQL transaction takes the bootstrap and Installation locks,
+  checks replay only after serialization, persists all identity rows, and
+  calls the same transaction-local platform writer used by
+  `IPlatformRbacRepository`. Shared policy/binding Audit and Outbox facts plus
+  one idempotency result commit with the token digest; a failure leaves no
+  partial tenant or platform authority. Migration `178` and the sole support repository now persist actual
   approval evidence and terminal grants. The `MT2-C3` core also provides one
   registered Application command and one Identity/PostgreSQL decision port:
   it share-locks the current Principal, API token, policy/binding and optional

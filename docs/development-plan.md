@@ -3925,7 +3925,18 @@ node.
   idempotency, self-escalation denial, owner-only owner administration and
   deferred database last-owner/Principal-disable recovery. One canonical
   Installation-row lock serializes replicas and each transition reuses the
-  shared Audit/Outbox transaction. The retained [PostgreSQL 17 H0
+  shared Audit/Outbox transaction. Fresh-install composition now belongs to
+  the dedicated `IIdentityBootstrapRepository`: its validated result joins the
+  initial Organization, service Principal, owner Membership, token digest,
+  accepted baseline policy and matching `PlatformOwner`. The production
+  implementation acquires the bootstrap and canonical Installation locks,
+  checks replay after serialization, writes the identity rows, and invokes the
+  same transaction-local platform bootstrap writer used by
+  `IPlatformRbacRepository`; shared facts and one idempotent result commit or
+  roll back with the entire root. The retained failure-injection gate rejects
+  partial rows and the concurrency gate requires one commit plus one replay.
+  Main PostgreSQL recertification and a controlled recovery transition for
+  older installations without this root remain open. The retained [PostgreSQL 17 H0
   job](https://github.com/A3S-Lab/Cloud/actions/runs/33220123607/job/99012267599)
   races bootstrap, policy-head advancement and owner revocation across two
   repository instances and rejects direct-SQL bypass.

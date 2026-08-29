@@ -144,6 +144,11 @@ release truth.
   an admitted support-use role, a short-lived non-renewing grant, descendant
   scope and one closed non-sensitive permission; the allow fact pins replayable
   policy/grant evidence.
+- Fresh-install bootstrap is one authority transaction: the initial
+  Organization, service Principal, owner Membership, API token, accepted
+  baseline platform-role policy, and matching `PlatformOwner` binding either
+  all commit with shared Audit/Outbox/idempotency facts or all roll back. The
+  Token repository does not own this cross-aggregate lifecycle.
 - REST/OpenAPI, maintained TypeScript client, CLI, and sessionless Management
   MCP all dispatch the same Application commands and queries.
 - OpenShift-class outcomes—declarative reconciliation, scheduling, isolation,
@@ -204,7 +209,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-29**:
 | Lane | Status |
 | --- | --- |
 | Tenant-scoped PostgreSQL identity, ORM-backed Operations/Flow, Outbox, API, and migration authority | **Verified foundation** |
-| Installation scope and system-administrator RBAC | **Foundation in progress**; one persisted immutable Installation identity, explicit scope hierarchy, shared scope-aware Audit/Outbox rail, canonical platform-role policy/bindings, bounded tenant-support grants, and replayable privileged-decision evidence now have sole PostgreSQL repositories, current-head/approval invariants, and hostile multi-replica gates. Every non-bootstrap RBAC or support mutation consumes the exact verified credential ID, issues its closed authorization decision in the same transaction as the protected write, derives authentication evidence server-side, and links the business Audit fact to that decision. Production completion still requires maintained Application/REST/OpenAPI/client/CLI/MCP interfaces and replacement of every legacy cross-surface administrator bypass; no generic caller-authored evaluator is exposed |
+| Installation scope and system-administrator RBAC | **Foundation in progress**; one persisted immutable Installation identity, explicit scope hierarchy, shared scope-aware Audit/Outbox rail, canonical platform-role policy/bindings, bounded tenant-support grants, and replayable privileged-decision evidence now have sole PostgreSQL repositories and database invariants. Fresh bootstrap atomically creates the first tenant identity and matching `PlatformOwner` root through a dedicated Identity port; every non-bootstrap RBAC or support mutation consumes the exact verified credential ID and commits its closed authorization decision with the protected write. Production completion still requires main PostgreSQL recertification of the new bootstrap gate, a controlled recovery transition for installations created without the root, maintained Application/REST/OpenAPI/client/CLI/MCP interfaces, and removal of every legacy cross-surface administrator bypass; no generic caller-authored evaluator is exposed |
 | Node, Workload, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress**; several component gates exist, current real-provider/release recertification remains |
 | Agent and hosted MCP product lanes | **In progress**; do not infer complete AaaS availability from component evidence |
 | Ontology Workflow and AI Applications/Files foundations | **In progress**; complete WaaS/Application products remain gate-bound |
@@ -276,7 +281,10 @@ publishes the API only through A3S Gateway.
 <summary><strong>Bootstrap the first organization</strong></summary>
 
 Cloud stores only the API-token digest; the caller creates and retains the
-credential.
+credential. This request also creates the accepted baseline platform-role
+policy and binds `PlatformOwner` to the same bootstrap Principal. Concurrent
+identical requests serialize before idempotency replay, and any policy, Audit,
+or Outbox failure rolls back the complete identity and authority root.
 
 ```bash
 export A3S_CLOUD_ADMIN_TOKEN="a3s_$(openssl rand -hex 32)"
