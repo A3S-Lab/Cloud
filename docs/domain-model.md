@@ -300,10 +300,16 @@ and one closed non-sensitive support permission. Grants are bounded,
   registered Application command and one Identity/PostgreSQL decision port:
   it share-locks the current Principal, API token, policy/binding and optional
   exact grant, then commits the complete digest-bound allow through shared
-  scoped Audit. Maintained concrete surfaces still need to consume that
-  authority from verified request context; `MT3` then removes the legacy
-  boolean administrator bypass. Until that cross-surface work lands, persisted
-  RBAC is not general production authority.
+  scoped Audit. That same transaction-local issuer is now the only
+  authorization step inside all seven non-bootstrap platform-RBAC and
+  tenant-support mutations. Their repository writes carry actor Principal and
+  exact credential identity only; the concrete use case owns the closed
+  permission/action/scope/resource tuple, derives authentication evidence from
+  the issued decision, and commits the protected business fact with a reference
+  to it. Maintained concrete surfaces still need to derive those identities
+  from verified request context; `MT3` then removes the legacy boolean
+  administrator bypass. Until that cross-surface work lands, persisted RBAC is
+  not general production authority.
 
 #### Workload trust contract (`H0.4-WI1-C1` component)
 

@@ -47,6 +47,19 @@ snapshot first, or the revocation wins and the allow fails closed. A successful
 allow emits no Outbox event because authorization evidence is not an
 asynchronous integration command.
 
+The issuer is also a transaction-local Identity persistence primitive for a
+concrete protected mutation. After taking the canonical Installation mutation
+lock, each non-bootstrap platform role-policy/binding or tenant-support
+proposal/approval/revocation use case calls that same issuer before its write
+and commits both outcomes in one transaction. Its repository DTO accepts the
+actor Principal and exact credential ID only. Permission, action, scope, and
+resource are closed constants or domain-derived values owned by the concrete
+use case, never request-body or tool arguments. Tenant-support authentication
+evidence is copied from the issued credential snapshot rather than accepted
+from a caller, and the business Audit details retain the exact decision
+reference. A denied decision rolls back with the attempted write and emits no
+partial evidence.
+
 This command is an internal Application authority, not a public generic policy
 evaluator. Maintained REST, client, CLI, and Management MCP use cases must
 select their closed permission, action, scope, and resource themselves and
@@ -69,6 +82,10 @@ tool argument.
 - The decision snapshot is replayable evidence, not a durable capability that
   can authorize a later unrelated operation. A concrete use case consumes the
   result only for the exact action, scope, resource, and request it supplied.
+- A real PostgreSQL provider gate races a platform binding mutation with
+  revocation of its exact API token. Either the decision and protected business
+  fact both commit before revocation, or both are absent; after revocation even
+  an otherwise replayable request is denied.
 - `C0.5-MT2-C3` remains in progress until maintained concrete interfaces use
   this authority. `MT3` must then remove every
   `actor_is_platform_admin`/ambient-role bypass and route cross-surface

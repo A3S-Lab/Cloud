@@ -3953,10 +3953,18 @@ node.
   [PostgreSQL 17 H0
   job](https://github.com/A3S-Lab/Cloud/actions/runs/33226790289/job/99031980422)
   pass all retained gates, including role, API-token, and support-grant
-  revocation races. `MT2-C3` remains open for maintained concrete
-  interfaces, which must derive actor/credential from verified request context
-  and select closed action/scope/resource values rather than expose a generic
-  client-authored evaluator. `MT3` replaces every boolean
+  revocation races. Every non-bootstrap platform role-policy/binding and
+  tenant-support proposal/approval/revocation mutation now reuses that same
+  issuer after acquiring the canonical Installation mutation lock. The write
+  boundary carries only the actor Principal and exact credential identity;
+  the concrete use case fixes permission, action, scope, and resource, derives
+  authentication evidence from the issued decision, and stores the protected
+  business fact plus its decision reference in the same transaction. A new
+  PostgreSQL gate races a binding write with exact-token revocation and
+  requires authorization and business Audit facts to commit or roll back
+  together. `MT2-C3` remains open for maintained concrete interfaces, which
+  must derive actor/credential from verified request context rather than expose
+  a generic client-authored evaluator. `MT3` replaces every boolean
   platform-administrator bypass with that single Identity decision port.
 - In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
   provisioning and deprovisioning, session policy, and application/Workflow/
