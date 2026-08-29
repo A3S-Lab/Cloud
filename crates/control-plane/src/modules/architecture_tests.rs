@@ -2218,6 +2218,12 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
         "every non-bootstrap platform RBAC write must carry the exact verified credential identity"
     );
     assert_eq!(
+        port.matches("pub expected_policy_revision_id: PlatformRolePolicyRevisionId")
+            .count(),
+        2,
+        "binding creation and role changes must CAS the policy used to derive role semantics"
+    );
+    assert_eq!(
         persistence
             .matches("impl IPlatformRbacRepository for PostgresIdentityRepository")
             .count(),
@@ -2234,6 +2240,8 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
         "PlatformPermission::RoleBindingManage",
         "a Principal cannot escalate its own platform permissions",
         "the last active platform owner cannot be revoked",
+        "platform role policy changed before binding creation",
+        "platform role policy changed before the binding role update",
     ] {
         assert!(
             persistence.contains(required),

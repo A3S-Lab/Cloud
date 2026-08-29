@@ -551,6 +551,7 @@ async fn create_binding(
     repository
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: binding.clone(),
+            expected_policy_revision_id: policy.id,
             actor_principal_id: actor,
             credential_id: actor_credential_id,
             request_id: Uuid::now_v7(),

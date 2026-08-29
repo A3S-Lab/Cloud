@@ -31,6 +31,7 @@ pub struct AcceptPlatformRolePolicyRevisionWrite {
 #[derive(Debug, Clone)]
 pub struct CreatePlatformRoleBindingWrite {
     pub binding: PlatformRoleBinding,
+    pub expected_policy_revision_id: PlatformRolePolicyRevisionId,
     pub actor_principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
     pub request_id: Uuid,
@@ -42,6 +43,7 @@ pub struct ChangePlatformRoleBindingWrite {
     pub installation_id: InstallationId,
     pub binding_id: PlatformRoleBindingId,
     pub expected_version: u64,
+    pub expected_policy_revision_id: PlatformRolePolicyRevisionId,
     pub role: PlatformRole,
     pub actor_principal_id: PrincipalId,
     pub credential_id: ApiTokenId,

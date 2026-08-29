@@ -175,6 +175,7 @@ pub async fn exercise_platform_rbac_authority(
     winning_repository
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: second_owner_binding.clone(),
+            expected_policy_revision_id: current_policy.id,
             actor_principal_id: initial_owner,
             credential_id: if initial_owner == owner_a {
                 owner_a_credential.id
@@ -198,6 +199,7 @@ pub async fn exercise_platform_rbac_authority(
     winning_repository
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: admin_binding.clone(),
+            expected_policy_revision_id: current_policy.id,
             actor_principal_id: initial_owner,
             credential_id: if initial_owner == owner_a {
                 owner_a_credential.id
@@ -222,6 +224,7 @@ pub async fn exercise_platform_rbac_authority(
         repository_b
             .create_platform_role_binding(CreatePlatformRoleBindingWrite {
                 binding: forged_owner,
+                expected_policy_revision_id: current_policy.id,
                 actor_principal_id: admin,
                 credential_id: admin_credential.id,
                 request_id: Uuid::now_v7(),
@@ -236,6 +239,7 @@ pub async fn exercise_platform_rbac_authority(
                 installation_id,
                 binding_id: admin_binding.id,
                 expected_version: 1,
+                expected_policy_revision_id: current_policy.id,
                 role: PlatformRole::PlatformOwner,
                 actor_principal_id: admin,
                 credential_id: admin_credential.id,
@@ -259,6 +263,7 @@ pub async fn exercise_platform_rbac_authority(
     repository_b
         .create_platform_role_binding(CreatePlatformRoleBindingWrite {
             binding: operator_binding.clone(),
+            expected_policy_revision_id: current_policy.id,
             actor_principal_id: admin,
             credential_id: admin_credential.id,
             request_id: Uuid::now_v7(),
@@ -271,6 +276,7 @@ pub async fn exercise_platform_rbac_authority(
                 installation_id,
                 binding_id: operator_binding.id,
                 expected_version: 1,
+                expected_policy_revision_id: current_policy.id,
                 role: PlatformRole::PlatformAdmin,
                 actor_principal_id: operator,
                 credential_id: operator_credential.id,
@@ -393,6 +399,31 @@ pub async fn exercise_platform_rbac_authority(
             .await?
             .replayed
     );
+    assert!(matches!(
+        repository_a
+            .change_platform_role_binding(ChangePlatformRoleBindingWrite {
+                installation_id,
+                binding_id: operator_binding.id,
+                expected_version: 1,
+                expected_policy_revision_id: current.id,
+                role: PlatformRole::SecurityAuditor,
+                actor_principal_id: remaining_owner,
+                credential_id: remaining_owner_credential_id,
+                changed_at: Utc::now(),
+                request_id: Uuid::now_v7(),
+                idempotency: idempotency("platform-role-bindings", "mt2:stale-policy-change",)?,
+            })
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        repository_a
+            .find_platform_role_binding(installation_id, operator_binding.id)
+            .await?
+            .ok_or("operator binding disappeared after stale policy rejection")?
+            .role,
+        PlatformRole::PlatformOperator
+    );
 
     let remaining_binding = repository_a
         .find_active_platform_role_binding_for_principal(installation_id, remaining_owner)
@@ -420,9 +451,23 @@ pub async fn exercise_platform_rbac_authority(
         remaining_owner,
         Utc::now(),
     )?;
+    assert!(matches!(
+        repository_a
+            .create_platform_role_binding(CreatePlatformRoleBindingWrite {
+                binding: credential_race_binding.clone(),
+                expected_policy_revision_id: current.id,
+                actor_principal_id: remaining_owner,
+                credential_id: remaining_owner_credential_id,
+                request_id: Uuid::now_v7(),
+                idempotency: idempotency("platform-role-bindings", "mt2:stale-policy-create",)?,
+            })
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
     let credential_race_request_id = Uuid::now_v7();
     let credential_race_write = CreatePlatformRoleBindingWrite {
         binding: credential_race_binding.clone(),
+        expected_policy_revision_id: accepted.id,
         actor_principal_id: remaining_owner,
         credential_id: remaining_owner_credential_id,
         request_id: credential_race_request_id,

@@ -931,6 +931,12 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                     {
                         return validate_replayed_binding(replayed, installation_id);
                     }
+                    if policy.id != write.expected_policy_revision_id {
+                        return Err(RepositoryError::Conflict(
+                            "platform role policy changed before binding creation".into(),
+                        )
+                        .into());
+                    }
                     write
                         .binding
                         .validate_against_policy(&policy)
@@ -1021,6 +1027,12 @@ impl IPlatformRbacRepository for PostgresIdentityRepository {
                             .await?
                     {
                         return validate_replayed_binding(replayed, write.installation_id);
+                    }
+                    if policy.id != write.expected_policy_revision_id {
+                        return Err(RepositoryError::Conflict(
+                            "platform role policy changed before the binding role update".into(),
+                        )
+                        .into());
                     }
                     let mut binding = load_binding_for_update(
                         transaction,
