@@ -193,7 +193,7 @@ async fn cross_tenant_connection_cannot_authorize_private_source_resolution() ->
     let resolver = Arc::new(PrivateSourceResolver::new(AuthenticatedResolution::Success));
     let tokens = Arc::new(TestGithubInstallationTokens::new(false));
     let app = private_source_application(
-        identity,
+        identity.clone(),
         projects,
         Arc::new(InMemorySourceRevisionRepository::new()),
         resolver.clone(),
