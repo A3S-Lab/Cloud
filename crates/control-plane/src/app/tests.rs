@@ -2374,12 +2374,14 @@ async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
         .await?;
     assert_eq!(duplicate.status(), 409);
     let events = repository.outbox_events().await;
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.len(), 8);
     for (event_key, expected) in [
         ("identity.organization.created", 2),
         ("identity.principal.created", 1),
         ("identity.membership.created", 2),
         ("identity.token.created", 1),
+        ("identity.platform-role-policy.accepted", 1),
+        ("identity.platform-role-binding.created", 1),
     ] {
         assert_eq!(
             events
