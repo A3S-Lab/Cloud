@@ -29,7 +29,7 @@ const ZH_CN: Record<string, string> = {
   'Agent execution providers': 'Agent 执行 Provider',
   'One provider-neutral contract': '统一的 Provider 中立合约',
   'Sign in to A3S OS': '登录 A3S OS',
-  'Open A3S Web': '进入 A3S Web',
+  'Open Cloud console': '进入 Cloud 控制台',
   'The credential remains in this browser tab.': '凭据仅保留在当前浏览器标签页。',
   'Organization API token': '组织 API Token',
   'Sent only as a Bearer credential to the configured Cloud API.':

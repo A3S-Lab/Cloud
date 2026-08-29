@@ -4,9 +4,7 @@ const SURFACE_SELECTOR = [
   '.cloud-hero-scene',
   '.cloud-editorial-chart',
   '.cloud-product-capabilities li',
-  '.cloud-web-client-capabilities article',
-  '.cloud-web-window',
-  '.cloud-edge-web-capabilities article',
+  '.cloud-edge-agent-capabilities article',
   '.cloud-industry-grid article',
   '.cloud-architecture-layer article',
 ].join(',');

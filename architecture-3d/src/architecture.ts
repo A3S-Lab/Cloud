@@ -118,7 +118,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     domain: 'experience',
     position: [-8, 0.28, 14],
     visualKind: 'web-console',
-    logoId: 'a3s-web',
+    logoId: 'cloud-console',
     status: 'verified',
     gate: 'F0',
     summary: 'The same-origin management SPA consumes authoritative command, query, operation, and log APIs.',

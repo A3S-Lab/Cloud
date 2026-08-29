@@ -15,7 +15,7 @@ use validation::{
 /// Schema identifier for the first machine-checkable AI application parity baseline.
 pub const APP_PLATFORM_PARITY_MANIFEST_SCHEMA: &str = "a3s.cloud.app-platform.parity-manifest.v1";
 
-const MANIFEST_ID: &str = "dify-commercial-core-2026-08-13";
+const MANIFEST_ID: &str = "application-platform-core-2026-08-13";
 const MANIFEST_BASELINE: &str = "2026-08-13";
 const MANIFEST_BLOCK: &str = "parity_manifest";
 const REFERENCE_BLOCK: &str = "reference";

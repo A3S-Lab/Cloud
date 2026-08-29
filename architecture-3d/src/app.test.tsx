@@ -69,7 +69,7 @@ describe('A3S Cloud architecture application', () => {
     expect(screen.getByRole('button', { name: 'Traffic' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('runs business simulations from both A3S Web and A3S Code TUI', () => {
+  it('runs business simulations from both Cloud Console and A3S Code TUI', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'CPU deploy' }));

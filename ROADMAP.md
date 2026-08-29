@@ -126,10 +126,10 @@ The architecture reference capability register is also additive. TokenHub-style
 model-gateway governance remains assigned to `C0.3` and `I0.2` through optional
 `I0.6`; Google AX-style distributed Harness outcomes remain assigned to
 `A1.1` through `A1.6`; cross-layer security investigation remains assigned to
-`C0.3` over the shared evidence and audit foundations; Dify-style public core
-application outcomes remain assigned to `APP0`, `K0`, and `AUT0` over `W0` and
-the existing provider gates. Removing a reference name does not retire those
-outcomes or authorize a replacement mechanism.
+`C0.3` over the shared evidence and audit foundations; commercial
+application-platform core outcomes remain assigned to `APP0`, `K0`, and
+`AUT0` over `W0` and the existing provider gates. Removing a reference name
+does not retire those outcomes or authorize a replacement mechanism.
 
 A3S Box is the sole node-local execution and image-build provider. A3S Power is
 the required inference serving boundary and runs as an ordinary Box-hosted
@@ -841,7 +841,7 @@ not introduce a second scheduler.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
+| `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational console workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
 | `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired REST/OpenAPI/client login-link-callback surfaces, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable project attribution, a personal in-app notification inbox, component-only signed-webhook/Slack-compatible outbound adapters, Outbox/audit, and one bounded tenant-administrator audit query are implemented. Durable outbound dispatch/receipts/subscriptions/rate policy and SMTP, alert policy, tenant-scoped security investigation, retention/export policy, usage-fact attribution snapshots, and the role-focused console projection remain planned |
@@ -2155,8 +2155,8 @@ protocol and recovery gate.
 A product gate is complete only when:
 
 - the documentation capability-preservation check retains the native Cloud,
-  TokenHub-inspired, Google AX-inspired, Dify-inspired public core, and
-  cross-layer security outcomes or records an explicit reviewed retirement
+  TokenHub-inspired, Google AX-inspired, commercial application-platform core,
+  and cross-layer security outcomes or records an explicit reviewed retirement
   migration;
 - an `APP0`, `K0`, or `AUT0` claim is backed by the versioned ACL capability
   manifest, and every required application mode including classic/New Agent,

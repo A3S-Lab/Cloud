@@ -26,7 +26,7 @@ export function App() {
               <span className='brand-mark' aria-hidden='true'>
                 A3
               </span>
-              <span>A3S OS · A3S Web</span>
+              <span>A3S OS · Cloud Console</span>
             </div>
             <LanguageSwitcher />
           </header>

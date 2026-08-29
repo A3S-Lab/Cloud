@@ -123,7 +123,7 @@ components:
 
 **Creative North Star: "The Visible Control Path"**
 
-A3S OS is a bright enterprise AI product portal with A3S Web as its operations workspace. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field explain product value and expose current state without turning the product into a generic infrastructure dashboard.
+A3S OS is a bright enterprise AI product portal with an authenticated Cloud console for operations. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field explain product value and expose current state without turning the product into a generic infrastructure dashboard.
 
 The public homepage leads with three outward-facing products: Unified Gateway, Workflow, and Agent Factory. Security operations remain visible inside Unified Gateway. The page then reveals the shared A3S foundation, the complete gate-driven portfolio, and the authority that owns each outcome. Familiar controls, restrained motion, and semantic state color keep both the product story and authenticated tool trustworthy.
 
@@ -196,7 +196,7 @@ Simplified Chinese is the default product version on first visit. English is a c
 
 Documentation adds an independent `main` / `v0.1.x` selector. `main` follows the current branch and roadmap snapshot. `v0.1.x` describes package `0.1.0` and REST contract `1.6.0`; it does not imply that every roadmap gate is verified. The selected documentation line persists separately from language.
 
-Keep product and protocol names such as A3S OS, A3S Web, A3S Code Harness, A3S Flow, A3S Runtime, A3S Box, A3S Gateway, Agent, MCP, Skill, OCI, and SBOM unchanged. Translate surrounding operational language, status labels, relative time, timestamps, accessibility labels, loading states, empty states, and error summaries together.
+Keep product and protocol names such as A3S OS, A3S Code Harness, A3S Flow, A3S Runtime, A3S Box, A3S Gateway, Agent, MCP, Skill, OCI, and SBOM unchanged. Translate surrounding operational language, status labels, relative time, timestamps, accessibility labels, loading states, empty states, and error summaries together.
 
 **The Language Parity Rule.** A visible feature is complete only when its Chinese and English copy, state labels, dates, and accessible names describe the same product behavior.
 

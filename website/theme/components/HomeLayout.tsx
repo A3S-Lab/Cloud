@@ -8,12 +8,12 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { EdgeCloudFoundationChapter } from './EdgeCloudFoundationChapter';
+import { EdgeAgentChapter } from './EdgeAgentChapter';
 import { IndustrySolutionsChapter } from './IndustrySolutionsChapter';
 import { InteractionLayer } from './InteractionLayer';
 import { PlatformArchitecture } from './PlatformArchitecture';
 import { ProductChapter } from './ProductChapter';
 import { HeroVisual } from './ProductCharts';
-import { WebClientChapter } from './WebClientChapter';
 import { productChapters, type HomeLanguage } from '../data/product';
 
 const LANGUAGE_KEY = 'a3s-os.website-language';
@@ -291,7 +291,7 @@ WORKFLOW -- AGENT -- MCP -- MODEL
         />
       ))}
 
-      <WebClientChapter language={language} />
+      <EdgeAgentChapter language={language} />
       <IndustrySolutionsChapter language={language} />
       <PlatformArchitecture language={language} />
 

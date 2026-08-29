@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 describe('ProjectHome', () => {
-  it('shows the Chinese-first product system, A3S Web, and architecture', async () => {
+  it('shows the Chinese-first product system and architecture', async () => {
     const host = document.getElementById('root');
     if (!host) throw new Error('test root is missing');
     root = createRoot(host);
@@ -41,8 +41,6 @@ describe('ProjectHome', () => {
     expect(host.textContent).toContain('A3S Gateway 统一网关');
     expect(host.textContent).toContain('Cloud API + A3S Gateway');
     expect(host.textContent).toContain('Sentry / AnySentry 安全证据');
-    expect(host.querySelectorAll('.web-client-capability-grid article')).toHaveLength(6);
-    expect(host.textContent).toContain('一个客户端，贯通三大产品的每一次工作');
     expect(host.querySelectorAll('.architecture-business-group li')).toHaveLength(19);
     expect(host.querySelector('#documentation')).toBeNull();
     expect(host.querySelector('#access')).toBeNull();
@@ -71,7 +69,7 @@ describe('ProjectHome', () => {
 
     expect(host.querySelector('#home-title')?.textContent).toContain('The enterprise AI operating system');
     expect(host.textContent).toContain('Three products turn AI into an operable system');
-    expect(host.textContent).toContain('One client for every action across all three products');
+    expect(host.textContent).toContain('The Cloud console reuses the same command');
     expect(host.textContent).not.toContain('Documentation and versions');
   });
 });

@@ -1,39 +1,39 @@
-parity_manifest "dify-commercial-core-2026-08-13" {
+parity_manifest "application-platform-core-2026-08-13" {
   baseline = "2026-08-13"
   parity_claim = false
   public_claim_gate = "APP0.6"
   schema = "a3s.cloud.app-platform.parity-manifest.v1"
   reference "docs-index" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/llms.txt"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/ai-application-platform-plan.md"
   }
   reference "enterprise" {
     observed_on = "2026-08-13"
-    url = "https://dify.ai/pricing/dify-enterprise"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/architecture.md"
   }
   reference "knowledge-pipeline" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0006-knowledge-authority.md"
   }
   reference "monitoring" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/cloud/use-dify/monitor/analysis"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/development-plan.md"
   }
   reference "new-agent" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/self-host/use-dify/build/new-agent/overview"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/workflow-evolution-plan.md"
   }
   reference "plugin-types" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/ROADMAP.md"
   }
   reference "publication" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/cloud/use-dify/publish/README"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0002-application-delivery.md"
   }
   reference "workflow-chatflow" {
     observed_on = "2026-08-13"
-    url = "https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow"
+    url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0009-workflow-node-catalog-projection.md"
   }
   gate "A0.5" {
     evidence = ["doc:ROADMAP.md"]

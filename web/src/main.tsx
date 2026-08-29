@@ -17,7 +17,6 @@ import './styles/redesign-features.css';
 import './styles/redesign-responsive.css';
 import './styles/project-home.css';
 import './styles/product-pillars.css';
-import './styles/a3s-web-overview.css';
 
 const root = document.getElementById('root');
 

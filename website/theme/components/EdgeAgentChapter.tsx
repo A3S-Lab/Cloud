@@ -15,14 +15,14 @@ import {
 import type { ComponentType } from 'react';
 import type { HomeLanguage, LocalizedText } from '../data/product';
 
-type EdgeWebCapability = {
+type EdgeCapability = {
   component: string;
   title: LocalizedText;
   body: LocalizedText;
   icon: ComponentType<IconProps>;
 };
 
-const capabilities: EdgeWebCapability[] = [
+const capabilities: EdgeCapability[] = [
   {
     component: 'Agent Hosting',
     title: { zh: 'Agent 安全执行', en: 'Secure Agent execution' },
@@ -85,13 +85,12 @@ const foundationItems = [
 const localize = (copy: LocalizedText, language: HomeLanguage) =>
   copy[language];
 
-export function WebClientChapter({ language }: { language: HomeLanguage }) {
+export function EdgeAgentChapter({ language }: { language: HomeLanguage }) {
   const zh = language === 'zh';
 
   return (
-    <section className="cloud-edge-web" id="edge-agent">
-      <span className="cloud-section-anchor" id="web-client" />
-      <header className="cloud-edge-web-heading" data-reveal>
+    <section className="cloud-edge-agent" id="edge-agent">
+      <header className="cloud-edge-agent-heading" data-reveal>
         <span>A3S WORK · EDGE AGENT</span>
         <h2>{zh ? 'A3S Work 端侧智能体' : 'A3S Work Edge Agent'}</h2>
         <h3>
@@ -106,7 +105,7 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
         </p>
       </header>
 
-      <div className="cloud-edge-web-capabilities" data-reveal>
+      <div className="cloud-edge-agent-capabilities" data-reveal>
         {capabilities.map(({ body, component, icon: Icon, title }, index) => (
           <article key={component}>
             <figure className={`is-tone-${index + 1}`} aria-hidden="true">
@@ -124,7 +123,7 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
         ))}
       </div>
 
-      <div className="cloud-edge-web-foundation" data-reveal>
+      <div className="cloud-edge-agent-foundation" data-reveal>
         <header>
           <span>
             <FlowArrow aria-hidden="true" size={25} weight="duotone" />

@@ -43,7 +43,7 @@ export function ControlPlaneAccess({ onAuthenticated }: ControlPlaneAccessProps)
           <KeyRound size={21} />
         </span>
         <div>
-          <h2>{t('Open A3S Web')}</h2>
+          <h2>{t('Open Cloud console')}</h2>
           <p>{t('The credential remains in this browser tab.')}</p>
         </div>
       </div>
@@ -69,7 +69,7 @@ export function ControlPlaneAccess({ onAuthenticated }: ControlPlaneAccessProps)
           </p>
         ) : null}
         <button className='primary-button' type='submit' disabled={submitting}>
-          {submitting ? t('Verifying...') : t('Open A3S Web')}
+          {submitting ? t('Verifying...') : t('Open Cloud console')}
           <ArrowRight size={17} />
         </button>
       </form>

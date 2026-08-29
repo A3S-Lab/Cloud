@@ -81,7 +81,7 @@ export type ArchitectureVisualKind = (typeof ARCHITECTURE_VISUAL_KINDS)[number];
 
 export const ARCHITECTURE_LOGO_IDS = [
   'clients',
-  'a3s-web',
+  'cloud-console',
   'a3s-box',
   'a3s-box-provider',
   'a3s-code',

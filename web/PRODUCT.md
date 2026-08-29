@@ -1,4 +1,4 @@
-# A3S OS Web Client
+# A3S OS Cloud Console
 
 <!-- impeccable:product-schema 1 -->
 
@@ -15,7 +15,7 @@ web
 
 ## Product Purpose
 
-A3S OS is the public product identity. A3S Web is its authenticated operations client. The outward product layer has three pillars: a unified gateway formed by the Cloud API management plane and A3S Gateway data plane, ontology-driven autonomous workflow orchestration, and a heterogeneous Agent Factory. Sentry, AnySentry, audit, and security response remain first-class capabilities inside the unified gateway product rather than becoming a fourth control plane.
+A3S OS is the public product identity. Its authenticated Cloud console is an operations surface, not a separate product. The outward product layer has three pillars: a unified gateway formed by the Cloud API management plane and A3S Gateway data plane, ontology-driven autonomous workflow orchestration, and a heterogeneous Agent Factory. Sentry, AnySentry, audit, and security response remain first-class capabilities inside the unified gateway product rather than becoming a fourth control plane.
 
 All three products accept governed tenant intent, persist authoritative business state in PostgreSQL, and reuse durable convergence through Operations, A3S Flow, Workloads, Fleet, Runtime, Box, and Gateway. Agent Factory uses one provider-neutral Agent execution contract; A3S Code is its native provider. The products never create independent controllers, schedulers, runtimes, node channels, queues, Agent lifecycles, or evidence stores.
 
@@ -51,7 +51,7 @@ The control plane owns intent, policy, scheduling, rollout, and management state
 
 ## Brand Commitments
 
-- Preserve the product names A3S OS, A3S Web, A3S Code, A3S Flow, A3S Runtime, A3S Box, and A3S Gateway.
+- Preserve the product names A3S OS, A3S Code, A3S Flow, A3S Runtime, A3S Box, and A3S Gateway. Refer to this authenticated surface as the Cloud console.
 - The user explicitly selected the Finogeeks enterprise AI site as the primary visual benchmark: a high-trust white canvas, strong electric-blue brand field, generous spacing, decisive typography, and readable system-architecture storytelling.
 - Translate that benchmark into an operations console rather than copying Finogeeks content, identity, logos, or claims.
 - Simplified Chinese is the default product language. English is a complete selectable product version; product and protocol names remain unchanged in both languages.

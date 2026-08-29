@@ -14,7 +14,7 @@ Production site: <https://a3s-lab.github.io/Cloud/architecture/>
 - Explore seven explicit layers from a high bird's-eye view: experience,
   public Gateway access, Cloud control domains, platform middleware/state,
   managed node Runtime, providers/workloads, and physical infrastructure.
-- See A3S Gateway spatially between A3S Web / A3S Code and the private A3S Boot
+- See A3S Gateway spatially between Cloud Console / A3S Code and the private A3S Boot
   API instead of treating browser clients as direct control-plane callers.
 - Distinguish animated business flow, dashed structural/hosting relationships,
   and raised carrier chassis.
@@ -31,7 +31,7 @@ Production site: <https://a3s-lab.github.io/Cloud/architecture/>
 - Inspect CPU and GPU hardware as multi-rack clusters without implying that the
   current Box provider already supports GPU passthrough.
 - Run CPU deployment, source-to-OCI, A3S Power GPU inference, live traffic, and
-  logs/recovery scenarios from either A3S Web or A3S Code TUI.
+  logs/recovery scenarios from either Cloud Console or A3S Code TUI.
 - Orbit, zoom, select, focus, and inspect ownership, boundaries, placement,
   connected signals, roadmap status, and design references.
 - Fall back to an accessible component and relationship index when WebGL is

@@ -1,4 +1,4 @@
-.cloud-edge-web,
+.cloud-edge-agent,
 .cloud-industry-solutions {
   width: min(100%, var(--cloud-max));
   margin: 0 auto;
@@ -9,14 +9,14 @@
   border-left: 1px solid var(--cloud-line);
 }
 
-.cloud-edge-web {
+.cloud-edge-agent {
   position: relative;
   isolation: isolate;
   overflow: hidden;
   background: #f5f8fc;
 }
 
-.cloud-edge-web::before {
+.cloud-edge-agent::before {
   position: absolute;
   z-index: -1;
   top: 20%;
@@ -38,14 +38,14 @@
   scroll-margin-top: var(--rp-nav-height);
 }
 
-.cloud-edge-web-heading,
+.cloud-edge-agent-heading,
 .cloud-industry-heading {
   max-width: 980px;
   margin: 0 auto;
   text-align: center;
 }
 
-.cloud-edge-web-heading > span,
+.cloud-edge-agent-heading > span,
 .cloud-industry-heading > span {
   color: var(--cloud-blue);
   font-family: var(--cloud-mono);
@@ -54,7 +54,7 @@
   letter-spacing: 0.12em;
 }
 
-.cloud-edge-web-heading h2,
+.cloud-edge-agent-heading h2,
 .cloud-industry-heading h2 {
   margin: 16px 0 0;
   color: var(--cloud-text);
@@ -64,7 +64,7 @@
   line-height: 1.04;
 }
 
-.cloud-edge-web-heading h3,
+.cloud-edge-agent-heading h3,
 .cloud-industry-heading h3 {
   margin: 22px 0 0;
   color: var(--cloud-blue);
@@ -74,7 +74,7 @@
   line-height: 1.2;
 }
 
-.cloud-edge-web-heading p,
+.cloud-edge-agent-heading p,
 .cloud-industry-heading p {
   max-width: 900px;
   margin: 22px auto 0;
@@ -84,7 +84,7 @@
   line-height: 1.75;
 }
 
-.cloud-edge-web-capabilities,
+.cloud-edge-agent-capabilities,
 .cloud-industry-grid {
   display: grid;
   margin-top: 62px;
@@ -92,7 +92,7 @@
   gap: 18px;
 }
 
-.cloud-edge-web-capabilities > article {
+.cloud-edge-agent-capabilities > article {
   min-width: 0;
   min-height: 402px;
   padding: 16px 18px 25px;
@@ -108,13 +108,13 @@
     transform 180ms ease;
 }
 
-.cloud-edge-web-capabilities > article:hover {
+.cloud-edge-agent-capabilities > article:hover {
   border-color: #9dbcf0;
   box-shadow: 0 24px 56px rgba(32, 91, 184, 0.12);
   transform: translateY(-4px);
 }
 
-.cloud-edge-web-capabilities figure {
+.cloud-edge-agent-capabilities figure {
   --tone: var(--cloud-blue);
   --tone-soft: var(--cloud-blue-soft);
   position: relative;
@@ -128,13 +128,13 @@
   background: color-mix(in srgb, var(--tone) 6%, #f7f9fc);
 }
 
-.cloud-edge-web-capabilities figure::before,
-.cloud-edge-web-capabilities figure::after {
+.cloud-edge-agent-capabilities figure::before,
+.cloud-edge-agent-capabilities figure::after {
   position: absolute;
   content: '';
 }
 
-.cloud-edge-web-capabilities figure::before {
+.cloud-edge-agent-capabilities figure::before {
   inset: 26px 18px;
   background:
     linear-gradient(
@@ -149,14 +149,14 @@
       center / 1px 100% no-repeat;
 }
 
-.cloud-edge-web-capabilities figure::after {
+.cloud-edge-agent-capabilities figure::after {
   width: 132px;
   height: 92px;
   border: 1px dashed color-mix(in srgb, var(--tone) 30%, transparent);
   border-radius: 22px;
 }
 
-.cloud-edge-web-capabilities figure > span {
+.cloud-edge-agent-capabilities figure > span {
   position: relative;
   z-index: 2;
   display: grid;
@@ -170,7 +170,7 @@
   box-shadow: 0 16px 32px color-mix(in srgb, var(--tone) 16%, transparent);
 }
 
-.cloud-edge-web-capabilities figure > i {
+.cloud-edge-agent-capabilities figure > i {
   position: absolute;
   z-index: 3;
   width: 10px;
@@ -181,43 +181,43 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent);
 }
 
-.cloud-edge-web-capabilities figure > i.is-signal-a {
+.cloud-edge-agent-capabilities figure > i.is-signal-a {
   top: 27px;
   left: 29px;
 }
 
-.cloud-edge-web-capabilities figure > i.is-signal-b {
+.cloud-edge-agent-capabilities figure > i.is-signal-b {
   top: 50%;
   right: 25px;
   transform: translateY(-50%);
 }
 
-.cloud-edge-web-capabilities figure > i.is-signal-c {
+.cloud-edge-agent-capabilities figure > i.is-signal-c {
   bottom: 25px;
   left: 46px;
 }
 
-.cloud-edge-web-capabilities figure.is-tone-2 {
+.cloud-edge-agent-capabilities figure.is-tone-2 {
   --tone: #3977de;
   --tone-soft: #eaf2ff;
 }
 
-.cloud-edge-web-capabilities figure.is-tone-3 {
+.cloud-edge-agent-capabilities figure.is-tone-3 {
   --tone: #0f8bad;
   --tone-soft: #e8f8fc;
 }
 
-.cloud-edge-web-capabilities figure.is-tone-4 {
+.cloud-edge-agent-capabilities figure.is-tone-4 {
   --tone: #6556c3;
   --tone-soft: #f2eeff;
 }
 
-.cloud-edge-web-capabilities figure.is-tone-5 {
+.cloud-edge-agent-capabilities figure.is-tone-5 {
   --tone: #0c8c69;
   --tone-soft: #eaf8f3;
 }
 
-.cloud-edge-web-capabilities article > small {
+.cloud-edge-agent-capabilities article > small {
   color: var(--cloud-blue);
   font-family: var(--cloud-mono);
   font-size: 9px;
@@ -225,7 +225,7 @@
   letter-spacing: 0.05em;
 }
 
-.cloud-edge-web-capabilities h4,
+.cloud-edge-agent-capabilities h4,
 .cloud-industry-grid h4 {
   margin: 10px 0 0;
   color: var(--cloud-text);
@@ -235,7 +235,7 @@
   line-height: 1.2;
 }
 
-.cloud-edge-web-capabilities article > p,
+.cloud-edge-agent-capabilities article > p,
 .cloud-industry-grid article > p {
   margin: 15px 0 0;
   color: var(--cloud-muted);
@@ -243,7 +243,7 @@
   line-height: 1.65;
 }
 
-.cloud-edge-web-foundation,
+.cloud-edge-agent-foundation,
 .cloud-industry-foundation {
   display: grid;
   margin-top: 32px;
@@ -257,7 +257,7 @@
   box-shadow: 0 22px 54px rgba(57, 96, 157, 0.12);
 }
 
-.cloud-edge-web-foundation > header,
+.cloud-edge-agent-foundation > header,
 .cloud-industry-foundation > header {
   display: flex;
   min-width: 0;
@@ -265,7 +265,7 @@
   gap: 15px;
 }
 
-.cloud-edge-web-foundation > header > span,
+.cloud-edge-agent-foundation > header > span,
 .cloud-industry-foundation > header > span {
   display: grid;
   width: 52px;
@@ -277,19 +277,19 @@
   background: var(--cloud-blue-soft);
 }
 
-.cloud-edge-web-foundation strong,
-.cloud-edge-web-foundation small,
+.cloud-edge-agent-foundation strong,
+.cloud-edge-agent-foundation small,
 .cloud-industry-foundation strong,
 .cloud-industry-foundation small {
   display: block;
 }
 
-.cloud-edge-web-foundation strong,
+.cloud-edge-agent-foundation strong,
 .cloud-industry-foundation strong {
   font-size: 16px;
 }
 
-.cloud-edge-web-foundation small,
+.cloud-edge-agent-foundation small,
 .cloud-industry-foundation small {
   margin-top: 5px;
   color: var(--cloud-muted);
@@ -297,14 +297,14 @@
   line-height: 1.5;
 }
 
-.cloud-edge-web-foundation > div,
+.cloud-edge-agent-foundation > div,
 .cloud-industry-foundation > div {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.cloud-edge-web-foundation > div > span,
+.cloud-edge-agent-foundation > div > span,
 .cloud-industry-foundation > div > span {
   display: flex;
   min-height: 50px;
@@ -321,7 +321,7 @@
   text-align: center;
 }
 
-.cloud-edge-web-foundation > div > span svg,
+.cloud-edge-agent-foundation > div > span svg,
 .cloud-industry-foundation > div > span svg {
   min-width: 18px;
   color: var(--cloud-blue);
@@ -413,93 +413,93 @@
 }
 
 @media (max-width: 1180px) {
-  .cloud-edge-web-capabilities,
+  .cloud-edge-agent-capabilities,
   .cloud-industry-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .cloud-edge-web-capabilities > article:last-child,
+  .cloud-edge-agent-capabilities > article:last-child,
   .cloud-industry-grid > article:last-child {
     grid-column: span 2;
   }
 }
 
 @media (max-width: 900px) {
-  .cloud-edge-web,
+  .cloud-edge-agent,
   .cloud-industry-solutions {
     padding: 82px 24px;
     border-right: 0;
     border-left: 0;
   }
 
-  .cloud-edge-web-capabilities,
+  .cloud-edge-agent-capabilities,
   .cloud-industry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .cloud-edge-web-capabilities > article:last-child,
+  .cloud-edge-agent-capabilities > article:last-child,
   .cloud-industry-grid > article:last-child {
     grid-column: 1 / -1;
   }
 
-  .cloud-edge-web-foundation,
+  .cloud-edge-agent-foundation,
   .cloud-industry-foundation {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 620px) {
-  .cloud-edge-web,
+  .cloud-edge-agent,
   .cloud-industry-solutions {
     padding: 72px 20px;
   }
 
-  .cloud-edge-web-heading h2,
+  .cloud-edge-agent-heading h2,
   .cloud-industry-heading h2 {
     font-size: clamp(38px, 11vw, 48px);
   }
 
-  .cloud-edge-web-heading h3,
+  .cloud-edge-agent-heading h3,
   .cloud-industry-heading h3 {
     font-size: 21px;
   }
 
-  .cloud-edge-web-heading p,
+  .cloud-edge-agent-heading p,
   .cloud-industry-heading p {
     font-size: 14px;
   }
 
-  .cloud-edge-web-capabilities,
+  .cloud-edge-agent-capabilities,
   .cloud-industry-grid {
     margin-top: 42px;
     grid-template-columns: 1fr;
   }
 
-  .cloud-edge-web-capabilities > article,
-  .cloud-edge-web-capabilities > article:last-child,
+  .cloud-edge-agent-capabilities > article,
+  .cloud-edge-agent-capabilities > article:last-child,
   .cloud-industry-grid > article,
   .cloud-industry-grid > article:last-child {
     min-height: 0;
     grid-column: auto;
   }
 
-  .cloud-edge-web-capabilities figure {
+  .cloud-edge-agent-capabilities figure {
     height: 150px;
   }
 
-  .cloud-edge-web-foundation,
+  .cloud-edge-agent-foundation,
   .cloud-industry-foundation {
     padding: 22px;
   }
 
-  .cloud-edge-web-foundation > div,
+  .cloud-edge-agent-foundation > div,
   .cloud-industry-foundation > div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cloud-edge-web-capabilities > article,
+  .cloud-edge-agent-capabilities > article,
   .cloud-industry-grid > article {
     transition: none;
   }

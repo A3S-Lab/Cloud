@@ -97,7 +97,7 @@ not lost when the implementation is made A3S-native:
 | --- | --- | --- |
 | TokenHub-style private model gateway | Typed model protocols, Provider catalog and routing, project/environment keys, external OIDC identity federation, role-focused workspaces, diagnostics, API exploration, prompt-free usage and cost attribution, plus optional protocol/subscription channels | `C0.3`, `I0.2b` through `I0.2e`, `I0.5`, optional `I0.6`; commercial billing stays external and no TokenHub API/UI/storage compatibility is required |
 | Google AX-style distributed Harness runtime | Isolated heterogeneous providers, one semantic event writer and reconnect stream, immutable invocation profiles, approvals, resume, checkpoints, forks, trajectories, and telemetry correlation | `A1.1` through `A1.6`, `BX0`, and `H0`; no AX controller, event log, scheduler, config authority, or wire compatibility enters Cloud |
-| Dify-style public commercial core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, Web/API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
+| Commercial application-platform core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, Web/API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
 | Cross-layer security operations | Authorized correlation of Gateway policy, Agent semantics, Runtime/Box and host evidence, tenant-scoped detections, investigation timelines, signed export, and explicit enforcement through the owning context | `C0.3` plus `E0`/`H0.5` evidence foundations; no fourth control plane, security node channel, telemetry-driven mutation, or second audit store |
 
 The [architecture reference capability register](architecture.md#21-reference-capability-preservation-register)
@@ -4141,9 +4141,9 @@ scheduling, persistence slices, crash points, and exit evidence.
 A milestone is complete only when all of the following are true:
 
 - The capability-preservation check passes; removing a native Cloud,
-  TokenHub-inspired, Google AX-inspired, Dify-inspired public core, or
-  cross-layer security outcome requires an explicit architecture migration and
-  replacement evidence.
+  TokenHub-inspired, Google AX-inspired, commercial application-platform core,
+  or cross-layer security outcome requires an explicit architecture migration
+  and replacement evidence.
 - `APP0`, `K0`, and `AUT0` evidence updates the versioned ACL parity manifest;
   every required Workflow node and Knowledge Pipeline source/processor/chunk/
   index/input/debug item names one owner, verified dependency, recovery fixture,

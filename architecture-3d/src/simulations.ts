@@ -44,8 +44,8 @@ export interface SimulationScenario {
 export const SIMULATION_ENTRIES: readonly SimulationEntry[] = [
   {
     id: 'web',
-    label: 'A3S Web Console',
-    shortLabel: 'A3S Web',
+    label: 'Cloud Console',
+    shortLabel: 'Cloud Console',
     description:
       'An operator uses the management SPA, whose same-origin API calls cross A3S Gateway before reaching Cloud.',
     nodeIds: ['clients', 'web', 'gateway', 'api'],
@@ -376,7 +376,7 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       {
         id: 'render-operation',
         title: 'Render progress and recovery state',
-        actor: 'A3S Web/Code · Operations',
+        actor: 'Cloud Console/Code · Operations',
         description:
           'The selected surface displays durable operation history, cancellation, replay, and repair without owning business rules.',
         nodeIds: ['web', 'code-tui', 'gateway', 'api', 'operations', 'flow'],

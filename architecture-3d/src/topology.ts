@@ -169,7 +169,7 @@ export const ARCHITECTURE_HOSTING_RELATIONSHIPS: readonly ArchitectureHostingRel
     guestNodeIds: ['web'],
     label: 'private SPA service',
     description:
-      'Gateway routes non-API same-origin requests to the private service that delivers the A3S Web management SPA.',
+      'Gateway routes non-API same-origin requests to the private service that delivers the Cloud management SPA.',
     hostAction: 'routes non-API paths to',
     guestAction: 'served behind',
     boundary:
