@@ -3311,7 +3311,7 @@ The [2026-08-30 Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/333
 and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
 pass the complete C1/C2 repository gate.
 
-Component-only `WI2-C3a` is now implemented locally. Identity publishes one
+Component-only `WI2-C3a` is now verified on main. Identity publishes one
 generic `a3s.cloud.workload-runtime-execution-authorization.v1` fact and keeps
 policy/trust lifecycle private. The internal owner read fences the canonical
 Installation even for an absent policy, then locks current TrustDomain before
@@ -3333,8 +3333,10 @@ rather than overwriting it or reinterpreting policy. Historic workflow
 versions and legacy Deployments remain unmodified and unbackfilled, so an
 unattached Unit requires a new rollout even when its revision is unchanged.
 The local locked metadata, workspace/all-targets test, Clippy `-D warnings`,
-rustdoc `-D warnings`, and focused component gates pass; main verification
-remains pending for this slice. `WI2-C3b` next adds the one Identity-owned
+rustdoc `-D warnings`, and focused component gates pass. The complete
+[C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
+also pass. `WI2-C3b` next adds the one Identity-owned
 immutable PostgreSQL evidence history with
 idempotency/concurrency/revocation gates. Then `WI2-C4` adds a Fleet-owned Node
 hardware-attestation fact plus a new

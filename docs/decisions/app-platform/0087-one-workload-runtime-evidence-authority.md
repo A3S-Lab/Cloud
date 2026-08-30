@@ -5,6 +5,7 @@ Status: Accepted
 Date: 2026-08-30
 Owners: Identity, Workloads, Fleet, Runtime, Box
 Gate: `H0.4-WI2`
+Evidence: [main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762), [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
 
 ## Context
 

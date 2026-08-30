@@ -59,14 +59,16 @@ The workload-identity sub-lane of `CLOUD-R1/R2` has a verified WI1 trust-policy
 foundation and verified `WI2-C1/C2` evidence/owner-port composition. The
 [Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529)
 and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
-pass that exact gate. Component-only `WI2-C3a` is implemented locally: Identity
-publishes one generic current-policy authorization fact, and Workloads migration
-`180` persists an immutable pre-scheduling bound or explicit no-policy outcome
-used by ordinary, placement-group and reconciliation projection. Legacy Units
-are not relabelled or backfilled. NodePool lineage is checked before reservation
-and in the final placement transaction; concurrent Flow workers adopt the first
-valid committed outcome. Next come C3b's one Identity evidence history
-and C4's Fleet hardware-attestation fact/full versioned decision; V1 cannot
+pass that exact gate. Component-only `WI2-C3a` is verified by the complete
+[C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830):
+Identity publishes one generic current-policy authorization fact, and Workloads
+migration `180` persists an immutable pre-scheduling bound or explicit no-policy
+outcome used by ordinary, placement-group and reconciliation projection. Legacy
+Units are not relabelled or backfilled. NodePool lineage is checked before
+reservation and in the final placement transaction; concurrent Flow workers
+adopt the first valid committed outcome. Next come C3b's one Identity evidence
+history and C4's Fleet hardware-attestation fact/full versioned decision; V1 cannot
 authorize issuance. Redis, Lane or a copied lifecycle cannot replace those
 gates.
 

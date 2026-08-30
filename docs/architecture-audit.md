@@ -155,7 +155,7 @@ binding and, for placement groups, the exact immutable member plan and
 role-specific template; there is no leader special-case evidence path. It adds
 no persistence, cache, lock, queue, retry, event or provider lifecycle. C2 is
 only an expected-Spec verifier and cannot relabel an already running Unit.
-Component-only `WI2-C3a` now implements the sole Workloads
+Verified component-only `WI2-C3a` implements the sole Workloads
 persistence/admission slice. Identity publishes one generic owner fact through
 one Workloads ACL; migration `180` commits either its exact semantics or an
 explicit no-policy outcome against the new Deployment before scheduling.
@@ -167,8 +167,10 @@ Identity evidence-history persistence/concurrency slice. C2's transient owner
 reads use Fleet's one pool/Node/control repository and Workloads' separate sole
 Claim plus shared Workload/placement-group repositories, then optimistically
 double-collect their versioned heads. A concurrent head, session or observation
-change therefore conflicts instead of producing a torn fact. C4 remains the
-sole Fleet hardware-attestation slice.
+change therefore conflicts instead of producing a torn fact. The complete
+[C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
+pass. C4 remains the sole Fleet hardware-attestation slice.
 
 ### 5.2 Source and software supply chain
 

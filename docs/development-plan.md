@@ -6273,7 +6273,7 @@ and Box provider conformance run
 [`33310808538`](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
 pass the complete C1/C2 gate.
 
-Component-only `WI2-C3a` is implemented locally. Identity publishes only exact
+Component-only `WI2-C3a` is verified on main. Identity publishes only exact
 lineage and generic Runtime class, isolation, semantics, opaque attachment,
 NodePool and acceptance time. Its internal owner read serializes current and
 absent-policy snapshots through the existing Installation fence, locks current
@@ -6290,8 +6290,10 @@ attached isolation/identity semantics. Concurrent Flow workers adopt the first
 valid committed row after an idempotency race. Historic workflow
 versions and legacy Deployments are not backfilled or relabelled. The local
 locked metadata, workspace/all-targets test, Clippy `-D warnings`, rustdoc
-`-D warnings`, and focused component gates pass; main verification remains
-pending.
+`-D warnings`, and focused component gates pass. The complete
+[C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
+also pass.
 Implement `WI2-C3b` next through the one Identity-owned immutable PostgreSQL
 evidence history plus retained
 idempotency/replay/concurrency/revocation tests. Implement the missing

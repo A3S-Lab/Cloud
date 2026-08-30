@@ -315,7 +315,7 @@ imports and duplicate mechanisms from spreading while known debt is removed.
 
 ## Delivery status
 
-The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
+The portfolio is gate-driven, not percentage-driven. As of **2026-08-31**:
 
 | Lane | Evidence state |
 | --- | --- |
@@ -325,7 +325,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a component implemented locally.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a now production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; current ordinary, placement-group and reconciliation paths share it, while legacy Deployments remain unmodified. This slice still awaits main verification, and Identity evidence history, Fleet hardware attestation, issuance, enforcement, revocation, and federation remain open |
+| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a component verified on main.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; current ordinary, placement-group and reconciliation paths share it, while legacy Deployments remain unmodified. The complete [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. Identity evidence history, Fleet hardware attestation, issuance, enforcement, revocation, and federation remain open |
 | FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
