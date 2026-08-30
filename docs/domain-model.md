@@ -371,7 +371,7 @@ delivery, discovery, peer policy, enforcement, revocation drills, and
 federation evidence remain open. No workload identity availability is claimed
 by `WI1`.
 
-#### Workload Runtime evidence (`H0.4-WI2-C1/C2` verified; `C3a` verified; `C3b` implemented)
+#### Workload Runtime evidence (`H0.4-WI2-C1/C2/C3a/C3b` verified)
 
 `WorkloadRuntimeEvidenceBinding` is an immutable Identity decision projection,
 not another Workload, Claim, Node, Runtime or attestation aggregate. Its
@@ -448,6 +448,9 @@ after a policy successor. No Workloads/Fleet lifecycle, provider parser,
 public API, cache, queue, Redis/Lane correctness lock, Audit/Outbox rail, or
 workflow version is added. `WI2-C4` then adds Fleet's immutable hardware
 evidence and a new versioned decision before `WI3` can issue credentials.
+The [C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058)
+and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079)
+retain this boundary on main.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

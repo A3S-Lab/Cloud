@@ -104,7 +104,9 @@ evidence, and federation certification remain absent.
 `H0.4-WI2-C1/C2` now provide the deterministic non-authorizing Identity
 binding and the sole Workloads/Fleet owner-port chain. Verified C3a moves its
 generic execution attachment into one immutable pre-scheduling Workloads fact.
-Component-only C3b is implemented pending retained main certification:
+Component-only C3b is verified by the
+[C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079):
 migration `181` and the existing Identity PostgreSQL repository persist one
 typed immutable Runtime evidence history with exact historic replay, current
 Policy/TrustDomain fencing, deterministic same-fact adoption and a retained

@@ -153,6 +153,11 @@ replacement. There is no provider-document parser, owner lifecycle table,
 REST surface, workflow version, cache, Redis/Lane lock, queue, Audit/Outbox, or
 parallel evidence registry.
 
+The [C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058)
+certifies migration `181` and the PostgreSQL concurrency/replay/immutability
+gate. The [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079)
+retains the owner-provider boundary without adding another Runtime mechanism.
+
 ## Consequences
 
 - Agent, Workflow, Function, MCP, Durable Cell, inference, build, Gateway and

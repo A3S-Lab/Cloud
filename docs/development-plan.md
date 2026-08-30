@@ -6294,7 +6294,9 @@ locked metadata, workspace/all-targets test, Clippy `-D warnings`, rustdoc
 [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
 [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
 also pass.
-Component-only `WI2-C3b` is implemented pending retained main certification.
+Component-only `WI2-C3b` is verified by the
+[C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079).
 `WorkloadRuntimeEvidenceRecorder` performs exact historic replay before any
 current read. A replay miss uses the sole current-policy and owner-candidate
 ports, admits one deterministic

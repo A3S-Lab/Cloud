@@ -3336,8 +3336,10 @@ The local locked metadata, workspace/all-targets test, Clippy `-D warnings`,
 rustdoc `-D warnings`, and focused component gates pass. The complete
 [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
 [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
-also pass. Component-only `WI2-C3b` is implemented pending retained main
-certification. One internal Identity recorder first resolves only an exact
+also pass. Component-only `WI2-C3b` is verified on main. The
+[C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) and
+[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079)
+pass. One internal Identity recorder first resolves only an exact
 historic idempotency replay; a miss reads the current policy through the shared
 Installation/TrustDomain/Policy fence, obtains the sole Workloads/Fleet
 candidate, and admits
