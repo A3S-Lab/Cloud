@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 180;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "180";
+pub const CLOUD_MIGRATION_COUNT: i64 = 181;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "181";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1649,6 +1649,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/180_deployment_runtime_execution_bindings.sql"
             )),
         ),
+        Migration::new(
+            "181",
+            "Identity workload Runtime evidence history",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/181_workload_runtime_evidence_history.sql"
+            )),
+        ),
     ]
 }
 
@@ -1667,6 +1675,10 @@ mod installation_scoped_facts_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/platform_rbac_authority_migration.rs"]
 mod platform_rbac_authority_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/workload_runtime_evidence_history_migration.rs"]
+mod workload_runtime_evidence_history_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/tenant_support_grant_approvals_migration.rs"]

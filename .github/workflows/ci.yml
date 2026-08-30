@@ -105,7 +105,7 @@ jobs:
           echo "::error title=Platform RBAC multi-replica authority gate failed::$detail"
           exit 1
 
-      - name: Certify revisioned workload trust and revocation fencing
+      - name: Certify workload trust, immutable Runtime evidence, and revocation fencing
         run: |
           log="$RUNNER_TEMP/a3s-cloud-workload-trust-authority.log"
           if cargo test --locked -p a3s-cloud-control-plane \
@@ -118,7 +118,7 @@ jobs:
           detail=${detail//'%'/'%25'}
           detail=${detail//$'\r'/'%0D'}
           detail=${detail//$'\n'/'%0A'}
-          echo "::error title=Workload trust authority gate failed::$detail"
+          echo "::error title=Workload trust and Runtime evidence authority gate failed::$detail"
           exit 1
 
       - name: Certify actual tenant-support approval evidence

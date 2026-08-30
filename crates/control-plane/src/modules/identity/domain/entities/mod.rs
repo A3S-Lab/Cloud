@@ -52,6 +52,7 @@ pub use tenant_support_grant_approval::{
 pub use workload_identity::{AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision};
 pub use workload_runtime_evidence_binding::{
     WorkloadRuntimeEvidenceBinding, WorkloadRuntimeEvidenceBindingId,
-    WorkloadRuntimeEvidenceCandidate, MAX_WORKLOAD_RUNTIME_EVIDENCE_AGE_SECONDS,
-    WORKLOAD_RUNTIME_EVIDENCE_BINDING_SCHEMA,
+    WorkloadRuntimeEvidenceCandidate, WorkloadRuntimeEvidenceRecord,
+    MAX_WORKLOAD_RUNTIME_EVIDENCE_AGE_SECONDS, WORKLOAD_RUNTIME_EVIDENCE_BINDING_SCHEMA,
+    WORKLOAD_RUNTIME_EVIDENCE_RECORD_SCHEMA,
 };

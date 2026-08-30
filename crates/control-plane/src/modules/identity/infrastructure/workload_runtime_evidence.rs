@@ -163,7 +163,9 @@ impl IWorkloadRuntimeEvidenceCandidatePort for OwnerWorkloadRuntimeEvidenceAdapt
             runtime_observed_at: fleet.runtime_observed_at(),
             runtime_received_at: fleet.runtime_received_at(),
         };
-        candidate.validate().map_err(admission_error)?;
+        request
+            .validate_candidate(&candidate)
+            .map_err(admission_error)?;
         Ok(candidate)
     }
 }

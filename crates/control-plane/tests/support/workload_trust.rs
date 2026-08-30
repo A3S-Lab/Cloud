@@ -1,17 +1,20 @@
 use super::*;
-use a3s_cloud_contracts::{RuntimeIsolationLevel, RuntimeUnitClass};
+use a3s_cloud_contracts::{RuntimeIsolationLevel, RuntimeUnitClass, RuntimeUnitState};
 use a3s_cloud_control_plane::modules::identity::domain::entities::{
     AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
     AcceptedWorkloadIdentityPolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
+    WorkloadRuntimeEvidenceCandidate,
 };
 use a3s_cloud_control_plane::modules::identity::domain::events::ApiTokenRevoked;
 use a3s_cloud_control_plane::modules::identity::domain::repositories::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,
     BootstrapPlatformRbacWrite, CreatePlatformRoleBindingWrite, IApiTokenRepository,
     IPlatformRbacRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
-    ListTrustDomainRevisions, ListWorkloadIdentityPolicyRevisions, ReadCurrentTrustDomain,
-    ReadCurrentWorkloadIdentityPolicy, ReadCurrentWorkloadIdentityPolicyForWorkload,
-    ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
+    IWorkloadRuntimeEvidenceRepository, ListTrustDomainRevisions,
+    ListWorkloadIdentityPolicyRevisions, ListWorkloadRuntimeEvidenceHistory,
+    ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
+    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadTrustDomainRevision,
+    ReadWorkloadIdentityPolicyRevision, ReadWorkloadRuntimeEvidence,
 };
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     ApiTokenScope, PlatformRole, PlatformRolePolicyContract, PrivateServiceName,
@@ -19,12 +22,16 @@ use a3s_cloud_control_plane::modules::identity::domain::value_objects::{
     WorkloadIdentityFormat, WorkloadIdentityPolicyContract, WorkloadIdentityPolicySpec,
     WorkloadIdentityRevocationMode, WorkloadProductRole,
 };
-use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
+use a3s_cloud_control_plane::modules::identity::{
+    IWorkloadRuntimeEvidenceCandidatePort, PostgresIdentityRepository,
+    RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    NodePoolId, PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId, Sha256Digest,
-    TrustDomainId, WorkloadId, WorkloadIdentityPolicyId, WorkloadRevisionId,
+    NodeId, NodePoolId, PlatformRoleBindingId, PlatformRolePolicyId, PrincipalId, ResourceClaimId,
+    Sha256Digest, TrustDomainId, WorkloadId, WorkloadIdentityPolicyId, WorkloadRevisionId,
 };
 use chrono::Duration as ChronoDuration;
+use std::sync::Arc;
 
 pub async fn exercise_workload_trust_authority(
     postgres_url: String,
@@ -483,6 +490,197 @@ pub async fn exercise_workload_trust_authority(
         2
     );
 
+    let evidence_at = now + ChronoDuration::seconds(8);
+    let baseline_claim_id = ResourceClaimId::new();
+    let baseline_candidate = runtime_evidence_candidate(
+        &current_policy,
+        baseline_claim_id,
+        evidence_at,
+        "runtime:agent:baseline",
+    );
+    let baseline_port: Arc<dyn IWorkloadRuntimeEvidenceCandidatePort> =
+        Arc::new(FixedRuntimeEvidenceCandidate {
+            candidate: baseline_candidate,
+        });
+    let recorder_a = WorkloadRuntimeEvidenceRecorder::new(
+        Arc::new(repository_a.clone()),
+        baseline_port.clone(),
+        Arc::new(repository_a.clone()),
+    );
+    let recorder_b = WorkloadRuntimeEvidenceRecorder::new(
+        Arc::new(repository_b.clone()),
+        baseline_port,
+        Arc::new(repository_b.clone()),
+    );
+    let baseline_admission_id = Uuid::now_v7();
+    let baseline_command = RecordWorkloadRuntimeEvidence::new(
+        baseline_admission_id,
+        installation_id,
+        organization_id,
+        workload_id,
+        baseline_claim_id,
+        evidence_at,
+    )?;
+    let (baseline_a, baseline_b) = tokio::join!(
+        recorder_a.record(baseline_command),
+        recorder_b.record(baseline_command)
+    );
+    let (baseline_a, baseline_b) = (baseline_a?, baseline_b?);
+    assert_ne!(
+        baseline_a.replayed, baseline_b.replayed,
+        "one admission must commit and its concurrent duplicate must replay"
+    );
+    assert_eq!(baseline_a.value, baseline_b.value);
+    assert!(!baseline_a.value.authorizes_credential_issuance());
+    let baseline_binding_id = baseline_a.value.binding().id;
+    assert_eq!(
+        IWorkloadRuntimeEvidenceRepository::read(
+            &repository_a,
+            ReadWorkloadRuntimeEvidence {
+                installation_id,
+                organization_id,
+                workload_id,
+                binding_id: baseline_binding_id,
+            },
+        )
+        .await?,
+        Some(baseline_a.value.clone())
+    );
+    assert_eq!(
+        IWorkloadRuntimeEvidenceRepository::list_history(
+            &repository_b,
+            ListWorkloadRuntimeEvidenceHistory {
+                installation_id,
+                organization_id,
+                workload_id,
+                limit: 10,
+            },
+        )
+        .await?,
+        vec![baseline_a.value.clone()]
+    );
+
+    let drifted_replay_command = RecordWorkloadRuntimeEvidence::new(
+        baseline_admission_id,
+        installation_id,
+        organization_id,
+        workload_id,
+        baseline_claim_id,
+        evidence_at + ChronoDuration::milliseconds(1),
+    )?;
+    assert!(matches!(
+        recorder_a.record(drifted_replay_command).await,
+        Err(RepositoryError::IdempotencyConflict)
+    ));
+
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "update workload_runtime_evidence_history set binding_digest = binding_digest where binding_id = ",
+                )
+                .bind(baseline_binding_id.as_uuid()),
+            )
+            .await
+            .is_err(),
+        "workload Runtime evidence history must reject updates"
+    );
+    assert!(
+        database
+            .execute(
+                sql_query::<()>(
+                    "delete from workload_runtime_evidence_history where binding_id = ",
+                )
+                .bind(baseline_binding_id.as_uuid()),
+            )
+            .await
+            .is_err(),
+        "workload Runtime evidence history must reject deletes"
+    );
+
+    let race_evidence_at = now + ChronoDuration::seconds(9);
+    let race_claim_id = ResourceClaimId::new();
+    let race_candidate = runtime_evidence_candidate(
+        &current_policy,
+        race_claim_id,
+        race_evidence_at,
+        "runtime:agent:policy-race",
+    );
+    let race_recorder = WorkloadRuntimeEvidenceRecorder::new(
+        Arc::new(repository_a.clone()),
+        Arc::new(FixedRuntimeEvidenceCandidate {
+            candidate: race_candidate,
+        }),
+        Arc::new(repository_a.clone()),
+    );
+    let race_evidence_command = RecordWorkloadRuntimeEvidence::new(
+        Uuid::now_v7(),
+        installation_id,
+        organization_id,
+        workload_id,
+        race_claim_id,
+        race_evidence_at,
+    )?;
+    let policy_three =
+        successor_policy(&current_policy, owner, "model-c.internal", race_evidence_at)?;
+    let policy_three_write = policy_write(
+        policy_three.clone(),
+        current_policy.id,
+        owner,
+        owner_credential.id,
+        "wi2-c3b-policy-three",
+    )?;
+    let (race_evidence_result, policy_three_result) = tokio::join!(
+        race_recorder.record(race_evidence_command),
+        IWorkloadIdentityPolicyRepository::accept(&repository_b, policy_three_write)
+    );
+    assert_eq!(policy_three_result?.value, policy_three);
+    let race_evidence_committed = match race_evidence_result {
+        Ok(value) => {
+            assert!(!value.value.authorizes_credential_issuance());
+            true
+        }
+        Err(RepositoryError::Conflict(_)) => false,
+        Err(error) => {
+            return Err(format!(
+                "Runtime evidence and policy successor were not serialized: {error:?}"
+            )
+            .into())
+        }
+    };
+
+    assert!(
+        recorder_a.record(baseline_command).await?.replayed,
+        "an exact historic admission must replay after Policy replacement"
+    );
+    let stale_command = RecordWorkloadRuntimeEvidence::new(
+        Uuid::now_v7(),
+        installation_id,
+        organization_id,
+        workload_id,
+        baseline_claim_id,
+        evidence_at,
+    )?;
+    assert!(matches!(
+        recorder_a.record(stale_command).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        IWorkloadRuntimeEvidenceRepository::list_history(
+            &repository_a,
+            ListWorkloadRuntimeEvidenceHistory {
+                installation_id,
+                organization_id,
+                workload_id,
+                limit: 10,
+            },
+        )
+        .await?
+        .len(),
+        if race_evidence_committed { 2 } else { 1 },
+        "Policy/evidence race must leave no partial or duplicate history"
+    );
+
     let mut drifted_replay = trust_one_write;
     drifted_replay.idempotency = IdempotencyRequest::new(
         "tests/workload-trust/trust-domain",
@@ -584,13 +782,75 @@ pub async fn exercise_workload_trust_authority(
     assert_eq!(
         evidence,
         if race_committed {
-            (1, 3, 1, 2, 5, 5)
+            (1, 3, 1, 3, 6, 6)
         } else {
-            (1, 2, 1, 2, 4, 4)
+            (1, 2, 1, 3, 5, 5)
         },
         "workload trust heads, immutable histories, Outbox and Audit must commit exactly once"
     );
     Ok(())
+}
+
+struct FixedRuntimeEvidenceCandidate {
+    candidate: WorkloadRuntimeEvidenceCandidate,
+}
+
+#[async_trait::async_trait]
+impl IWorkloadRuntimeEvidenceCandidatePort for FixedRuntimeEvidenceCandidate {
+    async fn read_candidate(
+        &self,
+        request: WorkloadRuntimeEvidenceRequest,
+    ) -> Result<WorkloadRuntimeEvidenceCandidate, RepositoryError> {
+        request
+            .validate_candidate(&self.candidate)
+            .map_err(RepositoryError::Conflict)?;
+        Ok(self.candidate.clone())
+    }
+}
+
+fn runtime_evidence_candidate(
+    policy: &AcceptedWorkloadIdentityPolicyRevision,
+    resource_claim_id: ResourceClaimId,
+    observed_at: chrono::DateTime<Utc>,
+    runtime_unit_id: &str,
+) -> WorkloadRuntimeEvidenceCandidate {
+    let spec = policy.contract.spec();
+    WorkloadRuntimeEvidenceCandidate {
+        installation_id: policy.installation_id,
+        organization_id: spec.organization_id,
+        project_id: spec.project_id,
+        environment_id: spec.environment_id,
+        workload_id: spec.workload_id,
+        workload_revision_id: spec.workload_revision_id,
+        resource_claim_id,
+        resource_claim_generation: 1,
+        resource_claim_aggregate_version: 1,
+        resource_claim_digest: digest('e'),
+        resource_binding_digest: digest('f'),
+        node_pool_id: spec.node_pool_id,
+        node_pool_aggregate_version: 1,
+        node_pool_spec_digest: digest('9'),
+        node_id: NodeId::new(),
+        node_aggregate_version: 1,
+        agent_instance_id: Uuid::now_v7(),
+        node_capabilities_digest: digest('5'),
+        node_last_observed_at: observed_at,
+        runtime_report_id: Uuid::now_v7(),
+        runtime_unit_id: runtime_unit_id.into(),
+        runtime_generation: 1,
+        runtime_class: spec.runtime_class,
+        isolation_level: spec.isolation_level,
+        semantics_profile_digest: spec.semantics_profile_digest.clone(),
+        identity_attachment_digest: policy.contract.digest().clone(),
+        runtime_spec_digest: digest('4'),
+        runtime_attestation_binding_digest: digest('3'),
+        provider_attestation_digest: digest('2'),
+        provider_resource_id: format!("a3s-box:{runtime_unit_id}"),
+        provider_build: "a3s-box/3.2.0".into(),
+        runtime_state: RuntimeUnitState::Running,
+        runtime_observed_at: observed_at,
+        runtime_received_at: observed_at,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

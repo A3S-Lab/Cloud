@@ -8,8 +8,8 @@ pub use application::{
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
     IWorkloadRuntimeExecutionAuthorizationQueryPort,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
-    WorkloadRuntimeEvidenceRequest, WorkloadRuntimeExecutionAuthorizationQuery,
-    WorkloadRuntimeExecutionAuthorizationQueryService,
+    RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
+    WorkloadRuntimeExecutionAuthorizationQuery, WorkloadRuntimeExecutionAuthorizationQueryService,
 };
 
 pub use application::commands::accept_membership_invitation::{
@@ -122,7 +122,7 @@ pub use domain::repositories::{
     IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
     IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
     IResourceAuthorizationDecisionRepository, ITenantSupportGrantRepository,
-    ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    ITrustDomainRepository, IWorkloadIdentityPolicyRepository, IWorkloadRuntimeEvidenceRepository,
 };
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,

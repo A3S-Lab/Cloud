@@ -12,6 +12,7 @@ mod resource_authorization_decision_repository;
 mod resource_grant_repository;
 mod tenant_support_grant_repository;
 mod workload_identity_repository;
+mod workload_runtime_evidence_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
 pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstrapRepository};
@@ -62,4 +63,12 @@ pub use workload_identity_repository::{
     ReadCurrentWorkloadIdentityPolicyForRuntime, ReadCurrentWorkloadIdentityPolicyForWorkload,
     ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+};
+pub use workload_runtime_evidence_repository::{
+    workload_runtime_evidence_idempotency, workload_runtime_evidence_idempotency_scope,
+    IWorkloadRuntimeEvidenceRepository, ListWorkloadRuntimeEvidenceHistory,
+    ReadWorkloadRuntimeEvidence, RecordWorkloadRuntimeEvidenceWrite,
+    ReplayWorkloadRuntimeEvidenceAdmission, DEFAULT_WORKLOAD_RUNTIME_EVIDENCE_HISTORY_PAGE,
+    MAX_WORKLOAD_RUNTIME_EVIDENCE_HISTORY_PAGE, WORKLOAD_RUNTIME_EVIDENCE_ADMISSION_SCHEMA,
+    WORKLOAD_RUNTIME_EVIDENCE_IDEMPOTENCY_SCOPE,
 };

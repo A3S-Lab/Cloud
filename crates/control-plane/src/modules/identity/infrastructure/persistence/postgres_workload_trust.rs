@@ -274,6 +274,76 @@ async fn load_organization_installation_for_runtime(
     .map(|value| value.map(InstallationId::from_uuid))
 }
 
+/// Sole Runtime admission read of the current TrustDomain + workload policy
+/// lineage after the caller has acquired the canonical Installation fence.
+pub(super) async fn load_current_runtime_policy_under_installation_fence(
+    transaction: &a3s_orm::PostgresTransaction,
+    installation_id: InstallationId,
+    organization_id: OrganizationId,
+    workload_id: crate::modules::shared_kernel::domain::WorkloadId,
+) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, PostgresPersistenceError> {
+    let locked_installation = load_organization_installation_for_runtime(
+        transaction,
+        organization_id,
+        " for key share of organization",
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    if locked_installation != installation_id {
+        return Err(RepositoryError::Conflict(
+            "Workload Runtime policy organization changed Installation".into(),
+        )
+        .into());
+    }
+    let Some(candidate) =
+        load_current_workload_policy_for_runtime(transaction, organization_id, workload_id, "")
+            .await?
+    else {
+        return Ok(None);
+    };
+    let spec = candidate.contract.spec();
+    if candidate.installation_id != installation_id || spec.installation_id != installation_id {
+        return Err(RepositoryError::Conflict(
+            "Workload Runtime policy changed Installation lineage".into(),
+        )
+        .into());
+    }
+    let trust_domain = load_current_trust_domain(
+        transaction,
+        installation_id,
+        spec.trust_domain_id,
+        " for share of head, revision",
+    )
+    .await?
+    .ok_or_else(|| {
+        RepositoryError::Conflict("Workload Runtime policy has no current TrustDomain".into())
+    })?;
+    let locked_policy = load_current_workload_policy(
+        transaction,
+        installation_id,
+        organization_id,
+        candidate.policy_id,
+        " for share of head, revision",
+    )
+    .await?
+    .ok_or_else(|| {
+        RepositoryError::Conflict("Workload Runtime policy changed during admission".into())
+    })?;
+    if locked_policy != candidate
+        || locked_policy.contract.spec().workload_id != workload_id
+        || locked_policy.contract.spec().trust_domain_revision_id != trust_domain.id
+    {
+        return Err(RepositoryError::Conflict(
+            "Workload Runtime policy or TrustDomain is no longer current".into(),
+        )
+        .into());
+    }
+    locked_policy
+        .validate_against_trust_domain(&trust_domain)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    Ok(Some(locked_policy))
+}
+
 async fn load_workload_policy_revision(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,
@@ -1209,76 +1279,13 @@ impl IWorkloadIdentityPolicyRepository for PostgresIdentityRepository {
                     .await?
                     .ok_or(RepositoryError::NotFound)?;
                     lock_installation_for_authorization(transaction, installation_id).await?;
-                    let locked_installation = load_organization_installation_for_runtime(
+                    load_current_runtime_policy_under_installation_fence(
                         transaction,
-                        read.organization_id,
-                        " for key share of organization",
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)?;
-                    if locked_installation != installation_id {
-                        return Err(RepositoryError::Conflict(
-                            "Workload Runtime policy organization changed Installation".into(),
-                        )
-                        .into());
-                    }
-                    let Some(candidate) = load_current_workload_policy_for_runtime(
-                        transaction,
+                        installation_id,
                         read.organization_id,
                         read.workload_id,
-                        "",
                     )
-                    .await?
-                    else {
-                        return Ok(None);
-                    };
-                    let spec = candidate.contract.spec();
-                    if candidate.installation_id != installation_id
-                        || spec.installation_id != installation_id
-                    {
-                        return Err(RepositoryError::Conflict(
-                            "Workload Runtime policy changed Installation lineage".into(),
-                        )
-                        .into());
-                    }
-                    let trust_domain = load_current_trust_domain(
-                        transaction,
-                        installation_id,
-                        spec.trust_domain_id,
-                        " for share of head, revision",
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        RepositoryError::Conflict(
-                            "Workload Runtime policy has no current TrustDomain".into(),
-                        )
-                    })?;
-                    let locked_policy = load_current_workload_policy(
-                        transaction,
-                        installation_id,
-                        read.organization_id,
-                        candidate.policy_id,
-                        " for share of head, revision",
-                    )
-                    .await?
-                    .ok_or_else(|| {
-                        RepositoryError::Conflict(
-                            "Workload Runtime policy changed during admission".into(),
-                        )
-                    })?;
-                    if locked_policy != candidate
-                        || locked_policy.contract.spec().workload_id != read.workload_id
-                        || locked_policy.contract.spec().trust_domain_revision_id != trust_domain.id
-                    {
-                        return Err(RepositoryError::Conflict(
-                            "Workload Runtime policy or TrustDomain is no longer current".into(),
-                        )
-                        .into());
-                    }
-                    locked_policy
-                        .validate_against_trust_domain(&trust_domain)
-                        .map_err(PostgresPersistenceError::Invariant)?;
-                    Ok(Some(locked_policy))
+                    .await
                 })
             })
             .await

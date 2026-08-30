@@ -20,6 +20,8 @@ mod postgres_recipient_contacts;
 mod postgres_resource_authorization_decisions;
 mod postgres_resource_grants;
 mod postgres_tenant_support_grants;
+mod postgres_workload_runtime_evidence;
+mod postgres_workload_runtime_evidence_schema;
 mod postgres_workload_trust;
 
 pub use in_memory::InMemoryIdentityRepository;

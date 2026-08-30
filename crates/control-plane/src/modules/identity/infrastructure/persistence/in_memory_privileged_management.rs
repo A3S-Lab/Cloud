@@ -1,4 +1,5 @@
 use super::InMemoryIdentityRepository;
+use crate::modules::identity::domain::entities::WorkloadRuntimeEvidenceRecord;
 use crate::modules::identity::domain::entities::{
     AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
     AcceptedWorkloadIdentityPolicyRevision, PlatformRbacBootstrap, PlatformRoleBinding,
@@ -10,13 +11,16 @@ use crate::modules::identity::domain::repositories::{
     AcceptWorkloadIdentityPolicyRevisionWrite, ApproveTenantSupportGrantWrite,
     BootstrapPlatformRbacWrite, ChangePlatformRoleBindingWrite, CreatePlatformRoleBindingWrite,
     IPlatformRbacRepository, ITenantSupportGrantRepository, ITrustDomainRepository,
-    IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
-    ListWorkloadIdentityPolicyRevisions, ProposeTenantSupportGrantWrite,
+    IWorkloadIdentityPolicyRepository, IWorkloadRuntimeEvidenceRepository,
+    ListTrustDomainRevisions, ListWorkloadIdentityPolicyRevisions,
+    ListWorkloadRuntimeEvidenceHistory, ProposeTenantSupportGrantWrite,
     ReadCurrentPlatformRolePolicy, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
     ReadCurrentWorkloadIdentityPolicyForRuntime, ReadCurrentWorkloadIdentityPolicyForWorkload,
     ReadPlatformRoleBinding, ReadPlatformRolePolicyRevision, ReadPrincipalPlatformRoleBinding,
     ReadTenantSupportGrant, ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
-    RevokePlatformRoleBindingWrite, RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
+    ReadWorkloadRuntimeEvidence, RecordWorkloadRuntimeEvidenceWrite,
+    ReplayWorkloadRuntimeEvidenceAdmission, RevokePlatformRoleBindingWrite,
+    RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
 };
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, InstallationId, PlatformRoleBindingId, PlatformRolePolicyRevisionId,
@@ -102,6 +106,37 @@ impl IWorkloadIdentityPolicyRepository for InMemoryIdentityRepository {
         &self,
         _read: ListWorkloadIdentityPolicyRevisions,
     ) -> Result<Vec<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        unavailable()
+    }
+}
+
+#[async_trait]
+impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository {
+    async fn replay_admission(
+        &self,
+        _replay: ReplayWorkloadRuntimeEvidenceAdmission,
+    ) -> Result<Option<IdempotentWrite<WorkloadRuntimeEvidenceRecord>>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn record(
+        &self,
+        _write: RecordWorkloadRuntimeEvidenceWrite,
+    ) -> Result<IdempotentWrite<WorkloadRuntimeEvidenceRecord>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn read(
+        &self,
+        _read: ReadWorkloadRuntimeEvidence,
+    ) -> Result<Option<WorkloadRuntimeEvidenceRecord>, RepositoryError> {
+        unavailable()
+    }
+
+    async fn list_history(
+        &self,
+        _read: ListWorkloadRuntimeEvidenceHistory,
+    ) -> Result<Vec<WorkloadRuntimeEvidenceRecord>, RepositoryError> {
         unavailable()
     }
 }

@@ -2091,6 +2091,158 @@ fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter(
 }
 
 #[test]
+fn workload_runtime_evidence_history_is_one_typed_identity_authority() {
+    let root = module_root();
+    let entity = std::fs::read_to_string(
+        root.join("identity/domain/entities/workload_runtime_evidence_binding.rs"),
+    )
+    .expect("read Runtime evidence entity");
+    let repository = std::fs::read_to_string(
+        root.join("identity/domain/repositories/workload_runtime_evidence_repository.rs"),
+    )
+    .expect("read Runtime evidence repository port");
+    let recorder = std::fs::read_to_string(
+        root.join("identity/application/workload_runtime_evidence_recorder.rs"),
+    )
+    .expect("read Runtime evidence recorder");
+    let persistence = std::fs::read_to_string(
+        root.join("identity/infrastructure/persistence/postgres_workload_runtime_evidence.rs"),
+    )
+    .expect("read Runtime evidence PostgreSQL adapter");
+    let schema =
+        std::fs::read_to_string(root.join(
+            "identity/infrastructure/persistence/postgres_workload_runtime_evidence_schema.rs",
+        ))
+        .expect("read Runtime evidence ORM schema");
+    let in_memory = std::fs::read_to_string(
+        root.join("identity/infrastructure/persistence/in_memory_privileged_management.rs"),
+    )
+    .expect("read fail-closed Identity adapter");
+    let migration = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../migrations/181_workload_runtime_evidence_history.sql"),
+    )
+    .expect("read Runtime evidence migration");
+
+    assert_eq!(
+        entity
+            .matches("pub struct WorkloadRuntimeEvidenceRecord {")
+            .count(),
+        1
+    );
+    assert!(entity.contains("cloud.identity.workload-runtime-evidence-record.v1"));
+    assert!(entity.contains("pub const fn authorizes_credential_issuance(&self) -> bool"));
+    assert!(production_source(&entity).contains("false"));
+    assert_eq!(
+        repository
+            .matches("pub trait IWorkloadRuntimeEvidenceRepository")
+            .count(),
+        1
+    );
+    assert!(repository.contains("cloud.identity.workload-runtime-evidence-admission.v1"));
+    assert!(repository.contains("workload_runtime_evidence_idempotency("));
+    for required in [
+        "async fn replay_admission(",
+        "async fn record(",
+        "async fn read(",
+        "async fn list_history(",
+    ] {
+        assert!(repository.contains(required));
+    }
+
+    let replay = recorder
+        .find(".replay_admission(")
+        .expect("historic replay gate");
+    let current_policy = recorder
+        .find(".read_current_for_runtime(")
+        .expect("current policy gate");
+    let owner_candidate = recorder
+        .find(".read_candidate(")
+        .expect("owner evidence gate");
+    let commit = recorder.find(".record(").expect("history commit");
+    assert!(
+        replay < current_policy && current_policy < owner_candidate && owner_candidate < commit
+    );
+
+    assert_eq!(
+        persistence
+            .matches("impl IWorkloadRuntimeEvidenceRepository for PostgresIdentityRepository")
+            .count(),
+        1
+    );
+    for required in [
+        "idempotency_replay::<WorkloadRuntimeEvidenceRecord>",
+        "lock_installation_for_authorization",
+        "load_current_runtime_policy_under_installation_fence",
+        "advisory_xact_lock(",
+        "insert_into::<WorkloadRuntimeEvidenceHistory>",
+        "select_from::<WorkloadRuntimeEvidenceHistory>",
+        "store_idempotency(",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "Runtime evidence persistence lost {required}"
+        );
+    }
+    assert!(!production_source(&persistence).contains("sql_query"));
+    assert_eq!(schema.matches("orm_table!").count(), 1);
+    assert_eq!(
+        schema
+            .matches("=> \"workload_runtime_evidence_history\"")
+            .count(),
+        1
+    );
+    assert!(in_memory
+        .contains("impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository"));
+
+    for required in [
+        "create table workload_runtime_evidence_history",
+        "for key share of installation",
+        "workload_identity_policy_heads",
+        "trust_domain_heads",
+        "history is immutable",
+        "node_attestation_binding_digest is null",
+        "interval '120 seconds'",
+    ] {
+        assert!(
+            migration.to_ascii_lowercase().contains(required),
+            "Runtime evidence migration lost {required}"
+        );
+    }
+    assert_eq!(
+        migration
+            .to_ascii_lowercase()
+            .matches("create table workload_runtime_evidence_history")
+            .count(),
+        1
+    );
+    for forbidden in [
+        "create table resource_claim",
+        "create table node",
+        "create table runtime_unit",
+        "create queue",
+        "redis",
+        "a3s_lane",
+        "on delete cascade",
+        "on delete set null",
+    ] {
+        assert!(
+            !migration.to_ascii_lowercase().contains(forbidden),
+            "Runtime evidence history duplicated an owner or mechanism through {forbidden}"
+        );
+    }
+    for source in [&repository, &recorder, &persistence] {
+        let production = production_source(source);
+        for forbidden in ["redis", "a3s_lane", "tokio::spawn", "IOutboxRepository"] {
+            assert!(
+                !production.contains(forbidden),
+                "Runtime evidence authority duplicated coordination through {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn deployment_runtime_execution_has_one_owner_fact_one_acl_and_one_immutable_binding() {
     let root = module_root();
     let identity_fact = std::fs::read_to_string(
@@ -2189,15 +2341,29 @@ fn deployment_runtime_execution_has_one_owner_fact_one_acl_and_one_immutable_bin
     let installation_lock = runtime_read
         .find("lock_installation_for_authorization")
         .expect("Runtime policy read must fence Installation");
-    let trust_lock = runtime_read
+    let shared_runtime_read = identity_persistence
+        .split("pub(super) async fn load_current_runtime_policy_under_installation_fence(")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("async fn load_workload_policy_revision(")
+                .next()
+        })
+        .expect("isolate shared Runtime policy read");
+    let organization_lock = shared_runtime_read
+        .find("for key share of organization")
+        .expect("Runtime policy read must fence organization lineage");
+    let trust_lock = shared_runtime_read
         .find("load_current_trust_domain")
         .expect("Runtime policy read must lock current TrustDomain");
-    let policy_lock = runtime_read
+    let policy_lock = shared_runtime_read
         .rfind("load_current_workload_policy(")
         .expect("Runtime policy read must lock current policy");
-    assert!(installation_lock < trust_lock && trust_lock < policy_lock);
+    assert!(installation_lock < runtime_read.len());
+    assert!(organization_lock < trust_lock && trust_lock < policy_lock);
     assert!(runtime_read.contains("load_organization_installation_for_runtime"));
-    assert!(runtime_read.contains("return Ok(None)"));
+    assert!(runtime_read.contains("load_current_runtime_policy_under_installation_fence"));
+    assert!(shared_runtime_read.contains("return Ok(None)"));
     assert!(admission.contains("pub trait IWorkloadRuntimeExecutionAdmissionPort"));
     assert!(!production_source(&admission).contains("crate::modules::identity"));
     assert!(adapter.contains("IWorkloadRuntimeExecutionAuthorizationQueryPort"));

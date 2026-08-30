@@ -76,6 +76,33 @@ impl WorkloadRuntimeEvidenceRequest {
         Ok(())
     }
 
+    pub fn validate_candidate(
+        &self,
+        candidate: &WorkloadRuntimeEvidenceCandidate,
+    ) -> Result<(), String> {
+        self.validate()?;
+        candidate.validate()?;
+        if candidate.installation_id != self.installation_id
+            || candidate.organization_id != self.organization_id
+            || candidate.project_id != self.project_id
+            || candidate.environment_id != self.environment_id
+            || candidate.workload_id != self.workload_id
+            || candidate.workload_revision_id != self.workload_revision_id
+            || candidate.resource_claim_id != self.resource_claim_id
+            || candidate.node_pool_id != self.node_pool_id
+            || candidate.runtime_class != self.runtime_class
+            || candidate.isolation_level != self.isolation_level
+            || candidate.semantics_profile_digest != self.semantics_profile_digest
+            || candidate.identity_attachment_digest != self.identity_attachment_digest
+        {
+            return Err(
+                "workload Runtime evidence candidate changed the requested owner or execution binding"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+
     pub const fn installation_id(&self) -> InstallationId {
         self.installation_id
     }

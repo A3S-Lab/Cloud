@@ -15,7 +15,7 @@ use uuid::Uuid;
 pub struct WorkloadRuntimeEvidenceBindingId(Uuid);
 
 impl WorkloadRuntimeEvidenceBindingId {
-    const fn from_uuid(value: Uuid) -> Self {
+    pub(in crate::modules::identity) const fn from_uuid(value: Uuid) -> Self {
         Self(value)
     }
 
@@ -26,7 +26,10 @@ impl WorkloadRuntimeEvidenceBindingId {
 
 pub const WORKLOAD_RUNTIME_EVIDENCE_BINDING_SCHEMA: &str =
     "cloud.identity.workload-runtime-evidence-binding.v1";
+pub const WORKLOAD_RUNTIME_EVIDENCE_RECORD_SCHEMA: &str =
+    "cloud.identity.workload-runtime-evidence-record.v1";
 pub const MAX_WORKLOAD_RUNTIME_EVIDENCE_AGE_SECONDS: i64 = 120;
+const MAX_PORTABLE_EVIDENCE_VERSION: u64 = 9_007_199_254_740_991;
 
 const WORKLOAD_RUNTIME_EVIDENCE_BINDING_NAMESPACE: Uuid = Uuid::from_bytes([
     0x99, 0xa7, 0x12, 0xd1, 0x53, 0x6f, 0x43, 0xa8, 0x9b, 0x21, 0xa4, 0xa6, 0x06, 0x36, 0xc1, 0xe8,
@@ -107,14 +110,19 @@ impl WorkloadRuntimeEvidenceCandidate {
             || self.workload_revision_id.as_uuid().is_nil()
             || self.resource_claim_id.as_uuid().is_nil()
             || self.resource_claim_generation == 0
+            || self.resource_claim_generation > MAX_PORTABLE_EVIDENCE_VERSION
             || self.resource_claim_aggregate_version == 0
+            || self.resource_claim_aggregate_version > MAX_PORTABLE_EVIDENCE_VERSION
             || self.node_pool_id.as_uuid().is_nil()
             || self.node_pool_aggregate_version == 0
+            || self.node_pool_aggregate_version > MAX_PORTABLE_EVIDENCE_VERSION
             || self.node_id.as_uuid().is_nil()
             || self.node_aggregate_version == 0
+            || self.node_aggregate_version > MAX_PORTABLE_EVIDENCE_VERSION
             || self.agent_instance_id.is_nil()
             || self.runtime_report_id.is_nil()
             || self.runtime_generation == 0
+            || self.runtime_generation > MAX_PORTABLE_EVIDENCE_VERSION
         {
             return Err("workload Runtime evidence identity or generation is invalid".into());
         }
@@ -126,6 +134,7 @@ impl WorkloadRuntimeEvidenceCandidate {
         }
         if self.node_last_observed_at.timestamp_millis() <= 0
             || self.runtime_observed_at.timestamp_millis() <= 0
+            || self.runtime_received_at.timestamp_millis() <= 0
             || self.node_last_observed_at != canonical_timestamp(self.node_last_observed_at)
             || self.runtime_observed_at != canonical_timestamp(self.runtime_observed_at)
             || self.runtime_received_at != canonical_timestamp(self.runtime_received_at)
@@ -227,6 +236,33 @@ impl WorkloadRuntimeEvidenceBinding {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::modules::identity) fn restore(
+        schema: String,
+        id: WorkloadRuntimeEvidenceBindingId,
+        policy_id: WorkloadIdentityPolicyId,
+        policy_revision_id: WorkloadIdentityPolicyRevisionId,
+        policy_revision_number: u64,
+        policy_digest: Sha256Digest,
+        candidate: WorkloadRuntimeEvidenceCandidate,
+        node_attestation_binding_digest: Option<Sha256Digest>,
+        binding_digest: Sha256Digest,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema,
+            id,
+            policy_id,
+            policy_revision_id,
+            policy_revision_number,
+            policy_digest,
+            candidate,
+            node_attestation_binding_digest,
+            binding_digest,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
     pub fn validate_against_policy(
         &self,
         policy: &AcceptedWorkloadIdentityPolicyRevision,
@@ -279,6 +315,96 @@ impl WorkloadRuntimeEvidenceBinding {
             &WORKLOAD_RUNTIME_EVIDENCE_BINDING_NAMESPACE,
             binding_digest.as_str().as_bytes(),
         ))
+    }
+}
+
+/// Identity-owned immutable history record for one exact normalized Runtime
+/// evidence fact. The admitted timestamp proves the original freshness check;
+/// it never turns the historic record into current authorization state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkloadRuntimeEvidenceRecord {
+    schema: String,
+    binding: WorkloadRuntimeEvidenceBinding,
+    admitted_at: DateTime<Utc>,
+}
+
+impl WorkloadRuntimeEvidenceRecord {
+    pub fn admit_runtime_component(
+        policy: &AcceptedWorkloadIdentityPolicyRevision,
+        candidate: WorkloadRuntimeEvidenceCandidate,
+        admitted_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let admitted_at = canonical_timestamp(admitted_at);
+        let value = Self {
+            schema: WORKLOAD_RUNTIME_EVIDENCE_RECORD_SCHEMA.into(),
+            binding: WorkloadRuntimeEvidenceBinding::bind_runtime_component(
+                policy,
+                candidate,
+                admitted_at,
+            )?,
+            admitted_at,
+        };
+        value.validate_against_policy(policy)?;
+        Ok(value)
+    }
+
+    pub(in crate::modules::identity) fn restore(
+        schema: String,
+        binding: WorkloadRuntimeEvidenceBinding,
+        admitted_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        let value = Self {
+            schema,
+            binding,
+            admitted_at,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != WORKLOAD_RUNTIME_EVIDENCE_RECORD_SCHEMA
+            || self.admitted_at != canonical_timestamp(self.admitted_at)
+            || self.admitted_at.timestamp_millis() <= 0
+        {
+            return Err(
+                "workload Runtime evidence record schema or admission time is invalid".into(),
+            );
+        }
+        self.binding.validate()?;
+        self.binding.candidate.validate_fresh_at(self.admitted_at)?;
+        Ok(())
+    }
+
+    pub fn validate_against_policy(
+        &self,
+        policy: &AcceptedWorkloadIdentityPolicyRevision,
+    ) -> Result<(), String> {
+        self.validate()?;
+        self.binding.validate_against_policy(policy)?;
+        if self.admitted_at < policy.accepted_at {
+            return Err("workload Runtime evidence predates its accepted policy revision".into());
+        }
+        Ok(())
+    }
+
+    pub fn schema(&self) -> &str {
+        &self.schema
+    }
+
+    pub const fn binding(&self) -> &WorkloadRuntimeEvidenceBinding {
+        &self.binding
+    }
+
+    pub const fn admitted_at(&self) -> DateTime<Utc> {
+        self.admitted_at
+    }
+
+    /// C3b persists history only. WI2-C4 must introduce a new decision that
+    /// re-reads every owner and adds Fleet hardware evidence before issuance.
+    pub const fn authorizes_credential_issuance(&self) -> bool {
+        false
     }
 }
 
@@ -414,6 +540,7 @@ mod tests {
         let now = canonical_timestamp(Utc::now());
         let policy = policy(now);
         let candidate = candidate(&policy, now);
+        let record_candidate = candidate.clone();
         let first =
             WorkloadRuntimeEvidenceBinding::bind_runtime_component(&policy, candidate.clone(), now)
                 .expect("first binding");
@@ -423,6 +550,13 @@ mod tests {
         assert_eq!(first, replay);
         assert!(!first.authorizes_credential_issuance());
         assert!(first.node_attestation_binding_digest.is_none());
+
+        let record =
+            WorkloadRuntimeEvidenceRecord::admit_runtime_component(&policy, record_candidate, now)
+                .expect("evidence record");
+        record.validate().expect("valid evidence record");
+        assert!(!record.authorizes_credential_issuance());
+        assert_eq!(record.binding(), &first);
     }
 
     #[test]
@@ -460,6 +594,14 @@ mod tests {
             WorkloadRuntimeEvidenceBinding::bind_runtime_component(&policy, reordered, now)
                 .is_err()
         );
+
+        let candidate = candidate(&policy, now);
+        assert!(WorkloadRuntimeEvidenceRecord::admit_runtime_component(
+            &policy,
+            candidate,
+            now - Duration::milliseconds(1),
+        )
+        .is_err());
     }
 
     #[test]
