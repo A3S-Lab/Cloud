@@ -30,7 +30,7 @@ a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.gi
 a3s-code-core = { version = "=8.0.3", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { version = "=1.1.0", default-features = false, features = ["boot", "postgres"] }
-a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/UI.git", rev = "3c5499cba6dc116230b859fac6a8e32653024a8f" }
+a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/UI.git", rev = "231211878eadda95c8ce2579527a9766ee19c42e" }
 a3s-orm = { version = "=0.3.1", git = "https://github.com/A3S-Lab/ORM.git", rev = "52944002dc84b07d88a85f2a4a87f913655e62b5", default-features = false, features = ["postgres"] }
 a3s-runtime = { version = "=0.2.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "061cde95e16eb4cbd9f58724e6cbb60de6ace77e" }
 a3s-use-core = { version = "=0.2.4", git = "https://github.com/A3S-Lab/Use.git", rev = "4c698b1f145a55e9bca88e5c1f5aea2bf294a669" }
