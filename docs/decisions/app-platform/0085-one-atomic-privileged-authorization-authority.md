@@ -47,6 +47,17 @@ snapshot first, or the revocation wins and the allow fails closed. A successful
 allow emits no Outbox event because authorization evidence is not an
 asynchronous integration command.
 
+That order starts at the canonical Installation row. Protected writes acquire
+the Installation mutation fence before idempotency, authorization-evidence,
+aggregate, scope-lineage, Audit, and Outbox rows. An API-token revocation first
+acquires the canonical Installation shared authorization-evidence mutation
+fence, then its idempotency key and token row, before the shared scoped Outbox
+writer resolves Organization lineage. This prevents the reverse
+`Token -> Installation` wait that scoped-fact foreign-key validation could
+otherwise form against a protected write's `Installation -> Token` order. It
+is a deterministic PostgreSQL lock order, not deadlock retry, Redis/Lane
+coordination, or another transaction mechanism.
+
 The issuer is also a transaction-local Identity persistence primitive for a
 concrete protected mutation. After taking the canonical Installation mutation
 lock, each non-bootstrap platform role-policy/binding or tenant-support
@@ -98,6 +109,10 @@ controller never interprets an ambient role string.
   revocation of its exact API token. Either the decision and protected business
   fact both commit before revocation, or both are absent; after revocation even
   an otherwise replayable request is denied.
+- An architecture ratchet requires API-token revocation to acquire the
+  canonical Installation fence before idempotency, token update, and scoped
+  Outbox persistence. The retained platform-RBAC and workload-trust PostgreSQL
+  races exercise the same ordering through different protected aggregates.
 - The [complete main CI
   run](https://github.com/A3S-Lab/Cloud/actions/runs/33251290420) and its
   [PostgreSQL 17 H0

@@ -2407,6 +2407,56 @@ fn identity_bootstrap_is_one_atomic_tenant_and_platform_authority() {
 }
 
 #[test]
+fn api_token_revocation_uses_the_canonical_privileged_authorization_lock_order() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let identity_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres.rs"),
+    )
+    .expect("read Identity PostgreSQL adapter");
+    let platform_persistence = std::fs::read_to_string(
+        manifest.join("src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs"),
+    )
+    .expect("read platform RBAC PostgreSQL adapter");
+    let revocation = identity_persistence
+        .split("async fn revoke(")
+        .nth(1)
+        .expect("API-token revocation persistence implementation");
+
+    let installation_fence = revocation
+        .find("lock_canonical_installation_for_authorization_evidence_mutation(transaction)")
+        .expect("canonical Installation authorization-evidence mutation fence");
+    let replay = revocation
+        .find("idempotency_replay::<ApiToken>")
+        .expect("API-token revocation idempotency replay");
+    let token_update = revocation
+        .find("update api_tokens set revoked_at")
+        .expect("API-token revocation row update");
+    let fact_write = revocation
+        .find("store_outbox(transaction, event)")
+        .expect("API-token revocation Outbox fact");
+
+    assert!(
+        installation_fence < replay && replay < token_update && token_update < fact_write,
+        "API-token revocation must lock Installation before idempotency, token, and scoped fact rows"
+    );
+    for required in [
+        "lock_canonical_installation_for_authorization_evidence_mutation",
+        "where installation.singleton_key for key share of installation",
+    ] {
+        assert!(
+            platform_persistence.contains(required),
+            "canonical privileged-authorization lock authority lost {required}"
+        );
+    }
+    for forbidden in ["Redis", "a3s_lane", "distributed_lock", "40P01"] {
+        assert!(
+            !revocation.contains(forbidden),
+            "API-token revocation introduced a duplicate or retry-based correctness mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn privileged_management_application_surface_is_closed_and_installation_derived() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let platform_commands = std::fs::read_to_string(

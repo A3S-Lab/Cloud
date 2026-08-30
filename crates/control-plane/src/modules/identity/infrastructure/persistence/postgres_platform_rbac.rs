@@ -150,6 +150,26 @@ pub(super) async fn lock_installation_for_authorization(
     .await
 }
 
+/// Keep authorization-evidence invalidation in the same global lock order as
+/// Installation-scoped protected writes. The canonical Installation is
+/// immutable and unique, so this shared fence can be acquired without first
+/// locking an Organization row and creating a reverse lineage lock order.
+pub(super) async fn lock_canonical_installation_for_authorization_evidence_mutation(
+    transaction: &a3s_orm::PostgresTransaction,
+) -> Result<(), PostgresPersistenceError> {
+    let locked = fetch_optional::<Uuid, _>(
+        transaction,
+        sql_query::<Uuid>(
+            "select installation.id from cloud_installations installation where installation.singleton_key for key share of installation",
+        ),
+    )
+    .await?;
+    if locked.is_none() {
+        return Err(RepositoryError::NotFound.into());
+    }
+    Ok(())
+}
+
 async fn lock_installation_with(
     transaction: &a3s_orm::PostgresTransaction,
     installation_id: InstallationId,

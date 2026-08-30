@@ -1,6 +1,7 @@
 use super::postgres_memberships::{load_active_membership_for_update, lock_membership_set};
 use super::postgres_platform_rbac::{
-    load_active_principal_for_authorization, lock_installation,
+    load_active_principal_for_authorization,
+    lock_canonical_installation_for_authorization_evidence_mutation, lock_installation,
     lock_installation_for_authorization, persist_platform_rbac_bootstrap_under_installation_lock,
     platform_authorization_request,
 };
@@ -882,6 +883,8 @@ impl IApiTokenRepository for PostgresIdentityRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
+                    lock_canonical_installation_for_authorization_evidence_mutation(transaction)
+                        .await?;
                     if let Some(replayed) =
                         idempotency_replay::<ApiToken>(transaction, &idempotency).await?
                     {

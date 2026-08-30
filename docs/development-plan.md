@@ -3961,8 +3961,13 @@ node.
   share-locks the active Principal, exact API-token version, current
   policy/binding and optional exact support grant, commits the complete
   digest-bound allow through shared scoped Audit, and conflicts with every
-  corresponding revocation path. No decision table, Outbox, Redis/Lane lock,
-  or cache truth is added. The [complete main CI
+  corresponding revocation path. The canonical database order is Installation
+  fence, idempotency, authorization evidence or protected aggregate, scope
+  lineage, then shared Audit/Outbox facts. API-token revocation therefore takes
+  the canonical Installation shared fence before its token update, preventing
+  scoped-fact foreign-key validation from reversing the protected write's
+  `Installation -> Token` order. No deadlock retry, decision table, dedicated
+  Outbox, Redis/Lane lock, or cache truth is added. The [complete main CI
   run](https://github.com/A3S-Lab/Cloud/actions/runs/33226790289) and its
   [PostgreSQL 17 H0
   job](https://github.com/A3S-Lab/Cloud/actions/runs/33226790289/job/99031980422)
