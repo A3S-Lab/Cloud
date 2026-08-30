@@ -196,13 +196,13 @@ Owns stable human and service Principals, organizations, Membership roles,
 exact-Principal MembershipInvitations, Principal-bound API credentials,
 revocation, Resource Grants, exact human-Principal recipient contacts and their
 one-time verification challenges, exact external OIDC subject links and one-time
-login/link flow persistence under `C0.3`, component-only installation Trust
-Domains and exact Workload Identity Policy revisions under `H0.4-WI1-C1`,
-  component-only explicit platform scope, role-policy revisions and role bindings
-  under `C0.5-MT1-C1`, component-only tenant-support grants and privileged
-  decision evidence under `C0.5-MT1-C2`, canonical persisted Installation and
-  shared scoped fact persistence under `C0.5-MT1-C3`, and planned SAML/OIDC
-  provider, SCIM, and session policy under
+login/link flow persistence under `C0.3`, persisted installation Trust Domains
+and exact Workload Identity Policy revisions under `H0.4-WI1-C1/C2`, explicit
+platform scope, role-policy revisions and role bindings under
+`C0.5-MT1-C1/MT2`, tenant-support grants and privileged decision evidence under
+`C0.5-MT1-C2/MT2`, canonical persisted Installation and shared scoped fact
+persistence under `C0.5-MT1-C3`, and planned SAML/OIDC provider, SCIM, and
+session policy under
 `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, issue workload
@@ -236,19 +236,21 @@ Primary aggregates:
 - `PlatformRolePolicy` and immutable `AcceptedPlatformRolePolicyRevision`
   (`C0.5-MT2-C1` persists immutable revision history and one exact current head
   with predecessor CAS through the sole Identity repository)
-- `PlatformRoleBinding` (`C0.5-MT1-C1` component lifecycle implemented;
-  `C0.5-MT2-C1` adds version-CAS persistence, active-Principal loading,
-  self-escalation denial, owner-only owner administration, deferred last-owner
-  recovery, idempotency and Installation-scoped Audit/Outbox; Application and
-  cross-surface authorization remain open)
-- `TenantSupportGrant` (`C0.5-MT1-C2` canonical ACL and terminal component
-  lifecycle implemented; approver/current-head loading, persistence and
-  interfaces remain open)
-- `TrustDomain` and immutable `TrustDomainRevision` (`H0.4-WI1-C1` component
-  contract implemented; persistence and interfaces remain open)
+- `PlatformRoleBinding` (`C0.5-MT2` adds version-CAS persistence,
+  active-Principal loading, self-escalation denial, owner-only owner
+  administration, last-owner protection, idempotency, Installation-scoped
+  Audit/Outbox, protected Application CQRS, and maintained interfaces; broader
+  recovery and the `MT3` permission matrix remain)
+- `TenantSupportGrant` (`C0.5-MT2` persists the canonical terminal lifecycle,
+  separation-of-duty approvals, protected Application CQRS, and maintained
+  interfaces)
+- `TrustDomain` and immutable `TrustDomainRevision` (`H0.4-WI1-C1/C2`
+  contract, persistence, and maintained interfaces implemented locally; main
+  PostgreSQL/provider evidence remains)
 - `WorkloadIdentityPolicy` and immutable
-  `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1` component contract
-  implemented; exact execution-attestation binding remains `WI2`)
+  `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1/C2` contract, persistence,
+  and maintained interfaces implemented locally; exact execution-attestation
+  binding remains `WI2`)
 
 #### Platform scope and RBAC (`C0.5-MT1-C1/C2/C3` foundation)
 
@@ -318,12 +320,13 @@ and one closed non-sensitive support permission. Grants are bounded,
   exact credential identity only; the concrete use case owns the closed
   permission/action/scope/resource tuple, derives authentication evidence from
   the issued decision, and commits the protected business fact with a reference
-  to it. Maintained concrete surfaces still need to derive those identities
-  from verified request context; `MT3` then removes the legacy boolean
-  administrator bypass. Until that cross-surface work lands, persisted RBAC is
-  not general production authority.
+  to it. Maintained REST, TypeScript client, CLI, Management MCP, and
+  organization catalog surfaces derive those identities from verified request
+  context. `MT3` still owns the broader system/organization permission matrix
+  and removal of remaining legacy owner-port and presentation coupling;
+  verified core RBAC does not imply completion of that wider gate.
 
-#### Workload trust contract (`H0.4-WI1-C1` component)
+#### Workload trust contract (`H0.4-WI1-C1/C2` foundation)
 
 Identity owns canonical `cloud.identity.trust-domain.v1` and
 `cloud.identity.workload-policy.v1` ACLs. A Trust Domain binds one installation
@@ -346,11 +349,14 @@ that durable compare-and-swap fence.
 The replaceable provider port can inspect only capability and exact observed
 root/federation trust-bundle evidence; a federation support boolean is not
 accepted as proof. It cannot issue credentials, receive private keys, or
-mutate a provider registration database. PostgreSQL persistence, authorization,
-transactional Outbox/audit, REST/OpenAPI/client/CLI/Management MCP, exact
-Fleet/Runtime attestation, local credential delivery, discovery, peer policy,
-enforcement, revocation drills, and real-provider evidence remain open. No
-workload identity availability is claimed by `WI1-C1`.
+mutate a provider registration database. Migration `179`, the sole Identity
+PostgreSQL adapter, and the privileged decision issuer now commit immutable
+heads, CAS, idempotency, Audit, and Outbox atomically. REST/OpenAPI `1.79.0`,
+the maintained TypeScript client, CLI, and nine Installation-bound Management
+MCP tools reuse those Application commands, queries, DTOs, and bounds. Main
+PostgreSQL proof, exact Fleet/Runtime attestation, local credential delivery,
+discovery, peer policy, enforcement, revocation drills, and real-provider
+evidence remain open. No workload identity availability is claimed by `WI1`.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

@@ -306,7 +306,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation.** Workload identity now has immutable PostgreSQL-backed trust-domain and policy revision maintenance plus REST/OpenAPI, TypeScript client, and CLI evidence; attestation, issuance, enforcement, Management MCP parity, and provider evidence remain |
+| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation.** Workload identity now has immutable PostgreSQL-backed trust-domain and policy revision maintenance plus REST/OpenAPI, TypeScript client, CLI, and installation-bound Management MCP evidence; exact Runtime attestation, issuance, enforcement, and provider evidence remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
 analysis](docs/platform-gap-analysis.md), and [ecosystem project

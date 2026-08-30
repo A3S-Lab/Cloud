@@ -69,7 +69,8 @@ introduced.
   cannot substitute for the consuming domain's peer authorization.
 - Redis, DNS, proxies, and provider registration databases may carry
   projections but cannot become policy truth.
-- `WI1-C1/C2` remain a component foundation, not an availability claim. Main
-  PostgreSQL proof, public interfaces, attestation, issuance, discovery,
-  enforcement, provider revocation drills, and exact-provider evidence remain
-  required.
+- `WI1-C1/C2` plus the maintained REST/OpenAPI `1.79.0`, TypeScript client,
+  CLI, and Installation-bound Management MCP surface remain a foundation, not
+  an availability claim. Main PostgreSQL proof, attestation, issuance,
+  discovery, enforcement, provider revocation drills, and exact-provider
+  evidence remain required.

@@ -125,17 +125,26 @@ list/get and optimistic revoke over Identity's existing CQRS. Its reads require
 completion are intentionally absent so mailbox and proof never become
 model-visible arguments.
 
-The installation-scoped privileged-management slice adds twelve tools over
-Identity's existing platform-role-policy, platform-role-binding, and bounded
-tenant-support CQRS. Five reads require `cloud:read`; seven mutations require
-`platform:write`, caller-owned idempotency, and the same policy-revision,
-aggregate-version, or contract-digest fences as REST contract `1.78.0`.
-Canonical ACL arguments retain the owning 64 KiB domain bounds. The MCP
-catalog uses an explicit Installation resource binding instead of a sentinel
-Organization or legacy administrator-role shortcut; every call passes the
-exact authenticated Principal and credential ID to Identity's sole atomic
-PostgreSQL authorization authority. MCP owns no role evaluator, grant
-approver, ACL parser, repository, cache, lock, or audit path.
+The installation-scoped privileged-management slice exposes twenty-one tools
+over Identity's existing platform-role-policy, platform-role-binding,
+tenant-support, TrustDomain, and WorkloadIdentityPolicy CQRS. Twelve reads
+require `cloud:read`; nine mutations require `platform:write`, caller-owned
+idempotency, and the same policy-revision, aggregate-version, contract-digest,
+or predecessor-revision fences as REST contract `1.79.0`. The nine
+workload-trust tools cover current/exact/bounded-history TrustDomain reads,
+revision acceptance, current/exact/bounded-history WorkloadIdentityPolicy
+reads, revision acceptance, and exact Workload-to-policy resolution. Revision
+pages default to 50 and cannot exceed 100. Trust-domain ACL input retains its
+32 KiB domain bound; workload-policy and other privileged ACL inputs retain
+their owning 64 KiB bounds.
+
+The MCP catalog uses an explicit Installation resource binding instead of a
+sentinel Organization or legacy administrator-role shortcut. Every call
+passes the exact authenticated Principal and credential ID to Identity's sole
+atomic PostgreSQL authorization authority. No tool accepts caller-authored
+actor, credential, Installation, permission, or decision fields. MCP owns no
+role/workload-trust evaluator, grant approver, ACL parser, repository, cache,
+lock, idempotency store, or audit path.
 
 ## Transport contract
 
@@ -192,10 +201,13 @@ request through the Identity repository. Revocation therefore takes effect on
 the next request without an MCP session, cache, Redis, or separate credential
 store.
 
-The organization is always derived from the authenticated principal. No tool
-accepts an organization identifier, and unknown input properties are rejected
-before a command or query runs. Project identifiers remain subject to the same
-tenant-aware application queries used by REST.
+Tenant-scoped tools derive the organization from the authenticated principal.
+Only closed Installation-authorized operations that intentionally administer a
+target Organization, including WorkloadIdentityPolicy maintenance, accept an
+explicit organization identifier; Identity still validates its canonical
+lineage and the exact privileged decision. Unknown input properties are
+rejected before a command or query runs. Project identifiers remain subject to
+the same tenant-aware application queries used by REST.
 
 `cloud:read` is the delegable read-only scope. Organization reads predate
 explicit read scopes, so every authenticated tenant token retains the same
@@ -250,6 +262,27 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_platform_role_policy_current_get` | Installation query | `cloud:read` plus exact `PlatformRolePolicyRead` decision |
+| `a3s_cloud_platform_role_policy_revisions_get` | Installation query | `cloud:read` plus exact `PlatformRolePolicyRead` decision |
+| `a3s_cloud_platform_role_policy_revisions_accept` | Installation command | `platform:write`; canonical ACL, predecessor CAS, and idempotency required |
+| `a3s_cloud_platform_role_bindings_get` | Installation query | `cloud:read` plus exact `PlatformRoleBindingRead` decision |
+| `a3s_cloud_principal_platform_role_binding_get` | Installation query | `cloud:read` plus exact `PlatformRoleBindingRead` decision |
+| `a3s_cloud_platform_role_bindings_create` | Installation command | `platform:write`; policy-revision fence and idempotency required |
+| `a3s_cloud_platform_role_bindings_change_role` | Installation command | `platform:write`; aggregate-version and policy-revision fences plus idempotency required |
+| `a3s_cloud_platform_role_bindings_revoke` | Installation command | `platform:write`; aggregate-version fence and idempotency required |
+| `a3s_cloud_tenant_support_grants_get` | Installation query | `cloud:read` plus exact `TenantSupportGrantRead` decision |
+| `a3s_cloud_tenant_support_grants_propose` | Installation command | `platform:write`; bounded canonical ACL and idempotency required |
+| `a3s_cloud_tenant_support_grants_approve` | Installation command | `platform:write`; exact contract-digest fence and idempotency required |
+| `a3s_cloud_tenant_support_grants_revoke` | Installation command | `platform:write`; aggregate-version fence and idempotency required |
+| `a3s_cloud_trust_domains_current_get` | Installation query | `cloud:read` plus exact `WorkloadTrustRead` decision |
+| `a3s_cloud_trust_domain_revisions_list` | Installation query | `cloud:read`; bounded 1 through 100 revision history |
+| `a3s_cloud_trust_domain_revisions_get` | Installation query | `cloud:read` plus exact `WorkloadTrustRead` decision |
+| `a3s_cloud_trust_domain_revisions_accept` | Installation command | `platform:write`; canonical ACL, revision/predecessor fence, and idempotency required |
+| `a3s_cloud_workload_identity_policies_current_get` | Installation query | `cloud:read`; exact Organization and policy under `WorkloadTrustRead` |
+| `a3s_cloud_workload_identity_policy_revisions_list` | Installation query | `cloud:read`; exact Organization/policy and bounded 1 through 100 history |
+| `a3s_cloud_workload_identity_policy_revisions_get` | Installation query | `cloud:read`; exact Organization, policy, and revision |
+| `a3s_cloud_workload_identity_policy_revisions_accept` | Installation command | `platform:write`; canonical ACL, revision/predecessor fence, and idempotency required |
+| `a3s_cloud_workload_identity_policy_for_workload_get` | Installation query | `cloud:read`; canonical Organization/Workload lineage and current policy |
 | `a3s_cloud_recipient_contacts_list` | Principal self-query | `cloud:read`; exact authenticated human Principal and active Membership are enforced in Identity |
 | `a3s_cloud_recipient_contacts_get` | Principal self-query | `cloud:read`; denied and missing contact IDs share one `404` contract |
 | `a3s_cloud_recipient_contacts_revoke` | Principal self-command | `identity:write`; exact Principal, positive expected version, and idempotency required |

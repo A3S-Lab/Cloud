@@ -34,8 +34,12 @@ use crate::modules::files::{
 };
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::identity::domain::repositories::{
+    DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+};
 use crate::modules::identity::domain::value_objects::{
     ApiTokenScope, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES, TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
+    TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
 };
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::notifications::{
@@ -137,6 +141,20 @@ pub const TENANT_SUPPORT_GRANTS_GET: &str = "a3s_cloud_tenant_support_grants_get
 pub const TENANT_SUPPORT_GRANTS_PROPOSE: &str = "a3s_cloud_tenant_support_grants_propose";
 pub const TENANT_SUPPORT_GRANTS_APPROVE: &str = "a3s_cloud_tenant_support_grants_approve";
 pub const TENANT_SUPPORT_GRANTS_REVOKE: &str = "a3s_cloud_tenant_support_grants_revoke";
+pub const TRUST_DOMAINS_CURRENT_GET: &str = "a3s_cloud_trust_domains_current_get";
+pub const TRUST_DOMAIN_REVISIONS_LIST: &str = "a3s_cloud_trust_domain_revisions_list";
+pub const TRUST_DOMAIN_REVISIONS_GET: &str = "a3s_cloud_trust_domain_revisions_get";
+pub const TRUST_DOMAIN_REVISIONS_ACCEPT: &str = "a3s_cloud_trust_domain_revisions_accept";
+pub const WORKLOAD_IDENTITY_POLICIES_CURRENT_GET: &str =
+    "a3s_cloud_workload_identity_policies_current_get";
+pub const WORKLOAD_IDENTITY_POLICY_REVISIONS_LIST: &str =
+    "a3s_cloud_workload_identity_policy_revisions_list";
+pub const WORKLOAD_IDENTITY_POLICY_REVISIONS_GET: &str =
+    "a3s_cloud_workload_identity_policy_revisions_get";
+pub const WORKLOAD_IDENTITY_POLICY_REVISIONS_ACCEPT: &str =
+    "a3s_cloud_workload_identity_policy_revisions_accept";
+pub const WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_GET: &str =
+    "a3s_cloud_workload_identity_policy_for_workload_get";
 pub const FORMS_CREATE: &str = "a3s_cloud_forms_create";
 pub const FORMS_GET: &str = "a3s_cloud_forms_get";
 pub const FORMS_LIST: &str = "a3s_cloud_forms_list";
@@ -294,6 +312,15 @@ pub enum ManagementTool {
     TenantSupportGrantsPropose,
     TenantSupportGrantsApprove,
     TenantSupportGrantsRevoke,
+    TrustDomainsCurrentGet,
+    TrustDomainRevisionsList,
+    TrustDomainRevisionsGet,
+    TrustDomainRevisionsAccept,
+    WorkloadIdentityPoliciesCurrentGet,
+    WorkloadIdentityPolicyRevisionsList,
+    WorkloadIdentityPolicyRevisionsGet,
+    WorkloadIdentityPolicyRevisionsAccept,
+    WorkloadIdentityPolicyForWorkloadGet,
     MembershipsList,
     MembershipsGet,
     MembershipsCreate,
@@ -434,7 +461,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 169] = [
+    const ALL: [Self; 178] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -482,6 +509,15 @@ impl ManagementTool {
         Self::TenantSupportGrantsPropose,
         Self::TenantSupportGrantsApprove,
         Self::TenantSupportGrantsRevoke,
+        Self::TrustDomainsCurrentGet,
+        Self::TrustDomainRevisionsList,
+        Self::TrustDomainRevisionsGet,
+        Self::TrustDomainRevisionsAccept,
+        Self::WorkloadIdentityPoliciesCurrentGet,
+        Self::WorkloadIdentityPolicyRevisionsList,
+        Self::WorkloadIdentityPolicyRevisionsGet,
+        Self::WorkloadIdentityPolicyRevisionsAccept,
+        Self::WorkloadIdentityPolicyForWorkloadGet,
         Self::MembershipsList,
         Self::MembershipsGet,
         Self::MembershipsCreate,
@@ -678,6 +714,17 @@ impl ManagementTool {
             Self::TenantSupportGrantsPropose => TENANT_SUPPORT_GRANTS_PROPOSE,
             Self::TenantSupportGrantsApprove => TENANT_SUPPORT_GRANTS_APPROVE,
             Self::TenantSupportGrantsRevoke => TENANT_SUPPORT_GRANTS_REVOKE,
+            Self::TrustDomainsCurrentGet => TRUST_DOMAINS_CURRENT_GET,
+            Self::TrustDomainRevisionsList => TRUST_DOMAIN_REVISIONS_LIST,
+            Self::TrustDomainRevisionsGet => TRUST_DOMAIN_REVISIONS_GET,
+            Self::TrustDomainRevisionsAccept => TRUST_DOMAIN_REVISIONS_ACCEPT,
+            Self::WorkloadIdentityPoliciesCurrentGet => WORKLOAD_IDENTITY_POLICIES_CURRENT_GET,
+            Self::WorkloadIdentityPolicyRevisionsList => WORKLOAD_IDENTITY_POLICY_REVISIONS_LIST,
+            Self::WorkloadIdentityPolicyRevisionsGet => WORKLOAD_IDENTITY_POLICY_REVISIONS_GET,
+            Self::WorkloadIdentityPolicyRevisionsAccept => {
+                WORKLOAD_IDENTITY_POLICY_REVISIONS_ACCEPT
+            }
+            Self::WorkloadIdentityPolicyForWorkloadGet => WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_GET,
             Self::MembershipsList => MEMBERSHIPS_LIST,
             Self::MembershipsGet => MEMBERSHIPS_GET,
             Self::MembershipsCreate => MEMBERSHIPS_CREATE,
@@ -840,7 +887,9 @@ impl ManagementTool {
             | Self::PlatformRoleBindingsRevoke
             | Self::TenantSupportGrantsPropose
             | Self::TenantSupportGrantsApprove
-            | Self::TenantSupportGrantsRevoke => Some(ApiTokenScope::PLATFORM_WRITE),
+            | Self::TenantSupportGrantsRevoke
+            | Self::TrustDomainRevisionsAccept
+            | Self::WorkloadIdentityPolicyRevisionsAccept => Some(ApiTokenScope::PLATFORM_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
             | Self::MembershipsCreate
@@ -888,6 +937,13 @@ impl ManagementTool {
             | Self::PlatformRoleBindingsGet
             | Self::PrincipalPlatformRoleBindingGet
             | Self::TenantSupportGrantsGet
+            | Self::TrustDomainsCurrentGet
+            | Self::TrustDomainRevisionsList
+            | Self::TrustDomainRevisionsGet
+            | Self::WorkloadIdentityPoliciesCurrentGet
+            | Self::WorkloadIdentityPolicyRevisionsList
+            | Self::WorkloadIdentityPolicyRevisionsGet
+            | Self::WorkloadIdentityPolicyForWorkloadGet
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
@@ -1025,7 +1081,18 @@ impl ManagementTool {
             | Self::TenantSupportGrantsGet
             | Self::TenantSupportGrantsPropose
             | Self::TenantSupportGrantsApprove
-            | Self::TenantSupportGrantsRevoke => Some(ManagementResourceBinding::Installation),
+            | Self::TenantSupportGrantsRevoke
+            | Self::TrustDomainsCurrentGet
+            | Self::TrustDomainRevisionsList
+            | Self::TrustDomainRevisionsGet
+            | Self::TrustDomainRevisionsAccept
+            | Self::WorkloadIdentityPoliciesCurrentGet
+            | Self::WorkloadIdentityPolicyRevisionsList
+            | Self::WorkloadIdentityPolicyRevisionsGet
+            | Self::WorkloadIdentityPolicyRevisionsAccept
+            | Self::WorkloadIdentityPolicyForWorkloadGet => {
+                Some(ManagementResourceBinding::Installation)
+            }
             Self::EnvironmentsCreate
             | Self::ProjectAttributionGet
             | Self::ProjectAttributionUpdate
@@ -1475,6 +1542,60 @@ impl ManagementTool {
                 "Terminally revoke one accepted grant through optimistic concurrency and caller-owned idempotency.",
                 revoke_tenant_support_grant_schema(),
                 false,
+            ),
+            Self::TrustDomainsCurrentGet => (
+                "Get current trust-domain revision",
+                "Read the current immutable installation-scoped TrustDomain revision through Identity's sole authorization authority.",
+                uuid_id_schema("trustDomainId"),
+                true,
+            ),
+            Self::TrustDomainRevisionsList => (
+                "List trust-domain revisions",
+                "List bounded immutable TrustDomain revisions in reverse revision order through Identity's sole authorization authority.",
+                list_trust_domain_revisions_schema(),
+                true,
+            ),
+            Self::TrustDomainRevisionsGet => (
+                "Get trust-domain revision",
+                "Read one exact immutable TrustDomain revision through Identity's sole authorization authority.",
+                get_trust_domain_revision_schema(),
+                true,
+            ),
+            Self::TrustDomainRevisionsAccept => (
+                "Accept trust-domain revision",
+                "Accept one canonical TrustDomain A3S ACL revision through previous-revision CAS and caller-owned idempotency.",
+                accept_trust_domain_revision_schema(),
+                false,
+            ),
+            Self::WorkloadIdentityPoliciesCurrentGet => (
+                "Get current workload identity policy",
+                "Read the current immutable WorkloadIdentityPolicy revision for one exact Organization and policy.",
+                workload_identity_policy_schema(),
+                true,
+            ),
+            Self::WorkloadIdentityPolicyRevisionsList => (
+                "List workload identity policy revisions",
+                "List bounded immutable WorkloadIdentityPolicy revisions in reverse revision order.",
+                list_workload_identity_policy_revisions_schema(),
+                true,
+            ),
+            Self::WorkloadIdentityPolicyRevisionsGet => (
+                "Get workload identity policy revision",
+                "Read one exact immutable WorkloadIdentityPolicy revision through Identity's sole authorization authority.",
+                get_workload_identity_policy_revision_schema(),
+                true,
+            ),
+            Self::WorkloadIdentityPolicyRevisionsAccept => (
+                "Accept workload identity policy revision",
+                "Accept one canonical WorkloadIdentityPolicy A3S ACL revision through previous-revision CAS and caller-owned idempotency.",
+                accept_workload_identity_policy_revision_schema(),
+                false,
+            ),
+            Self::WorkloadIdentityPolicyForWorkloadGet => (
+                "Get workload identity policy for Workload",
+                "Read the current immutable WorkloadIdentityPolicy revision indexed by one exact Organization and Workload.",
+                workload_identity_policy_for_workload_schema(),
+                true,
             ),
             Self::MembershipsList => (
                 "List memberships",
@@ -2348,6 +2469,135 @@ fn approve_tenant_support_grant_schema() -> Value {
 
 fn revoke_tenant_support_grant_schema() -> Value {
     versioned_idempotent_identity_schema("grantId")
+}
+
+fn get_trust_domain_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "trustDomainId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["trustDomainId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_trust_domain_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "trustDomainId": {"type": "string", "format": "uuid"},
+            "limit": workload_trust_revision_limit_schema()
+        },
+        "required": ["trustDomainId"],
+        "additionalProperties": false
+    })
+}
+
+fn accept_trust_domain_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "trustDomainId": {"type": "string", "format": "uuid"},
+            "canonicalAcl": canonical_acl_input_schema(TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, None),
+            "revisionNumber": expected_version_schema(),
+            "expectedPreviousRevisionId": nullable_uuid_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["trustDomainId", "canonicalAcl", "revisionNumber", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn workload_identity_policy_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "organizationId": {"type": "string", "format": "uuid"},
+            "policyId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["organizationId", "policyId"],
+        "additionalProperties": false
+    })
+}
+
+fn workload_identity_policy_for_workload_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "organizationId": {"type": "string", "format": "uuid"},
+            "workloadId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["organizationId", "workloadId"],
+        "additionalProperties": false
+    })
+}
+
+fn get_workload_identity_policy_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "organizationId": {"type": "string", "format": "uuid"},
+            "policyId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["organizationId", "policyId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_workload_identity_policy_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "organizationId": {"type": "string", "format": "uuid"},
+            "policyId": {"type": "string", "format": "uuid"},
+            "limit": workload_trust_revision_limit_schema()
+        },
+        "required": ["organizationId", "policyId"],
+        "additionalProperties": false
+    })
+}
+
+fn accept_workload_identity_policy_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "organizationId": {"type": "string", "format": "uuid"},
+            "policyId": {"type": "string", "format": "uuid"},
+            "canonicalAcl": canonical_acl_input_schema(WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES, None),
+            "revisionNumber": expected_version_schema(),
+            "expectedPreviousRevisionId": nullable_uuid_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "organizationId",
+            "policyId",
+            "canonicalAcl",
+            "revisionNumber",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn workload_trust_revision_limit_schema() -> Value {
+    json!({
+        "type": "integer",
+        "minimum": 1,
+        "maximum": MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+        "default": DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE
+    })
+}
+
+fn nullable_uuid_schema() -> Value {
+    json!({
+        "anyOf": [
+            {"type": "string", "format": "uuid"},
+            {"type": "null"}
+        ]
+    })
 }
 
 fn versioned_idempotent_identity_schema(property: &str) -> Value {
@@ -4426,6 +4676,13 @@ mod tests {
             ManagementTool::PlatformRoleBindingsGet,
             ManagementTool::PrincipalPlatformRoleBindingGet,
             ManagementTool::TenantSupportGrantsGet,
+            ManagementTool::TrustDomainsCurrentGet,
+            ManagementTool::TrustDomainRevisionsList,
+            ManagementTool::TrustDomainRevisionsGet,
+            ManagementTool::WorkloadIdentityPoliciesCurrentGet,
+            ManagementTool::WorkloadIdentityPolicyRevisionsList,
+            ManagementTool::WorkloadIdentityPolicyRevisionsGet,
+            ManagementTool::WorkloadIdentityPolicyForWorkloadGet,
         ];
         let mutation_tools = [
             ManagementTool::PlatformRolePolicyRevisionsAccept,
@@ -4435,6 +4692,8 @@ mod tests {
             ManagementTool::TenantSupportGrantsPropose,
             ManagementTool::TenantSupportGrantsApprove,
             ManagementTool::TenantSupportGrantsRevoke,
+            ManagementTool::TrustDomainRevisionsAccept,
+            ManagementTool::WorkloadIdentityPolicyRevisionsAccept,
         ];
         let read_principal = AuthPrincipal::new("reader").with_scope(ApiTokenScope::CLOUD_READ);
         let write_principal =
@@ -4484,6 +4743,53 @@ mod tests {
                 ["expectedContractDigest"]["pattern"],
             "^sha256:[0-9a-f]{64}$"
         );
+        let trust_acceptance = ManagementTool::TrustDomainRevisionsAccept.definition();
+        assert_eq!(
+            trust_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
+            TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES
+        );
+        assert_eq!(
+            trust_acceptance["inputSchema"]["properties"]["expectedPreviousRevisionId"]["anyOf"][1]
+                ["type"],
+            "null"
+        );
+        let workload_acceptance =
+            ManagementTool::WorkloadIdentityPolicyRevisionsAccept.definition();
+        assert_eq!(
+            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]
+                ["x-a3s-max-utf8-bytes"],
+            WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
+        );
+        for tool in [
+            ManagementTool::TrustDomainRevisionsList,
+            ManagementTool::WorkloadIdentityPolicyRevisionsList,
+        ] {
+            let definition = tool.definition();
+            let limit = &definition["inputSchema"]["properties"]["limit"];
+            assert_eq!(limit["default"], DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE);
+            assert_eq!(limit["maximum"], MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE);
+        }
+        for tool in [
+            ManagementTool::TrustDomainRevisionsAccept,
+            ManagementTool::WorkloadIdentityPolicyRevisionsAccept,
+        ] {
+            let definition = tool.definition();
+            let properties = definition["inputSchema"]["properties"]
+                .as_object()
+                .expect("closed workload trust properties");
+            for forbidden in [
+                "actorPrincipalId",
+                "credentialId",
+                "installationId",
+                "permission",
+            ] {
+                assert!(
+                    !properties.contains_key(forbidden),
+                    "{} {forbidden}",
+                    tool.name()
+                );
+            }
+        }
         for tool in [
             ManagementTool::PlatformRoleBindingsRevoke,
             ManagementTool::TenantSupportGrantsRevoke,

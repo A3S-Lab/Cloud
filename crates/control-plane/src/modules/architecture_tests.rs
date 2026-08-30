@@ -2785,37 +2785,60 @@ fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_c
     )
     .expect("read Identity module");
 
-    for route in [
-        "/role-policy",
-        "/role-policy/revisions/{revision_id}",
-        "/role-policy/revisions",
-        "/role-bindings",
-        "/role-bindings/{binding_id}",
-        "/role-bindings/{binding_id}/role",
-        "/role-bindings/{binding_id}/revocation",
-        "/principals/{principal_id}/role-binding",
-        "/tenant-support-grants",
-        "/tenant-support-grants/{grant_id}",
-        "/tenant-support-grants/{grant_id}/approvals",
-        "/tenant-support-grants/{grant_id}/revocation",
+    for (route, expected_occurrences) in [
+        ("/role-policy", 1),
+        ("/role-policy/revisions/{revision_id}", 1),
+        ("/role-policy/revisions", 1),
+        ("/role-bindings", 1),
+        ("/role-bindings/{binding_id}", 1),
+        ("/role-bindings/{binding_id}/role", 1),
+        ("/role-bindings/{binding_id}/revocation", 1),
+        ("/principals/{principal_id}/role-binding", 1),
+        ("/tenant-support-grants", 1),
+        ("/tenant-support-grants/{grant_id}", 1),
+        ("/tenant-support-grants/{grant_id}/approvals", 1),
+        ("/tenant-support-grants/{grant_id}/revocation", 1),
+        ("/trust-domains/{trust_domain_id}", 1),
+        ("/trust-domains/{trust_domain_id}/revisions", 2),
+        (
+            "/trust-domains/{trust_domain_id}/revisions/{revision_id}",
+            1,
+        ),
+        (
+            "/organizations/{organization_id}/workload-identity-policies/{policy_id}",
+            1,
+        ),
+        (
+            "/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions",
+            2,
+        ),
+        (
+            "/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions/{revision_id}",
+            1,
+        ),
+        (
+            "/organizations/{organization_id}/workloads/{workload_id}/identity-policy",
+            1,
+        ),
     ] {
         assert_eq!(
             controller.matches(&format!("\"{route}\"")).count(),
-            1,
-            "privileged REST route {route} must be unique"
+            expected_occurrences,
+            "privileged REST route {route} has an unexpected operation count"
         );
     }
     assert_eq!(
         controller
-            .matches("authenticated_credential_actor(&")
+            .matches("authenticated_credential_actor(")
             .count(),
-        12,
+        21,
         "every privileged REST route must derive the exact verified Principal and API Token"
     );
-    assert_eq!(controller.matches("ApiTokenScope::CLOUD_READ").count(), 2);
+    assert_eq!(controller.matches("require_auth_principal()").count(), 21);
+    assert_eq!(controller.matches("ApiTokenScope::CLOUD_READ").count(), 3);
     assert_eq!(
         controller.matches("ApiTokenScope::PLATFORM_WRITE").count(),
-        2
+        3
     );
     for forbidden in [
         "actor_is_platform_admin",
@@ -2829,13 +2852,15 @@ fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_c
             "privileged REST surface introduced ambient or caller-authored authority {forbidden}"
         );
     }
-    assert_eq!(requests.matches("deny_unknown_fields").count(), 6);
+    assert_eq!(requests.matches("deny_unknown_fields").count(), 8);
     assert!(responses.matches("rename_all = \"camelCase\"").count() >= 10);
     for controller_name in [
         "platform_rbac_queries_controller",
         "platform_rbac_commands_controller",
         "tenant_support_query_controller",
         "tenant_support_commands_controller",
+        "workload_trust_queries_controller",
+        "workload_trust_commands_controller",
     ] {
         assert_eq!(
             module.matches(&format!("{controller_name}(")).count(),
@@ -2875,6 +2900,15 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "ProposeTenantSupportGrant",
         "ApproveTenantSupportGrant",
         "RevokeTenantSupportGrant",
+        "GetCurrentTrustDomain",
+        "GetTrustDomainRevision",
+        "ListTrustDomainRevisions",
+        "AcceptTrustDomainRevision",
+        "GetCurrentWorkloadIdentityPolicy",
+        "GetCurrentWorkloadIdentityPolicyForWorkload",
+        "GetWorkloadIdentityPolicyRevision",
+        "ListWorkloadIdentityPolicyRevisions",
+        "AcceptWorkloadIdentityPolicyRevision",
     ] {
         assert!(
             adapter.contains(&format!(".execute({use_case} {{")),
@@ -2894,6 +2928,15 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "propose_tenant_support_grant",
         "approve_tenant_support_grant",
         "revoke_tenant_support_grant",
+        "get_current_trust_domain",
+        "get_trust_domain_revision",
+        "list_trust_domain_revisions",
+        "accept_trust_domain_revision",
+        "get_current_workload_identity_policy",
+        "get_current_workload_identity_policy_for_workload",
+        "get_workload_identity_policy_revision",
+        "list_workload_identity_policy_revisions",
+        "accept_workload_identity_policy_revision",
     ] {
         assert_eq!(
             dispatch
@@ -2916,6 +2959,15 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "a3s_cloud_tenant_support_grants_propose",
         "a3s_cloud_tenant_support_grants_approve",
         "a3s_cloud_tenant_support_grants_revoke",
+        "a3s_cloud_trust_domains_current_get",
+        "a3s_cloud_trust_domain_revisions_list",
+        "a3s_cloud_trust_domain_revisions_get",
+        "a3s_cloud_trust_domain_revisions_accept",
+        "a3s_cloud_workload_identity_policies_current_get",
+        "a3s_cloud_workload_identity_policy_revisions_list",
+        "a3s_cloud_workload_identity_policy_revisions_get",
+        "a3s_cloud_workload_identity_policy_revisions_accept",
+        "a3s_cloud_workload_identity_policy_for_workload_get",
     ] {
         assert_eq!(
             catalog.matches(&format!("\"{name}\"")).count(),

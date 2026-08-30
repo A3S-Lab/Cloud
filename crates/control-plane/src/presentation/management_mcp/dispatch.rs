@@ -70,12 +70,16 @@ use super::plugins::{
     PluginCatalogInspectArguments, PluginCatalogSearchArguments, PluginRegistryArguments,
 };
 use super::privileged_management::{
-    AcceptPlatformRolePolicyArguments, ApproveTenantSupportGrantArguments,
+    AcceptPlatformRolePolicyArguments, AcceptTrustDomainRevisionArguments,
+    AcceptWorkloadIdentityPolicyRevisionArguments, ApproveTenantSupportGrantArguments,
     ChangePlatformRoleBindingArguments, CreatePlatformRoleBindingArguments,
     PlatformRoleBindingArguments, PlatformRolePolicyRevisionArguments,
     PrincipalPlatformRoleBindingArguments, ProposeTenantSupportGrantArguments,
     RevokePlatformRoleBindingArguments, RevokeTenantSupportGrantArguments,
-    TenantSupportGrantArguments,
+    TenantSupportGrantArguments, TrustDomainArguments, TrustDomainRevisionArguments,
+    TrustDomainRevisionListArguments, WorkloadIdentityPolicyArguments,
+    WorkloadIdentityPolicyForWorkloadArguments, WorkloadIdentityPolicyRevisionArguments,
+    WorkloadIdentityPolicyRevisionListArguments,
 };
 use super::projects::{
     CreateEnvironmentArguments, CreateProjectArguments, GetProjectAttributionArguments,
@@ -680,6 +684,111 @@ pub async fn execute(
                 arguments::parse::<RevokeTenantSupportGrantArguments>(arguments).ok()?;
             privileged_management::revoke_tenant_support_grant(
                 command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TrustDomainsCurrentGet => {
+            let arguments = arguments::parse::<TrustDomainArguments>(arguments).ok()?;
+            privileged_management::get_current_trust_domain(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TrustDomainRevisionsList => {
+            let arguments = arguments::parse::<TrustDomainRevisionListArguments>(arguments).ok()?;
+            privileged_management::list_trust_domain_revisions(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TrustDomainRevisionsGet => {
+            let arguments = arguments::parse::<TrustDomainRevisionArguments>(arguments).ok()?;
+            privileged_management::get_trust_domain_revision(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::TrustDomainRevisionsAccept => {
+            let arguments =
+                arguments::parse::<AcceptTrustDomainRevisionArguments>(arguments).ok()?;
+            privileged_management::accept_trust_domain_revision(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadIdentityPoliciesCurrentGet => {
+            let arguments = arguments::parse::<WorkloadIdentityPolicyArguments>(arguments).ok()?;
+            privileged_management::get_current_workload_identity_policy(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadIdentityPolicyRevisionsList => {
+            let arguments =
+                arguments::parse::<WorkloadIdentityPolicyRevisionListArguments>(arguments).ok()?;
+            privileged_management::list_workload_identity_policy_revisions(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadIdentityPolicyRevisionsGet => {
+            let arguments =
+                arguments::parse::<WorkloadIdentityPolicyRevisionArguments>(arguments).ok()?;
+            privileged_management::get_workload_identity_policy_revision(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadIdentityPolicyRevisionsAccept => {
+            let arguments =
+                arguments::parse::<AcceptWorkloadIdentityPolicyRevisionArguments>(arguments)
+                    .ok()?;
+            privileged_management::accept_workload_identity_policy_revision(
+                command_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkloadIdentityPolicyForWorkloadGet => {
+            let arguments =
+                arguments::parse::<WorkloadIdentityPolicyForWorkloadArguments>(arguments).ok()?;
+            privileged_management::get_current_workload_identity_policy_for_workload(
+                query_bus,
                 actor_principal_id,
                 credential_id,
                 arguments,

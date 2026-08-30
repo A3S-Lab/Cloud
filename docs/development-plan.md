@@ -6208,8 +6208,11 @@ decision issuer and shared idempotency/Audit/Outbox transaction; in-memory
 privileged composition fails closed. A retained two-replica H0 gate covers
 competing successors, replay drift, stable names, one current policy per
 Workload, stale trust, immutable history and token-revocation races. Main-gate
-proof, public interfaces, real provider composition and `WI2` through `WI7`
-remain open, so no workload identity availability is claimed.
+proof and real provider composition remain open. REST/OpenAPI `1.79.0`, the
+maintained TypeScript client, CLI, and nine Installation-bound Management MCP
+tools now reuse the same commands, queries, DTOs, authorization, page bounds,
+CAS, and idempotency authority. `WI2` through `WI7` remain open, so no workload
+identity availability is claimed.
 
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same

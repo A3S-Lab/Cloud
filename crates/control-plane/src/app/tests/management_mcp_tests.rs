@@ -395,6 +395,13 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_platform_role_bindings_get",
             "a3s_cloud_principal_platform_role_binding_get",
             "a3s_cloud_tenant_support_grants_get",
+            "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_revisions_list",
+            "a3s_cloud_trust_domain_revisions_get",
+            "a3s_cloud_workload_identity_policies_current_get",
+            "a3s_cloud_workload_identity_policy_revisions_list",
+            "a3s_cloud_workload_identity_policy_revisions_get",
+            "a3s_cloud_workload_identity_policy_for_workload_get",
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_recipient_contacts_list",
             "a3s_cloud_recipient_contacts_get",
@@ -652,6 +659,15 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_tenant_support_grants_propose",
             "a3s_cloud_tenant_support_grants_approve",
             "a3s_cloud_tenant_support_grants_revoke",
+            "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_revisions_list",
+            "a3s_cloud_trust_domain_revisions_get",
+            "a3s_cloud_trust_domain_revisions_accept",
+            "a3s_cloud_workload_identity_policies_current_get",
+            "a3s_cloud_workload_identity_policy_revisions_list",
+            "a3s_cloud_workload_identity_policy_revisions_get",
+            "a3s_cloud_workload_identity_policy_revisions_accept",
+            "a3s_cloud_workload_identity_policy_for_workload_get",
             "a3s_cloud_memberships_list",
             "a3s_cloud_memberships_get",
             "a3s_cloud_memberships_create",
@@ -1122,10 +1138,11 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
-    bootstrap_organization(&app, "mcp-privileged", "Root").await?;
-    let binding_id = Uuid::now_v7();
+    let organization_id = bootstrap_organization(&app, "mcp-privileged", "Root").await?;
     let principal_id = Uuid::now_v7();
     let grant_id = Uuid::now_v7();
+    let trust_domain_id = Uuid::now_v7();
+    let policy_id = Uuid::now_v7();
 
     for (id, name, arguments) in [
         (1, "a3s_cloud_platform_role_policy_current_get", json!({})),
@@ -1153,6 +1170,16 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
                 "idempotencyKey": "mcp:tenant-support:approve"
             }),
         ),
+        (
+            5,
+            "a3s_cloud_trust_domains_current_get",
+            json!({"trustDomainId": trust_domain_id}),
+        ),
+        (
+            6,
+            "a3s_cloud_workload_identity_policies_current_get",
+            json!({"organizationId": organization_id, "policyId": policy_id}),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -1175,13 +1202,45 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
         .call(mcp_request(
             Some(ADMIN_TOKEN),
             tool_call(
-                5,
-                "a3s_cloud_platform_role_bindings_get",
-                json!({"bindingId": binding_id, "organizationId": Uuid::now_v7()}),
+                7,
+                "a3s_cloud_trust_domains_current_get",
+                json!({"trustDomainId": trust_domain_id, "installationId": Uuid::now_v7()}),
             ),
         ))
         .await?;
     assert_eq!(response_json(&rejected)?["error"]["code"], -32602);
+
+    let unbounded = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_workload_identity_policy_revisions_list",
+                json!({
+                    "organizationId": organization_id,
+                    "policyId": policy_id,
+                    "limit": 101
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&unbounded)?["error"]["code"], -32602);
+
+    let forged_credential = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                9,
+                "a3s_cloud_trust_domain_revisions_get",
+                json!({
+                    "trustDomainId": trust_domain_id,
+                    "revisionId": Uuid::now_v7(),
+                    "credentialId": Uuid::now_v7()
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&forged_credential)?["error"]["code"], -32602);
     Ok(())
 }
 
@@ -2154,6 +2213,13 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
             "a3s_cloud_platform_role_bindings_get",
             "a3s_cloud_principal_platform_role_binding_get",
             "a3s_cloud_tenant_support_grants_get",
+            "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_revisions_list",
+            "a3s_cloud_trust_domain_revisions_get",
+            "a3s_cloud_workload_identity_policies_current_get",
+            "a3s_cloud_workload_identity_policy_revisions_list",
+            "a3s_cloud_workload_identity_policy_revisions_get",
+            "a3s_cloud_workload_identity_policy_for_workload_get",
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_recipient_contacts_list",
             "a3s_cloud_recipient_contacts_get",

@@ -3218,8 +3218,9 @@ With this authority in place,
 no path may use a synthetic Organization or `actor_is_platform_admin` as
 authority.
 
-`H0.4-WI1-C1` and the `WI1-C2` persistence core are implemented locally;
-main-branch PostgreSQL verification is pending. Identity now owns canonical
+`H0.4-WI1-C1`, the `WI1-C2` persistence core, and the maintained management
+surface are implemented locally; main-branch PostgreSQL verification is
+pending. Identity now owns canonical
 `cloud.identity.trust-domain.v1` and
 `cloud.identity.workload-policy.v1` ACL contracts, strong installation,
 trust-domain, policy, and deterministic revision identities, predecessor-fenced
@@ -3233,11 +3234,14 @@ policy ACL now binds the exact TrustDomain revision. The PostgreSQL adapters
 serialize on the canonical Installation, reuse the sole transaction-local
 privileged authorization issuer for `WorkloadTrustRead/Manage`, and commit CAS,
 shared idempotency, Audit and Outbox together; the in-memory adapter fails
-closed. The retained H0 gate covers two-replica CAS, exact owner/FK lineage,
+closed. REST/OpenAPI `1.79.0`, the maintained TypeScript client, CLI, and nine
+Installation-bound Management MCP tools dispatch the same closed CQRS and
+derive Principal plus exact credential identity only from verified context.
+The retained H0 gate covers two-replica CAS, exact owner/FK lineage,
 stable names, one policy per Workload, stale trust, replay drift, immutable
 history, and API-token revocation races. `H0.4-WI1` remains unavailable until
-that gate passes on main and maintained REST/OpenAPI/client/CLI/MCP plus real
-provider evidence land; `WI2` through `WI7` remain planned.
+that gate passes on main and real capability-inspection provider evidence
+lands; `WI2` through `WI7` remain planned.
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,

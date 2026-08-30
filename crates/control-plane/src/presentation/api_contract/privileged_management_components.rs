@@ -863,8 +863,42 @@ mod tests {
         let mut schemas = Map::new();
         install_privileged_management_component_schemas(&mut schemas);
         assert_eq!(schemas.len(), 21);
+        let mut list_schema_count = 0;
         for (name, schema) in &schemas {
-            assert_eq!(schema["additionalProperties"], false, "{name}");
+            match schema["type"].as_str() {
+                Some("object") => assert_eq!(schema["additionalProperties"], false, "{name}"),
+                Some("array") => {
+                    list_schema_count += 1;
+                    assert!(
+                        matches!(
+                            name.as_str(),
+                            "TrustDomainRevisionList" | "WorkloadIdentityPolicyRevisionList"
+                        ),
+                        "unexpected privileged-management list schema {name}"
+                    );
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(list_schema_count, 2);
+        for (name, item) in [
+            ("TrustDomainRevisionList", "TrustDomainRevision"),
+            (
+                "WorkloadIdentityPolicyRevisionList",
+                "WorkloadIdentityPolicyRevision",
+            ),
+        ] {
+            assert_eq!(schemas[name]["type"], "array", "{name}");
+            assert_eq!(
+                schemas[name]["maxItems"],
+                crate::modules::identity::domain::repositories::MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+                "{name}"
+            );
+            assert_eq!(
+                schemas[name]["items"]["$ref"],
+                format!("#/components/schemas/{item}"),
+                "{name}"
+            );
         }
         assert_eq!(
             schemas["PlatformRolePolicy"]["properties"]["rolePermissions"]["maxItems"],
