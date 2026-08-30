@@ -394,6 +394,7 @@ fn artifact_task_spec(input: ArtifactRef) -> RuntimeUnitSpec {
             max_bytes: 1024 * 1024,
         }],
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     }
 }
 

@@ -236,7 +236,7 @@ Cloud Dashboard or private identity-provider UI is required.
 | Gate | Outcome | Current state |
 | --- | --- | --- |
 | `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | **Verified foundation.** `WI1-C1`, the `WI1-C2` persistence core, the maintained management surface, and the first provider-inspection slice are implemented. Canonical trust ACLs and deterministic revisions feed migration `179`'s immutable histories and sole heads, and policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. The [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009) verifies REST/OpenAPI `1.80.0`, TypeScript client, CLI, ten Installation-bound Management MCP tools, the H0 PostgreSQL gate, and the real-TLS provider gate at 7/7 on Rust 1.88 and stable. Workload identity is not yet available because `WI2` through `WI7` remain open. |
-| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | Planned |
+| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | **Component foundation in progress.** `WI2-C1` defines one deterministic Identity-owned evidence binding for the exact policy revision, Workloads Claim, NodePool snapshot, Fleet Node Agent session/capability snapshot, and Runtime/Box Unit-generation attestation. Runtime `0.4.0` carries the opaque policy digest through Spec and evidence, while the pinned confidential Box provider binds it to provider attestation. The exact [Runtime main CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095) and [Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002) pins pass. V1 explicitly contains no Node hardware-attestation binding and can never authorize credential issuance; the owner port, persistence, full Fleet attestation fact, orchestration and retained provider gates remain open. |
 | `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
 | `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
 | `H0.4-WI5` | Box network enforcement, egress policy and Gateway-to-origin identity | Planned |
@@ -287,6 +287,18 @@ Claim, Node, Runtime Unit and generation. This prevents an Infrastructure
 adapter from minting identity from mutable hostnames, image names, process IDs,
 or shared cluster credentials. The decision is recorded in
 [ADR 0079](decisions/app-platform/0079-identity-owned-workload-trust-contract.md).
+
+`WI2-C1` freezes the next boundary in
+[ADR 0087](decisions/app-platform/0087-one-workload-runtime-evidence-authority.md).
+One canonical `cloud.identity.workload-runtime-evidence-binding.v1` fact binds
+the exact accepted policy digest to the Workloads Claim and NodePool digests,
+Fleet Node Agent instance/capability observation, and Runtime/Box Spec,
+generation, attachment and provider-attestation evidence. Its identity and
+digest are deterministic and its admission freshness ceiling is 120 seconds.
+It has an explicit absent Node hardware-attestation digest and always denies
+credential-issuance authority. Fleet must publish the missing immutable
+hardware evidence through the one Identity-owned port before a versioned full
+WI2 decision can enable WI3.
 
 ## 14. Non-goals
 

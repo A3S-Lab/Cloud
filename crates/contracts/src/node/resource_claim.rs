@@ -148,6 +148,7 @@ impl NodeResourceClaimBinding {
                 .unwrap_or_else(|| "unknown".into()),
             spec_digest: observation.spec_digest.clone(),
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims: BTreeMap::new(),
         });
         insert_exact_claim(

@@ -174,6 +174,7 @@ fn project_runtime_spec_from_template(
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: semantics_profile_digest.map(str::to_owned),
+        identity_attachment_digest: None,
     };
     spec.validate()?;
     Ok(spec)

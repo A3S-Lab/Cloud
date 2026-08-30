@@ -3,6 +3,7 @@ use a3s_cloud_control_plane::modules::executions::{
     ExecutionReconciler, PostgresExecutionRepository,
 };
 use a3s_cloud_control_plane::ControlPlane;
+use a3s_runtime::contract::RuntimeCapabilities;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use std::collections::BTreeSet;
 
@@ -1004,7 +1005,7 @@ fn certificate_request() -> Result<String, Box<dyn std::error::Error>> {
 
 fn runtime_capabilities() -> Value {
     json!({
-        "schema": "a3s.runtime.capabilities.v4",
+        "schema": RuntimeCapabilities::SCHEMA,
         "provider_id": "a3s-box",
         "provider_build": "a3s-box-rg3-postgres",
         "unit_classes": ["task", "service"],

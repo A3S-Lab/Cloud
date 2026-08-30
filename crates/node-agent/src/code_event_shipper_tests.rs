@@ -294,6 +294,7 @@ fn runtime_fixture(
             provider_build: "a3s-box-test".into(),
             spec_digest: binding.runtime_spec_digest.clone(),
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims,
         }),
         provider_attestation: None,

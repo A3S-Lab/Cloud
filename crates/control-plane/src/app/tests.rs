@@ -90,6 +90,7 @@ use crate::modules::workloads::{
 };
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_flow::FlowEngine;
+use a3s_runtime::contract::RuntimeCapabilities;
 use a3s_use_core::PluginReleaseChannel;
 use a3s_use_extension::{
     PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage, PluginCatalogSearch,
@@ -2422,7 +2423,7 @@ async fn create_api_token(
 
 fn runtime_capabilities() -> Value {
     json!({
-        "schema": "a3s.runtime.capabilities.v4",
+        "schema": RuntimeCapabilities::SCHEMA,
         "provider_id": "a3s-box",
         "provider_build": "a3s-box-test",
         "unit_classes": ["task", "service"],

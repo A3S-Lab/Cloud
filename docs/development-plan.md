@@ -6230,6 +6230,27 @@ tools now reuse the same commands, queries, DTOs, authorization, page bounds,
 CAS, and idempotency authority. `WI2` through `WI7` remain open, so no workload
 identity availability is claimed.
 
+`WI2-C1` now freezes the exact non-authorizing execution-evidence contract.
+The pinned Runtime `0.4.0` attachment is the canonical WorkloadIdentityPolicy
+ACL digest; Runtime preserves it in Unit Spec and evidence, and the pinned Box
+confidential provider binds it to provider attestation. Identity normalizes
+only the exact Claim/generation/digests, NodePool spec, Node Agent
+instance/capability observation, Runtime Unit/generation/Spec, provider
+resource/build/attestation and report timestamps into
+`cloud.identity.workload-runtime-evidence-binding.v1`. The fact has canonical
+SHA-256 and deterministic identity, accepts only a running observation within
+the 120-second protocol ceiling, and cannot authorize issuance because V1
+requires no Node hardware-attestation digest.
+
+Implement `WI2-C2` through one Identity consumer port and one cross-context
+adapter, then `WI2-C3` through immutable PostgreSQL persistence and retained
+replay/concurrency tests. Implement the missing Fleet-owned hardware Node
+attestation as `WI2-C4` and consume it only through a new versioned Identity
+decision. Handlers may not import Workloads/Fleet repositories, Identity may
+not copy their lifecycles, and cache/lock/queue mechanisms may not become
+evidence truth. `WI3` remains blocked by design until that full decision is
+freshly revalidated.
+
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same
 A3S ORM read-only admission mechanism against their owner-scoped `public`,

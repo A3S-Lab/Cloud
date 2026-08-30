@@ -1,4 +1,4 @@
-use a3s_runtime::contract::RuntimeCapabilities;
+use a3s_runtime::contract::{RuntimeCapabilities, RuntimeFeature};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -34,6 +34,7 @@ impl std::fmt::Debug for NodeEnrollmentRequest {
 
 impl NodeEnrollmentRequest {
     pub const SCHEMA: &'static str = "a3s.cloud.node-enrollment-request.v1";
+    pub const PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA: &'static str = "a3s.runtime.capabilities.v4";
 
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != Self::SCHEMA {
@@ -56,7 +57,28 @@ impl NodeEnrollmentRequest {
         validate_uuid("agent_instance_id", self.agent_instance_id)?;
         validate_single_line("agent version", &self.agent_version, 255)?;
         validate_pem("certificate request", &self.csr_pem, "CERTIFICATE REQUEST")?;
-        self.runtime_capabilities.validate()
+        self.validate_runtime_capabilities()
+    }
+
+    fn validate_runtime_capabilities(&self) -> Result<(), String> {
+        if self.runtime_capabilities.schema == RuntimeCapabilities::SCHEMA {
+            return self.runtime_capabilities.validate();
+        }
+        if self.runtime_capabilities.schema != Self::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA {
+            return self.runtime_capabilities.validate();
+        }
+        if self
+            .runtime_capabilities
+            .features
+            .contains(&RuntimeFeature::IdentityAttachment)
+        {
+            return Err(
+                "previous Runtime capabilities cannot advertise identity attachment support".into(),
+            );
+        }
+        let mut admitted = self.runtime_capabilities.clone();
+        admitted.schema = RuntimeCapabilities::SCHEMA.into();
+        admitted.validate()
     }
 }
 

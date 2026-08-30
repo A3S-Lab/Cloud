@@ -118,11 +118,16 @@ for capability, semantics-profile, health, and endpoint admission. They retain
 their own product checks. No context may reproduce generic class/capability/
 observation readiness logic or invoke A3S Box outside Runtime.
 
-**Component status on 2026-08-28:** Cloud pins `a3s-runtime` `0.3.0` at
-`2668903d7c0a58b6351df91d23919e349cc90c39` and Box `3.2.0` at
-`40ac61fd91b89114a1b588264ec74632fd4651bc`; both resolve that same Runtime
-source identity. Execution Tasks, ordinary and placement-group Services, Agent
-readiness, and the Durable Cell provider gate now call
+**Component status on 2026-08-30:** Cloud pins `a3s-runtime` `0.4.0` at
+`3b62bb3bae036636fee48c2725446e9ffc2a0c6c` and Box `3.2.0` at
+`331bc706749094f696d5f512e268266eabc3fa55`; both resolve that same Runtime
+source identity, and their exact
+[Runtime CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095) and
+[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002) pass. Runtime
+now preserves one opaque Identity attachment across
+Unit Spec and provider evidence, and confidential Box attestation binds it to
+the exact provider resource. Execution Tasks, ordinary and placement-group
+Services, Agent readiness, and the Durable Cell provider gate call
 `RuntimeConsumerRequirements` instead of maintaining local generic
 capability/readiness rules. This closes the library-adoption slice only;
 current provider, recovery, and product release gates still decide availability.

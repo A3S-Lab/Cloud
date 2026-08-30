@@ -666,6 +666,7 @@ fn healthy_observation(
             provider_build: "box-fixture".into(),
             spec_digest,
             semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            identity_attachment_digest: spec.identity_attachment_digest.clone(),
             claims,
         }),
         provider_attestation: None,

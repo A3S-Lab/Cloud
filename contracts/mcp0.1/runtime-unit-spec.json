@@ -1,5 +1,5 @@
 {
-  "schema": "a3s.runtime.unit-spec.v2",
+  "schema": "a3s.runtime.unit-spec.v3",
   "unit_id": "workload:mcp-weather:replica:1",
   "generation": 3,
   "class": "service",
@@ -53,5 +53,6 @@
     "kind": "always"
   },
   "outputs": [],
-  "semantics_profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  "semantics_profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "identity_attachment_digest": null
 }

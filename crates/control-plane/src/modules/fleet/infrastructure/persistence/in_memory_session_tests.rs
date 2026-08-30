@@ -87,7 +87,7 @@ async fn repository_with_node() -> (Arc<InMemoryNodeRepository>, NodeId, Uuid) {
             "a3s-box",
             "session-test",
             json!({
-                "schema": "a3s.runtime.capabilities.v4",
+                "schema": a3s_runtime::contract::RuntimeCapabilities::SCHEMA,
                 "provider_id": "a3s-box",
                 "provider_build": "session-test"
             }),

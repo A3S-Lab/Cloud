@@ -360,6 +360,7 @@ fn task_spec(
             .into_iter()
             .collect(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     };
     spec.validate().map_err(invalid)?;
     Ok(spec)

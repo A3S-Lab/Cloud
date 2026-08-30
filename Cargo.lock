@@ -43,7 +43,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=40ac61fd91b89114a1b588264ec74632fd4651bc#40ac61fd91b89114a1b588264ec74632fd4651bc"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=331bc706749094f696d5f512e268266eabc3fa55#331bc706749094f696d5f512e268266eabc3fa55"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -64,7 +64,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=40ac61fd91b89114a1b588264ec74632fd4651bc#40ac61fd91b89114a1b588264ec74632fd4651bc"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=331bc706749094f696d5f512e268266eabc3fa55#331bc706749094f696d5f512e268266eabc3fa55"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=40ac61fd91b89114a1b588264ec74632fd4651bc#40ac61fd91b89114a1b588264ec74632fd4651bc"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=331bc706749094f696d5f512e268266eabc3fa55#331bc706749094f696d5f512e268266eabc3fa55"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-box-core",
@@ -472,8 +472,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-runtime"
-version = "0.3.0"
-source = "git+https://github.com/A3S-Lab/Runtime.git?rev=2668903d7c0a58b6351df91d23919e349cc90c39#2668903d7c0a58b6351df91d23919e349cc90c39"
+version = "0.4.0"
+source = "git+https://github.com/A3S-Lab/Runtime.git?rev=3b62bb3bae036636fee48c2725446e9ffc2a0c6c#3b62bb3bae036636fee48c2725446e9ffc2a0c6c"
 dependencies = [
  "async-trait",
  "fs2",
@@ -2504,7 +2504,7 @@ checksum = "94e7099f6313ecacbe1256e8ff9d617b75d1bcb16a6fddef94866d225a01a14a"
 dependencies = [
  "io-lifetimes 2.0.4",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8021,7 +8021,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
 dependencies = [
  "bitflags 2.13.0",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

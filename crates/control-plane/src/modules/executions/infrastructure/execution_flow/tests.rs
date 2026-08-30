@@ -599,6 +599,7 @@ fn succeeded_observation(
             provider_build: "test-execution-runtime-1".into(),
             spec_digest: spec.digest()?,
             semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            identity_attachment_digest: spec.identity_attachment_digest.clone(),
             claims: BTreeMap::new(),
         }),
         provider_attestation: None,

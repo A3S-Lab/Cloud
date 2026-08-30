@@ -337,7 +337,7 @@ mod tests {
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(RUNTIME)),
-            "5915c0ccac040fc4270ee5095de58b9115caee6e240464863cd6c3c1dcd59d23"
+            "0d17ff2e32fbee223a9a8649bbeb14a74e919ce656d7f26bca817060f52861c6"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(GATEWAY)),
@@ -351,6 +351,7 @@ mod tests {
             runtime.semantics_profile_digest.as_deref(),
             Some(PROFILE_DIGEST)
         );
+        assert!(runtime.identity_attachment_digest.is_none());
 
         let gateway = parse_acl(std::str::from_utf8(GATEWAY).expect("Gateway fixture UTF-8"))
             .expect("Gateway fixture ACL");

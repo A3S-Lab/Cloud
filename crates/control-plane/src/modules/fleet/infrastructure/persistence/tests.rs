@@ -732,6 +732,7 @@ fn runtime_apply_draft(
                     restart: RestartPolicy::Always,
                     outputs: Vec::new(),
                     semantics_profile_digest: None,
+                    identity_attachment_digest: None,
                 },
             }),
             resource_claim: None,

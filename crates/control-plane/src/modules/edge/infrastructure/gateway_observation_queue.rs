@@ -184,7 +184,7 @@ mod tests {
                         "a3s-box",
                         "gateway-observation-test",
                         serde_json::json!({
-                            "schema": "a3s.runtime.capabilities.v4",
+                            "schema": a3s_runtime::contract::RuntimeCapabilities::SCHEMA,
                             "provider_id": "a3s-box",
                             "provider_build": "gateway-observation-test"
                         }),

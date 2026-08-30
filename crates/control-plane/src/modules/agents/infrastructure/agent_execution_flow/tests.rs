@@ -680,7 +680,7 @@ async fn enroll_command_node(
                     "a3s-box",
                     "agent-flow-test",
                     serde_json::json!({
-                        "schema": "a3s.runtime.capabilities.v4",
+                        "schema": a3s_runtime::contract::RuntimeCapabilities::SCHEMA,
                         "provider_id": "a3s-box",
                         "provider_build": "agent-flow-test"
                     }),
@@ -734,6 +734,7 @@ async fn record_running_observation(
             provider_build: "agent-flow-test".into(),
             spec_digest: binding.runtime_spec_digest().as_str().into(),
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims,
         }),
         provider_attestation: None,

@@ -5,7 +5,7 @@ pub(super) fn capabilities(build: &str) -> NodeCapabilities {
         "a3s-box",
         build,
         json!({
-            "schema": "a3s.runtime.capabilities.v4",
+            "schema": RuntimeCapabilities::SCHEMA,
             "provider_id": "a3s-box",
             "provider_build": build
         }),

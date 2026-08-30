@@ -2,6 +2,8 @@ use super::developer_workflow_operation::request_schema as developer_workflow_re
 use super::privileged_management_operation::request_schema as privileged_management_request_schema;
 use super::source_components::build_recipe_request_schema;
 use crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES;
+use a3s_cloud_contracts::NodeEnrollmentRequest;
+use a3s_runtime::contract::RuntimeCapabilities;
 use serde_json::{json, Value};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
@@ -230,7 +232,14 @@ fn runtime_capabilities_schema() -> Value {
             "features",
         ],
         json!({
-            "schema": { "type": "string", "enum": ["a3s.runtime.capabilities.v4"] },
+            "schema": {
+                "type": "string",
+                "description": "Node enrollment accepts the current Runtime capabilities schema and the immediately previous v4 schema only for staged upgrades; v4 cannot advertise identity_attachment.",
+                "enum": [
+                    RuntimeCapabilities::SCHEMA,
+                    NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA
+                ]
+            },
             "provider_id": { "type": "string", "minLength": 1, "maxLength": 255 },
             "provider_build": { "type": "string", "minLength": 1, "maxLength": 255 },
             "unit_classes": string_enum_array(&["task", "service"], true),
@@ -245,7 +254,8 @@ fn runtime_capabilities_schema() -> Value {
             "resource_controls": string_enum_array(&["cpu", "memory", "pids", "ephemeral_storage", "execution_timeout"], true),
             "features": string_enum_array(&[
                 "durable_identity", "stop", "remove", "service_tcp", "service_udp",
-                "logs", "exec", "usage", "attestation", "secret_references", "output_artifacts"
+                "logs", "exec", "usage", "attestation", "identity_attachment",
+                "secret_references", "output_artifacts"
             ], false)
         }),
     )
@@ -829,4 +839,29 @@ fn string_enum_array(values: &[&str], required: bool) -> Value {
         schema["minItems"] = json!(1);
     }
     schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_enrollment_schema_tracks_the_runtime_capability_authority() {
+        let schema = runtime_capabilities_schema();
+        assert_eq!(
+            schema["properties"]["schema"]["enum"],
+            json!([
+                RuntimeCapabilities::SCHEMA,
+                NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA
+            ])
+        );
+        assert!(schema["properties"]["schema"]["description"]
+            .as_str()
+            .is_some_and(
+                |description| description.contains("v4 cannot advertise identity_attachment")
+            ));
+        assert!(schema["properties"]["features"]["items"]["enum"]
+            .as_array()
+            .is_some_and(|features| features.contains(&json!("identity_attachment"))));
+    }
 }

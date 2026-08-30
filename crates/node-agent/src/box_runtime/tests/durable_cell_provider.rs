@@ -366,6 +366,7 @@ fn celld_runtime_spec(image: &str, service_profile_digest: &str) -> GateResult<R
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: Some(service_profile_digest.into()),
+        identity_attachment_digest: None,
     };
     spec.validate().map_err(invalid)?;
     Ok(spec)

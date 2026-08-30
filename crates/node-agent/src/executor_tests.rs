@@ -446,6 +446,7 @@ fn claim_runtime_spec() -> RuntimeUnitSpec {
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     }
 }
 
@@ -470,6 +471,7 @@ fn claim_observation(spec: &RuntimeUnitSpec, state: RuntimeUnitState) -> Runtime
             provider_build: "provider-build".into(),
             spec_digest,
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims: BTreeMap::new(),
         }),
         provider_attestation: None,
@@ -1085,6 +1087,7 @@ async fn provider_and_legacy_code_commands_are_forwarded_once() {
             provider_build: "a3s-box-test".into(),
             spec_digest: runtime_spec_digest,
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims,
         }),
         provider_attestation: None,
@@ -1282,6 +1285,7 @@ async fn durable_cell_operator_observation_is_sanitized_and_journaled_once() {
             provider_build: "a3s-box-test".into(),
             spec_digest: runtime_spec_digest,
             semantics_profile_digest: Some(service_profile_digest),
+            identity_attachment_digest: None,
             claims,
         }),
         provider_attestation: None,

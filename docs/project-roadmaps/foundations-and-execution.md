@@ -97,6 +97,13 @@ one exact OCI Runtime generation.
 | `BOX-R3` | Expose one versioned Runtime provider capability matrix, deterministic rejection reasons, endpoint observations, recovery, and cleanup evidence | Runtime accepts only advertised features and stale generations cannot retain endpoints or resources |
 | `BOX-R4` | Add node-pressure, image/weight cache accounting, drain, warm-pool primitives, and upgrade safety without cluster policy | Cloud can make placement decisions from fresh capacity evidence; Box never chooses another node or desired replica count |
 
+The `BOX-R3` identity-evidence sub-slice is verified at
+`331bc706749094f696d5f512e268266eabc3fa55`: only the confidential provider
+advertises `IdentityAttachment`, and restart/replay preserves the attachment in
+provider evidence and attestation. The exact
+[main CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002) passes. This
+does not complete Box networking, recovery, pressure or upgrade gates.
+
 Box does not own Cloud Workloads, Fleet placement, autoscaling, tenant quotas,
 public routes, Runtime Unit identity, product registries, or AI product
 semantics.
@@ -112,6 +119,14 @@ generic `Task` or `Service` unit over A3S Box.
 | `RUNTIME-R2` | Complete apply/inspect/stop/remove/logs/exec, immutable spec identity, request replay, typed endpoint observations, health, outputs, and provider fencing | Lost response, agent loss, provider loss, restart, replacement, stale observation, and cleanup conformance pass over real Box |
 | `RUNTIME-R3` | Add generic outbound-policy attachment, pause/resume, checkpoint/restore reference, resource-update evaluation, and capability discovery only where a provider can prove them | Every optional feature is independently advertised, digest-bound, generation-bound, and rejected when unsupported |
 | `RUNTIME-R4` | Publish stable protocol/SDK compatibility, mixed-version recovery, telemetry, capacity feedback, and exact-revision consumer fixtures | Cloud can upgrade Runtime agents without two owners, endpoint ambiguity, or orphaned resources |
+
+The identity-attestation part of `RUNTIME-R1/R3` is verified in Runtime `0.4.0`
+at `3b62bb3bae036636fee48c2725446e9ffc2a0c6c`. One opaque attachment is
+validated across Unit Spec and evidence; `RuntimeAttestationBinding` closes
+Unit/generation/Spec/provider resource/build/attestation identity without
+interpreting product policy. The exact
+[main CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095) passes.
+Cloud, not Runtime, owns freshness, tenant policy and issuance decisions.
 
 Runtime does not own Agent sessions, Function invocations, Workflow history,
 Durable Cell records, MCP protocol, model routing, placement, replicas,
@@ -131,4 +146,3 @@ This group is ready for the next portfolio wave only when:
   them through the same requirements contract; and
 - exact Runtime, Box, OCI Runtime, ACL, and fixture revisions pass real-host
   failure and cleanup tests.
-

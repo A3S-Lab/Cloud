@@ -454,6 +454,7 @@ fn provider_runtime_spec(provider_artifact: ArtifactRef) -> GateResult<RuntimeUn
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     };
     spec.validate().map_err(invalid)?;
     Ok(spec)

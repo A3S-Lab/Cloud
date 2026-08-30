@@ -3262,6 +3262,37 @@ workload identity remains unavailable because Fleet/Runtime attestation,
 issuance, enforcement, revocation, and federation remain owned by `WI2`
 through `WI7`.
 
+`H0.4-WI2-C1` is now implemented locally as the non-authorizing Runtime
+evidence contract. Cloud pins A3S Runtime `0.4.0` and the exact Box revision
+that preserve one opaque Identity policy digest across Unit Spec, provider
+evidence, restart/replay and confidential-provider attestation. Their exact
+[Runtime main CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095)
+and [Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002)
+pass. Cloud REST/OpenAPI `1.81.0`, the current Node path and the frozen MCP
+fixture consume Runtime `capabilities.v5` and `unit-spec.v3` from that exact
+revision; OpenAPI derives the current version from Runtime rather than a
+second literal. Enrollment V1 alone retains bounded v4 admission for REST
+compatibility and rejects any v4 claim of the v5 identity-attachment feature;
+the authenticated Node protocol and execution evidence remain exact-version
+gates. Identity's
+canonical `cloud.identity.workload-runtime-evidence-binding.v1` binds that
+digest to the exact policy revision, Workloads Claim/generation/digests,
+NodePool spec, Fleet Node Agent instance/capability observation, Runtime
+Unit/generation/Spec and Box provider evidence. Canonical SHA-256 plus a
+deterministic UUID makes identical input one fact; non-running, reordered,
+cross-tenant, drifted or older-than-120-second evidence fails closed. V1
+requires an absent Node hardware-attestation binding and always denies
+credential issuance. It is therefore a contract component, not completed WI2
+or available workload identity.
+
+The ordered continuation is `WI2-C2` one Identity-owned Application port and
+one Workloads/Fleet/Runtime anti-corruption adapter, `WI2-C3` immutable
+PostgreSQL persistence with idempotency/concurrency/revocation gates, and
+`WI2-C4` a Fleet-owned Node hardware-attestation fact plus a new issuance-ready
+versioned decision. No stage may introduce an Identity copy of Claim, Node or
+Runtime lifecycle, a provider-specific parser, Redis correctness lock, or
+parallel evidence registry. Only then may `WI3` issue a short-lived credential.
+
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,
    `H0.1`, and `H0.2` on exact Box revisions; first publish the unified Runtime

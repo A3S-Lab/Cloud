@@ -88,7 +88,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "in_progress"
   }
   gate "C0.3" {
-    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
+    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "doc:docs/decisions/app-platform/0087-one-workload-runtime-evidence-authority.md", "implementation:crates/control-plane/src/modules/identity/domain/entities/workload_runtime_evidence_binding.rs", "implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs", "test:crates/control-plane/src/modules/architecture_tests.rs"]
     state = "in_progress"
   }
   gate "C0.5" {

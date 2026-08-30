@@ -128,6 +128,7 @@ fn resource_bound_runtime_spec() -> RuntimeUnitSpec {
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     }
 }
 
@@ -156,6 +157,7 @@ fn resource_bound_runtime_observation(spec: &RuntimeUnitSpec) -> RuntimeObservat
             provider_build: "provider-build-1".into(),
             spec_digest,
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims: BTreeMap::new(),
         }),
         provider_attestation: None,
@@ -176,6 +178,27 @@ fn enrollment_is_closed_and_requires_a_real_token_shape() {
         runtime_capabilities: capabilities(),
     };
     request.validate().expect("valid enrollment request");
+
+    let mut previous_runtime = request.clone();
+    previous_runtime.runtime_capabilities.schema =
+        NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA.into();
+    previous_runtime
+        .validate()
+        .expect("previous Runtime capabilities remain valid for enrollment");
+    previous_runtime
+        .runtime_capabilities
+        .features
+        .push(RuntimeFeature::IdentityAttachment);
+    assert_eq!(
+        previous_runtime
+            .validate()
+            .expect_err("previous capabilities cannot claim a current feature"),
+        "previous Runtime capabilities cannot advertise identity attachment support"
+    );
+
+    let mut unsupported_runtime = request.clone();
+    unsupported_runtime.runtime_capabilities.schema = "a3s.runtime.capabilities.v3".into();
+    assert!(unsupported_runtime.validate().is_err());
 
     let mut invalid = request.clone();
     invalid.enrollment_token = format!("a3sn_{}", "A".repeat(64));

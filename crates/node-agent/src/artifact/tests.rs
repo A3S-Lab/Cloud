@@ -608,6 +608,7 @@ fn task_spec(input: Option<ArtifactRef>, output: bool) -> RuntimeUnitSpec {
             .into_iter()
             .collect(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     }
 }
 

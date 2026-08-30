@@ -135,6 +135,7 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
             provider_build: "a3s-box-test".into(),
             spec_digest: binding.runtime_spec_digest.clone(),
             semantics_profile_digest: None,
+            identity_attachment_digest: None,
             claims,
         }),
         provider_attestation: None,

@@ -91,6 +91,7 @@ AI application platform parity manifest.
 | [0084](0084-one-tenant-support-approval-authority.md) | Persist actual human approval evidence and activate terminal tenant-support grants through one Identity/PostgreSQL authority |
 | [0085](0085-one-atomic-privileged-authorization-authority.md) | Issue exact current-snapshot privileged allows through one revocation-fenced Identity/PostgreSQL authority and shared Audit |
 | [0086](0086-one-atomic-identity-bootstrap-authority.md) | Create the first tenant identity and matching PlatformOwner authority through one locked PostgreSQL transaction and shared fact rail |
+| [0087](0087-one-workload-runtime-evidence-authority.md) | Bind one exact policy, Claim, Node session, and Runtime/Box proof without copying lifecycles or prematurely authorizing credentials |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

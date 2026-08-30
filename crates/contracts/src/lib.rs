@@ -26,6 +26,7 @@ pub use a3s_code_core::{
 };
 pub use a3s_runtime::contract::{
     IsolationLevel as RuntimeIsolationLevel, RuntimeServiceEndpoint, RuntimeUnitClass,
+    RuntimeUnitState,
 };
 pub use agent_provider::{
     AgentProviderApprovalDecisionV1, AgentProviderApprovalOutcomeV1,

@@ -135,6 +135,7 @@ fn runtime_spec_for_validation(
         restart: RestartPolicy::Never,
         outputs: Vec::new(),
         semantics_profile_digest: Some(policy.semantics_profile_digest.to_string()),
+        identity_attachment_digest: None,
     }
 }
 

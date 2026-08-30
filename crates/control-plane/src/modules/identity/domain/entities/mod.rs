@@ -14,6 +14,7 @@ mod resource_grant;
 mod tenant_support_grant;
 mod tenant_support_grant_approval;
 mod workload_identity;
+mod workload_runtime_evidence_binding;
 
 pub use api_token::{
     ApiToken, AuthenticatedApiToken, MAX_OIDC_LOGIN_TOKEN_LIFETIME, MIN_OIDC_LOGIN_TOKEN_LIFETIME,
@@ -49,3 +50,8 @@ pub use tenant_support_grant_approval::{
     TenantSupportGrantApproval, TenantSupportGrantApprovalOutcome, TenantSupportGrantProposal,
 };
 pub use workload_identity::{AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision};
+pub use workload_runtime_evidence_binding::{
+    WorkloadRuntimeEvidenceBinding, WorkloadRuntimeEvidenceBindingId,
+    WorkloadRuntimeEvidenceCandidate, MAX_WORKLOAD_RUNTIME_EVIDENCE_AGE_SECONDS,
+    WORKLOAD_RUNTIME_EVIDENCE_BINDING_SCHEMA,
+};

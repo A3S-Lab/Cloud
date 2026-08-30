@@ -619,6 +619,7 @@ fn private_registry_service_spec(
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     };
     spec.validate().map_err(io::Error::other)?;
     Ok(spec)
@@ -695,6 +696,7 @@ fn secret_service_spec(
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
+        identity_attachment_digest: None,
     };
     spec.validate().map_err(io::Error::other)?;
     Ok(spec)

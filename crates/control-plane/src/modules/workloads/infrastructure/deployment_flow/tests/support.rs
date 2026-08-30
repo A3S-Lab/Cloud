@@ -1003,6 +1003,7 @@ pub(super) fn healthy_observation(
             provider_build: "test-runtime-1".into(),
             spec_digest,
             semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            identity_attachment_digest: spec.identity_attachment_digest.clone(),
             claims: endpoint_claims,
         }),
         provider_attestation: None,

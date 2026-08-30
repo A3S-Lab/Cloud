@@ -244,6 +244,7 @@ async fn record_runtime_observation(
             provider_build: capabilities.provider_build.clone(),
             spec_digest,
             semantics_profile_digest: spec.semantics_profile_digest.clone(),
+            identity_attachment_digest: spec.identity_attachment_digest.clone(),
             claims,
         }),
         provider_attestation: None,

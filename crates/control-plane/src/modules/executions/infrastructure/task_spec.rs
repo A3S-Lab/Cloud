@@ -92,6 +92,7 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
             || format!("sha256:{:x}", Sha256::digest(SEMANTICS_PROFILE.as_bytes())),
             |policy| policy.semantics_profile_digest.to_string(),
         )),
+        identity_attachment_digest: None,
     };
     spec.validate()?;
     Ok(spec)

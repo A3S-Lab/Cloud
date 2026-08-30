@@ -25,14 +25,14 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "queue-postgres",
     "security",
 ] }
-a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "40ac61fd91b89114a1b588264ec74632fd4651bc" }
-a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "40ac61fd91b89114a1b588264ec74632fd4651bc", default-features = false, features = ["build", "vm"] }
+a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "331bc706749094f696d5f512e268266eabc3fa55" }
+a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "331bc706749094f696d5f512e268266eabc3fa55", default-features = false, features = ["build", "vm"] }
 a3s-code-core = { version = "=8.0.1", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { version = "=1.1.0", default-features = false, features = ["boot", "postgres"] }
 a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/UI.git", rev = "3c5499cba6dc116230b859fac6a8e32653024a8f" }
 a3s-orm = { version = "=0.3.1", git = "https://github.com/A3S-Lab/ORM.git", rev = "52944002dc84b07d88a85f2a4a87f913655e62b5", default-features = false, features = ["postgres"] }
-a3s-runtime = { version = "=0.3.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "2668903d7c0a58b6351df91d23919e349cc90c39" }
+a3s-runtime = { version = "=0.4.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "3b62bb3bae036636fee48c2725446e9ffc2a0c6c" }
 a3s-use-core = { version = "=0.2.4", git = "https://github.com/A3S-Lab/Use.git", rev = "4c698b1f145a55e9bca88e5c1f5aea2bf294a669" }
 a3s-use-extension = { version = "=0.3.3", git = "https://github.com/A3S-Lab/Use.git", rev = "4c698b1f145a55e9bca88e5c1f5aea2bf294a669" }
 aes-gcm = "0.10"

@@ -55,6 +55,15 @@ only Unit lifecycle contract.
 | `CLOUD-R8` | Complete logs, metrics, traces, profiles, security telemetry, usage, SLOs, alerting, replayable analytics projection, and optional Doris OLAP | One correlation chain spans request to kernel; telemetry loss is explicit; Doris loss cannot affect product truth |
 | `CLOUD-R9` | Qualify self-hosted installation, control-plane upgrades, backups, restores, disaster recovery, certificate/key rotation, mixed versions, and signed distribution | Clean install, rolling upgrade, interrupted migration, rollback boundary, node/region loss, and full restore drills pass |
 
+The workload-identity sub-lane of `CLOUD-R1/R2` has a verified WI1 trust-policy
+foundation and a local `WI2-C1` contract. The latter deterministically binds an
+exact policy revision to Workloads Claim, NodePool, Fleet Node session and
+Runtime/Box attestation evidence, but its V1 hardware-Node-attestation field is
+structurally absent and it cannot authorize issuance. Next come the one
+Identity-owned owner port/adapter, immutable PostgreSQL persistence and Fleet
+hardware-attestation fact; Redis, Lane or a copied lifecycle cannot replace
+those gates.
+
 ## 3. Runtime CI/CD as a core module
 
 The detailed contract lives in
@@ -132,4 +141,3 @@ Cloud reaches a production-complete release only when the local product gates
 and shared `ECO-G1` through `ECO-G8` evidence pass at exact dependency
 revisions. Documentation completeness, mocks, local-only tests, or target
 architecture alone never changes a capability from `Planned` to `Verified`.
-

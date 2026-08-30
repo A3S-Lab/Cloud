@@ -1922,6 +1922,63 @@ fn workload_trust_persistence_reuses_one_atomic_identity_authority() {
 }
 
 #[test]
+fn workload_runtime_evidence_is_one_non_authorizing_identity_projection() {
+    let evidence = std::fs::read_to_string(
+        module_root().join("identity/domain/entities/workload_runtime_evidence_binding.rs"),
+    )
+    .expect("read workload Runtime evidence binding");
+    let production = production_source(&evidence);
+    for required in [
+        "cloud.identity.workload-runtime-evidence-binding.v1",
+        "pub struct WorkloadRuntimeEvidenceCandidate",
+        "pub struct WorkloadRuntimeEvidenceBinding",
+        "pub resource_claim_digest: Sha256Digest",
+        "pub resource_claim_aggregate_version: u64",
+        "pub node_pool_aggregate_version: u64",
+        "pub node_aggregate_version: u64",
+        "pub node_capabilities_digest: Sha256Digest",
+        "pub identity_attachment_digest: Sha256Digest",
+        "pub runtime_attestation_binding_digest: Sha256Digest",
+        "pub node_attestation_binding_digest: Option<Sha256Digest>",
+        "Uuid::new_v5",
+        "pub const fn authorizes_credential_issuance(&self) -> bool",
+    ] {
+        assert!(
+            evidence.contains(required),
+            "WI2-C1 evidence lost closed binding invariant {required}"
+        );
+    }
+    assert!(production.contains("self.node_attestation_binding_digest.is_some()"));
+    assert!(production.contains("false"));
+    assert_eq!(
+        production
+            .matches("pub struct WorkloadRuntimeEvidenceBinding {")
+            .count(),
+        1,
+        "Identity acquired a second Runtime evidence projection"
+    );
+    for forbidden in [
+        "crate::modules::workloads",
+        "crate::modules::fleet",
+        "a3s_runtime::",
+        "a3s_box_runtime::",
+        "Postgres",
+        "InMemory",
+        "redis",
+        "a3s_lane",
+        "tokio::",
+        "async fn",
+        "private_key",
+        "certificate_pem",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "WI2-C1 domain evidence imported a foreign lifecycle or mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrows_scope() {
     let root = module_root();
     let scope = std::fs::read_to_string(root.join("shared_kernel/domain/scope_context.rs"))

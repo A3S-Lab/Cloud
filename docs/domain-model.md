@@ -251,6 +251,9 @@ Primary aggregates:
   `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1/C2` contract, persistence,
   and maintained interfaces implemented locally; exact execution-attestation
   binding remains `WI2`)
+- `WorkloadRuntimeEvidenceBinding` (`H0.4-WI2-C1` deterministic,
+  non-authorizing policy/Claim/Node-session/Runtime-Box evidence projection;
+  owner-port composition, persistence and Fleet hardware attestation remain)
 
 #### Platform scope and RBAC (`C0.5-MT1-C1/C2/C3` foundation)
 
@@ -366,6 +369,33 @@ complete main certification, exact Fleet/Runtime attestation, local credential
 delivery, discovery, peer policy, enforcement, revocation drills, and
 federation evidence remain open. No workload identity availability is claimed
 by `WI1`.
+
+#### Workload Runtime evidence (`H0.4-WI2-C1` component)
+
+`WorkloadRuntimeEvidenceBinding` is an immutable Identity decision projection,
+not another Workload, Claim, Node, Runtime or attestation aggregate. Its
+canonical V1 payload repeats only exact foreign identities and digests needed
+for a future issuance decision: policy revision, tenant and Workload revision,
+ResourceClaim ID/generation/Claim/prepared-binding digests, NodePool ID/spec,
+Fleet Node/Agent instance/capabilities observation, and Runtime
+report/Unit/generation/class/isolation/semantics/Spec/provider attestation.
+The WorkloadIdentityPolicy ACL digest is Runtime's opaque identity attachment.
+
+The binding digest is canonical SHA-256 and its ID is deterministically derived
+from that digest. A replay is the same fact; a changed owner identity,
+generation, attachment, evidence digest or timestamp is a different or invalid
+fact. Admission requires a running Runtime observation and fresh Runtime plus
+Node observations within a 120-second protocol ceiling. Persistence never
+turns this record into current truth: any later issuance must re-read and
+revalidate all owners.
+
+V1 structurally rejects a non-null Node hardware-attestation digest and its
+credential-authority predicate is always false. This makes the currently
+missing Fleet evidence visible instead of treating a Node certificate,
+capability document or Box provider name as hardware proof. `WI2-C2/C3` add the
+sole Identity-owned owner port/adapter and persistence; `WI2-C4` adds Fleet's
+immutable hardware evidence and a new versioned decision before `WI3` can
+issue credentials.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 
