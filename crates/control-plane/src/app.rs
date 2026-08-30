@@ -179,13 +179,15 @@ use crate::modules::identity::domain::repositories::{
     IWorkloadIdentityPolicyRepository,
 };
 use crate::modules::identity::domain::services::{
-    IOidcProviderService, IRecipientContactProofService,
+    IOidcProviderService, IRecipientContactProofService, IWorkloadIdentityProviderService,
 };
 use crate::modules::identity::domain::value_objects::{
     BootstrapCredential, RecipientContactSigningKeyId,
 };
 use crate::modules::identity::infrastructure::{
-    ApiTokenVerifier, HmacRecipientContactProofService, VaultRecipientContactProofService,
+    ApiTokenVerifier, HmacRecipientContactProofService,
+    SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
+    VaultRecipientContactProofService,
 };
 use crate::modules::identity::{
     A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
@@ -202,7 +204,8 @@ use crate::modules::identity::{
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IdentityModule, ListApiTokensHandler,
+    GetWorkloadIdentityPolicyRevisionHandler, IdentityModule,
+    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler,
     ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
     ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
@@ -405,6 +408,8 @@ pub enum ControlPlaneStartupError {
     HumanTask(String),
     #[error("could not initialize A3S Use plugin catalog: {0}")]
     Plugins(String),
+    #[error("could not initialize workload identity provider access: {0}")]
+    WorkloadIdentity(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -461,9 +466,20 @@ async fn build_application_with_overrides(
                     .map_err(ControlPlaneStartupError::Auth)?,
             ),
         };
+        let workload_identity_provider_options = config
+            .workload_identity
+            .providers
+            .iter()
+            .map(SpiffeHttpsWebWorkloadIdentityProviderOptions::from)
+            .collect::<Vec<_>>();
+        let workload_identity_provider: Arc<dyn IWorkloadIdentityProviderService> = Arc::new(
+            SpiffeHttpsWebWorkloadIdentityProviderService::new(&workload_identity_provider_options)
+                .map_err(ControlPlaneStartupError::WorkloadIdentity)?,
+        );
         Some(ManagementAdapterOverrides {
             source_resolver,
             oidc_provider,
+            workload_identity_provider,
         })
     } else {
         None
@@ -474,6 +490,7 @@ async fn build_application_with_overrides(
 struct ManagementAdapterOverrides {
     source_resolver: Arc<dyn ISourceResolver>,
     oidc_provider: Arc<dyn IOidcProviderService>,
+    workload_identity_provider: Arc<dyn IWorkloadIdentityProviderService>,
 }
 
 async fn build_api_worker_application(
@@ -1230,6 +1247,7 @@ async fn build_api_worker_application(
     let management = if let Some(ManagementAdapterOverrides {
         source_resolver,
         oidc_provider,
+        workload_identity_provider,
     }) = management_adapters
     {
         let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
@@ -1326,6 +1344,7 @@ async fn build_api_worker_application(
             ));
         Some(ManagementSurfaceDependencies {
             oidc_provider,
+            workload_identity_provider,
             plugin_trust_roots,
             plugin_catalog,
             asset_catalog,
@@ -1982,6 +2001,7 @@ fn build_outbox_projectors(
 
 struct ManagementSurfaceDependencies {
     oidc_provider: Arc<dyn IOidcProviderService>,
+    workload_identity_provider: Arc<dyn IWorkloadIdentityProviderService>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
     plugin_catalog: Arc<dyn IPluginRegistryCatalog>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
@@ -2188,6 +2208,7 @@ fn build_management_application_with_health(
     } = dependencies;
     let ManagementSurfaceDependencies {
         oidc_provider,
+        workload_identity_provider,
         plugin_trust_roots,
         plugin_catalog,
         asset_catalog,
@@ -3511,6 +3532,13 @@ fn build_management_application_with_health(
                     GetCurrentTrustDomainHandler::new(
                         Arc::clone(&identity_bootstrap),
                         Arc::clone(&trust_domains),
+                    ),
+                )
+                .query_handler::<crate::modules::identity::InspectCurrentTrustDomainProvider, _>(
+                    InspectCurrentTrustDomainProviderHandler::new(
+                        Arc::clone(&identity_bootstrap),
+                        Arc::clone(&trust_domains),
+                        workload_identity_provider,
                     ),
                 )
                 .query_handler::<crate::modules::identity::GetTrustDomainRevision, _>(

@@ -34,6 +34,7 @@ import {
   trustDomainRevisionListResult,
   trustDomainRevisionMutationResult,
   trustDomainRevisionResult,
+  workloadIdentityProviderInspectionResult,
   workloadIdentityPolicyRevisionListResult,
   workloadIdentityPolicyRevisionMutationResult,
   workloadIdentityPolicyRevisionResult,
@@ -96,6 +97,11 @@ export async function executePrivilegedManagementCommand(
       requireReadCommand(arguments_, 'trust-domains current <trust-domain-id>');
       return trustDomainRevisionResult(
         await cloudApi().getCurrentTrustDomain(positionalUuid(positionals, 2, 'trust-domain ID'))
+      );
+    case 'trust-domains inspect':
+      requireReadCommand(arguments_, 'trust-domains inspect <trust-domain-id>');
+      return workloadIdentityProviderInspectionResult(
+        await cloudApi().inspectCurrentTrustDomainProvider(positionalUuid(positionals, 2, 'trust-domain ID'))
       );
     case 'trust-domains get':
       requireReadCommand(arguments_, 'trust-domains get <trust-domain-id> <revision-id>', 4);

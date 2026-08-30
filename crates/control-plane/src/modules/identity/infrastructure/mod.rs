@@ -4,6 +4,7 @@ pub mod persistence;
 mod recipient_contact_proof;
 mod recipient_contact_verification_event_consumer;
 mod smtp_recipient_contact_verification_delivery;
+mod spiffe_https_web_workload_identity_provider;
 mod vault_recipient_contact_proof;
 
 pub use api_token_verifier::ApiTokenVerifier;
@@ -17,5 +18,8 @@ pub use recipient_contact_verification_event_consumer::{
 pub use smtp_recipient_contact_verification_delivery::{
     SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
+};
+pub use spiffe_https_web_workload_identity_provider::{
+    SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
 };
 pub use vault_recipient_contact_proof::VaultRecipientContactProofService;

@@ -27,14 +27,22 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(169);
-  expect(READ_ONLY_TOOLS).toHaveLength(95);
+  expect(ADMIN_TOOLS).toHaveLength(179);
+  expect(READ_ONLY_TOOLS).toHaveLength(103);
   for (const tool of [
     'a3s_cloud_platform_role_policy_current_get',
     'a3s_cloud_platform_role_policy_revisions_get',
     'a3s_cloud_platform_role_bindings_get',
     'a3s_cloud_principal_platform_role_binding_get',
     'a3s_cloud_tenant_support_grants_get',
+    'a3s_cloud_trust_domains_current_get',
+    'a3s_cloud_trust_domain_provider_inspect',
+    'a3s_cloud_trust_domain_revisions_list',
+    'a3s_cloud_trust_domain_revisions_get',
+    'a3s_cloud_workload_identity_policies_current_get',
+    'a3s_cloud_workload_identity_policy_revisions_list',
+    'a3s_cloud_workload_identity_policy_revisions_get',
+    'a3s_cloud_workload_identity_policy_for_workload_get',
   ] as const) {
     expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
     expect(READ_ONLY_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
@@ -47,6 +55,8 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
     'a3s_cloud_tenant_support_grants_propose',
     'a3s_cloud_tenant_support_grants_approve',
     'a3s_cloud_tenant_support_grants_revoke',
+    'a3s_cloud_trust_domain_revisions_accept',
+    'a3s_cloud_workload_identity_policy_revisions_accept',
   ] as const) {
     expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
     expect(READ_ONLY_TOOLS).not.toContain(tool);

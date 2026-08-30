@@ -702,6 +702,17 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::TrustDomainProviderInspect => {
+            let arguments = arguments::parse::<TrustDomainArguments>(arguments).ok()?;
+            privileged_management::inspect_current_trust_domain_provider(
+                query_bus,
+                actor_principal_id,
+                credential_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::TrustDomainRevisionsList => {
             let arguments = arguments::parse::<TrustDomainRevisionListArguments>(arguments).ok()?;
             privileged_management::list_trust_domain_revisions(

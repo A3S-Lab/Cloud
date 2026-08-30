@@ -78,6 +78,7 @@ describe('CloudApi privileged management', () => {
     });
 
     await api.getCurrentTrustDomain(TRUST_DOMAIN_ID);
+    await api.inspectCurrentTrustDomainProvider(TRUST_DOMAIN_ID);
     await api.getTrustDomainRevision(TRUST_DOMAIN_ID, REVISION_ID);
     await api.listTrustDomainRevisions(TRUST_DOMAIN_ID);
     await api.getCurrentWorkloadIdentityPolicy(ORGANIZATION_ID, WORKLOAD_IDENTITY_POLICY_ID);
@@ -89,6 +90,7 @@ describe('CloudApi privileged management', () => {
 
     expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
       [`/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}`, 'GET'],
+      [`/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}/provider-inspection`, 'GET'],
       [`/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}/revisions/${REVISION_ID}`, 'GET'],
       [
         `/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}/revisions?limit=${DEFAULT_WORKLOAD_TRUST_REVISION_LIST_LIMIT}`,

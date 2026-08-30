@@ -396,6 +396,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_principal_platform_role_binding_get",
             "a3s_cloud_tenant_support_grants_get",
             "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_provider_inspect",
             "a3s_cloud_trust_domain_revisions_list",
             "a3s_cloud_trust_domain_revisions_get",
             "a3s_cloud_workload_identity_policies_current_get",
@@ -660,6 +661,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_tenant_support_grants_approve",
             "a3s_cloud_tenant_support_grants_revoke",
             "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_provider_inspect",
             "a3s_cloud_trust_domain_revisions_list",
             "a3s_cloud_trust_domain_revisions_get",
             "a3s_cloud_trust_domain_revisions_accept",
@@ -1177,6 +1179,11 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
         ),
         (
             6,
+            "a3s_cloud_trust_domain_provider_inspect",
+            json!({"trustDomainId": trust_domain_id}),
+        ),
+        (
+            7,
             "a3s_cloud_workload_identity_policies_current_get",
             json!({"organizationId": organization_id, "policyId": policy_id}),
         ),
@@ -1202,7 +1209,7 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
         .call(mcp_request(
             Some(ADMIN_TOKEN),
             tool_call(
-                7,
+                8,
                 "a3s_cloud_trust_domains_current_get",
                 json!({"trustDomainId": trust_domain_id, "installationId": Uuid::now_v7()}),
             ),
@@ -1214,7 +1221,7 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
         .call(mcp_request(
             Some(ADMIN_TOKEN),
             tool_call(
-                8,
+                9,
                 "a3s_cloud_workload_identity_policy_revisions_list",
                 json!({
                     "organizationId": organization_id,
@@ -1230,7 +1237,7 @@ async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgr
         .call(mcp_request(
             Some(ADMIN_TOKEN),
             tool_call(
-                9,
+                10,
                 "a3s_cloud_trust_domain_revisions_get",
                 json!({
                     "trustDomainId": trust_domain_id,
@@ -2214,6 +2221,7 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
             "a3s_cloud_principal_platform_role_binding_get",
             "a3s_cloud_tenant_support_grants_get",
             "a3s_cloud_trust_domains_current_get",
+            "a3s_cloud_trust_domain_provider_inspect",
             "a3s_cloud_trust_domain_revisions_list",
             "a3s_cloud_trust_domain_revisions_get",
             "a3s_cloud_workload_identity_policies_current_get",

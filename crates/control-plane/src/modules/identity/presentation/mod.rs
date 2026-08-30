@@ -15,6 +15,7 @@ pub use dto::{
     TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
     TenantSupportGrantResponse, TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
     WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
+    WorkloadIdentityProviderInspectionResponse,
 };
 pub use guards::{
     with_deferred_resource_scope, BootstrapGuard, DeferredResourceScope,

@@ -1,10 +1,11 @@
 use super::{
     GetCurrentTrustDomain, GetCurrentWorkloadIdentityPolicy,
     GetCurrentWorkloadIdentityPolicyForWorkload, GetTrustDomainRevision,
-    GetWorkloadIdentityPolicyRevision, ListTrustDomainRevisions,
+    GetWorkloadIdentityPolicyRevision, InspectCurrentTrustDomainProvider, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions,
 };
 use crate::modules::identity::application::privileged_management::{installation_id, not_found};
+use crate::modules::identity::application::WorkloadIdentityProviderInspectionResult;
 use crate::modules::identity::domain::entities::{
     AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision,
 };
@@ -16,7 +17,10 @@ use crate::modules::identity::domain::repositories::{
     ReadCurrentWorkloadIdentityPolicyForWorkload, ReadTrustDomainRevision,
     ReadWorkloadIdentityPolicyRevision,
 };
-use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::identity::domain::services::{
+    IWorkloadIdentityProviderService, WorkloadIdentityProviderError,
+};
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
@@ -48,6 +52,26 @@ workload_trust_handler!(
     GetCurrentWorkloadIdentityPolicyHandler,
     IWorkloadIdentityPolicyRepository
 );
+
+pub struct InspectCurrentTrustDomainProviderHandler {
+    bootstrap: Arc<dyn IIdentityBootstrapRepository>,
+    repository: Arc<dyn ITrustDomainRepository>,
+    provider: Arc<dyn IWorkloadIdentityProviderService>,
+}
+
+impl InspectCurrentTrustDomainProviderHandler {
+    pub fn new(
+        bootstrap: Arc<dyn IIdentityBootstrapRepository>,
+        repository: Arc<dyn ITrustDomainRepository>,
+        provider: Arc<dyn IWorkloadIdentityProviderService>,
+    ) -> Self {
+        Self {
+            bootstrap,
+            repository,
+            provider,
+        }
+    }
+}
 workload_trust_handler!(
     GetCurrentWorkloadIdentityPolicyForWorkloadHandler,
     IWorkloadIdentityPolicyRepository
@@ -92,6 +116,75 @@ impl QueryHandler<GetCurrentTrustDomain> for GetCurrentTrustDomainHandler {
                 Err(error) => Ok(Err(error.into())),
             }
         })
+    }
+}
+
+impl QueryHandler<InspectCurrentTrustDomainProvider> for InspectCurrentTrustDomainProviderHandler {
+    fn execute(
+        &self,
+        query: InspectCurrentTrustDomainProvider,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<WorkloadIdentityProviderInspectionResult>>,
+    > {
+        let bootstrap = Arc::clone(&self.bootstrap);
+        let repository = Arc::clone(&self.repository);
+        let provider = Arc::clone(&self.provider);
+        Box::pin(async move {
+            let installation_id = match installation_id(&bootstrap).await {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
+            let revision = match repository
+                .read_current(ReadCurrentTrustDomain {
+                    installation_id,
+                    trust_domain_id: query.trust_domain_id,
+                    actor_principal_id: query.actor_principal_id,
+                    credential_id: query.credential_id,
+                    request_id: query.request_id,
+                })
+                .await
+            {
+                Ok(Some(value)) => value,
+                Ok(None) => return Ok(Err(not_found("current trust-domain revision"))),
+                Err(error) => return Ok(Err(error.into())),
+            };
+            let inspection = match provider
+                .inspect(&revision.contract.spec().provider_profile_digest)
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(map_provider_error(error))),
+            };
+            if inspection.admits(&revision.contract).is_err() {
+                return Ok(Err(ApplicationError::Conflict(
+                    "workload identity provider observation does not satisfy the exact trust-domain revision"
+                        .into(),
+                )));
+            }
+            Ok(Ok(WorkloadIdentityProviderInspectionResult {
+                revision,
+                inspection,
+                observed_at: chrono::Utc::now(),
+            }))
+        })
+    }
+}
+
+fn map_provider_error(error: WorkloadIdentityProviderError) -> ApplicationError {
+    match error {
+        WorkloadIdentityProviderError::NotConfigured(_) => ApplicationError::NotFound(
+            "workload identity provider profile is not configured".into(),
+        ),
+        WorkloadIdentityProviderError::Unsupported(_) => ApplicationError::Conflict(
+            "workload identity provider does not support the requested contract".into(),
+        ),
+        WorkloadIdentityProviderError::Rejected(_)
+        | WorkloadIdentityProviderError::Unavailable(_)
+        | WorkloadIdentityProviderError::InvalidObservation(_) => ApplicationError::Unavailable(
+            "workload identity provider observation is unavailable or invalid".into(),
+        ),
     }
 }
 

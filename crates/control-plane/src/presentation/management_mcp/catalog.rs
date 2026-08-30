@@ -142,6 +142,7 @@ pub const TENANT_SUPPORT_GRANTS_PROPOSE: &str = "a3s_cloud_tenant_support_grants
 pub const TENANT_SUPPORT_GRANTS_APPROVE: &str = "a3s_cloud_tenant_support_grants_approve";
 pub const TENANT_SUPPORT_GRANTS_REVOKE: &str = "a3s_cloud_tenant_support_grants_revoke";
 pub const TRUST_DOMAINS_CURRENT_GET: &str = "a3s_cloud_trust_domains_current_get";
+pub const TRUST_DOMAIN_PROVIDER_INSPECT: &str = "a3s_cloud_trust_domain_provider_inspect";
 pub const TRUST_DOMAIN_REVISIONS_LIST: &str = "a3s_cloud_trust_domain_revisions_list";
 pub const TRUST_DOMAIN_REVISIONS_GET: &str = "a3s_cloud_trust_domain_revisions_get";
 pub const TRUST_DOMAIN_REVISIONS_ACCEPT: &str = "a3s_cloud_trust_domain_revisions_accept";
@@ -313,6 +314,7 @@ pub enum ManagementTool {
     TenantSupportGrantsApprove,
     TenantSupportGrantsRevoke,
     TrustDomainsCurrentGet,
+    TrustDomainProviderInspect,
     TrustDomainRevisionsList,
     TrustDomainRevisionsGet,
     TrustDomainRevisionsAccept,
@@ -461,7 +463,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 178] = [
+    const ALL: [Self; 179] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -510,6 +512,7 @@ impl ManagementTool {
         Self::TenantSupportGrantsApprove,
         Self::TenantSupportGrantsRevoke,
         Self::TrustDomainsCurrentGet,
+        Self::TrustDomainProviderInspect,
         Self::TrustDomainRevisionsList,
         Self::TrustDomainRevisionsGet,
         Self::TrustDomainRevisionsAccept,
@@ -715,6 +718,7 @@ impl ManagementTool {
             Self::TenantSupportGrantsApprove => TENANT_SUPPORT_GRANTS_APPROVE,
             Self::TenantSupportGrantsRevoke => TENANT_SUPPORT_GRANTS_REVOKE,
             Self::TrustDomainsCurrentGet => TRUST_DOMAINS_CURRENT_GET,
+            Self::TrustDomainProviderInspect => TRUST_DOMAIN_PROVIDER_INSPECT,
             Self::TrustDomainRevisionsList => TRUST_DOMAIN_REVISIONS_LIST,
             Self::TrustDomainRevisionsGet => TRUST_DOMAIN_REVISIONS_GET,
             Self::TrustDomainRevisionsAccept => TRUST_DOMAIN_REVISIONS_ACCEPT,
@@ -938,6 +942,7 @@ impl ManagementTool {
             | Self::PrincipalPlatformRoleBindingGet
             | Self::TenantSupportGrantsGet
             | Self::TrustDomainsCurrentGet
+            | Self::TrustDomainProviderInspect
             | Self::TrustDomainRevisionsList
             | Self::TrustDomainRevisionsGet
             | Self::WorkloadIdentityPoliciesCurrentGet
@@ -1083,6 +1088,7 @@ impl ManagementTool {
             | Self::TenantSupportGrantsApprove
             | Self::TenantSupportGrantsRevoke
             | Self::TrustDomainsCurrentGet
+            | Self::TrustDomainProviderInspect
             | Self::TrustDomainRevisionsList
             | Self::TrustDomainRevisionsGet
             | Self::TrustDomainRevisionsAccept
@@ -1546,6 +1552,12 @@ impl ManagementTool {
             Self::TrustDomainsCurrentGet => (
                 "Get current trust-domain revision",
                 "Read the current immutable installation-scoped TrustDomain revision through Identity's sole authorization authority.",
+                uuid_id_schema("trustDomainId"),
+                true,
+            ),
+            Self::TrustDomainProviderInspect => (
+                "Inspect trust-domain provider",
+                "Read the exact current TrustDomain revision, digest-bound provider declarations, and a fresh bounded external bundle observation whose union must satisfy that immutable revision.",
                 uuid_id_schema("trustDomainId"),
                 true,
             ),
@@ -4677,6 +4689,7 @@ mod tests {
             ManagementTool::PrincipalPlatformRoleBindingGet,
             ManagementTool::TenantSupportGrantsGet,
             ManagementTool::TrustDomainsCurrentGet,
+            ManagementTool::TrustDomainProviderInspect,
             ManagementTool::TrustDomainRevisionsList,
             ManagementTool::TrustDomainRevisionsGet,
             ManagementTool::WorkloadIdentityPoliciesCurrentGet,

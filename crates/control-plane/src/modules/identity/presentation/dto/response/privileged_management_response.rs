@@ -2,7 +2,7 @@ use crate::modules::identity::application::{
     PlatformRoleBindingMutationResult, PlatformRolePolicyMutationResult,
     TenantSupportGrantApprovalMutationResult, TenantSupportGrantMutationResult,
     TenantSupportGrantProposalMutationResult, TrustDomainRevisionMutationResult,
-    WorkloadIdentityPolicyRevisionMutationResult,
+    WorkloadIdentityPolicyRevisionMutationResult, WorkloadIdentityProviderInspectionResult,
 };
 use crate::modules::identity::domain::entities::{
     AcceptedPlatformRolePolicyRevision, AcceptedTrustDomainRevision,
@@ -395,6 +395,52 @@ impl From<AcceptedTrustDomainRevision> for TrustDomainRevisionResponse {
             digest: revision.contract.digest().as_str().into(),
             accepted_by: revision.accepted_by.as_uuid(),
             accepted_at: revision.accepted_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkloadIdentityProviderInspectionResponse {
+    pub revision: TrustDomainRevisionResponse,
+    pub provider_profile_digest: String,
+    pub trust_domain_name: String,
+    pub observed_trust_bundle_digest: String,
+    pub observed_federation_bundle_digests: Vec<String>,
+    pub observed_identity_formats: Vec<String>,
+    pub declared_node_attestation_profile_digests: Vec<String>,
+    pub declared_max_credential_lifetime_seconds: u32,
+    pub declared_supports_revocation_epochs: bool,
+    pub observed_at: DateTime<Utc>,
+}
+
+impl From<WorkloadIdentityProviderInspectionResult> for WorkloadIdentityProviderInspectionResponse {
+    fn from(result: WorkloadIdentityProviderInspectionResult) -> Self {
+        let inspection = result.inspection;
+        Self {
+            revision: result.revision.into(),
+            provider_profile_digest: inspection.provider_profile_digest.as_str().into(),
+            trust_domain_name: inspection.trust_domain_name.as_str().into(),
+            observed_trust_bundle_digest: inspection.observed_trust_bundle_digest.as_str().into(),
+            observed_federation_bundle_digests: inspection
+                .observed_federation_bundle_digests
+                .into_iter()
+                .map(|digest| digest.as_str().into())
+                .collect(),
+            observed_identity_formats: inspection
+                .observed_identity_formats
+                .into_iter()
+                .map(|format| format.as_str().into())
+                .collect(),
+            declared_node_attestation_profile_digests: inspection
+                .declared_node_attestation_profile_digests
+                .into_iter()
+                .map(|digest| digest.as_str().into())
+                .collect(),
+            declared_max_credential_lifetime_seconds: inspection
+                .declared_max_credential_lifetime_seconds,
+            declared_supports_revocation_epochs: inspection.declared_supports_revocation_epochs,
+            observed_at: result.observed_at,
         }
     }
 }

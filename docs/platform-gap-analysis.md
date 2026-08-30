@@ -87,11 +87,17 @@ and management slices establish Identity-owned strong IDs, two canonical ACL
 contracts, deterministic immutable revisions, predecessor-fenced PostgreSQL
 heads, direct reuse of Runtime's `Task`/`Service` and isolation types, atomic
 Installation-scoped authorization/idempotency/Audit/Outbox, and one
-capability-only replaceable provider port. REST/OpenAPI `1.79.0`, TypeScript
-client, CLI, and nine Installation-bound Management MCP tools share the same
-closed CQRS. This closes the ambiguous contract and management boundaries but
-does not close the P0 gap: main PostgreSQL proof, Fleet/Runtime attestation,
-issuance, private discovery, enforcement, failure evidence, and real-provider
+inspection-only replaceable provider port with explicit declared-versus-observed
+evidence provenance. The first
+`cloud.identity.workload-provider.v1` profile and API-only
+`spiffe_https_web` adapter add exact-digest configuration plus strict, bounded,
+real-TLS SPIFFE JWK-bundle observation without a provider registry or issuance
+path. REST/OpenAPI `1.80.0`, TypeScript client, CLI, and ten Installation-bound
+Management MCP tools share the same closed CQRS. The retained H0 PostgreSQL job
+and local 7/7 provider protocol gate pass; complete main certification remains
+pending. This closes the ambiguous contract, management, and provider-observation
+boundaries but does not close the P0 gap: Fleet/Runtime attestation, issuance,
+private discovery, enforcement, failure/revocation evidence, and federation
 certification remain absent.
 
 ### 3.3 P0: platform observability, SLO and incident lifecycle

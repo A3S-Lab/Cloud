@@ -75,6 +75,9 @@ describe('a3s-cloud privileged management commands', () => {
       calls.push(args);
       const path = String(args[0]);
       if (path.includes('/trust-domains/')) {
+        if (path.endsWith('/provider-inspection')) {
+          return envelope(workloadIdentityProviderInspection());
+        }
         return envelope(path.includes('?limit=') ? [trustDomainRevision()] : trustDomainRevision());
       }
       return envelope(
@@ -86,6 +89,7 @@ describe('a3s-cloud privileged management commands', () => {
 
     const commands = [
       ['trust-domains', 'current', TRUST_DOMAIN_ID],
+      ['trust-domains', 'inspect', TRUST_DOMAIN_ID],
       ['trust-domains', 'get', TRUST_DOMAIN_ID, REVISION_ID],
       ['trust-domains', 'list', TRUST_DOMAIN_ID],
       ['workload-identity-policies', 'current', ORGANIZATION_ID, WORKLOAD_IDENTITY_POLICY_ID],
@@ -105,6 +109,7 @@ describe('a3s-cloud privileged management commands', () => {
 
     expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
       [`http://127.0.0.1:8080/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}`, 'GET'],
+      [`http://127.0.0.1:8080/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}/provider-inspection`, 'GET'],
       [
         `http://127.0.0.1:8080/api/v1/platform/trust-domains/${TRUST_DOMAIN_ID}/revisions/${REVISION_ID}`,
         'GET',
@@ -537,6 +542,21 @@ function workloadIdentityPolicyRevision() {
     digest: `sha256:${'f'.repeat(64)}`,
     acceptedBy: ACTOR_ID,
     acceptedAt: '2026-08-29T00:00:00Z',
+  };
+}
+
+function workloadIdentityProviderInspection() {
+  return {
+    revision: trustDomainRevision(),
+    providerProfileDigest: `sha256:${'a'.repeat(64)}`,
+    trustDomainName: 'cluster.example.test',
+    observedTrustBundleDigest: `sha256:${'b'.repeat(64)}`,
+    observedFederationBundleDigests: [],
+    observedIdentityFormats: ['x509_svid'],
+    declaredNodeAttestationProfileDigests: [`sha256:${'c'.repeat(64)}`],
+    declaredMaxCredentialLifetimeSeconds: 900,
+    declaredSupportsRevocationEpochs: false,
+    observedAt: '2026-08-29T00:01:00Z',
   };
 }
 

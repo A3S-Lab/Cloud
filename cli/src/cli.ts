@@ -20,6 +20,7 @@ Commands:
   platform-role-policy get ID Get one exact immutable platform-role policy revision
   platform-role-policy accept REV EXPECTED Accept the next platform-role policy from A3S ACL
   trust-domains current DOMAIN Get the current accepted installation trust-domain revision
+  trust-domains inspect DOMAIN Inspect the exact current revision's external identity provider
   trust-domains get DOMAIN REV Get one exact immutable trust-domain revision
   trust-domains list DOMAIN List bounded immutable trust-domain revisions
   trust-domains accept DOMAIN REV PREVIOUS Accept a trust-domain revision from A3S ACL; use none for REV 1

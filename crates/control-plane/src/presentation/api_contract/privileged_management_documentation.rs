@@ -4,10 +4,10 @@ use super::privileged_management_operation::{
     PLATFORM_ROLE_POLICY_REVISIONS_PATH, PLATFORM_ROLE_POLICY_REVISION_PATH,
     PRINCIPAL_PLATFORM_ROLE_BINDING_PATH, TENANT_SUPPORT_GRANTS_PATH,
     TENANT_SUPPORT_GRANT_APPROVALS_PATH, TENANT_SUPPORT_GRANT_PATH,
-    TENANT_SUPPORT_GRANT_REVOCATION_PATH, TRUST_DOMAIN_PATH, TRUST_DOMAIN_REVISIONS_PATH,
-    TRUST_DOMAIN_REVISION_PATH, WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH,
-    WORKLOAD_IDENTITY_POLICY_PATH, WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH,
-    WORKLOAD_IDENTITY_POLICY_REVISION_PATH,
+    TENANT_SUPPORT_GRANT_REVOCATION_PATH, TRUST_DOMAIN_PATH, TRUST_DOMAIN_PROVIDER_INSPECTION_PATH,
+    TRUST_DOMAIN_REVISIONS_PATH, TRUST_DOMAIN_REVISION_PATH,
+    WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH, WORKLOAD_IDENTITY_POLICY_PATH,
+    WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH, WORKLOAD_IDENTITY_POLICY_REVISION_PATH,
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
@@ -90,6 +90,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "TrustDomainRevisionMutation" => Some(
             "Accepted TrustDomain revision plus caller-owned idempotency replay state.",
         ),
+        "WorkloadIdentityProviderInspection" => Some(
+            "One fresh read-only inspection that separates digest-bound provider-profile declarations from bundle-endpoint observations and proves their union compatible with the exact immutable TrustDomain revision returned beside it.",
+        ),
         "WorkloadIdentityPolicyRevision" => Some(
             "One immutable Identity-owned Workload policy revision bound to exact owner lineage and TrustDomain revision.",
         ),
@@ -107,6 +110,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         ),
         "TrustDomainRevisionMutationSuccessResponse" => Some(
             "Standard success envelope containing TrustDomain acceptance and replay state.",
+        ),
+        "WorkloadIdentityProviderInspectionSuccessResponse" => Some(
+            "Standard success envelope containing an exact-revision-bound workload identity provider observation.",
         ),
         "WorkloadIdentityPolicyRevisionSuccessResponse" => Some(
             "Standard success envelope containing one immutable Workload Identity Policy revision.",
@@ -140,6 +146,9 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         ("post", TENANT_SUPPORT_GRANT_APPROVALS_PATH) => Some("Approve a tenant-support grant"),
         ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH) => Some("Revoke a tenant-support grant"),
         ("get", TRUST_DOMAIN_PATH) => Some("Get the current TrustDomain revision"),
+        ("get", TRUST_DOMAIN_PROVIDER_INSPECTION_PATH) => {
+            Some("Inspect the current TrustDomain provider")
+        }
         ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some("List TrustDomain revisions"),
         ("get", TRUST_DOMAIN_REVISION_PATH) => Some("Get a TrustDomain revision"),
         ("post", TRUST_DOMAIN_REVISIONS_PATH) => Some("Accept a TrustDomain revision"),
@@ -202,6 +211,9 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         ),
         ("get", TRUST_DOMAIN_PATH) => Some(
             "Authorizes the exact verified Principal and API Token, then reads the strongly consistent current revision of one installation-scoped TrustDomain through the sole Identity authority.",
+        ),
+        ("get", TRUST_DOMAIN_PROVIDER_INSPECTION_PATH) => Some(
+            "Authorizes and reads the exact current immutable TrustDomain revision through Identity, resolves one content-addressed provider profile, and obtains one bounded read-only external Bundle observation. The response labels profile policy as declared and endpoint evidence as observed. The call succeeds only when their union satisfies that exact revision; it never reads provider registration storage, issues credentials, or mutates desired state.",
         ),
         ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some(
             "Authorizes the exact verified credential and returns a bounded reverse-ordered immutable history for one TrustDomain; no cache or provider projection is policy truth.",
@@ -266,6 +278,9 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         ("get", TRUST_DOMAIN_PATH | TRUST_DOMAIN_REVISION_PATH) => {
             Some("The authoritative immutable TrustDomain revision.")
         }
+        ("get", TRUST_DOMAIN_PROVIDER_INSPECTION_PATH) => Some(
+            "The exact immutable TrustDomain revision plus compatible profile declarations and fresh bundle-endpoint observations.",
+        ),
         ("get", TRUST_DOMAIN_REVISIONS_PATH) => {
             Some("The bounded authoritative TrustDomain revision history.")
         }
@@ -331,12 +346,14 @@ mod tests {
             "TrustDomainRevision",
             "TrustDomainRevisionList",
             "TrustDomainRevisionMutation",
+            "WorkloadIdentityProviderInspection",
             "WorkloadIdentityPolicyRevision",
             "WorkloadIdentityPolicyRevisionList",
             "WorkloadIdentityPolicyRevisionMutation",
             "TrustDomainRevisionSuccessResponse",
             "TrustDomainRevisionListSuccessResponse",
             "TrustDomainRevisionMutationSuccessResponse",
+            "WorkloadIdentityProviderInspectionSuccessResponse",
             "WorkloadIdentityPolicyRevisionSuccessResponse",
             "WorkloadIdentityPolicyRevisionListSuccessResponse",
             "WorkloadIdentityPolicyRevisionMutationSuccessResponse",

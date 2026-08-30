@@ -235,7 +235,7 @@ Cloud Dashboard or private identity-provider UI is required.
 
 | Gate | Outcome | Current state |
 | --- | --- | --- |
-| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | `WI1-C1`, the `WI1-C2` persistence core, and the maintained management surface are implemented locally; main verification is pending. Canonical ACLs and deterministic revisions feed migration `179`'s immutable histories and sole heads, and policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. REST/OpenAPI `1.79.0`, TypeScript client, CLI, and nine Installation-bound Management MCP tools reuse the same CQRS. The retained two-replica/revocation gate is registered. Real provider evidence remains open, so WI1 is not yet available. |
+| `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | `WI1-C1`, the `WI1-C2` persistence core, the maintained management surface, and the first provider-inspection slice are implemented. Canonical trust ACLs and deterministic revisions feed migration `179`'s immutable histories and sole heads, and policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. The retained H0 PostgreSQL job passes. REST/OpenAPI `1.80.0`, TypeScript client, CLI, and ten Installation-bound Management MCP tools reuse the same CQRS. A real local TLS provider gate passes 7/7 and is registered in stable CI; complete main certification is pending, so WI1 is not yet available. |
 | `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | Planned |
 | `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
 | `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
@@ -256,11 +256,36 @@ lineage and current TrustDomain revision, then commits the business fact,
 idempotency result, Audit and Outbox together. Redis, Lane, caches and a second
 authorization/audit/lock table are not correctness authorities.
 
-`WI1-C1` deliberately exposes only provider capability inspection. Credential
-issuance is unavailable until `WI2` can prove the exact Fleet Claim, Node,
-Runtime Unit and generation. This prevents an Infrastructure adapter from
-minting identity from mutable hostnames, image names, process IDs, or shared
-cluster credentials. The decision is recorded in
+The provider desired state is one canonical, non-secret
+`cloud.identity.workload-provider.v1` A3S ACL identified by its digest. Cloud
+configuration binds that digest to operational connection policy such as a CA
+file, timeout and maximum response size; those machine-local values do not
+change the semantic profile and never become a second provider registry. Only
+the API role constructs the Infrastructure adapter because Worker and Relay
+have no provider-inspection use case. The composition root maps the root A3S
+ACL config into adapter-owned bounded options; the adapter has no dependency on
+the global config type.
+
+The first `spiffe_https_web` adapter uses rustls HTTPS, disables redirects,
+proxies and referrers, fails excess concurrent inspections closed at a bounded
+per-provider permit set, bounds the streamed response, rejects duplicate JSON
+keys recursively, canonicalizes the JWK set, and records the full provider
+document digest. Cross-replica admission remains a Gateway rate-limit concern,
+not a Redis lock or a new correctness authority. The inspection contract makes
+evidence provenance explicit:
+`observed*` fields come from that fresh external bundle read, while
+`declared*` fields come from the exact digest-bound canonical provider profile.
+Identity admits their union only against the exact current TrustDomain
+revision. A bundle endpoint therefore never falsely attests node-attestation,
+credential-lifetime, or revocation behavior that the SPIFFE Federation
+protocol cannot expose. Provider drift conflicts at the Application boundary
+without copying provider state into PostgreSQL.
+
+`WI1-C1` deliberately exposes only declared-and-observed provider inspection.
+Credential issuance is unavailable until `WI2` can prove the exact Fleet
+Claim, Node, Runtime Unit and generation. This prevents an Infrastructure
+adapter from minting identity from mutable hostnames, image names, process IDs,
+or shared cluster credentials. The decision is recorded in
 [ADR 0079](decisions/app-platform/0079-identity-owned-workload-trust-contract.md).
 
 ## 14. Non-goals

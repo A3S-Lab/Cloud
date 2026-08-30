@@ -30,12 +30,14 @@ client returns that report as diagnostics. A `503` error envelope remains a
 `CloudApiError`. Authenticated methods still require server-authorized
 credentials.
 
-REST contract `1.79.0` extends the installation-scoped privileged management
+REST contract `1.80.0` extends the installation-scoped privileged management
 surface with TrustDomain and WorkloadIdentityPolicy maintenance. The client
 reads current and exact revisions, bounded reverse revision history, and the
-current policy indexed by Workload. Both acceptance methods carry canonical
-A3S ACL, a positive immutable revision number, and the exact previous revision
-for CAS; revision one has no predecessor. The existing role-policy,
+current policy indexed by Workload. It also requests one fresh provider
+inspection admitted against the exact current TrustDomain revision and exposes
+only bounded capability and bundle-digest evidence. Both acceptance methods
+carry canonical A3S ACL, a positive immutable revision number, and the exact
+previous revision for CAS; revision one has no predecessor. The existing role-policy,
 role-binding, and tenant-support operations remain credential-bound. Every
 mutation requires caller-owned idempotency, and no method accepts an actor,
 credential, permission, or Installation override. Cloud Identity remains the
@@ -141,7 +143,7 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.79.0`. It exposes `reserveUserFile`,
+The client targets REST contract `1.80.0`. It exposes `reserveUserFile`,
 `listUserFiles`, `getUserFile`, `tombstoneUserFile`, and
 `getUserFileQuota` through the sole Files Application authority. It validates
 ACL byte, list, and optimistic-version transport bounds without parsing or

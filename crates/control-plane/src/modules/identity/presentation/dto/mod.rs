@@ -25,4 +25,5 @@ pub use response::{
     TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
     TenantSupportGrantResponse, TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
     WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
+    WorkloadIdentityProviderInspectionResponse,
 };

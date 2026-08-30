@@ -64,6 +64,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 url.workspace = true
+x509-parser.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

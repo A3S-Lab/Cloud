@@ -4,6 +4,7 @@ use crate::modules::identity::domain::entities::{
     TenantSupportGrantApprovalOutcome, TenantSupportGrantProposal,
 };
 use crate::modules::identity::domain::repositories::IIdentityBootstrapRepository;
+use crate::modules::identity::domain::services::WorkloadIdentityProviderInspection;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, InstallationId};
 use serde::Serialize;
@@ -50,6 +51,15 @@ pub struct TrustDomainRevisionMutationResult {
 pub struct WorkloadIdentityPolicyRevisionMutationResult {
     pub revision: AcceptedWorkloadIdentityPolicyRevision,
     pub replayed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkloadIdentityProviderInspectionResult {
+    /// The exact immutable desired-state revision against which this external
+    /// observation was evaluated. It is not an assertion about a later head.
+    pub revision: AcceptedTrustDomainRevision,
+    pub inspection: WorkloadIdentityProviderInspection,
+    pub observed_at: chrono::DateTime<chrono::Utc>,
 }
 
 pub(super) async fn installation_id(

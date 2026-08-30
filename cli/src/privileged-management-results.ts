@@ -13,6 +13,7 @@ import type {
   TrustDomainRevisionMutationResult,
   WorkloadIdentityPolicyRevision,
   WorkloadIdentityPolicyRevisionMutationResult,
+  WorkloadIdentityProviderInspection,
 } from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
@@ -66,6 +67,30 @@ export function trustDomainRevisionMutationResult(row: TrustDomainRevisionMutati
       [row],
       [...TRUST_DOMAIN_REVISION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
+  };
+}
+
+const WORKLOAD_IDENTITY_PROVIDER_INSPECTION_COLUMNS: readonly TableColumn<WorkloadIdentityProviderInspection>[] =
+  [
+    { header: 'TRUST DOMAIN', value: (row) => row.trustDomainName },
+    { header: 'REVISION ID', value: (row) => row.revision.revisionId },
+    { header: 'PROVIDER PROFILE', value: (row) => row.providerProfileDigest },
+    { header: 'TRUST BUNDLE', value: (row) => row.observedTrustBundleDigest },
+    { header: 'OBSERVED FORMATS', value: (row) => row.observedIdentityFormats.join(',') },
+    { header: 'DECLARED MAX TTL', value: (row) => row.declaredMaxCredentialLifetimeSeconds },
+    {
+      header: 'DECLARED REVOCATION EPOCHS',
+      value: (row) => row.declaredSupportsRevocationEpochs,
+    },
+    { header: 'OBSERVED AT', value: (row) => row.observedAt },
+  ];
+
+export function workloadIdentityProviderInspectionResult(
+  row: WorkloadIdentityProviderInspection
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable([row], WORKLOAD_IDENTITY_PROVIDER_INSPECTION_COLUMNS),
   };
 }
 

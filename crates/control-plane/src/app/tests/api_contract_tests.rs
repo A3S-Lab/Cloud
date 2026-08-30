@@ -19,8 +19,8 @@ const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../op
 fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
-    assert_eq!(document["info"]["version"], "1.79.0");
-    assert_eq!(document["x-a3s-api-contract-version"], "1.79.0");
+    assert_eq!(document["info"]["version"], "1.80.0");
+    assert_eq!(document["x-a3s-api-contract-version"], "1.80.0");
 
     for (method, path, success) in [
         (
@@ -87,6 +87,11 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
             "get",
             "/platform/trust-domains/{trust_domain_id}",
             "#/components/responses/TrustDomainRevisionSuccess200",
+        ),
+        (
+            "get",
+            "/platform/trust-domains/{trust_domain_id}/provider-inspection",
+            "#/components/responses/WorkloadIdentityProviderInspectionSuccess200",
         ),
         (
             "get",
@@ -249,6 +254,7 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         "TenantSupportGrant",
         "TrustDomainRevision",
         "TrustDomainRevisionMutation",
+        "WorkloadIdentityProviderInspection",
         "WorkloadIdentityPolicyRevision",
         "WorkloadIdentityPolicyRevisionMutation",
     ] {

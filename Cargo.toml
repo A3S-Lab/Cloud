@@ -95,6 +95,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["serde", "v4", "v5", "v7"] }
 url = "2"
+x509-parser = "0.16"
 zeroize = "1"
 
 [patch.crates-io]

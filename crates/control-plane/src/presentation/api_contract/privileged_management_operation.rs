@@ -29,6 +29,8 @@ pub(super) const TENANT_SUPPORT_GRANT_APPROVALS_PATH: &str =
 pub(super) const TENANT_SUPPORT_GRANT_REVOCATION_PATH: &str =
     "/platform/tenant-support-grants/{grant_id}/revocation";
 pub(super) const TRUST_DOMAIN_PATH: &str = "/platform/trust-domains/{trust_domain_id}";
+pub(super) const TRUST_DOMAIN_PROVIDER_INSPECTION_PATH: &str =
+    "/platform/trust-domains/{trust_domain_id}/provider-inspection";
 pub(super) const TRUST_DOMAIN_REVISIONS_PATH: &str =
     "/platform/trust-domains/{trust_domain_id}/revisions";
 pub(super) const TRUST_DOMAIN_REVISION_PATH: &str =
@@ -42,7 +44,7 @@ pub(super) const WORKLOAD_IDENTITY_POLICY_REVISION_PATH: &str =
 pub(super) const WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH: &str =
     "/platform/organizations/{organization_id}/workloads/{workload_id}/identity-policy";
 
-pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 21] = [
+pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 22] = [
     ("get", PLATFORM_ROLE_POLICY_PATH),
     ("get", PLATFORM_ROLE_POLICY_REVISION_PATH),
     ("post", PLATFORM_ROLE_POLICY_REVISIONS_PATH),
@@ -56,6 +58,7 @@ pub(super) const PRIVILEGED_MANAGEMENT_OPERATIONS: [(&str, &str); 21] = [
     ("post", TENANT_SUPPORT_GRANT_APPROVALS_PATH),
     ("post", TENANT_SUPPORT_GRANT_REVOCATION_PATH),
     ("get", TRUST_DOMAIN_PATH),
+    ("get", TRUST_DOMAIN_PROVIDER_INSPECTION_PATH),
     ("get", TRUST_DOMAIN_REVISIONS_PATH),
     ("get", TRUST_DOMAIN_REVISION_PATH),
     ("post", TRUST_DOMAIN_REVISIONS_PATH),
@@ -132,6 +135,9 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         ("get", TRUST_DOMAIN_PATH | TRUST_DOMAIN_REVISION_PATH) => {
             Some("TrustDomainRevisionSuccess200")
         }
+        ("get", TRUST_DOMAIN_PROVIDER_INSPECTION_PATH) => {
+            Some("WorkloadIdentityProviderInspectionSuccess200")
+        }
         ("get", TRUST_DOMAIN_REVISIONS_PATH) => Some("TrustDomainRevisionListSuccess200"),
         ("post", TRUST_DOMAIN_REVISIONS_PATH) => Some("TrustDomainRevisionMutationSuccess200"),
         (
@@ -180,7 +186,7 @@ mod tests {
 
     #[test]
     fn privileged_management_route_contract_is_exact_and_closed() {
-        assert_eq!(PRIVILEGED_MANAGEMENT_OPERATIONS.len(), 21);
+        assert_eq!(PRIVILEGED_MANAGEMENT_OPERATIONS.len(), 22);
         for (method, path) in PRIVILEGED_MANAGEMENT_OPERATIONS {
             assert!(is_privileged_management_path(path));
             assert_eq!(

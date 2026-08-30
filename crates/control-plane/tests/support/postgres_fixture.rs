@@ -292,6 +292,9 @@ pub(super) fn config() -> CloudConfig {
             bootstrap_token_env: BOOTSTRAP_ENV.into(),
             oidc_providers: Vec::new(),
         },
+        workload_identity: a3s_cloud_control_plane::config::WorkloadIdentityConfig {
+            providers: vec![],
+        },
         events: EventsConfig {
             provider: EventProviderKind::Memory,
             nats_url_env: "A3S_CLOUD_NATS_URL".into(),

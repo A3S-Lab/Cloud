@@ -8,12 +8,16 @@ use crate::modules::audit::{
 use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
 use crate::modules::identity::domain::value_objects::{
     OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId, RecipientEmailAddress,
+    TrustDomainName, WorkloadIdentityProviderProfile, WorkloadIdentityProviderProfileSpec,
 };
+use crate::modules::identity::infrastructure::SpiffeHttpsWebWorkloadIdentityProviderOptions;
+use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::time::Duration;
 use url::Url;
 use zeroize::Zeroizing;
 
@@ -112,6 +116,36 @@ pub struct PostgresConfig {
 pub struct AuthConfig {
     pub bootstrap_token_env: String,
     pub oidc_providers: Vec<OidcProviderConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadIdentityConfig {
+    pub providers: Vec<WorkloadIdentityProviderConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadIdentityProviderConfig {
+    /// Operator-facing selector only. TrustDomain contracts bind `profile.digest()`.
+    pub key: String,
+    pub profile: WorkloadIdentityProviderProfile,
+    /// Empty when the profile uses the normal Web PKI root set. Otherwise the
+    /// adapter verifies the complete file against the profile's pinned digest.
+    pub tls_ca_bundle_file: String,
+    pub connect_timeout_ms: u64,
+    pub request_timeout_ms: u64,
+    pub max_bundle_bytes: usize,
+}
+
+impl From<&WorkloadIdentityProviderConfig> for SpiffeHttpsWebWorkloadIdentityProviderOptions {
+    fn from(config: &WorkloadIdentityProviderConfig) -> Self {
+        Self {
+            profile: config.profile.clone(),
+            tls_ca_bundle_file: config.tls_ca_bundle_file.clone(),
+            connect_timeout: Duration::from_millis(config.connect_timeout_ms),
+            request_timeout: Duration::from_millis(config.request_timeout_ms),
+            max_bundle_bytes: config.max_bundle_bytes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -499,6 +533,7 @@ pub struct CloudConfig {
     pub objects: ObjectStorageConfig,
     pub postgres: PostgresConfig,
     pub auth: AuthConfig,
+    pub workload_identity: WorkloadIdentityConfig,
     pub events: EventsConfig,
     pub smtp: SmtpConfig,
     pub operations: OperationsConfig,
@@ -593,6 +628,20 @@ impl CloudConfig {
         )?;
         let auth = one_block(&document, "auth")?;
         let oidc_providers = parse_oidc_providers(auth)?;
+        let workload_identity = document
+            .blocks
+            .iter()
+            .filter(|block| block.name == "workload_identity")
+            .collect::<Vec<_>>();
+        let workload_identity = match workload_identity.as_slice() {
+            [] => WorkloadIdentityConfig { providers: vec![] },
+            [block] => parse_workload_identity_providers(block)?,
+            _ => {
+                return Err(ConfigError::Invalid(
+                    "config may contain at most one workload_identity block".into(),
+                ))
+            }
+        };
         let events = one_block(&document, "events")?;
         validate_block(
             events,
@@ -872,6 +921,7 @@ impl CloudConfig {
                 bootstrap_token_env: string(auth, "bootstrap_token_env")?,
                 oidc_providers,
             },
+            workload_identity,
             events: EventsConfig {
                 provider: EventProviderKind::parse(&string(events, "provider")?)?,
                 nats_url_env: string(events, "nats_url_env")?,
@@ -1279,6 +1329,32 @@ impl CloudConfig {
             return Err(ConfigError::Invalid(
                 "auth.bootstrap_token_env must be an uppercase environment variable name".into(),
             ));
+        }
+        if self.workload_identity.providers.len() > 32 {
+            return Err(ConfigError::Invalid(
+                "workload_identity supports at most 32 provider profiles".into(),
+            ));
+        }
+        let mut workload_identity_keys = BTreeSet::new();
+        let mut workload_identity_digests = BTreeSet::new();
+        for provider in &self.workload_identity.providers {
+            SpiffeHttpsWebWorkloadIdentityProviderOptions::from(provider)
+                .validate()
+                .map_err(|error| {
+                    ConfigError::Invalid(format!(
+                        "workload_identity provider {:?} is invalid: {error}",
+                        provider.key
+                    ))
+                })?;
+            if !valid_workload_identity_provider_key(&provider.key)
+                || !workload_identity_keys.insert(provider.key.as_str())
+                || !workload_identity_digests.insert(provider.profile.digest().as_str())
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "workload_identity provider {:?} requires a unique canonical key and profile digest",
+                    provider.key
+                )));
+            }
         }
         let oidc_keys = self
             .auth
@@ -2018,6 +2094,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "server",
         "smtp",
         "sources",
+        "workload_identity",
     ];
     if document
         .blocks
@@ -2251,6 +2328,147 @@ fn parse_oidc_providers(auth: &Block) -> Result<Vec<OidcProviderConfig>, ConfigE
             })
         })
         .collect()
+}
+
+fn parse_workload_identity_providers(
+    workload_identity: &Block,
+) -> Result<WorkloadIdentityConfig, ConfigError> {
+    if !workload_identity.labels.is_empty()
+        || !workload_identity.attributes.is_empty()
+        || workload_identity
+            .blocks
+            .iter()
+            .any(|provider| provider.name != "provider")
+        || workload_identity.blocks.len() > 32
+    {
+        return Err(ConfigError::Invalid(
+            "workload_identity must contain only up to 32 provider blocks".into(),
+        ));
+    }
+
+    let expected = BTreeSet::from([
+        "kind",
+        "trust_domain",
+        "bundle_endpoint_url",
+        "tls_trust_anchor_digest",
+        "tls_ca_bundle_file",
+        "node_attestation_profile_digests",
+        "max_credential_lifetime_seconds",
+        "supports_revocation_epochs",
+        "connect_timeout_ms",
+        "request_timeout_ms",
+        "max_bundle_bytes",
+    ]);
+    let mut keys = BTreeSet::new();
+    let mut digests = BTreeSet::new();
+    let providers = workload_identity
+        .blocks
+        .iter()
+        .map(|provider| {
+            if provider.labels.len() != 1
+                || !provider.blocks.is_empty()
+                || provider
+                    .attributes
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>()
+                    != expected
+            {
+                return Err(ConfigError::Invalid(
+                    "workload_identity.provider requires one key label and exactly kind, trust_domain, bundle_endpoint_url, tls_trust_anchor_digest, tls_ca_bundle_file, node_attestation_profile_digests, max_credential_lifetime_seconds, supports_revocation_epochs, connect_timeout_ms, request_timeout_ms, and max_bundle_bytes"
+                        .into(),
+                ));
+            }
+            let key = provider.labels[0].clone();
+            if !valid_workload_identity_provider_key(&key) || !keys.insert(key.clone()) {
+                return Err(ConfigError::Invalid(
+                    "workload_identity provider keys must be unique canonical lowercase names"
+                        .into(),
+                ));
+            }
+            if string(provider, "kind")? != "spiffe_https_web" {
+                return Err(ConfigError::Invalid(format!(
+                    "workload_identity provider {key:?} kind must be spiffe_https_web"
+                )));
+            }
+            let tls_trust_anchor_digest = string(provider, "tls_trust_anchor_digest")?;
+            let tls_trust_anchor_digest = if tls_trust_anchor_digest.is_empty() {
+                None
+            } else {
+                Some(Sha256Digest::parse(tls_trust_anchor_digest).map_err(|error| {
+                    ConfigError::Invalid(format!(
+                        "workload_identity provider {key:?} TLS trust anchor digest is invalid: {error}"
+                    ))
+                })?)
+            };
+            let node_attestation_profile_digests = string_list(
+                provider,
+                "node_attestation_profile_digests",
+            )?
+            .into_iter()
+            .map(Sha256Digest::parse)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                ConfigError::Invalid(format!(
+                    "workload_identity provider {key:?} node-attestation profile is invalid: {error}"
+                ))
+            })?;
+            let profile = WorkloadIdentityProviderProfile::from_spec(
+                WorkloadIdentityProviderProfileSpec {
+                    trust_domain: TrustDomainName::parse(string(provider, "trust_domain")?)
+                        .map_err(|error| {
+                            ConfigError::Invalid(format!(
+                                "workload_identity provider {key:?} trust domain is invalid: {error}"
+                            ))
+                        })?,
+                    bundle_endpoint_url: string(provider, "bundle_endpoint_url")?,
+                    tls_trust_anchor_digest,
+                    node_attestation_profile_digests,
+                    max_credential_lifetime_seconds: integer(
+                        provider,
+                        "max_credential_lifetime_seconds",
+                    )?,
+                    supports_revocation_epochs: boolean(
+                        provider,
+                        "supports_revocation_epochs",
+                    )?,
+                },
+            )
+            .map_err(|error| {
+                ConfigError::Invalid(format!(
+                    "workload_identity provider {key:?} profile is invalid: {error}"
+                ))
+            })?;
+            if !digests.insert(profile.digest().clone()) {
+                return Err(ConfigError::Invalid(
+                    "workload_identity provider profiles must have unique canonical digests"
+                        .into(),
+                ));
+            }
+            let config = WorkloadIdentityProviderConfig {
+                key,
+                profile,
+                tls_ca_bundle_file: string(provider, "tls_ca_bundle_file")?,
+                connect_timeout_ms: integer(provider, "connect_timeout_ms")?,
+                request_timeout_ms: integer(provider, "request_timeout_ms")?,
+                max_bundle_bytes: integer(provider, "max_bundle_bytes")?,
+            };
+            Ok(config)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(WorkloadIdentityConfig { providers })
+}
+
+fn valid_workload_identity_provider_key(value: &str) -> bool {
+    (1..=64).contains(&value.len())
+        && value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && value
+            .as_bytes()
+            .last()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 fn valid_oidc_callback_url(value: &str, provider_key: &str) -> bool {
@@ -2702,6 +2920,7 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.auth.oidc_providers.len(), 1);
+        assert!(config.workload_identity.providers.is_empty());
         assert_eq!(config.auth.oidc_providers[0].key, "workforce");
         assert_eq!(
             config.auth.oidc_providers[0].issuer,
@@ -2798,6 +3017,60 @@ security {
             config.security.vault_recipient_contact_proof_key,
             "a3s-cloud-recipient-contact-proof"
         );
+    }
+
+    #[test]
+    fn workload_identity_profiles_are_acl_native_content_addressed_and_closed() {
+        let configured = VALID.replace(
+            "events {",
+            r#"workload_identity {
+  provider "production" {
+    kind = "spiffe_https_web"
+    trust_domain = "prod.example.internal"
+    bundle_endpoint_url = "https://identity.example.internal:8443/bundle"
+    tls_trust_anchor_digest = ""
+    tls_ca_bundle_file = ""
+    node_attestation_profile_digests = ["sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+    max_credential_lifetime_seconds = 900
+    supports_revocation_epochs = false
+    connect_timeout_ms = 5000
+    request_timeout_ms = 10000
+    max_bundle_bytes = 1048576
+  }
+}
+events {"#,
+        );
+        let config = CloudConfig::parse(&configured).expect("workload identity provider config");
+        let provider = &config.workload_identity.providers[0];
+        assert_eq!(provider.key, "production");
+        assert_eq!(
+            provider.profile.spec().trust_domain.as_str(),
+            "prod.example.internal"
+        );
+        assert_eq!(
+            WorkloadIdentityProviderProfile::parse_acl(provider.profile.canonical_acl())
+                .expect("canonical provider profile"),
+            provider.profile
+        );
+
+        for invalid in [
+            configured.replace("kind = \"spiffe_https_web\"", "kind = \"spire\""),
+            configured.replace(
+                "https://identity.example.internal:8443/bundle",
+                "http://identity.example.internal/bundle",
+            ),
+            configured.replace("max_bundle_bytes = 1048576", "max_bundle_bytes = 1048577"),
+            configured.replace(
+                "tls_trust_anchor_digest = \"\"",
+                "tls_trust_anchor_digest = \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"",
+            ),
+            configured.replace(
+                "max_bundle_bytes = 1048576",
+                "max_bundle_bytes = 1048576\n    unknown = true",
+            ),
+        ] {
+            assert!(CloudConfig::parse(&invalid).is_err());
+        }
     }
 
     #[test]

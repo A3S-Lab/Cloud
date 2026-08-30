@@ -17,7 +17,7 @@ use crate::modules::identity::application::queries::read_tenant_support::GetTena
 use crate::modules::identity::application::queries::read_workload_trust::{
     GetCurrentTrustDomain, GetCurrentWorkloadIdentityPolicy,
     GetCurrentWorkloadIdentityPolicyForWorkload, GetTrustDomainRevision,
-    GetWorkloadIdentityPolicyRevision, ListTrustDomainRevisions,
+    GetWorkloadIdentityPolicyRevision, InspectCurrentTrustDomainProvider, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions,
 };
 use crate::modules::identity::domain::repositories::{
@@ -30,6 +30,7 @@ use crate::modules::identity::presentation::{
     TenantSupportGrantProposalMutationResponse, TenantSupportGrantResponse,
     TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
     WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
+    WorkloadIdentityProviderInspectionResponse,
 };
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, OrganizationId, PlatformRoleBindingId, PlatformRolePolicyRevisionId, PrincipalId,
@@ -566,6 +567,31 @@ pub async fn get_current_trust_domain(
         Ok(revision) => {
             tool_result::success(200, TrustDomainRevisionResponse::from(revision), request_id)
         }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn inspect_current_trust_domain_provider(
+    bus: Arc<QueryBus>,
+    actor_principal_id: PrincipalId,
+    credential_id: ApiTokenId,
+    arguments: TrustDomainArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(InspectCurrentTrustDomainProvider {
+            trust_domain_id: TrustDomainId::from_uuid(arguments.trust_domain_id),
+            actor_principal_id,
+            credential_id,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            WorkloadIdentityProviderInspectionResponse::from(result),
+            request_id,
+        ),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

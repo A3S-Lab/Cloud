@@ -10,6 +10,7 @@ mod resource_grant_scope;
 mod tenant_support_grant_contract;
 mod trust_domain_contract;
 mod workload_identity_policy_contract;
+mod workload_identity_provider_profile;
 
 pub use api_token_credential::{ApiTokenDigest, ApiTokenSecret, BootstrapCredential};
 pub use api_token_name::ApiTokenName;
@@ -32,10 +33,17 @@ pub use tenant_support_grant_contract::{
 pub use trust_domain_contract::{
     TrustDomainContract, TrustDomainContractSpec, TrustDomainName, WorkloadIdentityFormat,
     WorkloadIdentityRevocationMode, MAX_TRUST_DOMAIN_FEDERATION_BUNDLES,
+    MAX_WORKLOAD_CREDENTIAL_LIFETIME_SECONDS, MIN_WORKLOAD_CREDENTIAL_LIFETIME_SECONDS,
     TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, TRUST_DOMAIN_CONTRACT_SCHEMA,
 };
 pub use workload_identity_policy_contract::{
     PrivateServiceName, WorkloadIdentityAudience, WorkloadIdentityPolicyContract,
     WorkloadIdentityPolicySpec, WorkloadProductRole, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
     WORKLOAD_IDENTITY_POLICY_SCHEMA,
+};
+pub use workload_identity_provider_profile::{
+    WorkloadIdentityProviderProfile, WorkloadIdentityProviderProfileSpec,
+    MAX_WORKLOAD_IDENTITY_PROVIDER_ATTESTATION_PROFILES,
+    MAX_WORKLOAD_IDENTITY_PROVIDER_CREDENTIAL_LIFETIME_SECONDS,
+    WORKLOAD_IDENTITY_PROVIDER_PROFILE_MAX_ACL_BYTES, WORKLOAD_IDENTITY_PROVIDER_PROFILE_SCHEMA,
 };

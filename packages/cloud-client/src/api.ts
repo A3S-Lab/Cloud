@@ -160,6 +160,7 @@ import {
   type TrustDomainRevisionMutationResult,
   type WorkloadIdentityPolicyRevision,
   type WorkloadIdentityPolicyRevisionMutationResult,
+  type WorkloadIdentityProviderInspection,
   type WorkloadTrustRevisionListOptions,
   encodeWorkloadTrustRevisionListOptions,
   validateAcceptPlatformRolePolicyInput,
@@ -410,7 +411,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.79.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.80.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -563,6 +564,17 @@ export class CloudApi {
   getCurrentTrustDomain(trustDomainId: string, signal?: AbortSignal): Promise<TrustDomainRevision> {
     validateNonNilUuid(trustDomainId, 'trust-domain ID');
     return this.get(`/platform/trust-domains/${encodeURIComponent(trustDomainId)}`, signal);
+  }
+
+  inspectCurrentTrustDomainProvider(
+    trustDomainId: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadIdentityProviderInspection> {
+    validateNonNilUuid(trustDomainId, 'trust-domain ID');
+    return this.get(
+      `/platform/trust-domains/${encodeURIComponent(trustDomainId)}/provider-inspection`,
+      signal
+    );
   }
 
   getTrustDomainRevision(

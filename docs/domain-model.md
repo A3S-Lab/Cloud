@@ -346,17 +346,26 @@ revision number, and canonical contract digest. Repository ports carry an
 expected predecessor revision; Redis or a distributed lock cannot replace
 that durable compare-and-swap fence.
 
-The replaceable provider port can inspect only capability and exact observed
-root/federation trust-bundle evidence; a federation support boolean is not
-accepted as proof. It cannot issue credentials, receive private keys, or
-mutate a provider registration database. Migration `179`, the sole Identity
+The replaceable provider port can only inspect one digest-bound declaration and
+exact externally observed root/federation trust-bundle evidence; a federation
+support boolean is not accepted as proof. The contract distinguishes
+`declared*` profile policy from `observed*` endpoint evidence. One canonical
+`cloud.identity.workload-provider.v1` profile binds its semantic inputs by
+digest, while API-local operational CA paths and timeouts stay outside that
+digest. The `spiffe_https_web` adapter performs a strict bounded HTTPS SPIFFE
+JWK-bundle observation and the Application query admits their union against the
+exact current TrustDomain revision. It cannot issue credentials, receive
+private keys, or mutate a provider registration database.
+Migration `179`, the sole Identity
 PostgreSQL adapter, and the privileged decision issuer now commit immutable
-heads, CAS, idempotency, Audit, and Outbox atomically. REST/OpenAPI `1.79.0`,
-the maintained TypeScript client, CLI, and nine Installation-bound Management
-MCP tools reuse those Application commands, queries, DTOs, and bounds. Main
-PostgreSQL proof, exact Fleet/Runtime attestation, local credential delivery,
-discovery, peer policy, enforcement, revocation drills, and real-provider
-evidence remain open. No workload identity availability is claimed by `WI1`.
+heads, CAS, idempotency, Audit, and Outbox atomically. REST/OpenAPI `1.80.0`,
+the maintained TypeScript client, CLI, and ten Installation-bound Management
+MCP tools reuse those Application commands, queries, DTOs, and bounds. The
+retained H0 PostgreSQL job and local real-TLS 7/7 provider protocol gate pass;
+complete main certification, exact Fleet/Runtime attestation, local credential
+delivery, discovery, peer policy, enforcement, revocation drills, and
+federation evidence remain open. No workload identity availability is claimed
+by `WI1`.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

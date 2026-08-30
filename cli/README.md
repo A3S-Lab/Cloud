@@ -67,7 +67,7 @@ exact command with the same key to receive the durable replay result.
 API starts a short-lived no-store browser installation flow instead of a
 replayable resource mutation.
 
-REST contract `1.79.0` exposes installation-scoped privileged management
+REST contract `1.80.0` exposes installation-scoped privileged management
 without requiring Organization, Project, or Environment context.
 `platform-role-policy current|get|accept` reads immutable revisions or accepts
 the exact next revision from `--file=<policy.acl>` with expected-current
@@ -80,11 +80,14 @@ digest for approval, and version-fences terminal revocation. Every mutation
 requires a caller-owned idempotency key. The CLI only validates bounded
 transport intent and delegates authorization, approval evidence, persistence,
 audit, replay, and concurrency to Cloud through the maintained client.
-`trust-domains current|get|list|accept` and
+`trust-domains current|get|list|accept|inspect` and
 `workload-identity-policies current|get|list|get-workload|accept` expose the
 same immutable workload-trust revisions. Lists use bounded `--limit`; accepts
 read only `--file=<contract.acl>`, require caller-owned idempotency, and take
 one previous-revision fence. Use the literal `none` only for revision one.
+`trust-domains inspect <trust-domain-id>` returns the exact current revision
+plus one fresh, compatible, content-addressed provider observation. It returns
+no credentials, private keys, or provider-private configuration.
 
 Node `ready`, `drain`, and `revoke` additionally require
 `--expected-version=<current-aggregate-version>`. The positive safe integer is

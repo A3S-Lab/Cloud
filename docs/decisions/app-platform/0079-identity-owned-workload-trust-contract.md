@@ -38,12 +38,15 @@ revision number, and contract digest. Repository ports require the expected
 previous revision, so a future PostgreSQL adapter can select one head under
 concurrency without a distributed lock as correctness proof.
 
-The one replaceable workload-identity provider port initially exposes only
-capability and exact observed root/federation trust-bundle inspection. It
-carries no key material and cannot issue a credential. A support boolean
-cannot substitute for the canonical observed federation-bundle digest set.
-Issuance is added only after Fleet and Runtime provide an exact admitted Node,
-Claim, Unit, and generation attestation in `WI2`.
+The one replaceable workload-identity provider port initially exposes only a
+digest-bound provider declaration and exact observed root/federation
+trust-bundle inspection. Its contract names those evidence sources
+`declared*` and `observed*`; a Bundle endpoint cannot attest policy that its
+protocol does not publish. The port carries no key material and cannot issue a
+credential. A support boolean cannot substitute for the canonical observed
+federation-bundle digest set. Issuance is added only after Fleet and Runtime
+provide an exact admitted Node, Claim, Unit, and generation attestation in
+`WI2`.
 
 `WI1-C2` persists this decision with migration `179`: two immutable,
 predecessor-linked revision histories and one current head per aggregate. A
@@ -69,8 +72,10 @@ introduced.
   cannot substitute for the consuming domain's peer authorization.
 - Redis, DNS, proxies, and provider registration databases may carry
   projections but cannot become policy truth.
-- `WI1-C1/C2` plus the maintained REST/OpenAPI `1.79.0`, TypeScript client,
-  CLI, and Installation-bound Management MCP surface remain a foundation, not
-  an availability claim. Main PostgreSQL proof, attestation, issuance,
-  discovery, enforcement, provider revocation drills, and exact-provider
-  evidence remain required.
+- `WI1-C1/C2`, the digest-bound `cloud.identity.workload-provider.v1`
+  profile, and the maintained REST/OpenAPI `1.80.0`, TypeScript client, CLI,
+  and Installation-bound Management MCP surface remain a foundation, not an
+  availability claim. The first strict HTTPS provider observation has local
+  real-TLS evidence; complete main certification, attestation, issuance,
+  discovery, enforcement, provider revocation drills, and federation evidence
+  remain required.

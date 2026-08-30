@@ -16,7 +16,7 @@ use crate::modules::identity::application::queries::read_tenant_support::GetTena
 use crate::modules::identity::application::queries::read_workload_trust::{
     GetCurrentTrustDomain, GetCurrentWorkloadIdentityPolicy,
     GetCurrentWorkloadIdentityPolicyForWorkload, GetTrustDomainRevision,
-    GetWorkloadIdentityPolicyRevision, ListTrustDomainRevisions,
+    GetWorkloadIdentityPolicyRevision, InspectCurrentTrustDomainProvider, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions,
 };
 use crate::modules::identity::domain::repositories::{
@@ -33,6 +33,7 @@ use crate::modules::identity::presentation::dto::{
     TenantSupportGrantMutationResponse, TenantSupportGrantProposalMutationResponse,
     TenantSupportGrantResponse, TrustDomainRevisionMutationResponse, TrustDomainRevisionResponse,
     WorkloadIdentityPolicyRevisionMutationResponse, WorkloadIdentityPolicyRevisionResponse,
+    WorkloadIdentityProviderInspectionResponse,
 };
 use crate::modules::identity::presentation::request_context::{
     authenticated_credential_actor, mutation_identity, request_id,
@@ -298,6 +299,7 @@ pub fn platform_rbac_commands_controller(
 
 pub fn workload_trust_queries_controller(query_bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let current_trust_domain_bus = Arc::clone(&query_bus);
+    let trust_domain_provider_bus = Arc::clone(&query_bus);
     let trust_domain_revision_bus = Arc::clone(&query_bus);
     let trust_domain_revisions_bus = Arc::clone(&query_bus);
     let current_policy_bus = Arc::clone(&query_bus);
@@ -328,6 +330,34 @@ pub fn workload_trust_queries_controller(query_bus: Arc<QueryBus>) -> Result<Con
                         Ok(revision) => {
                             BootResponse::json(&TrustDomainRevisionResponse::from(revision))
                         }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/trust-domains/{trust_domain_id}/provider-inspection",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&trust_domain_provider_bus);
+                async move {
+                    let actor = authenticated_credential_actor(
+                        &request.require_auth_principal()?,
+                    )?;
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(InspectCurrentTrustDomainProvider {
+                            trust_domain_id: TrustDomainId::from_uuid(
+                                request.param_as::<Uuid>("trust_domain_id")?,
+                            ),
+                            actor_principal_id: actor.principal_id,
+                            credential_id: actor.credential_id,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json(
+                            &WorkloadIdentityProviderInspectionResponse::from(result),
+                        ),
                         Err(error) => application_error_response(error, request_id),
                     }
                 }

@@ -1649,6 +1649,10 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
     let revision_path = "identity/domain/entities/workload_identity.rs";
     let repository_path = "identity/domain/repositories/workload_identity_repository.rs";
     let provider_path = "identity/domain/services/workload_identity_provider.rs";
+    let provider_profile_path =
+        "identity/domain/value_objects/workload_identity_provider_profile.rs";
+    let provider_adapter_path =
+        "identity/infrastructure/spiffe_https_web_workload_identity_provider.rs";
 
     let trust = std::fs::read_to_string(root.join(trust_path)).expect("read trust-domain ACL");
     let policy =
@@ -1659,6 +1663,10 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
         std::fs::read_to_string(root.join(repository_path)).expect("read identity repositories");
     let provider =
         std::fs::read_to_string(root.join(provider_path)).expect("read identity provider port");
+    let provider_profile = std::fs::read_to_string(root.join(provider_profile_path))
+        .expect("read identity provider profile");
+    let provider_adapter = std::fs::read_to_string(root.join(provider_adapter_path))
+        .expect("read identity provider adapter");
 
     assert_eq!(trust.matches("pub struct TrustDomainContract {").count(), 1);
     assert_eq!(
@@ -1707,6 +1715,26 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
         );
     }
 
+    for required in [
+        "a3s_acl",
+        "canonical_digest",
+        "parse_acl",
+        "generate_acl",
+        "cloud.identity.workload-provider.v1",
+    ] {
+        assert!(
+            provider_profile.contains(required),
+            "provider profile lost canonical ACL boundary {required}"
+        );
+    }
+    for forbidden in ["crate::config", "serde_yaml", "toml::", "private_key"] {
+        assert!(
+            !production_source(&format!("{provider_profile}\n{provider_adapter}"))
+                .contains(forbidden),
+            "provider profile or adapter acquired root configuration or secret authority {forbidden}"
+        );
+    }
+
     assert_eq!(
         revisions
             .matches("pub struct AcceptedTrustDomainRevision {")
@@ -1745,8 +1773,11 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
             .count(),
         1
     );
-    assert!(provider.contains("async fn inspect_capabilities"));
+    assert!(provider.contains("async fn inspect("));
     assert!(provider.contains("observed_federation_bundle_digests"));
+    assert!(provider.contains("observed_identity_formats"));
+    assert!(provider.contains("declared_node_attestation_profile_digests"));
+    assert!(provider.contains("declared_max_credential_lifetime_seconds"));
     for forbidden in [
         "async fn issue",
         "private_key",
@@ -1759,7 +1790,7 @@ fn workload_identity_foundation_has_one_acl_owner_and_no_parallel_runtime_or_sec
     ] {
         assert!(
             !production_source(&provider).contains(forbidden),
-            "WI1 provider capability port prematurely acquired WI2/WI3 or concrete authority {forbidden}"
+            "WI1 provider inspection port prematurely acquired WI2/WI3 or concrete authority {forbidden}"
         );
     }
 }
@@ -2712,6 +2743,7 @@ fn privileged_management_has_one_composition_root_and_fail_closed_test_adapter()
         "GetPlatformRoleBinding",
         "GetPrincipalPlatformRoleBinding",
         "GetTenantSupportGrant",
+        "InspectCurrentTrustDomainProvider",
     ] {
         assert_eq!(
             composition
@@ -2799,6 +2831,7 @@ fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_c
         ("/tenant-support-grants/{grant_id}/approvals", 1),
         ("/tenant-support-grants/{grant_id}/revocation", 1),
         ("/trust-domains/{trust_domain_id}", 1),
+        ("/trust-domains/{trust_domain_id}/provider-inspection", 1),
         ("/trust-domains/{trust_domain_id}/revisions", 2),
         (
             "/trust-domains/{trust_domain_id}/revisions/{revision_id}",
@@ -2831,10 +2864,10 @@ fn privileged_management_rest_surface_uses_verified_credentials_and_closed_use_c
         controller
             .matches("authenticated_credential_actor(")
             .count(),
-        21,
+        22,
         "every privileged REST route must derive the exact verified Principal and API Token"
     );
-    assert_eq!(controller.matches("require_auth_principal()").count(), 21);
+    assert_eq!(controller.matches("require_auth_principal()").count(), 22);
     assert_eq!(controller.matches("ApiTokenScope::CLOUD_READ").count(), 3);
     assert_eq!(
         controller.matches("ApiTokenScope::PLATFORM_WRITE").count(),
@@ -2901,6 +2934,7 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "ApproveTenantSupportGrant",
         "RevokeTenantSupportGrant",
         "GetCurrentTrustDomain",
+        "InspectCurrentTrustDomainProvider",
         "GetTrustDomainRevision",
         "ListTrustDomainRevisions",
         "AcceptTrustDomainRevision",
@@ -2929,6 +2963,7 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "approve_tenant_support_grant",
         "revoke_tenant_support_grant",
         "get_current_trust_domain",
+        "inspect_current_trust_domain_provider",
         "get_trust_domain_revision",
         "list_trust_domain_revisions",
         "accept_trust_domain_revision",
@@ -2960,6 +2995,7 @@ fn privileged_management_mcp_is_one_installation_bound_application_adapter() {
         "a3s_cloud_tenant_support_grants_approve",
         "a3s_cloud_tenant_support_grants_revoke",
         "a3s_cloud_trust_domains_current_get",
+        "a3s_cloud_trust_domain_provider_inspect",
         "a3s_cloud_trust_domain_revisions_list",
         "a3s_cloud_trust_domain_revisions_get",
         "a3s_cloud_trust_domain_revisions_accept",

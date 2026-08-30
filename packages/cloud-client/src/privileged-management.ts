@@ -107,6 +107,21 @@ export interface TrustDomainRevisionMutationResult extends TrustDomainRevision {
   replayed: boolean;
 }
 
+export type WorkloadIdentityFormat = 'x509_svid' | 'jwt_svid';
+
+export interface WorkloadIdentityProviderInspection {
+  revision: TrustDomainRevision;
+  providerProfileDigest: string;
+  trustDomainName: string;
+  observedTrustBundleDigest: string;
+  observedFederationBundleDigests: string[];
+  observedIdentityFormats: WorkloadIdentityFormat[];
+  declaredNodeAttestationProfileDigests: string[];
+  declaredMaxCredentialLifetimeSeconds: number;
+  declaredSupportsRevocationEpochs: boolean;
+  observedAt: string;
+}
+
 export interface WorkloadIdentityPolicyRevision {
   installationId: string;
   organizationId: string;

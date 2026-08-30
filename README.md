@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.79.0" src="https://img.shields.io/badge/REST_contract-1.79.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.80.0" src="https://img.shields.io/badge/REST_contract-1.80.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -244,6 +244,14 @@ written to a CLI context file.
   and workload-indexed reads plus CAS-fenced acceptance are exposed through
   REST/OpenAPI, the TypeScript client, and CLI without caller-authored actor,
   credential, or Installation overrides.
+- A canonical <code>cloud.identity.workload-provider.v1</code> profile binds
+  each TrustDomain revision to one replaceable provider adapter by digest. The
+  API-only <code>spiffe_https_web</code> adapter performs a fresh HTTPS,
+  bounded, strict-JSON SPIFFE bundle observation and admits it against that
+  exact revision. Its contract labels endpoint evidence as <code>observed*</code>
+  and digest-bound profile policy as <code>declared*</code>; it owns no
+  certificate issuance, private key, provider registry, or parallel trust
+  state.
 - OpenShift-class outcomes—reconciliation, scheduling, isolation, rollout,
   policy, observability, and day-two operations—and TokenHub-class
   outcomes—governed model/provider/key access, routing, quotas, diagnostics,
@@ -306,7 +314,8 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, workload identity, and full HA operations | **Planned or early foundation.** Workload identity now has immutable PostgreSQL-backed trust-domain and policy revision maintenance plus REST/OpenAPI, TypeScript client, CLI, and installation-bound Management MCP evidence; exact Runtime attestation, issuance, enforcement, and provider evidence remain |
+| Workload identity | **Foundation in progress.** Immutable PostgreSQL-backed trust state and the cross-surface management contract are implemented. A real-TLS, digest-pinned SPIFFE bundle inspection passes the local 7/7 protocol gate; main certification plus Runtime attestation, issuance, enforcement, revocation, and federation remain |
+| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
 analysis](docs/platform-gap-analysis.md), and [ecosystem project
@@ -390,8 +399,9 @@ Real-provider and release certification runs on isolated Linux hosts. Important
 repository-owned gates include [cross-surface
 conformance](tools/c0-conformance/README.md), [Runtime
 conformance](tools/runtime-conformance/README.md), [Box provider
-conformance](tools/box-conformance/README.md), and the [pinned Gateway
-revision](tools/gateway-conformance/gateway-revision).
+conformance](tools/box-conformance/README.md), [workload-identity provider
+conformance](tools/workload-identity-conformance/README.md), and the [pinned
+Gateway revision](tools/gateway-conformance/gateway-revision).
 
 </details>
 

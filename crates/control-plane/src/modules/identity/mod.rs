@@ -109,7 +109,8 @@ pub use application::queries::read_workload_trust::{
     GetCurrentWorkloadIdentityPolicyForWorkload,
     GetCurrentWorkloadIdentityPolicyForWorkloadHandler, GetCurrentWorkloadIdentityPolicyHandler,
     GetTrustDomainRevision, GetTrustDomainRevisionHandler, GetWorkloadIdentityPolicyRevision,
-    GetWorkloadIdentityPolicyRevisionHandler, ListTrustDomainRevisions,
+    GetWorkloadIdentityPolicyRevisionHandler, InspectCurrentTrustDomainProvider,
+    InspectCurrentTrustDomainProviderHandler, ListTrustDomainRevisions,
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisions,
     ListWorkloadIdentityPolicyRevisionsHandler,
 };
@@ -131,6 +132,7 @@ pub use infrastructure::{
     A3sEventRecipientContactVerificationConsumer, SmtpRecipientContactVerificationCredentials,
     SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
+    SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 pub(crate) use presentation::{authenticated_credential_actor, AuthenticatedCredentialActor};

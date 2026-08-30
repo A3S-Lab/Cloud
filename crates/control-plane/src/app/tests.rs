@@ -4,7 +4,7 @@ use crate::config::{
     EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig,
     NodeControlConfig, ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig,
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
-    SecurityProviderKind, ServerConfig, SmtpConfig, SourcesConfig,
+    SecurityProviderKind, ServerConfig, SmtpConfig, SourcesConfig, WorkloadIdentityConfig,
 };
 use crate::modules::agents::{BuiltInAgentExecutionProviderRegistry, InMemoryAgentRepository};
 use crate::modules::artifacts::{
@@ -1104,6 +1104,7 @@ fn config() -> CloudConfig {
             bootstrap_token_env: "A3S_CLOUD_BOOTSTRAP_TOKEN".into(),
             oidc_providers: Vec::new(),
         },
+        workload_identity: WorkloadIdentityConfig { providers: vec![] },
         events: EventsConfig {
             provider: EventProviderKind::Memory,
             nats_url_env: "A3S_CLOUD_NATS_URL".into(),
@@ -2092,6 +2093,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 oidc_provider: oidc_provider.unwrap_or(Arc::new(
                     OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?,
                 )),
+                workload_identity_provider: Arc::new(
+                    SpiffeHttpsWebWorkloadIdentityProviderService::new(&[])
+                        .map_err(BootError::Internal)?,
+                ),
                 plugin_trust_roots: Arc::new(
                     PluginTrustRootObjectStore::in_memory(MAX_BOOTSTRAP_ROOT_BYTES)
                         .map_err(|error| BootError::Internal(error.to_string()))?,

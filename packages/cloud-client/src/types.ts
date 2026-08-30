@@ -259,6 +259,12 @@ export type {
   TenantSupportGrantProposalMutationResult,
   TenantSupportPermission,
   TenantSupportScope,
+  TrustDomainRevision,
+  TrustDomainRevisionMutationResult,
+  WorkloadIdentityFormat,
+  WorkloadIdentityPolicyRevision,
+  WorkloadIdentityPolicyRevisionMutationResult,
+  WorkloadIdentityProviderInspection,
 } from './privileged-management';
 export type {
   AddNodePoolMembersInput,

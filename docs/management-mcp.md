@@ -125,15 +125,16 @@ list/get and optimistic revoke over Identity's existing CQRS. Its reads require
 completion are intentionally absent so mailbox and proof never become
 model-visible arguments.
 
-The installation-scoped privileged-management slice exposes twenty-one tools
+The installation-scoped privileged-management slice exposes twenty-two tools
 over Identity's existing platform-role-policy, platform-role-binding,
-tenant-support, TrustDomain, and WorkloadIdentityPolicy CQRS. Twelve reads
+tenant-support, TrustDomain, and WorkloadIdentityPolicy CQRS. Thirteen reads
 require `cloud:read`; nine mutations require `platform:write`, caller-owned
 idempotency, and the same policy-revision, aggregate-version, contract-digest,
-or predecessor-revision fences as REST contract `1.79.0`. The nine
+or predecessor-revision fences as REST contract `1.80.0`. The ten
 workload-trust tools cover current/exact/bounded-history TrustDomain reads,
-revision acceptance, current/exact/bounded-history WorkloadIdentityPolicy
-reads, revision acceptance, and exact Workload-to-policy resolution. Revision
+fresh exact-revision provider inspection, revision acceptance,
+current/exact/bounded-history WorkloadIdentityPolicy reads, revision
+acceptance, and exact Workload-to-policy resolution. Revision
 pages default to 50 and cannot exceed 100. Trust-domain ACL input retains its
 32 KiB domain bound; workload-policy and other privileged ACL inputs retain
 their owning 64 KiB bounds.
@@ -275,6 +276,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_tenant_support_grants_approve` | Installation command | `platform:write`; exact contract-digest fence and idempotency required |
 | `a3s_cloud_tenant_support_grants_revoke` | Installation command | `platform:write`; aggregate-version fence and idempotency required |
 | `a3s_cloud_trust_domains_current_get` | Installation query | `cloud:read` plus exact `WorkloadTrustRead` decision |
+| `a3s_cloud_trust_domain_provider_inspect` | Installation query | `cloud:read`; exact current revision plus fresh content-addressed provider observation |
 | `a3s_cloud_trust_domain_revisions_list` | Installation query | `cloud:read`; bounded 1 through 100 revision history |
 | `a3s_cloud_trust_domain_revisions_get` | Installation query | `cloud:read` plus exact `WorkloadTrustRead` decision |
 | `a3s_cloud_trust_domain_revisions_accept` | Installation command | `platform:write`; canonical ACL, revision/predecessor fence, and idempotency required |

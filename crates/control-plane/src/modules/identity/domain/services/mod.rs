@@ -30,6 +30,6 @@ pub use resource_authorization_decision::{
     ResourceAuthorizationGrantEvidence,
 };
 pub use workload_identity_provider::{
-    IWorkloadIdentityProviderService, WorkloadIdentityProviderCapabilities,
-    WorkloadIdentityProviderError,
+    IWorkloadIdentityProviderService, WorkloadIdentityProviderError,
+    WorkloadIdentityProviderInspection,
 };

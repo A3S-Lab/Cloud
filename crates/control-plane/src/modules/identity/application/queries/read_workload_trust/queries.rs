@@ -1,3 +1,4 @@
+use crate::modules::identity::application::WorkloadIdentityProviderInspectionResult;
 use crate::modules::identity::domain::entities::{
     AcceptedTrustDomainRevision, AcceptedWorkloadIdentityPolicyRevision,
 };
@@ -19,6 +20,18 @@ pub struct GetCurrentTrustDomain {
 
 impl Query for GetCurrentTrustDomain {
     type Output = ApplicationResult<AcceptedTrustDomainRevision>;
+}
+
+#[derive(Debug, Clone)]
+pub struct InspectCurrentTrustDomainProvider {
+    pub trust_domain_id: TrustDomainId,
+    pub actor_principal_id: PrincipalId,
+    pub credential_id: ApiTokenId,
+    pub request_id: Uuid,
+}
+
+impl Query for InspectCurrentTrustDomainProvider {
+    type Output = ApplicationResult<WorkloadIdentityProviderInspectionResult>;
 }
 
 #[derive(Debug, Clone)]

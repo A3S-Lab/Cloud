@@ -8,8 +8,11 @@ use crate::modules::identity::domain::value_objects::{
     TenantSupportGrantMode, TenantSupportPermission, TrustDomainContract, TrustDomainContractSpec,
     TrustDomainName, WorkloadIdentityAudience, WorkloadIdentityFormat,
     WorkloadIdentityPolicyContract, WorkloadIdentityPolicySpec, WorkloadIdentityRevocationMode,
-    WorkloadProductRole, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES, TENANT_SUPPORT_GRANT_MAX_ACL_BYTES,
-    TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+    WorkloadProductRole, MAX_WORKLOAD_IDENTITY_PROVIDER_ATTESTATION_PROFILES,
+    MAX_WORKLOAD_IDENTITY_PROVIDER_CREDENTIAL_LIFETIME_SECONDS,
+    MIN_WORKLOAD_CREDENTIAL_LIFETIME_SECONDS, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES,
+    TENANT_SUPPORT_GRANT_MAX_ACL_BYTES, TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES,
+    WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InstallationId, NodePoolId, OrganizationId, PlatformRolePolicyId, PrincipalId,
@@ -22,6 +25,11 @@ use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
 const MAXIMUM_JSON_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
+fn with_description(mut schema: Value, description: &str) -> Value {
+    schema["description"] = Value::String(description.into());
+    schema
+}
 
 pub(super) const PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     ("PlatformRolePolicySuccessResponse", "PlatformRolePolicy"),
@@ -55,6 +63,10 @@ pub(super) const PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] 
     (
         "TrustDomainRevisionMutationSuccessResponse",
         "TrustDomainRevisionMutation",
+    ),
+    (
+        "WorkloadIdentityProviderInspectionSuccessResponse",
+        "WorkloadIdentityProviderInspection",
     ),
     (
         "WorkloadIdentityPolicyRevisionSuccessResponse",
@@ -127,6 +139,11 @@ pub(super) const PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, 
         "TrustDomainRevisionMutationSuccessResponse",
     ),
     (
+        "WorkloadIdentityProviderInspectionSuccess200",
+        200,
+        "WorkloadIdentityProviderInspectionSuccessResponse",
+    ),
+    (
         "WorkloadIdentityPolicyRevisionSuccess200",
         200,
         "WorkloadIdentityPolicyRevisionSuccessResponse",
@@ -195,6 +212,10 @@ pub(super) fn install_privileged_management_component_schemas(schemas: &mut Map<
         (
             "TrustDomainRevisionMutation",
             with_replay(trust_domain_revision_schema()),
+        ),
+        (
+            "WorkloadIdentityProviderInspection",
+            workload_identity_provider_inspection_schema(),
         ),
         (
             "WorkloadIdentityPolicyRevision",
@@ -627,6 +648,81 @@ fn trust_domain_revision_schema() -> Value {
     )
 }
 
+fn workload_identity_provider_inspection_schema() -> Value {
+    object_schema(
+        &[
+            "revision",
+            "providerProfileDigest",
+            "trustDomainName",
+            "observedTrustBundleDigest",
+            "observedFederationBundleDigests",
+            "observedIdentityFormats",
+            "declaredNodeAttestationProfileDigests",
+            "declaredMaxCredentialLifetimeSeconds",
+            "declaredSupportsRevocationEpochs",
+            "observedAt",
+        ],
+        json!({
+            "revision": schema_ref("TrustDomainRevision"),
+            "providerProfileDigest": with_description(
+                digest_schema(),
+                "Digest of the canonical provider profile whose declarations were evaluated."
+            ),
+            "trustDomainName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+                "description": "Trust-domain name declared by the canonical provider profile."
+            },
+            "observedTrustBundleDigest": with_description(
+                digest_schema(),
+                "Digest of the canonical SPIFFE bundle fetched during this inspection."
+            ),
+            "observedFederationBundleDigests": {
+                "type": "array",
+                "maxItems": 16,
+                "uniqueItems": true,
+                "items": digest_schema(),
+                "description": "Federation bundle digests observed by the adapter; empty until federation inspection is implemented."
+            },
+            "observedIdentityFormats": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "uniqueItems": true,
+                "description": "Identity formats inferred from structurally admitted public verification keys in the fetched SPIFFE bundle.",
+                "items": {
+                    "type": "string",
+                    "enum": ["x509_svid", "jwt_svid"]
+                }
+            },
+            "declaredNodeAttestationProfileDigests": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": MAX_WORKLOAD_IDENTITY_PROVIDER_ATTESTATION_PROFILES,
+                "uniqueItems": true,
+                "description": "Node-attestation profiles declared by the digest-bound provider profile; these are not inferred from the bundle endpoint.",
+                "items": digest_schema()
+            },
+            "declaredMaxCredentialLifetimeSeconds": {
+                "type": "integer",
+                "minimum": MIN_WORKLOAD_CREDENTIAL_LIFETIME_SECONDS,
+                "maximum": MAX_WORKLOAD_IDENTITY_PROVIDER_CREDENTIAL_LIFETIME_SECONDS,
+                "description": "Credential lifetime ceiling declared by the digest-bound provider profile; this is not inferred from the bundle endpoint."
+            },
+            "declaredSupportsRevocationEpochs": {
+                "type": "boolean",
+                "description": "Revocation-epoch support declared by the digest-bound provider profile; this is not inferred from the bundle endpoint."
+            },
+            "observedAt": with_description(
+                timestamp_schema(),
+                "Control-plane time at which the exact-revision inspection completed."
+            )
+        }),
+    )
+}
+
 fn workload_identity_policy_revision_schema() -> Value {
     object_schema(
         &[
@@ -858,11 +954,11 @@ mod tests {
 
     #[test]
     fn privileged_management_components_are_closed_bounded_and_domain_generated() {
-        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS.len(), 14);
-        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS.len(), 14);
+        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS.len(), 15);
+        assert_eq!(PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS.len(), 15);
         let mut schemas = Map::new();
         install_privileged_management_component_schemas(&mut schemas);
-        assert_eq!(schemas.len(), 21);
+        assert_eq!(schemas.len(), 22);
         let mut list_schema_count = 0;
         for (name, schema) in &schemas {
             match schema["type"].as_str() {
