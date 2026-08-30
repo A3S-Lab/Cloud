@@ -83,7 +83,7 @@ fn boot_uses_the_schema_admission_revision() {
 }
 
 #[test]
-fn code_core_uses_the_published_a1_2_release() {
+fn code_core_uses_the_published_8_0_3_release() {
     let packages = locked_a3s_packages()
         .into_iter()
         .filter(|package| package.name == "a3s-code-core")
@@ -93,7 +93,7 @@ fn code_core_uses_the_published_a1_2_release() {
         1,
         "Cloud must resolve exactly one Code Core package"
     );
-    assert_eq!(packages[0].version, "8.0.1");
+    assert_eq!(packages[0].version, "8.0.3");
     assert_eq!(packages[0].source, CRATES_IO_SOURCE);
 }
 

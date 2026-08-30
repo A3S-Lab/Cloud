@@ -250,9 +250,9 @@ dependencies = [
 
 [[package]]
 name = "a3s-code-core"
-version = "8.0.1"
+version = "8.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef6b2d4beb75dc3ccc19397a6902f6cba6f4fa667d914b6b6a7ab5c4dd09874"
+checksum = "9381e212f740fb092a673d2834e3097879cd618a5f61ba9318a32dba9efba22e"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
